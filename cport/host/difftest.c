@@ -2,11 +2,17 @@
  * difftest — check hand-written replacements against their lifted originals.
  *
  *   difftest [-n TRIALS] [-s SEED] [NAME...]      (default: every pair)
+ *   difftest -S DIR NAME                          (replay captured states)
  *
- * For each trial both versions run (in forked children, 2 s timeout) from the
- * same randomised guest RAM and registers; all guest memory, cpu.ret and the
- * registers listed for the function in difftest.cfg must match.
+ * For each trial both versions run (in forked children, 0.2 s timeout) from
+ * the same randomised guest RAM and registers; all guest memory, cpu.ret and
+ * the registers listed for the function in difftest.cfg must match.
+ *
+ * With -S, the inputs are real machine states captured at the function's
+ * entry in the original game (tools/mgba_run --snap), for functions whose
+ * inputs are structured guest state that random data cannot exercise.
  */
+#include <dirent.h>
 #define _GNU_SOURCE
 #include <pthread.h>
 #include <signal.h>
@@ -183,6 +189,53 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
     }
 }
 
+static const char *g_snap_dir;
+static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, const u8 *mem_in, size_t n,
+                        u8 *out_a, u8 *out_b, Result *ra, Result *rb, int *pfails, int *pcrashes,
+                        const char *label);
+
+static int cmp_str(const void *a, const void *b) { return strcmp(*(char **)a, *(char **)b); }
+static int list_snaps(const char *dir, char ***out) {
+    DIR *d = opendir(dir);
+    int n = 0, cap = 0;
+    struct dirent *e;
+    while (d && (e = readdir(d))) {
+        if (strncmp(e->d_name, "snap_", 5)) continue;
+        if (n == cap) *out = realloc(*out, (cap = cap ? cap * 2 : 64) * sizeof **out);
+        (*out)[n] = malloc(strlen(dir) + strlen(e->d_name) + 2);
+        sprintf((*out)[n++], "%s/%s", dir, e->d_name);
+    }
+    if (d) closedir(d);
+    qsort(*out, n, sizeof **out, cmp_str);
+    return n;
+}
+
+/* Snapshot (tools/mgba_run --snap): "BN6S", version, r0-r15, cpsr, memory. */
+static int load_snapshot(const char *path, Cpu *in, u8 *mem) {
+    FILE *f = fopen(path, "rb");
+    u32 hdr[19];
+    if (!f || fread(hdr, sizeof hdr, 1, f) != 1 || hdr[0] != 0x53364E42u) {
+        fprintf(stderr, "bad snapshot %s\n", path);
+        if (f) fclose(f);
+        return 0;
+    }
+    size_t n = snapshot_size();
+    size_t got = fread(mem, 1, n, f);
+    fclose(f);
+    if (got != n) { fprintf(stderr, "short snapshot %s\n", path); return 0; }
+    memset(in, 0, sizeof *in);
+    for (int r = 0; r < 15; r++) in->r[r] = hdr[2 + r];
+    u32 cpsr = hdr[18];
+    u32 nf = cpsr >> 31 & 1, zf = cpsr >> 30 & 1;
+    in->nz = zf ? 0 : (nf ? 0x80000000u : 1u);
+    in->c = cpsr >> 29 & 1;
+    in->v = cpsr >> 28 & 1;
+    in->cpsr_ctl = cpsr & 0xFF;
+    in->bank_sp[BANK_IRQ] = 0x03007F60u;
+    in->bank_sp[BANK_SVC] = 0x03007FE0u;
+    return 1;
+}
+
 static int test_pair(const Pair *p, int trials) {
     const Cfg *c = cfg_for(p->name);
     g_hwtick = c && c->hwtick;
@@ -193,6 +246,18 @@ static int test_pair(const Pair *p, int trials) {
     Result *ra = mmap(NULL, sizeof *ra, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     Result *rb = mmap(NULL, sizeof *rb, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     int fails = 0, crashes = 0;
+    if (g_snap_dir) {
+        char **files = NULL;
+        int nf = list_snaps(g_snap_dir, &files);
+        for (int t = 0; t < nf; t++) {
+            Cpu in;
+            if (!load_snapshot(files[t], &in, mem_in)) continue;
+            check_trial(p, c, t, &in, mem_in, n, out_a, out_b, ra, rb, &fails, &crashes, files[t]);
+        }
+        printf("%-40s %s  (%d snapshots, %d failures, %d out-of-domain)\n", p->name,
+               fails ? "FAIL" : "ok  ", nf, fails, crashes);
+        return fails;
+    }
     for (int t = 0; t < trials; t++) {
         for (size_t i = 0; i < n; i += 4) {
             u32 v = rnd();
@@ -217,15 +282,28 @@ static int test_pair(const Pair *p, int trials) {
             gen(&in, rnd);
             save_mem(mem_in);
         }
+        check_trial(p, c, t, &in, mem_in, n, out_a, out_b, ra, rb, &fails, &crashes, NULL);
+    }
+    printf("%-40s %s  (%d trials, %d failures, %d out-of-domain)\n", p->name,
+           fails ? "FAIL" : "ok  ", trials, fails, crashes);
+    return fails;
+}
+
+static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, const u8 *mem_in, size_t n,
+                        u8 *out_a, u8 *out_b, Result *ra, Result *rb, int *pfails, int *pcrashes,
+                        const char *label) {
+        Cpu in = *inp;
+        int fails = *pfails;
         run_child(p->lifted, &in, mem_in, ra, out_a);
         run_child(p->hand, &in, mem_in, rb, out_b);
-        if (ra->status) { crashes++; continue; }   /* original faults: input out of domain */
+        if (ra->status) { (*pcrashes)++; return; }   /* original faults: input out of domain */
         const char *why = NULL;
         /* Stack below the final SP is dead after return (callee scratch, or a
          * caller frame the function popped). */
-        u32 dead_top = ra->cpu.r[13] > GUEST_SP ? ra->cpu.r[13] : GUEST_SP;
-        if (dead_top > GUEST_SP + 0x100) dead_top = GUEST_SP + 0x100;
-        size_t lo = g_regions[0].size + (GUEST_SP - STACK_SCRATCH - 0x03000000u);
+        u32 sp0 = in.r[13];
+        u32 dead_top = ra->cpu.r[13] > sp0 ? ra->cpu.r[13] : sp0;
+        if (dead_top > sp0 + 0x100) dead_top = sp0 + 0x100;
+        size_t lo = g_regions[0].size + (sp0 - STACK_SCRATCH - 0x03000000u);
         size_t hi = g_regions[0].size + (dead_top - 0x03000000u);
         memcpy(out_b + lo, out_a + lo, hi - lo);
         if (g_hwtick) {
@@ -253,7 +331,7 @@ static int test_pair(const Pair *p, int trials) {
         }
         if (why) {
             if (fails++ < 5) {
-                fprintf(stderr, "  %s trial %d: %s\n    inputs:", p->name, t, why);
+                fprintf(stderr, "  %s %s %d: %s\n    inputs:", p->name, label ? label : "trial", t, why);
                 for (int r = 0; r < 13; r++) fprintf(stderr, " r%d=%#x", r, in.r[r]);
                 fprintf(stderr, "\n");
                 for (size_t i = 0; i < n && !strcmp(why, "guest memory differs"); i++)
@@ -265,12 +343,12 @@ static int test_pair(const Pair *p, int trials) {
                                 g_regions[k].base + off, out_a[i], out_b[i]);
                         break;
                     }
+                for (int r = 0; r < 13 && !strcmp(why, "register differs"); r++)
+                    if ((c->compare_mask >> r & 1) && ra->cpu.r[r] != rb->cpu.r[r])
+                        fprintf(stderr, "    r%d: lifted %#x hand %#x\n", r, ra->cpu.r[r], rb->cpu.r[r]);
             }
         }
-    }
-    printf("%-40s %s  (%d trials, %d failures, %d out-of-domain)\n", p->name,
-           fails ? "FAIL" : "ok  ", trials, fails, crashes);
-    return fails;
+        *pfails = fails;
 }
 
 int main(int argc, char **argv) {
@@ -280,6 +358,7 @@ int main(int argc, char **argv) {
     for (; first < argc && argv[first][0] == '-'; first++) {
         if (!strcmp(argv[first], "-n")) trials = atoi(argv[++first]);
         else if (!strcmp(argv[first], "-s")) g_rng = strtoull(argv[++first], 0, 0) | 1;
+        else if (!strcmp(argv[first], "-S")) g_snap_dir = argv[++first];
     }
     struct rlimit nocore = { 0, 0 };
     setrlimit(RLIMIT_CORE, &nocore);

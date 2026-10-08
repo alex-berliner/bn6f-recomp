@@ -243,7 +243,7 @@ def main():
             e2 = []
             for x in e:
                 if x[0] == "fall" and x[1] not in u.insns:
-                    e2.append(("tail", x[1]))
+                    e2.append(("return",) if em.pop_into_bx_veneer(ins) is not None else ("tail", x[1]))
                 elif x[0] == "local":
                     u.labels.add(x[1])
                     e2.append(x)

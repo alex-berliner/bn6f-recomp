@@ -38,10 +38,88 @@ static void log_cb(struct mLogger *logger, int category, enum mLogLevel level,
 
 typedef struct { unsigned frame; unsigned keyinput; } Ev;
 
+static int snap_filter_ok(struct mCore *core, int reg, uint32_t off, uint32_t mask, uint32_t val) {
+    if (reg < 0) return 1;
+    char name[16];
+    snprintf(name, sizeof name, "r%d", reg & 15);
+    int32_t v = 0;
+    core->readRegister(core, name, &v);
+    return (core->busRead32(core, (uint32_t)v + off) & mask) == val;
+}
+
+/* Snapshot file: "BN6S", version, r0-r15 (r15 = the instruction's address),
+ * cpsr, then guest memory in cport/host/memmap.c region order. */
+static void save_snapshot(struct mCore *core, const char *dir, unsigned long n, uint32_t pc, uint32_t cpsr) {
+    static const struct { unsigned base, size; } rg[] = {
+        { 0x02000000, 0x40000 }, { 0x03000000, 0x8000 }, { 0x04000000, 0x400 }, { 0x05000000, 0x400 },
+        { 0x06000000, 0x18000 }, { 0x07000000, 0x400 }, { 0x0E000000, 0x8000 },
+    };
+    char path[512];
+    snprintf(path, sizeof path, "%s/snap_%04lu.bin", dir, n);
+    FILE *o = fopen(path, "wb");
+    if (!o) { perror(path); return; }
+    uint32_t hdr[2 + 16 + 1] = { 0x53364E42u, 1 };
+    for (int r = 0; r < 15; r++) {
+        char name[8];
+        snprintf(name, sizeof name, "r%d", r);
+        int32_t v = 0;
+        core->readRegister(core, name, &v);
+        hdr[2 + r] = (uint32_t)v;
+    }
+    hdr[2 + 15] = pc;
+    hdr[2 + 16] = cpsr;
+    fwrite(hdr, sizeof hdr, 1, o);
+    for (unsigned r = 0; r < sizeof rg / sizeof rg[0]; r++)
+        for (unsigned a = 0; a < rg[r].size; a++) {
+            uint8_t b = core->busRead8(core, rg[r].base + a);
+            fputc(b, o);
+        }
+    fclose(o);
+}
+
+#define NHIT 4096
+static struct { uint32_t r0, lr, n; } hits[NHIT];
+static void count_hit(uint32_t r0, uint32_t lr) {
+    uint32_t h = (r0 * 2654435761u ^ lr * 40503u) & (NHIT - 1);
+    for (unsigned k = 0; k < NHIT; k++, h = (h + 1) & (NHIT - 1)) {
+        if (hits[h].n && hits[h].r0 == r0 && hits[h].lr == lr) { hits[h].n++; return; }
+        if (!hits[h].n) { hits[h].r0 = r0; hits[h].lr = lr; hits[h].n = 1; return; }
+    }
+}
+static int hit_cmp(const void *a, const void *b) {
+    const uint32_t na = ((const uint32_t *)a)[2], nb = ((const uint32_t *)b)[2];
+    return na < nb ? 1 : na > nb ? -1 : 0;
+}
+static void count_dump(void) {
+    qsort(hits, NHIT, sizeof hits[0], hit_cmp);
+    for (unsigned k = 0; k < 60 && hits[k].n; k++)
+        printf("count %8u r0=%08x lr=%08x\n", hits[k].n, hits[k].r0, hits[k].lr);
+}
+
+static uint64_t pg_rom[0x01000000 / 2], pg_ram[0x8000 / 2], pg_ewram[0x40000 / 2], pg_bios[0x4000 / 2];
+
 int main(int argc, char **argv) {
     const char *rom = NULL, *input = NULL, *shots = NULL, *bios = NULL, *dump = NULL;
     unsigned frames = 600, every = 0;
     unsigned long marker = 0, guest = 0, game_frame_addr = 0, until_game_frame = 0, digest_every = 0;
+    /* --profile-game G0 G1: cycle profile from game frame G0 to G1 (needs
+     * --game-frame-addr); input keeps following the trace while profiling. */
+    unsigned long pg_from = 0, pg_to = 0;
+    /* --count-entry ADDR: while profiling, histogram (r0, lr) at each
+     * execution of ADDR (e.g. a runtime function's entry). */
+    unsigned long count_pc = 0;
+    /* --snap ADDR DIR MAX EVERY: while profiling, save the machine state
+     * (registers + guest memory) at every EVERY-th execution of ADDR, up to
+     * MAX files, for replay by cport/host/difftest -S DIR. */
+    unsigned long snap_pc = 0, snap_max = 0, snap_every = 1, snap_hits = 0, snap_saved = 0;
+    const char *snap_dir = NULL;
+    /* --snap-filter R OFF MASK VAL: only count hits where
+     * (mem32[rR + OFF] & MASK) == VAL (e.g. "this music player is playing"). */
+    int snapf_reg = -1;
+    unsigned long snapf_off = 0, snapf_mask = 0, snapf_val = 0;
+    int pg_active = 0;
+    uint64_t pg_total = 0;
+    unsigned pg_hw0 = 0;
     unsigned last_digest = ~0u;
     unsigned long shot_game = 0;
     int trace_pc = 0;
@@ -63,6 +141,16 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--guest")) guest = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--trace-pc")) trace_pc = 1;
         else if (!strcmp(argv[i], "--step-from")) step_from = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--count-entry")) count_pc = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--snap-filter")) {
+            snapf_reg = atoi(argv[++i]); snapf_off = strtoul(argv[++i], 0, 0);
+            snapf_mask = strtoul(argv[++i], 0, 0); snapf_val = strtoul(argv[++i], 0, 0);
+        }
+        else if (!strcmp(argv[i], "--snap")) {
+            snap_pc = strtoul(argv[++i], 0, 0); snap_dir = argv[++i];
+            snap_max = strtoul(argv[++i], 0, 0); snap_every = strtoul(argv[++i], 0, 0);
+        }
+        else if (!strcmp(argv[i], "--profile-game")) { pg_from = strtoul(argv[++i], 0, 0); pg_to = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--profile")) { prof_from = strtoul(argv[++i], 0, 0); prof_steps = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--code-lo")) code_lo = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--code-hi")) code_hi = strtoul(argv[++i], 0, 0);
@@ -210,6 +298,55 @@ int main(int argc, char **argv) {
             }
             printf("no escape within step budget\n");
             goto done;
+        }
+        if (pg_to && game_frame_addr && !pg_active && when >= pg_from && when < pg_to) {
+            pg_active = 1;
+            pg_hw0 = fr;
+        }
+        if (pg_active && when >= pg_to) {
+            FILE *pf = fopen("profile.txt", "w");
+            fprintf(pf, "# game %lu..%lu hw %u..%u cycles %llu\n", pg_from, pg_to, pg_hw0, fr,
+                    (unsigned long long)pg_total);
+            for (uint32_t i = 0; i < 0x01000000 / 2; i++) if (pg_rom[i]) fprintf(pf, "%08x %llu\n", 0x08000000u + i * 2, (unsigned long long)pg_rom[i]);
+            for (uint32_t i = 0; i < 0x8000 / 2; i++) if (pg_ram[i]) fprintf(pf, "%08x %llu\n", 0x03000000u + i * 2, (unsigned long long)pg_ram[i]);
+            for (uint32_t i = 0; i < 0x40000 / 2; i++) if (pg_ewram[i]) fprintf(pf, "%08x %llu\n", 0x02000000u + i * 2, (unsigned long long)pg_ewram[i]);
+            for (uint32_t i = 0; i < 0x4000 / 2; i++) if (pg_bios[i]) fprintf(pf, "%08x %llu\n", i * 2, (unsigned long long)pg_bios[i]);
+            fclose(pf);
+            printf("profiled game frames %lu..%lu (hw %u..%u)\n", pg_from, pg_to, pg_hw0, fr);
+            if (count_pc) count_dump();
+            break;
+        }
+        if (pg_active) {
+            /* step one hardware frame, attributing cycles to the PC */
+            uint32_t f0 = core->frameCounter(core);
+            uint64_t t0 = mTimingGlobalTime(core->timing);
+            while (core->frameCounter(core) == f0) {
+                int32_t pc = 0, cpsr = 0;
+                core->readRegister(core, "pc", &pc);
+                core->readRegister(core, "cpsr", &cpsr);
+                pc -= (cpsr & 0x20) ? 4 : 8;      /* pipeline PC -> executing instruction */
+                if (snap_pc && ((uint32_t)pc & ~1u) == (snap_pc & ~1u) && snap_saved < snap_max &&
+                    snap_filter_ok(core, snapf_reg, snapf_off, snapf_mask, snapf_val) &&
+                    snap_hits++ % snap_every == 0)
+                    save_snapshot(core, snap_dir, snap_saved++, (uint32_t)pc, (uint32_t)cpsr);
+                if (count_pc && ((uint32_t)pc & ~1u) == (count_pc & ~1u)) {
+                    int32_t r0 = 0, lr = 0;
+                    core->readRegister(core, "r0", &r0);
+                    core->readRegister(core, "lr", &lr);
+                    count_hit((uint32_t)r0, (uint32_t)lr);
+                }
+                core->step(core);
+                uint64_t t1 = mTimingGlobalTime(core->timing);
+                uint32_t d = (uint32_t)(t1 - t0);
+                t0 = t1;
+                pg_total += d;
+                uint32_t u = (uint32_t)pc;
+                if (u >= 0x08000000u && u < 0x09000000u) pg_rom[(u - 0x08000000u) >> 1] += d;
+                else if (u >= 0x03000000u && u < 0x03008000u) pg_ram[(u - 0x03000000u) >> 1] += d;
+                else if (u >= 0x02000000u && u < 0x02040000u) pg_ewram[(u - 0x02000000u) >> 1] += d;
+                else if (u < 0x4000) pg_bios[u >> 1] += d;
+            }
+            continue;
         }
         core->runFrame(core);
         if (trace_pc) {

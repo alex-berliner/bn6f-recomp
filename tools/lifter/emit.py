@@ -198,7 +198,11 @@ class UnitEmitter:
                     self.emit(ln)
             # fall off the end of the unit's decoded code
             if self.falls_through(ins) and a + ins.size not in u.insns:
-                self.emit(f"TAIL({self.fn_for(a + ins.size)});")
+                rx = self.pop_into_bx_veneer(ins)
+                if rx is not None:
+                    self.emit(f"RETURN({REGN[rx]});")
+                else:
+                    self.emit(f"TAIL({self.fn_for(a + ins.size)});")
         return self.out
 
     def falls_through(self, ins: Insn) -> bool:
@@ -341,6 +345,22 @@ class UnitEmitter:
             if prev.kind in ("mul", "mull", "mrs", "swp") and (prev.rd == reg or
                                                              (prev.kind == "mull" and prev.rdhi == reg)):
                 return None
+        return None
+
+    def pop_into_bx_veneer(self, ins: Insn) -> int | None:
+        """`pop {..., rX}` that falls off the unit into a lone `bx rX` veneer
+        (m4a's MPlayMain ends this way, sharing its caller's call-r3 stub):
+        an interworking return through rX. Returns X."""
+        if ins.cond != "al" or not self.falls_through(ins):
+            return None
+        u2 = self.p.unit_at(ins.addr + ins.size)
+        nxt = u2.insns.get(ins.addr + ins.size) if u2 else None
+        if nxt is None or nxt.kind != "bx" or nxt.cond != "al" or nxt.rm == 14:
+            return None
+        if ins.kind == "block" and ins.load and ins.rn == 13 and ins.wb and nxt.rm in ins.regs:
+            return nxt.rm
+        if ins.kind == "mem" and ins.load and ins.rn == 13 and not ins.pre and ins.rd == nxt.rm:
+            return nxt.rm
         return None
 
     def is_pop_return(self, ins: Insn) -> bool:
