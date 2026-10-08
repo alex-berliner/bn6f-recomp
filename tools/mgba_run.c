@@ -25,11 +25,14 @@
 static int g_verbose_log = 1;
 static struct mCore *g_core;
 static unsigned long g_illegal;   /* illegal opcodes executed; the first few are logged with registers */
+static int g_quiet_calls;         /* --call-snaps: random inputs run into garbage; do not log every step */
 
 static void log_cb(struct mLogger *logger, int category, enum mLogLevel level,
                    const char *format, va_list args) {
     (void)logger;
     const char *cat = mLogCategoryName(category);
+    if (g_quiet_calls && !(level & mLOG_FATAL))
+        return;
     if (g_core && !strncmp(format, "Illegal opcode", 14)) {
         if (++g_illegal > 16)
             return;
@@ -330,6 +333,7 @@ int main(int argc, char **argv) {
         DIR *d = opendir(call_dir);
         struct dirent *de;
         unsigned done = 0, timeouts = 0;
+        g_quiet_calls = 1;
         static const struct { unsigned base, size; } rg[] = {
             { 0x02000000, 0x40000 }, { 0x03000000, 0x8000 }, { 0x04000000, 0x400 }, { 0x05000000, 0x400 },
             { 0x06000000, 0x18000 }, { 0x07000000, 0x400 }, { 0x0E000000, 0x8000 },
@@ -344,6 +348,9 @@ int main(int argc, char **argv) {
             snprintf(name, sizeof name, "%.*s.exit", (int)(ln - 9), de->d_name + 5);
             snprintf(exitp, sizeof exitp, "%s/snap_%s.bin", call_dir, name);
             if (access(exitp, F_OK) == 0) continue;
+            /* A previous call may have run into garbage and left the CPU
+             * halted or stopped, which memory and registers do not undo. */
+            core->reset(core);
             FILE *f = fopen(path, "rb");
             uint32_t hdr[19];
             if (!f || fread(hdr, sizeof hdr, 1, f) != 1 || hdr[0] != 0x53364E42u) { if (f) fclose(f); continue; }
@@ -422,6 +429,25 @@ int main(int argc, char **argv) {
                 core->readRegister(core, "sp", &sp);
                 pc -= (c1 & 0x20) ? 2 : 4;      /* mGBA pipeline PC -> next instruction to execute */
                 if (((uint32_t)pc & ~1u) == lr && (uint32_t)sp == sp0) break;
+                /* BIOS Halt, Stop, IntrWait, VBlankIntrWait never wake with
+                 * interrupts off (and mGBA's step would not return): the
+                 * call does not return here. */
+                unsigned swi = ~0u;
+                if (c1 & 0x20) {
+                    uint16_t op = core->busRead16(core, (uint32_t)pc);
+                    if ((op & 0xFF00) == 0xDF00) swi = op & 0xFF;
+                } else {
+                    uint32_t op = core->busRead32(core, (uint32_t)pc);
+                    if ((op & 0x0F000000) == 0x0F000000) swi = (op >> 16) & 0xFF;
+                }
+                if (swi >= 2 && swi <= 5) { n = call_steps; break; }
+                /* executing outside BIOS, EWRAM, IWRAM or ROM: the call ran
+                 * into a bad pointer and does not return */
+                uint32_t region = (uint32_t)pc >> 24;
+                if (!(((uint32_t)pc < 0x4000) || region == 2 || region == 3 || (region >= 8 && region <= 0xD))) {
+                    n = call_steps;
+                    break;
+                }
                 core->step(core);
             }
             if (n < call_steps) {

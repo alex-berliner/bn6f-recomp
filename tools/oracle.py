@@ -79,9 +79,12 @@ def batch(args):
                     for off in (IO + 0x200, IO + 0x202, IO + 0x208):
                         f.seek(76 + off)
                         f.write(b"\0\0")
-        subprocess.run([os.path.join(ROOT, "build-tools/mgba_run"), os.path.join(ROOT, "bn6f/bn6f.gba"), "--quiet",
-                        "--frames", "1", "--bios", os.path.join(ROOT, "gbarecomp/bios/gba_bios.bin"),
-                        "--call-snaps", d, "200000"], capture_output=True, text=True)
+        try:   # calls without an exit snapshot (no return, or cut off here) are not counted
+            subprocess.run([os.path.join(ROOT, "build-tools/mgba_run"), os.path.join(ROOT, "bn6f/bn6f.gba"), "--quiet",
+                            "--frames", "1", "--bios", os.path.join(ROOT, "gbarecomp/bios/gba_bios.bin"),
+                            "--call-snaps", d, "200000"], capture_output=True, text=True, timeout=1800)
+        except subprocess.TimeoutExpired:
+            pass
         env = dict(os.environ, BN6F_ROM=os.path.join(ROOT, "bn6f/bn6f.gba"), ORACLE_CONTRACT=CONTRACT)
         r = subprocess.run([os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", d],
                            capture_output=True, text=True,
