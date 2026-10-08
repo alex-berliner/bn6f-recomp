@@ -2,8 +2,10 @@
 
 Full run 2026-10-08 (4 random states per function, snapshots from the
 original): 9,267 of 13,671 lifted functions compared on at least one state;
-67 differed. None is a port bug. The differences fall into these classes,
-which will recur in later runs until the harness models them:
+67 differed. One was a real deviation, now fixed: the hand-written
+sub_30068E8 did not leave the original's flags (no caller was shown to read
+them; 12 of the 67). The rest are harness artifacts or by design, and will
+recur in later runs until the harness models them:
 
 | Functions | Class | Why it is not a port bug |
 |---|---|---|
