@@ -112,7 +112,8 @@ REG_ORDER = [f"r{i}" for i in range(13)] + ["lr"]
 GLOBAL = {**{f"r{i}": f"R{i}" for i in range(13)}, "lr": "LR", "nz": "cpu.nz", "c": "cpu.c", "v": "cpu.v"}
 
 
-CALLM_RE = re.compile(r"CALLM\((\w), (.+?), (\w+), (0x[0-9a-f]+), (0x[0-9a-f]+), (0x[0-9a-f]+)\);")
+RETURN_RE = re.compile(r"\bRETURN\(")
+CALLM_RE = re.compile(r"CALLM\((\w), (.+?), (\w+), (0x[0-9a-f]+), (0x[0-9a-f]+), (0x[0-9a-f]+), (0x[0-9a-f]+), ([01])\);")
 BIT = {"nz": 1, "c": 2, "v": 4, **{f"r{i}": 1 << (3 + i) for i in range(13)}, "lr": 1 << 17}
 
 
@@ -122,8 +123,8 @@ def expand_calls(body: list[str], regs: list[str], flags: list[str], written: se
     reload what it may change. Everything else stays in host registers."""
     names = regs + flags
     def sync(m):
-        kind, fn, ra, save, load, mw = m.groups()
-        save, load, mw = int(save, 16), int(load, 16), int(mw, 16)
+        kind, fn, ra, save, load, mw, clob, chk = m.groups()
+        save, load, mw, clob = int(save, 16), int(load, 16), int(mw, 16), int(clob, 16)
         # If the callee unwinds past us, registers it may write (including
         # ones it restores) already hold the right values in `cpu`; publish
         # only the others.
@@ -135,8 +136,11 @@ def expand_calls(body: list[str], regs: list[str], flags: list[str], written: se
         # address), whatever the callee does.
         ld = [f"{x} = {GLOBAL[x]};" for x in names if load & BIT[x] or x == "lr"]
         # Registers kept in host registers across the call (neither synced
-        # nor reloaded): LIFT_TRACE builds check the callee really left them.
-        kept = [x for x in regs if not (save & BIT[x]) and not (load & BIT[x]) and x != "lr"]
+        # nor reloaded) that the callee must leave alone: LIFT_TRACE builds
+        # check it really did. (A dead register it clobbers is not reloaded
+        # either, and may change.)
+        kept = [x for x in regs if not (save & BIT[x]) and not (load & BIT[x]) and not (clob & BIT[x])
+                and x != "lr"]
         chk_pre = chk_post = ""
         if kept:
             chk_pre = "SYNC_SNAP(" + ", ".join(f"{GLOBAL[x]}" for x in kept[:6]) + ")"
@@ -148,6 +152,8 @@ def expand_calls(body: list[str], regs: list[str], flags: list[str], written: se
             st = [x for x in st if not x.startswith("LR = ")]     # the call sets LR
             lr = f"(u32){ra} | 1u" if kind == "T" else f"(u32){ra}"
             call = f"{{ {' '.join(st)} {chk_pre} LR = {lr}; CALL_DIRECT({fn});"
+        if chk == "0":      # the callee provably returns here (LIFT_TRACE builds verify)
+            return f"{call} {chk_post} {' '.join(ld)} RET_ASSERT({ra}); }}"
         return (f"{call} {chk_post} {' '.join(ld)} "
                 f"if (cpu.ret != (u32){ra}) {{ {' '.join(unwind)} RET_MISMATCH({ra}); }} }}")
     return [CALLM_RE.sub(sync, ln) for ln in body]
@@ -710,6 +716,22 @@ def main():
             break
     print(f"[lift] {sum(may_unwind.values())} of {len(may_unwind)} entries may unwind past their caller "
           f"({len(own_unwind)} units through their own returns)")
+
+    # Units whose callers may check the return address (cpu.ret): those that
+    # may unwind, can be called through a pointer (indirect call sites always
+    # check) or are tail-called (they return on behalf of their tail-caller).
+    # The others return without storing it (RETURN_NR; LIFT_TRACE builds
+    # still store it so RET_ASSERT can verify the analysis).
+    tail_targets = set()
+    for u in p.units:
+        for a, effs in effects[u.start].items():
+            for x in effs:
+                if x[0] == "tail" or (x[0] == "fall" and x[1] not in u.insns):
+                    tail_targets.add(x[1])
+    def needs_ret(u):
+        return any(may_unwind.get(e, True) or e in indirect_targets or e in tail_targets for e in u.entries)
+    print(f"[lift] {sum(not needs_ret(u) for u in p.units)} of {len(p.units)} units return without "
+          f"publishing their return address")
     if os.environ.get("LIFT_DEBUG_UNWIND"):
         for st in sorted(own_unwind)[:40]:
             print(f"  own unwind: {names.get(st, hex(st))}")
@@ -723,17 +745,18 @@ def main():
     use_live_sync = os.environ.get("LIFT_NO_LIVE_SYNC") != "1"
 
     def call_masks(t, call_addr, unit_start):
-        """(save, load, may_write) for a call site: registers/flags to store
-        before the call, to reload after it, and that the callee may change."""
+        """(save, load, may_write, clobbers) for a call site: registers/flags
+        to store before the call, to reload after it, that the callee may
+        change, and that it may leave changed."""
         if t is None:
-            return ALL, ALL, ALL
+            return ALL, ALL, ALL, ALL
         mw = may_write[unit_of(t).start]
         mwp = mw & ~pres(t)
         if may_unwind.get(t, True) or not use_live_sync:
-            return inputs[t] | mwp, mwp, mw
+            return inputs[t] | mwp, mwp, mw, mwp
         # The callee returns here: only what is live afterwards matters.
         live = live_out_all[unit_start].get(call_addr, ALL)
-        return inputs[t] | (mwp & ~must_write[t] & live), mwp & live, mw
+        return inputs[t] | (mwp & ~must_write[t] & live), mwp & live, mw, mwp
 
     # ── emission ────────────────────────────────────────────────────────
     addr_names: dict[int, str] = {}
@@ -745,7 +768,7 @@ def main():
     ctx = Ctx(p=p, names=names, addr_names=addr_names, used_addr_syms=set(),
               used_equates={}, flags_in=flags_in, callers_live=callers_live,
               indirect_in=ALLF,
-              call_masks=call_masks)
+              call_masks=call_masks, may_unwind=may_unwind)
     iwram_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "iwram.txt")
     iwram_names: dict[str, str] = {}      # name -> "thumb" | "arm"
     if os.path.exists(iwram_path):
@@ -789,6 +812,8 @@ def main():
         else:
             fname = os.path.splitext(loc[0])[0] if loc else "misc"
         body = em.body()
+        if not is_over and not needs_ret(u):      # (difftest compares cpu.ret of overridden ones)
+            body = [RETURN_RE.sub("RETURN_NR(", ln) for ln in body]
         save_def, load_def, decls = reg_locals(body)
         hdr = f"/* {u.name}: {u.start:08X}-{u.end:08X} {'THUMB' if u.thumb else 'ARM'}"
         if loc:

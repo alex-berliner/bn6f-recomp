@@ -55,6 +55,7 @@ class Ctx:
     callers_live: dict[int, int]   # unit start -> flags live after return
     indirect_in: int
     call_masks: object = None      # target addr | None -> (save_mask, load_mask)
+    may_unwind: object = None      # entry addr -> may return past its caller
 
 
 class UnitEmitter:
@@ -382,11 +383,14 @@ class UnitEmitter:
     def emit_call(self, target_expr: str, target: int | None, ret: int, thumb_lr: bool, at: int) -> list[str]:
         """Call site; expanded by lift.py into per-site register sync once the
         function's local register set is known (see expand_calls)."""
-        save, load, mw = self.ctx.call_masks(target, at, self.u.start)
+        save, load, mw, clob = self.ctx.call_masks(target, at, self.u.start)
         if target is not None:
             kind = "T" if thumb_lr else "A"
-            return [f"CALLM({kind}, {self.fn_for(target)}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x});"]
-        return [f"CALLM(X, {target_expr}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x});"]
+            # the return-address check is only needed if the callee may
+            # return somewhere other than here
+            chk = int(self.ctx.may_unwind is None or self.ctx.may_unwind.get(target, True))
+            return [f"CALLM({kind}, {self.fn_for(target)}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x}, {clob:#x}, {chk});"]
+        return [f"CALLM(X, {target_expr}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x}, {clob:#x}, 1);"]
 
     def jump_indirect(self, ins: Insn, expr: str, lines: list[str]):
         """Unknown-target jump: local switch over data-referenced labels."""

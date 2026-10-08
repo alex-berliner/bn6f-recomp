@@ -208,6 +208,14 @@ void trace_sync_violation(u32 ra, int which);
 #define RET_MISMATCH(ra) return DONE
 #endif
 
+/* Calls to callees the lifter proves return to their caller skip the
+ * return-address check; LIFT_TRACE builds still verify it. */
+#if defined(LIFT_TRACE)
+#define RET_ASSERT(ra) do { if (cpu.ret != (u32)(ra)) trace_ret_mismatch((u32)(ra)); } while (0)
+#else
+#define RET_ASSERT(ra) ((void)0)
+#endif
+
 /* A callee that returned somewhere else unwinds through us: publish all
  * our registers (SAVE) for the frame that owns the continuation. */
 #if defined(LIFT_TRACE)
@@ -224,6 +232,13 @@ void trace_sync_violation(u32 ra, int which);
 #define CALL_A(fn, ra)  do { SAVE; LR = (u32)(ra); CALL_DIRECT(fn); LOAD; RET_CHECK(ra); } while (0)
 #define CALLX(x, ra)    do { u32 x_ = (x); SAVE; dispatch(x_); LOAD; RET_CHECK(ra); } while (0)
 #define RETURN(x)       do { u32 x_ = (x); SAVE; cpu.ret = x_ & ~1u; return DONE; } while (0)
+/* Return from a function whose callers never check the return address
+ * (see RET_ASSERT); LIFT_TRACE builds still publish it for the check. */
+#if defined(LIFT_TRACE)
+#define RETURN_NR(x)    RETURN(x)
+#else
+#define RETURN_NR(x)    do { (void)(x); SAVE; return DONE; } while (0)
+#endif
 #define TAIL(fn)        do { SAVE; return NEXT(fn); } while (0)
 #define JUMP(x)         do { u32 x_ = (x); SAVE; GuestFn f_ = dispatch_fast(x_); return f_ ? NEXT(f_) : jump_to(x_); } while (0)
 #define SWI(n)          do { SAVE; swi_call(n); LOAD; } while (0)
