@@ -11,7 +11,9 @@ BASEROM ?= ../bn6f/bn6f.gba
 BUILD   := build
 
 ARCH    := -mcpu=arm7tdmi -mthumb -mthumb-interwork
-CFLAGS  := $(ARCH) -Os -ffreestanding -fno-strict-aliasing -fomit-frame-pointer \
+OPT     ?= -Os
+LIFTED_OPT ?= -O2
+CFLAGS  := $(ARCH) -ffreestanding -fno-strict-aliasing -fomit-frame-pointer \
            -DTARGET_GBA -Iinclude -Wall -Wno-unused-label -Wno-unused-variable -Wno-array-bounds -Wno-comment -Werror=return-type -Wno-unused-but-set-variable
 LDFLAGS := $(ARCH) -nostartfiles -T gba.ld -Wl,--gc-sections -Wl,-Map,$(BUILD)/bn6f_lifted.map
 
@@ -22,9 +24,13 @@ OBJS    := $(patsubst src/%.c,$(BUILD)/%.o,$(LIFTED) $(RUNTIME)) $(BUILD)/base.o
 
 all: $(BUILD)/bn6f_lifted.gba
 
-$(BUILD)/%.o: src/%.c $(wildcard include/*.h)
+$(BUILD)/lifted/%.o: src/lifted/%.c $(wildcard include/*.h) Makefile
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(LIFTED_OPT) -c $< -o $@
+
+$(BUILD)/%.o: src/%.c $(wildcard include/*.h) Makefile
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(OPT) -c $< -o $@
 
 # The ARM IRQ entry must be ARM code.
 $(BUILD)/gba/irq.o: CFLAGS += -marm
