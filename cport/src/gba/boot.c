@@ -42,8 +42,28 @@ static void orig_store(u32 str_insn, u32 addr_literal, u32 value) {
         *(volatile u32 *)(uintptr_t)*(volatile u32 *)addr_literal = value;
 }
 
+#if defined(BOOT_DIAG)
+/* Diagnostic builds (OPT="-Os -DBOOT_DIAG"): each boot stage shows a solid
+ * colour for about a second, so a hang on hardware can be located by the
+ * last colour seen: red (gba_boot entered), yellow (RAM set up), green (the
+ * game's init calls done), blue (entering main_). main_awaitFrame shows
+ * orange if VBlank interrupts stop arriving; rt_fatal shows magenta. */
+void diag_color(u16 bgr, unsigned frames) {
+    REG16(0x05000000) = bgr;
+    REG16(0x04000000) = 0;                       /* mode 0, no layers: backdrop only */
+    for (unsigned n = 0; n < frames; n++) {
+        while (REG_DISPSTAT & 1) ;
+        while (!(REG_DISPSTAT & 1)) ;
+    }
+}
+#define DIAG(c) diag_color((c), 60)
+#else
+#define DIAG(c) ((void)0)
+#endif
+
 __attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
     REG_IME = 0;
+    DIAG(0x001F);                                                          /* red */
     orig_store(0x08000108u, 0x08000200u, *(volatile u32 *)0x08000204u);    /* WAITCNT = 0x45B4 */
 
     /* Guest-visible RAM, as start_clearMemory does. IWRAM 0x3005700..0x30079D0
@@ -71,6 +91,7 @@ __attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
 
 
     /* Guest CPU state after GameEntryPoint's mode switches. */
+    DIAG(0x03FF);                                                          /* yellow */
     cpu.cpsr_ctl = 0x1F;
     cpu.bank_sp[BANK_IRQ] = 0x03007F60;
     cpu.bank_sp[BANK_SVC] = 0x03007FE0;
@@ -87,6 +108,8 @@ __attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
     ST32(0x0200A870u, 0);     /* dword_200A870 */
     REG_DISPSTAT = 8;
     REG_KEYCNT = 0x83FF;
+    DIAG(0x03E0);                                                          /* green */
+    DIAG(0x7C00);                                                          /* blue */
 
     run(main_);
     rt_fatal("main_ returned", 0);

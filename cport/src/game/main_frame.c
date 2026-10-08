@@ -29,11 +29,25 @@ Next main_awaitFrame(void) {
     g_frame_stats[2] += busy >= 228;
 
     u32 frames, step;
+#if defined(BOOT_DIAG)
+    unsigned stuck = 0;    /* VBlank periods seen without the IRQ counting one */
+#endif
     do {
         while (!(LD16(REG_DISPSTAT) & 1))
             ;
         frames = LD32(VBLANK_COUNT);
         step = LD32(FRAMES_PER_STEP);
+#if defined(BOOT_DIAG)
+        if ((s32)frames < (s32)step) {
+            while (LD16(REG_DISPSTAT) & 1)
+                ;
+            if (LD32(VBLANK_COUNT) == frames && ++stuck > 120) {
+                void diag_color(u16 bgr, unsigned frames);
+                for (;;)
+                    diag_color(0x021F, 1);        /* orange: VBlank IRQs are not arriving */
+            }
+        }
+#endif
     } while ((s32)frames < (s32)step);
     ST32(VBLANK_COUNT, 0);
 

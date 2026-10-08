@@ -34,6 +34,9 @@ void rt_log(const char *msg, u32 value) {
 
 void rt_fatal(const char *msg, u32 value) {
     REG_IME = 0;
+    /* visible on hardware too: a magenta screen (display on, no layers) */
+    REG16(0x05000000) = 0x7C1F;
+    REG16(0x04000000) = 0;
     g_fatal_marker[0] = 0xDEADC0DEu;
     g_fatal_marker[1] = value;
     g_fatal_marker[2] = (u32)msg;
