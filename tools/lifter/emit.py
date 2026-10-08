@@ -56,6 +56,8 @@ class Ctx:
     indirect_in: int
     call_masks: object = None      # target addr | None -> (save_mask, load_mask)
     may_unwind: object = None      # entry addr -> may return past its caller
+    tail_free: object = None       # entry addr -> never returns a tail call (Next)
+    dirty_at: object = None        # (unit, call addr) -> registers changed since last sync
 
 
 class UnitEmitter:
@@ -384,11 +386,15 @@ class UnitEmitter:
         """Call site; expanded by lift.py into per-site register sync once the
         function's local register set is known (see expand_calls)."""
         save, load, mw, clob = self.ctx.call_masks(target, at, self.u.start)
+        if self.ctx.dirty_at is not None:
+            save &= self.ctx.dirty_at(self.u, at)      # unchanged values are already in `cpu`
         if target is not None:
             kind = "T" if thumb_lr else "A"
             # the return-address check is only needed if the callee may
             # return somewhere other than here
             chk = int(self.ctx.may_unwind is None or self.ctx.may_unwind.get(target, True))
+            if self.ctx.tail_free is not None and self.ctx.tail_free.get(target, False):
+                kind += "L"     # no trampoline needed
             return [f"CALLM({kind}, {self.fn_for(target)}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x}, {clob:#x}, {chk});"]
         return [f"CALLM(X, {target_expr}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x}, {clob:#x}, 1);"]
 

@@ -186,6 +186,7 @@ void cpu_set_spsr(u32 v, u32 mask);
  * function uses between its locals and `cpu`. */
 #if defined(LIFT_TRACE)
 void trace_ret_mismatch(u32 expected);
+void trace_tail_violation(u32 ra);
 #endif
 
 /* LIFT_TRACE: verify that registers a call site keeps in host registers
@@ -226,8 +227,19 @@ void trace_sync_violation(u32 ra, int which);
 /* Direct calls run the callee in place and only enter the trampoline when
  * it asks for a tail call. */
 /* Run a lifted callee to completion; tail calls it makes are followed here
- * (an inline trampoline: no call into run() and its interworking veneer). */
-#define CALL_DIRECT(f_) do { Next n_ = f_(); while (n_.fn) n_ = n_.fn(); } while (0)
+ * (an inline trampoline: no call into run() and its interworking veneer).
+ * Most callees return without one, so that path falls through: a taken
+ * branch costs ~8 cycles from ROM, refilling the prefetch buffer. */
+#define CALL_DIRECT(f_) do { Next n_ = f_(); \
+    if (__builtin_expect(n_.fn != 0, 0)) do n_ = n_.fn(); while (n_.fn); } while (0)
+/* A callee the lifter proves never asks for a tail call (it only returns
+ * DONE) needs no trampoline at all; LIFT_TRACE builds check it. */
+#if defined(LIFT_TRACE)
+#define CALL_LEAF(f_, ra) do { Next n_ = f_(); if (n_.fn) { trace_tail_violation((u32)(ra)); \
+    do n_ = n_.fn(); while (n_.fn); } } while (0)
+#else
+#define CALL_LEAF(f_, ra) ((void)f_())
+#endif
 #define CALL(fn, ra)    do { SAVE; LR = (u32)(ra) | 1u; CALL_DIRECT(fn); LOAD; RET_CHECK(ra); } while (0)
 #define CALL_A(fn, ra)  do { SAVE; LR = (u32)(ra); CALL_DIRECT(fn); LOAD; RET_CHECK(ra); } while (0)
 #define CALLX(x, ra)    do { u32 x_ = (x); SAVE; dispatch(x_); LOAD; RET_CHECK(ra); } while (0)

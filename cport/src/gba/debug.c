@@ -54,6 +54,14 @@ void trace_ret_mismatch(u32 expected) {
 #endif
 
 #if defined(LIFT_TRACE)
+static u32 g_tail_reports;
+void trace_tail_violation(u32 ra) {
+    if (g_tail_reports++ < 16)
+        rt_log("tail call from a callee assumed tail-free, returning to", ra);
+}
+#endif
+
+#if defined(LIFT_TRACE)
 static u32 g_sync_reports;
 void trace_sync_violation(u32 ra, int which) {
     if (g_sync_reports++ < 16) {

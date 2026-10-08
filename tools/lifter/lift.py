@@ -113,7 +113,7 @@ GLOBAL = {**{f"r{i}": f"R{i}" for i in range(13)}, "lr": "LR", "nz": "cpu.nz", "
 
 
 RETURN_RE = re.compile(r"\bRETURN\(")
-CALLM_RE = re.compile(r"CALLM\((\w), (.+?), (\w+), (0x[0-9a-f]+), (0x[0-9a-f]+), (0x[0-9a-f]+), (0x[0-9a-f]+), ([01])\);")
+CALLM_RE = re.compile(r"CALLM\((\w+), (.+?), (\w+), (0x[0-9a-f]+), (0x[0-9a-f]+), (0x[0-9a-f]+), (0x[0-9a-f]+), ([01])\);")
 BIT = {"nz": 1, "c": 2, "v": 4, **{f"r{i}": 1 << (3 + i) for i in range(13)}, "lr": 1 << 17}
 
 
@@ -150,12 +150,13 @@ def expand_calls(body: list[str], regs: list[str], flags: list[str], written: se
                     f"if (f_) CALL_DIRECT(f_); else dispatch(x_);")
         else:
             st = [x for x in st if not x.startswith("LR = ")]     # the call sets LR
-            lr = f"(u32){ra} | 1u" if kind == "T" else f"(u32){ra}"
-            call = f"{{ {' '.join(st)} {chk_pre} LR = {lr}; CALL_DIRECT({fn});"
+            lr = f"(u32){ra} | 1u" if kind[0] == "T" else f"(u32){ra}"
+            run = f"CALL_LEAF({fn}, {ra})" if kind.endswith("L") else f"CALL_DIRECT({fn})"
+            call = f"{{ {' '.join(st)} {chk_pre} LR = {lr}; {run};"
         if chk == "0":      # the callee provably returns here (LIFT_TRACE builds verify)
             return f"{call} {chk_post} {' '.join(ld)} RET_ASSERT({ra}); }}"
         return (f"{call} {chk_post} {' '.join(ld)} "
-                f"if (cpu.ret != (u32){ra}) {{ {' '.join(unwind)} RET_MISMATCH({ra}); }} }}")
+                f"if (__builtin_expect(cpu.ret != (u32){ra}, 0)) {{ {' '.join(unwind)} RET_MISMATCH({ra}); }} }}")
     return [CALLM_RE.sub(sync, ln) for ln in body]
 
 
@@ -728,6 +729,19 @@ def main():
             for x in effs:
                 if x[0] == "tail" or (x[0] == "fall" and x[1] not in u.insns):
                     tail_targets.add(x[1])
+    # Units that can only return DONE: no tail call, computed jump or fall
+    # into the next function. Calls to them need no trampoline.
+    tail_free = {}
+    for u in p.units:
+        free = True
+        for a, effs in effects[u.start].items():
+            for x in effs:
+                if x[0] in ("tail", "jump") or (x[0] == "fall" and x[1] not in u.insns) \
+                        or (x[0] == "call" and x[2] not in u.insns):
+                    free = False
+        for e in u.entries:
+            tail_free[e] = free
+    print(f"[lift] {sum(tail_free.values())} of {len(tail_free)} entries never tail-call")
     def needs_ret(u):
         return any(may_unwind.get(e, True) or e in indirect_targets or e in tail_targets for e in u.entries)
     print(f"[lift] {sum(not needs_ret(u) for u in p.units)} of {len(p.units)} units return without "
@@ -765,10 +779,58 @@ def main():
     for nm, v in sorted(info.equates.items()):
         if 0x02000000 <= v < 0x10000000:
             addr_names.setdefault(v, "A_" + cname(nm).removeprefix("bn_"))
+    # Dirty registers: those whose local copy may differ from `cpu` at each
+    # call site (forward may-analysis per unit). Locals are loaded from
+    # `cpu` on entry, so a call site need not store an input that has not
+    # changed since the last sync. LIFT_NO_DIRTY=1 stores every written one.
+    use_dirty = os.environ.get("LIFT_NO_DIRTY") != "1"
+    dirty_cache: dict[int, dict[int, int]] = {}
+
+    def unit_dirty(u: Unit) -> dict[int, int]:
+        eff = effects[u.start]
+        din = {e: 0 for e in u.entries}
+        work = list(u.entries)
+        while work:
+            a = work.pop()
+            d = din[a]
+            ins = u.insns[a]
+            _r, w = reads_writes[a]
+            if ins.kind == "swi":
+                d_next = 0                  # SWI(): SAVE, BIOS call, LOAD of every local
+            else:
+                d_next = d | w
+            for x in eff[a]:
+                kx = x[0]
+                if kx == "call":
+                    tgt, nxt = x[1], x[2]
+                    save, load, _mw, clob = call_masks(tgt, a, u.start)
+                    v = ((d & ~save) | (clob & ~load)) & ~load & ~RB(14)   # LR is reloaded
+                elif kx in ("fall", "local"):
+                    nxt, v = x[1], d_next
+                else:
+                    continue
+                if nxt not in u.insns:
+                    continue
+                if nxt not in din:
+                    din[nxt] = v
+                    work.append(nxt)
+                elif v & ~din[nxt]:
+                    din[nxt] |= v
+                    work.append(nxt)
+        return din
+
+    def dirty_at(u: Unit, call_addr: int) -> int:
+        if not use_dirty:
+            return ALL
+        if u.start not in dirty_cache:
+            dirty_cache[u.start] = unit_dirty(u)
+        return dirty_cache[u.start].get(call_addr, ALL)
+
     ctx = Ctx(p=p, names=names, addr_names=addr_names, used_addr_syms=set(),
               used_equates={}, flags_in=flags_in, callers_live=callers_live,
               indirect_in=ALLF,
-              call_masks=call_masks, may_unwind=may_unwind)
+              call_masks=call_masks, may_unwind=may_unwind, tail_free=tail_free,
+              dirty_at=dirty_at)
     iwram_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "iwram.txt")
     iwram_names: dict[str, str] = {}      # name -> "thumb" | "arm"
     if os.path.exists(iwram_path):
