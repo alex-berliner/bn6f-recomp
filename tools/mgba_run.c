@@ -121,6 +121,14 @@ int main(int argc, char **argv) {
     /* --load-state FILE / --save-state FILE: start from / end with an mGBA
      * save state (for building input traces step by step). */
     const char *load_state = NULL, *save_state = NULL;
+    /* --poke-at PC G "ADDR=VALUE/SIZE,...": write memory once, when the
+     * instruction at PC is about to run at game frame >= G (a fixed point in
+     * the game's frame loop, e.g. main_awaitFrame's entry, so the original
+     * and a port see the change at the same moment). Needs --profile-game
+     * covering G (stepping). VALUE may be "*ADDR" (read a word). */
+    unsigned long poke_pc = 0, poke_g = 0;
+    const char *poke_spec = NULL;
+    int poked = 0;
     /* --trace-branches FILE: while stepping (--profile-game window), write
      * every non-sequential PC (branch target) with the game frame. */
     FILE *branch_trace = NULL;
@@ -148,7 +156,7 @@ int main(int argc, char **argv) {
     unsigned long pending_n = 0;
     int pending = 0;
     unsigned long snapf_off = 0, snapf_mask = 0, snapf_val = 0;
-    int pg_active = 0;
+    int pg_active = 0, pg_continue = 0, pg_done = 0;
     uint64_t pg_total = 0;
     unsigned pg_hw0 = 0;
     unsigned last_digest = ~0u;
@@ -174,6 +182,9 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--step-from")) step_from = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--count-entry")) count_pc = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--load-state")) load_state = argv[++i];
+        else if (!strcmp(argv[i], "--poke-at")) {
+            poke_pc = strtoul(argv[++i], 0, 0); poke_g = strtoul(argv[++i], 0, 0); poke_spec = argv[++i];
+        }
         else if (!strcmp(argv[i], "--trace-branches")) branch_trace = fopen(argv[++i], "w");
         else if (!strcmp(argv[i], "--watch")) { watch_addr = strtoul(argv[++i], 0, 0); watch_len = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--save-state")) save_state = argv[++i];
@@ -199,6 +210,7 @@ int main(int argc, char **argv) {
             snap_pc = strtoul(argv[++i], 0, 0); snap_dir = argv[++i];
             snap_max = strtoul(argv[++i], 0, 0); snap_every = strtoul(argv[++i], 0, 0);
         }
+        else if (!strcmp(argv[i], "--step-window")) { pg_from = strtoul(argv[++i], 0, 0); pg_to = strtoul(argv[++i], 0, 0); pg_continue = 1; }
         else if (!strcmp(argv[i], "--profile-game")) { pg_from = strtoul(argv[++i], 0, 0); pg_to = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--profile")) { prof_from = strtoul(argv[++i], 0, 0); prof_steps = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--code-lo")) code_lo = strtoul(argv[++i], 0, 0);
@@ -366,9 +378,13 @@ int main(int argc, char **argv) {
             printf("no escape within step budget\n");
             goto done;
         }
-        if (pg_to && game_frame_addr && !pg_active && when >= pg_from && when < pg_to) {
+        if (pg_to && game_frame_addr && !pg_active && !pg_done && when >= pg_from && when < pg_to) {
             pg_active = 1;
             pg_hw0 = fr;
+        }
+        if (pg_active && when >= pg_to && pg_continue) {
+            pg_active = 0;          /* --step-window: back to whole frames */
+            pg_done = 1;
         }
         if (pg_active && when >= pg_to) {
             FILE *pf = fopen("profile.txt", "w");
@@ -383,7 +399,9 @@ int main(int argc, char **argv) {
             if (count_pc) count_dump();
             break;
         }
-        if (pg_active) {
+        /* a pending --poke-at steps its frame on its own */
+        int poke_step = poke_spec && !poked && game_frame_addr && when + 1 >= poke_g;
+        if (pg_active || poke_step) {
             /* step one hardware frame, attributing cycles to the PC */
             uint32_t f0 = core->frameCounter(core);
             uint64_t t0 = mTimingGlobalTime(core->timing);
@@ -392,6 +410,22 @@ int main(int argc, char **argv) {
                 core->readRegister(core, "pc", &pc);
                 core->readRegister(core, "cpsr", &cpsr);
                 pc -= (cpsr & 0x20) ? 2 : 4;      /* mGBA pipeline PC -> next instruction to execute */
+                if (poke_spec && !poked && when >= poke_g && ((uint32_t)pc & ~1u) == (poke_pc & ~1u)) {
+                    char spec[512];
+                    snprintf(spec, sizeof spec, "%s", poke_spec);
+                    for (char *t = strtok(spec, ","); t; t = strtok(NULL, ",")) {
+                        uint32_t a = strtoul(t, &t, 0), v = 0, sz = 4;
+                        if (*t == '=') t++;
+                        if (*t == '*') v = core->busRead32(core, strtoul(t + 1, &t, 0));
+                        else v = strtoul(t, &t, 0);
+                        if (*t == '/') sz = strtoul(t + 1, &t, 0);
+                        if (sz == 1) core->busWrite8(core, a, v);
+                        else if (sz == 2) core->busWrite16(core, a, v);
+                        else core->busWrite32(core, a, v);
+                        printf("poke game=%u %08x=%x/%u\n", when, a, v, sz);
+                    }
+                    poked = 1;
+                }
                 if (branch_trace && (uint32_t)pc != prev_pc + 2 && (uint32_t)pc != prev_pc + 4)
                     fprintf(branch_trace, "%u %08x\n", when, (uint32_t)pc);
                 prev_pc = (uint32_t)pc;
@@ -483,6 +517,8 @@ int main(int argc, char **argv) {
                 uint64_t t1 = mTimingGlobalTime(core->timing);
                 uint32_t d = (uint32_t)(t1 - t0);
                 t0 = t1;
+                if (!pg_active)
+                    continue;
                 pg_total += d;
                 uint32_t u = (uint32_t)pc;
                 if (u >= 0x08000000u && u < 0x09000000u) pg_rom[(u - 0x08000000u) >> 1] += d;

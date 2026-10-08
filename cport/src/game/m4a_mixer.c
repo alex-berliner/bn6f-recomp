@@ -50,14 +50,9 @@ enum { TYPE_FIX = 0x08 };   /* fixed-frequency sample: no resampling */
 #define S8(a)  (*(s8 *)(uintptr_t)(u32)(a))
 #define U32(a) (*(u32 *)(uintptr_t)(u32)(a))
 
-/* Add one sample * volume into an 8-bit PCM byte (wraps, as on hardware). */
-static inline void mix_byte(u32 addr, s32 sample, u32 vol) {
-    U8(addr) = (u8)(U8(addr) + (u8)((u32)(sample * (s32)vol) >> 8));
-}
-
 /* The previous buffer half becomes a quieter echo, or is cleared. `half`
  * is the distance to the left-channel buffer (PCM_DMA_BUF_SIZE). */
-static void age_buffer(u32 info, u32 dma_counter, u32 buf, u32 samples, u32 half) {
+IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static void age_buffer(u32 info, u32 dma_counter, u32 buf, u32 samples, u32 half) {
     u32 reverb = U8(info + SI_REVERB);
     if (reverb) {
         u32 prev = dma_counter == 2 ? info + SI_PCM_BUFFER : buf + samples;
@@ -170,84 +165,119 @@ done:
     return (int)status;
 }
 
-/* The original mixes four output bytes per 32-bit word (ror #8 trick) and,
- * when a channel stops mid-word, rotates the partial word back into place;
- * mixing byte by byte gives the same memory. Sample counts per frame are
- * multiples of 16, as the word loops assume. */
+/* Output is mixed a 32-bit word (four samples) at a time, like the
+ * original: rotating the word right by 8 brings the next output byte to the
+ * top, where the sample's 8-bit contribution (sample * volume) >> 8 is added
+ * (wrapping there, as an 8-bit add would). Four steps visit bytes 0..3 and
+ * leave the word unrotated. Sample counts per frame are multiples of 16 and
+ * the buffers are word aligned, as the original assumes. */
+static inline u32 rot8(u32 w) { return (w >> 8) | (w << 24); }
+static inline u32 rot8_add(u32 w, s32 sample, u32 vol16) {
+    return rot8(w) + (((u32)sample * vol16) & 0xFF000000u);
+}
 
 /* Fixed-frequency channel: one sample per output byte. Returns 0 when the
  * sample ran out without a loop (channel stopped). */
-static int mix_fixed(u32 ch, u32 *out, u32 samples, u32 volr, u32 voll,
+IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static int mix_fixed(u32 ch, u32 o, u32 samples, u32 volr, u32 voll,
                      u32 loop_start, u32 loop_len, u32 *count_io, u32 *src_io) {
-    s32 count = (s32)*count_io;
-    u32 src = *src_io, o = *out;
-    for (u32 i = 0; i < samples; i++, o++) {
-        s32 s = S8(src++);
-        mix_byte(o, s, volr);
-        mix_byte(o + PCM_DMA_BUF_SIZE, s, voll);
-        if (--count == 0) {
-            if (!loop_len) {
-                U8(ch + CH_STATUS) = 0;
-                return 0;
+    /* Counters wrap like the original's 32-bit registers: unsigned
+     * arithmetic, signed only where the original compares signed. */
+    u32 count = *count_io;
+    u32 src = *src_io, vr = volr << 16, vl = voll << 16;
+    for (u32 n = 0; n < samples; n += 4, o += 4) {
+        u32 r = U32(o), l = U32(o + PCM_DMA_BUF_SIZE);
+        for (int k = 0; k < 4; k++) {
+            s32 s = S8(src++);
+            r = rot8_add(r, s, vr);
+            l = rot8_add(l, s, vl);
+            if (--count == 0) {
+                if (!loop_len) {
+                    U8(ch + CH_STATUS) = 0;
+                    while (++k < 4) {               /* rest of the word unmixed */
+                        r = rot8(r);
+                        l = rot8(l);
+                    }
+                    U32(o) = r;
+                    U32(o + PCM_DMA_BUF_SIZE) = l;
+                    return 0;
+                }
+                src = loop_start;
+                count = loop_len;
             }
-            src = loop_start;
-            count = (s32)loop_len;
         }
+        U32(o) = r;
+        U32(o + PCM_DMA_BUF_SIZE) = l;
     }
-    *count_io = (u32)count;
+    *count_io = count;
     *src_io = src;
     return 1;
 }
 
 /* Resampled channel: linear interpolation between neighbouring samples with
  * a 23-bit fractional position `fw` advancing by divFreq * frequency. */
-static int mix_resampled(u32 ch, u32 info, u32 *out, u32 samples, u32 volr, u32 voll,
+IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static int mix_resampled(u32 ch, u32 info, u32 o, u32 samples, u32 volr, u32 voll,
                          u32 loop_start, u32 loop_len, u32 *count_io, u32 *src_io) {
-    s32 count = (s32)*count_io;
-    u32 src = *src_io, o = *out;
+    u32 count = *count_io;            /* wraps like a 32-bit register (see mix_fixed) */
+    u32 src = *src_io, vr = volr << 16, vl = voll << 16;
     u32 fw = U32(ch + CH_FW);
     u32 step = U32(info + SI_DIV_FREQ) * U32(ch + CH_FREQ);
     s32 s0 = S8(src);
     s32 delta = S8(++src) - s0;
-    for (u32 i = 0; i < samples; i++, o++) {
-        s32 s = s0 + ((s32)(fw * (u32)delta) >> 23);
-        mix_byte(o, s, volr);
-        mix_byte(o + PCM_DMA_BUF_SIZE, s, voll);
-        fw += step;
-        u32 advance = fw >> 23;
-        if (!advance)
-            continue;
-        fw &= ~0x3F800000u;
-        count -= (s32)advance;
-        if (count <= 0) {
-            if (!loop_len) {
-                U8(ch + CH_STATUS) = 0;
-                return 0;
+    for (u32 n = 0; n < samples; n += 4, o += 4) {
+        u32 r = U32(o), l = U32(o + PCM_DMA_BUF_SIZE);
+        for (int k = 0; k < 4; k++) {
+            s32 s = s0 + ((s32)(fw * (u32)delta) >> 23);
+            r = rot8_add(r, s, vr);
+            l = rot8_add(l, s, vl);
+            fw += step;
+            u32 advance = fw >> 23;
+            if (!advance)
+                continue;
+            fw &= ~0x3F800000u;
+            /* the original's subs/ble: signed compare of the exact result */
+            int ran_out = (s32)count <= (s32)advance;
+            count -= advance;
+            if (ran_out) {
+                if (!loop_len) {
+                    U8(ch + CH_STATUS) = 0;
+                    while (++k < 4) {               /* rest of the word unmixed */
+                        r = rot8(r);
+                        l = rot8(l);
+                    }
+                    U32(o) = r;
+                    U32(o + PCM_DMA_BUF_SIZE) = l;
+                    return 0;
+                }
+                /* Wrap into the loop, possibly several times. */
+                u32 back = -count;
+                src = loop_start;
+                for (;;) {
+                    s64 sum = (s64)(s32)count + (s32)loop_len;   /* adds/bgt: exact result */
+                    count += loop_len;
+                    if (sum > 0)
+                        break;
+                    back -= loop_len;
+                }
+                s0 = S8(src += back);
+            } else if (--advance == 0) {
+                s0 += delta;                       /* moved exactly one sample */
+            } else {
+                s0 = S8(src += advance);
             }
-            /* Wrap into the loop, possibly several times. */
-            s32 back = -count;
-            src = loop_start;
-            for (;;) {
-                count += (s32)loop_len;
-                if (count > 0)
-                    break;
-                back -= (s32)loop_len;
-            }
-            s0 = S8(src += (u32)back);
-        } else if (--advance == 0) {
-            s0 += delta;                       /* moved exactly one sample */
-        } else {
-            s0 = S8(src += advance);
+            delta = S8(++src) - s0;
         }
-        delta = S8(++src) - s0;
+        U32(o) = r;
+        U32(o + PCM_DMA_BUF_SIZE) = l;
     }
-    *count_io = (u32)count;
+    *count_io = count;
     *src_io = src - 1;
     U32(ch + CH_FW) = fw;
     return 1;
 }
 
-IWRAM_CODE Next SoundMainRAM_iwram_03005700(void) {
+/* The per-channel driver runs once per channel per frame: Thumb keeps it
+ * small; the per-sample loops above are ARM. */
+IWRAM_THUMB Next SoundMainRAM_iwram_03005700(void) {
     u32 sp = SP;                       /* SoundMain's frame */
     u32 info = U32(sp + 0x18);
     u32 buf = R5, samples = R8;
@@ -288,8 +318,8 @@ IWRAM_CODE Next SoundMainRAM_iwram_03005700(void) {
             u32 out = U32(sp + 8);
             u32 count = U32(ch + CH_COUNT), src = U32(ch + CH_CUR_PTR);
             int alive = U8(ch + CH_TYPE) & TYPE_FIX
-                ? mix_fixed(ch, &out, samples, volr, voll, loop_start, loop_len, &count, &src)
-                : mix_resampled(ch, info, &out, samples, volr, voll, loop_start, loop_len, &count, &src);
+                ? mix_fixed(ch, out, samples, volr, voll, loop_start, loop_len, &count, &src)
+                : mix_resampled(ch, info, out, samples, volr, voll, loop_start, loop_len, &count, &src);
             if (alive) {
                 U32(ch + CH_COUNT) = count;
                 U32(ch + CH_CUR_PTR) = src;

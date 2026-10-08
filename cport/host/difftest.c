@@ -166,6 +166,15 @@ static void *hw_ticker(void *arg) {
 static int g_hwtick;
 
 static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u8 *mem_out) {
+    if (getenv("DIFFTEST_NOFORK")) {          /* debugging: run in-process */
+        load_mem(mem_in);
+        cpu = *in;
+        run(f);
+        res->cpu = cpu;
+        res->status = 0;
+        save_mem(mem_out);
+        return;
+    }
     pid_t pid = fork();
     if (pid == 0) {
         if (!getenv("DIFFTEST_VERBOSE"))       /* out-of-domain inputs abort noisily */
@@ -318,6 +327,7 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
                         const char *label) {
         Cpu in = *inp;
         int fails = *pfails;
+        if (getenv("DIFFTEST_ONLY") && atoi(getenv("DIFFTEST_ONLY")) != t) return;
         run_child(p->lifted, &in, mem_in, ra, out_a);
         run_child(p->hand, &in, mem_in, rb, out_b);
         if (ra->status) { (*pcrashes)++; return; }   /* original faults: input out of domain */

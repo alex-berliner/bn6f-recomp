@@ -9,6 +9,7 @@
 # On a mismatch, screenshots of both are written next to the digests.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/tools/common.sh"
 ROM=$1
 TRACE=${2:-$ROOT/tools/traces/wander.trace}
 N=${3:-8000}
@@ -18,7 +19,7 @@ mkdir -p "$OUT"
 run() {
   "$ROOT/build-tools/mgba_run" "$1" --frames 200000 --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
       --input "$TRACE" --game-frame-addr 0x020093D4 --until-game-frame "$N" \
-      --digest-every "$EVERY" --quiet | grep digest > "$2"
+      --digest-every "$EVERY" $(poke_args "$1" "$TRACE") --quiet | grep digest > "$2"
 }
 run "$ROOT/bn6f/bn6f.gba" "$OUT/orig.txt" &
 run "$ROM" "$OUT/test.txt"
@@ -51,7 +52,7 @@ if [ -f "$OUT/first_bad" ]; then
     mkdir -p "$OUT/${r%%:*}"
     "$ROOT/build-tools/mgba_run" "${r#*:}" --frames 200000 --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
         --input "$TRACE" --game-frame-addr 0x020093D4 --until-game-frame "$((g + 1))" \
-        --shot-at-game-frame "$g" --shots "$OUT/${r%%:*}" --quiet > /dev/null
+        --shot-at-game-frame "$g" --shots "$OUT/${r%%:*}" $(poke_args "${r#*:}" "$TRACE") --quiet > /dev/null
   done
   echo "screenshots: $OUT/orig $OUT/test"
 fi

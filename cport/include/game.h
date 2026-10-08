@@ -18,9 +18,13 @@
 /* Helpers of IWRAM code: same section and state, but may be inlined (a
  * plain static helper the compiler keeps out of line would land in ROM). */
 #define IWRAM_HELPER __attribute__((section(IWRAM_SECTION), target("arm")))
+/* IWRAM code where size matters more than ARM's speed (IWRAM is small):
+ * Thumb also runs at one cycle per instruction there. */
+#define IWRAM_THUMB __attribute__((section(IWRAM_SECTION), target("thumb"), noinline))
 #else
 #define IWRAM_CODE
 #define IWRAM_HELPER
+#define IWRAM_THUMB
 #endif
 
 #define GUEST_PTR(type, addr) ((type *)(uintptr_t)(u32)(addr))
