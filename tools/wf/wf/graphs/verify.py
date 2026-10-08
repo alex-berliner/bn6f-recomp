@@ -26,9 +26,9 @@ def verify_application(start: "VerifyState", run_id: str, tracked: bool = True) 
         transitions=[
             Transition(after=note_sources, go_to=build),
             Transition(after=build, go_to=difftest_changed_functions, when=build_succeeded),
-            Transition(after=build, go_to=write_report),
+            Transition(after=build, go_to=write_report, when=build_failed),
             Transition(after=difftest_changed_functions, go_to=lockstep_routes, when=no_difftest_failed),
-            Transition(after=difftest_changed_functions, go_to=write_report),
+            Transition(after=difftest_changed_functions, go_to=write_report, when=some_difftest_failed),
             Transition(after=lockstep_routes, go_to=write_report),
         ],
     )
@@ -53,6 +53,7 @@ class Verdict(Enum):
 class VerifyReport(Result):
     sources: SourceVersion
     verdict: Verdict
+    build_failure: BuildFailure | None  # why the build failed, when it did
     failed_functions: tuple[FunctionName, ...]
     unchecked_functions: tuple[FunctionName, ...]  # difftest compared nothing: every trial out of domain
     failed_routes: tuple[RouteName, ...]
@@ -155,6 +156,7 @@ def write_report(given: ReportInput) -> ReportOutput:
     return ReportOutput(report=VerifyReport(
         sources=given.sources,
         verdict=_verdict(given),
+        build_failure=given.build if isinstance(given.build, BuildFailure) else None,
         failed_functions=tuple(result.function for result in given.difftests
                                if result.outcome is Outcome.FAILED),
         unchecked_functions=tuple(result.function for result in given.difftests
@@ -182,6 +184,14 @@ def build_succeeded(state: VerifyState) -> bool:
     return isinstance(state.build, BuiltRom)
 
 
+def build_failed(state: VerifyState) -> bool:
+    return isinstance(state.build, BuildFailure)
+
+
+def some_difftest_failed(state: VerifyState) -> bool:
+    return any(result.outcome is Outcome.FAILED for result in state.difftests)
+
+
 def no_difftest_failed(state: VerifyState) -> bool:
     """Functions difftest could not compare do not stop the run; the report lists them."""
-    return not any(result.outcome is Outcome.FAILED for result in state.difftests)
+    return not some_difftest_failed(state)

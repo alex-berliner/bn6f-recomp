@@ -20,7 +20,10 @@ BuiltRom) and the output after. The Burr UI shows the output as the step's
 Result, and the step's own source in its Code tab.
 
 Steps are wired with `Transition`s that name the step functions themselves;
-decisions are plain functions of the whole run state.
+decisions are plain functions of the whole run state. A step with one
+transition may leave out `when`; a step with several must give each a `when`,
+and after the step runs exactly one of them must hold, or the run stops with
+a TransitionError naming the step and the decisions involved.
 """
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -48,11 +51,14 @@ def _serialize_tuple(value: tuple[object, ...], **options: object) -> list[objec
 
 @dataclass(frozen=True)
 class Transition:
-    """After `after`, go to `go_to` if `when` holds. Transitions are tried in
-    order; one without `when` is the fallback."""
+    """After `after`, go to `go_to` when `when` holds (always, if `when` is left out)."""
     after: AnyStep
     go_to: AnyStep
     when: Callable[[Never], bool] | None = None
+
+
+class TransitionError(Exception):
+    """The transitions out of a step are missing a decision, or did not pick exactly one way on."""
 
 
 class Workflow(Generic[StateT]):
@@ -78,20 +84,51 @@ class Workflow(Generic[StateT]):
 
     def application(self, start: StateT, run_id: str, first: AnyStep,
                     transitions: Sequence[Transition], tracked: bool = True) -> "TypedApplication[StateT]":
-        """`tracked` runs show up in the Burr UI; an untracked one is only for drawing."""
+        """`tracked` runs show up in the Burr UI; an untracked one is only for drawing or tests."""
         steps = {*(transition.after for transition in transitions), *(transition.go_to for transition in transitions)}
         builder = (
             ApplicationBuilder()
             .with_typing(PydanticTypingSystem(self.state_type))
             .with_state(start)  # pyright: ignore[reportUnknownMemberType]
             .with_actions(**{_name(step): self._burr_actions[step] for step in steps})  # pyright: ignore[reportUnknownMemberType]
-            .with_transitions(*(self._burr_transition(transition) for transition in transitions))
+            .with_transitions(*self._burr_transitions(transitions))
             .with_entrypoint(_name(first))
             .with_identifiers(app_id=run_id)
         )
         if tracked:
             builder = builder.with_tracker("local", project=self.project)
         return TypedApplication(self.state_type, builder.build())
+
+    def _burr_transitions(self, transitions: Sequence[Transition]) -> list[tuple[str, str, Condition]]:
+        burr_transitions: list[tuple[str, str, Condition]] = []
+        for transition in transitions:
+            siblings = [other for other in transitions if other.after is transition.after]
+            if len(siblings) > 1 and any(other.when is None for other in siblings):
+                raise TransitionError(f"{_name(transition.after)} has several transitions; each needs a `when`")
+            if transition.when is None:
+                condition = default
+            else:
+                condition = self._condition(transition, siblings)
+            burr_transitions.append((_name(transition.after), _name(transition.go_to), condition))
+        return burr_transitions
+
+    def _condition(self, transition: Transition, siblings: list[Transition]) -> Condition:
+        """Holds when this transition's decision does, after checking that exactly one sibling's does."""
+        state_type = self.state_type
+        own_test = cast(Callable[[StateT], bool], transition.when)
+        sibling_tests = [cast(Callable[[StateT], bool], sibling.when) for sibling in siblings]
+
+        def resolve(state: State[BaseModel]) -> bool:
+            typed_state = model_from_state(model=state_type, state=state)
+            holding = [test for test in sibling_tests if test(typed_state)]
+            if len(holding) != 1:
+                decisions = ", ".join(f"{_name(sibling.when)} -> {_name(sibling.go_to)}"
+                                      for sibling in siblings if sibling.when is not None)
+                raise TransitionError(f"after {_name(transition.after)}, {len(holding)} of these held "
+                                      f"(exactly one must): {decisions}")
+            return holding[0] is own_test
+
+        return Condition(keys=list(state_type.model_fields), resolver=resolve, name=_name(own_test))
 
     def _state_fields(self, function: AnyStep, model: type[BaseModel]) -> list[str]:
         fields = list(model.model_fields)
@@ -100,18 +137,6 @@ class Workflow(Generic[StateT]):
             raise TypeError(f"step {_name(function)}: {model.__name__} has fields {unknown} "
                             f"that {self.state_type.__name__} does not")
         return fields
-
-    def _burr_transition(self, transition: Transition) -> tuple[str, str, Condition]:
-        return (_name(transition.after), _name(transition.go_to),
-                default if transition.when is None else self._condition(cast(Callable[[StateT], bool], transition.when)))
-
-    def _condition(self, test: Callable[[StateT], bool]) -> Condition:
-        state_type = self.state_type
-
-        def resolve(state: State[BaseModel]) -> bool:
-            return test(model_from_state(model=state_type, state=state))
-
-        return Condition(keys=list(state_type.model_fields), resolver=resolve, name=_name(test))
 
 
 class TypedApplication(Generic[StateT]):

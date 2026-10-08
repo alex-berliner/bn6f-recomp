@@ -73,6 +73,10 @@ def start_verify(command: VerifyCommand) -> None:
 def print_report(report: VerifyReport) -> None:
     dirty = " + uncommitted changes" if report.sources.has_uncommitted_changes else ""
     print(f"verdict: {report.verdict.value} ({report.sources.commit[:10]}{dirty})")
+    if report.build_failure is not None:
+        print(f"  build log: {report.build_failure.log}")
+        for line in report.build_failure.last_lines:
+            print(f"    {line}")
     if report.failed_functions:
         print(f"  difftest failed: {', '.join(report.failed_functions)}")
     if report.unchecked_functions:
