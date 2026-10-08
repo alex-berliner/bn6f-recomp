@@ -12,6 +12,12 @@ if [ -e "$OUT" ]; then
   echo "$OUT exists; pick another name" >&2
   exit 1
 fi
-export DISPLAY=${DISPLAY:-:0}
+# From a session without a display (e.g. Claude Code), use the desktop's.
+if [ -z "${DISPLAY:-}" ]; then
+  x=$(ls /tmp/.X11-unix/ 2>/dev/null | sed -n 's/^X\([0-9]*\)$/\1/p' | head -1)
+  export DISPLAY=":${x:-0}"
+  [ -f "/run/user/$(id -u)/gdm/Xauthority" ] && export XAUTHORITY="/run/user/$(id -u)/gdm/Xauthority"
+fi
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}   # sound (PulseAudio/PipeWire)
 build-tools/record bn6f/bn6f.gba "$OUT" ${2:+--save "$(realpath "$2")"}
 echo "Recorded $OUT. Tell Claude: \"recorded $NAME\"."
