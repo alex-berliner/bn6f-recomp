@@ -2,7 +2,8 @@
  * difftest — check hand-written replacements against their lifted originals.
  *
  *   difftest [-n TRIALS] [-s SEED] [NAME...]      (default: every pair)
- *   difftest -S DIR NAME                          (replay captured states)
+ *   difftest -S DIR [-m N] NAME                   (replay captured states, plus
+ *                                                  N varied copies of each)
  *
  * For each trial both versions run (in forked children, 0.2 s timeout) from
  * the same randomised guest RAM and registers; all guest memory, cpu.ret and
@@ -32,6 +33,7 @@ typedef struct { const char *name; GuestFn hand, lifted; } Pair;
 /* Optional structured input generator: fills guest RAM/registers in place. */
 typedef void (*GenFn)(Cpu *in, u32 (*rnd)(void));
 GenFn difftest_generator(const char *name);
+GenFn difftest_snap_mutator(const char *name);
 #define PAIR(n) { #n, n, L_##n },
 static const Pair kPairs[] = {
 #include "difftest_pairs.h"
@@ -190,6 +192,7 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
 }
 
 static const char *g_snap_dir;
+static int g_mutations = 4;   /* -m: varied copies per snapshot (functions with a mutator) */
 static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, const u8 *mem_in, size_t n,
                         u8 *out_a, u8 *out_b, Result *ra, Result *rb, int *pfails, int *pcrashes,
                         const char *label);
@@ -249,13 +252,23 @@ static int test_pair(const Pair *p, int trials) {
     if (g_snap_dir) {
         char **files = NULL;
         int nf = list_snaps(g_snap_dir, &files);
+        GenFn mut = difftest_snap_mutator(p->name);
+        int runs = 0;
         for (int t = 0; t < nf; t++) {
-            Cpu in;
-            if (!load_snapshot(files[t], &in, mem_in)) continue;
-            check_trial(p, c, t, &in, mem_in, n, out_a, out_b, ra, rb, &fails, &crashes, files[t]);
+            /* the captured state as is, then g_mutations varied copies */
+            for (int k = 0; k <= (mut ? g_mutations : 0); k++, runs++) {
+                Cpu in;
+                if (!load_snapshot(files[t], &in, mem_in)) break;
+                if (k) {
+                    load_mem(mem_in);
+                    mut(&in, rnd);
+                    save_mem(mem_in);
+                }
+                check_trial(p, c, t, &in, mem_in, n, out_a, out_b, ra, rb, &fails, &crashes, files[t]);
+            }
         }
-        printf("%-40s %s  (%d snapshots, %d failures, %d out-of-domain)\n", p->name,
-               fails ? "FAIL" : "ok  ", nf, fails, crashes);
+        printf("%-40s %s  (%d snapshots, %d runs, %d failures, %d out-of-domain)\n", p->name,
+               fails ? "FAIL" : "ok  ", nf, runs, fails, crashes);
         return fails;
     }
     for (int t = 0; t < trials; t++) {
@@ -359,6 +372,7 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[first], "-n")) trials = atoi(argv[++first]);
         else if (!strcmp(argv[first], "-s")) g_rng = strtoull(argv[++first], 0, 0) | 1;
         else if (!strcmp(argv[first], "-S")) g_snap_dir = argv[++first];
+        else if (!strcmp(argv[first], "-m")) g_mutations = atoi(argv[++first]);
     }
     struct rlimit nocore = { 0, 0 };
     setrlimit(RLIMIT_CORE, &nocore);

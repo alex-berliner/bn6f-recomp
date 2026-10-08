@@ -69,6 +69,38 @@ static void gen_oam(Cpu *in, u32 (*rnd)(void)) {
         U8(0x03001150u + i * 8 + 7) = rnd() % 4 ? 0xFF : (u8)(rnd() % 128);
 }
 
+/* ── snapshot mutators: vary a captured real state (difftest -S -m N) ─ */
+
+#define U16(a) (*(u16 *)(uintptr_t)(u32)(a))
+
+/* sub_3006440: the sprite's drawing options (flips, affine, first-piece
+ * modes, per-piece palettes, mosaic) on real animation data. */
+static void mut_sprite_pieces(Cpu *in, u32 (*rnd)(void)) {
+    u32 spr = in->r[5];
+    U8(spr + 0x03) = (u8)((U8(spr + 0x03) & ~0x25u) | (rnd() & 0x25));
+    U8(spr + 0x13) = (u8)rnd();
+    U32(spr + 0x10) ^= (rnd() & 3) << 8;                 /* affine / double size */
+    U8(spr + 0x16) = (u8)((U8(spr + 0x16) & 0x3F) | (rnd() & 0xC0));
+    U8(0x020096D0u) = rnd() % 2 ? 0x40 : 0;
+    switch (rnd() % 4) {                                 /* palette: number or table */
+    case 0: U32(spr + 0x30) = 0x08000000u + rnd() % 0x400000; break;
+    case 1: U32(spr + 0x30) = rnd() % 0x110; break;
+    default: break;
+    }
+    if (rnd() % 2) U32(spr + 0x28) = rnd();
+    if (rnd() % 2) U32(spr + 0x2C) = rnd() % 4 ? 0 : rnd();
+    U16(spr + 0x0A) = (u16)(rnd() % 4 ? rnd() % 64 : rnd());
+    U16(spr + 0x0C) = (u16)rnd();
+    in->r[1] = rnd() % 4 ? rnd() % 0x80 : rnd();
+    for (u32 k = 0; k < 32 * 12; k++)                    /* affine slots */
+        if (rnd() % 8 == 0) U8(0x0200A6F0u + k) = (u8)rnd();
+}
+
+GenFn difftest_snap_mutator(const char *name) {
+    if (!strcmp(name, "sub_3006440")) return mut_sprite_pieces;
+    return 0;
+}
+
 GenFn difftest_generator(const char *name) {
     if (!strcmp(name, "copyTo_iObjectAttr3001D70_3006814")) return gen_oam;
     if (!strcmp(name, "SoundMainRAM_iwram_03005700")) return gen_mixer;
