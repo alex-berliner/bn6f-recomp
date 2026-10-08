@@ -30,20 +30,40 @@ static void bios_div(void) {
     R3 = (u32)(q < 0 ? -q : q);
 }
 
+/* The BIOS's Newton iteration (BIOS 0x404, ARM), register for register:
+ * r1 and r3 keep its last estimate and quotient, which callers can see. */
 static void bios_sqrt(void) {
-    u32 x = R0, r = 0, bit = 1u << 30;
-    while (bit > x)
-        bit >>= 2;
-    while (bit) {
-        if (x >= r + bit) {
-            x -= r + bit;
-            r = (r >> 1) + bit;
-        } else {
-            r >>= 1;
-        }
-        bit >>= 2;
+    u32 x = R0, r0 = x, r1 = 1, r2, r3, r4;
+    while (r0 > r1) {
+        r0 >>= 1;
+        r1 <<= 1;
     }
-    R0 = r;
+    do {
+        r0 = x;
+        r4 = r1;
+        r3 = 0;
+        r2 = r1;
+        for (;;) {                     /* cmp r2, r0, lsr #1; lslls r2, #1; bcc */
+            int lower = r2 < (r0 >> 1);
+            if (r2 <= (r0 >> 1))
+                r2 <<= 1;
+            if (!lower)
+                break;
+        }
+        for (;;) {                     /* r3 = r0 / r1, one bit at a time */
+            u32 c = r0 >= r2;
+            r3 = r3 * 2 + c;
+            if (c)
+                r0 -= r2;
+            if (r2 == r1)
+                break;
+            r2 >>= 1;
+        }
+        r1 = (r1 + r3) >> 1;
+    } while (r1 < r4);
+    R0 = r4;
+    R1 = r1;
+    R3 = r3;
 }
 
 static s32 arctan_poly(s32 i) {
@@ -84,46 +104,103 @@ static void bios_arctan2(void) {
     R3 = 0x170;
 }
 
+/* The BIOS refuses a source (or source end) in the BIOS region; a count of 0
+ * does nothing (BIOS 0xBA4). */
+static int bios_source_ok(u32 src, u32 bytes) {
+    if (bytes == 0)
+        return 0;
+    return (src & 0x0E000000u) && ((src + (bytes & 0x01FFFFFFu)) & 0x0E000000u);
+}
+
+/* CpuSet (BIOS 0xB4C, Thumb). 32-bit mode advances r0 and r1 (ldmia/stmia);
+ * the routine returns through pop {r3}, which leaves r3 = 0x170, the BIOS
+ * SWI handler's return point. */
 static void bios_cpuset(void) {
     u32 src = R0, dst = R1, ctl = R2;
     u32 count = ctl & 0x1FFFFF;
     int fill = (ctl >> 24) & 1;
-    if ((ctl >> 26) & 1) {
-        src &= ~3u;
-        dst &= ~3u;
-        if (fill) {
-            u32 v = LD32(src);
-            for (u32 i = 0; i < count; i++)
-                ST32(dst + i * 4, v);
+    if (bios_source_ok(src, count * 4)) {
+        if ((ctl >> 26) & 1) {
+            if (fill) {
+                u32 v = LD32(src & ~3u);
+                src += 4;
+                for (u32 i = 0; i < count; i++, dst += 4)
+                    ST32(dst & ~3u, v);
+            } else {
+                for (u32 i = 0; i < count; i++, src += 4, dst += 4)
+                    ST32(dst & ~3u, LD32(src & ~3u));
+            }
+            R0 = src;
+            R1 = dst;
         } else {
-            for (u32 i = 0; i < count; i++)
-                ST32(dst + i * 4, LD32(src + i * 4));
-        }
-    } else {
-        src &= ~1u;
-        dst &= ~1u;
-        if (fill) {
-            u32 v = LD16(src);
-            for (u32 i = 0; i < count; i++)
-                ST16(dst + i * 2, v);
-        } else {
-            for (u32 i = 0; i < count; i++)
-                ST16(dst + i * 2, LD16(src + i * 2));
+            u32 s16 = src & ~1u, d16 = dst & ~1u;
+            if (fill) {
+                u32 v = LD16(s16);
+                for (u32 i = 0; i < count; i++)
+                    ST16(d16 + i * 2, v);
+            } else {
+                for (u32 i = 0; i < count; i++)
+                    ST16(d16 + i * 2, LD16(s16 + i * 2));
+            }
         }
     }
+    R3 = 0x170;
 }
 
+/* CpuFastSet (BIOS 0xBC4, ARM): 8 words at a time; r0 (copy only) and r1
+ * advance; r3 is the second word of the last block (copy) or the fill
+ * value. */
 static void bios_cpufastset(void) {
-    u32 src = R0 & ~3u, dst = R1 & ~3u, ctl = R2;
-    u32 count = ((ctl & 0x1FFFFF) + 7) & ~7u;
+    u32 src = R0, dst = R1, ctl = R2;
+    u32 bytes = (ctl & 0x1FFFFF) * 4;
+    if (!bios_source_ok(src, bytes))
+        return;
+    u32 end = dst + bytes;
     if ((ctl >> 24) & 1) {
-        u32 v = LD32(src);
-        for (u32 i = 0; i < count; i++)
-            ST32(dst + i * 4, v);
+        u32 v = LD32(src & ~3u);
+        for (; (s32)(dst - end) < 0; dst += 32)
+            for (u32 k = 0; k < 8; k++)
+                ST32((dst & ~3u) + k * 4, v);
+        R3 = v;
     } else {
-        for (u32 i = 0; i < count; i++)
-            ST32(dst + i * 4, LD32(src + i * 4));
+        for (; (s32)(dst - end) < 0; dst += 32, src += 32) {
+            for (u32 k = 0; k < 8; k++)
+                ST32((dst & ~3u) + k * 4, LD32((src & ~3u) + k * 4));
+            R3 = LD32((src & ~3u) + 4);
+        }
+        R0 = src;
     }
+    R1 = dst;
+}
+
+/* LZ77UnCompWram (BIOS 0x10FC, ARM), step for step: a back-reference is
+ * copied whole even past the declared size; r0 and r1 end after the last
+ * byte read and written, r3 is 0 after any back-reference. */
+static void bios_lz77_wram(void) {
+    u32 src = R0, dst = R1;
+    s32 remaining = (s32)(LD32(src & ~3u) >> 8);
+    src += 4;
+    if (bios_source_ok(src, (u32)remaining)) {
+        while (remaining > 0) {
+            u32 flags = LD8(src++);
+            for (int k = 0; k < 8 && remaining > 0; k++, flags <<= 1) {
+                if (flags & 0x80) {
+                    u32 b0 = LD8(src++), b1 = LD8(src++);
+                    s32 len = (s32)(b0 >> 4) + 3;
+                    u32 disp = (((b0 & 0xF) << 8) | b1) + 1;
+                    remaining -= len;
+                    for (; len > 0; len--, dst++)
+                        ST8(dst, LD8(dst - disp));
+                    R3 = 0;
+                } else {
+                    ST8(dst++, LD8(src++));
+                    remaining--;
+                }
+            }
+        }
+    }
+    R0 = src;
+    R1 = dst;
 }
 
 static void bios_lz77(int vram) {
@@ -225,7 +302,7 @@ void swi_call(u32 n) {
     case 0x0A: bios_arctan2(); break;
     case 0x0B: bios_cpuset(); break;
     case 0x0C: bios_cpufastset(); break;
-    case 0x11: bios_lz77(0); break;
+    case 0x11: bios_lz77_wram(); break;
     case 0x12: bios_lz77(1); break;
     default: rt_fatal("unimplemented SWI", n);
     }
