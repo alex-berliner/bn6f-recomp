@@ -25,9 +25,9 @@ run "$ROOT/bn6f/bn6f.gba" "$OUT/orig.txt" &
 run "$ROM" "$OUT/test.txt"
 wait
 status=0
-python3 - "$OUT" <<'PY' || status=$?
+python3 - "$OUT" "$N" "$EVERY" <<'PY' || status=$?
 import sys
-out = sys.argv[1]
+out, want, every = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 o = [l.split() for l in open(f"{out}/orig.txt")]
 t = [l.split() for l in open(f"{out}/test.txt")]
 n = min(len(o), len(t))
@@ -44,7 +44,12 @@ if bad:
     print("  tested:  ", " ".join(b[4:]))
     open(f"{out}/first_bad", "w").write(a[1].split("=")[1])
     sys.exit(1)
-print("OK: palette, VRAM and OAM identical at every checkpoint")
+last = int(o[n-1][1].split("=")[1])
+note = ""
+if last + every < want:
+    # both stopped counting game frames (mgba_run --stall-frames): the original crashed or hung
+    note = f" (both games stopped at game frame {last} of {want})"
+print("OK: palette, VRAM and OAM identical at every checkpoint" + note)
 PY
 # Save memory where both stopped (the game's own saves must match too).
 if [ "$status" = 0 ] && ! cmp -s "$OUT/orig.txt.sav" "$OUT/test.txt.sav"; then

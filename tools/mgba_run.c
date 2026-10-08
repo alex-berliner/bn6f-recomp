@@ -23,11 +23,25 @@
 #include <string.h>
 
 static int g_verbose_log = 1;
+static struct mCore *g_core;
+static unsigned long g_illegal;   /* illegal opcodes executed; the first few are logged with registers */
 
 static void log_cb(struct mLogger *logger, int category, enum mLogLevel level,
                    const char *format, va_list args) {
     (void)logger;
     const char *cat = mLogCategoryName(category);
+    if (g_core && !strncmp(format, "Illegal opcode", 14)) {
+        if (++g_illegal > 16)
+            return;
+        int32_t pc = 0, lr = 0, cpsr = 0;
+        g_core->readRegister(g_core, "pc", &pc);
+        g_core->readRegister(g_core, "lr", &lr);
+        g_core->readRegister(g_core, "cpsr", &cpsr);
+        fprintf(stderr, "[%s] ", cat ? cat : "?");
+        vfprintf(stderr, format, args);
+        fprintf(stderr, " (pc=%08x lr=%08x cpsr=%08x)\n", (uint32_t)pc, (uint32_t)lr, (uint32_t)cpsr);
+        return;
+    }
     if (!g_verbose_log && level > mLOG_WARN)
         return;
     if (level & (mLOG_DEBUG | mLOG_STUB))
@@ -114,6 +128,7 @@ int main(int argc, char **argv) {
     const char *rom = NULL, *input = NULL, *shots = NULL, *bios = NULL, *dump = NULL;
     unsigned frames = 600, every = 0, bios_intro = 0;
     unsigned long marker = 0, guest = 0, game_frame_addr = 0, until_game_frame = 0, digest_every = 0;
+    unsigned long stall_frames = 3600;   /* with --until-game-frame: stop after a minute without a game frame */
     /* --profile-game G0 G1: cycle profile from game frame G0 to G1 (needs
      * --game-frame-addr); input keeps following the trace while profiling. */
     unsigned long pg_from = 0, pg_to = 0;
@@ -195,6 +210,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--quiet")) g_verbose_log = 0;
         else if (!strcmp(argv[i], "--game-frame-addr")) game_frame_addr = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--until-game-frame")) until_game_frame = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--stall-frames")) stall_frames = strtoul(argv[++i], 0, 0);   /* 0: never give up */
         else if (!strcmp(argv[i], "--digest-every")) digest_every = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--shot-at-game-frame")) shot_game = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--guest")) guest = strtoul(argv[++i], 0, 0);
@@ -251,6 +267,7 @@ int main(int argc, char **argv) {
     mLogSetDefaultLogger(&logger);
 
     struct mCore *core = mCoreFind(rom);
+    g_core = core;
     if (!core || !core->init(core)) {
         fprintf(stderr, "cannot create core\n");
         return 1;
@@ -431,6 +448,7 @@ int main(int argc, char **argv) {
     }
 
     unsigned keyinput = 0x3FF;
+    unsigned stall_game = ~0u, stall_since = 0;
     for (unsigned fr = 0; fr < frames; fr++) {
         /* Input timeline: hardware frames, or (with --game-frame-addr) the
          * game's own frame counter, so builds of different speed see the
@@ -452,6 +470,16 @@ int main(int argc, char **argv) {
             }
             if (until_game_frame && when >= until_game_frame) {
                 printf("reached game frame %u at hardware frame %u\n", when, fr);
+                frames = fr;
+                break;
+            }
+            /* A game that stops counting frames (crashed, or hung) would
+             * otherwise run on to --frames. */
+            if (when != stall_game) {
+                stall_game = when;
+                stall_since = fr;
+            } else if (until_game_frame && stall_frames && fr - stall_since >= stall_frames) {
+                printf("stalled: game frame %u since hardware frame %u\n", when, stall_since);
                 frames = fr;
                 break;
             }
@@ -790,6 +818,8 @@ done:
         if (o) fclose(o);
     }
     free(save_data);
+    if (g_illegal)
+        fprintf(stderr, "%lu illegal opcodes executed in all\n", g_illegal);
     printf("ran %u frames\n", frames);
     core->deinit(core);
     return 0;
