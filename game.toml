@@ -1,0 +1,75 @@
+# Mega Man Battle Network 6: Cybeast Falzar (USA, BR6E, revision 0).
+# Hybrid configuration consumed by both gba_recompile and the runtime.
+#
+# Function seeds, exact code/data ranges and the IWRAM code copies come from
+# the byte-matching bn6f disassembly (submodule ./bn6f) via
+# tools/import_symbols.sh -> symbols/BR6E_symbols.toml, which is layered on
+# top of this file as a second --config. This file wins every conflict.
+
+[game]
+name = "Mega Man Battle Network 6: Cybeast Falzar"
+short_name = "bn6f"
+
+[program]
+name = "Mega Man Battle Network 6: Cybeast Falzar (USA)"
+id = "BR6E"
+load_address = 0x08000000
+size = 0x00800000
+entry_pc = 0x08000000
+# Function seeds come from the byte-matching disassembly ELF, so literal words
+# that merely look like code pointers are not harvested as speculative ARM code.
+speculative_literal_harvest = false
+# The runtime may unwind to its top-level dispatcher at an IRQ / frame
+# boundary in the middle of any function (e.g. inside start_clearMemory's
+# loop during boot), so every native instruction gets a static resume entry.
+static_resume_all = true
+codegen_shards = 64
+
+[identity]
+sha1 = "0676ecd4d58a976af3346caebb44b9b6489ad099"
+md5 = "1e8c774ba210d1c55113531c7360c737"
+
+[bios]
+path = "gbarecomp/bios/gba_bios.bin"
+sha1 = "300c20df6731a33952ded8c436f7f186d25d3492"
+hle = false
+# Skip the BIOS boot logo/chime. SWIs are still serviced by the recompiled
+# real BIOS (LLE).
+skip_intro = true
+
+[rom]
+path = "roms/bn6f.gba"
+sha1 = "0676ecd4d58a976af3346caebb44b9b6489ad099"
+
+[save]
+# "SRAM_V113" signature in ROM.
+type = "sram"
+size = 32768
+path = "saves/bn6f.sav"
+
+[runtime]
+debug_port = 19866
+window_title = "BN6FalzarRecomp"
+
+[video]
+view_width = 240
+resize_view = false
+
+# ── Runtime code copies that are NOT symbol-derivable ───────────────
+# ReadSram (sub_814D8F0) copies the position-independent 0x24-byte
+# ReadSram_Core (sub_814D8CC) into a 0x80-byte stack buffer and calls it.
+# The destination depends on SP at the call site; each observed placement
+# is listed here.
+[[code_copy]]
+runtime_start = 0x03007D28
+source_start = 0x0814D8CC
+size = 0x24
+name = "ReadSram_Core_stack_boot"
+note = "Observed boot/title-screen save probe: ReadSram copies sub_814D8CC to SP"
+
+[[extra_func]]
+addr = 0x03007D28
+source_addr = 0x0814D8CC
+mode = "thumb"
+name = "ReadSram_Core_stack_boot"
+note = "THUMB entry of the stack copy above"
