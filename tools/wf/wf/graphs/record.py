@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from wf.burr_typed import Graph, Transition, Workflow, current_run_id
+from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify
 from wf.repo import REPO
 from wf.routes import ALL_ROUTES
@@ -44,6 +44,13 @@ def record_graph() -> Graph["RecordState"]:
             Transition(after=commit_records, go_to=write_report),
         ],
     )
+
+
+def run_record(start: "RecordState", run_id: str, tracked: bool = True) -> "RecordReport":
+    outcome = record_graph().start(start, run_id, tracked=tracked)
+    if not isinstance(outcome, Finished) or outcome.state.report is None:
+        raise RuntimeError(f"record run {run_id} finished without a report")
+    return outcome.state.report
 
 
 # ── the run's state ────────────────────────────────────────────────────

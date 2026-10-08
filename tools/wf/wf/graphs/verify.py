@@ -42,10 +42,17 @@ def verify_graph() -> Graph["VerifyState"]:
 
 
 def run_verify(start: "VerifyState", run_id: str, tracked: bool = True) -> "VerifyReport":
+    report = run_verify_in_full(start, run_id, tracked).report
+    assert report is not None
+    return report
+
+
+def run_verify_in_full(start: "VerifyState", run_id: str, tracked: bool = True) -> "VerifyState":
+    """The whole final state: every check's per-function results, not just the report."""
     outcome = verify_graph().start(start, run_id, tracked=tracked)
     if not isinstance(outcome, Finished) or outcome.state.report is None:
         raise RuntimeError(f"verify run {run_id} finished without a report")
-    return outcome.state.report
+    return outcome.state
 
 
 # ── the run's state ────────────────────────────────────────────────────

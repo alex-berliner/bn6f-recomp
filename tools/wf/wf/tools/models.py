@@ -18,7 +18,8 @@ from wf.types import FunctionName, GuestAddress, ModelSpec, Result, SnapshotDir,
 sys.path.insert(0, str(REPO / "tools/convert"))
 import farm  # noqa: E402  # pyright: ignore[reportMissingImports]
 
-_farm = cast(ModuleType, farm)
+FARM = cast(ModuleType, farm)  # farm.py's own pieces: prompts, flags, test
+_farm = FARM
 
 AssemblyText = NewType("AssemblyText", str)   # a function's bn6f assembly
 LiftedC = NewType("LiftedC", str)             # a function's machine-translated C, with its contract header

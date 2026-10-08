@@ -4,7 +4,8 @@ run is, and regenerate the docs.
   python -m wf verify  [--function NAME]... [--snapshots DIR] [--route NAME]... [--battle-code] [--trials N]
   python -m wf capture --function NAME... [--route NAME]... [--calls N]
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] FUNCTION...
-  python -m wf convert --subsystem NAME FUNCTION...
+  python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
+                       [--candidate FILE] [--battle-code] FUNCTION...
   python -m wf record  --symbol NAME... [--rename OLD NEW]... --message-file FILE
   python -m wf waiting RUN_ID              # what a paused run needs
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
@@ -27,7 +28,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 from wf.burr_typed import Finished, Paused
 from wf.describe import write_docs
 from wf.graphs.capture import CaptureState, run_capture
-from wf.graphs.convert import ConvertState, convert_graph
+from wf.graphs.convert import DEFAULT_MODELS, ConvertState, ReviewRequest, convert_graph, review_sheet
 from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, run_verify
@@ -65,7 +66,13 @@ class FarmCommand(BaseModel):
 class ConvertCommand(BaseModel):
     command: Literal["convert"]
     subsystem: str
+    file: str
     functions: tuple[FunctionName, ...]
+    models: tuple[ModelSpec, ...] = Field(alias="model")
+    rounds: int
+    snapshots: SnapshotDir | None
+    candidate: Path | None
+    battle_code: bool
 
 
 class RecordCommand(BaseModel):
@@ -155,7 +162,9 @@ def start_farm(command: FarmCommand) -> None:
 
 def start_convert(command: ConvertCommand) -> None:
     run_id, run_dir = new_run("convert")
-    start = ConvertState(run_dir=run_dir, subsystem=command.subsystem, functions=command.functions)
+    start = ConvertState(run_dir=run_dir, subsystem=command.subsystem, file_name=command.file,
+                         functions=command.functions, models=command.models or DEFAULT_MODELS, rounds=command.rounds,
+                         snapshots=command.snapshots, candidate=command.candidate, battle_code=command.battle_code)
     print_outcome(convert_graph().start(start, run_id))
 
 
@@ -201,6 +210,10 @@ def answer(command: AnswerCommand) -> None:
 # ── printing ───────────────────────────────────────────────────────────
 
 def print_outcome(outcome: Finished[BaseModel] | Paused) -> None:
+    if isinstance(outcome, Paused) and isinstance(outcome.request, ReviewRequest):
+        print(f"{outcome.run_id} is waiting for review.\n")
+        print(review_sheet(outcome.request))
+        return
     if isinstance(outcome, Paused):
         print(f"{outcome.run_id} is waiting at {outcome.step} for a {outcome.answer_type.__name__}.")
         print("It was given:")
@@ -208,7 +221,7 @@ def print_outcome(outcome: Finished[BaseModel] | Paused) -> None:
         print(f"Answer with `python -m wf answer {outcome.run_id} ANSWER.json`, where ANSWER.json matches:")
         print(json.dumps(outcome.answer_type.model_json_schema(), indent=2))
         return
-    results = outcome.state.model_dump(mode="json", include={"report", "commit", "tallies", "pairs"})
+    results = outcome.state.model_dump(mode="json", include={"report", "commit", "tallies", "pairs", "outcome", "renames"})
     print(f"{outcome.run_id} finished:")
     print(json.dumps(results, indent=2))
 
@@ -269,9 +282,16 @@ def parse_command() -> Command:
     farm.add_argument("--rounds", type=int, default=3)
     farm.add_argument("--jobs", type=int, default=4)
 
-    convert = commands.add_parser("convert", help="Claude converts a subsystem (stops for Claude to write it)")
+    convert = commands.add_parser("convert", help="a strong model converts a subsystem; stops for review")
     convert.add_argument("functions", nargs="+")
-    convert.add_argument("--subsystem", required=True)
+    convert.add_argument("--subsystem", required=True, help="what the functions do together, in a few words")
+    convert.add_argument("--file", required=True, help="the new file under cport/src/game, e.g. bg_redraw.c")
+    convert.add_argument("--model", action="append", default=[],
+                         help="escalation order (default: " + ", ".join(DEFAULT_MODELS) + ")")
+    convert.add_argument("--rounds", type=int, default=3, help="attempts per model")
+    convert.add_argument("--snapshots", type=Path, help="reuse captured calls instead of capturing")
+    convert.add_argument("--candidate", type=Path, help="a ready file to try first (e.g. reviewed farm candidates)")
+    convert.add_argument("--battle-code", action="store_true", help="the subsystem is battle code (battle sweep)")
 
     record = commands.add_parser("record", help="symbols/db, renames and comments into bn6f, commit")
     record.add_argument("--symbol", action="append", default=[])
