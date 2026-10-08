@@ -5,7 +5,7 @@
 # Inputs: ../bn6f/bn6f.gba (byte-matching ROM built from the disassembly; its
 # data stays at the original addresses) and src/lifted/*.c (tools/lifter).
 
-CC      := arm-none-eabi-gcc
+CC      := $(shell command -v ccache >/dev/null && echo "ccache arm-none-eabi-gcc" || echo arm-none-eabi-gcc)
 OBJCOPY := arm-none-eabi-objcopy
 BASEROM ?= ../bn6f/bn6f.gba
 BUILD   := build

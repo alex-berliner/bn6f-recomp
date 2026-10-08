@@ -3,7 +3,9 @@
  * 0x08000000  original bn6f.gba image (data at its original addresses; the
  *             original code bytes are no longer executed)
  * 0x08800000  lifted C code, runtime, dispatch table
- * IWRAM 0x03005B00-0x03007900: runtime state + host stacks (the block the
+ * IWRAM 0x03005700-0x03007900: port IWRAM code, runtime state and host
+ *             stacks (the SoundMainRAM copy and IWRAM routines the original
+ *             placed here run from C instead; see m4a_init.c). The block the
  *             original copied its IWRAM routines into)
  */
 OUTPUT_FORMAT("elf32-littlearm")
@@ -12,7 +14,7 @@ ENTRY(_start)
 
 MEMORY {
     rom   (rx)  : ORIGIN = 0x08000000, LENGTH = 32M
-    iwram (rwx) : ORIGIN = 0x03005B00, LENGTH = 0x1E00
+    iwram (rwx) : ORIGIN = 0x03005700, LENGTH = 0x2200
 }
 
 SECTIONS {

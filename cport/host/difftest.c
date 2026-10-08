@@ -8,12 +8,14 @@
  * registers listed for the function in difftest.cfg must match.
  */
 #define _GNU_SOURCE
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -37,6 +39,9 @@ typedef struct {
     int has_choice[13];
     u32 choices[13][16];
     int nchoices[13];
+    u32 ignore_addr[4], ignore_len[4];   /* regions allowed to differ */
+    int nignore;
+    int hwtick;                          /* simulate a running VCOUNT/DISPSTAT */
 } Cfg;
 static Cfg g_cfg[256];
 static int g_ncfg;
@@ -55,6 +60,13 @@ static void load_cfg(const char *path) {
                 for (char *r = strtok(tok + 8, ","); r; r = strtok(NULL, ","))
                     c->compare_mask |= 1u << atoi(r + 1);
                 break;   /* strtok state reused; compare= must be last */
+            }
+            if (!strcmp(tok, "hwtick")) { c->hwtick = 1; continue; }
+            if (!strncmp(tok, "ignore=", 7)) {
+                char *p = tok + 7;
+                c->ignore_addr[c->nignore] = (u32)strtoul(p, &p, 0);
+                c->ignore_len[c->nignore++] = (u32)strtoul(p + 1, NULL, 0);
+                continue;
             }
             if (tok[0] == 'r' && strchr(tok, '=')) {
                 int reg = atoi(tok + 1);
@@ -120,6 +132,23 @@ static void load_mem(const u8 *buf) {
 
 static void die(int sig) { (void)sig; _exit(3); }
 
+/* For functions that wait on the display: advance VCOUNT and the DISPSTAT
+ * VBlank flag in the background, like the LCD would. */
+static void *hw_ticker(void *arg) {
+    (void)arg;
+    volatile u16 *dispstat = (volatile u16 *)(uintptr_t)0x04000004u;
+    volatile u16 *vcount = (volatile u16 *)(uintptr_t)0x04000006u;
+    for (u32 line = 0;; line = (line + 1) % 228) {
+        *vcount = (u16)line;
+        *dispstat = (u16)((*dispstat & ~1u) | (line >= 160 && line < 227));
+        for (volatile int k = 0; k < 200; k++)
+            ;
+    }
+    return NULL;
+}
+
+static int g_hwtick;
+
 static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u8 *mem_out) {
     pid_t pid = fork();
     if (pid == 0) {
@@ -128,8 +157,16 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
         signal(SIGALRM, die);
         signal(SIGABRT, die);
         signal(SIGFPE, die);
-        alarm(2);
+        /* Functions finish in microseconds; anything still running after
+         * 0.2 s is spinning on hardware state the host model does not
+         * simulate (e.g. polling VCOUNT): out of domain. */
+        struct itimerval t = { { 0, 0 }, { 0, 200000 } };
+        setitimer(ITIMER_REAL, &t, NULL);
         load_mem(mem_in);
+        if (g_hwtick) {
+            pthread_t th;
+            pthread_create(&th, NULL, hw_ticker, NULL);
+        }
         cpu = *in;
         run(f);
         res->cpu = cpu;
@@ -148,6 +185,7 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
 
 static int test_pair(const Pair *p, int trials) {
     const Cfg *c = cfg_for(p->name);
+    g_hwtick = c && c->hwtick;
     size_t n = snapshot_size();
     u8 *mem_in = malloc(n);
     u8 *out_a = mmap(NULL, n, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -190,6 +228,21 @@ static int test_pair(const Pair *p, int trials) {
         size_t lo = g_regions[0].size + (GUEST_SP - STACK_SCRATCH - 0x03000000u);
         size_t hi = g_regions[0].size + (dead_top - 0x03000000u);
         memcpy(out_b + lo, out_a + lo, hi - lo);
+        if (g_hwtick) {
+            size_t io = g_regions[0].size + g_regions[1].size;
+            memcpy(out_b + io, out_a + io, 8);
+        }
+        for (int k = 0; c && k < c->nignore; k++) {
+            size_t off = 0;
+            for (unsigned r = 0; r < g_region_count; r++) {
+                if (c->ignore_addr[k] - g_regions[r].base < g_regions[r].size) {
+                    off += c->ignore_addr[k] - g_regions[r].base;
+                    memcpy(out_b + off, out_a + off, c->ignore_len[k]);
+                    break;
+                }
+                off += g_regions[r].size;
+            }
+        }
         if (rb->status) why = "hand-written version crashed";
         else if (memcmp(out_a, out_b, n)) why = "guest memory differs";
         else if (ra->cpu.ret != rb->cpu.ret) why = "return target differs";

@@ -29,6 +29,15 @@ void gba_boot(void) {
     REG_IME = 0;
     REG_WAITCNT = 0x45B4;
 
+    /* Guest-visible RAM, as start_clearMemory does. IWRAM 0x3005700..0x3007900
+     * holds this port's IWRAM code, state and stacks and is left alone. */
+    clear32(0x03000000, 0x5700);
+    clear32(0x03007900, 0x500);
+    clear32(0x02000000, 0x40000);
+    clear32(0x06000000, 0x18000);
+    clear32(0x07000000, 0x400);
+    clear32(0x05000000, 0x400);
+
     for (char *p = __iwram_start, *q = __iwram_lma; p < __iwram_end; p++, q++)
         *p = *q;
     for (char *p = __bss_start; p < __bss_end; p++)
@@ -44,14 +53,6 @@ void gba_boot(void) {
     }
 #endif
 
-    /* Guest-visible RAM, as start_clearMemory does. IWRAM 0x3005B00..0x3007900
-     * holds this runtime's state and stacks and is left alone. */
-    clear32(0x03000000, 0x5B00);
-    clear32(0x03007900, 0x500);
-    clear32(0x02000000, 0x40000);
-    clear32(0x06000000, 0x18000);
-    clear32(0x07000000, 0x400);
-    clear32(0x05000000, 0x400);
 
     /* Guest CPU state after GameEntryPoint's mode switches. */
     cpu.cpsr_ctl = 0x1F;

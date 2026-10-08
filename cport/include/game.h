@@ -23,3 +23,11 @@
 
 /* Return to the guest caller (the address in LR). */
 #define RETURN_TO_CALLER() do { cpu.ret = LR & ~1u; return DONE; } while (0)
+
+/* Call a lifted (or hand-written) guest function from readable code. Set the
+ * argument registers (R0..R3) first; results come back in R0..R3. */
+#define GUEST_CALL(fn) do { LR = 0xFFFFFFF1u; run(fn); } while (0)
+
+/* Return to an explicit guest address (capture LR on entry before using
+ * GUEST_CALL, which overwrites it). */
+#define RETURN_TO(addr) do { cpu.ret = (u32)(addr) & ~1u; return DONE; } while (0)
