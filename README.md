@@ -12,6 +12,12 @@ ROM→IWRAM code copies come from the byte-matching
 
 No ROM, BIOS, or ROM-derived generated code is included in this repository.
 
+This repository also holds a **GBA C port** (`cport/`): the game as lifted C,
+progressively replaced by readable C verified against the original, and the
+symbol database that brings what it learns back into the disassembly
+(`symbols/db/`). How that work is run, its tools and decisions:
+[`docs/PROCESS.md`](docs/PROCESS.md).
+
 ## Requirements
 
 - Linux (tested), CMake ≥ 3.20, GCC/Clang with C++20, SDL2 dev headers, Python 3, libpng (for gbagfx)
