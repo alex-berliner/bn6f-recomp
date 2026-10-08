@@ -1,0 +1,96 @@
+name: drawBGTileMapTopRows_8030722
+address: '0x08030722'
+kind: function
+status: confirmed
+summary: Draw the top-edge rows of the BG tile map's window that scrolled into view (camera moved up).
+interface: (r0 = camera tile x, r1 = camera tile y, r2 = tiles moved, r5 = eMapTilesState200be70) -> window entries
+  through the put-tile-ids callback, or a full redraw when it moved 5 or more
+details: Stores the new camera tile y at eMapTilesState200be70 +6; draws at least one strip (do-while).
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the whole subsystem (sub_8030580 and its callees) to write the readable version.
+  refs:
+  - bn6f/asm/asm03_0.s:21308-21677
+- method: caller-analysis
+  date: '2026-10-08'
+  detail: Every map's callback table (bn6f/data/SpritePointersList.s) holds setBGTileIdsBlocks1And2_8030628 at +0x18,
+    sub_8030808 at +0x1c and sub_803086C at +0x20; the first reads r0 r1 r3 r4 r10, the last r0 r1 r5, so those
+    are the registers the readable code sets for them.
+  refs:
+  - bn6f/data/SpritePointersList.s
+  - bn6f/asm/asm03_0.s:21780
+- method: readable-c
+  date: '2026-10-08'
+  detail: Written by Claude through the convert workflow (run convert-20261008-180009; the first verify failed to
+    build on the lifter's false entries of sub_80305E4, fixed in tools/lifter/not_entries.txt).
+  refs:
+  - cport/src/game/bg_scroll.c
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf convert --subsystem ''BG tile-map scrolling'' sub_8030580 sub_80305E4
+    sub_803066E sub_80306C8 sub_8030722 sub_803077C
+
+    # stops at write_readable_c; answer with the files written (python -m wf answer RUN ANSWER.json)'
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on the original's own calls (40 captured on battles1) and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function NAME   # captured calls (40 per function)
+
+    .venv/bin/python -m wf verify --function NAME --snapshots SNAPSHOT_DIR   # lift, build, difftest, oracle, 8
+    routes'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: all 300 out of domain (verify run
+    convert-20261008-180009-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real entry states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function NAME   # captured calls (40 per function)
+
+    .venv/bin/python -m wf verify --function NAME --snapshots SNAPSHOT_DIR   # lift, build, difftest, oracle, 8
+    routes'
+  result: 3 compared, 0 differed, 1 out of domain (verify run convert-20261008-180009-verify-2)
+- method: lockstep
+  date: '2026-10-08'
+  detail: 'Port ROM with the readable version: palette, VRAM and OAM identical at every checkpoint.'
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function NAME   # captured calls (40 per function)
+
+    .venv/bin/python -m wf verify --function NAME --snapshots SNAPSHOT_DIR   # lift, build, difftest, oracle, 8
+    routes'
+  result: 8/8 routes identical (verify run convert-20261008-180009-verify-2)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander;
+    lockstep checks it there.'
+  reproduce: grep -l '^08030722 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/bg_scroll.c
+  where: recomp 5ee3def
+  tool: tools/wf convert workflow
+- date: '2026-10-08'
+  what: rename sub_8030722 -> drawBGTileMapTopRows_8030722
+  where: bn6f c46e31e4
+  tool: tools/rename_symbol.py
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20383c6b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/bg_scroll.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_8030580
+- sub_80305E4
+open_questions: []
+sources:
+- Claude Code session 2026-10-08 (workflow demo)
+previous_names:
+- sub_8030722

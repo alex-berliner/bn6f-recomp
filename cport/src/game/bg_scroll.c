@@ -4,7 +4,7 @@
  * A map's tile ids live in a decompressed tilemap with two layers (u16
  * entries, MapWidth per row, each layer found through a table at +4 / +8).
  * The BG tile-id blocks hold a 32x32 window of it, wrapping like a GBA BG
- * map. Every frame sub_8030580 compares the camera's tile position with the
+ * map. Every frame scrollBGTileMapToCamera_8030580 compares the camera's tile position with the
  * one the window was last drawn for (eMapTilesState200be70 +4/+6) and draws
  * the columns, then the rows, that scrolled into view, one entry at a time
  * through the map's put-tile-ids callback (+0x18). A jump of 5 tiles or more
@@ -53,11 +53,11 @@ static TileIds tile_ids_at(u32 tiles, u32 x, u32 y) {
     };
 }
 
-/* sub_80305E4(r0 = map x, r1 = map y, r5 = eMapTilesState200be70) -> r0, r1 = the
+/* getMapCellTileIds_80305E4(r0 = map x, r1 = map y, r5 = eMapTilesState200be70) -> r0, r1 = the
  * cell's tile ids. sub_8030808 (still lifted) passes the registers it leaves
  * on to the put-tile-ids callback, so they are left as the original's loop
  * leaves them. */
-Next sub_80305E4(void) {
+Next getMapCellTileIds_80305E4(void) {
     u32 tiles = R5, x = R0, y = R1;
     if (!on_map(tiles, x, y))
         x = y = 0;
@@ -137,19 +137,19 @@ static bool draw_edge(u32 tiles, u32 x, u32 y, u32 count, const Edge *edge) {
 }
 
 /* The four edges, for their own callers' sake: their only caller is
- * sub_8030580 below, which calls draw_edge directly, so they promise only
+ * scrollBGTileMapToCamera_8030580 below, which calls draw_edge directly, so they promise only
  * r5 and r10 (cport/host/difftest.cfg).
  * (r0 = camera tile x, r1 = camera tile y, r2 = tiles moved, r5 = eMapTilesState200be70) */
-Next sub_803066E(void) { draw_edge(R5, R0, R1, R2, &LEFT_EDGE);   RETURN_TO_CALLER(); }
-Next sub_80306C8(void) { draw_edge(R5, R0, R1, R2, &RIGHT_EDGE);  RETURN_TO_CALLER(); }
-Next sub_8030722(void) { draw_edge(R5, R0, R1, R2, &TOP_EDGE);    RETURN_TO_CALLER(); }
-Next sub_803077C(void) { draw_edge(R5, R0, R1, R2, &BOTTOM_EDGE); RETURN_TO_CALLER(); }
+Next drawBGTileMapLeftColumns_803066E(void) { draw_edge(R5, R0, R1, R2, &LEFT_EDGE);   RETURN_TO_CALLER(); }
+Next drawBGTileMapRightColumns_80306C8(void) { draw_edge(R5, R0, R1, R2, &RIGHT_EDGE);  RETURN_TO_CALLER(); }
+Next drawBGTileMapTopRows_8030722(void) { draw_edge(R5, R0, R1, R2, &TOP_EDGE);    RETURN_TO_CALLER(); }
+Next drawBGTileMapBottomRows_803077C(void) { draw_edge(R5, R0, R1, R2, &BOTTOM_EDGE); RETURN_TO_CALLER(); }
 
 /* ── every frame ─────────────────────────────────────────────────────── */
 
-/* sub_8030580(r10 = toolkit): bring the BG window up to date with the camera,
+/* scrollBGTileMapToCamera_8030580(r10 = toolkit): bring the BG window up to date with the camera,
  * columns first, then rows. */
-Next sub_8030580(void) {
+Next scrollBGTileMapToCamera_8030580(void) {
     /* the original pushes these and pops them at the end */
     const u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     const u32 saved_r8 = R8, saved_r9 = R9, saved_r12 = R12;
