@@ -1,0 +1,106 @@
+name: npc_init_809E590
+address: '0x0809E590'
+kind: function
+previous_names: []
+status: confirmed
+summary: 'NPC state 0: set up a freshly spawned NPC and run the standard state once.'
+interface: (r5 = NPC) -> setNPCScript_809F506(UnkFlags_60, the script pointer its spawner left there); clears the
+  per-NPC fields (hidden pieces, movement direction, palette, flags, interaction areas, centre offsets); NPCSprite/AnimationSelect
+  (and their Update copies) = 0xFF; CurState = standard; CollisionRadius 4, ZReach 8; sprite_load(0x80, 0x1C, 0xA0),
+  sprite_loadAnimationData, npc_standard_809E5E2
+details: UnkFlags_60 doubles as the script pointer until init (written by npc_spawnObjectThenSetUnk10_TempAnimScriptPtr_8030a8c).
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine, its callees' contracts and bn6f include/structs/OverworldNPCObject.inc.
+  refs:
+  - bn6f/asm/npc.s:21
+- method: readable-c
+  date: '2026-10-08'
+  detail: Hand-written readable replacement; guest calls get exactly the input registers their lifted contracts
+    list.
+  refs:
+  - cport/src/game/npc_script.c
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on calls captured from the original (story1).
+  reproduce: 'tools/convert/capture.sh /tmp/snaps_npc tools/traces/story1.trace 0 9700 40 npc_dispatch_809E570 npc_init_809E590
+    npc_standard_809E5E2
+
+    make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -S /tmp/snaps_npc/npc_init_809E590 npc_init_809E590)'
+  result: 24 calls, 0 failures, 0 out of domain
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on random inputs.
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 npc_init_809E590)'
+  result: 'ok: 2000 trials, 0 failures, 2000 out of domain - compared nothing'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: Original (mGBA) vs readable version from real game states.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 48 --out /tmp/oracle npc_init_809E590
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=0 fail=0 ood=41 (48 states) - no random state was in domain; nothing compared
+- method: lockstep
+  date: '2026-10-08'
+  detail: Identical to the original at every checkpoint on all 8 recorded routes.
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000'
+  result: 8/8 routes OK at recomp 4de9f5b (2026-10-08)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by: battle, battlesweep, fuzz, maps, menus2, story1, story2, story3, wander; lockstep checks
+    it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/npc_script.c
+  where: recomp 4de9f5b
+  tool: hand-written; verified as in evidence
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e43b0586
+  tool: tools/symdoc.py
+readable_c: cport/src/game/npc_script.c
+coverage:
+- battle
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- TryUpdateEachOverworldNPCObject_800461E
+- NPCCurActionJumptable
+- npc_inChatbox_809EADA
+open_questions: []
+sources:
+- Claude Code session 2026-10-08
