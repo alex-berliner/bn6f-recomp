@@ -105,3 +105,28 @@ Next object_isValidPanel(void) {
     SET_FLAGS_NZ(R0);             /* MOVS r0, #0 / #1: sets N/Z, keeps C/V */
     RETURN_TO_CALLER();
 }
+
+/* ── drafted by Hyper GLM-5.3 Flash (farm batch 3) ── */
+
+/* battle_getFlags: read the battle's current flag word.
+ * Returns (r0) the halfword at oBattleState_Unk_32 of the active battle state. */
+Next battle_getFlags(void) {
+    u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
+    R0 = LD16(battle + oBattleState_Unk_32);
+    RETURN_TO_CALLER();
+}
+
+/* getLocOfActiveChips_8027E1C(r0 = chip slot index):
+ * Returns the address of one entry in the active-chip list (12 bytes per slot).
+ *   r0 = &activeChips[slot], r1 = activeChips (base pointer).
+ * Flags c/v reflect the final address addition (ADDS). */
+Next getLocOfActiveChips_8027E1C(void) {
+    u32 entry = R0 * 0xC;          /* each active-chip entry is 12 bytes */
+    u32 base  = A_unk_20365C0;
+
+    R1 = base;
+    R0 = base + entry;
+    SET_FLAGS_ADD(entry, base);
+
+    RETURN_TO_CALLER();
+}

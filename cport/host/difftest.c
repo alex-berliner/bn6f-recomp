@@ -413,7 +413,10 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
  * lifter's per-function contracts): compare only the registers callers
  * rely on (not those listed as clobbered) and the flags they read
  * (FLAGS bits: 1 N/Z, 2 C, 4 V); a crash of the lifted code (an access the
- * host does not map, e.g. from a random input) is reported as out of domain. */
+ * host does not map, e.g. from a random input) is reported as out of domain.
+ * ORACLE_LIFTED=1 runs the lifted original (L_NAME) of each hand-written
+ * function instead, so a difference can be checked against the code the
+ * conversion replaced (callees stay as they are in the port). */
 typedef struct { u32 entry, mask, flags; } Contract;
 static Contract *g_contracts;
 static int g_ncontracts;
@@ -451,6 +454,9 @@ static int ground_truth(const char *dir) {
         { FILE *f = fopen(files[t], "rb"); u32 h[19]; fread(h, sizeof h, 1, f); fclose(f); pc = h[17]; }
         GuestFn fn = dispatch_lookup(pc | ((in.cpsr_ctl & 0x20) ? 1 : 0));
         if (!fn) { printf("%s: no lifted function at %#x\n", files[t], pc); continue; }
+        if (getenv("ORACLE_LIFTED"))      /* baseline: the lifted original in place of a hand-written override */
+            for (unsigned i = 0; i < sizeof kPairs / sizeof kPairs[0]; i++)
+                if (kPairs[i].hand == fn) { fn = kPairs[i].lifted; break; }
         run_child(fn, &in, in_mem, res, out);
         const Contract *ct = contract_for(pc);
         if (res->status && ct) { printf("%s: out of domain\n", files[t] + strlen(dir) + 1); continue; }

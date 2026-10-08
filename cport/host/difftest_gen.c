@@ -129,7 +129,28 @@ static void mut_sprite_gfx(Cpu *in, u32 (*rnd)(void)) {
         U32(0x03001550u + (rnd() % 15) * 0x20 + (rnd() % 8) * 4) ^= 1u << (rnd() % 32);
 }
 
+/* npc_runSecondaryScriptMaybe_809ebf8: captured NPCs rarely have a running
+ * secondary script, so give the NPC a short one: set-palette (0x0F) and jump
+ * (0x02) commands, ended by pause-secondary-script (0x33), which stops it. */
+static void mut_npc_secondary(Cpu *in, u32 (*rnd)(void)) {
+    u32 npc = in->r[5], p = 0x0203FF00u;            /* end of EWRAM */
+    U8(npc + 0x1F) = 0;                              /* TerminateScript_1f */
+    U32(npc + 0x5C) = p;                             /* UnkNPCScriptPtr_5c */
+    for (int k = rnd() % 4; k > 0; k--) {
+        if (rnd() % 2) {
+            U8(p) = 0x0F; U8(p + 1) = (u8)(rnd() % 16); p += 2;
+        } else {
+            u32 to = p + 5;                          /* the next command; unaligned operand */
+            U8(p) = 0x02;
+            for (int b = 0; b < 4; b++) U8(p + 1 + b) = (u8)(to >> (8 * b));
+            p = to;
+        }
+    }
+    U8(p) = 0x33; U8(p + 1) = (u8)(rnd() % 8);
+}
+
 GenFn difftest_snap_mutator(const char *name) {
+    if (!strcmp(name, "npc_runSecondaryScriptMaybe_809ebf8")) return mut_npc_secondary;
     if (!strcmp(name, "sprite_queueFramePieces")) return mut_sprite_pieces;
     if (!strcmp(name, "sprite_projectAndCull")) return mut_sprite_project;
     if (!strcmp(name, "sprite_ensureGfxResident")) return mut_sprite_gfx;

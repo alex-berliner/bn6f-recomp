@@ -283,8 +283,10 @@ void trace_sync_violation(u32 ra, int which);
 #define CALLX(x, ra)    do { u32 x_ = (x); SAVE; dispatch(x_); LOAD; RET_CHECK(ra); } while (0)
 #define RETURN(x)       do { u32 x_ = (x); SAVE; cpu.ret = x_ & ~1u; return DONE; } while (0)
 /* Return from a function whose callers never check the return address
- * (see RET_ASSERT); LIFT_TRACE builds still publish it for the check. */
-#if defined(LIFT_TRACE)
+ * (see RET_ASSERT); LIFT_TRACE builds still publish it for the check, and
+ * DIFFTEST builds so a wrong return target in a conversion shows up (an
+ * unpublished one leaves the callee's stale return address). */
+#if defined(LIFT_TRACE) || defined(DIFFTEST)
 #define RETURN_NR(x)    RETURN(x)
 #else
 #define RETURN_NR(x)    do { (void)(x); SAVE; return DONE; } while (0)

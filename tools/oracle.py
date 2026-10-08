@@ -159,9 +159,13 @@ def main():
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--batch", type=int, default=80)
     ap.add_argument("--out", default=os.path.join(ROOT, "tools/oracle_out"))
+    ap.add_argument("--lifted", action="store_true",
+                    help="run the lifted originals of hand-written functions (baseline for a difference)")
     ap.add_argument("funcs", nargs="*")
     args = ap.parse_args()
     STATES = args.states
+    if args.lifted:
+        os.environ["ORACLE_LIFTED"] = "1"
     os.makedirs(args.out, exist_ok=True)
     us = units()
     if args.funcs:

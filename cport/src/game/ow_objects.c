@@ -472,3 +472,62 @@ Next npc_createInteractionAreas_809F526(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── interaction-area overlap (Hyper GLM-5.3 Flash, farm batch 3; ldrsh -> LDS16) ── */
+
+enum {  /* OWObjectInteractionArea as halfwords: x, y, z, radius, z reach */
+    AREA16_X = 0, AREA16_Y = 2, AREA16_Z = 4, AREA16_RADIUS = 6, AREA16_ZREACHAMOUNT = 7,
+};
+
+/* Struct offsets for the overworld object interaction area, matching the
+ * disassembly's oOWObjectInteractionArea_* field references. */
+
+/* checkOWObjectInteractionAreasOverlap_8003894(r0 = area A, r1 = area B):
+ * Checks whether the interaction areas of two overworld objects overlap.
+ * The X/Y check is a circle-circle test: the squared distance between the
+ * two centers must be below the squared sum of the two radii. If it is,
+ * the object with the lower Z coordinate extends its Z reach amount toward
+ * the other one; the interaction succeeds if it can reach it.
+ * Returns r0 = 1 on success, 0 otherwise.
+ * r2 is left as a scratch value that differs per exit path (matching the
+ * original): the squared distance on the early "too far apart" exit,
+ * otherwise A's Z coordinate (plus A's reach amount when A was the one
+ * reaching). */
+Next checkOWObjectInteractionAreasOverlap_8003894(void) {
+    u32 areaA = R0;
+    u32 areaB = R1;
+
+    /* Squared distance between the two centers in the X/Y plane, and the
+     * squared sum of the two radii. All arithmetic is 32-bit like the
+     * original's MUL/ADD instructions. */
+    u32 dx = (u32)((s32)LDS16(areaA + AREA16_X)
+                 - (s32)LDS16(areaB + AREA16_X));
+    u32 dy = (u32)((s32)LDS16(areaA + AREA16_Y)
+                 - (s32)LDS16(areaB + AREA16_Y));
+    u32 distSq = dx * dx + dy * dy;
+
+    u32 radiusSum = LD8(areaA + AREA16_RADIUS)
+                  + LD8(areaB + AREA16_RADIUS);
+    u32 radiusSumSq = radiusSum * radiusSum;
+
+    if ((s32)distSq >= (s32)radiusSumSq) {
+        R0 = 0;
+        R2 = distSq;
+        RETURN_TO_CALLER();
+    }
+
+    s32 zA = (s32)LDS16(areaA + AREA16_Z);
+    s32 zB = (s32)LDS16(areaB + AREA16_Z);
+
+    if (zA < zB) {
+        /* A is below B, so A is the one reaching toward B */
+        s32 zAReached = zA + (s32)LD8(areaA + AREA16_ZREACHAMOUNT);
+        R2 = (u32)zAReached;
+        R0 = (zB <= zAReached) ? 1 : 0;
+    } else {
+        /* B is below (or level with) A, so B is the one reaching toward A */
+        s32 zBReached = zB + (s32)LD8(areaB + AREA16_ZREACHAMOUNT);
+        R2 = (u32)zA;
+        R0 = (zA <= zBReached) ? 1 : 0;
+    }
+    RETURN_TO_CALLER();
+}
