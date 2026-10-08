@@ -258,6 +258,11 @@ def main():
     ap.add_argument("funcs", nargs="+")
     args = ap.parse_args()
     args.snaps = os.path.abspath(args.snaps)
+    # test with a difftest built from the current sources (a stale one once
+    # accepted candidates that return to the wrong place)
+    r = subprocess.run(["make", "-C", os.path.join(HOST, "host"), f"-j{os.cpu_count()}"], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit("cannot build cport/build-host/difftest:\n" + r.stdout[-2000:] + r.stderr[-2000:])
     models = args.models.split(",")
     work = [(f, m) for f in args.funcs for m in models]
     with ThreadPoolExecutor(args.jobs) as ex:

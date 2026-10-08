@@ -524,7 +524,12 @@ int main(int argc, char **argv) {
         if (!lib) { printf("%s: cannot load candidate: %s\n", name, dlerror()); return 2; }
         char sym[160];
         snprintf(sym, sizeof sym, "cand_%s", name);
-        GuestFn hand = (GuestFn)dlsym(lib, sym), lifted = (GuestFn)dlsym(RTLD_DEFAULT, name);
+        /* the lifted original: L_NAME once NAME has a hand-written override */
+        char lsym[160];
+        snprintf(lsym, sizeof lsym, "L_%s", name);
+        GuestFn hand = (GuestFn)dlsym(lib, sym), lifted = (GuestFn)dlsym(RTLD_DEFAULT, lsym);
+        if (!lifted)
+            lifted = (GuestFn)dlsym(RTLD_DEFAULT, name);
         if (!hand || !lifted) { printf("%s: missing %s\n", name, hand ? name : sym); return 2; }
         Cfg *c = &g_cfg[g_ncfg++];
         memset(c, 0, sizeof *c);

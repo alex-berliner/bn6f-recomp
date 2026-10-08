@@ -79,6 +79,11 @@ def batch(args):
                     for off in (IO + 0x200, IO + 0x202, IO + 0x208):
                         f.seek(76 + off)
                         f.write(b"\0\0")
+                    # NR52's channel-playing bits are live hardware status: mGBA's sound
+                    # unit was just reset (all off), so the host must read them as off too
+                    # (m4a's CgbSound tests them)
+                    f.seek(76 + IO + 0x84)
+                    f.write(bytes([mem[IO + 0x84] & 0xF0]))
         try:   # calls without an exit snapshot (no return, or cut off here) are not counted
             subprocess.run([os.path.join(ROOT, "build-tools/mgba_run"), os.path.join(ROOT, "bn6f/bn6f.gba"), "--quiet",
                             "--frames", "1", "--bios", os.path.join(ROOT, "gbarecomp/bios/gba_bios.bin"),
