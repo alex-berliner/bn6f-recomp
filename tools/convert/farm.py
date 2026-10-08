@@ -166,10 +166,11 @@ def test(name, code, snaps, contract, workdir):
     """(ok, report): compile the candidate and run the comparisons."""
     if not re.search(rf"\bNext\s+{re.escape(name)}\s*\(\s*void\s*\)", code):
         return False, f"the code must define `Next {name}(void)`"
-    style = LIFTED_STYLE.findall(code)
+    # comments may mention the flags ("sets nz"); only code counts
+    bare = re.sub(r"/\*.*?\*/|//[^\n]*", " ", code, flags=re.S)
+    style = {m.group(0) for m in LIFTED_STYLE.finditer(bare)}
     if style:
-        return False, "the code still uses machine-translated style: " + ", ".join(sorted(set(
-            s if isinstance(s, str) else s[0] for s in style)))[:200]
+        return False, "the code still uses machine-translated style: " + ", ".join(sorted(style))[:200]
     src = os.path.join(workdir, "cand.c")
     so = os.path.join(workdir, "cand.so")
     renamed = re.sub(rf"\bNext\s+{re.escape(name)}\s*\(\s*void\s*\)", f"Next cand_{name}(void)", code)
