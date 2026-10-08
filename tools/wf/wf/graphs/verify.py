@@ -18,10 +18,11 @@ from wf.types import (BuildFailure, BuiltRom, DifftestResult, FunctionName, Lock
 PROJECT = "recomp-verify"
 
 
-def verify_application(start: "VerifyState", run_id: str) -> TypedApplication["VerifyState"]:
+def verify_application(start: "VerifyState", run_id: str, tracked: bool = True) -> TypedApplication["VerifyState"]:
     return workflow.application(
         start=start,
         run_id=run_id,
+        tracked=tracked,
         first=note_sources,
         transitions=[
             Transition(after=note_sources, go_to=build),

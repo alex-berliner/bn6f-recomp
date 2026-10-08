@@ -86,7 +86,7 @@ def print_report(report: VerifyReport) -> None:
 def draw_diagrams(out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     example = VerifyState(run_dir=out_dir, functions=(), routes=(), trials=0)
-    verify_application(example, run_id="diagram").draw(out_dir / "verify")
+    verify_application(example, run_id="diagram", tracked=False).draw(out_dir / "verify")
     print(f"wrote {out_dir / 'verify.png'}")
 
 

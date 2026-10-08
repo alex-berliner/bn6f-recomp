@@ -19,13 +19,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, TypeVar, cast
 
-from burr.core import Application, ApplicationBuilder, Condition, State, default
+from burr.core import Application, ApplicationBuilder, Condition, State, default, serde
 from burr.core.action import action
 from burr.integrations.pydantic import PydanticTypingSystem, model_from_state  # pyright: ignore[reportUnknownVariableType]
 from pydantic import BaseModel
 
 StateT = TypeVar("StateT", bound=BaseModel)
 FieldT = TypeVar("FieldT", bound=str)
+
+
+@serde.serialize.register(tuple)
+def _serialize_tuple(value: tuple[object, ...], **options: object) -> list[object]:
+    """Burr's tracker knows lists but writes tuples as their repr; our state
+    uses tuples, so show them item by item in the UI like lists."""
+    return [serde.serialize(item, **options) for item in value]  # pyright: ignore[reportUnknownMemberType]
 
 
 @dataclass(frozen=True)
@@ -49,7 +56,8 @@ class Workflow(Generic[FieldT, StateT]):
         return cast(Callable[[Callable[[StateT], StateT]], Callable[[StateT], StateT]], register_with_burr)
 
     def application(self, start: StateT, run_id: str, first: Callable[[StateT], StateT],
-                    transitions: Sequence[Transition[StateT]]) -> "TypedApplication[StateT]":
+                    transitions: Sequence[Transition[StateT]], tracked: bool = True) -> "TypedApplication[StateT]":
+        """`tracked` runs show up in the Burr UI; an untracked one is only for drawing."""
         steps = {transition.after.__name__: transition.after for transition in transitions}
         steps |= {transition.go_to.__name__: transition.go_to for transition in transitions}
         builder = (
@@ -60,8 +68,9 @@ class Workflow(Generic[FieldT, StateT]):
             .with_transitions(*(self._burr_transition(transition) for transition in transitions))
             .with_entrypoint(first.__name__)
             .with_identifiers(app_id=run_id)
-            .with_tracker("local", project=self.project)
         )
+        if tracked:
+            builder = builder.with_tracker("local", project=self.project)
         return TypedApplication(self.state_type, builder.build())
 
     def _burr_transition(self, transition: Transition[StateT]) -> tuple[str, str, Condition]:
