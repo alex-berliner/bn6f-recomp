@@ -1,6 +1,9 @@
 """Save the original game's own calls of functions while it replays a route
-(tools/convert/capture.sh), and find which routes execute which functions
-(tools/coverage.py over the routes' profiles)."""
+(tools/convert/capture.sh), and find which routes execute which functions:
+a function ran on a route when its first instruction's address is in that
+route's profile (tools/traces/coverage/ROUTE.prof). Reading the profiles
+directly takes a second; tools/coverage.py took about 3 minutes."""
+import functools
 import os
 import re
 import subprocess
@@ -11,7 +14,7 @@ from wf.tools.errors import ToolOutputError
 from wf.types import CapturedCalls, FrameCount, FunctionName, Route, RouteName, SnapshotDir
 
 CAPTURE = REPO / "tools/convert/capture.sh"
-COVERAGE = REPO / "tools/coverage.py"
+LIFTED = REPO / "cport/src/lifted"
 PROFILES = REPO / "tools/traces/coverage"
 
 # "sub_8001234: 40 calls"
@@ -38,17 +41,27 @@ def capture_calls(snapshots: SnapshotDir, route: Route, first_frame: FrameCount,
 def routes_executing(functions: tuple[FunctionName, ...], routes: tuple[Route, ...], log_dir: Path
                      ) -> dict[RouteName, frozenset[FunctionName]]:
     """For each route with a coverage profile, which of `functions` it executes."""
+    addresses = _function_addresses()
     executed: dict[RouteName, frozenset[FunctionName]] = {}
-    wanted = set(functions)
     for route in routes:
         profile = PROFILES / f"{route.name}.prof"
         if not profile.exists():
             continue
-        listing = log_dir / f"coverage-{route.name}.txt"
-        done = subprocess.run(["python3", str(COVERAGE), str(profile), "--list", str(listing)],
-                              capture_output=True, text=True, check=False)
-        if done.returncode != 0 or not listing.exists():
-            raise ToolOutputError(f"coverage.py failed for {route.name}: {done.stderr[-300:]}")
-        units = {FunctionName(line.strip()) for line in listing.read_text().splitlines() if line.strip()}
-        executed[route.name] = frozenset(units & wanted)
+        pcs = _executed_addresses(profile, profile.stat().st_mtime)
+        executed[route.name] = frozenset(function for function in functions if addresses.get(function) in pcs)
     return executed
+
+
+@functools.cache
+def _function_addresses() -> dict[FunctionName, int]:
+    """Every lifted unit's start address, from the lifted C's header comments."""
+    header = re.compile(r"^/\* (\w+): ([0-9A-F]{8})-", re.M)
+    return {FunctionName(match[1]): int(match[2], 16)
+            for path in LIFTED.glob("*.c") for match in header.finditer(path.read_text())}
+
+
+@functools.cache
+def _executed_addresses(profile: Path, modified: float) -> frozenset[int]:
+    """The addresses a profile shows executing (lines `%08x cycles`; `#` lines are headers)."""
+    with open(profile) as lines:
+        return frozenset(int(line.split()[0], 16) for line in lines if line.strip() and not line.startswith("#"))

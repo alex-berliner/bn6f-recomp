@@ -1,26 +1,28 @@
 """Capture the original game's own calls of some functions (the inputs that
-difftest and the CPU oracle check conversions on): pick a recorded route
-that executes them, replay it on the original, save the first calls of each.
+difftest and the CPU oracle check conversions on): give each function a
+recorded route that executes it (as few routes as possible), replay those
+routes on the original in parallel, save the first calls of each function.
 (docs/PROCESS.md §4: "capture 40 calls each on a route that runs them".)"""
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow
 from wf.tools.capture import capture_calls, routes_executing
-from wf.types import CapturedCalls, FrameCount, FunctionName, NotRun, Result, Route, RouteName, SnapshotDir, ToolMessage
+from wf.types import CapturedCalls, FrameCount, FunctionName, Result, Route, SnapshotDir
 
 PROJECT = "recomp-capture"
 
 
 def capture_graph() -> Graph["CaptureState"]:
     return workflow.graph(
-        first=choose_route,
+        first=assign_routes,
         ends=[write_report],
         transitions=[
-            Transition(after=choose_route, go_to=capture_calls_on_route, when=a_route_runs_them),
-            Transition(after=choose_route, go_to=write_report, when=no_route_runs_them),
-            Transition(after=capture_calls_on_route, go_to=write_report),
+            Transition(after=assign_routes, go_to=capture_calls_on_routes, when=some_route_runs_them),
+            Transition(after=assign_routes, go_to=write_report, when=no_route_runs_them),
+            Transition(after=capture_calls_on_routes, go_to=write_report),
         ],
     )
 
@@ -34,27 +36,26 @@ def run_capture(start: "CaptureState", run_id: str, tracked: bool = True) -> "Ca
 
 # ── the run's state ────────────────────────────────────────────────────
 
-class RouteCoverage(Result):
-    """Which of the wanted functions a route's recorded profile shows executing."""
-    route: RouteName
+class RouteAssignment(Result):
+    """The functions whose calls are captured on one route."""
+    route: Route
     functions: tuple[FunctionName, ...]
 
 
 class CaptureReport(Result):
     snapshots: SnapshotDir
-    route: Route | NotRun
+    routes: tuple[RouteAssignment, ...]
     captured: tuple[CapturedCalls, ...]
-    never_called: tuple[FunctionName, ...]  # no call in the window: difftest and the oracle cannot check them
+    never_called: tuple[FunctionName, ...]  # no route runs them, or no call in the window: not checkable
 
 
 class CaptureState(BaseModel):
     run_dir: Path
     functions: tuple[FunctionName, ...]
     snapshots: SnapshotDir                       # where the calls are saved, one directory per function
-    candidate_routes: tuple[Route, ...]          # routes to choose from (a single one to force it)
+    candidate_routes: tuple[Route, ...]          # routes to choose from
     calls_per_function: int = 40
-    route: Route | NotRun | None = None
-    coverage: tuple[RouteCoverage, ...] = ()
+    assignments: tuple[RouteAssignment, ...] | None = None
     captured: tuple[CapturedCalls, ...] = ()
     report: CaptureReport | None = None
 
@@ -64,37 +65,37 @@ workflow = Workflow[CaptureState](CaptureState, project=PROJECT)
 
 # ── steps ──────────────────────────────────────────────────────────────
 
-class ChooseRouteInput(Result):
+class AssignInput(Result):
     functions: tuple[FunctionName, ...]
     candidate_routes: tuple[Route, ...]
     run_dir: Path
 
 
-class ChooseRouteOutput(Result):
-    route: Route | NotRun
-    coverage: tuple[RouteCoverage, ...]
+class AssignOutput(Result):
+    assignments: tuple[RouteAssignment, ...]
 
 
 @workflow.step
-def choose_route(given: ChooseRouteInput) -> ChooseRouteOutput:
-    """Pick the route whose coverage profile executes the most of the functions."""
-    if len(given.candidate_routes) == 1:
-        return ChooseRouteOutput(route=given.candidate_routes[0], coverage=())
+def assign_routes(given: AssignInput) -> AssignOutput:
+    """Give each function a route that runs it: repeatedly take the route that runs the most still unassigned."""
     executed = routes_executing(given.functions, given.candidate_routes, given.run_dir)
-    coverage = tuple(RouteCoverage(route=route, functions=tuple(sorted(functions)))
-                     for route, functions in executed.items())
-    best = max(coverage, key=lambda entry: len(entry.functions), default=None)
-    if best is None or not best.functions:
-        return ChooseRouteOutput(route=NotRun(reason=ToolMessage("no recorded route executes these functions")),
-                                 coverage=coverage)
-    chosen = next(route for route in given.candidate_routes if route.name == best.route)
-    return ChooseRouteOutput(route=chosen, coverage=coverage)
+    by_name = {route.name: route for route in given.candidate_routes}
+    left = set(given.functions)
+    assignments: list[RouteAssignment] = []
+    while left:
+        best = max(executed, key=lambda name: len(executed[name] & left), default=None)
+        if best is None or not executed[best] & left:
+            break
+        chosen = executed[best] & left
+        assignments.append(RouteAssignment(route=by_name[best],
+                                           functions=tuple(f for f in given.functions if f in chosen)))
+        left -= chosen
+    return AssignOutput(assignments=tuple(assignments))
 
 
 class CaptureInput(Result):
-    functions: tuple[FunctionName, ...]
     snapshots: SnapshotDir
-    route: Route
+    assignments: tuple[RouteAssignment, ...]
     calls_per_function: int
     run_dir: Path
 
@@ -104,17 +105,22 @@ class CaptureOutput(Result):
 
 
 @workflow.step
-def capture_calls_on_route(given: CaptureInput) -> CaptureOutput:
-    """Replay the route on the original game and save the first calls of each function."""
-    return CaptureOutput(captured=capture_calls(
-        given.snapshots, given.route, FrameCount(0), given.route.length, given.calls_per_function,
-        given.functions, given.run_dir / "capture.log"))
+def capture_calls_on_routes(given: CaptureInput) -> CaptureOutput:
+    """Replay each assigned route on the original game (in parallel) and save the first calls of its functions."""
+    def capture(assignment: RouteAssignment) -> tuple[CapturedCalls, ...]:
+        log = given.run_dir / f"capture-{assignment.route.name}.log"
+        return capture_calls(given.snapshots, assignment.route, FrameCount(0), assignment.route.length,
+                             given.calls_per_function, assignment.functions, log)
+
+    with ThreadPoolExecutor(max_workers=max(1, len(given.assignments))) as pool:
+        per_route = list(pool.map(capture, given.assignments))
+    return CaptureOutput(captured=tuple(calls for route_calls in per_route for calls in route_calls))
 
 
 class ReportInput(Result):
     functions: tuple[FunctionName, ...]
     snapshots: SnapshotDir
-    route: Route | NotRun
+    assignments: tuple[RouteAssignment, ...]
     captured: tuple[CapturedCalls, ...]
 
 
@@ -127,15 +133,15 @@ def write_report(given: ReportInput) -> ReportOutput:
     """Say where the calls are and which functions were never called."""
     called = {entry.function for entry in given.captured if entry.calls > 0}
     return ReportOutput(report=CaptureReport(
-        snapshots=given.snapshots, route=given.route, captured=given.captured,
+        snapshots=given.snapshots, routes=given.assignments, captured=given.captured,
         never_called=tuple(function for function in given.functions if function not in called)))
 
 
 # ── decisions ──────────────────────────────────────────────────────────
 
-def a_route_runs_them(state: CaptureState) -> bool:
-    return isinstance(state.route, Route)
+def some_route_runs_them(state: CaptureState) -> bool:
+    return bool(state.assignments)
 
 
 def no_route_runs_them(state: CaptureState) -> bool:
-    return isinstance(state.route, NotRun)
+    return not state.assignments

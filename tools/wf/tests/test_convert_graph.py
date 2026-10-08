@@ -16,7 +16,7 @@ from wf.graphs.verify import Verdict, VerifyReport, VerifyState
 from wf.tools.evidence import FunctionChecks, Provenance
 from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Prompt
 from wf.tools.subsystem import CandidateFile, FileReply, FileTest, SymbolDraft, TokenUse
-from wf.types import (BuildFailure, CommitHash, FunctionName, GuestAddress, ModelSpec, NotRun, SnapshotDir,
+from wf.types import (BuildFailure, CommitHash, FunctionName, GuestAddress, ModelSpec, SnapshotDir,
                       SourceVersion, SymbolName, SymbolStatus, ToolMessage)
 
 FUNCTION = FunctionName("sub_8030808")
@@ -142,7 +142,7 @@ DRAFT = SymbolDraft(function=FUNCTION, proposed_name=SymbolName("redrawBGTileMap
 
 def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     def run_capture(start: CaptureState, run_id: str, tracked: bool = True) -> CaptureReport:
-        return CaptureReport(snapshots=start.snapshots, route=NotRun(reason=ToolMessage("fake")), captured=(),
+        return CaptureReport(snapshots=start.snapshots, routes=(), captured=(),
                              never_called=())
 
     def build_host_difftest(log_dir: Path) -> Path | BuildFailure:
