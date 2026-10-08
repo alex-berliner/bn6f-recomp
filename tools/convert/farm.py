@@ -224,7 +224,8 @@ def convert(name, model, args):
         for rnd in range(args.rounds + 1):
             t0 = time.time()
             try:
-                reply = llm.complete(model, msgs, system=SYSTEM, max_tokens=24000)
+                reply = llm.complete(model, msgs, system=SYSTEM, max_tokens=24000, tag=f"{name} round {rnd}",
+                                     usage_log=os.path.join(ROOT, "tools/convert/usage.jsonl"))
             except Exception as e:
                 report = f"model error: {e}"
                 break
@@ -255,16 +256,32 @@ def main():
     ap.add_argument("--models", default="opencode/kimi-k3")
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--jobs", type=int, default=8)
+    ap.add_argument("--redo", action="store_true", help="also rerun pairs that already passed or used up their rounds")
     ap.add_argument("funcs", nargs="+")
     args = ap.parse_args()
     args.snaps = os.path.abspath(args.snaps)
     # test with a difftest built from the current sources (a stale one once
-    # accepted candidates that return to the wrong place)
-    r = subprocess.run(["make", "-C", os.path.join(HOST, "host"), f"-j{os.cpu_count()}"], capture_output=True, text=True)
+    # accepted candidates that return to the wrong place); farms for several
+    # providers run at once, so they take turns building
+    import fcntl
+    with open(os.path.join(HOST, ".farm-build.lock"), "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        r = subprocess.run(["make", "-C", os.path.join(HOST, "host"), f"-j{os.cpu_count()}"], capture_output=True, text=True)
     if r.returncode:
         sys.exit("cannot build cport/build-host/difftest:\n" + r.stdout[-2000:] + r.stderr[-2000:])
     models = args.models.split(",")
     work = [(f, m) for f in args.funcs for m in models]
+    if not args.redo:   # resume: skip pairs that already passed or used up their rounds
+        def finished(f, m):
+            log = os.path.join(ROOT, "tools", "convert", "log", f"{f}.{m.replace('/', '_')}.jsonl")
+            if not os.path.exists(log):
+                return False
+            rows = [json.loads(l) for l in open(log) if l.strip()]
+            return any(r.get("ok") for r in rows) or any(r.get("round", 0) >= args.rounds for r in rows)
+        skipped = [w for w in work if finished(*w)]
+        work = [w for w in work if not finished(*w)]
+        if skipped:
+            print(f"resuming: {len(skipped)} function/model pairs already finished", flush=True)
     with ThreadPoolExecutor(args.jobs) as ex:
         results = list(ex.map(lambda fm: convert(fm[0], fm[1], args), work))
     print("\nsummary:")
