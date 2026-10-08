@@ -1,6 +1,6 @@
 /*
  * oam_build.c — build the OAM shadow for this frame
- * (copyTo_iObjectAttr3001D70_3006814 in bn6f asm38.s, an IWRAM routine).
+ * (sprite_buildOamShadow in bn6f asm38.s, an IWRAM routine).
  *
  * Sprites are queued per priority layer as linked lists in the sprite pool;
  * each layer has an array of list heads. Layers are emitted in order, each
@@ -11,21 +11,21 @@
  */
 #include "game.h"
 
-#define OAM_SHADOW      0x03001D70u   /* iObjectAttr3001D70: 128 x {attr0..2, affine} */
+#define OAM_SHADOW      0x03001D70u   /* iOamShadow: 128 x {attr0..2, affine} */
 #define OAM_SHADOW_END  0x03002170u
-#define LAYER_HEADS     0x03002590u   /* tupleArr_3002590: {u8 *heads, u32 count}[4] */
+#define LAYER_HEADS     0x03002590u   /* iSpriteLayerLists: {u8 *heads, u32 count}[4] */
 #define LAYER_HEADS_END 0x030025B0u
-#define SPRITE_POOL     0x03001150u   /* iObjectAttr3001150: {attr0, attr1, attr2, ?, next} */
+#define SPRITE_POOL     0x03001150u   /* iSpritePool: {attr0, attr1, attr2, ?, next} */
 #define FREE_OAM_COUNT  0x0200B1A8u   /* dword_200B1A8 */
 #define AFFINE_PARAMS   0x0200A6F0u   /* word_200A6F0: {pa, pb, pc, pd, ...} x 32, stride 12 */
 #define FRAME_RESETS    0x0802FD70u   /* off_802FD70: {u32 *buffer, u32 size}[4] */
-#define SPRITE_COUNT    0x03001950u   /* byte_3001950 */
+#define SPRITE_COUNT    0x03001950u   /* iSpritePoolUsed */
 
 #define NO_SPRITE 0xFF
 #define OAM_HIDDEN_ATTR01 0x000000F0u /* y = 240: off screen */
 #define OAM_HIDDEN_ATTR2  0x0C00u     /* priority 3 */
 
-IWRAM_CODE Next copyTo_iObjectAttr3001D70_3006814(void) {
+IWRAM_CODE Next sprite_buildOamShadow(void) {
     u32 ret = LR, saved_r12 = R12;
     u32 oam = OAM_SHADOW;
 

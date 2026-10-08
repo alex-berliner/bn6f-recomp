@@ -6,7 +6,7 @@
  * original's own captured calls and on random inputs; then checked with the
  * lockstep tests like all hand-written code. Model per function: GLM-5.3
  * (battle_isTimeStop, GetBattleMode, GetBattleNaviStatsByte_AllianceFrom-
- * BattleObject), Kimi K3 (sub_800F29C, sub_800C488, object_isValidPanel).
+ * BattleObject), Kimi K3 (unpackVerActorTyAndAIIdx_800F29C, sub_800C488, object_isValidPanel).
  */
 #include "game.h"
 #include "runtime.h"
@@ -51,9 +51,9 @@ Next GetBattleNaviStatsByte_AllianceFromBattleObject(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_800F29C(r0 = enemy index): fetch the enemy's version/actor-type/AI-index
+/* unpackVerActorTyAndAIIdx_800F29C(r0 = enemy index): fetch the enemy's version/actor-type/AI-index
  * record and unpack it: r0 = actor type, r1 = AI index, r2 = version. */
-Next sub_800F29C(void) {
+Next unpackVerActorTyAndAIIdx_800F29C(void) {
     GUEST_CALL(GetVerActorTyAndAIIdx_80182B4); // r0 -> struct { u8 version; u8 actor_type; u8 ai_index; }
     u32 info = R0;
     u32 version    = LD8(info);

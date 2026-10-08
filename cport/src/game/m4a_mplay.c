@@ -1,6 +1,6 @@
 /*
  * m4a_mplay.c — m4a ("Sappy") music player sequencer, MPlayMain
- * (sub_814E260 in bn6f libs.s).
+ * (MPlayMain in bn6f libs.s).
  *
  * Once per frame SoundMain calls MPlayMain for the head of the music player
  * chain. Each player first locks itself (ident++), then lets the next player
@@ -266,7 +266,7 @@ static void run_chain(u32 mp, int depth) {
     play(mp);
 }
 
-Next sub_814E260(void) {
+Next MPlayMain(void) {
     run_chain(R0, 0);
     RETURN_TO_CALLER();
 }

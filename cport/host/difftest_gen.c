@@ -73,7 +73,7 @@ static void gen_oam(Cpu *in, u32 (*rnd)(void)) {
 
 #define U16(a) (*(u16 *)(uintptr_t)(u32)(a))
 
-/* sub_3006440: the sprite's drawing options (flips, affine, first-piece
+/* sprite_queueFramePieces: the sprite's drawing options (flips, affine, first-piece
  * modes, per-piece palettes, mosaic) on real animation data. */
 static void mut_sprite_pieces(Cpu *in, u32 (*rnd)(void)) {
     u32 spr = in->r[5];
@@ -98,7 +98,7 @@ static void mut_sprite_pieces(Cpu *in, u32 (*rnd)(void)) {
 
 static u32 sprite_of(u32 obj) { return obj + (U8(obj + 2) & 0xF0); }
 
-/* sub_30061E8: camera mode and mirroring, sprite flip/facing and flag
+/* sprite_projectAndCull: camera mode and mirroring, sprite flip/facing and flag
  * options, positions around the camera. */
 static void mut_sprite_project(Cpu *in, u32 (*rnd)(void)) {
     u32 obj = in->r[5], spr = sprite_of(obj), pos = in->r[0];
@@ -112,7 +112,7 @@ static void mut_sprite_project(Cpu *in, u32 (*rnd)(void)) {
         if (rnd() % 2) U32(pos + 4 * k) += (rnd() % 0x2000000) - 0x1000000;
 }
 
-/* sub_3006028: tile cache hit/miss, VRAM and palette slots running out,
+/* sprite_ensureGfxResident: tile cache hit/miss, VRAM and palette slots running out,
  * palette effects, already-uploaded graphics. */
 static void mut_sprite_gfx(Cpu *in, u32 (*rnd)(void)) {
     u32 obj = in->r[5], spr = sprite_of(obj);
@@ -130,14 +130,14 @@ static void mut_sprite_gfx(Cpu *in, u32 (*rnd)(void)) {
 }
 
 GenFn difftest_snap_mutator(const char *name) {
-    if (!strcmp(name, "sub_3006440")) return mut_sprite_pieces;
-    if (!strcmp(name, "sub_30061E8")) return mut_sprite_project;
-    if (!strcmp(name, "sub_3006028")) return mut_sprite_gfx;
+    if (!strcmp(name, "sprite_queueFramePieces")) return mut_sprite_pieces;
+    if (!strcmp(name, "sprite_projectAndCull")) return mut_sprite_project;
+    if (!strcmp(name, "sprite_ensureGfxResident")) return mut_sprite_gfx;
     return 0;
 }
 
 GenFn difftest_generator(const char *name) {
-    if (!strcmp(name, "copyTo_iObjectAttr3001D70_3006814")) return gen_oam;
+    if (!strcmp(name, "sprite_buildOamShadow")) return gen_oam;
     if (!strcmp(name, "SoundMainRAM_iwram_03005700")) return gen_mixer;
     return 0;
 }

@@ -1,17 +1,17 @@
 /*
  * sprite_gfx.c — per-frame sprite placement and graphics residency
- * (sub_30061E8, sub_300631C, sub_300638C, sub_3006028, sub_3006108 and their
+ * (sprite_projectAndCull, sub_300631C, sub_300638C, sprite_ensureGfxResident, sub_3006108 and their
  * helpers in bn6f asm38.s; IWRAM routines in the original).
  *
  * For every visible object the overworld calls, in order:
- *   sub_30061E8  project the object's world position to the screen (through
+ *   sprite_projectAndCull  project the object's world position to the screen (through
  *                the current camera mode) and mark which pieces of its
  *                animation frame are on screen;
- *   sub_3006028  make sure the sprite's tiles are in OBJ VRAM (a cache keyed
+ *   sprite_ensureGfxResident  make sure the sprite's tiles are in OBJ VRAM (a cache keyed
  *                by graphics pointer; misses allocate tiles and queue a DMA
  *                upload) and that its palette has one of the 15 OBJ palette
  *                slots (shared by content);
- *   sub_3006440  build the OAM entries (sprite_oam.c).
+ *   sprite_queueFramePieces  build the OAM entries (sprite_oam.c).
  *
  * All three take r5 = object and leave it unchanged; callers rely on nothing
  * else (r10 = the game's toolkit pointer, as everywhere).
@@ -126,8 +126,8 @@ static inline int on_screen(s32 x, s32 y, u32 scroll) {
     return x >= (s32)scroll - 0x40 && x < (s32)scroll + 0x131 && y >= -0x20 && y < 0xC1;
 }
 
-/* sub_30061E8(r0 = position, r5 = object) */
-IWRAM_CODE Next sub_30061E8(void) {
+/* sprite_projectAndCull(r0 = position, r5 = object) */
+IWRAM_CODE Next sprite_projectAndCull(void) {
     u32 obj = R5, pos = R0;
     u32 obj_flags = U8(obj + OBJ_FLAGS);
     u32 mirror = U8(CAMERA_SCROLL);
@@ -206,7 +206,7 @@ static inline int palettes_equal(u32 a, u32 b) {
 COLD_PATH static u32 tinted_palette(u32 pal, u32 effect) {
     copy_palette(PALETTE_SCRATCH, pal);
     R0 = effect; R2 = (effect >> 15) << 2; R6 = 0x20; R7 = PALETTE_SCRATCH;
-    GUEST_CALL(sub_3005EF0);
+    GUEST_CALL(palette_addOrSubtractColor);
     return PALETTE_SCRATCH;
 }
 
@@ -237,8 +237,8 @@ IWRAM_HELPER static u32 palette_slot(u32 spr) {
     return (u32)i;
 }
 
-/* sub_3006028(r0 = tile allocator index, r5 = object) */
-IWRAM_CODE Next sub_3006028(void) {
+/* sprite_ensureGfxResident(r0 = tile allocator index, r5 = object) */
+IWRAM_CODE Next sprite_ensureGfxResident(void) {
     u32 obj = R5, which = R0;
     u32 spr = sprite_of(obj);
     u32 flags = U8(spr + SPR_FLAGS) & ~0x10u;

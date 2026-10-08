@@ -50,7 +50,7 @@ static inline u32 bgr555_darken(u32 c, u32 fr, u32 fg, u32 fb) {
 }
 
 /* Effects 0/1: saturating add / subtract of a constant colour. */
-IWRAM_THUMB Next sub_3005EF0(void) {
+IWRAM_THUMB Next palette_addOrSubtractColor(void) {
     u32 color = R0;
     int subtract = R2 != 0;
     u8 *pal = GUEST_PTR(u8, R7);
@@ -64,7 +64,7 @@ IWRAM_THUMB Next sub_3005EF0(void) {
 
 /* Effects 2/3: fade toward white / black with per-channel factors packed in
  * the effect colour (r0 = factor_r | factor_g << 5 | factor_b << 10). */
-IWRAM_THUMB Next sub_3005F78(void) {
+IWRAM_THUMB Next palette_fadeTowardWhiteOrBlack(void) {
     u32 fr = R0 & 0x1F, fg = (R0 >> 5) & 0x1F, fb = (R0 >> 10) & 0x1F;
     int darken = R2 == 12;
     u8 *pal = GUEST_PTR(u8, R7);

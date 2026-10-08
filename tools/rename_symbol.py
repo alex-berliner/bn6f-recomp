@@ -24,7 +24,7 @@ BN6F = os.path.join(ROOT, "bn6f")
 DB = os.path.join(ROOT, "symbols", "db")
 BN6F_EXT = (".s", ".inc", ".h", ".c", ".ld")
 SKIP_DIRS = {".git", "build", "tools", "temp"}
-RECOMP_FILES = ["cport/host/difftest.cfg", "tools/lifter/iwram.txt"]
+RECOMP_FILES = ["cport/host/difftest.cfg", "cport/host/difftest_gen.c", "tools/lifter/iwram.txt"]
 
 
 def word(name, prefixes=("",)):

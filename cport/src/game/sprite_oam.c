@@ -1,6 +1,6 @@
 /*
  * sprite_oam.c — queue an animated sprite's pieces as OAM entries
- * (sub_3006440, sub_3006594, sub_3006920 and sub_30068E8 in bn6f asm38.s;
+ * (sprite_queueFramePieces, sub_3006594, sprite_queueOamEntries and sprite_queueOamEntry in bn6f asm38.s;
  * IWRAM routines in the original).
  *
  * A sprite's current animation frame is a list of 5-byte pieces (tile,
@@ -8,7 +8,7 @@
  * position relative to the sprite (mirrored for flipped sprites, or rotated
  * and scaled through the sprite's affine parameters), shape/size, palette and
  * tile. The entries are collected in a buffer and then linked into the
- * per-layer sprite lists that copyTo_iObjectAttr3001D70_3006814 (oam_build.c)
+ * per-layer sprite lists that sprite_buildOamShadow (oam_build.c)
  * turns into the OAM shadow at the end of the frame.
  */
 #include "game.h"
@@ -40,9 +40,9 @@ enum { ENT_ATTR01 = 0, ENT_ATTR2 = 4, ENT_LAYER = 6, ENT_DEPTH = 8, ENTRY_SIZE =
 #define AFFINE_PARAMS  0x0200A6F0u   /* word_200A6F0: 12-byte slots; [8] angle, [9] x scale, [10] y scale */
 #define SIN_TABLE      0x080065E0u   /* math_sinTable (s16, 1.12 fixed point) */
 #define COS_TABLE      0x08006660u   /* math_cosTable */
-#define SPRITE_COUNT   0x03001950u   /* byte_3001950: used sprite pool slots */
-#define SPRITE_POOL    0x03001150u   /* iObjectAttr3001150: {attr01, attr2, 0xFF, next} x 128 */
-#define LAYER_HEADS    0x03002590u   /* tupleArr_3002590: {u8 *heads, u32 count}[] */
+#define SPRITE_COUNT   0x03001950u   /* iSpritePoolUsed: used sprite pool slots */
+#define SPRITE_POOL    0x03001150u   /* iSpritePool: {attr01, attr2, 0xFF, next} x 128 */
+#define LAYER_HEADS    0x03002590u   /* iSpriteLayerLists: {u8 *heads, u32 count}[] */
 #define POOL_SLOTS     0x80
 
 #define U8(a)  (*(u8 *)(uintptr_t)(u32)(a))
@@ -130,17 +130,17 @@ IWRAM_HELPER static void queue_entries(u32 buf, s32 count) {
     } while (--count > 0);
 }
 
-/* sub_3006920(r0 = entries, r1 = count). Rarely used: runs from ROM. */
-Next sub_3006920(void) {
+/* sprite_queueOamEntries(r0 = entries, r1 = count). Rarely used: runs from ROM. */
+Next sprite_queueOamEntries(void) {
     queue_entries(R0, (s32)R1);
     RETURN_TO_CALLER();
 }
 
-/* sub_30068E8(r0 = attr01, r1 = attr2, r2 = layer, r3 = list position):
+/* sprite_queueOamEntry(r0 = attr01, r1 = attr2, r2 = layer, r3 = list position):
  * queue a single OAM entry; r0 = 0xFF if it was queued. The flags are the
  * original's too: callers return them up through void functions to
  * dispatchers, which the lifter cannot see past. */
-IWRAM_CODE Next sub_30068E8(void) {
+IWRAM_CODE Next sprite_queueOamEntry(void) {
     s32 n = (s32)U32(SPRITE_COUNT);
     if (n >= POOL_SLOTS) {
         SET_FLAGS_CMP(n, POOL_SLOTS);                  /* cmp r6, #0x80 */
@@ -157,8 +157,8 @@ IWRAM_CODE Next sub_30068E8(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_3006440(r0 = layer, r1 = list position bias, r5 = sprite) */
-IWRAM_CODE Next sub_3006440(void) {
+/* sprite_queueFramePieces(r0 = layer, r1 = list position bias, r5 = sprite) */
+IWRAM_CODE Next sprite_queueFramePieces(void) {
     u32 spr = R5, layer = R0, bias = R1;
     u32 flags = U8(spr + SPR_FLAGS);
     if ((flags & 0x10) || !(flags & 0x02))
