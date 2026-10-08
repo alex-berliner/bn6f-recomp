@@ -26,19 +26,25 @@ static void call_init(GuestFn fn) {
     run(fn);
 }
 
-/* GameEntryPoint sets WAITCNT and the BIOS IRQ vector through constants in
- * its literal pool (start.s: off_8000200 = WAITCNT, dword_8000204 = 0x45B4,
- * off_80001F8 = 0x03007FFC). Flashcart firmware patches those constants in
- * the ROM image (SuperFW redirects the WAITCNT write for its slow SDRAM and
- * the IRQ vector for its in-game menu), so this port writes through them too;
- * unpatched they are the plain registers. */
-#define ORIG_WAITCNT_ADDR   (*(volatile u32 *)0x08000200u)
-#define ORIG_WAITCNT_VALUE  (*(volatile u32 *)0x08000204u)
-#define ORIG_IRQ_VECTOR     (*(volatile u32 *)0x080001F8u)
+/* GameEntryPoint (start.s, ARM) sets the BIOS IRQ vector and WAITCNT with
+ *   080000F4 ldr r0, =0x03007FFC; ldr r1, =sub_3005B00; 080000FC str r1, [r0]
+ *   08000100 ldr r0, =WAITCNT;    ldr r1, =0x45B4;      08000108 str r1, [r0]
+ * Flashcart firmware patches these in the ROM image, and this port must
+ * follow: SuperFW's database replaces the WAITCNT store with a no-op (the
+ * Supercard's SDRAM cannot run at 3/1 waitstates) and points the IRQ vector
+ * constant at its own slot (0x03007FF4, for its in-game menu); its engine for
+ * unknown ROMs patches the constants instead. So each store is done as the
+ * (possibly patched) original would: through its constants, if the store
+ * instruction is still there. Unpatched, these are the plain registers. */
+#define ORIG_STR_R1_R0 0xE5801000u
+static void orig_store(u32 str_insn, u32 addr_literal, u32 value) {
+    if (*(volatile u32 *)str_insn == ORIG_STR_R1_R0)
+        *(volatile u32 *)(uintptr_t)*(volatile u32 *)addr_literal = value;
+}
 
 __attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
     REG_IME = 0;
-    *(volatile u32 *)(uintptr_t)ORIG_WAITCNT_ADDR = ORIG_WAITCNT_VALUE;
+    orig_store(0x08000108u, 0x08000200u, *(volatile u32 *)0x08000204u);    /* WAITCNT = 0x45B4 */
 
     /* Guest-visible RAM, as start_clearMemory does. IWRAM 0x3005700..0x30079D0
      * holds this port's IWRAM code, state and stack and is left alone. */
@@ -70,7 +76,7 @@ __attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
     cpu.bank_sp[BANK_SVC] = 0x03007FE0;
     SP = 0x03007E00;   /* iStack */
 
-    *(volatile u32 *)(uintptr_t)ORIG_IRQ_VECTOR = (u32)irq_entry;
+    orig_store(0x080000FCu, 0x080001F8u, (u32)irq_entry);                  /* BIOS IRQ vector */
 
     call_init(SetPrimaryToolkitPointers);
     call_init(RandomizeExtraToolkitPointers);
