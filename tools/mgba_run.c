@@ -121,6 +121,9 @@ int main(int argc, char **argv) {
     /* --load-state FILE / --save-state FILE: start from / end with an mGBA
      * save state (for building input traces step by step). */
     const char *load_state = NULL, *save_state = NULL;
+    /* --save FILE: start with this save memory (a private copy; the file is
+     * never written). Traces recorded from a save carry it as NAME.sav. */
+    const char *save_file = NULL;
     /* --poke-at PC G "ADDR=VALUE/SIZE,...": write memory once, when the
      * instruction at PC is about to run at game frame >= G (a fixed point in
      * the game's frame loop, e.g. main_awaitFrame's entry, so the original
@@ -182,6 +185,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--step-from")) step_from = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--count-entry")) count_pc = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--load-state")) load_state = argv[++i];
+        else if (!strcmp(argv[i], "--save")) save_file = argv[++i];
         else if (!strcmp(argv[i], "--poke-at")) {
             poke_pc = strtoul(argv[++i], 0, 0); poke_g = strtoul(argv[++i], 0, 0); poke_spec = argv[++i];
         }
@@ -243,6 +247,24 @@ int main(int argc, char **argv) {
     if (!mCoreLoadFile(core, rom)) {
         fprintf(stderr, "cannot load %s\n", rom);
         return 1;
+    }
+    if (save_file) {
+        FILE *f = fopen(save_file, "rb");
+        if (!f) {
+            fprintf(stderr, "cannot read %s\n", save_file);
+            return 1;
+        }
+        fseek(f, 0, SEEK_END);
+        size_t n = (size_t)ftell(f);
+        fseek(f, 0, SEEK_SET);
+        void *buf = malloc(n);
+        if (fread(buf, 1, n, f) != n) {
+            fprintf(stderr, "cannot read %s\n", save_file);
+            return 1;
+        }
+        fclose(f);
+        core->loadSave(core, VFileMemChunk(buf, n));
+        free(buf);
     }
     if (bios) {
         struct VFile *vf = VFileOpen(bios, O_RDONLY);
