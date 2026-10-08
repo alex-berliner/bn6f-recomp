@@ -1,7 +1,5 @@
 """Pause points: a run stops before a step that needs an answer, and a later
 `resume` (from the tracking log, as a new process would) carries on."""
-from pathlib import Path
-
 import pytest
 from pydantic import BaseModel
 
@@ -50,15 +48,10 @@ def shout(given: Reply) -> Shouted:
 
 
 def ask_graph() -> Graph[AskState]:
-    return ask.graph(first=pose, last=shout, transitions=[
+    return ask.graph(first=pose, ends=[shout], transitions=[
         Transition(after=pose, go_to=wait_for_reply),
         Transition(after=wait_for_reply, go_to=shout),
     ])
-
-
-@pytest.fixture(autouse=True)
-def private_tracking_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("WF_BURR_DIR", str(tmp_path))
 
 
 def test_a_run_stops_before_a_pause_point_and_says_what_it_needs() -> None:

@@ -43,6 +43,7 @@ class SourceVersion(Result):
 
 class BuiltRom(Result):
     rom: RomPath
+    difftest: Path  # the host difftest built from the same sources
     seconds: float
     log: LogPath
 
@@ -96,3 +97,92 @@ class LockstepResult(Result):
     @property
     def passed(self) -> bool:
         return self.outcome is Outcome.PASSED
+
+
+# ── more vocabulary ────────────────────────────────────────────────────
+
+SnapshotDir = NewType("SnapshotDir", Path)   # capture.sh output: one sub-directory of calls per function
+ModelSpec = NewType("ModelSpec", str)        # an outside model as "provider/model", e.g. "hyper/glm-5.3-flash"
+SymbolName = NewType("SymbolName", str)      # any bn6f symbol (function, data, RAM, ...)
+GuestAddress = NewType("GuestAddress", int)  # an address on the GBA bus
+
+
+class NotRun(Result):
+    """A check that did not apply to this run, and why."""
+    reason: ToolMessage
+
+
+# ── capture ────────────────────────────────────────────────────────────
+
+class CapturedCalls(Result):
+    """The original game's own calls of a function, saved for difftest and the oracle."""
+    function: FunctionName
+    calls: int
+    directory: Path | None  # None when the function was never called in the window
+
+
+# ── checks of readable functions ───────────────────────────────────────
+
+class CapturedDifftestResult(Result):
+    """A readable function compared with its lifted original on the original's own calls."""
+    function: FunctionName
+    outcome: Outcome
+    snapshots: int
+    runs: int
+    failures: int
+    out_of_domain: int
+
+    @property
+    def passed(self) -> bool:
+        return self.outcome is Outcome.PASSED
+
+
+class OracleResult(Result):
+    """A function run on the original game (mGBA) and on the port from the same real states."""
+    function: FunctionName
+    address: GuestAddress
+    compared: int
+    differed: int
+    out_of_domain: int
+    differences: tuple[ToolMessage, ...]
+
+    @property
+    def outcome(self) -> Outcome:
+        if self.differed > 0:
+            return Outcome.FAILED
+        if self.compared == 0:
+            return Outcome.COMPARED_NOTHING
+        return Outcome.PASSED
+
+
+class BattleSweepResult(Result):
+    """The recorded battles (pokes into the battle settings) replayed in lockstep."""
+    battles: int
+    identical: int
+    failures: tuple[ToolMessage, ...]
+    log: LogPath
+    seconds: float
+
+    @property
+    def passed(self) -> bool:
+        return self.identical == self.battles and self.battles > 0
+
+
+# ── symbol database ────────────────────────────────────────────────────
+
+class SymbolStatus(Enum):
+    CONFIRMED = "confirmed"
+    PROBABLE = "probable"
+    HYPOTHESIS = "hypothesis"
+
+
+class SymbolEntry(Result):
+    """The parts of a symbols/db entry the workflows decide on."""
+    name: SymbolName
+    status: SymbolStatus
+    file: Path
+
+
+class Rename(Result):
+    old: SymbolName
+    new: SymbolName

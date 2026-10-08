@@ -51,7 +51,7 @@ def is_even(state: ToyState) -> bool:
 
 def run(number: int, transitions: list[Transition]) -> ToyState:
     last = left if number < 10 else right
-    outcome = toy.graph(first=start, last=last, transitions=transitions).start(
+    outcome = toy.graph(first=start, ends=[last], transitions=transitions).start(
         ToyState(number=number), run_id="test", tracked=False)
     assert isinstance(outcome, Finished)
     return outcome.state

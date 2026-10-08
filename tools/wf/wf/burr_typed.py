@@ -33,15 +33,17 @@ import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, Never, TypeVar, cast, get_type_hints
+from typing import Generic, Never, Protocol, TypeVar, cast, get_type_hints
 
 from burr.core import Application, ApplicationBuilder, ApplicationContext, Condition, State, default, serde
 from burr.core.action import FunctionBasedAction
 from burr.integrations.pydantic import PydanticTypingSystem, model_from_state  # pyright: ignore[reportUnknownVariableType]
+from burr.integrations.serde.pydantic import set_allowlist
 from burr.tracking.client import LocalTrackingClient
 from pydantic import BaseModel
 
 StateT = TypeVar("StateT", bound=BaseModel)
+StateT_co = TypeVar("StateT_co", bound=BaseModel, covariant=True)
 InputT = TypeVar("InputT", bound=BaseModel)
 AnswerT = TypeVar("AnswerT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -49,6 +51,10 @@ OutputT = TypeVar("OutputT", bound=BaseModel)
 AnyStep = Callable[[Never], BaseModel]                       # a step with any input and output model
 AnyPausePoint = Callable[[Never, Never], BaseModel]          # a pause point with any input, answer and output
 AnyStepOrPause = AnyStep | AnyPausePoint
+
+
+# Saved runs are read back by rebuilding pydantic classes named in the log; only ours may be built.
+set_allowlist(["wf"])
 
 
 @serde.serialize.register(tuple)
@@ -60,6 +66,14 @@ def _serialize_tuple(value: tuple[object, ...], **options: object) -> list[objec
 
 def burr_dir() -> Path:
     return Path(os.environ.get("WF_BURR_DIR", Path.home() / ".burr"))
+
+
+def current_run_id() -> str:
+    """The id of the run whose step is running now (for naming the runs it starts)."""
+    context = ApplicationContext.get()
+    if context is None:
+        raise RuntimeError("current_run_id() called outside a running step")
+    return context.app_id
 
 
 # ── wiring ─────────────────────────────────────────────────────────────
@@ -79,9 +93,9 @@ class TransitionError(Exception):
 # ── what a run comes back with ─────────────────────────────────────────
 
 @dataclass(frozen=True)
-class Finished(Generic[StateT]):
+class Finished(Generic[StateT_co]):
     run_id: str
-    state: StateT
+    state: StateT_co
 
 
 @dataclass(frozen=True)
@@ -130,10 +144,11 @@ class Workflow(Generic[StateT]):
         self.pause_points[_name(function)] = (input_type, answer_type)
         return function
 
-    def graph(self, first: AnyStepOrPause, last: AnyStepOrPause,
+    def graph(self, first: AnyStepOrPause, ends: Sequence[AnyStepOrPause],
               transitions: Sequence[Transition]) -> "Graph[StateT]":
+        """A run starts at `first` and finishes after any of `ends`."""
         _check_decisions(transitions)
-        return Graph(self, first, last, transitions)
+        return Graph(self, first, ends, transitions)
 
     def _state_fields(self, function: Callable[..., BaseModel], model: type[BaseModel]) -> list[str]:  # pyright: ignore[reportExplicitAny]
         fields = list(model.model_fields)
@@ -145,24 +160,32 @@ class Workflow(Generic[StateT]):
 
 
 class Graph(Generic[StateT]):
-    def __init__(self, workflow: Workflow[StateT], first: AnyStepOrPause, last: AnyStepOrPause,
+    def __init__(self, workflow: Workflow[StateT], first: AnyStepOrPause, ends: Sequence[AnyStepOrPause],
                  transitions: Sequence[Transition]) -> None:
         self.workflow = workflow
         self.first = first
-        self.last = last
+        self.ends = ends
         self.transitions = transitions
 
     def start(self, start: StateT, run_id: str, tracked: bool = True) -> Finished[StateT] | Paused:
-        """Run from the first step until the last one finishes or a pause point is reached."""
+        """Run from the first step until an end step finishes or a pause point is reached."""
         builder = self._builder(run_id, tracked).with_state(start)  # pyright: ignore[reportUnknownMemberType]
         return self._run(builder.build())
 
+    def waiting(self, run_id: str) -> Paused | None:
+        """What a saved run is waiting for, if it stopped at a pause point."""
+        application = self._load(run_id)
+        next_step = application.get_next_action()
+        if next_step is None or next_step.name not in self.workflow.pause_points:
+            return None
+        input_type, answer_type = self.workflow.pause_points[next_step.name]
+        state = application.state
+        request = input_type.model_validate({field: state[field] for field in input_type.model_fields})  # pyright: ignore[reportAny]
+        return Paused(run_id=run_id, step=next_step.name, request=request, answer_type=answer_type)
+
     def resume(self, run_id: str, answer: BaseModel) -> Finished[StateT] | Paused:
         """Give a paused run its answer and carry on."""
-        saved_runs = LocalTrackingClient(self.workflow.project, storage_dir=str(burr_dir()))
-        builder = self._builder(run_id, tracked=True, resuming=True).initialize_from(  # pyright: ignore[reportUnknownMemberType]
-            saved_runs, resume_at_next_action=True, default_state={}, default_entrypoint=_name(self.first))
-        application = builder.build()
+        application = self._load(run_id)
         waiting = application.get_next_action()
         if waiting is None or waiting.name not in self.workflow.pause_points:
             raise ValueError(f"run {run_id} is not waiting at a pause point")
@@ -171,6 +194,13 @@ class Graph(Generic[StateT]):
             raise TypeError(f"{waiting.name} needs a {answer_type.__name__}, not a {type(answer).__name__}")
         application.step(inputs={"answer": answer})  # pyright: ignore[reportUnknownMemberType]
         return self._run(application)
+
+    def _load(self, run_id: str) -> Application[StateT]:
+        """A saved run, rebuilt from its tracking log, ready to carry on where it stopped."""
+        saved_runs = LocalTrackingClient(self.workflow.project, storage_dir=str(burr_dir()))
+        builder = self._builder(run_id, tracked=True, resuming=True).initialize_from(  # pyright: ignore[reportUnknownMemberType]
+            saved_runs, resume_at_next_action=True, default_state={}, default_entrypoint=_name(self.first))
+        return builder.build()
 
     def final_state(self, run_id: str) -> StateT:
         """The state a finished run ended with, read back from its tracking log."""
@@ -181,8 +211,8 @@ class Graph(Generic[StateT]):
         return model_from_state(model=self.workflow.state_type, state=loaded["state"])
 
     def draw(self, path_without_extension: Path) -> None:
-        application = self._builder("diagram", tracked=False).with_state(  # pyright: ignore[reportUnknownMemberType]
-            {}).build()
+        empty: State[BaseModel] = State({})
+        application = self._builder("diagram", tracked=False).with_state(empty).build()  # pyright: ignore[reportUnknownMemberType]
         application.visualize(output_file_path=str(path_without_extension), format="png",  # pyright: ignore[reportUnknownMemberType]
                               include_conditions=True, include_state=True)
 
@@ -208,7 +238,7 @@ class Graph(Generic[StateT]):
 
     def _run(self, application: Application[StateT]) -> Finished[StateT] | Paused:
         pauses = list(self.workflow.pause_points)
-        _, _, state = application.run(halt_after=[_name(self.last)], halt_before=pauses)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        _, _, state = application.run(halt_after=[_name(end) for end in self.ends], halt_before=pauses)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         run_id = application.uid
         waiting = application.get_next_action()
         if waiting is not None and waiting.name in self.workflow.pause_points:
@@ -242,6 +272,32 @@ class Graph(Generic[StateT]):
             return holding[0] is own_test
 
         return Condition(keys=list(state_type.model_fields), resolver=resolve, name=_name(own_test))
+
+
+class GraphView(Protocol):
+    """What tools that list, resume or draw any workflow need of a Graph, whatever its state type."""
+    @property
+    def first(self) -> AnyStepOrPause: ...
+    @property
+    def ends(self) -> Sequence[AnyStepOrPause]: ...
+    @property
+    def transitions(self) -> Sequence[Transition]: ...
+    def waiting(self, run_id: str) -> Paused | None: ...
+    def resume(self, run_id: str, answer: BaseModel) -> Finished[BaseModel] | Paused: ...
+    def draw(self, path_without_extension: Path) -> None: ...
+
+
+@dataclass(frozen=True)
+class StepModels:
+    """The models a step or pause point's signature names."""
+    input: type[BaseModel]
+    answer: type[BaseModel] | None
+    output: type[BaseModel]
+
+
+def step_models(function: AnyStepOrPause) -> StepModels:
+    parameters, output_type = _signature_models(function)
+    return StepModels(input=parameters[0], answer=parameters[1] if len(parameters) > 1 else None, output=output_type)
 
 
 # ── helpers ────────────────────────────────────────────────────────────
