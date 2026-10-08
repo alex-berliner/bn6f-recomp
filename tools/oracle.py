@@ -144,8 +144,19 @@ def main():
     if args.funcs:
         us = [u for u in us if u[0] in set(args.funcs)]
     CONTRACT = os.path.join(args.out, "contract.txt")
+    # hand-written functions promise what cport/host/difftest.cfg compares
+    # (compare=rA,...,nz,c,v), not everything the lifted contract lists
+    promised = {}
+    for line in open(os.path.join(HOST, "host", "difftest.cfg")):
+        f = line.split()
+        if f and not line.startswith("#") and f[-1].startswith("compare="):
+            items = f[-1][len("compare="):].split(",")
+            promised[f[0]] = (sum(1 << int(r[1:]) for r in items if r[0] == "r"),
+                              (1 if "nz" in items else 0) | (2 if "c" in items else 0) | (4 if "v" in items else 0))
     with open(CONTRACT, "w") as f:
         for name, addr, thumb, mask, flags in us:
+            if name in promised:
+                mask, flags = promised[name]
             f.write(f"{addr:08x} {mask:x} {flags:x}\n")
     snaps = sorted(p for p in glob.glob(os.path.join(args.base, "*", "snap_*.bin")) if not p.endswith(".exit.bin"))
     rng = random.Random(1)
