@@ -26,7 +26,7 @@ static void call_init(GuestFn fn) {
     run(fn);
 }
 
-void gba_boot(void) {
+__attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
     REG_IME = 0;
     REG_WAITCNT = 0x45B4;
 

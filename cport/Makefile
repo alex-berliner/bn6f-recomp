@@ -16,6 +16,15 @@ LIFTED_OPT ?= -O2
 CFLAGS  := $(ARCH) -ffreestanding -fno-strict-aliasing -fomit-frame-pointer \
            -DTARGET_GBA -Iinclude -Wall -Wno-unused-label -Wno-unused-variable -Wno-array-bounds -Wno-comment -Werror=return-type -Wno-unused-but-set-variable
 LDFLAGS := $(ARCH) -nostartfiles -T gba.ld -Wl,--gc-sections -Wl,-Map,$(BUILD)/bn6f_lifted.map
+# Link-time optimisation lets GCC inline small lifted functions into their
+# callers across files, where the call protocol (register sync through
+# `cpu`) then folds away, as it already does within a file. LTO=0 links
+# faster.
+LTO     ?= 1
+ifeq ($(LTO),1)
+LTOFLAGS := -flto
+LDFLAGS += -flto=$(shell nproc) $(LIFTED_OPT)
+endif
 
 LIFTED  := $(wildcard src/lifted/*.c)
 GAME    := $(wildcard src/game/*.c)
@@ -26,11 +35,11 @@ all: $(BUILD)/bn6f_lifted.gba
 
 $(BUILD)/lifted/%.o: src/lifted/%.c $(wildcard include/*.h) Makefile
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(LIFTED_OPT) -c $< -o $@
+	$(CC) $(CFLAGS) $(LIFTED_OPT) $(LTOFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: src/%.c $(wildcard include/*.h) Makefile
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(OPT) -c $< -o $@
+	$(CC) $(CFLAGS) $(OPT) $(LTOFLAGS) -c $< -o $@
 
 # The ARM IRQ entry must be ARM code.
 $(BUILD)/gba/irq.o: CFLAGS += -marm

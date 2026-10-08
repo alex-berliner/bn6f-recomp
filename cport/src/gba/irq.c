@@ -40,7 +40,7 @@ static inline __attribute__((always_inline)) void check_stack_guard(void) {
 }
 
 /* In IWRAM like the game's own handler: it runs a few times per frame. */
-__attribute__((section(IWRAM_SECTION), target("arm"), noinline)) void irq_body(void) {
+__attribute__((section(IWRAM_SECTION), target("arm"), noinline, used)) void irq_body(void) {
     trace_event(4, REG32(0x04000200));
     check_stack_guard();
     Cpu saved;
