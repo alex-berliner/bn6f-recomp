@@ -26,7 +26,7 @@ def syms(elf):
         if len(p) >= 8 and p[3] == "FUNC":
             out.append((int(p[1], 16) & ~1, p[7]))
     return sorted(set(out))
-def load(prof, elf):
+def load(prof, elf, original):
     s = syms(elf); addrs = [a for a, _ in s]
     c = collections.Counter(); hdr = None
     for l in open(prof):
@@ -35,7 +35,7 @@ def load(prof, elf):
         pc, cyc = l.split(); pc, cyc = int(pc, 16), int(cyc)
         if pc < 0x4000:
             c["<bios>"] += cyc; continue
-        if 0x03005700 <= pc < 0x03005B00:
+        if original and 0x03005700 <= pc < 0x03005B00:
             c["SoundMainRAM (mixer)"] += cyc     # the original's IWRAM copy; the port's pieces
             continue
         i = bisect.bisect_right(addrs, pc) - 1
@@ -44,8 +44,8 @@ def load(prof, elf):
             name = "SoundMainRAM (mixer)"
         c[name] += cyc
     return c, int(hdr[hdr.index("cycles") + 1])
-o, ot = load(sys.argv[1], sys.argv[2])
-t, tt = load(sys.argv[3], sys.argv[4])
+o, ot = load(sys.argv[1], sys.argv[2], True)
+t, tt = load(sys.argv[3], sys.argv[4], False)
 top = int(sys.argv[5])
 idle = {"main_awaitFrame", "main_pollGeneralLCDStatus_STAT_LYC_"}
 def busy(c): return sum(v for k, v in c.items() if k not in idle)

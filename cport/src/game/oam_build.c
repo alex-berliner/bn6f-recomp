@@ -29,11 +29,14 @@ IWRAM_CODE Next copyTo_iObjectAttr3001D70_3006814(void) {
     u32 ret = LR, saved_r12 = R12;
     u32 oam = OAM_SHADOW;
 
-    for (u32 layer = LAYER_HEADS; layer < LAYER_HEADS_END && oam < OAM_SHADOW_END; layer += 8) {
-        u32 heads = LD32(layer);
-        for (u32 head = heads + LD32(layer + 4); head-- > heads && oam < OAM_SHADOW_END;) {
-            u32 idx = LD8(head);
-            while (idx != NO_SPRITE && oam < OAM_SHADOW_END) {
+    /* Most heads are empty, so the scan stays tight: the OAM-full check is
+     * only made when a sprite is copied (as in the original). */
+    for (u32 layer = LAYER_HEADS; layer < LAYER_HEADS_END; layer += 8) {
+        s32 first = (s32)LD32(layer);
+        for (s32 head = first + (s32)LD32(layer + 4) - 1; head >= first; head--) {
+            for (u32 idx = LD8(head); idx != NO_SPRITE;) {
+                if (oam >= OAM_SHADOW_END)
+                    goto full;
                 u32 sprite = SPRITE_POOL + idx * 8;
                 ST32(oam, LD32(sprite));             /* attr0, attr1 */
                 ST16(oam + 4, LD16(sprite + 4));      /* attr2 */
@@ -42,6 +45,7 @@ IWRAM_CODE Next copyTo_iObjectAttr3001D70_3006814(void) {
             }
         }
     }
+full:
     ST32(FREE_OAM_COUNT, (OAM_SHADOW_END - oam) >> 3);
     for (; oam < OAM_SHADOW_END; oam += 8) {
         ST32(oam, OAM_HIDDEN_ATTR01);

@@ -230,4 +230,12 @@ void trace_sync_violation(u32 ra, int which);
 
 /* Data that lives inside the IWRAM routine block is read from its ROM copy
  * (bn6f IWRAMRoutinesROMLocation). */
+/* Lifted functions listed in tools/lifter/iwram.txt: Thumb code run from
+ * IWRAM (no ROM wait states), as the game ran its own hot routines. */
+#if defined(TARGET_GBA)
+#define IWRAM_LIFTED __attribute__((section(".iwram.lifted"), noinline))
+#else
+#define IWRAM_LIFTED
+#endif
+
 #define IWRAM_ROM(a) ((u32)(a) - 0x03005B00u + 0x081D6000u)

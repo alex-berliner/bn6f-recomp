@@ -645,6 +645,13 @@ def main():
               (inputs[t] | (may_write[unit_of(t).start] & ~pres(t)),
                may_write[unit_of(t).start] & ~pres(t),
                may_write[unit_of(t).start]))
+    iwram_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "iwram.txt")
+    iwram_names = set()
+    if os.path.exists(iwram_path):
+        for line in open(iwram_path):
+            line = line.split("#")[0].strip()
+            if line:
+                iwram_names.add(line)
     overridden = set()
     if args.overrides and os.path.isdir(args.overrides):
         for f in sorted(os.listdir(args.overrides)):
@@ -693,13 +700,17 @@ def main():
         out.append(load_def)
         ents = sorted(u.entries)
         pfx = "L_" if is_over else ""
+        # hot units listed in iwram.txt run from IWRAM (Thumb), like the
+        # game's own IWRAM routines
+        attr = "IWRAM_LIFTED " if not is_over and any(names[e] in iwram_names for e in ents) else ""
+        stats["iwram_units"] += bool(attr)
         if len(ents) == 1:
-            out.append(f"Next {pfx}{names[u.start]}(void) {{")
+            out.append(f"{attr}Next {pfx}{names[u.start]}(void) {{")
             out.extend(decls)
             out.extend(body)
             out.append("}")
         else:
-            out.append(f"static Next {pfx}U_{u.start:08X}(u32 entry) {{")
+            out.append(f"static {attr}Next {pfx}U_{u.start:08X}(u32 entry) {{")
             out.extend(decls)
             out.append("    switch (entry) {")
             for e in ents:
@@ -782,7 +793,7 @@ def main():
         raise SystemExit(f"entries outside dispatch regions: {[hex(a) for a in other]}")
     write_if_changed(os.path.join(args.out, "dispatch_table.c"), "".join(_buf))
     print(f"[lift] wrote {len(files)} files, {len(names)} entry points, "
-          f"{stats['multi_entry_units']} multi-entry units, {n_over} hand-written "
+          f"{stats['multi_entry_units']} multi-entry units, {stats['iwram_units']} in IWRAM, {n_over} hand-written "
           f"({time.time() - t1:.1f}s)")
 
 

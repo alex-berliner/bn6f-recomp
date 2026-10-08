@@ -47,11 +47,12 @@ SECTIONS {
         __bss_end = .;
     } > iwram
 
-    /* Host stacks: main (system mode) below the IRQ stack. The IRQ stack
-     * must hold m4a's MPlayMain chain (one level per music player). */
+    /* Host stacks: main (system mode) below the IRQ stack; measured peaks
+     * with tools/stackuse.sh (wander trace): main 456, IRQ 828 bytes. */
     __irq_stack_top = 0x03007900;
-    __sys_stack_top = 0x03006A00;
-    ASSERT(__bss_end <= 0x03006600, "IWRAM code + runtime .bss too large for the IWRAM block")
+    __sys_stack_top = 0x03007300;          /* IRQ stack: 0x600 bytes */
+    __sys_stack_limit = 0x03006E00;        /* main stack: 0x500 bytes */
+    ASSERT(__bss_end <= __sys_stack_limit, "IWRAM code + runtime .bss too large for the IWRAM block")
     ASSERT(SIZEOF(.data) == 0, "initialized .data is not supported; use const or .bss")
 
     /DISCARD/ : { *(.comment) *(.note*) }

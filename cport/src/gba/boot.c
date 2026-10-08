@@ -13,6 +13,7 @@
 
 extern char __bss_start[], __bss_end[];
 extern char __iwram_start[], __iwram_end[], __iwram_lma[];
+extern char __sys_stack_top[], __irq_stack_top[];
 
 static void clear32(u32 addr, u32 size) {
     for (u32 i = 0; i < size; i += 4)
@@ -48,7 +49,7 @@ void gba_boot(void) {
         u32 here = (u32)__builtin_frame_address(0);
         for (u32 a = ((u32)__bss_end + 3) & ~3u; a < here - 64; a += 4)
             *(volatile u32 *)a = 0xA5A5A5A5u;
-        for (u32 a = 0x03006A00; a < 0x03007900; a += 4)
+        for (u32 a = (u32)__sys_stack_top; a < (u32)__irq_stack_top; a += 4)
             *(volatile u32 *)a = 0x5A5A5A5Au;
     }
 
