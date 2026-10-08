@@ -67,7 +67,7 @@ Next TryUpdateEachOverworldNPCObject_800461E(void) {
  * its frame's pieces queued on sprite layer 2; an invisible one has no
  * pieces on screen, but an active one is still projected. Then the NPC tile
  * allocator's slot is recorded (sub_80028C0). */
-Next npc_init_800467C(void) {
+Next npc_drawSprites_800467C(void) {
     u32 in4 = R4, in5 = R5, in6 = R6, in7 = R7, in8 = R8, in9 = R9, in12 = R12;
     R4 = in8; R6 = in12;                                  /* as the original */
     R0 = NPC_COUNT;

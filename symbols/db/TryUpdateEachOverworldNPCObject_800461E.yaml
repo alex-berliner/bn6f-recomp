@@ -1,0 +1,103 @@
+name: TryUpdateEachOverworldNPCObject_800461E
+address: '0x0800461E'
+kind: function
+previous_names: []
+status: confirmed
+summary: Run every active overworld NPC's update handler, once per frame.
+interface: '() -> unless event flag EVENT_NPC_OBJECTS_DISABLED (0x1701) is set: for each NPC in eOverworldNPCObjects
+  (16 x 0xD8 bytes) with OBJECT_FLAG_ACTIVE, and not (GameState.BattlePaused and no OBJECT_FLAG_PAUSE_UPDATE): call
+  off_80045BC[ObjectHeader.Index] with r5 = NPC, r0 = handler, r1 = Index*4, flags N=0 Z=(Index==0) C=0; r4-r9,
+  r12 preserved; r2 = whatever the last handler left'
+details: The handler table has one entry (npc_dispatch_809E570), so Index is always 0 for NPCs. The loop re-reads
+  r5 after each handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine, its callees and the structures it uses (bn6f include/structs/ObjectHeader.inc, OverworldNPCObject.inc).
+  refs:
+  - bn6f/asm/asm00_1.s:2718
+  - bn6f/include/structs/ObjectHeader.inc
+- method: readable-c
+  date: '2026-10-08'
+  detail: Hand-written readable replacement; it hands the guest callees the registers and flags the original does,
+    because their lifted contracts list (conservatively) almost every register as input.
+  refs:
+  - cport/src/game/npc_update.c
+- method: difftest
+  date: '2026-10-08'
+  detail: 'Host difftest: readable vs lifted on random inputs.'
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 TryUpdateEachOverworldNPCObject_800461E)'
+  result: 'ok: 2000 trials, 0 failures, 2000 out of domain (2026-10-08) - no trial was in domain, so this compared
+    nothing; the CPU oracle and lockstep are its checks'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: Original (mGBA) vs readable version from real game states.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 24 --out /tmp/oracle TryUpdateEachOverworldNPCObject_800461E
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=23 fail=0 ood=1 (24 states, 2026-10-08)
+- method: lockstep
+  date: '2026-10-08'
+  detail: 'Port ROM with the readable version: identical to the original at every checkpoint on all 8 recorded routes.'
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000'
+  result: 8/8 routes OK at recomp 2ee08fa (2026-10-08)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander;
+    lockstep checks it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/npc_update.c
+  where: recomp 2ee08fa
+  tool: hand-written; verified as in evidence
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f1239ad6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/npc_update.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- eOverworldNPCObjects
+- off_80045BC
+- npc_dispatch_809E570
+- sprite_projectAndCull
+- sub_80028C0
+open_questions: []
+sources:
+- Claude Code session 2026-10-08
