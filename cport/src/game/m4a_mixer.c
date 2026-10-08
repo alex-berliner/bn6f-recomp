@@ -176,37 +176,47 @@ static inline u32 rot8_add(u32 w, s32 sample, u32 vol16) {
     return rot8(w) + (((u32)sample * vol16) & 0xFF000000u);
 }
 
+/* The output pointer advances a byte per sample; when it reaches a word
+ * boundary the finished word is stored and the next one loaded. A channel
+ * that stops mid-word leaves the rest of that word unmixed (rotated back into
+ * place). */
+#define STORE_WORD(o, r, l) (U32((o) - 4) = (r), U32((o) - 4 + PCM_DMA_BUF_SIZE) = (l))
+#define LOAD_WORD(o, r, l)  ((r) = U32(o), (l) = U32((o) + PCM_DMA_BUF_SIZE))
+
 /* Fixed-frequency channel: one sample per output byte. Returns 0 when the
  * sample ran out without a loop (channel stopped). */
-IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static int mix_fixed(u32 ch, u32 o, u32 samples, u32 volr, u32 voll,
+IWRAM_HELPER __attribute__((noinline, optimize("O2")))
+static int mix_fixed(u32 ch, u32 o, u32 samples, u32 volr, u32 voll,
                      u32 loop_start, u32 loop_len, u32 *count_io, u32 *src_io) {
     /* Counters wrap like the original's 32-bit registers: unsigned
      * arithmetic, signed only where the original compares signed. */
     u32 count = *count_io;
-    u32 src = *src_io, vr = volr << 16, vl = voll << 16;
-    for (u32 n = 0; n < samples; n += 4, o += 4) {
-        u32 r = U32(o), l = U32(o + PCM_DMA_BUF_SIZE);
-        for (int k = 0; k < 4; k++) {
-            s32 s = S8(src++);
-            r = rot8_add(r, s, vr);
-            l = rot8_add(l, s, vl);
-            if (--count == 0) {
-                if (!loop_len) {
-                    U8(ch + CH_STATUS) = 0;
-                    while (++k < 4) {               /* rest of the word unmixed */
-                        r = rot8(r);
-                        l = rot8(l);
-                    }
-                    U32(o) = r;
-                    U32(o + PCM_DMA_BUF_SIZE) = l;
-                    return 0;
+    u32 src = *src_io, vr = volr << 16, vl = voll << 16, end = o + samples;
+    u32 r, l;
+    LOAD_WORD(o, r, l);
+    for (;;) {
+        s32 s = S8(src++);
+        r = rot8_add(r, s, vr);
+        l = rot8_add(l, s, vl);
+        if (--count == 0) {
+            if (!loop_len) {
+                U8(ch + CH_STATUS) = 0;
+                while (++o & 3) {
+                    r = rot8(r);
+                    l = rot8(l);
                 }
-                src = loop_start;
-                count = loop_len;
+                STORE_WORD(o, r, l);
+                return 0;
             }
+            src = loop_start;
+            count = loop_len;
         }
-        U32(o) = r;
-        U32(o + PCM_DMA_BUF_SIZE) = l;
+        if ((++o & 3) == 0) {
+            STORE_WORD(o, r, l);
+            if (o == end)
+                break;
+            LOAD_WORD(o, r, l);
+        }
     }
     *count_io = count;
     *src_io = src;
@@ -215,24 +225,24 @@ IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static int mix_fixed(u32 
 
 /* Resampled channel: linear interpolation between neighbouring samples with
  * a 23-bit fractional position `fw` advancing by divFreq * frequency. */
-IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static int mix_resampled(u32 ch, u32 info, u32 o, u32 samples, u32 volr, u32 voll,
+IWRAM_HELPER __attribute__((noinline, optimize("O2")))
+static int mix_resampled(u32 ch, u32 info, u32 o, u32 samples, u32 volr, u32 voll,
                          u32 loop_start, u32 loop_len, u32 *count_io, u32 *src_io) {
     u32 count = *count_io;            /* wraps like a 32-bit register (see mix_fixed) */
-    u32 src = *src_io, vr = volr << 16, vl = voll << 16;
+    u32 src = *src_io, vr = volr << 16, vl = voll << 16, end = o + samples;
     u32 fw = U32(ch + CH_FW);
     u32 step = U32(info + SI_DIV_FREQ) * U32(ch + CH_FREQ);
     s32 s0 = S8(src);
     s32 delta = S8(++src) - s0;
-    for (u32 n = 0; n < samples; n += 4, o += 4) {
-        u32 r = U32(o), l = U32(o + PCM_DMA_BUF_SIZE);
-        for (int k = 0; k < 4; k++) {
-            s32 s = s0 + ((s32)(fw * (u32)delta) >> 23);
-            r = rot8_add(r, s, vr);
-            l = rot8_add(l, s, vl);
-            fw += step;
-            u32 advance = fw >> 23;
-            if (!advance)
-                continue;
+    u32 r, l;
+    LOAD_WORD(o, r, l);
+    for (;;) {
+        s32 s = s0 + ((s32)(fw * (u32)delta) >> 23);
+        r = rot8_add(r, s, vr);
+        l = rot8_add(l, s, vl);
+        fw += step;
+        u32 advance = fw >> 23;
+        if (advance) {
             fw &= ~0x3F800000u;
             /* the original's subs/ble: signed compare of the exact result */
             int ran_out = (s32)count <= (s32)advance;
@@ -240,12 +250,11 @@ IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static int mix_resampled(
             if (ran_out) {
                 if (!loop_len) {
                     U8(ch + CH_STATUS) = 0;
-                    while (++k < 4) {               /* rest of the word unmixed */
+                    while (++o & 3) {
                         r = rot8(r);
                         l = rot8(l);
                     }
-                    U32(o) = r;
-                    U32(o + PCM_DMA_BUF_SIZE) = l;
+                    STORE_WORD(o, r, l);
                     return 0;
                 }
                 /* Wrap into the loop, possibly several times. */
@@ -266,8 +275,12 @@ IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static int mix_resampled(
             }
             delta = S8(++src) - s0;
         }
-        U32(o) = r;
-        U32(o + PCM_DMA_BUF_SIZE) = l;
+        if ((++o & 3) == 0) {
+            STORE_WORD(o, r, l);
+            if (o == end)
+                break;
+            LOAD_WORD(o, r, l);
+        }
     }
     *count_io = count;
     *src_io = src - 1;

@@ -178,7 +178,11 @@ def reg_locals(body: list[str]):
     return save_def, load_def, decls
 
 
+GENERATED: set[str] = set()
+
+
 def write_if_changed(path: str, text: str):
+    GENERATED.add(os.path.abspath(path))
     try:
         with open(path) as fh:
             if fh.read() == text:
@@ -297,7 +301,7 @@ def main():
     for a in names:
         if a >= 0x08000000:
             want[(a | 1) if p.entries.get(a, True) else a] = a
-    rom = p.info.rom
+    rom = p.info.rom if os.environ.get("LIFT_NO_BYTESCAN") != "1" else b""
     found = 0
     for off in range(0, len(rom) - 3):
         v = rom[off] | rom[off + 1] << 8 | rom[off + 2] << 16 | rom[off + 3] << 24 if rom[off + 3] == 0x08 else 0
@@ -455,6 +459,18 @@ def main():
         if not changed:
             break
     print(f"[lift] liveness converged after {it} iterations")
+    why = os.environ.get("LIFT_WHY")
+    if why:
+        tgt_addr = next((a for a, n in names.items() if n == why), None)
+        for u in p.units:
+            live_in, live_out = unit_liveness(u, flags_in, callers_live[u.start])
+            for a, eff in effects[u.start].items():
+                for x in eff:
+                    if x[0] == "call" and x[1] == tgt_addr:
+                        print(f"  call from {names.get(u.start, hex(u.start))} at {a:#x}: live after = {mask_names(live_out[a])}")
+                    if x[0] == "tail" and x[1] == tgt_addr:
+                        print(f"  tail from {names.get(u.start, hex(u.start))} at {a:#x}: callers need {mask_names(callers_live[u.start])}")
+        print(f"  indirect target: {tgt_addr in indirect_targets}; indirect_ret = {mask_names(indirect_ret)}")
 
     # (2) Signatures. Inputs: what a function (or its callees) reads before
     #     writing, ignoring values merely passed through to its callers.
@@ -742,7 +758,7 @@ def main():
         for f in sorted(os.listdir(args.overrides)):
             if f.endswith(".c"):
                 txt = open(os.path.join(args.overrides, f)).read()
-                overridden |= set(re.findall(r"^(?:IWRAM_CODE\s+|ARM_CODE\s+)*Next\s+(\w+)\s*\(\s*void\s*\)\s*\{",
+                overridden |= set(re.findall(r"^(?:IWRAM_\w+\s+|ARM_CODE\s+)*Next\s+(\w+)\s*\(\s*void\s*\)\s*\{",
                                              txt, re.M))
     files: dict[str, list[str]] = defaultdict(list)
     protos: list[str] = []
@@ -882,6 +898,13 @@ def main():
     if other:
         raise SystemExit(f"entries outside dispatch regions: {[hex(a) for a in other]}")
     write_if_changed(os.path.join(args.out, "dispatch_table.c"), "".join(_buf))
+    # Files from an earlier run that this run did not produce (e.g. after the
+    # split points moved) would duplicate definitions.
+    for fn in os.listdir(args.out):
+        path = os.path.abspath(os.path.join(args.out, fn))
+        if fn.endswith(".c") and path not in GENERATED:
+            os.remove(path)
+            print(f"[lift] removed stale {fn}")
     print(f"[lift] wrote {len(files)} files, {len(names)} entry points, "
           f"{stats['multi_entry_units']} multi-entry units, {stats['iwram_units']} in IWRAM, {n_over} hand-written "
           f"({time.time() - t1:.1f}s)")
