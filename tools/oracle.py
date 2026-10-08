@@ -48,8 +48,28 @@ def load_snap(path):
     return list(struct.unpack("<19I", d[:76])), d[76:]
 
 
+def io_template(base):
+    """What mGBA's I/O reads back after --call-snaps loads a snapshot (a fresh
+    core with only the display registers, below 0x58, from the snapshot): run
+    nullsub_58 (bx lr) and keep the exit snapshot's I/O from 0x58 on. The host
+    gets the same, so code reading sound, timer, serial or DMA registers sees
+    the same values on both sides."""
+    hdr, mem = base
+    with tempfile.TemporaryDirectory(dir=os.environ.get("ORACLE_TMP")) as d:
+        regs = list(hdr[2:17])
+        regs[14] = MAGIC_LR
+        with open(os.path.join(d, "snap_io_0.bin"), "wb") as f:
+            f.write(struct.pack("<19I", 0x53364E42, 1, *regs, 0x0801BFEC, 0x9F | 0x20))
+            f.write(mem)
+        subprocess.run([os.path.join(ROOT, "build-tools/mgba_run"), os.path.join(ROOT, "bn6f/bn6f.gba"), "--quiet",
+                        "--frames", "1", "--bios", os.path.join(ROOT, "gbarecomp/bios/gba_bios.bin"),
+                        "--call-snaps", d, "1000"], capture_output=True, check=True)
+        _, ex = load_snap(os.path.join(d, "snap_io_0.exit.bin"))
+        return ex[IO + 0x58:IO + 0x400]
+
+
 def batch(args):
-    work, bases, pool, seed, keep_dir = args
+    work, bases, pool, seed, keep_dir, io = args
     rng = random.Random(seed)
     results = {}
     with tempfile.TemporaryDirectory(dir=os.environ.get("ORACLE_TMP")) as d:
@@ -79,11 +99,14 @@ def batch(args):
                     for off in (IO + 0x200, IO + 0x202, IO + 0x208):
                         f.seek(76 + off)
                         f.write(b"\0\0")
-                    # NR52's channel-playing bits are live hardware status: mGBA's sound
-                    # unit was just reset (all off), so the host must read them as off too
-                    # (m4a's CgbSound tests them)
-                    f.seek(76 + IO + 0x84)
-                    f.write(bytes([mem[IO + 0x84] & 0xF0]))
+                    # non-display I/O as mGBA reads it back (sound, timers, serial, DMA...)
+                    f.seek(76 + IO + 0x58)
+                    f.write(io)
+                    # write-only display registers read back as 0 (BG offsets and affine
+                    # parameters, window coordinates, MOSAIC, BLDY)
+                    for lo, hi in ((0x10, 0x48), (0x4C, 0x50), (0x54, 0x58)):
+                        f.seek(76 + IO + lo)
+                        f.write(bytes(hi - lo))
         try:   # calls without an exit snapshot (no return, or cut off here) are not counted
             subprocess.run([os.path.join(ROOT, "build-tools/mgba_run"), os.path.join(ROOT, "bn6f/bn6f.gba"), "--quiet",
                             "--frames", "1", "--bios", os.path.join(ROOT, "gbarecomp/bios/gba_bios.bin"),
@@ -173,7 +196,8 @@ def main():
     totals = {}
     keep = os.path.join(args.out, "fail")
     with ProcessPoolExecutor(args.jobs, initializer=_init, initargs=(STATES, CONTRACT)) as ex:
-        for i, res in enumerate(ex.map(batch, [(c, bases, pool, 1000 + n, keep) for n, c in enumerate(chunks)])):
+        io = io_template(bases[0])
+        for i, res in enumerate(ex.map(batch, [(c, bases, pool, 1000 + n, keep, io) for n, c in enumerate(chunks)])):
             totals.update(res)
             tested = sum(1 for r in totals.values() if r["ok"] + r["fail"])
             failing = sum(1 for r in totals.values() if r["fail"])
