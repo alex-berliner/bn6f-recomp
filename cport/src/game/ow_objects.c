@@ -9,7 +9,7 @@
  * reviewed and integrated by Claude, then checked with the host difftest,
  * the CPU oracle and lockstep (see symbols/db). Models: Hyper GLM-5.3 Flash
  * (most), Z.ai GLM-5.3 Flash (applyLayerEffectToOWObject_8035694), Z.ai
- * GLM-5.3 (sub_8030628). Field offsets the shared header does not export are
+ * GLM-5.3 (setBGTileIdsBlocks1And2_8030628). Field offsets the shared header does not export are
  * defined below from bn6f include/structs.
  */
 #include "game.h"
@@ -30,12 +30,12 @@ enum {  /* bn6f include/structs/OWObjectInteractionArea.inc */
  * block); entry (row, col) of a block sits at row*0x40 + col*2. */
 #define TILE_ID_BLOCK_BYTES 0x800
 
-/* sub_8030628(r0 = tileId1, r1 = tileId2, r3 = col, r4 = row, r10 = toolkit):
+/* setBGTileIdsBlocks1And2_8030628(r0 = tileId1, r1 = tileId2, r3 = col, r4 = row, r10 = toolkit):
  * store one tile id into each of blocks 1 and 2 of the toolkit's BG tile map
  * buffers, at the same (row, col) entry of both blocks.
  * (The original fakes an array over its two arguments with push/pop and a
  * two-pass loop over block indices 1 and 2.) */
-Next sub_8030628(void) {
+Next setBGTileIdsBlocks1And2_8030628(void) {
     u32 blocks = LD32(R10 + oToolkit_iBGTileIdBlocks_Ptr);
     u32 entryOffset = (R4 << 6) + (R3 << 1); /* row * 0x40 + col * 2 */
 
@@ -53,13 +53,13 @@ Next sub_8030628(void) {
 
 /* ── zone lookup ─────────────────────────────────────────────────────── */
 
-/* sub_80316F8(r0 = overworld object, r5 = Ex2011a20 struct):
+/* getOWObjectGridCellIndex_80316F8(r0 = overworld object, r5 = Ex2011a20 struct):
  * Converts the object's pixel coordinates into an index into a grid whose
  * row stride is unk06 (low bit cleared), offset by unk07/2 rows and
  * unk06/2 columns, and stores the result at unk08. Also stores the
  * tile-aligned coordinates (x & ~7, y & ~7) at unk0c and unk10.
  * Returns the grid index in r1 (r3 ends as the 7 used for the tile mask). */
-Next sub_80316F8(void) {
+Next getOWObjectGridCellIndex_80316F8(void) {
     u32 obj = R0;
     u32 st = R5;
 
@@ -88,7 +88,7 @@ Next sub_80316F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_8030B1E(r1 = id, r5 = list header):
+/* findFirstEntryWithId_8030B1E(r1 = id, r5 = list header):
  * Binary-search the sorted table whose base pointer is stored at header+0
  * (halfword entries, 4 bytes apart) for the halfword id passed in r1. The
  * entry count is the halfword at header+4. If the id is present, walk
@@ -97,7 +97,7 @@ Next sub_80316F8(void) {
  * Side results left for the caller: r8 = table base, r3 = final upper bound
  * of the search range, r7 = last compared halfword (all untouched when the
  * table is empty). */
-Next sub_8030B1E(void) {
+Next findFirstEntryWithId_8030B1E(void) {
     u32 id = R1;
     u32 header = R5;
     u32 count = LD16(header + 4);   /* oUnk_Ex2011a20_Unk_04 */
@@ -150,7 +150,7 @@ Next sub_8030B1E(void) {
 
 /* checkLayerPriority_80318b0(r0 = object):
  * Records the object as the one under test, then walks the zone-entry list
- * built by sub_8030B1E. Each entry is { u16 id; u16 offset; } and points at
+ * built by findFirstEntryWithId_8030B1E. Each entry is { u16 id; u16 offset; } and points at
  * a record { s8 top; u8 pad; u8 height; u8 kind; } reached through the base
  * pointer at dword_2013940. When the object's Y coordinate (signed halfword
  * at obj+0xA) lies within [top, top+height], the record pointer is stored at
@@ -162,7 +162,7 @@ Next checkLayerPriority_80318b0(void) {
     u32 obj = R0;
     u32 table = A_dword_2013940;
 
-    /* The callees run with r0-r3/r12 as scratch and sub_8030B1E even returns
+    /* The callees run with r0-r3/r12 as scratch and findFirstEntryWithId_8030B1E even returns
      * something in r8; the original pushes r4-r7 and r8/r9/r12 and pops them
      * back on exit, so save the incoming values here. */
     u32 inR4 = R4, inR5 = R5, inR6 = R6, inR7 = R7;
@@ -171,10 +171,10 @@ Next checkLayerPriority_80318b0(void) {
     ST32(A_dword_200F3D0, obj);
 
     R5 = table;
-    GUEST_CALL(sub_80316F8);        /* -> R1 = zone id to look for */
+    GUEST_CALL(getOWObjectGridCellIndex_80316F8);        /* -> R1 = zone id to look for */
     u32 id = R1;
 
-    GUEST_CALL(sub_8030B1E);        /* -> R2 = first list entry, or NULL */
+    GUEST_CALL(findFirstEntryWithId_8030B1E);        /* -> R2 = first list entry, or NULL */
     u32 entry = R2;
 
     if (entry == 0) {
@@ -363,7 +363,7 @@ Next createOWObjectInteractionArea_80037ac(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_809F526 (r5 = overworld NPC object):
+/* npc_createInteractionAreas_809F526 (r5 = overworld NPC object):
  * Rebuilds the NPC's interaction areas for this frame, then clears the two
  * scratch records the area builder filled in.
  *
@@ -384,7 +384,7 @@ Next createOWObjectInteractionArea_80037ac(void) {
  * OW_NPC_UNK_FLAGS_60_DISABLE_COLLISION is bit 2 of UnkFlags_60, and the
  * interaction-area flag words are plain constants.
  */
-Next sub_809F526(void) {
+Next npc_createInteractionAreas_809F526(void) {
     u32 npc = R5;
     u32 savedR7 = R7;
     u32 flags60 = LD32(npc + oOverworldNPCObject_UnkFlags_60);

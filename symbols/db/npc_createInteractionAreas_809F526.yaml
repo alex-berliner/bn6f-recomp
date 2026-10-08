@@ -1,0 +1,105 @@
+name: npc_createInteractionAreas_809F526
+address: '0x0809F526'
+kind: function
+previous_names:
+- sub_809F526
+status: probable
+summary: Rebuild an NPC's interaction areas for this frame (its footprint and its talk range).
+interface: '(r5 = NPC object) -> if active: area 1 = footprint (flag 0x20000 unless collision is disabled by UnkFlags_60
+  bit 2), area 2 = interaction range (skipped if UnkFlags_60 has bit 2 or 0x10); positions = coords + centre offsets,
+  Z from checkZCoordModifiers_8031612 when InteractionLocked; then clears Unk_50/Unk_58; r5, r7 preserved'
+details: The register leftovers on the skip path (r2-r6 = first call's arguments, popped back) are reproduced.
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine to review the model's version.
+  refs:
+  - bn6f/asm/npc.s:2885
+- method: readable-c
+  date: '2026-10-08'
+  detail: Drafted by hyper/glm-5.3-flash with tools/convert/farm.py; accepted after matching the lifted function
+    on 40 calls captured from the original on tools/traces/wander.trace and on random inputs; reviewed and integrated
+    by Claude (offset enums, LDS16 for ldrsh).
+  refs:
+  - cport/src/game/ow_objects.c
+  reproduce: 'tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 sub_809F526
+
+    python3 tools/convert/farm.py --snaps /tmp/snaps --models hyper/glm-5.3-flash sub_809F526   # accepted versions:
+    tools/convert/accepted/'
+- method: difftest
+  date: '2026-10-08'
+  detail: 'Host difftest: readable vs lifted on random inputs.'
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 sub_809F526)'
+  result: 'ok: 2000 trials, 0 failures, 1569 out of domain (2026-10-08)'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: 'Original (mGBA) vs readable version from real game states (base: the 30 benchmark functions'' captured
+    calls).'
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 24 --out /tmp/oracle sub_809F526
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=12 fail=0 ood=12
+- method: lockstep
+  date: '2026-10-08'
+  detail: 'Port ROM with the readable version: palette, VRAM and OAM identical to the original at every checkpoint
+    on all 8 recorded routes.'
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000'
+  result: 8/8 routes OK at recomp 4d2bee5 (2026-10-08)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3, wander; lockstep
+    checks it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/ow_objects.c
+  where: recomp 4d2bee5
+  tool: tools/convert/farm.py (hyper/glm-5.3-flash) + review
+- date: '2026-10-08'
+  what: rename sub_809F526 -> npc_createInteractionAreas_809F526
+  where: bn6f dbb62f18
+  tool: tools/rename_symbol.py
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 40249438
+  tool: tools/symdoc.py
+readable_c: cport/src/game/ow_objects.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+open_questions:
+- What exactly do interaction-area flags 0x1/0x10000/0x40000/0x200000/0x400000/0x800000 mean?
+sources:
+- Claude Code session 2026-10-08 (model farm lanes)

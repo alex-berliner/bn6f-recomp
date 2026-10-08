@@ -1,0 +1,107 @@
+name: getOWObjectGridCellIndex_80316F8
+address: '0x080316F8'
+kind: function
+previous_names:
+- sub_80316F8
+status: probable
+summary: Turn an overworld object's position into a cell index of the layer-region grid.
+interface: (r0 = object coords, r5 = grid header (Ex2011a20)) -> [r5+8] = (unk06 & ~1) * (y/8 + unk07/2) + x/8 +
+  unk06/2; [r5+0xC] = x & ~7, [r5+0x10] = y & ~7; r1 = the index, r3 = 7
+details: x and y are the high halves of the object's 16.16 coordinates (ldrsh at +2/+6). unk06/unk07 look like the
+  grid's width/height in tiles (0xFE seen).
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine to review the model's version.
+  refs:
+  - bn6f/asm/asm03_0.s:23730
+- method: readable-c
+  date: '2026-10-08'
+  detail: Drafted by hyper/glm-5.3-flash with tools/convert/farm.py; accepted after matching the lifted function
+    on 40 calls captured from the original on tools/traces/wander.trace and on random inputs; reviewed and integrated
+    by Claude (offset enums, LDS16 for ldrsh).
+  refs:
+  - cport/src/game/ow_objects.c
+  reproduce: 'tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 sub_80316F8
+
+    python3 tools/convert/farm.py --snaps /tmp/snaps --models hyper/glm-5.3-flash sub_80316F8   # accepted versions:
+    tools/convert/accepted/'
+- method: difftest
+  date: '2026-10-08'
+  detail: 'Host difftest: readable vs lifted on random inputs.'
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 sub_80316F8)'
+  result: 'ok: 2000 trials, 0 failures, 1711 out of domain (2026-10-08)'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: 'Original (mGBA) vs readable version from real game states (base: the 30 benchmark functions'' captured
+    calls).'
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 24 --out /tmp/oracle sub_80316F8
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: 'ok=4 fail=1 ood=19, then ok=1 fail=0 ood=23 after the fix; the failing state (odd object pointer) re-run:
+    0 differences'
+- method: lockstep
+  date: '2026-10-08'
+  detail: 'Port ROM with the readable version: palette, VRAM and OAM identical to the original at every checkpoint
+    on all 8 recorded routes.'
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000'
+  result: 8/8 routes OK at recomp 4d2bee5 (2026-10-08)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander;
+    lockstep checks it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/ow_objects.c
+  where: recomp 4d2bee5
+  tool: tools/convert/farm.py (hyper/glm-5.3-flash) + review
+- date: '2026-10-08'
+  what: rename sub_80316F8 -> getOWObjectGridCellIndex_80316F8
+  where: bn6f dbb62f18
+  tool: tools/rename_symbol.py
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 40249438
+  tool: tools/symdoc.py
+readable_c: cport/src/game/ow_objects.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+open_questions:
+- Is the grid a map-wide layer-region grid? What are unk06/unk07 exactly?
+sources:
+- Claude Code session 2026-10-08 (model farm lanes)
