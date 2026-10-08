@@ -8,6 +8,7 @@ run is, and regenerate the docs.
   python -m wf record  --symbol NAME... [--rename OLD NEW]... --message-file FILE
   python -m wf waiting RUN_ID              # what a paused run needs
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
+  python -m wf retry   RUN_ID              # carry on a failed or interrupted run from where it stopped
   python -m wf status
   python -m wf docs [OUT_DIR]
 
@@ -85,6 +86,11 @@ class AnswerCommand(BaseModel):
     answer_file: Path
 
 
+class RetryCommand(BaseModel):
+    command: Literal["retry"]
+    run_id: str
+
+
 class StatusCommand(BaseModel):
     command: Literal["status"]
 
@@ -95,7 +101,7 @@ class DocsCommand(BaseModel):
 
 
 Command = (VerifyCommand | CaptureCommand | FarmCommand | ConvertCommand | RecordCommand
-           | WaitingCommand | AnswerCommand | StatusCommand | DocsCommand)
+           | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | DocsCommand)
 
 
 def main() -> None:
@@ -115,6 +121,8 @@ def main() -> None:
             show_waiting(command.run_id)
         case AnswerCommand():
             answer(command)
+        case RetryCommand():
+            print_outcome(workflow_of_run(command.run_id).graph().retry(command.run_id))
         case StatusCommand():
             show_status()
         case DocsCommand():
@@ -276,6 +284,9 @@ def parse_command() -> Command:
     answer_parser = commands.add_parser("answer", help="answer a paused run and carry on")
     answer_parser.add_argument("run_id")
     answer_parser.add_argument("answer_file", type=Path)
+
+    retry = commands.add_parser("retry", help="carry on a failed or interrupted run from where it stopped")
+    retry.add_argument("run_id")
 
     commands.add_parser("status", help="where every run is")
 

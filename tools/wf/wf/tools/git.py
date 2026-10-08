@@ -18,9 +18,18 @@ def commit_files(files: tuple[Path, ...], message: str) -> CommitHash:
 
 
 def changed_files(under: tuple[Path, ...]) -> tuple[Path, ...]:
-    """Files changed or added under these paths, relative to the main checkout."""
-    output = _git("status", "--porcelain", "--untracked-files=all", "--", *map(str, under))
-    return tuple(REPO / line[3:] for line in output.splitlines() if line.strip())
+    """Files (and submodule pointers) changed or added under these paths."""
+    done = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain", "-z", "--untracked-files=all", "--",
+                           *map(str, under)], capture_output=True, text=True, check=False)
+    if done.returncode != 0:
+        raise ToolOutputError(f"git status failed: {done.stderr.strip()}")
+    return tuple(REPO / path for path in porcelain_paths(done.stdout))
+
+
+def porcelain_paths(output: str) -> tuple[str, ...]:
+    """The paths in `git status --porcelain -z` output: "XY path" entries, NUL-separated.
+    X or Y may be a space (" M bn6f"), so nothing may be stripped."""
+    return tuple(entry[3:] for entry in output.split("\0") if len(entry) > 3)
 
 
 def _git(*arguments: str) -> str:

@@ -195,6 +195,11 @@ class Graph(Generic[StateT]):
         application.step(inputs={"answer": answer})  # pyright: ignore[reportUnknownMemberType]
         return self._run(application)
 
+    def retry(self, run_id: str) -> Finished[StateT] | Paused:
+        """Carry on a run that stopped (a step failed, or the process was interrupted) from
+        the step after the last one that finished, e.g. once a tool's bug is fixed."""
+        return self._run(self._load(run_id))
+
     def _load(self, run_id: str) -> Application[StateT]:
         """A saved run, rebuilt from its tracking log, ready to carry on where it stopped."""
         saved_runs = LocalTrackingClient(self.workflow.project, storage_dir=str(burr_dir()))
@@ -284,6 +289,7 @@ class GraphView(Protocol):
     def transitions(self) -> Sequence[Transition]: ...
     def waiting(self, run_id: str) -> Paused | None: ...
     def resume(self, run_id: str, answer: BaseModel) -> Finished[BaseModel] | Paused: ...
+    def retry(self, run_id: str) -> Finished[BaseModel] | Paused: ...
     def draw(self, path_without_extension: Path) -> None: ...
 
 
