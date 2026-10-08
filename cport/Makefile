@@ -16,7 +16,8 @@ CFLAGS  := $(ARCH) -O2 -ffreestanding -fno-strict-aliasing -fomit-frame-pointer 
 LDFLAGS := $(ARCH) -nostartfiles -T gba.ld -Wl,--gc-sections -Wl,-Map,$(BUILD)/bn6f_lifted.map
 
 LIFTED  := $(wildcard src/lifted/*.c)
-RUNTIME := $(wildcard src/runtime/*.c) $(wildcard src/gba/*.c)
+GAME    := $(wildcard src/game/*.c)
+RUNTIME := $(wildcard src/runtime/*.c) $(wildcard src/gba/*.c) $(GAME)
 OBJS    := $(patsubst src/%.c,$(BUILD)/%.o,$(LIFTED) $(RUNTIME)) $(BUILD)/base.o
 
 all: $(BUILD)/bn6f_lifted.gba

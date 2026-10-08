@@ -27,6 +27,16 @@ SECTIONS {
     .ARM.exidx : { *(.ARM.exidx*) } > rom
     __rom_end = .;
 
+    /* Hot hand-written code runs from IWRAM (copied at boot), like the
+     * routines the original game copied there. */
+    .iwram : {
+        __iwram_start = .;
+        *(.iwram .iwram.*)
+        . = ALIGN(4);
+        __iwram_end = .;
+    } > iwram AT > rom
+    __iwram_lma = LOADADDR(.iwram);
+
     .data : { *(.data .data.*) } > iwram AT > rom
     .bss (NOLOAD) : {
         __bss_start = .;
@@ -35,9 +45,11 @@ SECTIONS {
         __bss_end = .;
     } > iwram
 
+    /* Host stacks: main (system mode) below the IRQ stack. The IRQ stack
+     * must hold m4a's MPlayMain chain (one level per music player). */
     __irq_stack_top = 0x03007900;
-    __sys_stack_top = 0x03006500;
-    ASSERT(__bss_end <= 0x03005E00, "runtime .bss too large for the IWRAM block")
+    __sys_stack_top = 0x03006A00;
+    ASSERT(__bss_end <= 0x03006600, "IWRAM code + runtime .bss too large for the IWRAM block")
     ASSERT(SIZEOF(.data) == 0, "initialized .data is not supported; use const or .bss")
 
     /DISCARD/ : { *(.comment) *(.note*) }

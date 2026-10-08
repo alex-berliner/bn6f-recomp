@@ -12,6 +12,7 @@
 #include "runtime.h"
 
 extern char __bss_start[], __bss_end[];
+extern char __iwram_start[], __iwram_end[], __iwram_lma[];
 
 static void clear32(u32 addr, u32 size) {
     for (u32 i = 0; i < size; i += 4)
@@ -28,6 +29,8 @@ void gba_boot(void) {
     REG_IME = 0;
     REG_WAITCNT = 0x45B4;
 
+    for (char *p = __iwram_start, *q = __iwram_lma; p < __iwram_end; p++, q++)
+        *p = *q;
     for (char *p = __bss_start; p < __bss_end; p++)
         *p = 0;
 #if defined(LIFT_TRACE)
@@ -36,7 +39,7 @@ void gba_boot(void) {
         u32 here = (u32)__builtin_frame_address(0);
         for (u32 a = ((u32)__bss_end + 3) & ~3u; a < here - 64; a += 4)
             *(volatile u32 *)a = 0xA5A5A5A5u;
-        for (u32 a = 0x03006500; a < 0x03007900; a += 4)
+        for (u32 a = 0x03006A00; a < 0x03007900; a += 4)
             *(volatile u32 *)a = 0x5A5A5A5Au;
     }
 #endif

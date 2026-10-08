@@ -420,7 +420,8 @@ def build(info: ElfInfo, copies: list[CodeCopy], extra_seeds=()) -> Program:
     datarefs = set()
     # Only labels on assembled instructions qualify: the DWARF line table has
     # rows for instructions and none for .byte/.word data.
-    for w in words:
+    text_end = next((sec.vma + sec.size for sec in info.sections if sec.name == ".text"), 0x08000000)
+    for idx, w in enumerate(words):
         if w & 1:
             a = w & ~1
             if a in label_addrs and a in info.lines and region_kind(a) == "t":
@@ -429,9 +430,11 @@ def build(info: ElfInfo, copies: list[CodeCopy], extra_seeds=()) -> Program:
             k = region_kind(w)
             if k == "a" and w & 3 == 0:
                 datarefs.add((w, False))
-            elif k == "t":
+            elif k == "t" and 0x08000000 + idx * 4 < text_end:
                 # THUMB switch tables consumed by `mov pc, rN` (no mode
                 # change) store plain even addresses: `.word loc_814428C`.
+                # They sit next to their code, so only words inside .text
+                # count (data blobs contain such values by coincidence).
                 datarefs.add((w, True))
     for a, t in datarefs:
         seeds.append((a, t))

@@ -10,6 +10,8 @@
 #define BIOS_IRQ_VECTOR REG32(0x03007FFC)
 
 #define ARM_CODE __attribute__((target("arm")))
+/* Hot code: ARM state, executed from IWRAM (32-bit bus, no wait states). */
+#define IWRAM_CODE __attribute__((section(".iwram"), target("arm"), noinline))
 
 void gba_boot(void) __attribute__((noreturn));
 void irq_entry(void);

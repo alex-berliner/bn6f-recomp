@@ -57,7 +57,7 @@ extern Cpu cpu;
 #define LR  (cpu.r[14])
 
 /* ── guest memory ─────────────────────────────────────────────────────── */
-#if defined(TARGET_GBA)
+#if defined(TARGET_GBA) || defined(TARGET_FLAT)
 #define LD32(a)  (*(volatile u32 *)(uintptr_t)(u32)(a))
 #define LD16(a)  ((u32)*(volatile u16 *)(uintptr_t)(u32)(a))
 #define LD8(a)   ((u32)*(volatile u8 *)(uintptr_t)(u32)(a))
