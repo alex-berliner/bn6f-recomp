@@ -17,7 +17,8 @@ if __package__ in (None, ""):
     __package__ = "lifter"
 
 from . import elfinfo  # noqa: E402
-from .analysis import ALLF, NZ, C, V, CodeCopy, Program, Unit, build, flag_effects, writes_pc  # noqa: E402
+from .analysis import (ALL, ALLF, NZ, C, V, CodeCopy, Program, Unit, build, flag_effects,  # noqa: E402
+                       mask_names, reg_effects, writes_pc)
 from .emit import Ctx, UnitEmitter, cname, h  # noqa: E402
 
 COPIES = [
@@ -140,6 +141,8 @@ def main():
     ap.add_argument("--bn6f", default="bn6f")
     ap.add_argument("--out", default="cport/src/lifted")
     ap.add_argument("--inc", default="cport/include")
+    ap.add_argument("--overrides", default="cport/src/game",
+                    help="directory of hand-written C replacing lifted functions")
     args = ap.parse_args()
     t0 = time.time()
     info = elfinfo.load(args.bn6f)
@@ -234,10 +237,14 @@ def main():
         indirect_targets.add(ct & ~1)
     indirect_in = 0
     indirect_ret = 0
-    reads_writes = {a: flag_effects(ins) for (a, _t), ins in p.insns.items()}
+    def _rw(ins):
+        fr, fw = flag_effects(ins)
+        rr, rw = reg_effects(ins)
+        return fr | rr, fw | rw
+    reads_writes = {a: _rw(ins) for (a, _t), ins in p.insns.items()}
     live_out_all: dict[int, dict[int, int]] = {}
 
-    def unit_liveness(u: Unit):
+    def unit_liveness(u: Unit, entry_in: dict, ret_live: int):
         eff = effects[u.start]
         addrs = sorted(u.insns, reverse=True)
         live_in: dict[int, int] = {a: 0 for a in addrs}
@@ -255,57 +262,51 @@ def main():
                     if kx in ("fall", "local"):
                         out |= live_in[x[1]]
                     elif kx == "tail":
-                        out |= flags_in[x[1]] | 0
+                        out |= entry_in[x[1]]
                     elif kx == "call":
                         tgt, ret = x[1], x[2]
-                        after = live_in[ret] if ret in u.insns else flags_in.get(ret, ALLF)
-                        out |= after
-                        extra |= flags_in[tgt] if tgt is not None else ALLF
+                        out |= live_in[ret] if ret in u.insns else entry_in.get(ret, ALL)
+                        extra |= entry_in[tgt] if tgt is not None else ALL
                     elif kx == "return":
-                        out |= callers_live[u.start]
+                        out |= ret_live
                     elif kx == "jump":
-                        out |= ALLF
-                cond = ins.cond != "al"
-                if cond:
+                        out |= ALL
+                if ins.cond != "al":
                     li = r | out | extra
                 else:
-                    li = r | (out & ~w) | extra
-                if a in live_out and live_out[a] == out and live_in[a] == li:
-                    continue
+                    li = r | ((out | extra) & ~w)
                 live_out[a] = out
                 if li != live_in[a]:
                     live_in[a] = li
                     changed = True
-                elif a not in live_out:
-                    changed = True
         return live_in, live_out
 
+    # (1) Liveness for code generation: flags/registers live after each
+    #     instruction, given what callers need after each function returns.
     it = 0
     while True:
         it += 1
         changed = False
-        new_callers = {s: callers_live[s] for s in callers_live}
+        new_callers = {s_: callers_live[s_] for s_ in callers_live}
         new_ind_ret = indirect_ret
         for u in p.units:
-            live_in, live_out = unit_liveness(u)
+            live_in, live_out = unit_liveness(u, flags_in, callers_live[u.start])
             live_out_all[u.start] = live_out
             for e in u.entries:
-                if live_in[e] != flags_in[e]:
+                if live_in[e] & ~flags_in[e]:
                     flags_in[e] |= live_in[e]
                     changed = True
             for a, eff in effects[u.start].items():
                 for x in eff:
                     if x[0] == "call":
                         tgt, ret = x[1], x[2]
-                        after = live_in[ret] if ret in u.insns else flags_in.get(ret, ALLF)
+                        after = live_in[ret] if ret in u.insns else flags_in.get(ret, ALL)
                         if tgt is not None:
-                            vu = unit_of(tgt)
-                            new_callers[vu.start] |= after
+                            new_callers[unit_of(tgt).start] |= after
                         else:
                             new_ind_ret |= after
                     elif x[0] == "tail":
-                        vu = unit_of(x[1])
-                        new_callers[vu.start] |= callers_live[u.start]
+                        new_callers[unit_of(x[1]).start] |= callers_live[u.start]
                     elif x[0] == "jump":
                         new_ind_ret |= callers_live[u.start]
         for u in p.units:
@@ -314,9 +315,52 @@ def main():
         if new_callers != callers_live or new_ind_ret != indirect_ret:
             changed = True
         callers_live, indirect_ret = new_callers, new_ind_ret
-        print(f"[lift] liveness iteration {it}: indirect_ret={indirect_ret}")
         if not changed:
             break
+    print(f"[lift] liveness converged after {it} iterations")
+
+    # (2) Signatures. Inputs: what a function (or its callees) reads before
+    #     writing, ignoring values merely passed through to its callers.
+    #     May-write: registers it or its callees can modify. Outputs:
+    #     may-write registers that callers read after it returns.
+    inputs = {a: 0 for a in names}
+    while True:
+        changed = False
+        for u in p.units:
+            live_in, _ = unit_liveness(u, inputs, 0)
+            for e in u.entries:
+                if live_in[e] & ~inputs[e]:
+                    inputs[e] |= live_in[e]
+                    changed = True
+        if not changed:
+            break
+    may_write = {u.start: 0 for u in p.units}
+    local_w = {}
+    for u in p.units:
+        m = 0
+        for a, ins in u.insns.items():
+            fr, fw = flag_effects(ins)
+            rr, rw = reg_effects(ins._replace() if False else ins) if ins.cond == "al" else \
+                reg_effects(ins.__class__(**{**ins.__dict__, "cond": "al"}))
+            m |= fw | rw
+        local_w[u.start] = m
+    while True:
+        changed = False
+        for u in p.units:
+            m = may_write[u.start] | local_w[u.start]
+            for eff in effects[u.start].values():
+                for x in eff:
+                    if x[0] in ("call", "tail"):
+                        t = x[1]
+                        m |= may_write[unit_of(t).start] if t is not None else ALL
+                    elif x[0] == "jump":
+                        m |= ALL
+            if m != may_write[u.start]:
+                may_write[u.start] = m
+                changed = True
+        if not changed:
+            break
+    outputs = {u.start: callers_live[u.start] & may_write[u.start] for u in p.units}
 
     # ── emission ────────────────────────────────────────────────────────
     addr_names: dict[int, str] = {}
@@ -328,12 +372,29 @@ def main():
     ctx = Ctx(p=p, names=names, addr_names=addr_names, used_addr_syms=set(),
               used_equates={}, flags_in=flags_in, callers_live=callers_live,
               indirect_in=ALLF)
+    overridden = set()
+    if args.overrides and os.path.isdir(args.overrides):
+        for f in sorted(os.listdir(args.overrides)):
+            if f.endswith(".c"):
+                txt = open(os.path.join(args.overrides, f)).read()
+                overridden |= set(re.findall(r"^(?:IWRAM_CODE\s+|ARM_CODE\s+)*Next\s+(\w+)\s*\(\s*void\s*\)\s*\{",
+                                             txt, re.M))
     files: dict[str, list[str]] = defaultdict(list)
     protos: list[str] = []
     fn_names = set(names.values())
     t1 = time.time()
     stats = defaultdict(int)
+    n_over = 0
     for u in sorted(p.units, key=lambda x: x.start):
+        ent_names = {names[e] for e in u.entries}
+        if ent_names & overridden:
+            missing = ent_names - overridden
+            if missing:
+                raise SystemExit(f"override of {u.name} must define all its entries: missing {sorted(missing)}")
+            for e in sorted(u.entries):
+                protos.append(f"Next {names[e]}(void); /* {e:08X}, hand-written */")
+            n_over += 1
+            continue
         em = UnitEmitter(ctx, u, live_out_all[u.start])
         loc = info.lines.get(u.start)
         if any(c.vma <= u.start < c.vma + c.size for c in COPIES):
@@ -346,6 +407,9 @@ def main():
         if loc:
             hdr += f", bn6f {loc[0]}:{loc[1]}"
         hdr += " */"
+        hdr += (f"\n/*   inputs:  {mask_names(inputs[u.start])}"
+                f"\n *   outputs: {mask_names(outputs[u.start])}"
+                f"\n *   clobbers (unused by callers): {mask_names(may_write[u.start] & ~outputs[u.start])} */")
         out = files[fname]
         out.append(hdr)
         out.append(save_def)
@@ -433,7 +497,8 @@ def main():
         if other:
             raise SystemExit(f"entries outside dispatch regions: {[hex(a) for a in other]}")
     print(f"[lift] wrote {len(files)} files, {len(names)} entry points, "
-          f"{stats['multi_entry_units']} multi-entry units ({time.time() - t1:.1f}s)")
+          f"{stats['multi_entry_units']} multi-entry units, {n_over} hand-written "
+          f"({time.time() - t1:.1f}s)")
 
 
 if __name__ == "__main__":

@@ -82,6 +82,94 @@ def flag_effects(i: Insn) -> tuple[int, int]:
     return reads, writes
 
 
+# Register liveness bits share the flag mask word: r0..r14 at bits 3..17.
+def RB(n: int) -> int:
+    return 1 << (3 + n)
+
+
+ALLR = sum(RB(n) for n in range(15) if n != 13)   # SP is always live; not tracked
+ALL = ALLF | ALLR
+
+
+def _op2_reads(o) -> int:
+    if o is None or o.is_imm:
+        return 0
+    m = RB(o.rm) if o.rm < 15 else 0
+    if o.rs is not None and o.rs < 15:
+        m |= RB(o.rs)
+    return m
+
+
+def reg_effects(i: Insn) -> tuple[int, int]:
+    """(reads, definitely-writes) register masks (r0-r12, r14; not SP/PC)."""
+    def rb(n):
+        return RB(n) if n < 15 and n != 13 else 0
+    k = i.kind
+    r = w = 0
+    if k == "dp":
+        if i.op not in ("mov", "mvn", "adr"):
+            r |= rb(i.rn)
+        r |= _op2_reads(i.op2)
+        if i.op not in ("tst", "teq", "cmp", "cmn"):
+            w |= rb(i.rd)
+    elif k == "mul":
+        r |= rb(i.rm) | rb(i.rs) | (rb(i.rn) if i.acc else 0)
+        w |= rb(i.rd)
+    elif k == "mull":
+        r |= rb(i.rm) | rb(i.rs) | ((rb(i.rd) | rb(i.rdhi)) if i.acc else 0)
+        w |= rb(i.rd) | rb(i.rdhi)
+    elif k == "mem":
+        r |= rb(i.rn) | _op2_reads(i.op2)
+        if i.load:
+            w |= rb(i.rd)
+        else:
+            r |= rb(i.rd)
+        if i.wb or not i.pre:
+            r |= rb(i.rn)
+            w |= rb(i.rn)
+    elif k == "block":
+        r |= rb(i.rn)
+        if i.load:
+            for x in i.regs:
+                w |= rb(x)
+        else:
+            for x in i.regs:
+                r |= rb(x)
+        if i.wb and not (i.load and i.rn in i.regs):
+            w |= rb(i.rn)
+    elif k == "bx":
+        r |= rb(i.rm)
+    elif k == "swi":
+        r |= RB(0) | RB(1) | RB(2) | RB(3)      # outputs vary: claim no definite writes
+    elif k == "swp":
+        r |= rb(i.rn) | rb(i.rm)
+        w |= rb(i.rd)
+    elif k == "mrs":
+        w |= rb(i.rd)
+    elif k == "msr":
+        r |= _op2_reads(i.op2)
+        if not i.spsr and i.mask & 1:
+            r |= RB(14)      # a mode switch banks LR (and SP)
+            w |= RB(14)
+    elif k == "b" and i.link:
+        w |= RB(14)
+    if i.cond != "al":
+        w = 0                # conditional: nothing definitely written
+    return r, w
+
+
+def mask_names(m: int) -> str:
+    out = []
+    if m & NZ:
+        out.append("nz")
+    if m & C:
+        out.append("c")
+    if m & V:
+        out.append("v")
+    out += [("lr" if n == 14 else f"r{n}") for n in range(15) if n != 13 and m & RB(n)]
+    return " ".join(out) or "-"
+
+
 @dataclass
 class Unit:
     start: int
