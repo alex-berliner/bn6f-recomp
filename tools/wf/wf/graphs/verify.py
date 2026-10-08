@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from wf.burr_typed import Transition, TypedApplication, Workflow
+from wf.burr_typed import Finished, Graph, Transition, Workflow
 from wf.repo import current_sources
 from wf.tools.build import build_rom
 from wf.tools.difftest import run_difftest
@@ -17,12 +17,10 @@ from wf.types import (BuildFailure, BuiltRom, DifftestResult, FunctionName, Lock
 PROJECT = "recomp-verify"
 
 
-def verify_application(start: "VerifyState", run_id: str, tracked: bool = True) -> TypedApplication["VerifyState"]:
-    return workflow.application(
-        start=start,
-        run_id=run_id,
-        tracked=tracked,
+def verify_graph() -> Graph["VerifyState"]:
+    return workflow.graph(
         first=note_sources,
+        last=write_report,
         transitions=[
             Transition(after=note_sources, go_to=build),
             Transition(after=build, go_to=difftest_changed_functions, when=build_succeeded),
@@ -34,11 +32,11 @@ def verify_application(start: "VerifyState", run_id: str, tracked: bool = True) 
     )
 
 
-def run_verify(start: "VerifyState", run_id: str) -> "VerifyReport":
-    final_state = verify_application(start, run_id).run_until_after(write_report)
-    if final_state.report is None:
-        raise RuntimeError("verify finished without a report")
-    return final_state.report
+def run_verify(start: "VerifyState", run_id: str, tracked: bool = True) -> "VerifyReport":
+    outcome = verify_graph().start(start, run_id, tracked=tracked)
+    if not isinstance(outcome, Finished) or outcome.state.report is None:
+        raise RuntimeError(f"verify run {run_id} finished without a report")
+    return outcome.state.report
 
 
 # ── the run's state ────────────────────────────────────────────────────

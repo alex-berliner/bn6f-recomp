@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from wf.graphs import verify
-from wf.graphs.verify import Verdict, VerifyReport, VerifyState, verify_application, write_report
+from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify
 from wf.routes import ALL_ROUTES
 from wf.types import (BuildFailure, BuiltRom, CommitHash, DifftestResult, FunctionName, FrameCount, LockstepResult,
                       LogPath, Outcome, RomPath, Route, SourceVersion, ToolMessage)
@@ -60,9 +60,7 @@ def test_everything_passing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
 
 def run_untracked(run_dir: Path) -> VerifyReport:
     start = VerifyState(run_dir=run_dir, functions=(FunctionName("someFunction"),), routes=ROUTES, trials=10)
-    final_state = verify_application(start, run_id="test", tracked=False).run_until_after(write_report)
-    assert final_state.report is not None
-    return final_state.report
+    return run_verify(start, run_id="test", tracked=False)
 
 
 def fake_tools(monkeypatch: pytest.MonkeyPatch, build: BuiltRom | BuildFailure,

@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
 
-from wf.graphs.verify import PROJECT, VerifyReport, VerifyState, run_verify, verify_application
+from wf.graphs.verify import PROJECT, VerifyReport, VerifyState, run_verify, verify_graph
 from wf.repo import RUNS
 from wf.routes import ALL_ROUTES, route_named
 from wf.types import FunctionName, RouteName
@@ -89,8 +89,7 @@ def print_report(report: VerifyReport) -> None:
 
 def draw_diagrams(out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    example = VerifyState(run_dir=out_dir, functions=(), routes=(), trials=0)
-    verify_application(example, run_id="diagram", tracked=False).draw(out_dir / "verify")
+    verify_graph().draw(out_dir / "verify")
     print(f"wrote {out_dir / 'verify.png'}")
 
 

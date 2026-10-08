@@ -2,7 +2,7 @@
 import pytest
 from pydantic import BaseModel
 
-from wf.burr_typed import Transition, TransitionError, Workflow
+from wf.burr_typed import Finished, Transition, TransitionError, Workflow
 from wf.types import Result
 
 
@@ -50,9 +50,11 @@ def is_even(state: ToyState) -> bool:
 
 
 def run(number: int, transitions: list[Transition]) -> ToyState:
-    application = toy.application(start=ToyState(number=number), run_id="test", first=start,
-                                  transitions=transitions, tracked=False)
-    return application.run_until_after(left if number < 10 else right)
+    last = left if number < 10 else right
+    outcome = toy.graph(first=start, last=last, transitions=transitions).start(
+        ToyState(number=number), run_id="test", tracked=False)
+    assert isinstance(outcome, Finished)
+    return outcome.state
 
 
 def test_exactly_one_decision_holding_picks_the_way() -> None:

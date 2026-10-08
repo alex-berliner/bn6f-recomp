@@ -3,13 +3,6 @@
 A step is a plain function from its own input model to its own output model;
 that signature is its whole contract:
 
-    class LockstepInput(BaseModel):
-        build: BuiltRom
-        routes: tuple[Route, ...]
-
-    class LockstepOutput(BaseModel):
-        locksteps: tuple[LockstepResult, ...]
-
     @workflow.step
     def lockstep_routes(given: LockstepInput) -> LockstepOutput: ...
 
@@ -19,27 +12,43 @@ before the step runs (a BuildFailure cannot reach a step that needs a
 BuiltRom) and the output after. The Burr UI shows the output as the step's
 Result, and the step's own source in its Code tab.
 
-Steps are wired with `Transition`s that name the step functions themselves;
-decisions are plain functions of the whole run state. A step with one
-transition may leave out `when`; a step with several must give each a `when`,
-and after the step runs exactly one of them must hold, or the run stops with
-a TransitionError naming the step and the decisions involved.
+A pause point is a step that also needs an answer from outside the workflow
+(from Claude or the user); the run stops before it and shows what it needs:
+
+    @workflow.pause_point
+    def write_readable_c(given: CodeRequest, answer: WrittenCode) -> CodeOutput: ...
+
+Steps are wired into a `Graph` with `Transition`s that name the step
+functions themselves; decisions are plain functions of the whole run state.
+A step with one transition may leave out `when`; a step with several must
+give each a `when`, and after the step runs exactly one must hold, or the
+run stops with a TransitionError naming the step and the decisions involved.
+
+Runs are tracked under ~/.burr/<project>/<run id> (WF_BURR_DIR overrides
+~/.burr), which is what the Burr UI shows and what `resume` and
+`final_state` read back. A run started from inside another run's step is
+shown in the UI as that step's child.
 """
+import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, Never, TypeVar, cast, get_type_hints
 
-from burr.core import Application, ApplicationBuilder, Condition, State, default, serde
+from burr.core import Application, ApplicationBuilder, ApplicationContext, Condition, State, default, serde
 from burr.core.action import FunctionBasedAction
 from burr.integrations.pydantic import PydanticTypingSystem, model_from_state  # pyright: ignore[reportUnknownVariableType]
+from burr.tracking.client import LocalTrackingClient
 from pydantic import BaseModel
 
 StateT = TypeVar("StateT", bound=BaseModel)
 InputT = TypeVar("InputT", bound=BaseModel)
+AnswerT = TypeVar("AnswerT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
 
-AnyStep = Callable[[Never], BaseModel]  # a step with any input and output model
+AnyStep = Callable[[Never], BaseModel]                       # a step with any input and output model
+AnyPausePoint = Callable[[Never, Never], BaseModel]          # a pause point with any input, answer and output
+AnyStepOrPause = AnyStep | AnyPausePoint
 
 
 @serde.serialize.register(tuple)
@@ -49,11 +58,17 @@ def _serialize_tuple(value: tuple[object, ...], **options: object) -> list[objec
     return [serde.serialize(item, **options) for item in value]  # pyright: ignore[reportUnknownMemberType]
 
 
+def burr_dir() -> Path:
+    return Path(os.environ.get("WF_BURR_DIR", Path.home() / ".burr"))
+
+
+# ── wiring ─────────────────────────────────────────────────────────────
+
 @dataclass(frozen=True)
 class Transition:
     """After `after`, go to `go_to` when `when` holds (always, if `when` is left out)."""
-    after: AnyStep
-    go_to: AnyStep
+    after: AnyStepOrPause
+    go_to: AnyStepOrPause
     when: Callable[[Never], bool] | None = None
 
 
@@ -61,11 +76,32 @@ class TransitionError(Exception):
     """The transitions out of a step are missing a decision, or did not pick exactly one way on."""
 
 
+# ── what a run comes back with ─────────────────────────────────────────
+
+@dataclass(frozen=True)
+class Finished(Generic[StateT]):
+    run_id: str
+    state: StateT
+
+
+@dataclass(frozen=True)
+class Paused:
+    """The run stopped before a pause point; `request` is that step's input,
+    `answer_type` what `resume` must be given."""
+    run_id: str
+    step: str
+    request: BaseModel
+    answer_type: type[BaseModel]
+
+
+# ── workflows ──────────────────────────────────────────────────────────
+
 class Workflow(Generic[StateT]):
     def __init__(self, state_type: type[StateT], project: str) -> None:
         self.state_type = state_type
         self.project = project
-        self._burr_actions: dict[AnyStep, FunctionBasedAction] = {}
+        self.burr_actions: dict[AnyStepOrPause, FunctionBasedAction] = {}
+        self.pause_points: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {}  # name -> (input, answer)
 
     def step(self, function: Callable[[InputT], OutputT]) -> Callable[[InputT], OutputT]:
         """Register a step; its input and output models say what it reads and writes."""
@@ -73,48 +109,125 @@ class Workflow(Generic[StateT]):
         reads = self._state_fields(function, input_type)
         writes = self._state_fields(function, output_type)
 
-        def run(state: State[BaseModel]) -> tuple[dict[str, object], State[BaseModel]]:
-            given = input_type.model_validate({field: state[field] for field in reads})  # pyright: ignore[reportAny]
-            produced = function(given)
-            written: dict[str, object] = {field: getattr(produced, field) for field in writes}  # pyright: ignore[reportAny]
-            return written, state.update(**written)
+        def call(given: BaseModel, answer: BaseModel | None) -> BaseModel:
+            return function(cast(InputT, given))
 
-        self._burr_actions[function] = FunctionBasedAction(run, reads, writes, originating_fn=function)
+        action = _burr_action(call, input_type, None, reads, writes, function)
+        self.burr_actions[function] = action
         return function
 
-    def application(self, start: StateT, run_id: str, first: AnyStep,
-                    transitions: Sequence[Transition], tracked: bool = True) -> "TypedApplication[StateT]":
-        """`tracked` runs show up in the Burr UI; an untracked one is only for drawing or tests."""
-        steps = {*(transition.after for transition in transitions), *(transition.go_to for transition in transitions)}
+    def pause_point(self, function: Callable[[InputT, AnswerT], OutputT]) -> Callable[[InputT, AnswerT], OutputT]:
+        """Register a step that waits for an answer from outside the workflow."""
+        input_type, answer_type, output_type = _pause_point_models(function)
+        reads = self._state_fields(function, input_type)
+        writes = self._state_fields(function, output_type)
+
+        def call(given: BaseModel, answer: BaseModel | None) -> BaseModel:
+            return function(cast(InputT, given), cast(AnswerT, answer))
+
+        action = _burr_action(call, input_type, answer_type, reads, writes, function)
+        self.burr_actions[function] = action
+        self.pause_points[_name(function)] = (input_type, answer_type)
+        return function
+
+    def graph(self, first: AnyStepOrPause, last: AnyStepOrPause,
+              transitions: Sequence[Transition]) -> "Graph[StateT]":
+        _check_decisions(transitions)
+        return Graph(self, first, last, transitions)
+
+    def _state_fields(self, function: Callable[..., BaseModel], model: type[BaseModel]) -> list[str]:  # pyright: ignore[reportExplicitAny]
+        fields = list(model.model_fields)
+        unknown = [field for field in fields if field not in self.state_type.model_fields]
+        if unknown:
+            raise TypeError(f"step {function.__name__}: {model.__name__} has fields {unknown} "
+                            f"that {self.state_type.__name__} does not")
+        return fields
+
+
+class Graph(Generic[StateT]):
+    def __init__(self, workflow: Workflow[StateT], first: AnyStepOrPause, last: AnyStepOrPause,
+                 transitions: Sequence[Transition]) -> None:
+        self.workflow = workflow
+        self.first = first
+        self.last = last
+        self.transitions = transitions
+
+    def start(self, start: StateT, run_id: str, tracked: bool = True) -> Finished[StateT] | Paused:
+        """Run from the first step until the last one finishes or a pause point is reached."""
+        builder = self._builder(run_id, tracked).with_state(start)  # pyright: ignore[reportUnknownMemberType]
+        return self._run(builder.build())
+
+    def resume(self, run_id: str, answer: BaseModel) -> Finished[StateT] | Paused:
+        """Give a paused run its answer and carry on."""
+        saved_runs = LocalTrackingClient(self.workflow.project, storage_dir=str(burr_dir()))
+        builder = self._builder(run_id, tracked=True, resuming=True).initialize_from(  # pyright: ignore[reportUnknownMemberType]
+            saved_runs, resume_at_next_action=True, default_state={}, default_entrypoint=_name(self.first))
+        application = builder.build()
+        waiting = application.get_next_action()
+        if waiting is None or waiting.name not in self.workflow.pause_points:
+            raise ValueError(f"run {run_id} is not waiting at a pause point")
+        _, answer_type = self.workflow.pause_points[waiting.name]
+        if not isinstance(answer, answer_type):
+            raise TypeError(f"{waiting.name} needs a {answer_type.__name__}, not a {type(answer).__name__}")
+        application.step(inputs={"answer": answer})  # pyright: ignore[reportUnknownMemberType]
+        return self._run(application)
+
+    def final_state(self, run_id: str) -> StateT:
+        """The state a finished run ended with, read back from its tracking log."""
+        tracker = LocalTrackingClient(self.workflow.project, storage_dir=str(burr_dir()))
+        loaded = tracker.load(partition_key="", app_id=run_id)  # pyright: ignore[reportUnknownMemberType]
+        if loaded is None:
+            raise ValueError(f"no run {run_id} in project {self.workflow.project}")
+        return model_from_state(model=self.workflow.state_type, state=loaded["state"])
+
+    def draw(self, path_without_extension: Path) -> None:
+        application = self._builder("diagram", tracked=False).with_state(  # pyright: ignore[reportUnknownMemberType]
+            {}).build()
+        application.visualize(output_file_path=str(path_without_extension), format="png",  # pyright: ignore[reportUnknownMemberType]
+                              include_conditions=True, include_state=True)
+
+    def _builder(self, run_id: str, tracked: bool, resuming: bool = False) -> ApplicationBuilder[StateT]:
+        steps = {*(transition.after for transition in self.transitions),
+                 *(transition.go_to for transition in self.transitions)}
         builder = (
             ApplicationBuilder()
-            .with_typing(PydanticTypingSystem(self.state_type))
-            .with_state(start)  # pyright: ignore[reportUnknownMemberType]
-            .with_actions(**{_name(step): self._burr_actions[step] for step in steps})  # pyright: ignore[reportUnknownMemberType]
-            .with_transitions(*self._burr_transitions(transitions))
-            .with_entrypoint(_name(first))
+            .with_typing(PydanticTypingSystem(self.workflow.state_type))
+            .with_actions(**{_name(step): self.workflow.burr_actions[step] for step in steps})  # pyright: ignore[reportUnknownMemberType]
+            .with_transitions(*self._burr_transitions())
             .with_identifiers(app_id=run_id)
         )
+        if not resuming:
+            builder = builder.with_entrypoint(_name(self.first))
         if tracked:
-            builder = builder.with_tracker("local", project=self.project)
-        return TypedApplication(self.state_type, builder.build())
+            builder = builder.with_tracker("local", project=self.workflow.project,
+                                           params={"storage_dir": str(burr_dir())})
+        parent = ApplicationContext.get()  # set while a step of another run is running
+        if parent is not None and parent.sequence_id is not None:
+            builder = builder.with_spawning_parent(parent.app_id, parent.sequence_id)
+        return builder
 
-    def _burr_transitions(self, transitions: Sequence[Transition]) -> list[tuple[str, str, Condition]]:
+    def _run(self, application: Application[StateT]) -> Finished[StateT] | Paused:
+        pauses = list(self.workflow.pause_points)
+        _, _, state = application.run(halt_after=[_name(self.last)], halt_before=pauses)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        run_id = application.uid
+        waiting = application.get_next_action()
+        if waiting is not None and waiting.name in self.workflow.pause_points:
+            input_type, answer_type = self.workflow.pause_points[waiting.name]
+            request = input_type.model_validate({field: state[field] for field in input_type.model_fields})  # pyright: ignore[reportAny]
+            return Paused(run_id=run_id, step=waiting.name, request=request, answer_type=answer_type)
+        return Finished(run_id=run_id, state=model_from_state(model=self.workflow.state_type, state=state))
+
+    def _burr_transitions(self) -> list[tuple[str, str, Condition]]:
         burr_transitions: list[tuple[str, str, Condition]] = []
-        for transition in transitions:
-            siblings = [other for other in transitions if other.after is transition.after]
-            if len(siblings) > 1 and any(other.when is None for other in siblings):
-                raise TransitionError(f"{_name(transition.after)} has several transitions; each needs a `when`")
-            if transition.when is None:
-                condition = default
-            else:
-                condition = self._condition(transition, siblings)
+        for transition in self.transitions:
+            siblings = [other for other in self.transitions if other.after is transition.after]
+            condition = default if transition.when is None else self._condition(transition, siblings)
             burr_transitions.append((_name(transition.after), _name(transition.go_to), condition))
         return burr_transitions
 
     def _condition(self, transition: Transition, siblings: list[Transition]) -> Condition:
         """Holds when this transition's decision does, after checking that exactly one sibling's does."""
-        state_type = self.state_type
+        state_type = self.workflow.state_type
         own_test = cast(Callable[[StateT], bool], transition.when)
         sibling_tests = [cast(Callable[[StateT], bool], sibling.when) for sibling in siblings]
 
@@ -130,44 +243,72 @@ class Workflow(Generic[StateT]):
 
         return Condition(keys=list(state_type.model_fields), resolver=resolve, name=_name(own_test))
 
-    def _state_fields(self, function: AnyStep, model: type[BaseModel]) -> list[str]:
-        fields = list(model.model_fields)
-        unknown = [field for field in fields if field not in self.state_type.model_fields]
-        if unknown:
-            raise TypeError(f"step {_name(function)}: {model.__name__} has fields {unknown} "
-                            f"that {self.state_type.__name__} does not")
-        return fields
+
+# ── helpers ────────────────────────────────────────────────────────────
+
+def _burr_action(call: Callable[[BaseModel, BaseModel | None], BaseModel], input_type: type[BaseModel],
+                 answer_type: type[BaseModel] | None, reads: list[str], writes: list[str],
+                 shown: Callable[..., BaseModel]) -> FunctionBasedAction:  # pyright: ignore[reportExplicitAny]
+    """A Burr action that validates the step's input (and answer), runs it, and
+    writes its output back; the UI shows `shown`'s source as its code.
+    (Burr hands the state to the parameter named `state` and runtime inputs,
+    such as `answer`, by name.)"""
+
+    def run_step(state: State[BaseModel]) -> tuple[dict[str, object], State[BaseModel]]:
+        given = input_type.model_validate({field: state[field] for field in reads})  # pyright: ignore[reportAny]
+        written = _written(call(given, None), writes)
+        return written, state.update(**written)
+
+    def run_pause_point(state: State[BaseModel], answer: BaseModel) -> tuple[dict[str, object], State[BaseModel]]:
+        assert answer_type is not None
+        given = input_type.model_validate({field: state[field] for field in reads})  # pyright: ignore[reportAny]
+        written = _written(call(given, answer_type.model_validate(answer)), writes)
+        return written, state.update(**written)
+
+    run = run_step if answer_type is None else run_pause_point
+    return FunctionBasedAction(run, reads, writes, originating_fn=shown)
 
 
-class TypedApplication(Generic[StateT]):
-    def __init__(self, state_type: type[StateT], application: Application[StateT]) -> None:
-        self.state_type = state_type
-        self.application = application
+def _written(produced: BaseModel, writes: list[str]) -> dict[str, object]:
+    return {field: getattr(produced, field) for field in writes}  # pyright: ignore[reportAny]
 
-    def run_until_after(self, last: AnyStep) -> StateT:
-        _, _, final_state = self.application.run(halt_after=[_name(last)])  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-        return model_from_state(model=self.state_type, state=final_state)
 
-    def draw(self, path_without_extension: Path) -> None:
-        self.application.visualize(output_file_path=str(path_without_extension), format="png",  # pyright: ignore[reportUnknownMemberType]
-                                   include_conditions=True, include_state=True)
+def _check_decisions(transitions: Sequence[Transition]) -> None:
+    for transition in transitions:
+        siblings = [other for other in transitions if other.after is transition.after]
+        if len(siblings) > 1 and any(other.when is None for other in siblings):
+            raise TransitionError(f"{_name(transition.after)} has several transitions; each needs a `when`")
 
 
 def _step_models(function: Callable[[InputT], OutputT]) -> tuple[type[InputT], type[OutputT]]:
     """The input and output models a step's signature names."""
+    parameters, output_type = _signature_models(function)
+    if len(parameters) != 1:
+        raise TypeError(f"step {_name(function)} must take one pydantic model (its input)")
+    return cast(type[InputT], parameters[0]), cast(type[OutputT], output_type)
+
+
+def _pause_point_models(function: Callable[[InputT, AnswerT], OutputT]
+                        ) -> tuple[type[InputT], type[AnswerT], type[OutputT]]:
+    """The input, answer and output models a pause point's signature names."""
+    parameters, output_type = _signature_models(function)
+    if len(parameters) != 2:
+        raise TypeError(f"pause point {function.__name__} must take two pydantic models (input, answer)")
+    return cast(type[InputT], parameters[0]), cast(type[AnswerT], parameters[1]), cast(type[OutputT], output_type)
+
+
+def _signature_models(function: Callable[..., object]) -> tuple[list[type[BaseModel]], type[BaseModel]]:  # pyright: ignore[reportExplicitAny]
     hints = cast(dict[str, object], get_type_hints(function))
     output_type = hints.pop("return", None)
-    if len(hints) != 1 or not _is_model(output_type):
-        raise TypeError(f"step {_name(function)} must take one pydantic model and return one")
-    input_type = next(iter(hints.values()))
-    if not _is_model(input_type):
-        raise TypeError(f"step {_name(function)} must take one pydantic model and return one")
-    return cast(type[InputT], input_type), cast(type[OutputT], output_type)
+    parameters = list(hints.values())
+    if not all(_is_model(hint) for hint in [*parameters, output_type]):
+        raise TypeError(f"{function.__name__}: every parameter and the return value must be pydantic models")
+    return cast(list[type[BaseModel]], parameters), cast(type[BaseModel], output_type)
 
 
 def _is_model(hint: object) -> bool:
     return isinstance(hint, type) and issubclass(hint, BaseModel)
 
 
-def _name(function: Callable[[Never], object]) -> str:
+def _name(function: Callable[..., object]) -> str:  # pyright: ignore[reportExplicitAny]
     return function.__name__
