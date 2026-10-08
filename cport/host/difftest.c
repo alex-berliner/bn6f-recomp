@@ -21,6 +21,9 @@
 #include "hostmem.h"
 
 typedef struct { const char *name; GuestFn hand, lifted; } Pair;
+/* Optional structured input generator: fills guest RAM/registers in place. */
+typedef void (*GenFn)(Cpu *in, u32 (*rnd)(void));
+GenFn difftest_generator(const char *name);
 #define PAIR(n) { #n, n, L_##n },
 static const Pair kPairs[] = {
 #include "difftest_pairs.h"
@@ -170,13 +173,23 @@ static int test_pair(const Pair *p, int trials) {
         in.nz = rnd(); in.c = rnd() & 1; in.v = rnd() & 1;
         in.cpsr_ctl = 0x1F;
         in.bank_sp[BANK_IRQ] = 0x03007F60u;
+        GenFn gen = difftest_generator(p->name);
+        if (gen) {
+            load_mem(mem_in);
+            gen(&in, rnd);
+            save_mem(mem_in);
+        }
         run_child(p->lifted, &in, mem_in, ra, out_a);
         run_child(p->hand, &in, mem_in, rb, out_b);
         if (ra->status) { crashes++; continue; }   /* original faults: input out of domain */
         const char *why = NULL;
-        /* Memory below the entry SP is free stack scratch after return. */
-        size_t sp_off = g_regions[0].size + (GUEST_SP - 0x03000000u);
-        memcpy(out_b + sp_off - STACK_SCRATCH, out_a + sp_off - STACK_SCRATCH, STACK_SCRATCH);
+        /* Stack below the final SP is dead after return (callee scratch, or a
+         * caller frame the function popped). */
+        u32 dead_top = ra->cpu.r[13] > GUEST_SP ? ra->cpu.r[13] : GUEST_SP;
+        if (dead_top > GUEST_SP + 0x100) dead_top = GUEST_SP + 0x100;
+        size_t lo = g_regions[0].size + (GUEST_SP - STACK_SCRATCH - 0x03000000u);
+        size_t hi = g_regions[0].size + (dead_top - 0x03000000u);
+        memcpy(out_b + lo, out_a + lo, hi - lo);
         if (rb->status) why = "hand-written version crashed";
         else if (memcmp(out_a, out_b, n)) why = "guest memory differs";
         else if (ra->cpu.ret != rb->cpu.ret) why = "return target differs";

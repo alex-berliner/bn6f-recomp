@@ -241,8 +241,10 @@ class Program:
         if ins.width != 4 or a & 3:
             return None
         if not self.info.is_readonly(a):
-            # iwram_text literal pools are immutable copies of ROM bytes too.
-            if not (0x03005B00 <= a < 0x03007B00):
+            # Literal pools inside code copied to RAM (iwram_text, m4a's
+            # SoundMainRAM, librfu) are immutable copies of ROM bytes too.
+            sec = self.info.section_for(a)
+            if sec is None or not sec.executable or sec.vma < 0x03000000 or sec.vma >= 0x04000000:
                 return None
         return self.info.u32(a)
 

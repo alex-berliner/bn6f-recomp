@@ -7,8 +7,8 @@ CFLAGS  := -O1 -g0 -DTARGET_FLAT -DDIFFTEST -I../include -I. -fno-strict-aliasin
            -Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable -w
 LIFTED  := $(wildcard ../src/lifted/*.c)
 SRCS    := $(LIFTED) $(wildcard ../src/game/*.c) ../src/runtime/cpu.c ../src/runtime/swi.c \
-           ../src/runtime/reloc.c memmap.c difftest.c
-OBJS    := $(patsubst ../%.c,$(BUILD)/%.o,$(filter ../%,$(SRCS))) $(BUILD)/host/memmap.o $(BUILD)/host/difftest.o
+           ../src/runtime/reloc.c memmap.c difftest.c difftest_gen.c
+OBJS    := $(patsubst ../%.c,$(BUILD)/%.o,$(filter ../%,$(SRCS))) $(BUILD)/host/memmap.o $(BUILD)/host/difftest.o $(BUILD)/host/difftest_gen.o
 
 all: $(BUILD)/difftest
 

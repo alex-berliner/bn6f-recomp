@@ -40,7 +40,9 @@ typedef struct { unsigned frame; unsigned keyinput; } Ev;
 int main(int argc, char **argv) {
     const char *rom = NULL, *input = NULL, *shots = NULL, *bios = NULL, *dump = NULL;
     unsigned frames = 600, every = 0;
-    unsigned long marker = 0, guest = 0;
+    unsigned long marker = 0, guest = 0, game_frame_addr = 0, until_game_frame = 0, digest_every = 0;
+    unsigned last_digest = ~0u;
+    unsigned long shot_game = 0;
     int trace_pc = 0;
     unsigned long prof_from = 0, prof_steps = 0;
     unsigned step_from = 0, code_lo = 0x08800000, code_hi = 0x0A000000, arm_lo = 0, arm_hi = 0;
@@ -53,6 +55,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--marker")) marker = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--dump-ram")) dump = argv[++i];
         else if (!strcmp(argv[i], "--quiet")) g_verbose_log = 0;
+        else if (!strcmp(argv[i], "--game-frame-addr")) game_frame_addr = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--until-game-frame")) until_game_frame = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--digest-every")) digest_every = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--shot-at-game-frame")) shot_game = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--guest")) guest = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--trace-pc")) trace_pc = 1;
         else if (!strcmp(argv[i], "--step-from")) step_from = strtoul(argv[++i], 0, 0);
@@ -110,8 +116,50 @@ int main(int argc, char **argv) {
 
     unsigned keyinput = 0x3FF;
     for (unsigned fr = 0; fr < frames; fr++) {
-        while (evi < nev && evs[evi].frame <= fr)
+        /* Input timeline: hardware frames, or (with --game-frame-addr) the
+         * game's own frame counter, so builds of different speed see the
+         * same input at the same game state. */
+        unsigned when = fr;
+        if (game_frame_addr) {
+            when = core->busRead16(core, core->busRead32(core, game_frame_addr));
+            if (shot_game && shots && when >= shot_game) {
+                char path[512];
+                snprintf(path, sizeof path, "%s/game_%06lu.ppm", shots, shot_game);
+                FILE *o = fopen(path, "wb");
+                fprintf(o, "P6 %u %u 255\n", w, h);
+                for (size_t i = 0; i < (size_t)w * h; i++) {
+                    color_t c = fb[i];
+                    fputc(c & 0xFF, o); fputc((c >> 8) & 0xFF, o); fputc((c >> 16) & 0xFF, o);
+                }
+                fclose(o);
+                shot_game = 0;
+            }
+            if (until_game_frame && when >= until_game_frame) {
+                printf("reached game frame %u at hardware frame %u\n", when, fr);
+                frames = fr;
+                break;
+            }
+        }
+        while (evi < nev && evs[evi].frame <= when)
             keyinput = evs[evi++].keyinput;
+        /* At each checkpoint game frame (start of the frame, before input is
+         * read), print a digest of EWRAM, palette, VRAM and OAM. */
+        if (digest_every && game_frame_addr && when % digest_every == 0 && when != last_digest) {
+            last_digest = when;
+            static const struct { const char *n; unsigned base, size; } dr[] = {
+                { "ewram", 0x02000000, 0x40000 }, { "pal", 0x05000000, 0x400 },
+                { "vram", 0x06000000, 0x18000 }, { "oam", 0x07000000, 0x400 } };
+            printf("digest game=%u hw=%u", when, fr);
+            for (unsigned r = 0; r < 4; r++) {
+                unsigned long long h = 1469598103934665603ull;
+                for (unsigned a = 0; a < dr[r].size; a += 4) {
+                    h ^= core->busRead32(core, dr[r].base + a);
+                    h *= 1099511628211ull;
+                }
+                printf(" %s=%016llx", dr[r].n, h);
+            }
+            printf("\n");
+        }
         core->setKeys(core, ~keyinput & 0x3FF);
         if (prof_steps && fr == prof_from) {
             /* Sampling profile: histogram of the PC every 61 instructions. */
