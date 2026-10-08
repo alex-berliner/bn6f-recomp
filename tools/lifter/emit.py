@@ -379,10 +379,10 @@ class UnitEmitter:
         # pop {r4-r7}; pop {r0}; bx r0 (two pops) is covered by the first check
         return False
 
-    def emit_call(self, target_expr: str, target: int | None, ret: int, thumb_lr: bool) -> list[str]:
+    def emit_call(self, target_expr: str, target: int | None, ret: int, thumb_lr: bool, at: int) -> list[str]:
         """Call site; expanded by lift.py into per-site register sync once the
         function's local register set is known (see expand_calls)."""
-        save, load, mw = self.ctx.call_masks(target)
+        save, load, mw = self.ctx.call_masks(target, at, self.u.start)
         if target is not None:
             kind = "T" if thumb_lr else "A"
             return [f"CALLM({kind}, {self.fn_for(target)}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x});"]
@@ -409,7 +409,7 @@ class UnitEmitter:
         if k == "b":
             if ins.link:
                 ret = ins.addr + ins.size
-                L += self.emit_call("", ins.target, ret, ins.thumb)
+                L += self.emit_call("", ins.target, ret, ins.thumb, ins.addr)
                 return L
             if ins.cond != "al":
                 return [f"if ({COND_EXPR[ins.cond]}) {self.goto_or_tail(ins.target)}"]
@@ -471,9 +471,9 @@ class UnitEmitter:
         if ret is not None:
             ret &= ~1
             if ct is not None:
-                L += self.emit_call(expr, ct & ~1, ret, False)
+                L += self.emit_call(expr, ct & ~1, ret, False, ins.addr)
             else:
-                L += self.emit_call(expr, None, ret, False)
+                L += self.emit_call(expr, None, ret, False, ins.addr)
             nxt = ins.addr + ins.size
             if ret != nxt:
                 L.append(self.goto_or_tail(ret))

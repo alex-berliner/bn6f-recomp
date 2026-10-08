@@ -87,7 +87,7 @@ void cpu_set_spsr(u32 v, u32 mask) {
 /* ── dispatch ────────────────────────────────────────────────────────── */
 
 #if defined(TARGET_GBA)
-#define HOT __attribute__((section(".iwram"), target("arm"), noinline))
+#define HOT __attribute__((section(IWRAM_SECTION), target("arm"), noinline))
 #else
 #define HOT
 #endif

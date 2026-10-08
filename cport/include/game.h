@@ -14,10 +14,10 @@
 
 #if defined(TARGET_GBA)
 /* Hot code: ARM state, run from IWRAM like the routines the game copied there. */
-#define IWRAM_CODE __attribute__((section(".iwram"), target("arm"), noinline))
+#define IWRAM_CODE __attribute__((section(IWRAM_SECTION), target("arm"), noinline))
 /* Helpers of IWRAM code: same section and state, but may be inlined (a
  * plain static helper the compiler keeps out of line would land in ROM). */
-#define IWRAM_HELPER __attribute__((section(".iwram"), target("arm")))
+#define IWRAM_HELPER __attribute__((section(IWRAM_SECTION), target("arm")))
 #else
 #define IWRAM_CODE
 #define IWRAM_HELPER

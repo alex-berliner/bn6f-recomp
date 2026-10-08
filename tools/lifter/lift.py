@@ -144,6 +144,7 @@ def expand_calls(body: list[str], regs: list[str], flags: list[str], written: se
         if kind == "X":
             call = f"{{ u32 x_ = {fn}; {' '.join(st)} {chk_pre} dispatch(x_);"
         else:
+            st = [x for x in st if not x.startswith("LR = ")]     # the call sets LR
             lr = f"(u32){ra} | 1u" if kind == "T" else f"(u32){ra}"
             call = f"{{ {' '.join(st)} {chk_pre} LR = {lr}; CALL_DIRECT({fn});"
         return (f"{call} {chk_post} {' '.join(ld)} "
@@ -503,7 +504,15 @@ def main():
     #     sets come from the same fixpoint (optimistic start).
     preserved = {a: ALLR for a in names}
 
+    # may_unwind: some path can return somewhere other than the entry LR
+    # (popping a caller's frame, returning through a computed address,
+    # indirect jumps/calls, or calling something that may unwind). Calls to
+    # such functions keep full register sync (see call_masks).
+    may_unwind = {a: False for a in names}
+    em_of = {u.start: ems[u.start] for u in p.units}
+
     def unit_preserved(u: Unit, e: int) -> int:
+        nonlocal_unwind[0] = False
         eff = effects[u.start]
         # state: (regs tuple of 15 symbols or None, sp offset or None, stack dict)
         init = (tuple(range(15)), 0, {})
@@ -531,6 +540,7 @@ def main():
             regs, spo, stack = list(states[a][0]), states[a][1], dict(states[a][2])
             k = ins.kind
             ret_regs = None
+            regs0, spo0, stack0 = states[a]
             if ins.cond != "al":
                 # conditional (ARM): may or may not execute; forget what it may touch
                 _r2, wr = reg_effects(ins.__class__(**{**ins.__dict__, "cond": "al"}))
@@ -596,6 +606,9 @@ def main():
                     succs.append(x[1])
                 elif kx == "call":
                     tgt, retp = x[1], x[2]
+                    if (tgt is None and not IND_NO_UNWIND) or (tgt is not None and may_unwind.get(tgt, True)) \
+                            or retp not in u.insns:
+                        nonlocal_unwind[0] = True
                     keep = (preserved[tgt] if tgt is not None else 0) & ~RB(14)   # the call writes LR
                     regs2 = [regs[n] if (n == 13 or keep & RB(n)) else None for n in range(15)]
                     if retp in u.insns:
@@ -612,12 +625,21 @@ def main():
                 elif kx == "return":
                     result &= kept(ret_regs if ret_regs is not None else regs)
                     seen_ret = True
+                    rt = return_target(ins, regs0, spo0, stack0)
+                    if rt != 14:
+                        nonlocal_unwind[0] = True
+                        own_unwind.add(u.start)
+                        if os.environ.get("LIFT_DEBUG_UNWIND") == names.get(u.start):
+                            print(f"    {a:#x} {ins.kind} rt={rt} spo={spo0} stack={stack0} regs={regs0}")
                 elif kx == "tail":
                     result &= kept(regs) & preserved.get(x[1], 0)
                     seen_ret = True
+                    if regs[14] != 14 or may_unwind.get(x[1], True):
+                        nonlocal_unwind[0] = True
                 elif kx == "jump":
                     result = 0
                     seen_ret = True
+                    nonlocal_unwind[0] = True
             st = (tuple(regs), spo, stack)
             for t in succs:
                 if t not in states:
@@ -627,25 +649,74 @@ def main():
                     if m != states[t]:
                         states[t] = m; work.append(t)
         if work:
+            nonlocal_unwind[0] = True
             return 0          # gave up
         return result if seen_ret else ALLR
 
+    nonlocal_unwind = [False]
+    own_unwind = set()
+    # Indirect calls are assumed not to unwind (none does on the test routes;
+    # LIFT_TRACE builds log any return-address mismatch). LIFT_IND_UNWIND=1
+    # restores the fully conservative assumption.
+    IND_NO_UNWIND = os.environ.get("LIFT_IND_UNWIND") != "1"
+
+    def return_target(ins, regs0, spo0, stack0):
+        """Symbol (14 = entry LR) of the address a returning instruction goes to."""
+        k = ins.kind
+        if k == "block" and ins.load and ins.rn == 13 and spo0 is not None:
+            rx = 15 if 15 in ins.regs else em_of_cur[0].pop_into_bx_veneer(ins)
+            if rx is None:
+                return None
+            return stack0.get(spo0 + 4 * sorted(ins.regs).index(rx))
+        if k == "bx" and ins.rm < 15:
+            return regs0[ins.rm]
+        if k == "dp" and ins.rd == 15 and ins.op2 is not None and not ins.op2.is_imm and ins.op2.rm < 15:
+            return regs0[ins.op2.rm]
+        if k == "mem" and ins.load and ins.rd == 15 and ins.rn == 13 and not ins.pre and spo0 is not None:
+            return stack0.get(spo0)
+        return None
+
+    em_of_cur = [None]
     while True:
         changed = False
         for u in p.units:
+            em_of_cur[0] = em_of[u.start]
             for e in u.entries:
                 m = unit_preserved(u, e) & preserved[e]
                 if m != preserved[e]:
                     preserved[e] = m
                     changed = True
+                if nonlocal_unwind[0] and not may_unwind[e]:
+                    may_unwind[e] = True
+                    changed = True
         if not changed:
             break
+    print(f"[lift] {sum(may_unwind.values())} of {len(may_unwind)} entries may unwind past their caller "
+          f"({len(own_unwind)} units through their own returns)")
+    if os.environ.get("LIFT_DEBUG_UNWIND"):
+        for st in sorted(own_unwind)[:40]:
+            print(f"  own unwind: {names.get(st, hex(st))}")
     unit_preserved_mask = {u.start: min((preserved[e] for e in u.entries), key=lambda m: bin(m).count("1"))
                            for u in p.units}
     outputs = {u.start: callers_live[u.start] & may_write[u.start] for u in p.units}
     use_preserved = os.environ.get("LIFT_NO_PRESERVED") != "1"
     def pres(t):
         return preserved[t] if use_preserved else 0
+
+    use_live_sync = os.environ.get("LIFT_NO_LIVE_SYNC") != "1"
+
+    def call_masks(t, call_addr, unit_start):
+        """(save, load, may_write) for a call site: registers/flags to store
+        before the call, to reload after it, and that the callee may change."""
+        if t is None:
+            return ALL, ALL, ALL
+        mw = may_write[unit_of(t).start]
+        mwp = mw & ~pres(t)
+        if may_unwind.get(t, True) or not use_live_sync:
+            return inputs[t] | mwp, mwp, mw
+        # The callee returns here: only what is live afterwards matters.
+        live = live_out_all[unit_start].get(call_addr, ALL)
+        return inputs[t] | (mwp & ~must_write[t] & live), mwp & live, mw
 
     # ── emission ────────────────────────────────────────────────────────
     addr_names: dict[int, str] = {}
@@ -657,10 +728,7 @@ def main():
     ctx = Ctx(p=p, names=names, addr_names=addr_names, used_addr_syms=set(),
               used_equates={}, flags_in=flags_in, callers_live=callers_live,
               indirect_in=ALLF,
-              call_masks=lambda t: (ALL, ALL, ALL) if t is None else
-              (inputs[t] | (may_write[unit_of(t).start] & ~pres(t)),
-               may_write[unit_of(t).start] & ~pres(t),
-               may_write[unit_of(t).start]))
+              call_masks=call_masks)
     iwram_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "iwram.txt")
     iwram_names = set()
     if os.path.exists(iwram_path):

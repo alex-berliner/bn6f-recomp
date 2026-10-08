@@ -232,8 +232,16 @@ void trace_sync_violation(u32 ra, int which);
  * (bn6f IWRAMRoutinesROMLocation). */
 /* Lifted functions listed in tools/lifter/iwram.txt: Thumb code run from
  * IWRAM (no ROM wait states), as the game ran its own hot routines. */
+/* Section for code run from IWRAM. LIFT_TRACE builds are larger and slower
+ * anyway; their "IWRAM" code stays in ROM so it fits. */
+#if defined(TARGET_GBA) && !defined(LIFT_TRACE)
+#define IWRAM_SECTION ".iwram"
+#else
+#define IWRAM_SECTION ".text.iwram"
+#endif
+
 #if defined(TARGET_GBA)
-#define IWRAM_LIFTED __attribute__((section(".iwram.lifted"), noinline))
+#define IWRAM_LIFTED __attribute__((section(IWRAM_SECTION ".lifted"), noinline))
 #else
 #define IWRAM_LIFTED
 #endif

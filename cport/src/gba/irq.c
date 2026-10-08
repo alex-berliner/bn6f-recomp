@@ -28,7 +28,7 @@ static inline __attribute__((always_inline)) void copy_cpu(Cpu *dst, const Cpu *
 }
 
 /* In IWRAM like the game's own handler: it runs a few times per frame. */
-__attribute__((section(".iwram"), target("arm"), noinline)) void irq_entry(void) {
+__attribute__((section(IWRAM_SECTION), target("arm"), noinline)) void irq_entry(void) {
     trace_event(4, REG32(0x04000200));
     Cpu saved;
     copy_cpu(&saved, &cpu);
