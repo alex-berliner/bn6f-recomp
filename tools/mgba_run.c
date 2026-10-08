@@ -129,6 +129,7 @@ int main(int argc, char **argv) {
     unsigned frames = 600, every = 0, bios_intro = 0;
     unsigned long marker = 0, guest = 0, game_frame_addr = 0, until_game_frame = 0, digest_every = 0;
     unsigned long stall_frames = 3600;   /* with --until-game-frame: stop after a minute without a game frame */
+    unsigned long dump_at[64]; unsigned ndump_at = 0; unsigned long long dumped_at = 0; const char *dump_at_prefix = NULL;
     /* --profile-game G0 G1: cycle profile from game frame G0 to G1 (needs
      * --game-frame-addr); input keeps following the trace while profiling. */
     unsigned long pg_from = 0, pg_to = 0;
@@ -207,6 +208,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--bios")) bios = argv[++i];
         else if (!strcmp(argv[i], "--marker")) marker = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--dump-ram")) dump = argv[++i];
+        else if (!strcmp(argv[i], "--dump-at-game")) {   /* G1,G2,... PREFIX: palette+VRAM+OAM at those game frames */
+            for (char *t = strtok(argv[++i], ","); t && ndump_at < 64; t = strtok(NULL, ","))
+                dump_at[ndump_at++] = strtoul(t, 0, 0);
+            dump_at_prefix = argv[++i];
+        }
         else if (!strcmp(argv[i], "--quiet")) g_verbose_log = 0;
         else if (!strcmp(argv[i], "--game-frame-addr")) game_frame_addr = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--until-game-frame")) until_game_frame = strtoul(argv[++i], 0, 0);
@@ -510,6 +516,23 @@ int main(int argc, char **argv) {
                 printf(" %s=%016llx", dr[r].n, h);
             }
             printf("\n");
+        }
+        /* --dump-at-game: the bytes the digest hashes (palette, VRAM, OAM, in
+         * that order), at the same moment as a digest would be taken. */
+        for (unsigned k = 0; k < ndump_at && game_frame_addr; k++) {
+            if ((dumped_at >> k) & 1 || when < dump_at[k])
+                continue;
+            dumped_at |= 1ull << k;
+            char path[512];
+            snprintf(path, sizeof path, "%s_%lu.bin", dump_at_prefix, dump_at[k]);
+            FILE *o = fopen(path, "wb");
+            static const unsigned base[3] = { 0x05000000, 0x06000000, 0x07000000 }, size[3] = { 0x400, 0x18000, 0x400 };
+            for (unsigned r = 0; r < 3; r++)
+                for (unsigned a = 0; a < size[r]; a += 4) {
+                    uint32_t v = core->busRead32(core, base[r] + a);
+                    fwrite(&v, 4, 1, o);
+                }
+            fclose(o);
         }
         core->setKeys(core, ~keyinput & 0x3FF);
         if (prof_steps && fr == prof_from) {
