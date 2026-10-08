@@ -137,10 +137,23 @@ Next sub_3006920(void) {
 }
 
 /* sub_30068E8(r0 = attr01, r1 = attr2, r2 = layer, r3 = list position):
- * queue a single OAM entry; r0 = 0xFF if it was queued. */
+ * queue a single OAM entry; r0 = 0xFF if it was queued. The flags are the
+ * original's too: callers return them up through void functions to
+ * dispatchers, which the lifter cannot see past. */
 IWRAM_CODE Next sub_30068E8(void) {
-    if ((s32)U32(SPRITE_COUNT) < POOL_SLOTS && link_entry(R0, R1, R2, (s32)R3))
+    s32 n = (s32)U32(SPRITE_COUNT);
+    if (n >= POOL_SLOTS) {
+        SET_FLAGS_CMP(n, POOL_SLOTS);                  /* cmp r6, #0x80 */
+    } else if (link_entry(R0, R1, R2, (s32)R3)) {
         R0 = 0xFF;
+        SET_FLAGS_ADD(0xFF, 0);                        /* adds (no carry); movs r0, #0xFF */
+    } else {
+        s32 depth = (s32)R3, len = (s32)U32(LAYER_HEADS + R2 * 8 + 4);
+        if (depth >= len)
+            SET_FLAGS_CMP(depth, len);                 /* cmp r3, r7 */
+        else
+            SET_FLAGS_CMP(depth, 0);                   /* cmp r3, #0 */
+    }
     RETURN_TO_CALLER();
 }
 

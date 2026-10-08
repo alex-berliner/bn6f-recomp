@@ -74,8 +74,12 @@ static void load_cfg(const char *path) {
         snprintf(c->name, sizeof c->name, "%s", tok);
         while ((tok = strtok(NULL, " \t\n"))) {
             if (!strncmp(tok, "compare=", 8)) {
-                for (char *r = strtok(tok + 8, ","); r; r = strtok(NULL, ","))
-                    c->compare_mask |= 1u << atoi(r + 1);
+                for (char *r = strtok(tok + 8, ","); r; r = strtok(NULL, ",")) {
+                    if (r[0] == 'r') c->compare_mask |= 1u << atoi(r + 1);
+                    else if (!strcmp(r, "nz")) c->compare_flags |= 1;
+                    else if (!strcmp(r, "c")) c->compare_flags |= 2;
+                    else if (!strcmp(r, "v")) c->compare_flags |= 4;
+                }
                 break;   /* strtok state reused; compare= must be last */
             }
             if (!strcmp(tok, "hwtick")) { c->hwtick = 1; continue; }
