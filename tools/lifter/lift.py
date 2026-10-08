@@ -283,10 +283,26 @@ def main():
     # ── flag liveness (inter-procedural fixpoint) ───────────────────────
     flags_in = {a: 0 for a in names}
     callers_live = {u.start: 0 for u in p.units}
-    indirect_targets = {a for a in names if a in p.data_refs or any(
-        (ct & ~1) == a for ct in ())}
+    indirect_targets = {a for a in names if a in p.data_refs}
     for site, ct in p.const_targets.items():
         indirect_targets.add(ct & ~1)
+    # Code pointers can also sit unaligned inside byte streams (e.g. the
+    # cutscene script command "call native routine" embeds one after its
+    # command byte). Any entry whose address (with its mode bit) appears
+    # anywhere in the ROM is treated as possibly called indirectly; a
+    # coincidental match only makes the analysis more conservative.
+    want = {}
+    for a in names:
+        if a >= 0x08000000:
+            want[(a | 1) if p.entries.get(a, True) else a] = a
+    rom = p.info.rom
+    found = 0
+    for off in range(0, len(rom) - 3):
+        v = rom[off] | rom[off + 1] << 8 | rom[off + 2] << 16 | rom[off + 3] << 24 if rom[off + 3] == 0x08 else 0
+        if v in want and want[v] not in indirect_targets:
+            indirect_targets.add(want[v])
+            found += 1
+    print(f"[lift] {found} more entries referenced by unaligned/byte data")
     indirect_in = 0
     indirect_ret = 0
     def _rw(ins):

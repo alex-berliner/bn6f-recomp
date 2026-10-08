@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include "lifted.h"
+#include "dispatch.h"
 #include "hostmem.h"
 
 typedef struct { const char *name; GuestFn hand, lifted; } Pair;
@@ -138,7 +139,14 @@ static void load_mem(const u8 *buf) {
     }
 }
 
-static void die(int sig) { (void)sig; _exit(3); }
+static void die(int sig) {
+    if (getenv("DIFFTEST_VERBOSE")) {
+        char msg[64];
+        int n = snprintf(msg, sizeof msg, "[child] signal %d, guest pc-ish lr=%#x\n", sig, cpu.r[14]);
+        write(2, msg, n);
+    }
+    _exit(3);
+}
 
 /* For functions that wait on the display: advance VCOUNT and the DISPSTAT
  * VBlank flag in the background, like the LCD would. */
@@ -194,7 +202,8 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
 }
 
 static const char *g_snap_dir;
-static int g_mutations = 4;   /* -m: varied copies per snapshot (functions with a mutator) */
+static int g_mutations = 4;
+static const char *g_truth_dir;   /* -m: varied copies per snapshot (functions with a mutator) */
 static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, const u8 *mem_in, size_t n,
                         u8 *out_a, u8 *out_b, Result *ra, Result *rb, int *pfails, int *pcrashes,
                         const char *label);
@@ -205,7 +214,7 @@ static int list_snaps(const char *dir, char ***out) {
     int n = 0, cap = 0;
     struct dirent *e;
     while (d && (e = readdir(d))) {
-        if (strncmp(e->d_name, "snap_", 5)) continue;
+        if (strncmp(e->d_name, "snap_", 5) || strstr(e->d_name, ".exit")) continue;
         if (n == cap) *out = realloc(*out, (cap = cap ? cap * 2 : 64) * sizeof **out);
         (*out)[n] = malloc(strlen(dir) + strlen(e->d_name) + 2);
         sprintf((*out)[n++], "%s/%s", dir, e->d_name);
@@ -366,6 +375,60 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
         *pfails = fails;
 }
 
+/* -G DIR: ground truth. Each snap_NNNN.bin (a function's entry state in the
+ * original game) is run through the lifted code and the result compared with
+ * snap_NNNN.exit.bin (the original's state when that call returned). Memory
+ * below the final SP and the IWRAM block holding the original's code copies
+ * are not compared; interrupts that ran during the call show up as extra
+ * differences (sound state, frame counters). */
+static int ground_truth(const char *dir) {
+    char **files = NULL;
+    int nf = list_snaps(dir, &files), bad = 0;
+    size_t n = snapshot_size();
+    u8 *in_mem = malloc(n), *exp_mem = malloc(n);
+    u8 *out = mmap(NULL, n, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    Result *res = mmap(NULL, sizeof *res, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    for (int t = 0; t < nf; t++) {
+        char exit_path[1024];
+        snprintf(exit_path, sizeof exit_path, "%.*s.exit.bin", (int)(strlen(files[t]) - 4), files[t]);
+        Cpu in, exp;
+        if (!load_snapshot(files[t], &in, in_mem) || !load_snapshot(exit_path, &exp, exp_mem)) continue;
+        u32 pc;
+        { FILE *f = fopen(files[t], "rb"); u32 h[19]; fread(h, sizeof h, 1, f); fclose(f); pc = h[17]; }
+        GuestFn fn = dispatch_lookup(pc | ((in.cpsr_ctl & 0x20) ? 1 : 0));
+        if (!fn) { printf("%s: no lifted function at %#x\n", files[t], pc); continue; }
+        run_child(fn, &in, in_mem, res, out);
+        if (res->status) { printf("%s: lifted code crashed\n", files[t]); bad++; continue; }
+        int diffs = 0;
+        size_t off = 0;
+        for (unsigned r = 0; r < g_region_count; r++) {
+            for (u32 a = 0; a < g_regions[r].size; a++) {
+                u32 addr = g_regions[r].base + a;
+                if (addr >= 0x03005700u && addr < 0x03007900u) continue;           /* code copies */
+                if (addr >= 0x03007E00u && addr < 0x03008000u) continue;           /* IRQ/SVC stacks, BIOS */
+                if (addr >= 0x04000000u && addr < 0x04000400u) continue;           /* I/O: write-only regs read as open bus */
+                if (addr >= 0x03007900u - 0x400 && addr < exp.r[13]) continue;      /* dead stack */
+                if (out[off + a] != exp_mem[off + a]) {
+                    u32 b = a;
+                    while (b + 1 < g_regions[r].size && out[off + b + 1] != exp_mem[off + b + 1]) b++;
+                    if (diffs++ < 12)
+                        printf("  %s: %#x..%#x lifted %02x.. original %02x..\n", files[t] + strlen(dir) + 1,
+                               addr, g_regions[r].base + b, out[off + a], exp_mem[off + a]);
+                    a = b;
+                }
+            }
+            off += g_regions[r].size;
+        }
+        for (int r = 0; r < 16; r++)
+            if (r != 15 && res->cpu.r[r] != exp.r[r] && diffs++ < 20)
+                printf("  %s: r%d lifted %#x original %#x\n", files[t] + strlen(dir) + 1, r, res->cpu.r[r], exp.r[r]);
+        if (diffs) bad++;
+        printf("%s: %s (%d differences)\n", files[t] + strlen(dir) + 1, diffs ? "DIFF" : "ok", diffs);
+    }
+    printf("%d of %d calls differ from the original\n", bad, nf);
+    return bad != 0;
+}
+
 int main(int argc, char **argv) {
     int trials = 200;
     g_rng = 0x9E3779B97F4A7C15ull;
@@ -375,11 +438,14 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[first], "-s")) g_rng = strtoull(argv[++first], 0, 0) | 1;
         else if (!strcmp(argv[first], "-S")) g_snap_dir = argv[++first];
         else if (!strcmp(argv[first], "-m")) g_mutations = atoi(argv[++first]);
+        else if (!strcmp(argv[first], "-G")) g_truth_dir = argv[++first];
     }
     struct rlimit nocore = { 0, 0 };
     setrlimit(RLIMIT_CORE, &nocore);
     host_map_memory(getenv("BN6F_ROM") ? getenv("BN6F_ROM") : "../bn6f/bn6f.gba");
     load_cfg(getenv("DIFFTEST_CFG") ? getenv("DIFFTEST_CFG") : "host/difftest.cfg");
+    if (g_truth_dir)
+        return ground_truth(g_truth_dir);
     int fails = 0, ran = 0;
     for (unsigned i = 0; i < sizeof kPairs / sizeof kPairs[0]; i++) {
         int want = first >= argc;

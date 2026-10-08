@@ -4,7 +4,7 @@
 CC      := $(shell command -v ccache >/dev/null && echo "ccache gcc" || echo gcc)
 BUILD   := ../build-host
 CFLAGS  := -O1 -g0 -DTARGET_FLAT -DDIFFTEST -I../include -I. -fno-strict-aliasing \
-           -Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable -w
+           -Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable -w -Werror=implicit-function-declaration
 LIFTED  := $(wildcard ../src/lifted/*.c)
 SRCS    := $(LIFTED) $(wildcard ../src/game/*.c) ../src/runtime/cpu.c ../src/runtime/swi.c \
            ../src/runtime/reloc.c memmap.c difftest.c difftest_gen.c

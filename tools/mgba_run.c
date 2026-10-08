@@ -8,6 +8,7 @@
  * Screenshots are binary PPMs (DIR/frame_NNNNNN.ppm).
  */
 #include <mgba/core/core.h>
+#include <mgba/core/serialize.h>
 #include <mgba/core/config.h>
 #include <mgba/core/log.h>
 #include <mgba/core/timing.h>
@@ -49,13 +50,19 @@ static int snap_filter_ok(struct mCore *core, int reg, uint32_t off, uint32_t ma
 
 /* Snapshot file: "BN6S", version, r0-r15 (r15 = the instruction's address),
  * cpsr, then guest memory in cport/host/memmap.c region order. */
+static void save_snapshot_named(struct mCore *core, const char *dir, const char *name, uint32_t pc, uint32_t cpsr);
 static void save_snapshot(struct mCore *core, const char *dir, unsigned long n, uint32_t pc, uint32_t cpsr) {
+    char name[32];
+    snprintf(name, sizeof name, "%04lu", n);
+    save_snapshot_named(core, dir, name, pc, cpsr);
+}
+static void save_snapshot_named(struct mCore *core, const char *dir, const char *name, uint32_t pc, uint32_t cpsr) {
     static const struct { unsigned base, size; } rg[] = {
         { 0x02000000, 0x40000 }, { 0x03000000, 0x8000 }, { 0x04000000, 0x400 }, { 0x05000000, 0x400 },
         { 0x06000000, 0x18000 }, { 0x07000000, 0x400 }, { 0x0E000000, 0x8000 },
     };
     char path[512];
-    snprintf(path, sizeof path, "%s/snap_%04lu.bin", dir, n);
+    snprintf(path, sizeof path, "%s/snap_%s.bin", dir, name);
     FILE *o = fopen(path, "wb");
     if (!o) { perror(path); return; }
     uint32_t hdr[2 + 16 + 1] = { 0x53364E42u, 1 };
@@ -108,6 +115,16 @@ int main(int argc, char **argv) {
     /* --count-entry ADDR: while profiling, histogram (r0, lr) at each
      * execution of ADDR (e.g. a runtime function's entry). */
     unsigned long count_pc = 0;
+    /* --load-state FILE / --save-state FILE: start from / end with an mGBA
+     * save state (for building input traces step by step). */
+    const char *load_state = NULL, *save_state = NULL;
+    /* --trace-branches FILE: while stepping (--profile-game window), write
+     * every non-sequential PC (branch target) with the game frame. */
+    FILE *branch_trace = NULL;
+    uint32_t prev_pc = 0;
+    /* --watch ADDR LEN: print LEN bytes at ADDR whenever the game frame
+     * counter changes (with --game-frame-addr). */
+    unsigned long watch_addr = 0, watch_len = 0, watch_last = ~0ul;
     /* --snap ADDR DIR MAX EVERY: while profiling, save the machine state
      * (registers + guest memory) at every EVERY-th execution of ADDR, up to
      * MAX files, for replay by cport/host/difftest -S DIR. */
@@ -116,6 +133,12 @@ int main(int argc, char **argv) {
     /* --snap-filter R OFF MASK VAL: only count hits where
      * (mem32[rR + OFF] & MASK) == VAL (e.g. "this music player is playing"). */
     int snapf_reg = -1;
+    /* --snap-exit: also save the state when each captured call returns
+     * (snap_NNNN.exit.bin), for checking lifted code against the original. */
+    int snap_exit = 0;
+    uint32_t pending_lr = 0, pending_sp = 0;
+    unsigned long pending_n = 0;
+    int pending = 0;
     unsigned long snapf_off = 0, snapf_mask = 0, snapf_val = 0;
     int pg_active = 0;
     uint64_t pg_total = 0;
@@ -142,6 +165,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--trace-pc")) trace_pc = 1;
         else if (!strcmp(argv[i], "--step-from")) step_from = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--count-entry")) count_pc = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--load-state")) load_state = argv[++i];
+        else if (!strcmp(argv[i], "--trace-branches")) branch_trace = fopen(argv[++i], "w");
+        else if (!strcmp(argv[i], "--watch")) { watch_addr = strtoul(argv[++i], 0, 0); watch_len = strtoul(argv[++i], 0, 0); }
+        else if (!strcmp(argv[i], "--save-state")) save_state = argv[++i];
+        else if (!strcmp(argv[i], "--snap-exit")) snap_exit = 1;
         else if (!strcmp(argv[i], "--snap-filter")) {
             snapf_reg = atoi(argv[++i]); snapf_off = strtoul(argv[++i], 0, 0);
             snapf_mask = strtoul(argv[++i], 0, 0); snapf_val = strtoul(argv[++i], 0, 0);
@@ -188,6 +216,17 @@ int main(int argc, char **argv) {
         if (vf) core->loadBIOS(core, vf, 0);
     }
     core->reset(core);
+    if (load_state) {   /* raw core state (core->saveState) */
+        size_t n = core->stateSize(core);
+        void *buf = malloc(n);
+        FILE *f = fopen(load_state, "rb");
+        if (!f || fread(buf, 1, n, f) != n || !core->loadState(core, buf)) {
+            fprintf(stderr, "cannot load state %s\n", load_state);
+            return 1;
+        }
+        fclose(f);
+        free(buf);
+    }
 
     Ev *evs = NULL;
     size_t nev = 0, cap = 0, evi = 0;
@@ -228,6 +267,13 @@ int main(int argc, char **argv) {
                 frames = fr;
                 break;
             }
+        }
+        if (watch_len && game_frame_addr && when != watch_last) {
+            watch_last = when;
+            printf("watch game=%u hw=%u", when, fr);
+            for (unsigned long k = 0; k < watch_len; k++)
+                printf(" %02x", core->busRead8(core, watch_addr + k));
+            printf("\n");
         }
         while (evi < nev && evs[evi].frame <= when)
             keyinput = evs[evi++].keyinput;
@@ -324,11 +370,36 @@ int main(int argc, char **argv) {
                 int32_t pc = 0, cpsr = 0;
                 core->readRegister(core, "pc", &pc);
                 core->readRegister(core, "cpsr", &cpsr);
-                pc -= (cpsr & 0x20) ? 4 : 8;      /* pipeline PC -> executing instruction */
-                if (snap_pc && ((uint32_t)pc & ~1u) == (snap_pc & ~1u) && snap_saved < snap_max &&
+                pc -= (cpsr & 0x20) ? 2 : 4;      /* mGBA pipeline PC -> next instruction to execute */
+                if (branch_trace && (uint32_t)pc != prev_pc + 2 && (uint32_t)pc != prev_pc + 4)
+                    fprintf(branch_trace, "%u %08x\n", when, (uint32_t)pc);
+                prev_pc = (uint32_t)pc;
+                if (pending && ((uint32_t)pc & ~1u) == pending_lr) {
+                    int32_t sp = 0;
+                    core->readRegister(core, "sp", &sp);
+                    if (getenv("SNAP_DEBUG")) fprintf(stderr, "at lr: sp=%08x\n", (uint32_t)sp);
+                    if ((uint32_t)sp == pending_sp) {
+                        char name[32];
+                        snprintf(name, sizeof name, "%04lu.exit", pending_n);
+                        save_snapshot_named(core, snap_dir, name, (uint32_t)pc, (uint32_t)cpsr);
+                        pending = 0;
+                    }
+                }
+                if (!pending && snap_pc && ((uint32_t)pc & ~1u) == (snap_pc & ~1u) && snap_saved < snap_max &&
                     snap_filter_ok(core, snapf_reg, snapf_off, snapf_mask, snapf_val) &&
-                    snap_hits++ % snap_every == 0)
+                    snap_hits++ % snap_every == 0) {
+                    if (snap_exit) {
+                        int32_t lr = 0, sp = 0;
+                        core->readRegister(core, "lr", &lr);
+                        core->readRegister(core, "sp", &sp);
+                        pending_lr = (uint32_t)lr & ~1u;
+                        pending_sp = (uint32_t)sp;
+                        pending_n = snap_saved;
+                        pending = 1;
+                        if (getenv("SNAP_DEBUG")) fprintf(stderr, "entry %lu lr=%08x sp=%08x\n", pending_n, pending_lr, pending_sp);
+                    }
                     save_snapshot(core, snap_dir, snap_saved++, (uint32_t)pc, (uint32_t)cpsr);
+                }
                 if (count_pc && ((uint32_t)pc & ~1u) == (count_pc & ~1u)) {
                     int32_t r0 = 0, lr = 0;
                     core->readRegister(core, "r0", &r0);
@@ -382,6 +453,15 @@ int main(int argc, char **argv) {
         }
     }
 done:
+    if (save_state) {
+        size_t n = core->stateSize(core);
+        void *buf = calloc(1, n);
+        FILE *f = fopen(save_state, "wb");
+        if (!f || !core->saveState(core, buf) || fwrite(buf, 1, n, f) != n)
+            fprintf(stderr, "cannot save state %s\n", save_state);
+        if (f) fclose(f);
+        free(buf);
+    }
     if (dump) {
         static const struct { const char *name; unsigned base, size; } regions[] = {
             { "ewram", 0x02000000, 0x40000 }, { "iwram", 0x03000000, 0x8000 },
