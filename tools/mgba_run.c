@@ -84,6 +84,9 @@ static void save_snapshot_named(struct mCore *core, const char *dir, const char 
     fclose(o);
 }
 
+static uint8_t snapf_bits[0x02000000 / 16];
+static uint8_t snapf_count[0x400000];
+
 #define NHIT 4096
 static struct { uint32_t r0, lr, n; } hits[NHIT];
 static void count_hit(uint32_t r0, uint32_t lr) {
@@ -136,6 +139,11 @@ int main(int argc, char **argv) {
     /* --snap-exit: also save the state when each captured call returns
      * (snap_NNNN.exit.bin), for checking lifted code against the original. */
     int snap_exit = 0;
+    const char *snapf_dir = NULL;
+    unsigned long snapf_max = 0;
+    struct { uint32_t lr, sp, func; unsigned long step; int irq; char name[32]; } pend[256];
+    unsigned long steps_total = 0;
+    int npend = 0;
     uint32_t pending_lr = 0, pending_sp = 0;
     unsigned long pending_n = 0;
     int pending = 0;
@@ -170,6 +178,19 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--watch")) { watch_addr = strtoul(argv[++i], 0, 0); watch_len = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--save-state")) save_state = argv[++i];
         else if (!strcmp(argv[i], "--snap-exit")) snap_exit = 1;
+        else if (!strcmp(argv[i], "--snap-funcs")) {
+            /* FILE DIR MAXPER: entry+exit states of the first MAXPER calls of
+             * every function listed (hex addresses) */
+            FILE *f = fopen(argv[++i], "r");
+            snapf_dir = argv[++i];
+            snapf_max = strtoul(argv[++i], 0, 0);
+            char line[64];
+            while (f && fgets(line, sizeof line, f)) {
+                uint32_t a = strtoul(line, 0, 16) & ~1u;
+                if (a >= 0x08000000u && a < 0x0A000000u) snapf_bits[(a - 0x08000000u) >> 4] |= 1u << ((a >> 1) & 7);
+            }
+            if (f) fclose(f);
+        }
         else if (!strcmp(argv[i], "--snap-filter")) {
             snapf_reg = atoi(argv[++i]); snapf_off = strtoul(argv[++i], 0, 0);
             snapf_mask = strtoul(argv[++i], 0, 0); snapf_val = strtoul(argv[++i], 0, 0);
@@ -374,6 +395,58 @@ int main(int argc, char **argv) {
                 if (branch_trace && (uint32_t)pc != prev_pc + 2 && (uint32_t)pc != prev_pc + 4)
                     fprintf(branch_trace, "%u %08x\n", when, (uint32_t)pc);
                 prev_pc = (uint32_t)pc;
+                steps_total++;
+                if (snapf_dir) {
+                    uint32_t u = (uint32_t)pc & ~1u;
+                    /* calls that do not come back to LR soon (e.g. functions
+                     * that return past an inline immediate) are dropped */
+                    while (npend && steps_total - pend[0].step > 2000000) {
+                        memmove(&pend[0], &pend[1], (size_t)(npend - 1) * sizeof pend[0]);
+                        npend--;
+                    }
+                    /* returns: innermost first; an outer return also drops
+                     * calls that unwound without returning */
+                    /* an interrupt during a captured call would show up as
+                     * differences: such captures are discarded */
+                    if ((cpsr & 0x1F) == 0x12)
+                        for (int k = 0; k < npend; k++)
+                            pend[k].irq = 1;
+                    for (int k = npend - 1; k >= 0; k--)
+                        if (u == pend[k].lr) {
+                            int32_t sp = 0;
+                            core->readRegister(core, "sp", &sp);
+                            if ((uint32_t)sp == pend[k].sp) {
+                                char nm[48];
+                                if (!pend[k].irq) {
+                                    snprintf(nm, sizeof nm, "%s.exit", pend[k].name);
+                                    save_snapshot_named(core, snapf_dir, nm, u, (uint32_t)cpsr);
+                                } else {
+                                    char path[600];
+                                    snprintf(path, sizeof path, "%s/snap_%s.bin", snapf_dir, pend[k].name);
+                                    remove(path);
+                                    snapf_count[(pend[k].func - 0x08000000u) >> 1 & 0x3FFFFF]--;
+                                }
+                                npend = k;
+                                break;
+                            }
+                        }
+                    if (u >= 0x08000000u && u < 0x0A000000u &&
+                        (snapf_bits[(u - 0x08000000u) >> 4] >> ((u >> 1) & 7) & 1) &&
+                        snapf_count[(u - 0x08000000u) >> 1 & 0x3FFFFF]++ < snapf_max && npend < 256) {
+                        int32_t lr = 0, sp = 0;
+                        core->readRegister(core, "lr", &lr);
+                        core->readRegister(core, "sp", &sp);
+                        pend[npend].lr = (uint32_t)lr & ~1u;
+                        pend[npend].sp = (uint32_t)sp;
+                        pend[npend].step = steps_total;
+                        pend[npend].func = u;
+                        pend[npend].irq = 0;
+                        snprintf(pend[npend].name, sizeof pend[npend].name, "%08x_%u", u,
+                                 (unsigned)snapf_count[(u - 0x08000000u) >> 1 & 0x3FFFFF] - 1);
+                        save_snapshot_named(core, snapf_dir, pend[npend].name, u, (uint32_t)cpsr);
+                        npend++;
+                    }
+                }
                 if (pending && ((uint32_t)pc & ~1u) == pending_lr) {
                     int32_t sp = 0;
                     core->readRegister(core, "sp", &sp);

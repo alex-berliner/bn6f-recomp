@@ -399,7 +399,7 @@ static int ground_truth(const char *dir) {
         if (!fn) { printf("%s: no lifted function at %#x\n", files[t], pc); continue; }
         run_child(fn, &in, in_mem, res, out);
         if (res->status) { printf("%s: lifted code crashed\n", files[t]); bad++; continue; }
-        int diffs = 0;
+        int diffs = 0, mem_diffs = 0;
         size_t off = 0;
         for (unsigned r = 0; r < g_region_count; r++) {
             for (u32 a = 0; a < g_regions[r].size; a++) {
@@ -411,6 +411,7 @@ static int ground_truth(const char *dir) {
                 if (out[off + a] != exp_mem[off + a]) {
                     u32 b = a;
                     while (b + 1 < g_regions[r].size && out[off + b + 1] != exp_mem[off + b + 1]) b++;
+                    mem_diffs++;
                     if (diffs++ < 12)
                         printf("  %s: %#x..%#x lifted %02x.. original %02x..\n", files[t] + strlen(dir) + 1,
                                addr, g_regions[r].base + b, out[off + a], exp_mem[off + a]);
@@ -423,7 +424,8 @@ static int ground_truth(const char *dir) {
             if (r != 15 && res->cpu.r[r] != exp.r[r] && diffs++ < 20)
                 printf("  %s: r%d lifted %#x original %#x\n", files[t] + strlen(dir) + 1, r, res->cpu.r[r], exp.r[r]);
         if (diffs) bad++;
-        printf("%s: %s (%d differences)\n", files[t] + strlen(dir) + 1, diffs ? "DIFF" : "ok", diffs);
+        printf("%s: %s (%d differences)\n", files[t] + strlen(dir) + 1,
+               mem_diffs ? "MEM" : diffs ? "REG" : "ok", diffs);
     }
     printf("%d of %d calls differ from the original\n", bad, nf);
     return bad != 0;
