@@ -1,0 +1,64 @@
+name: npc_doVerticalMovement_809e84e
+address: '0x0809E84E'
+kind: function
+previous_names: []
+status: confirmed
+summary: 'Vertical move: for MovementSpeed frames raise (MovementDistance 0) or lower Z16 by byte 6 per frame.'
+interface: '(r5 = NPC) -> frames = MovementSpeed: 0 -> npc_enableScript0x19_809f516; else frames-1, Z16 +-= byte6;
+  r0 = frames-1, r1 = new Z16, r2 = byte6, flags of the add/sub'
+details: Reached only through jump tables (NPCCurActionJumptable, jt_809E6F0), so the lifted contract lists every
+  register and flag as an output; the readable version leaves the original's (marked 'as the original').
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine and its tables.
+  refs:
+  - bn6f/asm/npc.s:448
+- method: readable-c
+  date: '2026-10-08'
+  detail: Hand-written readable replacement.
+  refs:
+  - cport/src/game/npc_actions.c
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on random inputs.
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 3000 npc_doVerticalMovement_809e84e)'
+  result: 'ok: 3000 trials, 0 failures, 1805 out of domain (1195 compared)'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: Original (mGBA) vs readable version from real game states.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 48 --out /tmp/oracle npc_doVerticalMovement_809e84e
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=23 fail=0 ood=25 (48 states)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'ORACLE ONLY: not executed by any recorded route or sweep, so lockstep does not check it; verified by
+    the CPU oracle and the host difftest.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/npc_actions.c
+  where: recomp ca6b46c
+  tool: hand-written; verified as in evidence
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3996e43c
+  tool: tools/symdoc.py
+readable_c: cport/src/game/npc_actions.c
+coverage: []
+related:
+- npc_standard_809E5E2
+- NPCCurActionJumptable
+- npc_enableScript0x19_809f516
+open_questions: []
+sources:
+- Claude Code session 2026-10-08

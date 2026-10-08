@@ -180,7 +180,7 @@ Next npc_doVerticalMovement_809e84e(void) {
  * NPC_MOVE_PARAM_06): for MovementSpeed frames, move X16 or Y16 by
  * NPC_MOVE_PARAM_07 and Z16 by 1 (up if MovementDistance = 0); then let the
  * script continue. */
-Next npc_809E878(void) {
+Next npc_doDiagonalMovement_809E878(void) {
     u32 npc = R5;
     u32 frames = LD8(npc + NPC_MOVEMENT_SPEED);
     if (frames == 0) {

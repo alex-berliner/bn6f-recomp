@@ -1,0 +1,72 @@
+name: npc_doDiagonalMovement_809E878
+address: '0x0809E878'
+kind: function
+previous_names:
+- npc_809E878
+status: confirmed
+summary: 'Diagonal move: for MovementSpeed frames move X16 or Y16 by byte 7 and Z16 by 1.'
+interface: '(r5 = NPC) -> frames = MovementSpeed: 0 -> npc_enableScript0x19_809f516; else frames-1; axis = byte_809E8C4[byte
+  6] {field X16/Y16, add/subtract}: field +-= byte 7; Z16 += 1 if MovementDistance == 0 else -= 1; r0 = byte 7,
+  r1 = new Z16, r2 = field offset, flags of the Z add/sub'
+details: Reached only through jump tables (NPCCurActionJumptable, jt_809E6F0), so the lifted contract lists every
+  register and flag as an output; the readable version leaves the original's (marked 'as the original').
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine and its tables.
+  refs:
+  - bn6f/asm/npc.s:492
+- method: readable-c
+  date: '2026-10-08'
+  detail: Hand-written readable replacement.
+  refs:
+  - cport/src/game/npc_actions.c
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on random inputs.
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 3000 npc_809E878)'
+  result: 'ok: 3000 trials, 0 failures, 1794 out of domain (1206 compared)'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: Original (mGBA) vs readable version from real game states.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 48 --out /tmp/oracle npc_809E878
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=23 fail=0 ood=25 (48 states)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'ORACLE ONLY: not executed by any recorded route or sweep, so lockstep does not check it; verified by
+    the CPU oracle and the host difftest.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/npc_actions.c
+  where: recomp ca6b46c
+  tool: hand-written; verified as in evidence
+- date: '2026-10-08'
+  what: rename npc_809E878 -> npc_doDiagonalMovement_809E878
+  where: bn6f d2895ae5
+  tool: tools/rename_symbol.py
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3996e43c
+  tool: tools/symdoc.py
+readable_c: cport/src/game/npc_actions.c
+coverage: []
+related:
+- npc_standard_809E5E2
+- NPCCurActionJumptable
+- npc_enableScript0x19_809f516
+open_questions:
+- 'Which script command sets it up (bn6f''s comment: byte1 frames, byte2 vertical direction, byte3 horizontal direction,
+  byte4 horizontal speed)?'
+sources:
+- Claude Code session 2026-10-08
