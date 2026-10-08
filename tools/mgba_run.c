@@ -420,6 +420,7 @@ int main(int argc, char **argv) {
                 printf("  sys sp: %08x (want %08x)\n", (uint32_t)v, hdr[2 + 13]);
             }
             uint32_t lr = hdr[2 + 14] & ~1u, sp0 = hdr[2 + 13];
+            uint8_t swis[64]; unsigned nswis = 0;   /* BIOS calls the function made, for --call-snaps triage */
             unsigned long n;
             int32_t pc = 0, sp = 0;
             for (n = 0; n < call_steps; n++) {
@@ -441,6 +442,8 @@ int main(int argc, char **argv) {
                     if ((op & 0x0F000000) == 0x0F000000) swi = (op >> 16) & 0xFF;
                 }
                 if (swi >= 2 && swi <= 5) { n = call_steps; break; }
+                if (swi != ~0u && nswis < sizeof swis)
+                    swis[nswis++] = (uint8_t)swi;
                 /* executing outside BIOS, EWRAM, IWRAM or ROM: the call ran
                  * into a bad pointer and does not return */
                 uint32_t region = (uint32_t)pc >> 24;
@@ -455,6 +458,13 @@ int main(int argc, char **argv) {
                 core->readRegister(core, "cpsr", &c2);
                 save_snapshot_named(core, call_dir, name, (uint32_t)pc, (uint32_t)c2);
                 done++;
+                if (nswis) {   /* DIR/snap_NAME.swi: the SWI numbers executed, in order */
+                    char sp[700];
+                    snprintf(sp, sizeof sp, "%s/snap_%.*s.swi", call_dir, (int)(ln - 9), de->d_name + 5);
+                    FILE *o = fopen(sp, "w");
+                    for (unsigned k = 0; o && k < nswis; k++) fprintf(o, "%02x ", swis[k]);
+                    if (o) { fputc('\n', o); fclose(o); }
+                }
             } else {
                 timeouts++;
             }
