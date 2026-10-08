@@ -1,0 +1,57 @@
+name: ToggleEventFlagFromImmediate
+address: '0x0802F148'
+kind: function
+previous_names: []
+status: confirmed
+summary: Toggle one event (story progress) flag (flag as two bytes)
+interface: (r0 = flag high byte, r1 = flag low byte) -> toggles the flag; r0 = the byte with the bit flipped, r1
+  = mask, r3 = byte address; N/Z from the new byte (eor), C = 0, V from the address add
+details: 'The event flags are a bit array at [toolkit + oToolkit_EventFlagsPtr] (0x44): flag n is bit 7 - n % 8
+  of byte n / 8, so each byte''s first flag is its top bit. FromImmediate variants take the 16-bit flag as two bytes
+  (r0 = high, r1 = low; `lsl r0, #8; orr r0, r1`) and fall through into the plain function: 4 bytes of code in the
+  caller instead of a literal. All variants compute byte = array + flag / 8 (`add r3, r3, r1`, which sets V) and
+  mask = 0x80 >> (flag % 8) (both shifts shift out a 0 bit, so C = 0).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine and its siblings (bn6f already documented the layout in comments).
+  refs:
+  - bn6f/asm/asm03_0.s:18421
+- method: readable-c
+  date: '2026-10-08'
+  detail: Hand-written readable replacement that reproduces every register and flag the original leaves (callers
+    of TestEventFlag branch on Z right after the call).
+  refs:
+  - cport/src/game/event_flags.c
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: The original (mGBA, real BIOS) and the port's readable version run from the same entry states built from
+    real game memory; all memory and contract registers/flags compared.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 24 --out /tmp/oracle ToggleEventFlagFromImmediate
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=9 fail=0 ood=15 (24 states; ood = states outside the function's domain)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Not executed by any recorded route or sweep: lockstep does not check it; the CPU oracle is its check.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/event_flags.c (the lifted original stays as L_<name> for testing)
+  where: recomp d0b502e
+  tool: hand-written; verified as in evidence
+readable_c: cport/src/game/event_flags.c
+coverage: []
+related:
+- SetEventFlagFromImmediate
+- ClearEventFlagFromImmediate
+- TestEventFlagFromImmediate
+open_questions: []
+sources:
+- Claude Code sessions 2026-10-07/08 (recomp repo history)

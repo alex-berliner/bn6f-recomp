@@ -1,0 +1,82 @@
+name: sub_800C488
+address: '0x0800C488'
+kind: function
+previous_names: []
+status: hypothesis
+summary: r1 = 480 in battle mode 1, else 600, keeping r0/r2/r3 (likely a timer length in frames).
+interface: '() -> r1 = GetBattleMode() == 1 ? 0x1E0 : 0x258; r0, r2, r3 preserved'
+details: Every caller (object.s) stores r1 as a halfword at offset 0x0E of the structure in r7, several next to
+  0x708 (1800) at 0x12. 480/600/1800 frames are 8/10/30 seconds, which suggests timers; not checked.
+evidence:
+- method: caller-analysis
+  date: '2026-10-08'
+  detail: Read all six call sites in object.s.
+  refs:
+  - bn6f/asm/object.s:1417
+  - bn6f/asm/object.s:1487
+  reproduce: grep -n -A4 'bl sub_800C488' bn6f/asm/*.s
+- method: readable-c
+  date: '2026-10-08'
+  detail: Readable version drafted by Kimi K3 with tools/convert/farm.py and accepted only after matching the lifted
+    function on the original's own captured calls (40) and random inputs; chosen and reviewed by Claude.
+  refs:
+  - cport/src/game/battle_helpers.c
+  reproduce: 'tools/convert/capture.sh /tmp/snaps tools/traces/battle.trace 16100 20000 40 sub_800C488
+
+    python3 tools/convert/farm.py --snaps /tmp/snaps --models zai/glm-5.3 sub_800C488   # writes tools/convert/accepted/'
+  result: 'captured calls: ok; random: ok (re-checked with the current difftest, which checks the return target)'
+- method: difftest
+  date: '2026-10-08'
+  detail: 'Host difftest: hand-written version against the lifted original on random inputs.'
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 sub_800C488)'
+  result: 'ok: 1000 trials, 0 failures, 999 out of domain (2026-10-08)'
+- method: lockstep
+  date: '2026-10-08'
+  detail: 'Port ROM with every readable function in place: palette, VRAM and OAM identical to the original at every
+    checkpoint on all 8 recorded routes.'
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000'
+  result: 8/8 routes OK at recomp d0b502e (2026-10-08)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by the recorded routes/sweeps: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2;
+    lockstep checks it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/battle_helpers.c (the lifted original stays as L_<name> for testing)
+  where: recomp 80d5a92
+  tool: hand-written; verified as in evidence
+readable_c: cport/src/game/battle_helpers.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+open_questions:
+- What are the fields at r7+0x0E and r7+0x12 (timers?), and what is battle mode 1?
+sources:
+- Claude Code sessions 2026-10-07/08 (recomp repo history)

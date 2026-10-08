@@ -1,0 +1,91 @@
+name: SetEventFlagRangeFromImmediate
+address: '0x0802F17E'
+kind: function
+previous_names: []
+status: confirmed
+summary: Set a run of consecutive event flags (flag as two bytes)
+interface: '(r0 = flag high byte, r1 = flag low byte, r2 = count) -> sets flags first .. first + count - 1 (at least
+  one: the loop is `sub r2,#1; bgt`); r0 = last byte''s new value, r1 = last mask, r2 = counter after the loop,
+  r3 = last byte address; NZCV from the last `sub r2, #1`; r4, r5 preserved'
+details: 'The event flags are a bit array at [toolkit + oToolkit_EventFlagsPtr] (0x44): flag n is bit 7 - n % 8
+  of byte n / 8, so each byte''s first flag is its top bit. FromImmediate variants take the 16-bit flag as two bytes
+  (r0 = high, r1 = low; `lsl r0, #8; orr r0, r1`) and fall through into the plain function: 4 bytes of code in the
+  caller instead of a literal. All variants compute byte = array + flag / 8 (`add r3, r3, r1`, which sets V) and
+  mask = 0x80 >> (flag % 8) (both shifts shift out a 0 bit, so C = 0).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine and its siblings (bn6f already documented the layout in comments).
+  refs:
+  - bn6f/asm/asm03_0.s:18502
+- method: readable-c
+  date: '2026-10-08'
+  detail: Hand-written readable replacement that reproduces every register and flag the original leaves (callers
+    of TestEventFlag branch on Z right after the call).
+  refs:
+  - cport/src/game/event_flags.c
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: The original (mGBA, real BIOS) and the port's readable version run from the same entry states built from
+    real game memory; all memory and contract registers/flags compared.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 24 --out /tmp/oracle SetEventFlagRangeFromImmediate
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=8 fail=0 ood=9 (24 states; ood = states outside the function's domain)
+- method: lockstep
+  date: '2026-10-08'
+  detail: 'Port ROM with every readable function in place: palette, VRAM and OAM identical to the original at every
+    checkpoint on all 8 recorded routes.'
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000'
+  result: 8/8 routes OK at recomp d0b502e (2026-10-08)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by the recorded routes/sweeps: battle, battles1, battlesweep, fuzz, maps, menus2, story1, story2,
+    story3, wander; lockstep checks it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/event_flags.c (the lifted original stays as L_<name> for testing)
+  where: recomp d0b502e
+  tool: hand-written; verified as in evidence
+readable_c: cport/src/game/event_flags.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- ClearEventFlagRangeFromImmediate
+- ToggleEventFlagRangeFromImmediate
+- TestEventFlagRangeFromImmediate
+open_questions: []
+sources:
+- Claude Code sessions 2026-10-07/08 (recomp repo history)

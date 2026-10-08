@@ -1,0 +1,88 @@
+name: sub_3006028
+address: '0x03006028'
+kind: function
+previous_names: []
+status: confirmed
+summary: Make sure an object's sprite tiles are in OBJ VRAM and its palette has an OBJ palette slot.
+interface: (r0 = tile allocator index, r5 = object) -> tiles cached by graphics pointer (a miss allocates tiles
+  and queues a DMA upload); palette shared by content among 15 slots; promises r5, r10
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine and its callers while writing the readable replacement.
+  refs:
+  - bn6f/asm/asm38.s:693
+- method: readable-c
+  date: '2026-10-08'
+  detail: Hand-written readable replacement; its file header and comments record the structures.
+  refs:
+  - cport/src/game/sprite_gfx.c
+- method: difftest
+  date: '2026-10-08'
+  detail: 'Host difftest: hand-written version against the lifted original on random inputs (registers compared:
+    the ones listed in cport/host/difftest.cfg).'
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 sub_3006028)'
+  result: 'ok: 1000 trials, 0 failures, 793 out of domain (2026-10-08)'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: Original vs readable version from real game states, held to the difftest.cfg contract.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 24 --out /tmp/oracle sub_3006028
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=8 fail=0 ood=16 (oracle_hand, 2026-10-08)
+- method: lockstep
+  date: '2026-10-08'
+  detail: 'Port ROM with every readable function in place: palette, VRAM and OAM identical to the original at every
+    checkpoint on all 8 recorded routes and 116/116 battles (tools/battlesweep.sh).'
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000'
+  result: 8/8 routes OK at recomp d0b502e (2026-10-08); battle sweep 116/116 on 2026-10-08
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by the recorded routes/sweeps: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1,
+    story2, story3, wander; lockstep checks it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/sprite_gfx.c (the lifted original stays as L_<name> for testing)
+  where: recomp b389d9b
+  tool: hand-written; verified as in evidence
+readable_c: cport/src/game/sprite_gfx.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+open_questions: []
+sources:
+- Claude Code sessions 2026-10-07/08 (recomp repo history)

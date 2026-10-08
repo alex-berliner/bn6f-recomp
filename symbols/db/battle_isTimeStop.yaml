@@ -1,0 +1,78 @@
+name: battle_isTimeStop
+address: '0x0800A098'
+kind: function
+previous_names: []
+status: confirmed
+summary: Is a time-stop effect freezing the battle (battle flags bit 2)?
+interface: '() -> r0 = battle flags & 4 (nonzero: time stopped), r1 = 4, N/Z from r0'
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine; the name was already in bn6f; the readable version's comments state its meaning.
+  refs:
+  - bn6f/asm/asm00_1.s:14844
+- method: readable-c
+  date: '2026-10-08'
+  detail: Readable version drafted by GLM-5.3 with tools/convert/farm.py and accepted only after matching the lifted
+    function on the original's own captured calls (40) and random inputs; chosen and reviewed by Claude.
+  refs:
+  - cport/src/game/battle_helpers.c
+  reproduce: 'tools/convert/capture.sh /tmp/snaps tools/traces/battle.trace 16100 20000 40 battle_isTimeStop
+
+    python3 tools/convert/farm.py --snaps /tmp/snaps --models zai/glm-5.3 battle_isTimeStop   # writes tools/convert/accepted/'
+  result: 'captured calls: ok; random: ok (re-checked with the current difftest, which checks the return target)'
+- method: difftest
+  date: '2026-10-08'
+  detail: 'Host difftest: hand-written version against the lifted original on random inputs.'
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 battle_isTimeStop)'
+  result: 'ok: 1000 trials, 0 failures, 1000 out of domain (2026-10-08) - no trial was in domain, so this compared
+    nothing; the CPU oracle and lockstep are its checks'
+- method: lockstep
+  date: '2026-10-08'
+  detail: 'Port ROM with every readable function in place: palette, VRAM and OAM identical to the original at every
+    checkpoint on all 8 recorded routes and 116/116 battles (tools/battlesweep.sh).'
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000'
+  result: 8/8 routes OK at recomp d0b502e (2026-10-08); battle sweep 116/116 on 2026-10-08
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by the recorded routes/sweeps: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2;
+    lockstep checks it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/battle_helpers.c (the lifted original stays as L_<name> for testing)
+  where: recomp 80d5a92
+  tool: hand-written; verified as in evidence
+readable_c: cport/src/game/battle_helpers.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+open_questions: []
+sources:
+- Claude Code sessions 2026-10-07/08 (recomp repo history)
