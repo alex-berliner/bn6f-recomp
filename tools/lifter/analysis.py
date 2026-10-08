@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import bisect
+import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -422,7 +423,15 @@ def build(info: ElfInfo, copies: list[CodeCopy], extra_seeds=()) -> Program:
         k = bisect.bisect_right(rstarts, addr) - 1
         return regions[k][1] if k >= 0 else None
 
-    label_addrs = set(info.labels)
+    # tools/lifter/not_entries.txt: labels that data only appears to point at
+    not_entries_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "not_entries.txt")
+    not_entries = set()
+    if os.path.exists(not_entries_path):
+        for line in open(not_entries_path):
+            name = line.split("#", 1)[0].strip()
+            if name:
+                not_entries.add(name)
+    label_addrs = {a for a, nm in info.labels.items() if nm not in not_entries}
     rom = info.rom
     import struct as _st
     n = len(rom) // 4
