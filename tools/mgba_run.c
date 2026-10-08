@@ -112,7 +112,7 @@ static uint64_t pg_rom[0x01000000 / 2], pg_ram[0x8000 / 2], pg_ewram[0x40000 / 2
 
 int main(int argc, char **argv) {
     const char *rom = NULL, *input = NULL, *shots = NULL, *bios = NULL, *dump = NULL;
-    unsigned frames = 600, every = 0;
+    unsigned frames = 600, every = 0, bios_intro = 0;
     unsigned long marker = 0, guest = 0, game_frame_addr = 0, until_game_frame = 0, digest_every = 0;
     /* --profile-game G0 G1: cycle profile from game frame G0 to G1 (needs
      * --game-frame-addr); input keeps following the trace while profiling. */
@@ -187,6 +187,7 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "--frames")) frames = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--input")) input = argv[++i];
         else if (!strcmp(argv[i], "--shots")) shots = argv[++i];
+        else if (!strcmp(argv[i], "--bios-intro")) bios_intro = 1;   /* boot through the BIOS logo, as hardware does */
         else if (!strcmp(argv[i], "--every")) every = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--bios")) bios = argv[++i];
         else if (!strcmp(argv[i], "--marker")) marker = strtoul(argv[++i], 0, 0);
@@ -255,7 +256,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     mCoreInitConfig(core, NULL);
-    struct mCoreOptions opts = { .useBios = bios != NULL, .skipBios = true, .volume = 0 };
+    struct mCoreOptions opts = { .useBios = bios != NULL, .skipBios = !bios_intro, .volume = 0 };
     mCoreConfigLoadDefaults(&core->config, &opts);
     mCoreLoadConfig(core);
 

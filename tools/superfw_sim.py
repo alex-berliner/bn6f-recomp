@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Apply what SuperFW (Supercard firmware) does to a ROM before booting it.
 
-  tools/superfw_sim.py IN.gba OUT.gba [--no-igm] [--no-directsave] [--fast-ewram]
+  tools/superfw_sim.py IN.gba OUT.gba [--no-igm] [--no-directsave] [--fast-ewram] [--as GCODE]
 
 Follows SuperFW's loader (src/loader.c load_gba_rom, src/patcher.c
 patch_apply_rom) for a game found in its built-in database:
@@ -16,7 +16,9 @@ The in-game menu is a stand-in with the same startup and IRQ entry as
 SuperFW's src/ingame.S: it points the BIOS IRQ vector at its handler, which
 forwards every IRQ to the game's handler at 0x03007FF4 (the hotkey never
 matches here). --fast-ewram also sets REG_MEMCTRL as SuperFW's launch does
-with EWRAM overclocking on.
+with EWRAM overclocking on. --as GCODE applies that game code's database
+entry instead of the ROM's own (to bake SuperFW's treatment of BR6E into a
+ROM under another game code, which SuperFW then loads unpatched).
 """
 import os, struct, subprocess, sys, tempfile
 
@@ -104,14 +106,21 @@ def assemble(src):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    argv = sys.argv[1:]
+    gcode = None
+    if "--as" in argv:
+        k = argv.index("--as")
+        gcode = argv[k + 1].encode()
+        del argv[k:k + 2]
+    args = [a for a in argv if not a.startswith("--")]
     igm = "--no-igm" not in sys.argv
     directsave = "--no-directsave" not in sys.argv
     rom = bytearray(open(args[0], "rb").read())
     size = len(rom)
-    found = db_patch(bytes(rom[0xAC:0xB0]), rom[0xBC])
+    code = gcode or bytes(rom[0xAC:0xB0])
+    found = db_patch(code, rom[0xBC])
     if not found:
-        sys.exit(f"{rom[0xAC:0xB0].decode()} v{rom[0xBC]} is not in the database: SuperFW would ask about patching")
+        sys.exit(f"{code.decode()} v{rom[0xBC]} is not in the database: SuperFW would ask about patching")
     (wcnt, save, irqh, rtc), ops, prgs = found
     apply_ops(rom, ops[:wcnt], prgs)
     apply_ops(rom, ops[wcnt:wcnt + save], prgs)
