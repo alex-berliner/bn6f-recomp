@@ -57,7 +57,45 @@ extern Cpu cpu;
 #define LR  (cpu.r[14])
 
 /* ── guest memory ─────────────────────────────────────────────────────── */
-#if defined(TARGET_GBA) || defined(TARGET_FLAT)
+#if defined(TARGET_FLAT)
+/* Host test builds (guest RAM mapped at its GBA addresses) follow the
+ * ARM7TDMI for misaligned accesses, as the GBA does: a word load reads the
+ * aligned word rotated by the misalignment, a halfword load from an odd
+ * address the aligned halfword rotated by 8 (a signed one the byte,
+ * sign-extended), and stores ignore the low address bits (GBATEK). */
+static inline u32 flat_ld32(u32 a) {
+    u32 v = *(volatile u32 *)(uintptr_t)(a & ~3u), s = (a & 3) * 8;
+    return s ? (v >> s) | (v << (32 - s)) : v;
+}
+static inline u32 flat_ld16(u32 a) {
+    u32 v = *(volatile u16 *)(uintptr_t)(a & ~1u);
+    return (a & 1) ? (v >> 8) | (v << 24) : v;
+}
+#define LD32(a)  flat_ld32((u32)(a))
+#define LD16(a)  flat_ld16((u32)(a))
+#define LD8(a)   ((u32)*(volatile u8 *)(uintptr_t)(u32)(a))
+#define LDS16(a) (((u32)(a) & 1) ? (u32)(s32)*(volatile s8 *)(uintptr_t)(u32)(a) \
+                                 : (u32)(s32)*(volatile s16 *)(uintptr_t)(u32)(a))
+#define LDS8(a)  ((u32)(s32)*(volatile s8 *)(uintptr_t)(u32)(a))
+/* stores to cartridge ROM are ignored, as on the GBA */
+#define FLAT_ROM(a) ((u32)(a) - 0x08000000u < 0x06000000u)
+#define ST32(a, v) do { u32 fa_ = (u32)(a); if (!FLAT_ROM(fa_)) *(volatile u32 *)(uintptr_t)(fa_ & ~3u) = (u32)(v); } while (0)
+#define ST16(a, v) do { u32 fa_ = (u32)(a); if (!FLAT_ROM(fa_)) *(volatile u16 *)(uintptr_t)(fa_ & ~1u) = (u16)(v); } while (0)
+/* Byte stores to video memory, as the GBA does them: palette RAM and BG
+ * VRAM store the byte to both halves of its halfword, OBJ VRAM (tile modes)
+ * and OAM ignore them. */
+static inline void flat_st8(u32 a, u32 v) {
+    if (a >= 0x05000000u && a < 0x08000000u) {
+        if (a >= 0x06010000u)
+            return;
+        *(volatile u16 *)(uintptr_t)(a & ~1u) = (u16)((v & 0xFF) * 0x101u);
+        return;
+    }
+    if (!FLAT_ROM(a))
+        *(volatile u8 *)(uintptr_t)a = (u8)v;
+}
+#define ST8(a, v)  flat_st8((u32)(a), (u32)(v))
+#elif defined(TARGET_GBA)
 #define LD32(a)  (*(volatile u32 *)(uintptr_t)(u32)(a))
 #define LD16(a)  ((u32)*(volatile u16 *)(uintptr_t)(u32)(a))
 #define LD8(a)   ((u32)*(volatile u8 *)(uintptr_t)(u32)(a))

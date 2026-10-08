@@ -15,7 +15,9 @@
 #include <mgba/gba/interface.h>
 #include <mgba-util/vfs.h>
 
+#include <dirent.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -124,6 +126,13 @@ int main(int argc, char **argv) {
     /* --save FILE: start with this save memory (a private copy; the file is
      * never written). Traces recorded from a save carry it as NAME.sav. */
     const char *save_file = NULL;
+    /* --call-snaps DIR MAXSTEPS: CPU oracle. For every DIR/snap_*.bin that
+     * has no .exit.bin: load its memory and registers into the core (IRQs
+     * off), run from its PC until the function returns to its LR at the
+     * entry SP, and save the result as snap_*.exit.bin (no exit file if it
+     * does not return within MAXSTEPS instructions). */
+    const char *call_dir = NULL;
+    unsigned long call_steps = 0;
     /* --dump-save FILE: write the save memory when the run ends (the
      * --save contents if the game never accessed it). --final-digest: print
      * a "final" digest line (as --digest-every) after the last frame. */
@@ -134,7 +143,8 @@ int main(int argc, char **argv) {
      * instruction at PC is about to run at game frame >= G (a fixed point in
      * the game's frame loop, e.g. main_awaitFrame's entry, so the original
      * and a port see the change at the same moment). Needs --profile-game
-     * covering G (stepping). VALUE may be "*ADDR" (read a word). */
+     * covering G (stepping). VALUE may be "*ADDR" (read at the write's
+     * size) or "*ADDR^X" (that, XOR X). */
     unsigned long poke_pc = 0, poke_g = 0;
     const char *poke_spec = NULL;
     int poked = 0;
@@ -192,6 +202,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--count-entry")) count_pc = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--load-state")) load_state = argv[++i];
         else if (!strcmp(argv[i], "--save")) save_file = argv[++i];
+        else if (!strcmp(argv[i], "--call-snaps")) { call_dir = argv[++i]; call_steps = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--dump-save")) dump_save = argv[++i];
         else if (!strcmp(argv[i], "--final-digest")) final_digest = 1;
         else if (!strcmp(argv[i], "--poke-at")) {
@@ -289,6 +300,119 @@ int main(int argc, char **argv) {
         }
         fclose(f);
         free(buf);
+    }
+
+    if (call_dir) {
+        DIR *d = opendir(call_dir);
+        struct dirent *de;
+        unsigned done = 0, timeouts = 0;
+        static const struct { unsigned base, size; } rg[] = {
+            { 0x02000000, 0x40000 }, { 0x03000000, 0x8000 }, { 0x04000000, 0x400 }, { 0x05000000, 0x400 },
+            { 0x06000000, 0x18000 }, { 0x07000000, 0x400 }, { 0x0E000000, 0x8000 },
+        };
+        while (d && (de = readdir(d))) {
+            size_t ln = strlen(de->d_name);
+            if (strncmp(de->d_name, "snap_", 5) || ln < 9 || strcmp(de->d_name + ln - 4, ".bin") ||
+                (ln > 9 && !strcmp(de->d_name + ln - 9, ".exit.bin")))
+                continue;
+            char path[600], exitp[600], name[300];
+            snprintf(path, sizeof path, "%s/%s", call_dir, de->d_name);
+            snprintf(name, sizeof name, "%.*s.exit", (int)(ln - 9), de->d_name + 5);
+            snprintf(exitp, sizeof exitp, "%s/snap_%s.bin", call_dir, name);
+            if (access(exitp, F_OK) == 0) continue;
+            FILE *f = fopen(path, "rb");
+            uint32_t hdr[19];
+            if (!f || fread(hdr, sizeof hdr, 1, f) != 1 || hdr[0] != 0x53364E42u) { if (f) fclose(f); continue; }
+            for (unsigned r = 0; r < sizeof rg / sizeof rg[0]; r++) {
+                for (unsigned a = 0; a < rg[r].size; a += 4) {
+                    uint32_t w;
+                    if (fread(&w, 4, 1, f) != 1) break;
+                    if (rg[r].base == 0x04000000) {      /* I/O: only the display registers (no side effects) */
+                        if (a < 0x58) {
+                            core->busWrite16(core, rg[r].base + a, (uint16_t)w);
+                            core->busWrite16(core, rg[r].base + a + 2, (uint16_t)(w >> 16));
+                        }
+                        continue;
+                    }
+                    if (rg[r].base == 0x0E000000) {
+                        for (int b = 0; b < 4; b++) core->busWrite8(core, rg[r].base + a + b, (uint8_t)(w >> (8 * b)));
+                    } else {
+                        core->busWrite32(core, rg[r].base + a, w);
+                    }
+                }
+            }
+            fclose(f);
+            {   /* the keys the snapshot's KEYINPUT shows (read-only: set through the core) */
+                FILE *kf = fopen(path, "rb");
+                uint16_t ki = 0x3FF;
+                if (kf && fseek(kf, 76 + 0x40000 + 0x8000 + 0x130, SEEK_SET) == 0 && fread(&ki, 2, 1, kf) == 1)
+                    core->setKeys(core, ~ki & 0x3FF);
+                if (kf) fclose(kf);
+            }
+            core->busWrite16(core, 0x04000208, 0);   /* IME off: no interrupts during the call */
+            core->busWrite16(core, 0x04000200, 0);
+            for (int r = 0; r < 15; r++) {
+                char rn[8];
+                snprintf(rn, sizeof rn, "r%d", r);
+                int32_t v = (int32_t)hdr[2 + r];
+                core->writeRegister(core, rn, &v);
+            }
+            /* banked stacks as the game's startup sets them (GameEntryPoint):
+             * a BIOS call pushes its frame on the SVC stack */
+            static const struct { int32_t mode, sp; } banks[] = { { 0x93, 0x03007FE0 }, { 0x92, 0x03007F60 } };
+            for (int b = 0; b < 2; b++) {
+                int32_t m = banks[b].mode, v = banks[b].sp;
+                core->writeRegister(core, "cpsr", &m);
+                core->writeRegister(core, "sp", &v);
+            }
+            int32_t cpsr = (int32_t)(hdr[18] | 0x80), pcv = (int32_t)hdr[17];
+            core->writeRegister(core, "cpsr", &cpsr);
+            {   /* the system-mode registers survive the mode switches */
+                int32_t v = (int32_t)hdr[2 + 13];
+                core->writeRegister(core, "sp", &v);
+                v = (int32_t)hdr[2 + 14];
+                core->writeRegister(core, "lr", &v);
+            }
+            core->writeRegister(core, "pc", &pcv);
+            if (getenv("CALL_DEBUG")) {
+                for (int r = 0; r < 15; r++) {
+                    char rn[8]; int32_t v = 0;
+                    snprintf(rn, sizeof rn, "r%d", r);
+                    core->readRegister(core, rn, &v);
+                    if ((uint32_t)v != hdr[2 + r]) printf("  %s: wrote %08x read %08x\n", rn, hdr[2 + r], (uint32_t)v);
+                }
+                int32_t v = 0; core->readRegister(core, "pc", &v); printf("  pc: wrote %08x read %08x\n", hdr[17], (uint32_t)v);
+                core->readRegister(core, "cpsr", &v); printf("  cpsr: wrote %08x read %08x\n", hdr[18] | 0x80, (uint32_t)v);
+                int32_t m = 0x93; core->writeRegister(core, "cpsr", &m); core->readRegister(core, "sp", &v);
+                printf("  svc sp: %08x\n", (uint32_t)v);
+                m = (int32_t)(hdr[18] | 0x80); core->writeRegister(core, "cpsr", &m); core->readRegister(core, "sp", &v);
+                printf("  sys sp: %08x (want %08x)\n", (uint32_t)v, hdr[2 + 13]);
+            }
+            uint32_t lr = hdr[2 + 14] & ~1u, sp0 = hdr[2 + 13];
+            unsigned long n;
+            int32_t pc = 0, sp = 0;
+            for (n = 0; n < call_steps; n++) {
+                int32_t c1 = 0;
+                core->readRegister(core, "pc", &pc);
+                core->readRegister(core, "cpsr", &c1);
+                core->readRegister(core, "sp", &sp);
+                pc -= (c1 & 0x20) ? 2 : 4;      /* mGBA pipeline PC -> next instruction to execute */
+                if (((uint32_t)pc & ~1u) == lr && (uint32_t)sp == sp0) break;
+                core->step(core);
+            }
+            if (n < call_steps) {
+                int32_t c2 = 0;
+                core->readRegister(core, "cpsr", &c2);
+                save_snapshot_named(core, call_dir, name, (uint32_t)pc, (uint32_t)c2);
+                done++;
+            } else {
+                timeouts++;
+            }
+        }
+        if (d) closedir(d);
+        printf("call-snaps: %u returned, %u did not return within %lu steps\n", done, timeouts, call_steps);
+        core->deinit(core);
+        return 0;
     }
 
     Ev *evs = NULL;
@@ -441,14 +565,21 @@ int main(int argc, char **argv) {
                 core->readRegister(core, "cpsr", &cpsr);
                 pc -= (cpsr & 0x20) ? 2 : 4;      /* mGBA pipeline PC -> next instruction to execute */
                 if (poke_spec && !poked && when >= poke_g && ((uint32_t)pc & ~1u) == (poke_pc & ~1u)) {
-                    char spec[512];
+                    static char spec[16384];
                     snprintf(spec, sizeof spec, "%s", poke_spec);
                     for (char *t = strtok(spec, ","); t; t = strtok(NULL, ",")) {
                         uint32_t a = strtoul(t, &t, 0), v = 0, sz = 4;
                         if (*t == '=') t++;
-                        if (*t == '*') v = core->busRead32(core, strtoul(t + 1, &t, 0));
-                        else v = strtoul(t, &t, 0);
-                        if (*t == '/') sz = strtoul(t + 1, &t, 0);
+                        char *slash = strchr(t, '/');
+                        if (slash) sz = strtoul(slash + 1, NULL, 0);
+                        if (*t == '*') {    /* *SRC[^XOR]: read SRC at the write's size */
+                            uint32_t src = strtoul(t + 1, &t, 0);
+                            v = sz == 1 ? core->busRead8(core, src) : sz == 2 ? core->busRead16(core, src)
+                                                                       : core->busRead32(core, src);
+                            if (*t == '^') v ^= strtoul(t + 1, &t, 0);
+                        } else {
+                            v = strtoul(t, &t, 0);
+                        }
                         if (sz == 1) core->busWrite8(core, a, v);
                         else if (sz == 2) core->busWrite16(core, a, v);
                         else core->busWrite32(core, a, v);

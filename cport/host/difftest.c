@@ -405,7 +405,33 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
  * below the final SP and the IWRAM block holding the original's code copies
  * are not compared; interrupts that ran during the call show up as extra
  * differences (sound state, frame counters). */
+/* ORACLE_CONTRACT=FILE ("ENTRY_HEX REGMASK_HEX FLAGS" lines, from the
+ * lifter's per-function contracts): compare only the registers callers
+ * rely on (not those listed as clobbered) and the flags they read
+ * (FLAGS bits: 1 N/Z, 2 C, 4 V); a crash of the lifted code (an access the
+ * host does not map, e.g. from a random input) is reported as out of domain. */
+typedef struct { u32 entry, mask, flags; } Contract;
+static Contract *g_contracts;
+static int g_ncontracts;
+static void load_contracts(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    unsigned e, m, fl;
+    int cap = 0;
+    while (fscanf(f, "%x %x %x", &e, &m, &fl) == 3) {
+        if (g_ncontracts == cap) g_contracts = realloc(g_contracts, (cap = cap ? cap * 2 : 4096) * sizeof *g_contracts);
+        g_contracts[g_ncontracts++] = (Contract){ e, m, fl };
+    }
+    fclose(f);
+}
+static const Contract *contract_for(u32 pc) {
+    for (int i = 0; i < g_ncontracts; i++)
+        if (g_contracts[i].entry == (pc & ~1u)) return &g_contracts[i];
+    return NULL;
+}
+
 static int ground_truth(const char *dir) {
+    if (getenv("ORACLE_CONTRACT")) load_contracts(getenv("ORACLE_CONTRACT"));
     char **files = NULL;
     int nf = list_snaps(dir, &files), bad = 0;
     size_t n = snapshot_size();
@@ -422,6 +448,8 @@ static int ground_truth(const char *dir) {
         GuestFn fn = dispatch_lookup(pc | ((in.cpsr_ctl & 0x20) ? 1 : 0));
         if (!fn) { printf("%s: no lifted function at %#x\n", files[t], pc); continue; }
         run_child(fn, &in, in_mem, res, out);
+        const Contract *ct = contract_for(pc);
+        if (res->status && ct) { printf("%s: out of domain\n", files[t] + strlen(dir) + 1); continue; }
         if (res->status) { printf("%s: lifted code crashed\n", files[t]); bad++; continue; }
         int diffs = 0, mem_diffs = 0;
         size_t off = 0;
@@ -445,8 +473,17 @@ static int ground_truth(const char *dir) {
             off += g_regions[r].size;
         }
         for (int r = 0; r < 16; r++)
-            if (r != 15 && res->cpu.r[r] != exp.r[r] && diffs++ < 20)
+            if (r != 15 && (!ct || (r < 13 && (ct->mask >> r & 1))) && res->cpu.r[r] != exp.r[r] && diffs++ < 20)
                 printf("  %s: r%d lifted %#x original %#x\n", files[t] + strlen(dir) + 1, r, res->cpu.r[r], exp.r[r]);
+        if (ct) {
+            int nz_bad = ((s32)res->cpu.nz < 0) != ((s32)exp.nz < 0) || (res->cpu.nz == 0) != (exp.nz == 0);
+            if (((ct->flags & 1) && nz_bad) || ((ct->flags & 2) && (res->cpu.c & 1) != (exp.c & 1)) ||
+                ((ct->flags & 4) && (res->cpu.v & 1) != (exp.v & 1))) {
+                diffs++;
+                printf("  %s: flags lifted nz=%#x c=%u v=%u original nz=%#x c=%u v=%u\n", files[t] + strlen(dir) + 1,
+                       res->cpu.nz, res->cpu.c & 1, res->cpu.v & 1, exp.nz, exp.c & 1, exp.v & 1);
+            }
+        }
         if (diffs) bad++;
         printf("%s: %s (%d differences)\n", files[t] + strlen(dir) + 1,
                mem_diffs ? "MEM" : diffs ? "REG" : "ok", diffs);
