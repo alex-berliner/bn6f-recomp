@@ -21,7 +21,7 @@ $(BUILD)/host/%.o: %.c $(wildcard ../include/*.h) hostmem.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/difftest: $(OBJS)
-	$(CC) -o $@ $(OBJS) -lpthread
+	$(CC) -rdynamic -o $@ $(OBJS) -lpthread -ldl
 
 test: $(BUILD)/difftest
 	cd .. && BN6F_ROM=../bn6f/bn6f.gba $(BUILD:../%=%)/difftest -n $(or $(N),300)

@@ -33,6 +33,16 @@
 
 #define GUEST_PTR(type, addr) ((type *)(uintptr_t)(u32)(addr))
 
+/* Condition flags a function leaves for its callers, which may branch on
+ * them right after the call (the lifted function's header lists them under
+ * "outputs"): as after MOVS/ANDS/... with result x, after CMP a, b, or after
+ * ADDS/CMN a, b. */
+#define SET_FLAGS_NZ(x) (cpu.nz = (u32)(x))
+#define SET_FLAGS_CMP(a, b) do { u32 a_ = (a), b_ = (b), r_ = a_ - b_; cpu.nz = r_; \
+    cpu.c = a_ >= b_; cpu.v = ((a_ ^ b_) & (a_ ^ r_)) >> 31; } while (0)
+#define SET_FLAGS_ADD(a, b) do { u32 a_ = (a), b_ = (b), r_ = a_ + b_; cpu.nz = r_; \
+    cpu.c = r_ < a_; cpu.v = (~(a_ ^ b_) & (a_ ^ r_)) >> 31; } while (0)
+
 /* Return to the guest caller (the address in LR). */
 #define RETURN_TO_CALLER() do { cpu.ret = LR & ~1u; return DONE; } while (0)
 

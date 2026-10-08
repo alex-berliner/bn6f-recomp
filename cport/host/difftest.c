@@ -12,7 +12,14 @@
  * With -S, the inputs are real machine states captured at the function's
  * entry in the original game (tools/mgba_run --snap), for functions whose
  * inputs are structured guest state that random data cannot exercise.
+ *
+ *   difftest -L CAND.so -R r0,r1 [-F nz,c,v] [-S DIR | -n TRIALS] NAME
+ *
+ * Candidate mode (tools/convert): cand_NAME from the shared library CAND.so
+ * against the lifted NAME, comparing guest memory, SP, the return target,
+ * the registers given with -R and the flags given with -F (nz = N and Z).
  */
+#include <dlfcn.h>
 #include <dirent.h>
 #define _GNU_SOURCE
 #include <pthread.h>
@@ -51,6 +58,7 @@ typedef struct {
     u32 ignore_addr[4], ignore_len[4];   /* regions allowed to differ */
     int nignore;
     int hwtick;                          /* simulate a running VCOUNT/DISPSTAT */
+    int compare_flags;                   /* compare flags too: 1 N/Z, 2 C, 4 V */
 } Cfg;
 static Cfg g_cfg[256];
 static int g_ncfg;
@@ -326,6 +334,7 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
                         u8 *out_a, u8 *out_b, Result *ra, Result *rb, int *pfails, int *pcrashes,
                         const char *label) {
         Cpu in = *inp;
+        in.ret = in.r[14] & ~1u;     /* what a caller expects back (RETURN_NR leaves it) */
         int fails = *pfails;
         if (getenv("DIFFTEST_ONLY") && atoi(getenv("DIFFTEST_ONLY")) != t) return;
         run_child(p->lifted, &in, mem_in, ra, out_a);
@@ -362,6 +371,11 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
         else if (c) {
             for (int r = 0; r < 13; r++)
                 if ((c->compare_mask >> r & 1) && ra->cpu.r[r] != rb->cpu.r[r]) why = "register differs";
+            if (!why && (c->compare_flags & 1) &&
+                (((s32)ra->cpu.nz < 0) != ((s32)rb->cpu.nz < 0) || (ra->cpu.nz == 0) != (rb->cpu.nz == 0)))
+                why = "N/Z flags differ";
+            if (!why && (c->compare_flags & 2) && (ra->cpu.c & 1) != (rb->cpu.c & 1)) why = "C flag differs";
+            if (!why && (c->compare_flags & 4) && (ra->cpu.v & 1) != (rb->cpu.v & 1)) why = "V flag differs";
         }
         if (why) {
             if (fails++ < 5) {
@@ -443,6 +457,8 @@ static int ground_truth(const char *dir) {
 
 int main(int argc, char **argv) {
     int trials = 200;
+    const char *cand_lib = NULL, *cand_regs = "";
+    int cand_flags = 0;
     g_rng = 0x9E3779B97F4A7C15ull;
     int first = 1;
     for (; first < argc && argv[first][0] == '-'; first++) {
@@ -451,6 +467,12 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[first], "-S")) g_snap_dir = argv[++first];
         else if (!strcmp(argv[first], "-m")) g_mutations = atoi(argv[++first]);
         else if (!strcmp(argv[first], "-G")) g_truth_dir = argv[++first];
+        else if (!strcmp(argv[first], "-L")) cand_lib = argv[++first];
+        else if (!strcmp(argv[first], "-R")) cand_regs = argv[++first];
+        else if (!strcmp(argv[first], "-F")) {
+            const char *f = argv[++first];
+            cand_flags = (strstr(f, "nz") ? 1 : 0) | (strchr(f, 'c') ? 2 : 0) | (strchr(f, 'v') ? 4 : 0);
+        }
     }
     struct rlimit nocore = { 0, 0 };
     setrlimit(RLIMIT_CORE, &nocore);
@@ -458,6 +480,26 @@ int main(int argc, char **argv) {
     load_cfg(getenv("DIFFTEST_CFG") ? getenv("DIFFTEST_CFG") : "host/difftest.cfg");
     if (g_truth_dir)
         return ground_truth(g_truth_dir);
+    if (cand_lib) {     /* candidate mode: cand_NAME against the lifted NAME */
+        if (first >= argc) { fprintf(stderr, "-L needs a function name\n"); return 2; }
+        const char *name = argv[first];
+        void *lib = dlopen(cand_lib, RTLD_NOW | RTLD_LOCAL);
+        if (!lib) { printf("%s: cannot load candidate: %s\n", name, dlerror()); return 2; }
+        char sym[160];
+        snprintf(sym, sizeof sym, "cand_%s", name);
+        GuestFn hand = (GuestFn)dlsym(lib, sym), lifted = (GuestFn)dlsym(RTLD_DEFAULT, name);
+        if (!hand || !lifted) { printf("%s: missing %s\n", name, hand ? name : sym); return 2; }
+        Cfg *c = &g_cfg[g_ncfg++];
+        memset(c, 0, sizeof *c);
+        snprintf(c->name, sizeof c->name, "%s", name);
+        char regs[256];
+        snprintf(regs, sizeof regs, "%s", cand_regs);
+        for (char *r = strtok(regs, ","); r; r = strtok(NULL, ","))
+            if (r[0] == 'r') c->compare_mask |= 1u << atoi(r + 1);
+        c->compare_flags = cand_flags;
+        Pair pr = { name, hand, lifted };
+        return test_pair(&pr, trials) != 0;
+    }
     int fails = 0, ran = 0;
     for (unsigned i = 0; i < sizeof kPairs / sizeof kPairs[0]; i++) {
         int want = first >= argc;
