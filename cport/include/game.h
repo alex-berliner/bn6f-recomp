@@ -26,6 +26,10 @@
 #define IWRAM_HELPER
 #define IWRAM_THUMB
 #endif
+/* A rarely taken path of IWRAM code, split out so it stays in ROM (as an
+ * ordinary Thumb function) instead of taking IWRAM space; tools/lineprof.py
+ * shows which paths of a function run. */
+#define COLD_PATH __attribute__((noinline, cold))
 
 #define GUEST_PTR(type, addr) ((type *)(uintptr_t)(u32)(addr))
 

@@ -244,8 +244,10 @@ void trace_sync_violation(u32 ra, int which);
 
 #if defined(TARGET_GBA)
 #define IWRAM_LIFTED __attribute__((section(IWRAM_SECTION ".lifted"), noinline))
+#define IWRAM_LIFTED_ARM __attribute__((section(IWRAM_SECTION ".lifted"), noinline, target("arm")))
 #else
 #define IWRAM_LIFTED
+#define IWRAM_LIFTED_ARM
 #endif
 
 #define IWRAM_ROM(a) ((u32)(a) - 0x03005B00u + 0x081D6000u)

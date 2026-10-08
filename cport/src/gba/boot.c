@@ -30,10 +30,10 @@ void gba_boot(void) {
     REG_IME = 0;
     REG_WAITCNT = 0x45B4;
 
-    /* Guest-visible RAM, as start_clearMemory does. IWRAM 0x3005700..0x3007900
-     * holds this port's IWRAM code, state and stacks and is left alone. */
+    /* Guest-visible RAM, as start_clearMemory does. IWRAM 0x3005700..0x30079D0
+     * holds this port's IWRAM code, state and stack and is left alone. */
     clear32(0x03000000, 0x5700);
-    clear32(0x03007900, 0x500);
+    clear32((u32)__irq_stack_top, 0x03007E00 - (u32)__irq_stack_top);
     clear32(0x02000000, 0x40000);
     clear32(0x06000000, 0x18000);
     clear32(0x07000000, 0x400);

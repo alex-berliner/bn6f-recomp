@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Host stack high-water marks of a C-port ROM after playing a trace.
 #   tools/stackuse.sh ROM TRACE GAME_FRAMES
-# boot.c paints the main stack (__bss_end..__sys_stack_top) with 0xA5A5A5A5
-# and the IRQ stack (__sys_stack_top..__irq_stack_top) with 0x5A5A5A5A.
+# boot.c paints the host stack (__bss_end..__sys_stack_top; the main loop and
+# interrupt handlers share it) with 0xA5A5A5A5 and the BIOS's IRQ-mode entry
+# frame (__sys_stack_top..__irq_stack_top) with 0x5A5A5A5A.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tools/common.sh"
@@ -24,8 +25,8 @@ def low_water(lo, hi, pat):
     return a
 m = low_water(bss_end, SYS, b"\xa5" * 4)
 i = low_water(SYS, IRQ, b"\x5a" * 4)
-print(f"main stack: {SYS - m:5d} of {SYS - LIMIT} bytes used (lowest sp {m:#x}; {LIMIT - bss_end} spare below)")
-print(f"IRQ stack:  {IRQ - i:5d} of {IRQ - SYS} bytes used (lowest sp {i:#x})")
+print(f"host stack: {SYS - m:5d} of {SYS - LIMIT} bytes used (lowest sp {m:#x}; {LIMIT - bss_end} spare below)")
+print(f"IRQ frame:  {IRQ - i:5d} of {IRQ - SYS} bytes used (lowest sp {i:#x})")
 print(f"IWRAM code + bss: {bss_end - 0x03005700} bytes; free for code: {LIMIT - bss_end}")
 PY
 rm -rf "$TMP"

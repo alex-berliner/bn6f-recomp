@@ -414,7 +414,7 @@ static int ground_truth(const char *dir) {
         for (unsigned r = 0; r < g_region_count; r++) {
             for (u32 a = 0; a < g_regions[r].size; a++) {
                 u32 addr = g_regions[r].base + a;
-                if (addr >= 0x03005700u && addr < 0x03007900u) continue;           /* code copies */
+                if (addr >= 0x03005700u && addr < 0x030079D4u) continue;           /* code copies */
                 if (addr >= 0x03007E00u && addr < 0x03008000u) continue;           /* IRQ/SVC stacks, BIOS */
                 if (addr >= 0x04000000u && addr < 0x04000400u) continue;           /* I/O: write-only regs read as open bus */
                 if (addr >= 0x03007900u - 0x400 && addr < exp.r[13]) continue;      /* dead stack */

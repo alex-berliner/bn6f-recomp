@@ -62,21 +62,11 @@ static inline u32 shape_size(u32 piece) {
     return (U8(piece + PC_SHAPE) & 0xF) * 4 + (U8(piece + PC_SIZE) & 0xF);
 }
 
-/* Offset of a piece from the sprite's position (sub_3006594). For affine
- * sprites the piece's offset from the sprite centre is rotated and scaled,
- * and the attribute's affine slot is chosen (slot + 16 for the first piece). */
-IWRAM_HELPER static void piece_offset(u32 spr, u32 piece, u32 *attr, u32 first, s32 *dx, s32 *dy) {
+/* Affine (rotated/scaled) sprite: the piece's offset from the sprite centre
+ * is rotated and scaled, and the attribute's affine slot is chosen (slot + 16
+ * for the first piece). Rare, so it stays out of IWRAM. */
+COLD_PATH static void affine_piece_offset(u32 spr, u32 piece, u32 *attr, u32 first, s32 *dx, s32 *dy) {
     u32 k = shape_size(piece);
-    if (!(*attr & 0x300)) {             /* regular sprite: mirror if flipped */
-        s32 x = S8(piece + PC_X), y = S8(piece + PC_Y);
-        if (U8(spr + SPR_AFFINE) & 0x10)
-            x = -x + kWidth[k];
-        if (U8(spr + SPR_AFFINE) & 0x20)
-            y = -y + kHeight[k];
-        *dx = x;
-        *dy = y;
-        return;
-    }
     u32 slot = (U8(spr + SPR_AFFINE) & 0x3E) >> 1;
     if (first) {
         *attr += 0x20000000u;
@@ -91,6 +81,23 @@ IWRAM_HELPER static void piece_offset(u32 spr, u32 piece, u32 *attr, u32 first, 
     s32 sin = S16(SIN_TABLE + angle), cos = S16(COS_TABLE + angle);
     *dx = ((s32)((u32)sx * (u32)sin + (u32)sy * (u32)cos) >> 12) + kWidth[k];
     *dy = ((s32)((u32)sx * (u32)-cos + (u32)sy * (u32)sin) >> 12) + kHeight[k];
+}
+
+/* Offset of a piece from the sprite's position (sub_3006594): regular
+ * sprites mirror it if flipped. */
+IWRAM_HELPER static void piece_offset(u32 spr, u32 piece, u32 *attr, u32 first, s32 *dx, s32 *dy) {
+    if (*attr & 0x300) {
+        affine_piece_offset(spr, piece, attr, first, dx, dy);
+        return;
+    }
+    u32 k = shape_size(piece);
+    s32 x = S8(piece + PC_X), y = S8(piece + PC_Y);
+    if (U8(spr + SPR_AFFINE) & 0x10)
+        x = -x + kWidth[k];
+    if (U8(spr + SPR_AFFINE) & 0x20)
+        y = -y + kHeight[k];
+    *dx = x;
+    *dy = y;
 }
 
 /* Link one entry into its layer list. Returns 0 if its list position is
@@ -123,8 +130,8 @@ IWRAM_HELPER static void queue_entries(u32 buf, s32 count) {
     } while (--count > 0);
 }
 
-/* sub_3006920(r0 = entries, r1 = count) */
-IWRAM_CODE Next sub_3006920(void) {
+/* sub_3006920(r0 = entries, r1 = count). Rarely used: runs from ROM. */
+Next sub_3006920(void) {
     queue_entries(R0, (s32)R1);
     RETURN_TO_CALLER();
 }

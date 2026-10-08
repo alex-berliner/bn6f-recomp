@@ -50,6 +50,29 @@ enum { TYPE_FIX = 0x08 };   /* fixed-frequency sample: no resampling */
 #define S8(a)  (*(s8 *)(uintptr_t)(u32)(a))
 #define U32(a) (*(u32 *)(uintptr_t)(u32)(a))
 
+/* No reverb: clear both halves a word at a time, in the original's order:
+ * one word if bit 2 of the count is set, two more if bit 3 is, then four per
+ * 16 samples (always at least one round of four). No song in the tested
+ * routes turns reverb off, so this stays out of IWRAM. */
+COLD_PATH static void clear_buffer(u32 buf, u32 samples, u32 half) {
+    u32 right = buf, left = buf + half;
+    u32 blocks = samples >> 3;
+    if (samples & 4) { U32(right) = 0; right += 4; U32(left) = 0; left += 4; }
+    int odd = blocks & 1;
+    blocks >>= 1;
+    if (odd) {
+        U32(right) = 0; right += 4; U32(left) = 0; left += 4;
+        U32(right) = 0; right += 4; U32(left) = 0; left += 4;
+    }
+    s32 n = (s32)blocks;
+    do {
+        for (int k = 0; k < 4; k++) {
+            U32(right) = 0; right += 4;
+            U32(left) = 0; left += 4;
+        }
+    } while (--n > 0);
+}
+
 /* The previous buffer half becomes a quieter echo, or is cleared. `half`
  * is the distance to the left-channel buffer (PCM_DMA_BUF_SIZE). */
 IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static void age_buffer(u32 info, u32 dma_counter, u32 buf, u32 samples, u32 half) {
@@ -68,25 +91,7 @@ IWRAM_HELPER __attribute__((noinline, optimize("O2"))) static void age_buffer(u3
         } while (--n > 0);
         return;
     }
-    /* Clear both halves a word at a time, in the original's order: one
-     * word if bit 2 of the count is set, two more if bit 3 is, then four
-     * per 16 samples (always at least one round of four). */
-    u32 right = buf, left = buf + half;
-    u32 blocks = samples >> 3;
-    if (samples & 4) { U32(right) = 0; right += 4; U32(left) = 0; left += 4; }
-    int odd = blocks & 1;
-    blocks >>= 1;
-    if (odd) {
-        U32(right) = 0; right += 4; U32(left) = 0; left += 4;
-        U32(right) = 0; right += 4; U32(left) = 0; left += 4;
-    }
-    s32 n = (s32)blocks;
-    do {
-        for (int k = 0; k < 4; k++) {
-            U32(right) = 0; right += 4;
-            U32(left) = 0; left += 4;
-        }
-    } while (--n > 0);
+    clear_buffer(buf, samples, half);
 }
 
 /* Envelope step for one channel. Returns the new status, or -1 when the

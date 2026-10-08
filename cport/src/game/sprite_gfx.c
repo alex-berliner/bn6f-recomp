@@ -201,6 +201,15 @@ static inline int palettes_equal(u32 a, u32 b) {
     return 1;
 }
 
+/* A tinted copy of a palette in the scratch buffer (palette_effects.c);
+ * rare, so it stays out of IWRAM. */
+COLD_PATH static u32 tinted_palette(u32 pal, u32 effect) {
+    copy_palette(PALETTE_SCRATCH, pal);
+    R0 = effect; R2 = (effect >> 15) << 2; R6 = 0x20; R7 = PALETTE_SCRATCH;
+    GUEST_CALL(sub_3005EF0);
+    return PALETTE_SCRATCH;
+}
+
 /* OBJ palette slot for the sprite's palette (sub_3006108): an identical
  * palette already loaded is shared, else the next free slot is taken. With
  * every slot taken, the sprite is skipped this frame (and, as in the
@@ -209,12 +218,8 @@ IWRAM_HELPER static u32 palette_slot(u32 spr) {
     u32 pal = U32(U32(spr + SPR_HEADER) + 4) + 4 + U32(spr + SPR_DATA)
               + (U8(spr + SPR_PAL_BANK) + U8(spr + SPR_PAL_INDEX)) * 32;
     u32 effect = U16(spr + SPR_PAL_EFFECT);
-    if (effect) {                       /* tinted copy (palette_effects.c) */
-        copy_palette(PALETTE_SCRATCH, pal);
-        R0 = effect; R2 = (effect >> 15) << 2; R6 = 0x20; R7 = PALETTE_SCRATCH;
-        GUEST_CALL(sub_3005EF0);
-        pal = PALETTE_SCRATCH;
-    }
+    if (effect)
+        pal = tinted_palette(pal, effect);
     s32 used = (s32)U32(PALETTE_COUNT);
     if (used >= 0xF)
         return 0xF;

@@ -14,12 +14,12 @@ volatile u32 g_trace_pos;
 void trace_event(u32 kind, u32 addr) {
     g_trace_ring[g_trace_pos++ & 63] = (kind << 28) | (addr & 0x0FFFFFFF);
 }
-extern char __bss_end[], __sys_stack_top[];
+extern char __bss_end[];
 #define __bss_end_sym __bss_end
 void trace_run(GuestFn f) {
     u32 sp = (u32)__builtin_frame_address(0);
     trace_event(6, (u32)f);
-    if (sp < (u32)__bss_end_sym + 64 || (sp > (u32)__sys_stack_top && sp < (u32)__sys_stack_top + 0x100))
+    if (sp < (u32)__bss_end_sym + 64)
         rt_fatal("host stack overflow", (u32)f);
 }
 #else

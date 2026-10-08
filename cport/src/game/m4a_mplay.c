@@ -9,9 +9,9 @@
  * waits and the MPlayJumpTable commands) and steps the LFO; finally it pushes
  * changed volume and pitch to the track's sound channels.
  *
- * The original recurses once per chained player (MPlayMainNext); here the
- * chain is walked in a loop and the players are processed innermost first,
- * which is the same order and keeps the host stack shallow.
+ * The original recurses once per chained player (MPlayMainNext). So does
+ * run_chain, but only the locking recurses (a few words of stack per
+ * player); each player's frame work runs in play(), one at a time.
  */
 #include "game.h"
 
@@ -219,7 +219,7 @@ static void update_channels(u32 si, u32 mp) {
 }
 
 /* Advance one player by a frame (the part after the chain call). */
-static void play(u32 mp) {
+__attribute__((noinline)) static void play(u32 mp) {
     if ((s32)U32(mp + MP_STATUS) >= 0) {
         u32 si = U32(SOUND_INFO);
         call1(FadeOutBody, mp);
@@ -246,28 +246,27 @@ unlock:
     U32(mp + MP_IDENT) = ID_NUMBER;
 }
 
-Next sub_814E260(void) {
-    u32 chain[MAX_CHAIN];
-    int n = 0;
-    /* Lock each player in turn (a player that is already locked, e.g. being
-     * set up by the game, ends the chain) and collect it. */
-    for (u32 mp = R0;;) {
-        if (U32(mp + MP_IDENT) != ID_NUMBER)
-            break;
-        U32(mp + MP_IDENT) = ID_NUMBER + 1;
-        chain[n++] = mp;
-        u32 next = U32(mp + MP_NEXT);
-        if (!next)
-            break;
-        if ((next & ~1u) == MPLAY_MAIN && n < MAX_CHAIN) {
-            mp = U32(mp + MP_NEXT_ARG);
-            continue;
+/* MPlayMain for one player: lock it (a player that is already locked, e.g.
+ * being set up by the game, ends the chain), let the next player in the
+ * chain run, then advance this one. */
+static void run_chain(u32 mp, int depth) {
+    if (U32(mp + MP_IDENT) != ID_NUMBER)
+        return;
+    U32(mp + MP_IDENT) = ID_NUMBER + 1;
+    u32 next = U32(mp + MP_NEXT);
+    if (next) {
+        u32 arg = U32(mp + MP_NEXT_ARG);
+        if ((next & ~1u) == MPLAY_MAIN && depth < MAX_CHAIN) {
+            run_chain(arg, depth + 1);
+        } else {
+            R0 = arg;                               /* some other chained routine */
+            GUEST_CALL_ADDR(next);
         }
-        R0 = U32(mp + MP_NEXT_ARG);                 /* some other chained routine */
-        GUEST_CALL_ADDR(next);
-        break;
     }
-    while (n > 0)
-        play(chain[--n]);
+    play(mp);
+}
+
+Next sub_814E260(void) {
+    run_chain(R0, 0);
     RETURN_TO_CALLER();
 }

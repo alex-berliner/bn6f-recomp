@@ -3,10 +3,9 @@
  * 0x08000000  original bn6f.gba image (data at its original addresses; the
  *             original code bytes are no longer executed)
  * 0x08800000  lifted C code, runtime, dispatch table
- * IWRAM 0x03005700-0x03007900: port IWRAM code, runtime state and host
- *             stacks (the SoundMainRAM copy and IWRAM routines the original
- *             placed here run from C instead; see m4a_init.c). The block the
- *             original copied its IWRAM routines into)
+ * IWRAM 0x03005700-0x030079D0: port IWRAM code, runtime state and the host
+ *             stack, in the block the original copied SoundMainRAM and its
+ *             IWRAM routines into (they run from C instead; see m4a_init.c).
  */
 OUTPUT_FORMAT("elf32-littlearm")
 OUTPUT_ARCH(arm)
@@ -14,7 +13,7 @@ ENTRY(_start)
 
 MEMORY {
     rom   (rx)  : ORIGIN = 0x08000000, LENGTH = 32M
-    iwram (rwx) : ORIGIN = 0x03005700, LENGTH = 0x2200
+    iwram (rwx) : ORIGIN = 0x03005700, LENGTH = 0x22D0
 }
 
 SECTIONS {
@@ -47,12 +46,17 @@ SECTIONS {
         __bss_end = .;
     } > iwram
 
-    /* Host stacks: main (system mode) below the IRQ stack; measured peaks
-     * with tools/stackuse.sh (wander trace): main 456, IRQ 828 bytes. */
-    __irq_stack_top = 0x03007900;
-    __sys_stack_top = 0x03007300;          /* IRQ stack: 0x600 bytes */
-    __sys_stack_limit = 0x03006E00;        /* main stack: 0x500 bytes */
-    ASSERT(__bss_end <= __sys_stack_limit, "IWRAM code + runtime .bss too large for the IWRAM block")
+    /* Host stack, shared by the main loop and interrupt handlers (irq.c),
+     * from the end of .bss up to just below the guest's own stack. The
+     * original's IWRAM routines end at 0x030079D4 (0x03005B00 + 0x1ED4) and
+     * its stack (iStack, 0x03007E00 down) never grows into them, so the
+     * guest never uses anything below that. Above the host stack: the BIOS's
+     * IRQ entry frame (24 bytes, IRQ mode). tools/stackuse.sh measures the
+     * peak (1372 bytes in the battle trace); the minimum below is 1.3x that. */
+    __irq_stack_top = 0x030079D0;
+    __sys_stack_top = 0x030079B0;
+    __sys_stack_limit = __sys_stack_top - 0x700;
+    ASSERT(__bss_end <= __sys_stack_limit, "IWRAM code + runtime .bss leave the host stack too small")
     ASSERT(SIZEOF(.data) == 0, "initialized .data is not supported; use const or .bss")
 
     /DISCARD/ : { *(.comment) *(.note*) }

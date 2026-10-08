@@ -747,12 +747,15 @@ def main():
               indirect_in=ALLF,
               call_masks=call_masks)
     iwram_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "iwram.txt")
-    iwram_names = set()
+    iwram_names: dict[str, str] = {}      # name -> "thumb" | "arm"
     if os.path.exists(iwram_path):
         for line in open(iwram_path):
-            line = line.split("#")[0].strip()
-            if line:
-                iwram_names.add(line)
+            f = line.split("#")[0].split()
+            if f:
+                mode = f[1] if len(f) > 1 else "thumb"
+                if mode not in ("thumb", "arm"):
+                    sys.exit(f"iwram.txt: {f[0]}: unknown mode {mode!r}")
+                iwram_names[f[0]] = mode
     overridden = set()
     if args.overrides and os.path.isdir(args.overrides):
         for f in sorted(os.listdir(args.overrides)):
@@ -801,9 +804,10 @@ def main():
         out.append(load_def)
         ents = sorted(u.entries)
         pfx = "L_" if is_over else ""
-        # hot units listed in iwram.txt run from IWRAM (Thumb), like the
-        # game's own IWRAM routines
-        attr = "IWRAM_LIFTED " if not is_over and any(names[e] in iwram_names for e in ents) else ""
+        # hot units listed in iwram.txt run from IWRAM (Thumb, or ARM when
+        # listed so), like the game's own IWRAM routines
+        modes = [iwram_names[names[e]] for e in ents if names[e] in iwram_names]
+        attr = "" if is_over or not modes else ("IWRAM_LIFTED_ARM " if "arm" in modes else "IWRAM_LIFTED ")
         stats["iwram_units"] += bool(attr)
         if len(ents) == 1:
             out.append(f"{attr}Next {pfx}{names[u.start]}(void) {{")
