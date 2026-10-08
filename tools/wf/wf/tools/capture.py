@@ -27,7 +27,8 @@ def capture_calls(snapshots: SnapshotDir, route: Route, first_frame: FrameCount,
         [str(CAPTURE), str(snapshots), str(route.trace), str(first_frame), str(last_frame),
          str(calls_per_function), *functions],
         capture_output=True, text=True, check=False,
-        env={**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}"})
+        # KEEP_INTERRUPTED: long functions are nearly always interrupted; their entries still test fine
+        env={**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}", "KEEP_INTERRUPTED": "1"})
     log.write_text(done.stdout + done.stderr)
     if done.returncode != 0:
         raise ToolOutputError(f"capture.sh failed (exit {done.returncode}), see {log}")

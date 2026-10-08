@@ -50,6 +50,14 @@ def test_a_reply_without_code_or_with_bad_yaml_says_so() -> None:
     assert any("```yaml block" in problem for problem in reply.problems)
 
 
+def test_a_structured_interface_is_kept_as_text() -> None:
+    reply = parse_reply("```c\nint x;\n```\n```yaml\n- function: f\n  proposed_name: g\n  status: probable\n"
+                        "  summary: s\n  interface: {typed: 'void f(int)', adapter: 'r0 = arg'}\n```")
+
+    assert reply.problems == ()
+    assert reply.drafts[0].interface == "typed: void f(int); adapter: r0 = arg"
+
+
 def test_register_use_counts_only_outside_the_adapters() -> None:
     code = CandidateFile(parse_reply(REPLY).file or "")
 

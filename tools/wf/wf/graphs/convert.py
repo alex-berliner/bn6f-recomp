@@ -88,6 +88,7 @@ class ConvertOutcome(Enum):
     REJECTED = "rejected at review"
     OUT_OF_ATTEMPTS = "every model ran out of attempts"
     NOTHING_TO_CONVERT = "nothing to convert (no lifted code, or the file exists)"
+    NO_CAPTURED_CALLS = "some functions have no captured calls, so they could not be checked"
     DIFFTEST_DID_NOT_BUILD = "the host difftest did not build"
 
 
@@ -105,6 +106,7 @@ class ConvertState(BaseModel):
     capture: CaptureReport | NotRun | None = None
     contexts: tuple[ConversionContext, ...] | NotRun | None = None
     difftest: Path | BuildFailure | None = None
+    without_calls: tuple[FunctionName, ...] = ()
     attempts: tuple[Attempt, ...] = ()
     checks: tuple[FunctionChecks, ...] = ()
     commit: CommitHash | None = None
@@ -146,26 +148,31 @@ class GatherInput(Result):
     run_dir: Path
     file_name: str
     functions: tuple[FunctionName, ...]
+    snapshots: SnapshotDir
 
 
 class GatherOutput(Result):
     contexts: tuple[ConversionContext, ...] | NotRun
     difftest: Path | BuildFailure
+    without_calls: tuple[FunctionName, ...]
 
 
 @workflow.step
 def gather_context(given: GatherInput) -> GatherOutput:
-    """Each function's assembly, lifted C and register contract; build the host difftest for quick tests."""
+    """Each function's assembly, lifted C and register contract, and that it has captured calls (no model is
+    asked to write what nothing could check); build the host difftest for quick tests."""
     difftest = build_host_difftest(given.run_dir)
+    without_calls = tuple(function for function in given.functions if not _has_calls(given.snapshots, function))
     if game_file(given.file_name).exists():
         return GatherOutput(contexts=NotRun(reason=ToolMessage(f"cport/src/game/{given.file_name} already exists")),
-                            difftest=difftest)
+                            difftest=difftest, without_calls=without_calls)
     found = {function: conversion_context(function) for function in given.functions}
     missing = [function for function, context in found.items() if context is None]
     if missing:
         return GatherOutput(contexts=NotRun(reason=ToolMessage(f"no lifted code or assembly: {', '.join(missing)}")),
-                            difftest=difftest)
-    return GatherOutput(contexts=tuple(context for context in found.values() if context is not None), difftest=difftest)
+                            difftest=difftest, without_calls=without_calls)
+    return GatherOutput(contexts=tuple(context for context in found.values() if context is not None),
+                        difftest=difftest, without_calls=without_calls)
 
 
 class AskInput(Result):
@@ -356,6 +363,7 @@ class GiveUpInput(Result):
     file_name: str
     contexts: tuple[ConversionContext, ...] | NotRun
     difftest: Path | BuildFailure
+    without_calls: tuple[FunctionName, ...]
     attempts: tuple[Attempt, ...]
 
 
@@ -368,6 +376,8 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
     """Take the file out of the tree again and say why there is nothing to commit."""
     if isinstance(given.contexts, NotRun):
         return GiveUpOutput(outcome=ConvertOutcome.NOTHING_TO_CONVERT)
+    if given.without_calls and not given.attempts:
+        return GiveUpOutput(outcome=ConvertOutcome.NO_CAPTURED_CALLS)
     uninstall_file(given.file_name)
     if isinstance(given.difftest, BuildFailure):
         return GiveUpOutput(outcome=ConvertOutcome.DIFFTEST_DID_NOT_BUILD)
@@ -378,6 +388,10 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
 
 
 # ── helpers ────────────────────────────────────────────────────────────
+
+def _has_calls(snapshots: SnapshotDir, function: FunctionName) -> bool:
+    return any(not path.name.endswith(".exit.bin") for path in (snapshots / function).glob("snap_*.bin"))
+
 
 def _model_attempts(attempts: tuple[Attempt, ...]) -> int:
     return sum(1 for attempt in attempts if attempt.model != GIVEN_CANDIDATE)
@@ -416,7 +430,7 @@ def _latest(state: ConvertState) -> Attempt:
 # ── decisions ──────────────────────────────────────────────────────────
 
 def ready_to_convert(state: ConvertState) -> bool:
-    return isinstance(state.contexts, tuple) and isinstance(state.difftest, Path)
+    return isinstance(state.contexts, tuple) and isinstance(state.difftest, Path) and not state.without_calls
 
 
 def cannot_convert(state: ConvertState) -> bool:

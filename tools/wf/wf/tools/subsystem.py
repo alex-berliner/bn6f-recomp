@@ -15,10 +15,10 @@ import tempfile
 import time
 from pathlib import Path
 from types import ModuleType
-from typing import NewType, cast
+from typing import Annotated, NewType, cast
 
 import yaml
-from pydantic import Field, TypeAdapter, ValidationError
+from pydantic import BeforeValidator, Field, TypeAdapter, ValidationError
 
 from wf.repo import CPORT, ORIGINAL_ROM
 from wf.tools.models import FARM as _farm
@@ -73,16 +73,28 @@ REPLY_FORMAT = """
 """
 
 
+def _as_text(value: object) -> object:
+    """Models sometimes structure a text field ({typed: ..., adapter: ...}); keep its content as text."""
+    if isinstance(value, dict):
+        return "; ".join(f"{key}: {_as_text(item)}" for key, item in cast(dict[object, object], value).items())
+    if isinstance(value, list):
+        return "; ".join(str(_as_text(item)) for item in cast(list[object], value))
+    return value
+
+
+Text = Annotated[str, BeforeValidator(_as_text)]
+
+
 class SymbolDraft(Result):
     """A model's draft of a function's symbols/db entry (the workflow adds the evidence)."""
     function: FunctionName
     proposed_name: SymbolName
     status: SymbolStatus
-    summary: str
-    interface: str
-    details: str
-    open_questions: tuple[str, ...] = ()
-    register_form: str | None = None
+    summary: Text
+    interface: Text
+    details: Text = ""
+    open_questions: tuple[Text, ...] = ()
+    register_form: Text | None = None
 
 
 class FileReply(Result):
@@ -151,6 +163,10 @@ def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: P
         return FileReply(file=None, cfg_lines=(), drafts=(), problems=(), seconds=round(time.monotonic() - started, 1),
                          error=ToolMessage(f"model error: {error}"[:500]), prompt_file=prompt_file)
     reply_file.write_text(reply)
+    if not reply.strip():
+        return FileReply(file=None, cfg_lines=(), drafts=(), problems=(), seconds=round(time.monotonic() - started, 1),
+                         error=ToolMessage("empty reply: the model may have spent its whole output budget on reasoning"),
+                         prompt_file=prompt_file, reply_file=reply_file)
     parsed = parse_reply(reply)
     return parsed.model_copy(update={"seconds": round(time.monotonic() - started, 1),
                                      "prompt_file": prompt_file, "reply_file": reply_file})

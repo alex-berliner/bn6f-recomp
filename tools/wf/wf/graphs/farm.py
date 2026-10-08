@@ -256,7 +256,7 @@ class BuildDifftestOutput(Result):
 @batch.step
 def build_difftest(given: BuildDifftestInput) -> BuildDifftestOutput:
     """Build the host difftest once, from the current sources (a stale one once accepted bad candidates)."""
-    return BuildDifftestOutput(difftest=build_host_difftest(given.run_dir))
+    return BuildDifftestOutput(difftest=build_host_difftest(given.run_dir, build_dir="build-wf-farm-host"))
 
 
 class ConvertPairsInput(Result):

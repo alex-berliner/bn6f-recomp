@@ -46,13 +46,14 @@ def _last_lines(log: Path, count: int) -> tuple[ToolMessage, ...]:
     return tuple(ToolMessage(line) for line in lines)
 
 
-def build_host_difftest(log_dir: Path) -> Path | BuildFailure:
-    """Only the host difftest (what model candidates are tested with), from the current sources."""
+def build_host_difftest(log_dir: Path, build_dir: str = "build-wf-host") -> Path | BuildFailure:
+    """Only the host difftest (what model candidates are tested with), from the current sources,
+    into cport/BUILD_DIR (a farm batch uses its own, so it can run while a verify rebuilds)."""
     log = LogPath(log_dir / "build-difftest.log")
     env = {**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}"}
     with open(log, "w") as out:
-        done = subprocess.run(["make", "-C", str(CPORT / "host"), f"BUILD={HOST_BUILD_DIR}", f"-j{os.cpu_count()}"],
+        done = subprocess.run(["make", "-C", str(CPORT / "host"), f"BUILD=../{build_dir}", f"-j{os.cpu_count()}"],
                               stdout=out, stderr=subprocess.STDOUT, env=env, check=False)
     if done.returncode != 0:
         return BuildFailure(log=log, last_lines=_last_lines(log, 12))
-    return CPORT / "build-wf-host" / "difftest"
+    return CPORT / build_dir / "difftest"

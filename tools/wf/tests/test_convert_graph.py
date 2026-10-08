@@ -124,11 +124,23 @@ def test_an_existing_file_is_never_overwritten(monkeypatch: pytest.MonkeyPatch, 
     assert world.asked == []
 
 
+def test_no_model_is_asked_when_a_function_has_no_captured_calls(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World()
+    finished = start(world, monkeypatch, tmp_path, run_id="convert-10", with_calls=False)
+
+    assert isinstance(finished, Finished) and finished.state.outcome is ConvertOutcome.NO_CAPTURED_CALLS
+    assert finished.state.without_calls == (FUNCTION,) and world.asked == []
+
+
 # ── the fakes ──────────────────────────────────────────────────────────
 
 def start(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_id: str, rounds: int = 3,
-          candidate: Path | None = None) -> Finished[ConvertState] | Paused:
+          candidate: Path | None = None, with_calls: bool = True) -> Finished[ConvertState] | Paused:
     install(world, monkeypatch, tmp_path)
+    if with_calls:
+        (tmp_path / "snaps" / FUNCTION).mkdir(parents=True, exist_ok=True)
+        _ = (tmp_path / "snaps" / FUNCTION / "snap_wander_0.bin").write_bytes(b"")
     state = ConvertState(run_dir=tmp_path, subsystem="BG map redraw", file_name="bg_redraw.c", functions=(FUNCTION,),
                          models=(STRONG, STRONGER), rounds=rounds, snapshots=SnapshotDir(tmp_path / "snaps"),
                          candidate=candidate)
@@ -145,7 +157,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         return CaptureReport(snapshots=start.snapshots, routes=(), captured=(),
                              never_called=())
 
-    def build_host_difftest(log_dir: Path) -> Path | BuildFailure:
+    def build_host_difftest(log_dir: Path, build_dir: str = "") -> Path | BuildFailure:
         return tmp_path / "difftest"
 
     def game_file(file_name: str) -> Path:

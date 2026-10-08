@@ -187,6 +187,7 @@ int main(int argc, char **argv) {
     int snap_exit = 0;
     const char *snapf_dir = NULL;
     unsigned long snapf_max = 0;
+    int snapf_keep_interrupted = 0;   /* --snap-keep-interrupted: keep the entry of a call an IRQ interrupted */
     struct { uint32_t lr, sp, func; unsigned long step; int irq; char name[32]; } pend[256];
     unsigned long steps_total = 0;
     int npend = 0;
@@ -238,6 +239,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--watch")) { watch_addr = strtoul(argv[++i], 0, 0); watch_len = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--save-state")) save_state = argv[++i];
         else if (!strcmp(argv[i], "--snap-exit")) snap_exit = 1;
+        else if (!strcmp(argv[i], "--snap-keep-interrupted")) snapf_keep_interrupted = 1;
         else if (!strcmp(argv[i], "--snap-funcs")) {
             /* FILE DIR MAXPER: entry+exit states of the first MAXPER calls of
              * every function listed (hex addresses) */
@@ -703,12 +705,13 @@ int main(int argc, char **argv) {
                                 if (!pend[k].irq) {
                                     snprintf(nm, sizeof nm, "%s.exit", pend[k].name);
                                     save_snapshot_named(core, snapf_dir, nm, u, (uint32_t)cpsr);
-                                } else {
+                                } else if (!snapf_keep_interrupted) {
                                     char path[600];
                                     snprintf(path, sizeof path, "%s/snap_%s.bin", snapf_dir, pend[k].name);
                                     remove(path);
                                     snapf_count[(pend[k].func - 0x08000000u) >> 1 & 0x3FFFFF]--;
-                                }
+                                }   /* else: the entry stays, without an exit (difftest -S and the
+                                     * oracle need only the entry; -G skips calls without an exit) */
                                 npend = k;
                                 break;
                             }
