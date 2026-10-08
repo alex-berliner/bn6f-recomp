@@ -124,6 +124,13 @@ int main(int argc, char **argv) {
     /* --save FILE: start with this save memory (a private copy; the file is
      * never written). Traces recorded from a save carry it as NAME.sav. */
     const char *save_file = NULL;
+    /* --dump-save FILE: write the save memory when the run ends (the
+     * --save contents if the game never accessed it). --final-digest: print
+     * a "final" digest line (as --digest-every) after the last frame. */
+    const char *dump_save = NULL;
+    int final_digest = 0;
+    void *save_data = NULL;
+    size_t save_size = 0;
     /* --poke-at PC G "ADDR=VALUE/SIZE,...": write memory once, when the
      * instruction at PC is about to run at game frame >= G (a fixed point in
      * the game's frame loop, e.g. main_awaitFrame's entry, so the original
@@ -186,6 +193,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--count-entry")) count_pc = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--load-state")) load_state = argv[++i];
         else if (!strcmp(argv[i], "--save")) save_file = argv[++i];
+        else if (!strcmp(argv[i], "--dump-save")) dump_save = argv[++i];
+        else if (!strcmp(argv[i], "--final-digest")) final_digest = 1;
         else if (!strcmp(argv[i], "--poke-at")) {
             poke_pc = strtoul(argv[++i], 0, 0); poke_g = strtoul(argv[++i], 0, 0); poke_spec = argv[++i];
         }
@@ -264,7 +273,8 @@ int main(int argc, char **argv) {
         }
         fclose(f);
         core->loadSave(core, VFileMemChunk(buf, n));
-        free(buf);
+        save_data = buf;
+        save_size = n;
     }
     if (bios) {
         struct VFile *vf = VFileOpen(bios, O_RDONLY);
@@ -625,6 +635,32 @@ done:
             printf(" %08x", core->busRead32(core, guest + i * 4));
         printf("\n");
     }
+    if (final_digest) {
+        static const struct { const char *n; unsigned base, size; } dr[] = {
+            { "ewram", 0x02000000, 0x40000 }, { "pal", 0x05000000, 0x400 },
+            { "vram", 0x06000000, 0x18000 }, { "oam", 0x07000000, 0x400 } };
+        unsigned when = game_frame_addr ? core->busRead16(core, core->busRead32(core, game_frame_addr)) : 0;
+        printf("final game=%u hw=%u", when, frames);
+        for (unsigned r = 0; r < 4; r++) {
+            unsigned long long h = 1469598103934665603ull;
+            for (unsigned a = 0; a < dr[r].size; a += 4) {
+                h ^= core->busRead32(core, dr[r].base + a);
+                h *= 1099511628211ull;
+            }
+            printf(" %s=%016llx", dr[r].n, h);
+        }
+        printf("\n");
+    }
+    if (dump_save) {    /* no save memory until the game accesses it: then it is still --save's */
+        void *sram = NULL;
+        size_t n = core->savedataClone(core, &sram);
+        FILE *o = fopen(dump_save, "wb");
+        if (o && n && sram) fwrite(sram, 1, n, o);
+        else if (o && save_data) fwrite(save_data, 1, save_size, o);
+        if (o) fclose(o);
+        free(sram);
+    }
+    free(save_data);
     printf("ran %u frames\n", frames);
     core->deinit(core);
     return 0;

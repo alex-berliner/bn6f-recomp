@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# record.sh NAME [START.sav]: play the original ROM and record
+# tools/traces/NAME.trace (and NAME.sav if starting from a save) for the
+# test harness. Opens a window on the desktop (DISPLAY=:0 when unset).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+NAME=${1:?usage: tools/record.sh NAME [START.sav]}
+cd "$ROOT"
+[ -x build-tools/record ] || gcc -O2 -o build-tools/record tools/record.c -lmgba $(sdl2-config --cflags --libs)
+OUT="tools/traces/$NAME.trace"
+if [ -e "$OUT" ]; then
+  echo "$OUT exists; pick another name" >&2
+  exit 1
+fi
+export DISPLAY=${DISPLAY:-:0}
+build-tools/record bn6f/bn6f.gba "$OUT" ${2:+--save "$(realpath "$2")"}
+echo "Recorded $OUT. Tell Claude: \"recorded $NAME\"."

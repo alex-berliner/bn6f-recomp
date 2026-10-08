@@ -2,6 +2,7 @@
  * record.c — play the original ROM and record an input trace for the tests.
  *
  *   build-tools/record ROM OUT.trace [--save START.sav] [--scale N]
+ *   (tools/record.sh NAME [START.sav] wraps this)
  *
  * Runs the ROM on the same mGBA core and BIOS as the test harness
  * (mgba_run), in a window with sound. Keys are latched once per game frame
@@ -9,15 +10,24 @@
  * "game_frame,keyinput" lines, which is exactly how mgba_run
  * --game-frame-addr replays them, so a recording replays identically.
  *
- * --save: start from this save file. It is copied next to the trace as
- * OUT.sav (the harness loads it from there); the file itself is never
- * written. The save memory at exit goes to OUT.end.sav, a starting point
- * for the next recording.
+ * Every recording gets, next to OUT.trace:
+ *   OUT.sav      the save memory it starts from: a copy of --save, or a
+ *                blank save for a new game (the test scripts load it);
+ *   OUT.end.sav  the save memory when recording stopped (a starting point
+ *                for the next recording; tools/check_recording.sh checks a
+ *                replay ends with the same).
+ * The trace ends with "# end hw_frames=... game_frame=... <digest>", the
+ * machine state after the last frame, which check_recording.sh compares too.
+ *
+ * Under the game a status bar shows REC (or STOPPED/PAUSED/FAST), the game
+ * frame, the number of input changes recorded, and every button, lit while
+ * held: a key that does not light up is not reaching the recorder (e.g. the
+ * window lost focus).
  *
  * Keyboard: arrows, X = A, Z = B, A = L, S = R, Enter = Start,
  * Backspace = Select. Controllers: d-pad/left stick, east = A, south = B,
  * shoulders = L/R, Start, Back = Select. Hold Tab = fast forward,
- * P = pause, Esc or closing the window = stop.
+ * P = pause, Esc, closing the window or Ctrl+C = stop.
  * No savestates, rewind or soft reset: they would break the input chain.
  *
  * Self-test (tools/record_test.sh): RECORD_TEST_FRAMES=N stops after N
@@ -33,17 +43,23 @@
 #include <mgba/core/core.h>
 #include <mgba/core/config.h>
 #include <mgba/core/log.h>
-#include <stdarg.h>
 #include <mgba-util/vfs.h>
+#include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define GAME_FRAME_ADDR 0x020093D4u   /* toolkit pointer; [+0] -> u16 game frame counter */
+#define SAVE_SIZE 0x8000              /* SRAM_V113: 32 KB battery SRAM */
 #define SAMPLE_RATE 48000
 #define FPS 59.7275
+#define BAR 20                        /* status bar height, GBA pixels */
 
 enum { K_A, K_B, K_SELECT, K_START, K_RIGHT, K_LEFT, K_UP, K_DOWN, K_R, K_L };
+
+static volatile sig_atomic_t g_stop;
+static void on_signal(int sig) { (void)sig; g_stop = 1; }
 
 static void quiet_log(struct mLogger *l, int c, enum mLogLevel lv, const char *f, va_list a) {
     (void)l; (void)c; (void)lv; (void)f; (void)a;
@@ -85,21 +101,84 @@ static unsigned pad_keys(SDL_GameController *gc) {
     return m;
 }
 
-/* mgba_run's checkpoint digest (EWRAM, palette, VRAM, OAM). */
-static void print_digest(struct mCore *core, unsigned when, unsigned fr) {
+/* ── status bar: a 5x7 font drawn with the renderer ──────────────────── */
+
+static const struct { char c; unsigned char rows[7]; } FONT[] = {
+    { '0', { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E } }, { '1', { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E } },
+    { '2', { 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F } }, { '3', { 0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E } },
+    { '4', { 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 } }, { '5', { 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E } },
+    { '6', { 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E } }, { '7', { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 } },
+    { '8', { 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E } }, { '9', { 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C } },
+    { 'A', { 0x0E, 0x11, 0x11, 0x11, 0x1F, 0x11, 0x11 } }, { 'B', { 0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E } },
+    { 'C', { 0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E } }, { 'D', { 0x1C, 0x12, 0x11, 0x11, 0x11, 0x12, 0x1C } },
+    { 'E', { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F } }, { 'F', { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10 } },
+    { 'G', { 0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F } }, { 'H', { 0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 } },
+    { 'I', { 0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E } }, { 'L', { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F } },
+    { 'M', { 0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11 } }, { 'N', { 0x11, 0x11, 0x19, 0x15, 0x13, 0x11, 0x11 } },
+    { 'O', { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E } }, { 'P', { 0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10 } },
+    { 'R', { 0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11 } }, { 'S', { 0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E } },
+    { 'T', { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 } }, { 'U', { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E } },
+    { 'V', { 0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04 } }, { 'W', { 0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A } },
+    { 'X', { 0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11 } }, { 'Y', { 0x11, 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04 } },
+    { ':', { 0x00, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x00 } }, { '-', { 0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00 } },
+    { '^', { 0x04, 0x0E, 0x15, 0x04, 0x04, 0x04, 0x04 } }, { 'v', { 0x04, 0x04, 0x04, 0x04, 0x15, 0x0E, 0x04 } },
+    { '<', { 0x00, 0x04, 0x08, 0x1F, 0x08, 0x04, 0x00 } }, { '>', { 0x00, 0x04, 0x02, 0x1F, 0x02, 0x04, 0x00 } },
+};
+
+/* Draw text at (x, y) in GBA pixels; returns the x after it. */
+static int text(SDL_Renderer *ren, int x, int y, const char *s, Uint8 r, Uint8 g, Uint8 b) {
+    SDL_SetRenderDrawColor(ren, r, g, b, 255);
+    for (; *s; s++, x += 6) {
+        for (unsigned i = 0; i < sizeof FONT / sizeof FONT[0]; i++) {
+            if (FONT[i].c != *s)
+                continue;
+            for (int row = 0; row < 7; row++)
+                for (int col = 0; col < 5; col++)
+                    if (FONT[i].rows[row] & (0x10 >> col)) {
+                        SDL_Rect px = { x + col, y + row, 1, 1 };
+                        SDL_RenderFillRect(ren, &px);
+                    }
+        }
+    }
+    return x;
+}
+
+static void status_bar(SDL_Renderer *ren, int y, const char *state, unsigned when, unsigned events, unsigned held) {
+    SDL_SetRenderDrawColor(ren, 16, 16, 24, 255);
+    SDL_Rect bg = { 0, y, 240, BAR };
+    SDL_RenderFillRect(ren, &bg);
+    char buf[64];
+    int red = !strcmp(state, "REC");
+    int x = text(ren, 2, y + 2, state, red ? 255 : 255, red ? 60 : 200, red ? 60 : 0);
+    snprintf(buf, sizeof buf, "FRAME %u", when);
+    x = text(ren, x + 8, y + 2, buf, 220, 220, 220);
+    snprintf(buf, sizeof buf, "INPUTS %u", events);
+    text(ren, x + 8, y + 2, buf, 220, 220, 220);
+    static const struct { const char *label; int bit; } buttons[] = {
+        { "<", K_LEFT }, { "^", K_UP }, { "v", K_DOWN }, { ">", K_RIGHT }, { "A", K_A }, { "B", K_B },
+        { "L", K_L }, { "R", K_R }, { "START", K_START }, { "SELECT", K_SELECT } };
+    x = 2;
+    for (unsigned i = 0; i < sizeof buttons / sizeof buttons[0]; i++) {
+        int on = !(held & (1u << buttons[i].bit));
+        x = text(ren, x, y + 11, buttons[i].label, on ? 255 : 70, on ? 220 : 70, on ? 0 : 90) + 6;
+    }
+}
+
+/* ── state digests, as mgba_run prints them ──────────────────────────── */
+
+static void digest(struct mCore *core, char *out, size_t n) {
     static const struct { const char *n; unsigned base, size; } dr[] = {
         { "ewram", 0x02000000, 0x40000 }, { "pal", 0x05000000, 0x400 },
         { "vram", 0x06000000, 0x18000 }, { "oam", 0x07000000, 0x400 } };
-    printf("digest game=%u hw=%u", when, fr);
+    size_t len = 0;
     for (unsigned r = 0; r < 4; r++) {
         unsigned long long h = 1469598103934665603ull;
         for (unsigned a = 0; a < dr[r].size; a += 4) {
             h ^= core->busRead32(core, dr[r].base + a);
             h *= 1099511628211ull;
         }
-        printf(" %s=%016llx", dr[r].n, h);
+        len += (size_t)snprintf(out + len, n - len, "%s%s=%016llx", r ? " " : "", dr[r].n, h);
     }
-    printf("\n");
 }
 
 static void *read_file(const char *path, size_t *size) {
@@ -171,21 +250,27 @@ int main(int argc, char **argv) {
         return 1;
     }
     core->loadBIOS(core, bvf, 0);
-    if (save) {     /* a private copy: the game's writes never reach the file */
-        size_t n;
-        void *buf = read_file(save, &n);
-        if (!buf) {
-            fprintf(stderr, "cannot read %s\n", save);
-            return 1;
-        }
-        snprintf(path, sizeof path, "%s.sav", base);
-        if (!write_file(path, buf, n)) {
-            fprintf(stderr, "cannot write %s\n", path);
-            return 1;
-        }
-        core->loadSave(core, VFileMemChunk(buf, n));
-        free(buf);
+
+    /* The starting save: a private copy of --save, or a blank one. Either
+     * way it is written next to the trace and loaded from memory, exactly
+     * as the test scripts will load it. */
+    size_t save_size = SAVE_SIZE;
+    void *start = save ? read_file(save, &save_size) : NULL;
+    if (save && !start) {
+        fprintf(stderr, "cannot read %s\n", save);
+        return 1;
     }
+    if (!start) {
+        start = malloc(SAVE_SIZE);
+        memset(start, 0xFF, SAVE_SIZE);
+    }
+    snprintf(path, sizeof path, "%s.sav", base);
+    if (!write_file(path, start, save_size)) {
+        fprintf(stderr, "cannot write %s\n", path);
+        return 1;
+    }
+    core->loadSave(core, VFileMemChunk(start, save_size));
+
     core->setAudioBufferSize(core, 2048);
     blip_set_rates(core->getAudioChannel(core, 0), core->frequency(core), SAMPLE_RATE);
     blip_set_rates(core->getAudioChannel(core, 1), core->frequency(core), SAMPLE_RATE);
@@ -196,17 +281,20 @@ int main(int argc, char **argv) {
         fprintf(stderr, "cannot write %s\n", out);
         return 1;
     }
-    fprintf(trace, "# gbarecomp-keyinput-v1\n# game_frame,keyinput_active_low (tools/record%s%s)\n",
-            save ? ", start save " : "", save ? save : "");
+    fprintf(trace, "# gbarecomp-keyinput-v1\n# game_frame,keyinput_active_low (tools/record; start save %s%s)\n",
+            save ? save : "blank", save ? "" : ", new game");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
+    signal(SIGINT, on_signal);      /* Ctrl+C or a closed terminal still finish the files */
+    signal(SIGTERM, on_signal);
+    signal(SIGHUP, on_signal);
     SDL_Window *win = SDL_CreateWindow("BN6 recorder", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                       (int)w * scale, (int)h * scale, SDL_WINDOW_RESIZABLE);
+                                       (int)w * scale, (int)(h + BAR) * scale, SDL_WINDOW_RESIZABLE);
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
-    SDL_RenderSetLogicalSize(ren, (int)w, (int)h);
+    SDL_RenderSetLogicalSize(ren, (int)w, (int)h + BAR);
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, (int)w, (int)h);
     SDL_AudioSpec want = { .freq = SAMPLE_RATE, .format = AUDIO_S16SYS, .channels = 2, .samples = 1024 }, have;
     SDL_AudioDeviceID audio = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
@@ -217,21 +305,23 @@ int main(int argc, char **argv) {
         if (SDL_IsGameController(i))
             pad = SDL_GameControllerOpen(i);
 
-    printf("Recording to %s%s%s\n", out, pad ? " (controller: " : "", pad ? SDL_GameControllerName(pad) : "");
+    printf("Recording to %s (starting save: %s.sav)\n", out, base);
     if (pad)
-        printf(")\n");
+        printf("Controller: %s\n", SDL_GameControllerName(pad));
     printf("Keys: arrows, X=A, Z=B, A=L, S=R, Enter=Start, Backspace=Select; Tab=fast forward, P=pause, Esc=stop\n");
 
     const char *test_env = getenv("RECORD_TEST_FRAMES");
     unsigned test_frames = test_env ? (unsigned)atoi(test_env) : 0, last_digest = ~0u;
     unsigned rng = 12345, test_keys = 0;
-    unsigned latched = 0x3FF, written = 0x3FF, prev_when = 0, events = 0;
+    unsigned latched = 0x3FF, written = 0x3FF, prev_when = 0, events = 0, frames_run = 0;
+    unsigned held = 0x3FF, when = 0;
     int first = 1, paused = 0, recording = 1;
     Uint64 next = SDL_GetPerformanceCounter();
     const double tick = SDL_GetPerformanceFrequency() / FPS;
     static short samples[8192];
-    for (unsigned fr = 0, running = 1; running; fr++) {
-        if (test_frames && fr >= test_frames)
+    SDL_Rect game_rect = { 0, 0, (int)w, (int)h };
+    for (int running = 1; running && !g_stop;) {
+        if (test_frames && frames_run >= test_frames)
             break;
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
@@ -243,13 +333,18 @@ int main(int argc, char **argv) {
             } else if (ev.type == SDL_CONTROLLERDEVICEADDED && !pad)
                 pad = SDL_GameControllerOpen(ev.cdevice.which);
         }
+        const Uint8 *ks = SDL_GetKeyboardState(NULL);
+        held = 0x3FF & ~(keyboard_keys(ks) | pad_keys(pad));
+        int fast = ks[SDL_SCANCODE_TAB] || test_frames;
         if (paused) {
+            SDL_RenderClear(ren);
+            SDL_RenderCopy(ren, tex, NULL, &game_rect);
+            status_bar(ren, (int)h, "PAUSED", when, events, held);
+            SDL_RenderPresent(ren);
             SDL_Delay(16);
             next = SDL_GetPerformanceCounter();
             continue;
         }
-        const Uint8 *ks = SDL_GetKeyboardState(NULL);
-        unsigned held = 0x3FF & ~(keyboard_keys(ks) | pad_keys(pad));
         if (test_frames) {      /* key changes at arbitrary hardware frames */
             rng = rng * 1103515245u + 12345u;
             if ((rng >> 16) % 5 == 0)
@@ -257,12 +352,12 @@ int main(int argc, char **argv) {
             held = 0x3FF & ~test_keys;
         }
         /* The same game-frame timeline as mgba_run's replay. */
-        unsigned when = core->busRead16(core, core->busRead32(core, GAME_FRAME_ADDR));
+        when = core->busRead16(core, core->busRead32(core, GAME_FRAME_ADDR));
         if (first || when != prev_when) {
             if (!first && when < prev_when && recording) {
                 recording = 0;
                 fprintf(stderr, "game frame counter went back (%u -> %u; soft reset?): "
-                        "the trace ends here, keep playing or press Esc\n", prev_when, when);
+                        "the trace ends here, press Esc\n", prev_when, when);
             }
             latched = held;
             if (recording && (first || latched != written)) {
@@ -275,18 +370,29 @@ int main(int argc, char **argv) {
             first = 0;
         }
         if (test_frames && when % 20 == 0 && when != last_digest) {
+            char d[160];
             last_digest = when;
-            print_digest(core, when, fr);
+            digest(core, d, sizeof d);
+            printf("digest game=%u hw=%u %s\n", when, frames_run, d);
         }
         core->setKeys(core, ~latched & 0x3FF);
         core->runFrame(core);
+        frames_run++;
 
-        SDL_UpdateTexture(tex, NULL, fb, (int)(w * sizeof(color_t)));
-        SDL_RenderClear(ren);
-        SDL_RenderCopy(ren, tex, NULL, NULL);
-        SDL_RenderPresent(ren);
+        if (!fast || frames_run % 8 == 0) {
+            SDL_UpdateTexture(tex, NULL, fb, (int)(w * sizeof(color_t)));
+            SDL_RenderClear(ren);
+            SDL_RenderCopy(ren, tex, NULL, &game_rect);
+            status_bar(ren, (int)h, !recording ? "STOPPED" : fast ? "FAST" : "REC", when, events, held);
+            SDL_RenderPresent(ren);
+        }
+        if (frames_run % 30 == 0) {
+            char title[96];
+            snprintf(title, sizeof title, "BN6 recorder - %s - frame %u - %u inputs",
+                     recording ? "REC" : "STOPPED", when, events);
+            SDL_SetWindowTitle(win, title);
+        }
 
-        int fast = ks[SDL_SCANCODE_TAB] || test_frames;
         blip_t *l = core->getAudioChannel(core, 0), *r = core->getAudioChannel(core, 1);
         int n = blip_samples_avail(l);
         if (n > (int)(sizeof samples / sizeof samples[0] / 2))
@@ -306,17 +412,25 @@ int main(int argc, char **argv) {
         else if (now - next > 10 * tick)
             next = now;     /* fell far behind: don't race to catch up */
     }
-    fclose(trace);
 
+    /* Where the recording ended, for tools/check_recording.sh. */
+    char d[160];
+    digest(core, d, sizeof d);
+    fprintf(trace, "# end hw_frames=%u game_frame=%u %s%s\n", frames_run, prev_when, d,
+            recording ? "" : " (recording stopped early: game frame counter went back)");
+    fclose(trace);
+    /* mGBA has no save memory until the game first accesses it; then the
+     * save is still the starting one. */
     void *sram = NULL;
     size_t n = core->savedataClone(core, &sram);
-    if (n && sram) {
-        snprintf(path, sizeof path, "%s.end.sav", base);
-        if (write_file(path, sram, n))
-            printf("save memory at exit: %s\n", path);
-        free(sram);
-    }
-    printf("%u input changes recorded up to game frame %u: %s\n", events, prev_when, out);
+    snprintf(path, sizeof path, "%s.end.sav", base);
+    if (n && sram ? write_file(path, sram, n) : write_file(path, start, save_size))
+        printf("Ending save: %s%s\n", path, n ? "" : " (the game never accessed its save)");
+    else
+        fprintf(stderr, "could not write the ending save %s\n", path);
+    free(sram);
+    free(start);
+    printf("%u input changes recorded up to game frame %u (%u frames): %s\n", events, prev_when, frames_run, out);
     SDL_Quit();
     core->deinit(core);
     return 0;
