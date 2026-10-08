@@ -13,7 +13,7 @@
  * Every recording gets, next to OUT.trace:
  *   OUT.sav      the save memory it starts from: a copy of --save, or a
  *                blank save for a new game (the test scripts load it);
- *   OUT.end.sav  the save memory when recording stopped (a starting point
+ *   OUT.end.sav  the save memory (SRAM) when recording stopped (a starting point
  *                for the next recording; tools/check_recording.sh checks a
  *                replay ends with the same).
  * The trace ends with "# end hw_frames=... game_frame=... <digest>", the
@@ -419,13 +419,15 @@ int main(int argc, char **argv) {
     fprintf(trace, "# end hw_frames=%u game_frame=%u %s%s\n", frames_run, prev_when, d,
             recording ? "" : " (recording stopped early: game frame counter went back)");
     fclose(trace);
-    /* mGBA has no save memory until the game first accesses it; then the
-     * save is still the starting one. */
-    void *sram = NULL;
-    size_t n = core->savedataClone(core, &sram);
+    /* The game's save memory as it sees it (32 KB of SRAM at 0x0E000000;
+     * libmgba 0.10's savedataClone returns garbage here). */
+    unsigned char *sram = malloc(SAVE_SIZE);
+    for (unsigned a = 0; a < SAVE_SIZE; a++)
+        sram[a] = (unsigned char)core->busRead8(core, 0x0E000000 + a);
     snprintf(path, sizeof path, "%s.end.sav", base);
-    if (n && sram ? write_file(path, sram, n) : write_file(path, start, save_size))
-        printf("Ending save: %s%s\n", path, n ? "" : " (the game never accessed its save)");
+    if (write_file(path, sram, SAVE_SIZE))
+        printf("Ending save: %s%s\n", path, memcmp(sram, start, SAVE_SIZE < save_size ? SAVE_SIZE : save_size)
+               ? " (the game saved)" : " (unchanged)");
     else
         fprintf(stderr, "could not write the ending save %s\n", path);
     free(sram);

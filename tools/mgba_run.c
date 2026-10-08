@@ -130,7 +130,6 @@ int main(int argc, char **argv) {
     const char *dump_save = NULL;
     int final_digest = 0;
     void *save_data = NULL;
-    size_t save_size = 0;
     /* --poke-at PC G "ADDR=VALUE/SIZE,...": write memory once, when the
      * instruction at PC is about to run at game frame >= G (a fixed point in
      * the game's frame loop, e.g. main_awaitFrame's entry, so the original
@@ -274,7 +273,6 @@ int main(int argc, char **argv) {
         fclose(f);
         core->loadSave(core, VFileMemChunk(buf, n));
         save_data = buf;
-        save_size = n;
     }
     if (bios) {
         struct VFile *vf = VFileOpen(bios, O_RDONLY);
@@ -651,14 +649,13 @@ done:
         }
         printf("\n");
     }
-    if (dump_save) {    /* no save memory until the game accesses it: then it is still --save's */
-        void *sram = NULL;
-        size_t n = core->savedataClone(core, &sram);
+    if (dump_save) {
+        /* The game's save memory as it sees it: BN6 has 32 KB of SRAM at
+         * 0x0E000000. (libmgba 0.10's savedataClone returns garbage here.) */
         FILE *o = fopen(dump_save, "wb");
-        if (o && n && sram) fwrite(sram, 1, n, o);
-        else if (o && save_data) fwrite(save_data, 1, save_size, o);
+        for (unsigned a = 0; o && a < 0x8000; a++)
+            fputc(core->busRead8(core, 0x0E000000 + a), o);
         if (o) fclose(o);
-        free(sram);
     }
     free(save_data);
     printf("ran %u frames\n", frames);
