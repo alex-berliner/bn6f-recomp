@@ -3,9 +3,8 @@ functions against their lifted originals, then replay recorded routes in
 lockstep with the original game (docs/PROCESS.md §3)."""
 from enum import Enum
 from pathlib import Path
-from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from wf.burr_typed import Transition, TypedApplication, Workflow
 from wf.repo import current_sources
@@ -42,7 +41,7 @@ def run_verify(start: "VerifyState", run_id: str) -> "VerifyReport":
     return final_state.report
 
 
-# ── state ──────────────────────────────────────────────────────────────
+# ── the run's state ────────────────────────────────────────────────────
 
 class Verdict(Enum):
     PASSED = "passed"
@@ -61,8 +60,7 @@ class VerifyReport(Result):
 
 
 class VerifyState(BaseModel):
-    model_config = ConfigDict(validate_assignment=True)
-
+    """Everything a verify run knows; each step sees only the part its input model names."""
     run_dir: Path
     functions: tuple[FunctionName, ...]
     routes: tuple[Route, ...]
@@ -74,74 +72,106 @@ class VerifyState(BaseModel):
     report: VerifyReport | None = None
 
 
-VerifyField = Literal["run_dir", "functions", "routes", "trials", "sources",
-                      "build", "difftests", "locksteps", "report"]
-
-workflow = Workflow[VerifyField, VerifyState](VerifyState, project=PROJECT)
+workflow = Workflow[VerifyState](VerifyState, project=PROJECT)
 
 
 # ── steps ──────────────────────────────────────────────────────────────
 
-@workflow.step(reads=[], writes=["sources"])
-def note_sources(state: VerifyState) -> VerifyState:
+class Nothing(Result):
+    pass
+
+
+class SourcesOutput(Result):
+    sources: SourceVersion
+
+
+@workflow.step
+def note_sources(given: Nothing) -> SourcesOutput:
     """Record which commit is being verified, and whether it has uncommitted changes."""
-    state.sources = current_sources()
-    return state
+    return SourcesOutput(sources=current_sources())
 
 
-@workflow.step(reads=["run_dir"], writes=["build"])
-def build(state: VerifyState) -> VerifyState:
+class BuildInput(Result):
+    run_dir: Path
+
+
+class BuildOutput(Result):
+    build: BuiltRom | BuildFailure
+
+
+@workflow.step
+def build(given: BuildInput) -> BuildOutput:
     """Build the port ROM into the workflow's own build directory."""
-    state.build = build_rom(state.run_dir)
-    return state
+    return BuildOutput(build=build_rom(given.run_dir))
 
 
-@workflow.step(reads=["functions", "trials", "run_dir"], writes=["difftests"])
-def difftest_changed_functions(state: VerifyState) -> VerifyState:
+class DifftestInput(Result):
+    functions: tuple[FunctionName, ...]
+    trials: int
+    run_dir: Path
+
+
+class DifftestOutput(Result):
+    difftests: tuple[DifftestResult, ...]
+
+
+@workflow.step
+def difftest_changed_functions(given: DifftestInput) -> DifftestOutput:
     """Compare each changed function with its lifted original on random inputs."""
-    state.difftests = run_difftest(state.functions, state.trials, state.run_dir)
-    return state
+    return DifftestOutput(difftests=run_difftest(given.functions, given.trials, given.run_dir))
 
 
-@workflow.step(reads=["build", "routes", "run_dir"], writes=["locksteps"])
-def lockstep_routes(state: VerifyState) -> VerifyState:
+class LockstepInput(Result):
+    build: BuiltRom  # only a successful build reaches this step
+    routes: tuple[Route, ...]
+    run_dir: Path
+
+
+class LockstepOutput(Result):
+    locksteps: tuple[LockstepResult, ...]
+
+
+@workflow.step
+def lockstep_routes(given: LockstepInput) -> LockstepOutput:
     """Replay each recorded route on the original game and the port side by side."""
-    state.locksteps = run_lockstep_routes(_built_rom(state).rom, state.routes, state.run_dir)
-    return state
+    return LockstepOutput(locksteps=run_lockstep_routes(given.build.rom, given.routes, given.run_dir))
 
 
-@workflow.step(reads=["sources", "build", "difftests", "locksteps", "routes"], writes=["report"])
-def write_report(state: VerifyState) -> VerifyState:
+class ReportInput(Result):
+    sources: SourceVersion
+    build: BuiltRom | BuildFailure
+    difftests: tuple[DifftestResult, ...]
+    locksteps: tuple[LockstepResult, ...]
+    routes: tuple[Route, ...]
+
+
+class ReportOutput(Result):
+    report: VerifyReport
+
+
+@workflow.step
+def write_report(given: ReportInput) -> ReportOutput:
     """Sum up what passed, what failed and what was never compared."""
-    if state.sources is None:
-        raise RuntimeError("write_report ran before note_sources")
-    state.report = VerifyReport(
-        sources=state.sources,
-        verdict=_verdict(state),
-        failed_functions=tuple(result.function for result in state.difftests
+    return ReportOutput(report=VerifyReport(
+        sources=given.sources,
+        verdict=_verdict(given),
+        failed_functions=tuple(result.function for result in given.difftests
                                if result.outcome is Outcome.FAILED),
-        unchecked_functions=tuple(result.function for result in state.difftests
+        unchecked_functions=tuple(result.function for result in given.difftests
                                   if result.outcome is Outcome.COMPARED_NOTHING),
-        failed_routes=tuple(result.route for result in state.locksteps if not result.passed),
-        routes_checked=tuple(result.route for result in state.locksteps),
-    )
-    return state
+        failed_routes=tuple(result.route for result in given.locksteps if not result.passed),
+        routes_checked=tuple(result.route for result in given.locksteps),
+    ))
 
 
-def _built_rom(state: VerifyState) -> BuiltRom:
-    if not isinstance(state.build, BuiltRom):
-        raise RuntimeError("lockstep_routes ran without a built ROM")
-    return state.build
-
-
-def _verdict(state: VerifyState) -> Verdict:
-    if not isinstance(state.build, BuiltRom):
+def _verdict(given: ReportInput) -> Verdict:
+    if isinstance(given.build, BuildFailure):
         return Verdict.BUILD_FAILED
-    difftest_failed = any(result.outcome is Outcome.FAILED for result in state.difftests)
-    lockstep_failed = any(not result.passed for result in state.locksteps)
-    if difftest_failed or lockstep_failed or len(state.locksteps) < len(state.routes):
+    difftest_failed = any(result.outcome is Outcome.FAILED for result in given.difftests)
+    lockstep_failed = any(not result.passed for result in given.locksteps)
+    if difftest_failed or lockstep_failed or len(given.locksteps) < len(given.routes):
         return Verdict.FAILED
-    if any(result.outcome is Outcome.COMPARED_NOTHING for result in state.difftests):
+    if any(result.outcome is Outcome.COMPARED_NOTHING for result in given.difftests):
         return Verdict.PASSED_WITH_UNCHECKED_FUNCTIONS
     return Verdict.PASSED
 
