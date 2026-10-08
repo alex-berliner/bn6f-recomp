@@ -217,13 +217,15 @@ void trace_sync_violation(u32 ra, int which);
 #endif
 /* Direct calls run the callee in place and only enter the trampoline when
  * it asks for a tail call. */
-#define CALL_DIRECT(f_) do { Next n_ = f_(); if (n_.fn) run(n_.fn); } while (0)
+/* Run a lifted callee to completion; tail calls it makes are followed here
+ * (an inline trampoline: no call into run() and its interworking veneer). */
+#define CALL_DIRECT(f_) do { Next n_ = f_(); while (n_.fn) n_ = n_.fn(); } while (0)
 #define CALL(fn, ra)    do { SAVE; LR = (u32)(ra) | 1u; CALL_DIRECT(fn); LOAD; RET_CHECK(ra); } while (0)
 #define CALL_A(fn, ra)  do { SAVE; LR = (u32)(ra); CALL_DIRECT(fn); LOAD; RET_CHECK(ra); } while (0)
 #define CALLX(x, ra)    do { u32 x_ = (x); SAVE; dispatch(x_); LOAD; RET_CHECK(ra); } while (0)
 #define RETURN(x)       do { u32 x_ = (x); SAVE; cpu.ret = x_ & ~1u; return DONE; } while (0)
 #define TAIL(fn)        do { SAVE; return NEXT(fn); } while (0)
-#define JUMP(x)         do { u32 x_ = (x); SAVE; return jump_to(x_); } while (0)
+#define JUMP(x)         do { u32 x_ = (x); SAVE; GuestFn f_ = dispatch_fast(x_); return f_ ? NEXT(f_) : jump_to(x_); } while (0)
 #define SWI(n)          do { SAVE; swi_call(n); LOAD; } while (0)
 #define UNDEFINED(a)    do { SAVE; undefined_insn(a); return DONE; } while (0)
 #define EXCEPTION_RETURN(x) do { u32 x_ = (x); SAVE; exception_return(x_); return DONE; } while (0)
