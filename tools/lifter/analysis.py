@@ -227,6 +227,14 @@ class Program:
         self.insns[key] = ins
         return ins
 
+    def literal_addr(self, ins: Insn) -> int | None:
+        """Address of the literal a PC-relative word LDR reads."""
+        if ins.kind != "mem" or not ins.load or ins.rn != 15 or not ins.op2.is_imm or not ins.pre or ins.wb:
+            return None
+        base = ins.pc_val() & ~3 if ins.thumb else ins.pc_val()
+        a = base + ins.op2.imm if ins.up or ins.thumb else base - ins.op2.imm
+        return a if ins.width == 4 and not a & 3 else None
+
     def literal(self, ins: Insn) -> int | None:
         """Constant loaded by a PC-relative LDR from read-only memory."""
         if ins.kind != "mem" or not ins.load or ins.rn != 15 or not ins.op2.is_imm:

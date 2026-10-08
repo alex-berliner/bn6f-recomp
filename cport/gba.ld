@@ -50,11 +50,12 @@ SECTIONS {
      * from the end of .bss up to just below the guest's own stack. The
      * original's IWRAM routines end at 0x030079D4 (0x03005B00 + 0x1ED4) and
      * its stack (iStack, 0x03007E00 down) never grows into them, so the
-     * guest never uses anything below that. Above the host stack: the BIOS's
-     * IRQ entry frame (24 bytes, IRQ mode). tools/stackuse.sh measures the
+     * guest never uses anything below that. Above the host stack: the IRQ-mode
+     * stack for the BIOS's entry frame (24 bytes) and any IRQ hook a flashcart
+     * firmware installs in front of the game's handler (SuperFW's in-game menu). tools/stackuse.sh measures the
      * peak (1372 bytes in the battle trace); the minimum below is 1.3x that. */
     __irq_stack_top = 0x030079D0;
-    __sys_stack_top = 0x030079B0;
+    __sys_stack_top = 0x03007970;          /* 96 bytes of IRQ-mode stack: the BIOS frame plus flashcart IRQ hooks */
     __sys_stack_limit = __sys_stack_top - 0x700;
     ASSERT(__bss_end <= __sys_stack_limit, "IWRAM code + runtime .bss leave the host stack too small")
     ASSERT(SIZEOF(.data) == 0, "initialized .data is not supported; use const or .bss")

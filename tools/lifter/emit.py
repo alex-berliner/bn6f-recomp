@@ -44,6 +44,11 @@ def cname(name: str) -> str:
     return n
 
 
+# Literal-pool constants that flashcart firmware patches in ROM images
+# (WAITCNT, the BIOS IRQ vector): lifted code reads them from the pool.
+FIRMWARE_PATCHED = {0x04000204, 0x03007FFC}
+
+
 @dataclass
 class Ctx:
     p: Program
@@ -590,6 +595,12 @@ class UnitEmitter:
         if lit is not None:
             if ins.rd == 15:
                 return [self.goto_or_tail(lit & ~1)] if (lit & ~1) in self.ctx.names else [f"JUMP({h(lit)});"]
+            la = self.p.literal_addr(ins)
+            if lit in FIRMWARE_PATCHED and la is not None and 0x08000000 <= la < 0x0A000000:
+                # read from the pool, as the original does: flashcart firmware
+                # patches these constants in the ROM image (SuperFW redirects the
+                # WAITCNT and IRQ-vector writes of games on its slow SDRAM)
+                return [f"{rd} = LD32({h(la)});   /* ={self.addr_const(lit, mode_bit=True)} */"]
             return [f"{rd} = {self.addr_const(lit, mode_bit=True)};"]
         base = self.reg(ins.rn, ins)
         if ins.rn == 15 and ins.thumb:

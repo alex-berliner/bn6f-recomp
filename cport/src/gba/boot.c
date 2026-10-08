@@ -26,9 +26,19 @@ static void call_init(GuestFn fn) {
     run(fn);
 }
 
+/* GameEntryPoint sets WAITCNT and the BIOS IRQ vector through constants in
+ * its literal pool (start.s: off_8000200 = WAITCNT, dword_8000204 = 0x45B4,
+ * off_80001F8 = 0x03007FFC). Flashcart firmware patches those constants in
+ * the ROM image (SuperFW redirects the WAITCNT write for its slow SDRAM and
+ * the IRQ vector for its in-game menu), so this port writes through them too;
+ * unpatched they are the plain registers. */
+#define ORIG_WAITCNT_ADDR   (*(volatile u32 *)0x08000200u)
+#define ORIG_WAITCNT_VALUE  (*(volatile u32 *)0x08000204u)
+#define ORIG_IRQ_VECTOR     (*(volatile u32 *)0x080001F8u)
+
 __attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
     REG_IME = 0;
-    REG_WAITCNT = 0x45B4;
+    *(volatile u32 *)(uintptr_t)ORIG_WAITCNT_ADDR = ORIG_WAITCNT_VALUE;
 
     /* Guest-visible RAM, as start_clearMemory does. IWRAM 0x3005700..0x30079D0
      * holds this port's IWRAM code, state and stack and is left alone. */
@@ -60,7 +70,7 @@ __attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
     cpu.bank_sp[BANK_SVC] = 0x03007FE0;
     SP = 0x03007E00;   /* iStack */
 
-    BIOS_IRQ_VECTOR = (u32)irq_entry;
+    *(volatile u32 *)(uintptr_t)ORIG_IRQ_VECTOR = (u32)irq_entry;
 
     call_init(SetPrimaryToolkitPointers);
     call_init(RandomizeExtraToolkitPointers);
