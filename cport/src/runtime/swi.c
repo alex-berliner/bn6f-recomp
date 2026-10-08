@@ -1,8 +1,10 @@
 /*
- * swi.c — the GBA BIOS services BN6 uses, implemented in portable C.
+ * swi.c — the GBA BIOS services BN6 uses.
  *
- * Results match the BIOS (register outputs included) for the inputs the game
- * passes; see GBATEK "BIOS Functions".
+ * On the GBA target they are serviced by the real BIOS. The portable C
+ * versions (used off-hardware, or with -DSWI_IN_C) match the BIOS results,
+ * register outputs included, for the inputs the game passes; see GBATEK
+ * "BIOS Functions".
  */
 #include "cpu.h"
 #include "runtime.h"
@@ -176,6 +178,39 @@ static void bios_lz77(int vram) {
         ST16(out - 1, half);
 }
 
+#if defined(TARGET_GBA) && !defined(SWI_IN_C)
+/* On hardware the game's SWIs go to the real BIOS, exactly as the original
+ * code did. The guest r0-r3 are passed in and read back. */
+#define BIOS_SWI(num)                                                          \
+    do {                                                                       \
+        register u32 a0 __asm__("r0") = R0, a1 __asm__("r1") = R1;             \
+        register u32 a2 __asm__("r2") = R2, a3 __asm__("r3") = R3;             \
+        __asm__ volatile("swi " #num                                           \
+                         : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)              \
+                         : : "r12", "memory", "cc");                           \
+        R0 = a0; R1 = a1; R2 = a2; R3 = a3;                                    \
+    } while (0)
+
+void swi_call(u32 n) {
+#if defined(LIFT_TRACE)
+    if (n == 0x0B || n == 0x0C) {
+        rt_log("cpuset src", R0); rt_log("       dst", R1);
+        rt_log("       ctl", R2);
+        rt_log("        lr", LR);
+    }
+#endif
+    switch (n) {
+    case 0x06: BIOS_SWI(0x06); break;
+    case 0x08: BIOS_SWI(0x08); break;
+    case 0x0A: BIOS_SWI(0x0A); break;
+    case 0x0B: BIOS_SWI(0x0B); break;
+    case 0x0C: BIOS_SWI(0x0C); break;
+    case 0x11: BIOS_SWI(0x11); break;
+    case 0x12: BIOS_SWI(0x12); break;
+    default: rt_fatal("unimplemented SWI", n);
+    }
+}
+#else
 void swi_call(u32 n) {
 #if defined(LIFT_TRACE)
     if (n == 0x0B || n == 0x0C) {
@@ -195,3 +230,4 @@ void swi_call(u32 n) {
     default: rt_fatal("unimplemented SWI", n);
     }
 }
+#endif
