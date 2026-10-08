@@ -11,7 +11,7 @@ BASEROM ?= ../bn6f/bn6f.gba
 BUILD   := build
 
 ARCH    := -mcpu=arm7tdmi -mthumb -mthumb-interwork
-CFLAGS  := $(ARCH) -O2 -ffreestanding -fno-strict-aliasing -fomit-frame-pointer \
+CFLAGS  := $(ARCH) -Os -ffreestanding -fno-strict-aliasing -fomit-frame-pointer \
            -DTARGET_GBA -Iinclude -Wall -Wno-unused-label -Wno-unused-variable -Wno-array-bounds -Wno-comment -Werror=return-type -Wno-unused-but-set-variable
 LDFLAGS := $(ARCH) -nostartfiles -T gba.ld -Wl,--gc-sections -Wl,-Map,$(BUILD)/bn6f_lifted.map
 
