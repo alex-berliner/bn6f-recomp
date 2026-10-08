@@ -65,7 +65,7 @@ static inline u32 shape_size(u32 piece) {
 /* Offset of a piece from the sprite's position (sub_3006594). For affine
  * sprites the piece's offset from the sprite centre is rotated and scaled,
  * and the attribute's affine slot is chosen (slot + 16 for the first piece). */
-static void piece_offset(u32 spr, u32 piece, u32 *attr, u32 first, s32 *dx, s32 *dy) {
+IWRAM_HELPER static void piece_offset(u32 spr, u32 piece, u32 *attr, u32 first, s32 *dx, s32 *dy) {
     u32 k = shape_size(piece);
     if (!(*attr & 0x300)) {             /* regular sprite: mirror if flipped */
         s32 x = S8(piece + PC_X), y = S8(piece + PC_Y);
@@ -95,7 +95,7 @@ static void piece_offset(u32 spr, u32 piece, u32 *attr, u32 first, s32 *dx, s32 
 
 /* Link one entry into its layer list. Returns 0 if its list position is
  * out of range (the caller stops queueing). */
-static int link_entry(u32 attr01, u32 attr2, u32 layer, s32 depth) {
+IWRAM_HELPER static int link_entry(u32 attr01, u32 attr2, u32 layer, s32 depth) {
     u32 lh = LAYER_HEADS + layer * 8;
     if (depth >= (s32)U32(lh + 4) || depth < 0)
         return 0;
@@ -113,7 +113,7 @@ static int link_entry(u32 attr01, u32 attr2, u32 layer, s32 depth) {
 }
 
 /* Queue `count` built entries, all or (if the pool would overflow) none. */
-static void queue_entries(u32 buf, s32 count) {
+IWRAM_HELPER static void queue_entries(u32 buf, s32 count) {
     if ((s32)(count + U32(SPRITE_COUNT)) >= POOL_SLOTS)
         return;
     do {

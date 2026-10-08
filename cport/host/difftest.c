@@ -160,6 +160,8 @@ static int g_hwtick;
 static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u8 *mem_out) {
     pid_t pid = fork();
     if (pid == 0) {
+        if (!getenv("DIFFTEST_VERBOSE"))       /* out-of-domain inputs abort noisily */
+            freopen("/dev/null", "w", stderr);
         signal(SIGSEGV, die);
         signal(SIGBUS, die);
         signal(SIGALRM, die);

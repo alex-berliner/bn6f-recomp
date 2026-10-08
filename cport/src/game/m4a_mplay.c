@@ -109,13 +109,11 @@ static int run_commands(u32 si, u32 mp, u32 trk) {
         }
         if (cmd >= 0xCF) {                          /* note */
             R0 = cmd - 0xCF; R1 = mp; R2 = trk;
-            LR = 0xFFFFFFF1u;
-            dispatch(U32(si + SI_PLY_NOTE));
+            GUEST_CALL_ADDR(U32(si + SI_PLY_NOTE));
         } else if (cmd > 0xB0) {                    /* MPlayJumpTable command */
             U8(mp + MP_CMD) = (u8)(cmd - 0xB1);
             R0 = mp; R1 = trk;
-            LR = 0xFFFFFFF1u;
-            dispatch(U32(U32(si + SI_JUMP_TABLE) + (cmd - 0xB1) * 4));
+            GUEST_CALL_ADDR(U32(U32(si + SI_JUMP_TABLE) + (cmd - 0xB1) * 4));
             if (U8(trk + TR_FLAGS) == 0)
                 return 0;
         } else {                                    /* wait */
@@ -203,8 +201,7 @@ static void update_channels(u32 si, u32 mp) {
                         key = 0;
                     if (cgb) {
                         R0 = cgb; R1 = (u32)key; R2 = U8(trk + TR_PITCH);
-                        LR = 0xFFFFFFF1u;
-                        dispatch(U32(si + SI_CGB_FREQ));
+                        GUEST_CALL_ADDR(U32(si + SI_CGB_FREQ));
                         U32(ch + CH_FREQ) = R0;
                         U8(ch + CH_MODIFY) |= CGB_FREQ_CHANGED;
                     } else {
@@ -250,7 +247,6 @@ unlock:
 }
 
 Next sub_814E260(void) {
-    u32 ret = LR;
     u32 chain[MAX_CHAIN];
     int n = 0;
     /* Lock each player in turn (a player that is already locked, e.g. being
@@ -268,11 +264,10 @@ Next sub_814E260(void) {
             continue;
         }
         R0 = U32(mp + MP_NEXT_ARG);                 /* some other chained routine */
-        LR = 0xFFFFFFF1u;
-        dispatch(next);
+        GUEST_CALL_ADDR(next);
         break;
     }
     while (n > 0)
         play(chain[--n]);
-    RETURN_TO(ret);
+    RETURN_TO_CALLER();
 }

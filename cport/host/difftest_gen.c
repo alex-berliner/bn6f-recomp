@@ -96,8 +96,43 @@ static void mut_sprite_pieces(Cpu *in, u32 (*rnd)(void)) {
         if (rnd() % 8 == 0) U8(0x0200A6F0u + k) = (u8)rnd();
 }
 
+static u32 sprite_of(u32 obj) { return obj + (U8(obj + 2) & 0xF0); }
+
+/* sub_30061E8: camera mode and mirroring, sprite flip/facing and flag
+ * options, positions around the camera. */
+static void mut_sprite_project(Cpu *in, u32 (*rnd)(void)) {
+    u32 obj = in->r[5], spr = sprite_of(obj), pos = in->r[0];
+    U8(obj) ^= rnd() % 4 ? 0 : 8;
+    U8(spr + 0x03) = (u8)((U8(spr + 0x03) & ~0x25u) | (rnd() & 0x25));
+    U8(spr + 0x13) ^= (u8)(rnd() & 0x30);
+    U8(spr + 0x16) = (u8)((U8(spr + 0x16) & ~0x32u) | (rnd() & 0x32));
+    U8(0x020099CCu) = (u8)(rnd() % 3 ? rnd() % 2 : rnd());
+    U8(0x020098A9u) = rnd() % 2 ? 0 : 4;
+    for (int k = 0; k < 3; k++)
+        if (rnd() % 2) U32(pos + 4 * k) += (rnd() % 0x2000000) - 0x1000000;
+}
+
+/* sub_3006028: tile cache hit/miss, VRAM and palette slots running out,
+ * palette effects, already-uploaded graphics. */
+static void mut_sprite_gfx(Cpu *in, u32 (*rnd)(void)) {
+    u32 obj = in->r[5], spr = sprite_of(obj);
+    U8(spr + 0x03) ^= (u8)(rnd() & 0x12);
+    if (rnd() % 2) U32(0x020093A8u) = rnd() % (U32(0x020093A8u) + 1);   /* forget cached tiles */
+    if (rnd() % 4 == 0) U16(0x0200F350u) = (u16)(rnd() % 0x400);         /* tile cursor */
+    if (rnd() % 4 == 0) U16(0x020098AAu) = (u16)(rnd() % 0x400);         /* tile limit */
+    if (rnd() % 3 == 0) U32(0x0200F340u) = rnd() % 17;                   /* palettes used */
+    if (rnd() % 4 == 0) U8(0x020098A8u) = (u8)(rnd() % 17);              /* palette slots */
+    if (rnd() % 3 == 0) U16(spr + 0x06) = (u16)rnd();                    /* palette effect */
+    if (rnd() % 4 == 0) U8(spr + 0x15) |= 0xF0;
+    if (rnd() % 3 == 0) U32(spr + 0x24) = rnd() % 2 ? 0 : U32(spr + 0x24) + 4;
+    if (rnd() % 4 == 0)                                                  /* scramble a cached palette */
+        U32(0x03001550u + (rnd() % 15) * 0x20 + (rnd() % 8) * 4) ^= 1u << (rnd() % 32);
+}
+
 GenFn difftest_snap_mutator(const char *name) {
     if (!strcmp(name, "sub_3006440")) return mut_sprite_pieces;
+    if (!strcmp(name, "sub_30061E8")) return mut_sprite_project;
+    if (!strcmp(name, "sub_3006028")) return mut_sprite_gfx;
     return 0;
 }
 
