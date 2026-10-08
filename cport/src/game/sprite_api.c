@@ -91,14 +91,14 @@ Next sprite_setPalette(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_8002E14(r0 = sprite slot index, r5 = object header):
+/* sprite_setPriority_8002E14(r0 = sprite slot index, r5 = object header):
  * Selects the sprite-data block belonging to the object's type (header base
  * plus high nibble of the type byte * 0x10) and patches bits 2-3 of that
  * block's Unk_15 byte with (r0 << 2).
  * Outputs: R0 = r0 << 2, R1 = value stored, R2 = 0xC, R3 = block base;
  * C = carry out of "lsl r0, r0, #2", N/Z from the ORRed value,
  * V from the "add r3, r3, r5" (the last flag-setting instruction for V). */
-Next sub_8002E14(void) {
+Next sprite_setPriority_8002E14(void) {
     u32 type = LD8(R5 + OBJ_TYPE_AND_SPRITE_OFFSET);
 
     /* lsr #4 / lsl #4: keep only the high nibble (the type's sprite block) */
@@ -131,7 +131,7 @@ Next sub_80028C0(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_8002818 (R5 = sprite resource descriptor):
+/* sprite_loadPalette_8002818 (R5 = sprite resource descriptor):
  * Copies the sprite's 16-colour palette (0x20 bytes) into the sprite palette
  * buffer at byte_3001550 + slot*0x20, where the slot number is the high nibble
  * of byte 0x15.  The palette data is read from field 0x34 when that pointer is
@@ -143,7 +143,7 @@ Next sub_80028C0(void) {
  * operation, passed as R2 = flag * 4).  The routine's own entry address is
  * passed in R1, as in the original.  On return R3 holds the destination slot
  * and R6 = 0x20; R5 is preserved. */
-Next sub_8002818(void) {
+Next sprite_loadPalette_8002818(void) {
     /* Source of the palette data. */
     if (LD32(R5 + 0x34) == 0) {
         u32 sheet = LD32(R5 + 0x1C);

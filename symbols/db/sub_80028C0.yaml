@@ -2,22 +2,57 @@ name: sub_80028C0
 address: '0x080028C0'
 kind: function
 previous_names: []
-status: hypothesis
-summary: Record the low byte of dword_200F340 in slot r0 of byte_200F389 (called after each sprite group is queued).
+status: probable
+summary: Record the sprite palette count (dword_200F340) in slot r0 of byte_200F389, after each sprite group is
+  queued.
 interface: (r0 = slot) -> byte_200F389[r0] = (u8)dword_200F340; r1 = dword_200F340, r2 = &byte_200F389
-details: Called with 2 at the end of the NPC sprite pass and with 1 at the end of the overworld object passes (sub_8003E18
-  and siblings). dword_200F340 may be a running count of queued sprites or allocated tiles; not established.
+details: 'Called with 2 at the end of the NPC sprite pass and with 1 at the end of the overworld object passes (sub_8003E18
+  and siblings). dword_200F340 is the number of sprite palettes in use: sprite_ensureGfxResident counts it (PALETTE_COUNT
+  in cport/src/game/sprite_gfx.c).'
 evidence:
 - method: assembly-reading
   date: '2026-10-08'
   detail: Three instructions.
   refs:
   - bn6f/asm/sprite.s:359
+- method: readable-c
+  date: '2026-10-08'
+  detail: Drafted by Hyper GLM-5.3 Flash (tools/convert/farm.py, batch 3), accepted by the farm's checks (captured
+    calls + random inputs), then reviewed against the assembly and integrated by Claude.
+  refs:
+  - cport/src/game/sprite_api.c
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on random inputs.
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 sub_80028C0)'
+  result: 'ok: 2000 trials, 0 failures, 1167 out-of-domain'
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on captured calls.
+  result: 'ok: 40 snapshots, 40 runs, 0 failures, 0 out-of-domain'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: Original (mGBA) vs readable version from real game states.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 24 --out /tmp/oracle sub_80028C0
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=18 fail=0 ood=6 (24 states)
+- method: caller-analysis
+  date: '2026-10-08'
+  detail: dword_200F340 is the palette count of sprite_ensureGfxResident.
+  refs:
+  - cport/src/game/sprite_gfx.c:49
 related:
 - npc_init_800467C
 - sub_8003E18
 open_questions:
-- What is dword_200F340?
+- Who reads byte_200F389 (per-group palette counts)?
 sources:
 - Claude Code session 2026-10-08
 changes:
@@ -25,3 +60,12 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f f1239ad6
   tool: tools/symdoc.py
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/sprite_api.c
+  where: recomp b86ffb0
+  tool: tools/convert/farm.py + review
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d722c690
+  tool: tools/symdoc.py
+readable_c: cport/src/game/sprite_api.c

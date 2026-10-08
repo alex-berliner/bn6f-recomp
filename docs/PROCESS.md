@@ -103,9 +103,9 @@ when a check compared nothing** (all trials out of domain).
 
 | Check | What it proves | How |
 |---|---|---|
-| Host difftest, random | Readable vs lifted original (`L_NAME`) on random inputs: memory, return target, SP, contract registers/flags | `make -C cport/host && (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 NAME)`. Random RAM makes functions that follow pointers through game structures **out of domain**; then this compares nothing. `difftest_gen.c` has structured inputs for some. |
-| Host difftest, captured calls | Same, on the original's own calls | `tools/convert/capture.sh DIR tools/traces/ROUTE.trace G0 G1 40 NAME...` then `build-host/difftest -S DIR/NAME NAME`. The best per-function check for pointer-heavy code. |
-| CPU oracle | The **original** (mGBA, real BIOS) vs the port from the same entry states built from real game memory | `ORACLE_TMP=/tmp python3 tools/oracle.py --base SNAPDIR --states 24 --out OUT NAME...` (base: any `capture.sh` output). Holds hand-written functions to their `difftest.cfg` contract; gives the host the I/O mGBA reads back after reset. Known artifact classes: `tools/oracle_triage.md`. |
+| Host difftest, random | Readable vs lifted original (`L_NAME`) on random inputs: memory, return target, SP, contract registers/flags | `make -C cport/host && (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 NAME)`. Random RAM makes functions that follow pointers through game structures **out of domain**; then this compares nothing. `difftest_gen.c` has structured inputs for some. Host builds publish every return target (`RETURN_NR` is `RETURN` under `DIFFTEST`); without that, a lifted function that returns with `RETURN_NR` leaves the callee's stale `cpu.ret` and a wrong return target goes unseen. |
+| Host difftest, captured calls | Same, on the original's own calls | `tools/convert/capture.sh DIR tools/traces/ROUTE.trace G0 G1 40 NAME...` then `build-host/difftest -S DIR/NAME NAME`. The best per-function check for pointer-heavy code, but only for the paths the captured calls take: a snapshot mutator in `difftest_gen.c` (`-m N` varied copies per snapshot) reaches the others (e.g. `mut_npc_secondary` gives an NPC a running secondary script). |
+| CPU oracle | The **original** (mGBA, real BIOS) vs the port from the same entry states built from real game memory | `ORACLE_TMP=/tmp python3 tools/oracle.py --base SNAPDIR --states 24 --out OUT NAME...` (base: any `capture.sh` output). Holds hand-written functions to their `difftest.cfg` contract; gives the host the I/O mGBA reads back after reset. Known artifact classes: `tools/oracle_triage.md`. `--lifted` runs the lifted originals of hand-written functions instead: if a difference shows there too, the conversion did not introduce it (it comes from a callee). |
 | Lockstep | The whole game replayed by the game's frame counter against the original: palette, VRAM, OAM identical at every checkpoint, save memory at the end | `tools/lockstep.sh ROM tools/traces/ROUTE.trace N` for every route below. Accepts one-game-frame VBlank timing skew; stops runs whose game stops counting frames. **Does not compare sound state or EWRAM**, and cannot see a wrong return target on functions only called directly. |
 | Battle sweep | 116 battle records via pokes | `JOBS=6 tools/battlesweep.sh ROM` (run when battle code changes) |
 | Other sweeps | 108 maps, every chip, random play | `tools/mapsweep.py` + `tools/tracesweep.sh`, `tools/chipsweep.py`, `tools/fuzzsweep.sh` |
@@ -151,7 +151,12 @@ Other tools: `tools/speed.sh` (speed vs the original), `tools/profile.sh`
    of rounds), and writes passing versions to `tools/convert/accepted/`.
 3. Review: pick the clearest version per function; check `#ifndef` offset
    fallbacks (use enums), `ldrsh` loads (`LDS16`), return targets, flags.
-   Integrate, verify as above, then section 6.
+   Specifically: any `LR = ...` before a call (`GUEST_CALL` keeps LR, so the
+   later `RETURN_TO_CALLER()` returns there); table dispatch must enter the
+   handler with the registers the original sets (`r0`/`r1`...); a second
+   entry (`loc_...` reached by a sibling) must take the sibling's frame;
+   and which paths the captured calls actually ran (add a mutator for the
+   rest). Integrate, verify as above, then section 6.
 4. Cost: `tools/convert/quota.py OUT.json` before and after a run;
    `tools/convert/scorecard.py [FUNC...]` for converted/requests/time/tokens.
 
@@ -192,6 +197,10 @@ residency), palette effects, frame pacing, event flags (all 16), battle
 helpers (6, model-written), overworld object layers and interaction areas
 (7, model-written), the NPC update loop and sprite pass, and the NPC state
 machine core. Each is listed with its evidence in `symbols/SYMBOLS.md`.
+Batch 3 of the model farm added 32 more (84 in all): NPC script plumbing
+(`npc_commands.c`), the object sprite API (`sprite_api.c`), and leaves
+grouped by bn6f file (`leaves_misc.c`, to be moved when their subsystems
+are converted).
 
 ## 6. The symbol database and the disassembly
 
@@ -235,6 +244,15 @@ machine core. Each is listed with its evidence in `symbols/SYMBOLS.md`.
   difftest can.
 - The model farm's style filter must ignore comments; a stale difftest build
   accepted bad candidates (fixed: the farm rebuilds first).
+- The farm also accepted two drafts that returned to the wrong place
+  (`sprite_update`, `npc_runSecondaryScriptMaybe_809ebf8`): the lifted
+  originals returned with `RETURN_NR`, which did not publish `cpu.ret` (fixed
+  for host builds), and the second one's bad path never ran in the captured
+  calls (fixed with a mutator).
+- A narrow `compare=` contract in `difftest.cfg` must hold for every caller.
+  `palette_addOrSubtractColor` promised only r5/r7 because one caller needs
+  no more, but two other callers exist; it now leaves every register as the
+  original. Prefer exact registers over a narrow contract when cheap.
 
 ## 8. Flash cart (paused)
 
@@ -254,7 +272,9 @@ handles; results never reported, work paused).
 ## 9. The self-scheduled loop
 
 During a session the user asked for a recurring prompt (session-only cron,
-every 20 minutes while idle) that tells Claude to keep working. Its text:
+every 20 minutes while idle) that tells Claude to keep working. The user had
+it cancelled on 2026-10-08 ahead of an all-hands refactor; recreate it only
+when asked. Its text:
 
 > Recomp keep-working check (self-scheduled loop; the user asked for it). If you are already mid-task, finish it. Otherwise pick the highest-value item with no blocker and do it end to end: implement, verify (host difftest, CPU oracle, lockstep on all tools/traces routes, battle sweep when battle code changes), commit locally (never push), then give the user a 2-4 line summary.
 > Focus: readable C (the project goal). Flash-cart/Supercard work is paused by the user. Do not keep polishing the CPU-oracle harness unless a run finds something that could change game behaviour.
@@ -263,14 +283,15 @@ every 20 minutes while idle) that tells Claude to keep working. Its text:
 > Backlog: 1. readable conversion of whole subsystems; 2. model farms for small leaf functions, one per provider, tracking cost per converted function; 3. coverage growth when it lets lockstep check more converted code; 4. keep notes and SESSIONS.md current.
 > Constraints: real BIOS, local git only, bn6f fixes on recomp-fixes with the ROM byte-identical, never print API keys, don't change the user's pacer settings without asking.
 
-## State when written (2026-10-08, 14:46)
+## State when written (2026-10-08, evening)
 
-- 46 readable functions; 60 symbol-database entries; 22 + 5 renames in bn6f
-  (all ROM-identical); every route and the battle sweep identical.
-- Running: Hyper glm-5.3-flash farm on batch 3 (84 route-executed functions,
-  78 captured, 14 passed so far); MiniMax and Z.ai lanes on the 30-function
-  benchmark. Quota: Hyper 241/250 today; Z.ai 780/10000 this week; MiniMax
-  99% of the week left.
-- Next: the NPC script actions (npc.s: wait timer, walking, hop, leap,
-  waits; 7 of them are not executed by any route), review and integrate the
-  batch-3 candidates, and the user's answer on the lifter improvements above.
+- 84 readable functions; 98 symbol-database entries; renames in bn6f
+  (22 + 5 + 6, all ROM-identical, latest bn6f d722c690); every route and the
+  battle sweep identical.
+- Farm batch 3 (Hyper glm-5.3-flash): 34 of 78 passed; 32 integrated, the
+  rest of the accepted pool re-tested with the stricter difftest (all pass).
+- The self-scheduled loop is cancelled (user, ahead of an all-hands
+  refactor).
+- Open: the remaining NPC script actions (hop, leap, waits; several not run
+  by any route), the user's answer on the lifter improvements, and moving
+  `leaves_misc.c` functions into their subsystems.

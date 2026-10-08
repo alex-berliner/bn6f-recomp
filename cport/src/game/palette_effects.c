@@ -8,7 +8,7 @@
  *   r6 = buffer size in bytes r7 = BGR555 palette buffer
  * Each entry is replaced by f(entry) from the last one down to the first.
  * getPalleteAndTransition only relies on r5 afterwards, which these do not
- * touch; palette_addOrSubtractColor is also called by sub_8002818 and the
+ * touch; palette_addOrSubtractColor is also called by sprite_loadPalette_8002818 and the
  * sprite palette upload in asm38.s, so it leaves every register as the
  * original does.
  */

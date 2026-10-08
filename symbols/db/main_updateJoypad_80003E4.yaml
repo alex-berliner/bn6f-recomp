@@ -1,0 +1,107 @@
+name: main_updateJoypad_80003E4
+address: '0x080003E4'
+kind: function
+previous_names:
+- main_static_80003E4
+status: confirmed
+summary: 'Update the toolkit''s Joypad struct from KeyStatus: held, newly pressed, auto-repeat, previous keys, per-key
+  hold counters.'
+interface: (r10 = toolkit) -> Joypad +0 held, +2 new, +4 repeat, +6 previous, +8..+0x11 hold counters, +0x13 repeat
+  timer; r2/r4-r7 as the original
+evidence:
+- method: assembly-reading
+  date: '2026-10-08'
+  detail: Read the routine.
+  refs:
+  - bn6f/asm/main.s:161
+- method: readable-c
+  date: '2026-10-08'
+  detail: Drafted by Hyper GLM-5.3 Flash (tools/convert/farm.py, batch 3), accepted by the farm's checks (captured
+    calls + random inputs), then reviewed against the assembly and integrated by Claude.
+  refs:
+  - cport/src/game/leaves_misc.c
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on random inputs.
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 main_static_80003E4)'
+  result: 'ok: 2000 trials, 0 failures, 1998 out-of-domain'
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on calls captured from the original (tools/convert/capture.sh on the recorded routes).
+  reproduce: 'tools/convert/capture.sh /tmp/snaps tools/traces/story1.trace 0 9700 40 main_static_80003E4
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -S /tmp/snaps/main_static_80003E4 main_static_80003E4)'
+  result: 'ok: 40 snapshots, 40 runs, 0 failures, 0 out-of-domain'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: Original (mGBA) vs readable version from real game states.
+  reproduce: '# base states: any calls captured from the original, e.g.
+
+    tools/convert/capture.sh /tmp/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag sub_8030628
+
+    ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 24 --out /tmp/oracle main_static_80003E4
+
+    cat /tmp/oracle/report.txt   # ok / fail / ood per function'
+  result: ok=24 fail=0 ood=0 (24 states)
+- method: lockstep
+  date: '2026-10-08'
+  detail: Identical to the original at every checkpoint on all 8 recorded routes; battle sweep 116/116.
+  reproduce: 'make -C cport
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battles1.trace 20111
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/battle.trace 20000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/menus2.trace 23042
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story1.trace 9700
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story2.trace 33546
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/story3.trace 17576
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/title_mash_a.trace 8000
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/wander.trace 8000
+
+    JOBS=6 tools/battlesweep.sh cport/build/bn6f_lifted.gba'
+  result: 8/8 routes OK, 116/116 battles at recomp b86ffb0 (2026-10-08)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander;
+    lockstep checks it there.'
+  reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
+
+    # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/leaves_misc.c
+  where: recomp b86ffb0
+  tool: tools/convert/farm.py + review; verified as in evidence
+- date: '2026-10-08'
+  what: rename main_static_80003E4 -> main_updateJoypad_80003E4
+  where: bn6f 1d58bd3b
+  tool: tools/rename_symbol.py
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d722c690
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_misc.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related: []
+open_questions: []
+sources:
+- Claude Code session 2026-10-08

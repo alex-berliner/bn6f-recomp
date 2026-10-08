@@ -388,8 +388,8 @@ Next sub_811CC68(void) {
 }
 
 /* Menu cursor: move one entry back or forward with the d-pad. Two entries
- * build the same frame and share the body at loc_811FA36: sub_811FA22
- * (up/down, below) and sub_811FA0C (lifted; right/left, keys 0x20/0x10).
+ * build the same frame and share the body at menu_moveCursor_811FA36: menu_moveCursorUpDown_811FA22
+ * (up/down, below) and menu_moveCursorLeftRight_811FA0C (lifted; right/left, keys 0x20/0x10).
  *   push {r4-r7,lr}; sub sp, #0x10; frame = {back key, forward key, start, mode}
  * r0 = pressed keys, r1 = number of entries, r2 = mode (bit 0: wrap around
  * at the ends, bit 1: no sound), r3 = current index. Returns r0 = the new
@@ -397,7 +397,7 @@ Next sub_811CC68(void) {
 enum { CURSOR_BACK_KEY = 0x0, CURSOR_FWD_KEY = 0x4, CURSOR_START = 0x8, CURSOR_MODE = 0xC, CURSOR_FRAME = 0x10 };
 enum { MODE_WRAP = 1, MODE_SILENT = 2 };
 
-Next sub_811FA22(void) {
+Next menu_moveCursorUpDown_811FA22(void) {
     u32 sp = SP - 20;                           /* push {r4-r7,lr} */
     ST32(sp, R4); ST32(sp + 4, R5); ST32(sp + 8, R6); ST32(sp + 12, R7); ST32(sp + 16, LR);
     SP = sp - CURSOR_FRAME;
@@ -406,10 +406,10 @@ Next sub_811FA22(void) {
     ST32(SP + CURSOR_FWD_KEY, 0x80);            /* KEY_DOWN */
     ST32(SP + CURSOR_MODE, R2);
     R2 &= ~MODE_SILENT;                         /* the body tests r2 for the wrap bit */
-    return loc_811FA36();
+    return menu_moveCursor_811FA36();
 }
 
-Next loc_811FA36(void) {
+Next menu_moveCursor_811FA36(void) {
     u32 keys = R0, count = R1, wrap = R2, start = R3;
     s32 index = (s32)start;
     int moved = 0, wrapped_to_top = 0;
@@ -584,7 +584,7 @@ Next libSave_CopyToGamePak(void) {
 
 /* ── bn6f main.s ────────────────────────────────────────────────── */
 
-/* main_static_80003E4: main-loop joypad update.
+/* main_updateJoypad_80003E4: main-loop joypad update.
  *
  * Refreshes the toolkit's joypad struct from the hardware key state:
  *   +0x00  keys pressed this frame (active high, computed from ~KeyStatus)
@@ -598,7 +598,7 @@ Next libSave_CopyToGamePak(void) {
  * Leaves r2/r4/r5/r6/r7 set exactly as the original does; its callers read
  * them even though they are not arguments of this call.
  */
-Next main_static_80003E4(void) {
+Next main_updateJoypad_80003E4(void) {
     u32 joypad = LD32(R10 + 4);
 
     /* Advance the repeat pacing timer. */

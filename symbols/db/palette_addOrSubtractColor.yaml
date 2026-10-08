@@ -56,6 +56,28 @@ evidence:
   reproduce: 'python3 tools/coverage.py tools/traces/coverage/*.prof
 
     # per function: map the profiles'' PCs to the lifted unit''s range (cport/src/lifted header comments)'
+- method: caller-analysis
+  date: '2026-10-08'
+  detail: 'Callers: getPalleteAndTransition''s effect table (only r5 used afterwards), sub_8002818 (sprite palette
+    tint) and the sprite palette path in asm38.s (bl at asm38.s:848). The readable version promised only r5/r7,
+    so the last two saw different r0-r4, r6, r8, r9, r12 than the original (shown by the CPU oracle through sub_8002818);
+    it now leaves every register and flag as the original.'
+  refs:
+  - bn6f/asm/sprite.s:292
+  - bn6f/asm/asm38.s:848
+  - cport/src/game/palette_effects.c
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on random inputs, comparing every register and flag (difftest.cfg compare=).
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 5000 palette_addOrSubtractColor)'
+  result: 'ok: 5000 trials, 0 failures'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: Original (mGBA) vs readable version from real game states, all registers.
+  reproduce: ORACLE_TMP=/tmp python3 tools/oracle.py --base /tmp/snaps --states 64 --out /tmp/oracle palette_addOrSubtractColor
+  result: ok=7 fail=0 ood=0 (64 states)
 changes:
 - date: '2026-10-08'
   what: readable C replacement in cport/src/game/palette_effects.c (the lifted original stays as L_<name> for testing)
@@ -69,6 +91,11 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f 13c00f01
   tool: tools/symdoc.py
+- date: '2026-10-08'
+  what: readable version leaves every register and flag as the original; buffer read with LD16/ST16 (ARM7 behaviour
+    for odd addresses on the host too)
+  where: recomp b86ffb0
+  tool: hand-written
 readable_c: cport/src/game/palette_effects.c
 coverage:
 - battle

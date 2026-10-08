@@ -17,6 +17,11 @@ poke_args() {
     */bn6f/bn6f.gba) elf="${rom%.gba}.elf" ;;
     *) elf="${rom%.gba}.elf" ;;
   esac
-  pc=0x$(arm-none-eabi-nm "$elf" | awk '$3=="main_awaitFrame"{print $1; exit}')
-  echo --poke-at "$pc" "$g" "$spec"
+  pc=$(arm-none-eabi-nm "$elf" 2>/dev/null | awk '$3=="main_awaitFrame"{print $1; exit}')
+  if [ -z "$pc" ]; then   # without it the pokes land nowhere and the replay silently diverges
+    echo "poke_args: main_awaitFrame not found in $elf (needed for $p); the ELF must sit next to the ROM" >&2
+    kill -TERM $$   # we run inside $(...): stop the calling script
+    return 1
+  fi
+  echo --poke-at "0x$pc" "$g" "$spec"
 }

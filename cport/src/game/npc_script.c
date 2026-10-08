@@ -143,7 +143,7 @@ Next npc_standard_809E5E2(void) {
         R0 = npc + oOverworldNPCObject_Coords;
         GUEST_CALL(applyLayerEffectToOWObject_8035694);
     }
-    GUEST_CALL(sub_8002E14);              /* r0 = the drawing layer */
+    GUEST_CALL(sprite_setPriority_8002E14);              /* r0 = the drawing layer */
 
     R0 = LD32(npc + oOverworldNPCObject_UnkFlags_60);
     R1 = OW_NPC_UNK_FLAGS_60_0x40;
