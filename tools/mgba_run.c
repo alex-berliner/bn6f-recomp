@@ -10,6 +10,7 @@
 #include <mgba/core/core.h>
 #include <mgba/core/config.h>
 #include <mgba/core/log.h>
+#include <mgba/core/timing.h>
 #include <mgba/gba/interface.h>
 #include <mgba-util/vfs.h>
 
@@ -162,16 +163,26 @@ int main(int argc, char **argv) {
         }
         core->setKeys(core, ~keyinput & 0x3FF);
         if (prof_steps && fr == prof_from) {
-            /* Sampling profile: histogram of the PC every 61 instructions. */
-            FILE *pf = fopen("profile.txt", "w");
+            /* Cycle profile: attribute every instruction's cycles (wait
+             * states included) to its PC; aggregated per halfword. */
+            static uint32_t rom_cyc[0x01000000 / 2], ram_cyc[0x8000 / 2], bios_cyc[0x4000 / 2];
+            uint64_t t0 = mTimingGlobalTime(core->timing);
             for (unsigned long n = 0; n < prof_steps; n++) {
-                if (n % 61 == 0) {
-                    int32_t pc = 0;
-                    core->readRegister(core, "pc", &pc);
-                    fprintf(pf, "%08x\n", (unsigned)pc);
-                }
+                int32_t pc = 0;
+                core->readRegister(core, "pc", &pc);
                 core->step(core);
+                uint64_t t1 = mTimingGlobalTime(core->timing);
+                uint32_t d = (uint32_t)(t1 - t0);
+                t0 = t1;
+                uint32_t u = (uint32_t)pc;
+                if (u >= 0x08000000u && u < 0x09000000u) rom_cyc[(u - 0x08000000u) >> 1] += d;
+                else if (u >= 0x03000000u && u < 0x03008000u) ram_cyc[(u - 0x03000000u) >> 1] += d;
+                else if (u < 0x4000) bios_cyc[u >> 1] += d;
             }
+            FILE *pf = fopen("profile.txt", "w");
+            for (uint32_t i = 0; i < 0x01000000 / 2; i++) if (rom_cyc[i]) fprintf(pf, "%08x %u\n", 0x08000000u + i * 2, rom_cyc[i]);
+            for (uint32_t i = 0; i < 0x8000 / 2; i++) if (ram_cyc[i]) fprintf(pf, "%08x %u\n", 0x03000000u + i * 2, ram_cyc[i]);
+            for (uint32_t i = 0; i < 0x4000 / 2; i++) if (bios_cyc[i]) fprintf(pf, "%08x %u\n", i * 2, bios_cyc[i]);
             fclose(pf);
             goto done;
         }

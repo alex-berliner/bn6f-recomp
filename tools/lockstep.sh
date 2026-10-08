@@ -14,6 +14,7 @@ TRACE=${2:-$ROOT/tools/traces/wander.trace}
 N=${3:-8000}
 EVERY=${4:-20}
 OUT=${OUT:-$(mktemp -d)}
+mkdir -p "$OUT"
 run() {
   "$ROOT/build-tools/mgba_run" "$1" --frames 200000 --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
       --input "$TRACE" --game-frame-addr 0x020093D4 --until-game-frame "$N" \
@@ -22,7 +23,8 @@ run() {
 run "$ROOT/bn6f/bn6f.gba" "$OUT/orig.txt" &
 run "$ROM" "$OUT/test.txt"
 wait
-python3 - "$OUT" <<'PY'
+status=0
+python3 - "$OUT" <<'PY' || status=$?
 import sys
 out = sys.argv[1]
 o = [l.split() for l in open(f"{out}/orig.txt")]
@@ -43,7 +45,6 @@ if bad:
     sys.exit(1)
 print("OK: palette, VRAM and OAM identical at every checkpoint")
 PY
-status=$?
 if [ -f "$OUT/first_bad" ]; then
   g=$(cat "$OUT/first_bad")
   for r in orig:$ROOT/bn6f/bn6f.gba test:$ROM; do

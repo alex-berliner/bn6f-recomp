@@ -423,16 +423,33 @@ def build(info: ElfInfo, copies: list[CodeCopy], extra_seeds=()) -> Program:
     # Only labels on assembled instructions qualify: the DWARF line table has
     # rows for instructions and none for .byte/.word data.
     text_end = next((sec.vma + sec.size for sec in info.sections if sec.name == ".text"), 0x08000000)
+    iw = next((sec for sec in info.sections if sec.name == "iwram_text"), None)
+
+    def same_image(word_addr: int, target: int) -> bool:
+        """An even code pointer must sit in the same code image as its
+        target: ROM switch tables live in .text, IWRAM ones in the copied
+        iwram_text image."""
+        if 0x08000000 <= target < text_end:
+            return word_addr < text_end
+        if iw is not None and iw.vma <= target < iw.vma + iw.size:
+            lma = 0x08000000 + iw.file_off
+            return lma <= word_addr < lma + iw.size
+        return False
     for idx, w in enumerate(words):
         if w & 1:
             a = w & ~1
             if a in label_addrs and a in info.lines and region_kind(a) == "t":
+                # IWRAM code is only referenced from code-side tables;
+                # graphics data contains such values by coincidence.
+                if a < 0x08000000 and not same_image(0x08000000 + idx * 4, a) \
+                        and 0x08000000 + idx * 4 >= text_end:
+                    continue
                 datarefs.add((a, True))
         elif w in label_addrs and w in info.lines:
             k = region_kind(w)
             if k == "a" and w & 3 == 0:
                 datarefs.add((w, False))
-            elif k == "t" and 0x08000000 + idx * 4 < text_end:
+            elif k == "t" and same_image(0x08000000 + idx * 4, w):
                 # THUMB switch tables consumed by `mov pc, rN` (no mode
                 # change) store plain even addresses: `.word loc_814428C`.
                 # They sit next to their code, so only words inside .text

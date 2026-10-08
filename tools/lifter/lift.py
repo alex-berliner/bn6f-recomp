@@ -17,8 +17,8 @@ if __package__ in (None, ""):
     __package__ = "lifter"
 
 from . import elfinfo  # noqa: E402
-from .analysis import (ALL, ALLF, NZ, C, V, CodeCopy, Program, Unit, build, flag_effects,  # noqa: E402
-                       mask_names, reg_effects, writes_pc)
+from .analysis import (ALL, ALLF, ALLR, NZ, C, V, RB, CodeCopy, Program, Unit, build,  # noqa: E402
+                       flag_effects, mask_names, reg_effects, writes_pc)
 from .emit import Ctx, UnitEmitter, cname, h  # noqa: E402
 
 COPIES = [
@@ -112,6 +112,45 @@ REG_ORDER = [f"r{i}" for i in range(13)] + ["lr"]
 GLOBAL = {**{f"r{i}": f"R{i}" for i in range(13)}, "lr": "LR", "nz": "cpu.nz", "c": "cpu.c", "v": "cpu.v"}
 
 
+CALLM_RE = re.compile(r"CALLM\((\w), (.+?), (\w+), (0x[0-9a-f]+), (0x[0-9a-f]+), (0x[0-9a-f]+)\);")
+BIT = {"nz": 1, "c": 2, "v": 4, **{f"r{i}": 1 << (3 + i) for i in range(13)}, "lr": 1 << 17}
+
+
+def expand_calls(body: list[str], regs: list[str], flags: list[str], written: set, fwritten: set):
+    """Replace CALLM placeholders with the call plus the register sync this
+    site needs: store locally-modified values the callee may read or change,
+    reload what it may change. Everything else stays in host registers."""
+    names = regs + flags
+    def sync(m):
+        kind, fn, ra, save, load, mw = m.groups()
+        save, load, mw = int(save, 16), int(load, 16), int(mw, 16)
+        # If the callee unwinds past us, registers it may write (including
+        # ones it restores) already hold the right values in `cpu`; publish
+        # only the others.
+        unwind = [f"{GLOBAL[x]} = {x};" for x in names
+                  if (x in written or x in fwritten) and not (mw & BIT[x])]
+        st = [f"{GLOBAL[x]} = {x};" for x in names
+              if (x in written or x in fwritten) and save & BIT[x]]
+        # LR is always reloaded: the call itself sets it (to the return
+        # address), whatever the callee does.
+        ld = [f"{x} = {GLOBAL[x]};" for x in names if load & BIT[x] or x == "lr"]
+        # Registers kept in host registers across the call (neither synced
+        # nor reloaded): LIFT_TRACE builds check the callee really left them.
+        kept = [x for x in regs if not (save & BIT[x]) and not (load & BIT[x]) and x != "lr"]
+        chk_pre = chk_post = ""
+        if kept:
+            chk_pre = "SYNC_SNAP(" + ", ".join(f"{GLOBAL[x]}" for x in kept[:6]) + ")"
+            chk_post = f"SYNC_CHECK({ra}, " + ", ".join(f"{GLOBAL[x]}" for x in kept[:6]) + ");"
+        if kind == "X":
+            call = f"{{ u32 x_ = {fn}; {' '.join(st)} {chk_pre} dispatch(x_);"
+        else:
+            lr = f"(u32){ra} | 1u" if kind == "T" else f"(u32){ra}"
+            call = f"{{ {' '.join(st)} {chk_pre} LR = {lr}; CALL_DIRECT({fn});"
+        return (f"{call} {chk_post} {' '.join(ld)} "
+                f"if (cpu.ret != (u32){ra}) {{ {' '.join(unwind)} RET_MISMATCH({ra}); }} }}")
+    return [CALLM_RE.sub(sync, ln) for ln in body]
+
+
 def reg_locals(body: list[str]):
     """Guest registers/flags a function uses become C locals; SAVE writes the
     modified ones back to `cpu`, LOAD refreshes all of them after a call."""
@@ -124,6 +163,7 @@ def reg_locals(body: list[str]):
         fused |= {"c", "v"} & (fused | ({"c", "v"} if re.search("ADDS|SUBS|ADCS|SBCS", text) else set()))
     regs = [r for r in REG_ORDER if r in used]
     flags = [f for f in ("nz", "c", "v") if f in fused]
+    body[:] = expand_calls(body, regs, flags, written, fwritten)
     save = [f"{GLOBAL[r]} = {r};" for r in regs if r in written] + \
            [f"{GLOBAL[f]} = {f};" for f in flags if f in fwritten]
     load = [f"{r} = {GLOBAL[r]};" for r in regs] + [f"{f} = {GLOBAL[f]};" for f in flags]
@@ -256,6 +296,68 @@ def main():
     reads_writes = {a: _rw(ins) for (a, _t), ins in p.insns.items()}
     live_out_all: dict[int, dict[int, int]] = {}
 
+    # (0) Must-write: flags/registers every returning path of a function
+    #     (from each entry) definitely writes. A call kills liveness of
+    #     those; without this, flags live after any call stay live back
+    #     through every earlier call.
+    must_write = {a: ALL for a in names}
+
+    def unit_mustwrite(u: Unit, e: int) -> int:
+        eff = effects[u.start]
+        din: dict[int, int] = {e: 0}
+        work = [e]
+        exits = ALL
+        any_exit = False
+        while work:
+            a = work.pop()
+            ins = u.insns[a]
+            d = din[a]
+            _r, w = reads_writes[a]
+            if ins.cond != "al":
+                w = 0
+            for x in eff[a]:
+                kx = x[0]
+                if kx == "call":
+                    d2 = d | w | (must_write[x[1]] if x[1] is not None else 0)
+                    nxt = x[2]
+                    if nxt in u.insns:
+                        succ = [(nxt, d2)]
+                    else:
+                        exits &= d2 | must_write.get(nxt, 0)
+                        any_exit = True
+                        succ = []
+                elif kx in ("fall", "local"):
+                    succ = [(x[1], d | w)]
+                elif kx == "tail":
+                    exits &= d | w | must_write.get(x[1], 0)
+                    any_exit = True
+                    succ = []
+                elif kx in ("return", "jump"):
+                    exits &= d | w
+                    any_exit = True
+                    succ = []
+                else:
+                    succ = []
+                for t, v in succ:
+                    if t not in din:
+                        din[t] = v
+                        work.append(t)
+                    elif din[t] & ~v:
+                        din[t] &= v
+                        work.append(t)
+        return exits if any_exit else ALL
+
+    while True:
+        changed = False
+        for u in p.units:
+            for e in u.entries:
+                m = unit_mustwrite(u, e)
+                if m != must_write[e]:
+                    must_write[e] = m
+                    changed = True
+        if not changed:
+            break
+
     def unit_liveness(u: Unit, entry_in: dict, ret_live: int):
         eff = effects[u.start]
         addrs = sorted(u.insns, reverse=True)
@@ -269,24 +371,29 @@ def main():
                 r, w = reads_writes[a]
                 out = 0
                 extra = 0
+                prop = 0      # what flows backward past this instruction
                 for x in eff[a]:
                     kx = x[0]
                     if kx in ("fall", "local"):
-                        out |= live_in[x[1]]
+                        v = live_in[x[1]]
+                        out |= v; prop |= v
                     elif kx == "tail":
-                        out |= entry_in[x[1]]
+                        v = entry_in[x[1]]
+                        out |= v; prop |= v
                     elif kx == "call":
                         tgt, ret = x[1], x[2]
-                        out |= live_in[ret] if ret in u.insns else entry_in.get(ret, ALL)
+                        after = live_in[ret] if ret in u.insns else entry_in.get(ret, ALL)
+                        out |= after
+                        prop |= after & ~(must_write[tgt] if tgt is not None else 0)
                         extra |= entry_in[tgt] if tgt is not None else ALL
                     elif kx == "return":
-                        out |= ret_live
+                        out |= ret_live; prop |= ret_live
                     elif kx == "jump":
-                        out |= ALL
+                        out |= ALL; prop |= ALL
                 if ins.cond != "al":
-                    li = r | out | extra
+                    li = r | prop | out | extra
                 else:
-                    li = r | ((out | extra) & ~w)
+                    li = r | ((prop | extra) & ~w)
                 live_out[a] = out
                 if li != live_in[a]:
                     live_in[a] = li
@@ -355,6 +462,8 @@ def main():
             rr, rw = reg_effects(ins._replace() if False else ins) if ins.cond == "al" else \
                 reg_effects(ins.__class__(**{**ins.__dict__, "cond": "al"}))
             m |= fw | rw
+            if ins.kind == "swi":
+                m |= RB(0) | RB(1) | RB(2) | RB(3)     # BIOS results come back in r0-r3
         local_w[u.start] = m
     while True:
         changed = False
@@ -372,7 +481,155 @@ def main():
                 changed = True
         if not changed:
             break
+    # (3) Preserved registers: written but provably restored before every
+    #     return (push/pop save-restore, including hi registers moved through
+    #     low ones). Symbolic stack tracking per entry; callees' preserved
+    #     sets come from the same fixpoint (optimistic start).
+    preserved = {a: ALLR for a in names}
+
+    def unit_preserved(u: Unit, e: int) -> int:
+        eff = effects[u.start]
+        # state: (regs tuple of 15 symbols or None, sp offset or None, stack dict)
+        init = (tuple(range(15)), 0, {})
+        states: dict[int, tuple] = {e: init}
+        work = [e]
+        result = ALLR
+        seen_ret = False
+        def merge(a, b):
+            if a[1] != b[1] or a[1] is None:
+                return (tuple(x if x == y else None for x, y in zip(a[0], b[0])), None, {})
+            regs = tuple(x if x == y else None for x, y in zip(a[0], b[0]))
+            stack = {k: v for k, v in a[2].items() if b[2].get(k) == v}
+            return (regs, a[1], stack)
+        def kept(regs):
+            m = 0
+            for n in range(15):
+                if n != 13 and regs[n] == n:
+                    m |= RB(n)
+            return m
+        steps = 0
+        while work and steps < 20000:
+            steps += 1
+            a = work.pop()
+            ins = u.insns[a]
+            regs, spo, stack = list(states[a][0]), states[a][1], dict(states[a][2])
+            k = ins.kind
+            ret_regs = None
+            if ins.cond != "al":
+                # conditional (ARM): may or may not execute; forget what it may touch
+                _r2, wr = reg_effects(ins.__class__(**{**ins.__dict__, "cond": "al"}))
+                if k == "swi":
+                    wr |= RB(0) | RB(1) | RB(2) | RB(3)
+                for n in range(15):
+                    if n != 13 and wr & RB(n):
+                        regs[n] = None
+                if (k in ("block", "mem") and ins.rn == 13 and (ins.wb or not ins.pre)) or \
+                        (k == "dp" and ins.rd == 13) or (k == "mem" and not ins.load and ins.rn == 13):
+                    spo = None
+                    stack = {}
+            elif k == "block" and ins.rn == 13 and ins.wb and spo is not None:
+                n = len(ins.regs)
+                if not ins.load and ins.mode == "db":
+                    spo -= 4 * n
+                    for i, r in enumerate(ins.regs):
+                        stack[spo + 4 * i] = regs[r] if r < 15 else None
+                elif ins.load and ins.mode == "ia":
+                    for i, r in enumerate(ins.regs):
+                        if r < 15:
+                            regs[r] = stack.get(spo + 4 * i)
+                    spo += 4 * n
+                    if 15 in ins.regs:
+                        ret_regs = regs
+                else:
+                    spo = None
+            elif k == "dp" and ins.rd == 13:
+                o = ins.op2
+                if ins.rn == 13 and o.is_imm and ins.op in ("add", "sub") and spo is not None:
+                    spo += o.imm if ins.op == "add" else -o.imm
+                else:
+                    spo = None
+            elif k == "mem" and ins.rn == 13 and ins.op2.is_imm and ins.pre and not ins.wb and spo is not None and ins.width == 4:
+                off = spo + (ins.op2.imm if ins.up else -ins.op2.imm)
+                if ins.load:
+                    if ins.rd < 15:
+                        regs[ins.rd] = stack.get(off)
+                else:
+                    stack[off] = regs[ins.rd] if ins.rd < 15 else None
+            elif k == "dp" and ins.op == "mov" and ins.op2 and not ins.op2.is_imm and ins.op2.rs is None \
+                    and ins.op2.amount == 0 and ins.op2.shift == "lsl" and ins.rd < 15 and ins.op2.rm < 15 \
+                    and ins.cond == "al":
+                regs[ins.rd] = regs[ins.op2.rm]
+            else:
+                _r, w = reads_writes[a]
+                if k == "swi":
+                    w |= RB(0) | RB(1) | RB(2) | RB(3)   # BIOS results (reg_effects claims none definite)
+                if ins.cond != "al":
+                    _r2, wr = reg_effects(ins.__class__(**{**ins.__dict__, "cond": "al"}))
+                    w = wr
+                for n in range(15):
+                    if n != 13 and w & RB(n):
+                        regs[n] = None
+                if k == "mem" and (ins.wb or not ins.pre) and ins.rn == 13:
+                    spo = None
+                if k == "block" and ins.rn == 13 and ins.wb:
+                    spo = None
+            succs = []
+            for x in effects[u.start][a]:
+                kx = x[0]
+                if kx in ("fall", "local"):
+                    succs.append(x[1])
+                elif kx == "call":
+                    tgt, retp = x[1], x[2]
+                    keep = (preserved[tgt] if tgt is not None else 0) & ~RB(14)   # the call writes LR
+                    regs2 = [regs[n] if (n == 13 or keep & RB(n)) else None for n in range(15)]
+                    if retp in u.insns:
+                        st = (tuple(regs2), spo, stack)
+                        if retp not in states:
+                            states[retp] = st; work.append(retp)
+                        else:
+                            m = merge(states[retp], st)
+                            if m != states[retp]:
+                                states[retp] = m; work.append(retp)
+                    else:
+                        result &= kept(regs2) & preserved.get(retp, 0)
+                        seen_ret = True
+                elif kx == "return":
+                    result &= kept(ret_regs if ret_regs is not None else regs)
+                    seen_ret = True
+                elif kx == "tail":
+                    result &= kept(regs) & preserved.get(x[1], 0)
+                    seen_ret = True
+                elif kx == "jump":
+                    result = 0
+                    seen_ret = True
+            st = (tuple(regs), spo, stack)
+            for t in succs:
+                if t not in states:
+                    states[t] = st; work.append(t)
+                else:
+                    m = merge(states[t], st)
+                    if m != states[t]:
+                        states[t] = m; work.append(t)
+        if work:
+            return 0          # gave up
+        return result if seen_ret else ALLR
+
+    while True:
+        changed = False
+        for u in p.units:
+            for e in u.entries:
+                m = unit_preserved(u, e) & preserved[e]
+                if m != preserved[e]:
+                    preserved[e] = m
+                    changed = True
+        if not changed:
+            break
+    unit_preserved_mask = {u.start: min((preserved[e] for e in u.entries), key=lambda m: bin(m).count("1"))
+                           for u in p.units}
     outputs = {u.start: callers_live[u.start] & may_write[u.start] for u in p.units}
+    use_preserved = os.environ.get("LIFT_NO_PRESERVED") != "1"
+    def pres(t):
+        return preserved[t] if use_preserved else 0
 
     # ── emission ────────────────────────────────────────────────────────
     addr_names: dict[int, str] = {}
@@ -383,7 +640,11 @@ def main():
             addr_names.setdefault(v, "A_" + cname(nm).removeprefix("bn_"))
     ctx = Ctx(p=p, names=names, addr_names=addr_names, used_addr_syms=set(),
               used_equates={}, flags_in=flags_in, callers_live=callers_live,
-              indirect_in=ALLF)
+              indirect_in=ALLF,
+              call_masks=lambda t: (ALL, ALL, ALL) if t is None else
+              (inputs[t] | (may_write[unit_of(t).start] & ~pres(t)),
+               may_write[unit_of(t).start] & ~pres(t),
+               may_write[unit_of(t).start]))
     overridden = set()
     if args.overrides and os.path.isdir(args.overrides):
         for f in sorted(os.listdir(args.overrides)):
@@ -424,7 +685,8 @@ def main():
         hdr += " */"
         hdr += (f"\n/*   inputs:  {mask_names(inputs[u.start])}"
                 f"\n *   outputs: {mask_names(outputs[u.start])}"
-                f"\n *   clobbers (unused by callers): {mask_names(may_write[u.start] & ~outputs[u.start])} */")
+                f"\n *   clobbers (unused by callers): {mask_names(may_write[u.start] & ~outputs[u.start] & ~preserved[u.start])}"
+                f"\n *   preserved: {mask_names(preserved[u.start] & may_write[u.start])} */")
         out = files["difftest_lifted" if is_over else fname]
         out.append(hdr)
         out.append(save_def)

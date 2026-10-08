@@ -54,6 +54,7 @@ class Ctx:
     flags_in: dict[int, int]       # entry addr -> flags read on entry
     callers_live: dict[int, int]   # unit start -> flags live after return
     indirect_in: int
+    call_masks: object = None      # target addr | None -> (save_mask, load_mask)
 
 
 class UnitEmitter:
@@ -358,13 +359,14 @@ class UnitEmitter:
         # pop {r4-r7}; pop {r0}; bx r0 (two pops) is covered by the first check
         return False
 
-    def emit_call(self, target_expr: str, direct: str | None, ret: int, thumb_lr: bool) -> list[str]:
-        lines = []
-        if direct:
-            lines.append(f"CALL({direct}, {h(ret)});" if thumb_lr else f"CALL_A({direct}, {h(ret)});")
-        else:
-            lines.append(f"CALLX({target_expr}, {h(ret)});")
-        return lines
+    def emit_call(self, target_expr: str, target: int | None, ret: int, thumb_lr: bool) -> list[str]:
+        """Call site; expanded by lift.py into per-site register sync once the
+        function's local register set is known (see expand_calls)."""
+        save, load, mw = self.ctx.call_masks(target)
+        if target is not None:
+            kind = "T" if thumb_lr else "A"
+            return [f"CALLM({kind}, {self.fn_for(target)}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x});"]
+        return [f"CALLM(X, {target_expr}, {h(ret)}, {save:#x}, {load:#x}, {mw:#x});"]
 
     def jump_indirect(self, ins: Insn, expr: str, lines: list[str]):
         """Unknown-target jump: local switch over data-referenced labels."""
@@ -387,7 +389,7 @@ class UnitEmitter:
         if k == "b":
             if ins.link:
                 ret = ins.addr + ins.size
-                L += self.emit_call("", self.fn_for(ins.target), ret, ins.thumb)
+                L += self.emit_call("", ins.target, ret, ins.thumb)
                 return L
             if ins.cond != "al":
                 return [f"if ({COND_EXPR[ins.cond]}) {self.goto_or_tail(ins.target)}"]
@@ -449,7 +451,7 @@ class UnitEmitter:
         if ret is not None:
             ret &= ~1
             if ct is not None:
-                L += self.emit_call(expr, self.fn_for(ct & ~1), ret, False)
+                L += self.emit_call(expr, ct & ~1, ret, False)
             else:
                 L += self.emit_call(expr, None, ret, False)
             nxt = ins.addr + ins.size

@@ -53,7 +53,24 @@ static void gen_mixer(Cpu *in, u32 (*rnd)(void)) {
     in->r[8] = samples;
 }
 
+/* OAM builder: four layers of sprite-list heads and a sprite pool whose
+ * `next` links end in 0xFF (or loop, which fills OAM). */
+static void gen_oam(Cpu *in, u32 (*rnd)(void)) {
+    (void)in;
+    for (u32 l = 0; l < 4; l++) {
+        u32 heads = 0x02030000u + l * 0x100 + (rnd() % 0x40);
+        u32 count = rnd() % 48;
+        U32(0x03002590u + l * 8) = heads;
+        U32(0x03002590u + l * 8 + 4) = count;
+        for (u32 k = 0; k < count; k++)
+            U8(heads + k) = rnd() % 3 ? (u8)(rnd() % 128) : 0xFF;
+    }
+    for (u32 i = 0; i < 128; i++)
+        U8(0x03001150u + i * 8 + 7) = rnd() % 4 ? 0xFF : (u8)(rnd() % 128);
+}
+
 GenFn difftest_generator(const char *name) {
+    if (!strcmp(name, "copyTo_iObjectAttr3001D70_3006814")) return gen_oam;
     if (!strcmp(name, "SoundMainRAM_iwram_03005700")) return gen_mixer;
     return 0;
 }

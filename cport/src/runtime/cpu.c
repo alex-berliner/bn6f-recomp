@@ -86,7 +86,27 @@ void cpu_set_spsr(u32 v, u32 mask) {
 
 /* ── dispatch ────────────────────────────────────────────────────────── */
 
-GuestFn dispatch_lookup(u32 addr) {
+#if defined(TARGET_GBA)
+#define HOT __attribute__((section(".iwram"), target("arm"), noinline))
+#else
+#define HOT
+#endif
+
+#if defined(LIFT_TRACE)
+void trace_run(GuestFn f);
+#endif
+
+HOT void run(GuestFn f) {
+    Next n = { f };
+    while (n.fn) {
+#if defined(LIFT_TRACE)
+        trace_run(n.fn);
+#endif
+        n = n.fn();
+    }
+}
+
+HOT GuestFn dispatch_lookup(u32 addr) {
     addr &= ~1u;
     GuestFn f = 0;
     if (addr - 0x08000000u < g_dispatch_rom_end - 0x08000000u)
@@ -96,7 +116,7 @@ GuestFn dispatch_lookup(u32 addr) {
     return f ? f : reloc_lookup(addr);
 }
 
-void dispatch(u32 addr) {
+HOT void dispatch(u32 addr) {
     trace_event(1, addr);
     GuestFn f = dispatch_lookup(addr);
     if (!f)
@@ -104,7 +124,7 @@ void dispatch(u32 addr) {
     run(f);
 }
 
-Next jump_to(u32 addr) {
+HOT Next jump_to(u32 addr) {
     trace_event(2, addr);
     GuestFn f = dispatch_lookup(addr);
     if (f)

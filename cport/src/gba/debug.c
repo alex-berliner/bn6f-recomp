@@ -52,3 +52,13 @@ void trace_ret_mismatch(u32 expected) {
     }
 }
 #endif
+
+#if defined(LIFT_TRACE)
+static u32 g_sync_reports;
+void trace_sync_violation(u32 ra, int which) {
+    if (g_sync_reports++ < 16) {
+        rt_log("sync violation after call returning to", ra);
+        rt_log("                       kept register #", (u32)which);
+    }
+}
+#endif

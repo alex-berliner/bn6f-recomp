@@ -42,8 +42,8 @@ void gba_boot(void) {
         *p = *q;
     for (char *p = __bss_start; p < __bss_end; p++)
         *p = 0;
-#if defined(LIFT_TRACE)
-    /* Stack high-water-mark pattern (everything below this frame). */
+    /* Stack high-water-mark pattern (everything below this frame); read
+     * back by tools/stackuse.sh. */
     {
         u32 here = (u32)__builtin_frame_address(0);
         for (u32 a = ((u32)__bss_end + 3) & ~3u; a < here - 64; a += 4)
@@ -51,7 +51,6 @@ void gba_boot(void) {
         for (u32 a = 0x03006A00; a < 0x03007900; a += 4)
             *(volatile u32 *)a = 0x5A5A5A5Au;
     }
-#endif
 
 
     /* Guest CPU state after GameEntryPoint's mode switches. */

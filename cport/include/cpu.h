@@ -165,22 +165,9 @@ struct Next { GuestFn fn; };
 #define NEXT(f) ((Next){ (f) })
 #define DONE    ((Next){ 0 })
 
-#if defined(LIFT_TRACE)
-void trace_run(GuestFn f);
-static inline void run(GuestFn f) {
-    Next n = { f };
-    while (n.fn) {
-        trace_run(n.fn);
-        n = n.fn();
-    }
-}
-#else
-static inline void run(GuestFn f) {
-    Next n = { f };
-    while (n.fn)
-        n = n.fn();
-}
-#endif
+/* The trampoline: runs `f` and every function it tail-calls. Lives in
+ * IWRAM (ARM) on the GBA since every guest call goes through it. */
+void run(GuestFn f);
 
 Next jump_to(u32 addr);             /* tail-jump; unknown targets unwind as a return */
 void dispatch(u32 addr);            /* call the lifted code for a guest address */
@@ -199,12 +186,40 @@ void cpu_set_spsr(u32 v, u32 mask);
  * function uses between its locals and `cpu`. */
 #if defined(LIFT_TRACE)
 void trace_ret_mismatch(u32 expected);
-#define RET_CHECK(ra) do { if (cpu.ret != (u32)(ra)) { trace_ret_mismatch((u32)(ra)); return DONE; } } while (0)
-#else
-#define RET_CHECK(ra) do { if (cpu.ret != (u32)(ra)) return DONE; } while (0)
 #endif
-#define CALL(fn, ra)    do { SAVE; LR = (u32)(ra) | 1u; run(fn); LOAD; RET_CHECK(ra); } while (0)
-#define CALL_A(fn, ra)  do { SAVE; LR = (u32)(ra); run(fn); LOAD; RET_CHECK(ra); } while (0)
+
+/* LIFT_TRACE: verify that registers a call site keeps in host registers
+ * (per the lifter's preserved/may-write analysis) are untouched by the callee. */
+#if defined(LIFT_TRACE)
+void trace_sync_violation(u32 ra, int which);
+#define SYNC_SNAP(...) u32 snap_[] = { __VA_ARGS__ };
+#define SYNC_CHECK(ra, ...) do { u32 now_[] = { __VA_ARGS__ }; \
+    for (unsigned k_ = 0; k_ < sizeof now_ / sizeof now_[0]; k_++) \
+        if (now_[k_] != snap_[k_]) trace_sync_violation((ra), (int)k_); } while (0)
+#else
+#define SYNC_SNAP(...)
+#define SYNC_CHECK(ra, ...)
+#endif
+
+/* Per-call-site unwind (the lifter publishes the right registers first). */
+#if defined(LIFT_TRACE)
+#define RET_MISMATCH(ra) do { trace_ret_mismatch((u32)(ra)); return DONE; } while (0)
+#else
+#define RET_MISMATCH(ra) return DONE
+#endif
+
+/* A callee that returned somewhere else unwinds through us: publish all
+ * our registers (SAVE) for the frame that owns the continuation. */
+#if defined(LIFT_TRACE)
+#define RET_CHECK(ra) do { if (cpu.ret != (u32)(ra)) { trace_ret_mismatch((u32)(ra)); SAVE; return DONE; } } while (0)
+#else
+#define RET_CHECK(ra) do { if (cpu.ret != (u32)(ra)) { SAVE; return DONE; } } while (0)
+#endif
+/* Direct calls run the callee in place and only enter the trampoline when
+ * it asks for a tail call. */
+#define CALL_DIRECT(f_) do { Next n_ = f_(); if (n_.fn) run(n_.fn); } while (0)
+#define CALL(fn, ra)    do { SAVE; LR = (u32)(ra) | 1u; CALL_DIRECT(fn); LOAD; RET_CHECK(ra); } while (0)
+#define CALL_A(fn, ra)  do { SAVE; LR = (u32)(ra); CALL_DIRECT(fn); LOAD; RET_CHECK(ra); } while (0)
 #define CALLX(x, ra)    do { u32 x_ = (x); SAVE; dispatch(x_); LOAD; RET_CHECK(ra); } while (0)
 #define RETURN(x)       do { u32 x_ = (x); SAVE; cpu.ret = x_ & ~1u; return DONE; } while (0)
 #define TAIL(fn)        do { SAVE; return NEXT(fn); } while (0)
