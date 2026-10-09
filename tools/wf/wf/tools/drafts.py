@@ -66,12 +66,12 @@ def draft_path(candidate: Path) -> Path:
 
 
 def undrafted(model: ModelSpec, functions: tuple[FunctionName, ...] | None) -> tuple[Path, ...]:
-    """The model's accepted candidates (of `functions`, or all) that have no draft yet."""
+    """The model's accepted candidates (of `functions`, in their order, or all) that have no draft yet."""
     tag = model.replace("/", "_")
-    candidates = sorted(ACCEPTED_DIR.glob(f"*.{tag}.c"))
-    wanted = set(functions) if functions is not None else None
-    return tuple(path for path in candidates if not draft_path(path).exists()
-                 and (wanted is None or path.name.split(".")[0] in wanted))
+    if functions is not None:
+        candidates = [ACCEPTED_DIR / f"{function}.{tag}.c" for function in functions]
+        return tuple(path for path in candidates if path.exists() and not draft_path(path).exists())
+    return tuple(path for path in sorted(ACCEPTED_DIR.glob(f"*.{tag}.c")) if not draft_path(path).exists())
 
 
 def draft_entry(model: ModelSpec, candidate: Path, tag: str) -> Draft:
