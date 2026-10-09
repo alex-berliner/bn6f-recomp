@@ -71,3 +71,12 @@ def test_a_tier_stands_for_its_models_in_order() -> None:
     assert models_for(ModelSpec("tier/strong")) == TIERS[Tier.STRONG]
     assert models_for(CHEAP) == (CHEAP,)
     assert all(model.count("/") == 1 for tier in TIERS.values() for model in tier)
+
+
+def test_a_model_metered_apart_is_not_stopped_by_its_providers_spent_plan(clock: list[float]) -> None:
+    paid, free = ModelSpec("opencode/kimi-k3"), ModelSpec("opencode/longcat-2.5-preview-free")
+    sources.report_failure(paid, "opencode/kimi-k3: HTTP 429 (retry after 200000s): weekly cap")
+
+    assert sources.down_until(paid) is not None
+    assert sources.down_until(ModelSpec("opencode/deepseek-v4-pro")) is not None   # same plan
+    assert sources.down_until(free) is None

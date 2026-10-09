@@ -36,9 +36,13 @@ TIERS: dict[Tier, tuple[ModelSpec, ...]] = {
         "zai/glm-5.3-flash", "minimax/MiniMax-M2.7-highspeed",
         "opencode/glm-5.3-flash", "opencode/deepseek-v4.1-flash", "opencode/qwen3.8-flash")),
 }
+# models metered apart from their provider's plan: OpenCode's free previews keep answering while its
+# weekly cap is spent (checked 2026-10-09), so an outage of the plan does not stop them, nor theirs it
+OWN_QUOTA = frozenset(ModelSpec(model) for model in (
+    "opencode/longcat-2.5-preview-free", "opencode/step-5-preview-free"))
 TIER_PREFIX = "tier/"   # `tier/cheap` names a whole tier where a model is expected (wf farm --model tier/cheap)
 
-STATE = RUNS / "sources.json"   # provider -> when it is expected back, and why it went down
+STATE = RUNS / "sources.json"   # quota pool -> when it is expected back, and why it went down
 _LOCK = "sources"
 
 
@@ -61,11 +65,17 @@ def provider(model: ModelSpec) -> str:
     return model.split("/", 1)[0]
 
 
+def quota_pool(model: ModelSpec) -> str:
+    """What runs out together: the provider's plan, or the model itself when it is metered apart."""
+    return model if model in OWN_QUOTA else provider(model)
+
+
 def down_until(model: ModelSpec) -> float | None:
-    """When the model's provider is expected to take requests again, if it is down now."""
+    """When the model's quota pool is expected to take requests again, if it is down now. (A pacer's log
+    is the whole provider's, so it says nothing about a model metered apart.)"""
     now = time.time()
-    pacer = pacer_down_until(model)
-    recorded = _read().get(provider(model))
+    pacer = None if model in OWN_QUOTA else pacer_down_until(model)
+    recorded = _read().get(quota_pool(model))
     seen = [moment for moment in (pacer, recorded.until if recorded else None) if moment is not None and moment > now]
     return max(seen) if seen else None
 
@@ -89,13 +99,13 @@ def is_source_failure(error: str) -> bool:
 
 
 def report_failure(model: ModelSpec, error: str) -> None:
-    """Record that the model's provider is down (for every run), for as long as the error says, or a while."""
+    """Record that the model's quota pool is down (for every run), for as long as the error says, or a while."""
     until = time.time() + _lasts(error)
     with held(_LOCK):
         state = _read()
-        known = state.get(provider(model))
+        known = state.get(quota_pool(model))
         if known is None or known.until < until:
-            state[provider(model)] = Outage(until=until, why=error[:300])
+            state[quota_pool(model)] = Outage(until=until, why=error[:300])
         _ = STATE.write_text(json.dumps({name: outage.model_dump() for name, outage in state.items()}, indent=1))
 
 
