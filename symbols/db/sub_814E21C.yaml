@@ -1,0 +1,107 @@
+name: sub_814E21C
+address: '0x0814E21C'
+kind: function
+status: hypothesis
+summary: After resolving a record via sub_814E0D0, stores the record's new state byte and flags the record as dirty/needs-refresh
+  when the state changed.
+interface: void sub_814E21C(void); // all actual inputs/outputs flow through the call to sub_814E0D0, which returns
+  a record pointer in r1 and a state value in r3; returns r12=lr with flags left from CMP/ORR
+details: 'Tail-style wrapper: saves lr into r12 (so the callee''s return path is skipped) and tail-ish calls sub_814E0D0,
+  which fills r1 with a record pointer and r3 with the record''s state value. Reads the state byte at [r1+0x18];
+  if it already equals r3 nothing more is done. Otherwise it writes r3 to [r1+0x18] and ORs 0xF into the low nibble
+  of the byte at [r1], apparently a dirty/refresh marker on the record header. Returns via bx r12, so the caller''s
+  lr is preserved while the flags seen by the caller are whatever CMP r0,r3 (no-change path) or the ORR/STR sequence
+  (update path) left behind. The record layout (byte 0 = flags with low-nibble dirty bits, +0x18 = current state)
+  is consistent with per-object/per-entity state records used elsewhere, but the actual record type and what sub_814E0D0
+  selects are not yet identified.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814E21C
+
+    .venv/bin/python -m wf verify --function sub_814E21C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814E21C
+
+    .venv/bin/python -m wf verify --function sub_814E21C --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814E21C
+
+    .venv/bin/python -m wf verify --function sub_814E21C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0814e21c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_canMove
+- object_checkPanelParameters
+- object_setPanelAlliance
+- sub_800D618
+- sub_814E09C
+- sub_813B768
+- sub_813C490
+- zeroFill_813B934
+- zeroFill_813D960
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- chatbox_80419B4
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+- sub_8046DDC
+open_questions:
+- What structure sub_814E0D0 resolves and what its r0 input selects (record type/id?)
+- Game meaning of the state value in r3 and of byte [r1+0x18]
+- Semantics of the 0xF low-nibble marker in byte 0 — dirty flag, animation refresh, or redraw request?
+- Which subsystem calls this and under what in-game trigger
+sources:
+- tools/wf run convert-20261009-005437

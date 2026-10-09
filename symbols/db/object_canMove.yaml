@@ -1,0 +1,99 @@
+name: object_canMove
+address: '0x0800E5E2'
+kind: function
+status: confirmed
+summary: Returns whether the current object's flags allow it to move or act (1 = free, 0 = blocked).
+interface: bool object_canMove(void); // reads object ptr from r4, returns r0 = 1/0, sets NZ flags, clobbers r1,
+  preserves r4
+details: 'Wrapper over object_getFlag: fetches the current object''s flag word (the object pointer is taken from
+  r4 by object_getFlag itself), then tests it against the blocking mask 0x5040 (bits 6 and 14 plus the high halfword
+  byte 0x50). If any of those "action forbidden" bits is set the function returns 0 in r0, otherwise 1. r4 is pushed/popped
+  around the call so the object pointer survives; on return r1 still holds the mask 0x5040. The intermediate "mov
+  r4, r0" is assembled as adds r4, r0, #0, so the C and V flags are cleared and the NZ flags at return reflect the
+  boolean result. Typical gate before movement/action updates in the object loop.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_canMove
+
+    .venv/bin/python -m wf verify --function object_canMove --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_canMove
+
+    .venv/bin/python -m wf verify --function object_canMove --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_canMove
+
+    .venv/bin/python -m wf verify --function object_canMove --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^0800e5e2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_checkPanelParameters
+- object_setPanelAlliance
+- sub_800D618
+- sub_814E09C
+- sub_814E21C
+- sub_813B768
+- sub_813C490
+- zeroFill_813B934
+- zeroFill_813D960
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- chatbox_80419B4
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+- sub_8046DDC
+open_questions:
+- Exact meaning of each bit in the 0x5040 blocking mask (which flag assignments set them) not confirmed.
+sources:
+- tools/wf run convert-20261009-005437

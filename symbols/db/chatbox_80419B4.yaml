@@ -1,0 +1,101 @@
+name: chatbox_80419B4
+address: '0x080419B4'
+kind: function
+status: confirmed
+summary: Looks up the chatbox script assigned to the currently equipped PET navi in a table entry and starts it,
+  or skips the entry if the navi has no script.
+interface: Next chatbox_startCurNaviScript(void* tableEntry /*r4*/); // caller context in r2/r5/r10; always returns
+  r0 = 1
+details: 'Calls GetCurPETNavi() to get the currently equipped navi number, then reads the byte at tableEntry[navi
+  + 2] — a per-navi script ID array inside a 0xE-byte table entry (one script slot per navi, at offset navi+2).
+  If the slot is 0xFF there is no script for this navi: the entry pointer r4 is advanced by 0xE (to the next table
+  entry) and nothing is opened. Otherwise the script ID is passed to chatbox_config_80408D0(), which loads/starts
+  that chatbox script (its first argument is ignored, so the navi number still sitting in r0 is effectively discarded).
+  Always returns 1 in r0. The 0xE-byte stride and the 0xFF sentinel suggest this runs while walking a table of dialog
+  entries, where each entry can react differently per equipped navi (e.g. navi-specific NPC reactions).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_80419B4
+
+    .venv/bin/python -m wf verify --function chatbox_80419B4 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_80419B4
+
+    .venv/bin/python -m wf verify --function chatbox_80419B4 --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_80419B4
+
+    .venv/bin/python -m wf verify --function chatbox_80419B4 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, chips, fuzz, maps, story1, story2.'
+  reproduce: grep -l '^080419b4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- battles1
+- chips
+- fuzz
+- maps
+- story1
+- story2
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_canMove
+- object_checkPanelParameters
+- object_setPanelAlliance
+- sub_800D618
+- sub_814E09C
+- sub_814E21C
+- sub_813B768
+- sub_813C490
+- zeroFill_813B934
+- zeroFill_813D960
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+- sub_8046DDC
+open_questions:
+- What structure r4 points into exactly (only its per-navi script ID array and 0xE-byte entry size are visible here)
+- Who sets up r2/r5/r10 caller context and what they are used for downstream
+sources:
+- tools/wf run convert-20261009-005437

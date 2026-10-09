@@ -1,0 +1,105 @@
+name: object_checkPanelParameters
+address: '0x0800CC86'
+kind: function
+status: confirmed
+summary: Tests whether the panel at given coordinates matches a required flag state (all of one mask set, none of
+  another) and returns 1/0.
+interface: bool object_checkPanelParameters(int x /*r0*/, int y /*r1*/, u32 mustBeSet /*r2*/, u32 mustBeClear /*r3*/);
+  returns r0 = 1 on success, 0 on failure; r4/r5 preserved; NZ set from the 0/1 result, C/V left from object_getPanelParameters
+  or from the final cmp on the mustBeSet path
+details: 'Wrapper over object_getPanelParameters, which returns the flag word for the panel at coordinates (r0,
+  r1). Before that call the two mask arguments are shuffled into r4 (must-be-set) and r5 (must-be-clear) to match
+  the callee''s register contract. Three checks fail to 0: (1) tst r0,r0 — the panel returns no flags at all (treated
+  as "panel does not exist / empty panel"); (2) tst r0,r5 — the panel has at least one flag from the must-be-clear
+  mask; (3) and r0,r4 + cmp r0,r4 — the panel is missing at least one flag from the must-be-set mask. On success
+  returns 1. Because (flags & mask) <= mask, the final cmp sets carry exactly on the success exit of that path,
+  so callers branching on carry can distinguish it from the earlier failure paths (which leave the callee''s flags
+  untouched). r4 and r5 are saved and restored. This is the generic "is this tile usable / is a panel in the required
+  state" predicate used by object/battle code when placing or validating things on the field grid.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_checkPanelParameters
+
+    .venv/bin/python -m wf verify --function object_checkPanelParameters --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_checkPanelParameters
+
+    .venv/bin/python -m wf verify --function object_checkPanelParameters --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_checkPanelParameters
+
+    .venv/bin/python -m wf verify --function object_checkPanelParameters --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^0800cc86 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_canMove
+- object_setPanelAlliance
+- sub_800D618
+- sub_814E09C
+- sub_814E21C
+- sub_813B768
+- sub_813C490
+- zeroFill_813B934
+- zeroFill_813D960
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- chatbox_80419B4
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+- sub_8046DDC
+open_questions:
+- Exact meaning of the individual panel flag bits (hole, broken, grass, etc.) depends on object_getPanelParameters's
+  flag layout, which is not documented here.
+- A zero flag word is treated as failure even though it could in principle be a real panel with no flags; whether
+  that case is reachable in-game is unverified.
+sources:
+- tools/wf run convert-20261009-005437

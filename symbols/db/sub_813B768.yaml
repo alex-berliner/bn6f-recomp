@@ -1,0 +1,101 @@
+name: sub_813B768
+address: '0x0813B768'
+kind: function
+status: confirmed
+summary: Clears the toolkit's Unk2004334 halfword and zeroes the 16 bytes behind its Unk200431c pointer, resetting
+  some subsystem's per-frame/per-session state.
+interface: void sub_813B768(r2 passthrough) // reads r10 (toolkit), writes r2 through unchanged; clobbers r0, r1,
+  lr and flags
+details: Loads the toolkit pointer from r10, reads the pointer field oToolkit_Unk2004334_Ptr and stores 0 as a halfword
+  at its target (a state/counter/flag), then reads oToolkit_Unk200431c_Ptr and calls ZeroFillByByte with 0x10 to
+  wipe 16 bytes at its target. r2 is preserved untouched and returned, so callers use this as an inlined-thunk-style
+  pass-through while the reset happens as a side effect. The 0x10-byte region and the cleared halfword are likely
+  a small work structure plus a mode/active flag for the same feature; which feature owns Unk200431c/Unk2004334
+  is not determinable from this function alone.
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813B768
+
+    .venv/bin/python -m wf verify --function sub_813B768 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813B768
+
+    .venv/bin/python -m wf verify --function sub_813B768 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813B768
+
+    .venv/bin/python -m wf verify --function sub_813B768 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0813b768 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_canMove
+- object_checkPanelParameters
+- object_setPanelAlliance
+- sub_800D618
+- sub_814E09C
+- sub_814E21C
+- sub_813C490
+- zeroFill_813B934
+- zeroFill_813D960
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- chatbox_80419B4
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+- sub_8046DDC
+open_questions:
+- which game system owns toolkit+Unk200431c (the 0x10-byte struct) and Unk2004334 (the cleared halfword)
+- why r2 is passed through unchanged — likely a tail-position convention from the caller rather than a real output
+sources:
+- tools/wf run convert-20261009-005437

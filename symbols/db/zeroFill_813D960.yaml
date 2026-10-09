@@ -1,0 +1,103 @@
+name: zeroFill_813D960
+address: '0x0813D960'
+kind: function
+status: confirmed
+summary: Wipes the 16-byte work area at eS200BC50 but saves and restores the single byte at offset 7 so it survives
+  the clear.
+interface: void clearWorkArea_eS200BC50_keepByte7(void); // r2, r3, r4 preserved; r0/r1 scratch; C/V flags pass
+  through from ZeroFillByWord
+details: 'Saves byte_200BC57 (offset 7 of the 16-byte buffer starting at eS200BC50), calls ZeroFillByWord with base
+  = eS200BC50 and size = 0x10 bytes, then writes the saved byte back to offset 7. Effectively a "clear all fields
+  except one" reset of a small static work area. Nothing is returned; the byte at offset 7 appears to hold persistent
+  state (a flag or index) that must not be reset by this wipe. The reason for keeping that byte is not evident from
+  the function alone.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function zeroFill_813D960
+
+    .venv/bin/python -m wf verify --function zeroFill_813D960 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function zeroFill_813D960
+
+    .venv/bin/python -m wf verify --function zeroFill_813D960 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function zeroFill_813D960
+
+    .venv/bin/python -m wf verify --function zeroFill_813D960 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0813d960 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_canMove
+- object_checkPanelParameters
+- object_setPanelAlliance
+- sub_800D618
+- sub_814E09C
+- sub_814E21C
+- sub_813B768
+- sub_813C490
+- zeroFill_813B934
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- chatbox_80419B4
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+- sub_8046DDC
+open_questions:
+- what the 16-byte area at eS200BC50 is used for (which subsystem owns it)
+- why byte at offset 7 must be preserved across the wipe
+sources:
+- tools/wf run convert-20261009-005437

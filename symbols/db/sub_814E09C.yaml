@@ -1,0 +1,110 @@
+name: sub_814E09C
+address: '0x0814E09C'
+kind: function
+status: hypothesis
+summary: Copies a fixed 36-word table (at off_81C0418) into a caller-supplied buffer, passing each word through
+  a converter routine before storing it.
+interface: void copyConvertedWordTable_814E09C(u32 *dest /* r0 */); returns via r12 (return address is stashed in
+  r12 instead of using lr normally)
+details: 'Takes a destination pointer in r0, then loops exactly 0x24 (36) times over the source table whose address
+  is embedded as the literal off_81C0418 (value off_81C0418). Each iteration loads one word, sets up r0 = current
+  destination pointer, r1 = remaining loop count, r2 = current source address, r3 = the raw word, and calls sub_814E0B6,
+  which returns the (possibly transformed) word in r3; the result is stored with a writeback store (stmia r0!, {r3})
+  so the destination pointer advances automatically. The loop counter counts down from 0x24 using the flags set
+  by the decrement. Notably the function never touches lr after entry: it saves lr into r12 at the top and ends
+  with bx r12, so r12 carries the return address both through the calls (it is reloaded after each sub_814E0B6 call
+  in the verified C) and back to the caller; r12 is effectively both clobbered-with-return-address and an output.
+  All of r4-r11 are listed as inputs/outputs in the contract but the routine itself neither reads nor writes them,
+  so the contract likely just reflects caller-side noise around the sub_814E0B6 calls. The 36-word size and the
+  per-word transform hook suggest a decoded/converted data table (e.g. byte-swapped or lightly obfuscated constants)
+  rather than raw copy data; the actual in-game use depends on what sub_814E0B6 does and who calls this.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814E09C
+
+    .venv/bin/python -m wf verify --function sub_814E09C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 181 out of
+    domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814E09C
+
+    .venv/bin/python -m wf verify --function sub_814E09C --snapshots SNAPSHOT_DIR'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814E09C
+
+    .venv/bin/python -m wf verify --function sub_814E09C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0814e09c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- battle
+- battles1
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_canMove
+- object_checkPanelParameters
+- object_setPanelAlliance
+- sub_800D618
+- sub_814E21C
+- sub_813B768
+- sub_813C490
+- zeroFill_813B934
+- zeroFill_813D960
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- chatbox_80419B4
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+- sub_8046DDC
+open_questions:
+- What sub_814E0B6 does to each word (byte swap? decryption? palette format conversion?) determines the real in-game
+  meaning of the table.
+- Which callers pass which destination buffers, and what the 36-word table at off_81C0418 is used for in game terms.
+- Whether r12 being left holding the return address is intentional protocol or just an artifact callers must tolerate.
+sources:
+- tools/wf run convert-20261009-005437
