@@ -26,7 +26,7 @@ import llm  # noqa: E402
 HOST = os.path.join(ROOT, "cport")
 DIFFTEST = os.path.join(HOST, "build-host", "difftest")
 CFLAGS = ["-O1", "-fPIC", "-shared", "-DTARGET_FLAT", "-DDIFFTEST", f"-I{HOST}/include", f"-I{HOST}/host",
-          "-fno-strict-aliasing", "-w", "-Werror=implicit-function-declaration", "-Werror=return-type",
+          "-fno-strict-aliasing", "-Werror=implicit-function-declaration", "-Werror=return-type",  # no -w: it silenced these too
           "-Werror=int-conversion", "-Werror=incompatible-pointer-types"]
 
 SYSTEM = (
