@@ -1,0 +1,61 @@
+# Running the workflows: what cost time or tokens, and what changed
+
+Measured on 2026-10-08 running the workflows for real: two subsystem
+conversions with strong models (`wf convert`), three capture batches and
+Hyper farm batches over about 2,500 small functions (`wf capture`,
+`wf farm`), and the drafts backfill (`wf drafts`). Each entry: what happened,
+what it cost, and what was done (or is still open).
+
+## Fixed
+
+| Problem | Cost when found | Fix |
+|---|---|---|
+| mgba_run counted captured calls per function in a byte. A function called over 256 times wrapped to 0 and was captured again: 40 more 429 KB snapshots every 256 calls, overwriting earlier entries and pairing them with older exits. | One route (452 functions) ran over an hour and wrote 9 GB; the batch never finished. Captures of frequently called functions could compare a call's entry against another call's exit. | The count stops at the limit (16-bit counter). The same batch: 4 min 49 s. |
+| capture.sh left its temporary snapshots behind when killed. | 9.1 GB in /tmp after one kill. | `trap` removes them on any exit. |
+| capture.sh moved snapshots with two forks per file (`basename`, `mkdir`). | About 330 files/s: 2.5 min of a 5.5 min capture for 48,000 files. | Parameter expansion, `mkdir` only for new directories. |
+| Calls an interrupt arrived in were dropped from captures. | Long functions had 0 captured calls; 3 deepseek attempts (about 140k tokens) were spent on functions nothing could check. | `--snap-keep-interrupted` keeps their entry state (difftest -S and the oracle need only that); convert refuses to ask a model about functions without captured calls. |
+| A lifter "entry" inside sub_8030808 (`loc_803083E`) came only from NPC script bytes `3f 08 03 08` that look like a pointer to it. The verify build then required the C file to define it, while the quick test refused functions outside the subsystem. | No model could pass: 7 attempts, about 300k output tokens, 55 min of model time. | `tools/lifter/not_entries.txt` (with the evidence); real mid-function entries now join the subsystem (prompted, quick-tested, drafted, flagged when nothing compared them). |
+| `farm.find_asm` required a label to end its line; 536 bn6f labels carry a signature comment (`GetRNG: // () -> u32?`). | Those functions were silently "nothing to convert" in every farm run so far (46 of batch A's 496). | The pattern accepts a trailing comment. |
+| Replies dropped their cfg/yaml blocks on repair, or wrote yaml values containing `: `. | 3 of 7 strong-model attempts failed on metadata alone, with the code untested. | Values with `: ` are quoted and parsed again; the code is tested even when only the yaml is wrong ("the code passed; fix only the other blocks"); repairs name all three blocks. |
+| A 48k output budget for strong models. | Reasoning took 35-48k tokens per subsystem attempt: 3 of 7 replies were cut off or empty (kimi-k3, glm-5.3: 20 min for an empty reply). | 64k (with a 48k fallback for providers that refuse), one retry instead of three. |
+| Models copied the reference file's "Written by Claude" line into their own files. | A false authorship line reached review. | The line is stripped from the references; the prompt says the commit records the author. |
+| Picking a farm batch from every coverage profile, including sweeps the capture cannot replay. | 522 of batch B's 1,200 functions had no route to capture on. | Select from the eight replayable routes' profiles only. |
+| A finished farm candidate had no symbols/db entry, so integrating it would make a strong model write the documentation. | One strong-model round per group of small functions. | The farm model drafts each accepted function's entry (`draft_symbol_entry`; `wf drafts` for older ones): about 4 s and 1-2k tokens on Hyper. |
+| Stuck background jobs. A background job only reports when it ends, so a stuck one is invisible. | An hour lost on the stuck capture. | Shell watchdogs (no model cost until they fire): a process over its expected time, or a log that stops growing. Match the process, not the `bash -c` wrapper whose command line repeats the pattern (both mistakes were made). |
+| Hyper has an hourly rate limit, not only a daily balance. | After 1,025 calls in 19 minutes (3.3M tokens, about 23 of 217 units), every call failed with HTTP 429 "try again in 42m12s"; 45 farm pairs and the drafts run recorded provider failures. | `tools/llm.py` waits out a 429 that says when it lifts (up to 3 waits per call, not counted as retries), so one long queue uses each hour's allowance as it opens. |
+
+## Measurements
+
+| What | Number |
+|---|---|
+| Coverage of a route from its profile | 3 min (coverage.py) to 0.5 s (profiles read directly, cached) |
+| Capture, 744 small functions over 5 routes in parallel | 4 min 49 s, 11 GB (429 KB per snapshot; 496 functions with calls, median 40 calls) |
+| Capture, 1,200 functions | 5 min 26 s, 13 GB (678 with calls) |
+| Capture, 1,576 functions (selected from replayable routes) | 8 min 43 s, 32 GB (1,538 with calls) |
+| Hyper glm-5.3-flash farm call (16 jobs) | median 5 s, p90 27 s; 1.8k tokens in, 1.4k out (85% reasoning); about 1 call/s |
+| Hyper cost | about 0.023 units per farm call (23 units for 1,025 calls; 145k tokens per unit) |
+| Hyper hourly limit | about 1,000 farm calls (3.3M tokens) per hour: the 217-unit day needs about 9 hours of steady use |
+| Farm batch A (496 small functions with captured calls) | 16 min 20 s: 434 accepted, 14 failed every round, 48 skipped by the label bug; 97% of those tried |
+| Strong models, one subsystem attempt (3 functions) | deepseek-v4-pro 280-350 s, 37-48k output (93% reasoning); kimi-k3 66-450 s; glm-5.3 1,195 s |
+| Full verify of a converted file | about 5 min (build, difftest, oracle, 8 lockstep routes) |
+
+## Still open
+
+- **Snapshots are full machine states** (429 KB). Most of a farm function's
+  calls touch little memory; storing only the regions a call reads, or
+  compressing, would cut the 11-13 GB per batch.
+- **Recapture:** a convert run captures again what an earlier run captured
+  (`--snapshots` reuses one by hand). A cache keyed by function and route
+  would make it automatic.
+- **Batch selection is a script**, not a workflow step
+  (executed on a replayable route, not hand-written, never farmed, by size).
+- **Hyper's balance has whole-unit granularity**, so cost per call is only
+  measurable over a few hundred calls.
+- **`wf status` shows stale runs**: runs killed mid-step stay "running".
+- **Integrating farm candidates** goes through `wf convert --farm-model`, one
+  file per group, with one full verify each; review of hundreds of small
+  functions is the slowest part left.
+- **Conversions run one at a time**: each installs its file into the shared
+  tree and verifies with shared build directories. Separate git worktrees
+  per run would let verifies run side by side (16 cores; one verify keeps
+  about 8 busy).

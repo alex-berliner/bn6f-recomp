@@ -1,9 +1,23 @@
 # How this project is run
 
-Written 2026-10-08 from the working session's context and Claude's memory
-notes, so that the process, the decisions behind it and the lessons learned
-live in the repository and not only in a conversation. Keep it current; the
-"State when written" section at the end is a snapshot.
+The decisions behind the project, the conventions for readable code, what
+each check proves, and the lessons learned. **The steps themselves live in
+typed workflows** (`tools/wf`, run as `cd tools/wf && .venv/bin/python -m wf
+...`): their pages and diagrams are in [docs/workflows](workflows/README.md),
+generated from the code, and every run can be followed in the Burr UI
+(`tools/wf/.venv/bin/burr --no-open --no-copy-demo_data --host 0.0.0.0`,
+port 7241). `python -m wf status` says where every run is.
+
+| Workflow | Does |
+|---|---|
+| [verify](workflows/verify.md) | lift and build, difftest (random and captured calls), CPU oracle, lockstep on every route, battle sweep (§3) |
+| [capture](workflows/capture.md) | the original's own calls of functions, on as few routes as possible, in parallel |
+| [farm](workflows/farm.md), [farm-batch](workflows/farm-batch.md) | cheap models convert small functions one at a time and draft their symbol entries (§4) |
+| [drafts](workflows/drafts.md) | symbol entries for accepted farm candidates that have none |
+| [convert](workflows/convert.md) | strong models write a subsystem's file (or farm candidates go in as a group); quick test, full verify, review, commit (§4) |
+| [record](workflows/record.md) | symbols/db, renames and comments into bn6f, re-verify, commit (§6) |
+
+What running them taught about cost and speed: [EFFICIENCY.md](workflows/EFFICIENCY.md).
 
 Two ports share this repository:
 
@@ -22,12 +36,14 @@ Two ports share this repository:
 | Git | Local only. Never push (GitHub "not yet"). Commit on branches. |
 | BIOS | Use the real GBA BIOS (`gbarecomp/bios/gba_bios.bin`) for both ports and all tests. |
 | Disassembly | Fix bn6f defects on its local branch `recomp-fixes`; the built ROM must stay byte-identical (bn6f's `make` checks `bn6f.sha1`). |
-| Evidence | Wants a reliable test method, not "does the title screen boot". |
+| Evidence | Wants a reliable test method, not "does the title screen boot" (the verify workflow). |
 | Tools | Results over originality: reuse existing tools before writing new ones. |
 | Recordings | The user records gameplay sessions; ask for recordings rather than scripting inputs blindly (`tools/traces/SESSIONS.md`). |
-| Symbols | **Every discovery about a symbol goes back into the disassembly (names, comments) and into the symbol database with evidence and reproduction steps** (section 6). |
+| Symbols | **Every discovery about a symbol goes back into the disassembly (names, comments) and into the symbol database with evidence and reproduction steps** (section 6; the record workflow). |
 | Coverage | Prefer converting functions the recorded routes execute, so lockstep checks them; mark exceptions "oracle only". |
-| Conversion split | Agreed: Claude converts whole subsystems (callers and callees together); outside models handle small leaf functions in the background; one farm process per provider so review is not held up by the slowest provider. |
+| Conversion split | Outside models write all the code: strong models (deepseek-v4-pro, then kimi-k3, then glm-5.3, 3 attempts each) whole subsystems, cheap models (Hyper glm-5.3-flash) small functions in volume. Claude orchestrates: picks the work, reviews (approve, request changes, reject) and decides what to do when every model gives up; it does not edit the code. |
+| C semantics | Models move each function out of its registers-as-arguments origin: typed C functions with real parameters and results, `Next NAME(void)` only as a thin register adapter. Where C cannot work they say so in a `/* register form: why */` comment, which review and symbols/db carry forward (future work: `docs/C_CALLING_CONVENTION.md`). |
+| Workflows | The process lives in small typed Burr graphs (pydantic models, NewTypes, readable step names), observable in the Burr UI on the LAN; not in prose. |
 | Model cost | Cost per converted function is the most important factor; test all models over time. glm-5.3-flash gave the user good results. |
 | Pacers | The local API pacers (`pi-pacer@{minimax,zai,opencode}.service`) are the user's setup: leave their settings alone unless requests start erroring. |
 | Flash cart | Paused ("done with flash cart stuff for now"); speed is to be looked at holistically later (section 8). |
@@ -36,6 +52,9 @@ Two ports share this repository:
 ## 2. The C port
 
 ### Build
+
+The verify workflow builds in its own directories (`cport/build-wf`,
+`cport/build-wf-host`). By hand:
 
 ```sh
 tools/build_lifted.sh               # lift bn6f into cport/src/lifted (+ headers) and build the ROM
@@ -98,27 +117,23 @@ boot stages for hardware debugging), `LTO=0`.
 
 ## 3. Verification
 
-Use them in this order when converting; record every result, and **say so
-when a check compared nothing** (all trials out of domain).
+The [verify](workflows/verify.md) workflow runs the first five in this
+order, each only after the earlier ones pass, and **says so when a check
+compared nothing** (all trials out of domain: verdict "passed, but some
+functions were never compared"). What each proves, and what it cannot see:
 
-| Check | What it proves | How |
+| Check | What it proves | Limits |
 |---|---|---|
-| Host difftest, random | Readable vs lifted original (`L_NAME`) on random inputs: memory, return target, SP, contract registers/flags | `make -C cport/host && (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 NAME)`. Random RAM makes functions that follow pointers through game structures **out of domain**; then this compares nothing. `difftest_gen.c` has structured inputs for some. Host builds publish every return target (`RETURN_NR` is `RETURN` under `DIFFTEST`); without that, a lifted function that returns with `RETURN_NR` leaves the callee's stale `cpu.ret` and a wrong return target goes unseen. |
-| Host difftest, captured calls | Same, on the original's own calls | `tools/convert/capture.sh DIR tools/traces/ROUTE.trace G0 G1 40 NAME...` then `build-host/difftest -S DIR/NAME NAME`. The best per-function check for pointer-heavy code, but only for the paths the captured calls take: a snapshot mutator in `difftest_gen.c` (`-m N` varied copies per snapshot) reaches the others (e.g. `mut_npc_secondary` gives an NPC a running secondary script). |
-| CPU oracle | The **original** (mGBA, real BIOS) vs the port from the same entry states built from real game memory | `ORACLE_TMP=/tmp python3 tools/oracle.py --base SNAPDIR --states 24 --out OUT NAME...` (base: any `capture.sh` output). Holds hand-written functions to their `difftest.cfg` contract; gives the host the I/O mGBA reads back after reset. Known artifact classes: `tools/oracle_triage.md`. `--lifted` runs the lifted originals of hand-written functions instead: if a difference shows there too, the conversion did not introduce it (it comes from a callee). |
-| Lockstep | The whole game replayed by the game's frame counter against the original: palette, VRAM, OAM identical at every checkpoint, save memory at the end | `tools/lockstep.sh ROM tools/traces/ROUTE.trace N` for every route below. Accepts one-game-frame VBlank timing skew; stops runs whose game stops counting frames. **Does not compare sound state or EWRAM**, and cannot see a wrong return target on functions only called directly. |
-| Battle sweep | 116 battle records via pokes | `JOBS=6 tools/battlesweep.sh ROM` (run when battle code changes) |
-| Other sweeps | 108 maps, every chip, random play | `tools/mapsweep.py` + `tools/tracesweep.sh`, `tools/chipsweep.py`, `tools/fuzzsweep.sh` |
-| Coverage | Which lifted functions the original executed on the routes/sweeps | `python3 tools/coverage.py tools/traces/coverage/*.prof` (40.6% of lifted functions, 49.9% of code bytes when written) |
+| Host difftest, random | Readable vs lifted original (`L_NAME`) on random inputs: memory, return target, SP, contract registers/flags | Random RAM makes functions that follow pointers through game structures **out of domain**: then it compares nothing (`difftest_gen.c` has structured inputs for some). Host builds publish every return target (`RETURN_NR` is `RETURN` under `DIFFTEST`), or a wrong return target would go unseen. |
+| Host difftest, captured calls | Same, on the original's own calls ([capture](workflows/capture.md)) | The best per-function check for pointer-heavy code, but only for the paths the captured calls take; a snapshot mutator in `difftest_gen.c` (`-m N`) reaches the others (e.g. `mut_npc_secondary`). |
+| CPU oracle | The **original** (mGBA, real BIOS) vs the port from the same entry states built from real game memory | Holds hand-written functions to their `difftest.cfg` contract. Known artifact classes: `tools/oracle_triage.md` (differences give the verdict "needs triage"). `--lifted` runs the lifted originals instead: a difference there too comes from a callee. |
+| Lockstep | The whole game replayed by the game's frame counter on every route (`wf/routes.py`): palette, VRAM, OAM identical at every checkpoint, save memory at the end | Accepts one-game-frame VBlank timing skew. **Does not compare sound state or EWRAM**, and cannot see a wrong return target on functions only called directly. |
+| Battle sweep | 116 battle records via pokes | Run when battle code changes (`--battle-code`). |
+| Other sweeps (not in a workflow yet) | 108 maps, every chip, random play | `tools/mapsweep.py` + `tools/tracesweep.sh`, `tools/chipsweep.py`, `tools/fuzzsweep.sh` |
 
-Recorded routes (`tools/traces/`, frame counts for lockstep):
-
-| Route | N | | Route | N |
-|---|---|---|---|---|
-| battles1 | 20111 | | story2 | 33546 |
-| battle | 20000 | | story3 | 17576 |
-| menus2 | 23042 | | title_mash_a | 8000 |
-| story1 | 9700 | | wander | 8000 |
+By hand, for triage: `(cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 NAME)`,
+`build-host/difftest -S DIR/NAME NAME`, `tools/oracle.py --base SNAPDIR --states 24 --out OUT NAME...`,
+`tools/lockstep.sh ROM tools/traces/ROUTE.trace N`, `JOBS=6 tools/battlesweep.sh ROM`.
 
 New recordings: `tools/record.sh NAME START.sav` (the user plays; inputs and a
 frame counter are shown on screen; start/end saves are stored), checked with
@@ -131,34 +146,18 @@ Other tools: `tools/speed.sh` (speed vs the original), `tools/profile.sh`
 
 ## 4. Converting functions
 
-### By Claude (subsystems)
-
-1. Pick a subsystem (callers and callees together) from functions the routes
-   execute (`tools/coverage.py`; profiles in `tools/traces/coverage/`).
-2. Read the assembly and the callees' contracts; write `cport/src/game/X.c`.
-3. `tools/build_lifted.sh`; host difftest (random and captured calls); CPU
-   oracle; lockstep on all routes (battle sweep for battle code).
-4. Commit; then section 6 (database entries, renames, comments).
-
-### By outside models (leaf functions)
-
-1. Pick small functions the routes execute; capture 40 calls each on a route
-   that runs them (`tools/convert/capture.sh`).
-2. Run one farm per provider as separate background jobs:
-   `python3 tools/convert/farm.py --snaps DIR --models PROVIDER/MODEL --rounds 3 --jobs N FUNC...`.
-   It rebuilds the difftest first (a stale one once accepted candidates that
-   returned to the wrong place), resumes (skips pairs already passed or out
-   of rounds), and writes passing versions to `tools/convert/accepted/`.
-3. Review: pick the clearest version per function; check `#ifndef` offset
-   fallbacks (use enums), `ldrsh` loads (`LDS16`), return targets, flags.
-   Specifically: any `LR = ...` before a call (`GUEST_CALL` keeps LR, so the
-   later `RETURN_TO_CALLER()` returns there); table dispatch must enter the
-   handler with the registers the original sets (`r0`/`r1`...); a second
-   entry (`loc_...` reached by a sibling) must take the sibling's frame;
-   and which paths the captured calls actually ran (add a mutator for the
-   rest). Integrate, verify as above, then section 6.
-4. Cost: `tools/convert/quota.py OUT.json` before and after a run;
-   `tools/convert/scorecard.py [FUNC...]` for converted/requests/time/tokens.
+- **Subsystems:** `wf convert --subsystem WHAT --file X.c FUNCTION...` (the
+  [convert](workflows/convert.md) workflow). Claude picks the subsystem from
+  functions the routes execute and answers the review pause; the review sheet
+  carries the reviewer's checklist.
+- **Small functions in volume:** `wf capture` then `wf farm --model
+  hyper/glm-5.3-flash --snapshots DIR FUNCTION...` (one batch per provider, so
+  review is not held up by the slowest); accepted candidates land in
+  `tools/convert/accepted/` with drafted entries, and go into the tree as a
+  group through `wf convert --farm-model MODEL --snapshots DIR`, which tests,
+  verifies and stops for the same review.
+- Cost: `tools/convert/quota.py OUT.json` before and after a run;
+  `tools/convert/scorecard.py [FUNC...]` for converted/requests/time/tokens.
 
 Providers (config in `~/.pi/agent`, client `tools/llm.py`, which logs tokens
 to `tools/convert/usage.jsonl`): Hyper (charm.land; no pacer; resets daily),
@@ -207,18 +206,14 @@ are converted).
 - `symbols/db/NAME.yaml`, one per symbol (format: `symbols/db/README.md`):
   meaning, interface, status (confirmed / probable / hypothesis), evidence
   with exact reproduce commands and actual results, changes, open questions.
-- `tools/symdb.py check` validates against `bn6f/bn6f.elf`;
-  `tools/symdb.py render` writes `symbols/SYMBOLS.md` and `symbols/symdb.sqlite`.
-- Renames: `tools/rename_symbol.py OLD NEW [...]` (needs an entry; edits bn6f
-  sources like bn6f's `replace.sh`, plus the port's hand-written code,
-  `difftest.cfg`, `difftest_gen.c`, `iwram.txt`; rebuilds bn6f and undoes
-  everything unless the ROM is identical; commits bn6f; regenerates the
-  lifted C). Rename only confirmed/probable meanings; keep the address suffix
-  when the game-level meaning is partly inferred; hypotheses get comments only.
-- Comments: `tools/symdoc.py --commit` writes `// symdb:` blocks at each
-  definition in bn6f from the database.
-- After renames: `tools/import_symbols.sh` refreshes the PC port's symbol
-  overlay; re-verify the port (renames change its layout, not behaviour).
+- The [record](workflows/record.md) workflow does the rest: checks the entries
+  (`tools/symdb.py check`), renames only confirmed/probable meanings
+  (`tools/rename_symbol.py`: bn6f sources and the port's hand-written code,
+  bn6f rebuilt and everything undone unless the ROM is identical), refreshes
+  the PC port's symbols, writes `// symdb:` comments into bn6f
+  (`tools/symdoc.py`), renders `symbols/SYMBOLS.md`, re-verifies the port after
+  renames, and commits. Keep the address suffix when the game-level meaning
+  is partly inferred; hypotheses get comments only.
 - Build bn6f by hand: `make -C bn6f AS=$PWD/toolchain/bin/arm-none-eabi-as LD=$PWD/toolchain/bin/arm-none-eabi-ld OBJCOPY=$PWD/toolchain/bin/arm-none-eabi-objcopy OBJDUMP=$PWD/toolchain/bin/arm-none-eabi-objdump`
   (toolchain from `tools/build_toolchain.sh`; bn6f's default path
   `bn6f/tools/binutils` is not built here). Prints `bn6f.gba: OK` when identical.
@@ -249,6 +244,13 @@ are converted).
   originals returned with `RETURN_NR`, which did not publish `cpu.ret` (fixed
   for host builds), and the second one's bad path never ran in the captured
   calls (fixed with a mutator).
+- A byte counter in mgba_run wrapped after 256 calls and captured again forever;
+  a lifter "entry" made of NPC script bytes made a conversion impossible to
+  pass; labels with a trailing comment hid 536 functions from the farm. Each
+  is in [EFFICIENCY.md](workflows/EFFICIENCY.md) with its cost.
+- A background job reports only when it ends: watch long ones for progress
+  (and match the process, not the shell wrapper whose command line repeats
+  the pattern).
 - A narrow `compare=` contract in `difftest.cfg` must hold for every caller.
   `palette_addOrSubtractColor` promised only r5/r7 because one caller needs
   no more, but two other callers exist; it now leaves every register as the
@@ -283,15 +285,9 @@ when asked. Its text:
 > Backlog: 1. readable conversion of whole subsystems; 2. model farms for small leaf functions, one per provider, tracking cost per converted function; 3. coverage growth when it lets lockstep check more converted code; 4. keep notes and SESSIONS.md current.
 > Constraints: real BIOS, local git only, bn6f fixes on recomp-fixes with the ROM byte-identical, never print API keys, don't change the user's pacer settings without asking.
 
-## State when written (2026-10-08, evening)
+## State
 
-- 84 readable functions; 98 symbol-database entries; renames in bn6f
-  (22 + 5 + 6, all ROM-identical, latest bn6f d722c690); every route and the
-  battle sweep identical.
-- Farm batch 3 (Hyper glm-5.3-flash): 34 of 78 passed; 32 integrated, the
-  rest of the accepted pool re-tested with the stricter difftest (all pass).
-- The self-scheduled loop is cancelled (user, ahead of an all-hands
-  refactor).
-- Open: the remaining NPC script actions (hop, leap, waits; several not run
-  by any route), the user's answer on the lifter improvements, and moving
-  `leaves_misc.c` functions into their subsystems.
+`python -m wf status` and the Burr UI show every run; `symbols/SYMBOLS.md`
+lists the readable functions with their evidence. Open: the NPC script
+actions no route runs, the lifter improvements in §4's results, and moving
+grouped small functions (`leaves_*.c`) into their subsystems.

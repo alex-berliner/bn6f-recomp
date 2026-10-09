@@ -26,17 +26,19 @@ Save the original game's calls of the functions (a child capture run), unless gi
 
 ### `gather_context` (step)
 
-Each function's assembly, lifted C and register contract; build the host difftest for quick tests.
+Each function's assembly, lifted C and register contract, and that it has captured calls (no model is
+asked to write what nothing could check); labels callers enter in the middle of a function join the
+subsystem (a replacement must define them); build the host difftest for quick tests.
 
-- reads: `run_dir: Path`, `file_name: str`, `functions: tuple[FunctionName, ...]`
-- produces: `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`
+- reads: `run_dir: Path`, `file_name: str`, `functions: tuple[FunctionName, ...]`, `snapshots: SnapshotDir`
+- produces: `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`
 - then: `ask_model_for_file_step` when `ready_to_convert`; `give_up` when `cannot_convert`
 
 ### `ask_model_for_file_step` (step)
 
 Ask the next model for the whole file; after a failure or review, show it what went wrong.
 
-- reads: `run_dir: Path`, `subsystem: str`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `models: tuple[ModelSpec, ...]`, `rounds: int`, `candidate: Path | None`, `attempts: tuple[Attempt, ...]`
+- reads: `run_dir: Path`, `subsystem: str`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `models: tuple[ModelSpec, ...]`, `rounds: int`, `candidate: Path | None`, `farm_model: typing.Optional[ModelSpec]`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`
 - then: `quick_test`
 
@@ -44,7 +46,7 @@ Ask the next model for the whole file; after a failure or review, show it what w
 
 Take the file out of the tree again and say why there is nothing to commit.
 
-- reads: `file_name: str`, `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `attempts: tuple[Attempt, ...]`
+- reads: `file_name: str`, `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`
 - produces: `outcome: ConvertOutcome`
 - then: the run ends
 

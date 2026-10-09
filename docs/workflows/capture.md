@@ -4,7 +4,6 @@ Capture the original game's own calls of some functions (the inputs that
 difftest and the CPU oracle check conversions on): give each function a
 recorded route that executes it (as few routes as possible), replay those
 routes on the original in parallel, save the first calls of each function.
-(docs/PROCESS.md §4: "capture 40 calls each on a route that runs them".)
 
 ![capture](capture.png)
 

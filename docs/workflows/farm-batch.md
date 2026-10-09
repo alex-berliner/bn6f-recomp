@@ -1,10 +1,11 @@
 # farm-batch
 
-Outside models convert small lifted functions (docs/PROCESS.md §4, "By
-outside models"). One `farm` run is one function and one model: the model
+Outside models convert small lifted functions in volume (docs/PROCESS.md
+§4). One `farm` run is one function and one model: the model
 writes readable C, the farm's acceptance test checks it against the lifted
 original on the captured calls and random inputs, failures go back to the
-model for repair. A `farm batch` run builds the host difftest once, skips
+model for repair, and an accepted function gets its symbols/db entry drafted
+by the same model. A `farm batch` run builds the host difftest once, skips
 pairs that are already finished, and runs the rest as its child runs.
 
 ![farm-batch](farm-batch.png)
