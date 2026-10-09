@@ -3,7 +3,7 @@
  * 0x08047594-0x08047800, with the helpers only it calls at
  * 0x08047CFA-0x08047D84).
  *
- * sub_8047594 draws five rows of a chip list: each row shows a chip's
+ * drawChipListFiveRows_8047594 draws five rows of a chip list: each row shows a chip's
  * name, its code letter and a small strip.  The rows come from an array
  * of 8-byte entries the caller scrolls by moving the index of the first
  * entry to show; row i shows entry first + i, and the entry's kind byte
@@ -16,7 +16,7 @@
  *      flag (chip+0x1E20, chip+0x2420) marks
  *   3  secret: name row drawn by sub_8047708 (kept lifted)
  *   anything else: 16 blank tiles over the name area, and no strip
- * Kinds 2 and 3 are first dimmed (sub_8047CFA) when the player owns
+ * Kinds 2 and 3 are first dimmed (dimUnownedChipStrip_8047CFA) when the player owns
  * none: kind 2 counts the pack (GetChipCountOfCode of chip and code),
  * kind 3 the chip+0x90 collection (sub_803D138).  Kinds 1-3 then get
  * their strip (sub_8047790): the entry's value halfword (+6) goes
@@ -39,7 +39,7 @@
  * and of the BG maps at 0x6008400 / 0x6008600 / 0x6008640 — and the
  * fixed colour table dword_86A5D60.
  *
- * The helpers are called only by sub_8047594, but their adapters still
+ * The helpers are called only by drawChipListFiveRows_8047594, but their adapters still
  * leave every register the original leaves (its push/pop pattern
  * restores r0, r5 and r7 around the renders), so no promise is narrowed.
  */
@@ -123,7 +123,7 @@ static u32 view_mode(u32 menu) { return LD32(LD32(menu + MENU_VIEW_PTR)); }
 
 /* ── the name rows ────────────────────────────────────────────────── */
 
-/* sub_804760E: a plain entry — its name from the fixed script, then a
+/* drawPlainChipRow_804760E: a plain entry — its name from the fixed script, then a
  * blank tile in the code column (plain rows show no code letter). */
 static void draw_plain_chip_row(u32 slot, u32 chip, u32 menu) {
     u32 row = ROW_BYTES * slot;
@@ -131,7 +131,7 @@ static void draw_plain_chip_row(u32 slot, u32 chip, u32 menu) {
     render_tiles(LD32(menu + MENU_SYMBOL_SCRIPT), SYM_BLANK, DECOMP_CODE + row, VRAM_CODE + row, 1);
 }
 
-/* sub_8047664: a coded chip — name from the banked tables, then the code
+/* drawCodedChipRow_8047664: a coded chip — name from the banked tables, then the code
  * letter; in the library view a chip neither event flag marks gets the
  * no-code letter instead. */
 static void draw_coded_chip_row(u32 slot, u32 chip, u32 code, u32 has_code, u32 menu) {
@@ -165,7 +165,7 @@ static void draw_secret_chip_row(u32 slot, u32 entry, u32 menu) {
     GUEST_CALL(sub_8047708);
 }
 
-/* sub_8047760: a blank row — 16 blank tiles across the name area. */
+/* drawBlankChipRow_8047760: a blank row — 16 blank tiles across the name area. */
 static void draw_blank_chip_row(u32 slot, u32 menu) {
     u32 row = ROW_BYTES * slot;
     render_tiles(LD32(menu + MENU_SYMBOL_SCRIPT), SYM_BLANK, DECOMP_NAMES + row, VRAM_NAMES + row, 16);
@@ -200,7 +200,7 @@ static void draw_chip_row_strip(u32 slot, u32 value, u32 has_code, u32 chip,
     render_tiles(LD32(menu + MENU_SYMBOL_SCRIPT), strip, DECOMP_STRIP + row, VRAM_STRIP + row, 7);
 }
 
-/* sub_8047CFA: dim a chip the player has none of.  `secret` rows count
+/* dimUnownedChipStrip_8047CFA: dim a chip the player has none of.  `secret` rows count
  * through the chip+0x90 collection (sub_803D138), the others through the
  * pack (GetChipCountOfCode); owning one leaves the strip alone.  The
  * dimming repaints byte_202F800's strip tilemap for the row (0x48 bytes:
@@ -234,7 +234,7 @@ static void dim_unowned_chip_strip(u32 slot, u32 entry, u32 chip, u32 code,
         ST16(strip + 0x24 + i * 2, ((LD16(strip + 0x24 + i * 2) & 0xFFF) | mark) + shift);
 }
 
-/* ── the five rows (sub_8047594) ──────────────────────────────────── */
+/* ── the five rows (drawChipListFiveRows_8047594) ──────────────────────────────────── */
 
 /* Draw entries[first .. first+4] at screen rows 0..4; returns the address
  * one past the last entry, where the original's entry pointer ends. */
@@ -268,9 +268,9 @@ static u32 draw_chip_list_rows(u32 first, u32 entries, u32 menu, u32 toolkit) {
 
 /* ── the entry points the rest of the game calls ──────────────────── */
 
-/* sub_8047594(r0 = first entry of the five to show, r1 = the entry array,
+/* drawChipListFiveRows_8047594(r0 = first entry of the five to show, r1 = the entry array,
  * r5 = the screen state, r10 = the toolkit): draw five chip rows. */
-Next sub_8047594(void) {
+Next drawChipListFiveRows_8047594(void) {
     const u32 menu = R5, toolkit = R10, saved_r6 = R6;
 
     R7 = draw_chip_list_rows(R0, R1, menu, toolkit);
@@ -284,25 +284,25 @@ Next sub_8047594(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_804760E(r0 = row, r1 = chip, r5 = screen state): a plain row. */
-Next sub_804760E(void) {
+/* drawPlainChipRow_804760E(r0 = row, r1 = chip, r5 = screen state): a plain row. */
+Next drawPlainChipRow_804760E(void) {
     const u32 slot = R0, menu = R5, entry = R7;
     draw_plain_chip_row(slot, R1, menu);
     R0 = slot; R5 = menu; R7 = entry;  /* the original's pops; r6 keeps the render's leftover */
     RETURN_TO_CALLER();
 }
 
-/* sub_8047664(r0 = row, r1 = chip, r2 = code letter, r3 = has code,
+/* drawCodedChipRow_8047664(r0 = row, r1 = chip, r2 = code letter, r3 = has code,
  * r5 = screen state): a coded chip row. */
-Next sub_8047664(void) {
+Next drawCodedChipRow_8047664(void) {
     const u32 slot = R0, menu = R5, entry = R7;
     draw_coded_chip_row(slot, R1, R2, R3, menu);
     R0 = slot; R5 = menu; R7 = entry;  /* the original's pops; r6 keeps the render's leftover */
     RETURN_TO_CALLER();
 }
 
-/* sub_8047760(r0 = row, r5 = screen state): a blank row. */
-Next sub_8047760(void) {
+/* drawBlankChipRow_8047760(r0 = row, r5 = screen state): a blank row. */
+Next drawBlankChipRow_8047760(void) {
     const u32 slot = R0, menu = R5, entry = R7;
     draw_blank_chip_row(slot, menu);
     R0 = slot; R5 = menu; R7 = entry;  /* the original's pops; r2/r4 keep the render's leftovers */
@@ -319,9 +319,9 @@ Next sub_8047790(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_8047CFA(r0 = row, r1 = chip, r2 = code, r4 = palette, r6 = count
+/* dimUnownedChipStrip_8047CFA(r0 = row, r1 = chip, r2 = code, r4 = palette, r6 = count
  * the secret collection): dim an unowned chip's strip; r3 rides along. */
-Next sub_8047CFA(void) {
+Next dimUnownedChipStrip_8047CFA(void) {
     /* the original pushes r0-r7 at entry and pops them at exit: every one
      * of them leaves as it came, however the dimming went */
     const u32 saved_r0 = R0, saved_r1 = R1, saved_r2 = R2, saved_r3 = R3,

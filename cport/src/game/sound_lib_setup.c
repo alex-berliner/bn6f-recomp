@@ -149,7 +149,7 @@ static void division_flags(const Division *division) {
         SET_FLAGS_CMP(division->r12, 0);  /* cmp r4, #0 */
 }
 
-Next sub_814DA9C(void) {
+Next divsi3_814DA9C(void) {
     s32 numerator = (s32)R0, denominator = (s32)R1;
     Division division = divide_signed(numerator, denominator);
 
@@ -206,7 +206,7 @@ static VsyncOffRegisters sound_vsync_off(void) {
     return left;
 }
 
-Next sub_814EF14(void) {
+Next m4aSoundVSyncOff_814EF14(void) {
     VsyncOffRegisters left = sound_vsync_off();
     R2 = left.r2;
     R3 = left.r3;
@@ -216,7 +216,7 @@ Next sub_814EF14(void) {
 /* ── turning the PCM DMA back on ─────────────────────────────────────── */
 
 /* What m4aSoundVSyncOn leaves in r1/r2/r3/r12 and the flags behind its two
- * possible endings, for its own callers and for sub_814EDC0, which ends in
+ * possible endings, for its own callers and for SampleFreqSet_814EDC0, which ends in
  * it. */
 typedef struct {
     u32 r1, r2, r3, r12;
@@ -277,7 +277,7 @@ static void vsync_on_flags(const VsyncOnRegisters *on) {
     }
 }
 
-Next sub_814EF94(void) {
+Next m4aSoundVSyncOn_814EF94(void) {
     u32 return_address = LR;      /* the original returns through this popped word */
     u32 saved_r4 = R4;
 
@@ -325,7 +325,7 @@ static VsyncOnRegisters sample_freq_set(u32 sound_id) {
     return sound_vsync_on(clock.r1, clock.r12);
 }
 
-Next sub_814EDC0(void) {
+Next SampleFreqSet_814EDC0(void) {
     u32 return_address = LR;      /* the original returns through this popped word */
     u32 saved_r4 = R4, saved_r5 = R5;
 

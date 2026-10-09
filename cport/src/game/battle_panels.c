@@ -7,12 +7,12 @@
  * family and side it is drawn with, a one-shot redraw pair, a one-shot
  * overlay and a flag for the strip drawn under the panel.
  *
- * sub_800C5E0 runs every frame of a battle: it first advances the panel
- * tile animations (sub_800C192), then walks the slots and draws every
+ * updateBattlePanels_800C5E0 runs every frame of a battle: it first advances the panel
+ * tile animations (stepPanelTileAnimations_800C192), then walks the slots and draws every
  * panel that sits on the field, through three helpers:
- *   sub_800C01C  the panel itself (family 0xFF blanks its block)
- *   sub_800C0BA  one of two overlays drawn over the panel
- *   sub_800C100  the one-tile-high strip under the panel
+ *   drawPanel_800C01C  the panel itself (family 0xFF blanks its block)
+ *   drawPanelOverlay_800C0BA  one of two overlays drawn over the panel
+ *   drawPanelUnderStrip_800C100  the one-tile-high strip under the panel
  * A slot holding no panel is blanked, and sub_800C138 draws whatever
  * shows in its place.
  *
@@ -21,7 +21,7 @@
  * the columns run the other way (mirror tables byte_800C0AA and
  * byte_800C182), families 0xB and 0xC swap and the side byte inverts.
  *
- * sub_800C192 cycles the panel tile animations: off_800C1DC is a
+ * stepPanelTileAnimations_800C192 cycles the panel tile animations: off_800C1DC is a
  * NULL-terminated list of records that keep their state in the counter
  * array byte_2036740 — one slot for the current frame, one for the
  * frames left before the next — with the frames (tile data *, delay)
@@ -80,7 +80,7 @@ static u32 block_row(u32 row) {
     return row * 3 + 6;
 }
 
-/* ---- drawing one panel (sub_800C01C, sub_800C0BA, sub_800C100) ---- */
+/* ---- drawing one panel (drawPanel_800C01C, drawPanelOverlay_800C0BA, drawPanelUnderStrip_800C100) ---- */
 
 /* Draw panel (column, row) with tile-set family `art` on `side`. A
  * family holds one 32-byte tile-id set per side and field row (top,
@@ -133,7 +133,7 @@ static void draw_panel_strip(u32 column, u32 row, u32 side) {
     GUEST_CALL(CopyBackgroundTiles);
 }
 
-/* ---- the panel tile animations (sub_800C192) ---- */
+/* ---- the panel tile animations (stepPanelTileAnimations_800C192) ---- */
 
 static void advance_panel_animations(void) {
     u32 counters = A_byte_2036740;
@@ -172,7 +172,7 @@ static void advance_panel_animations(void) {
     }
 }
 
-/* ---- every frame of a battle (sub_800C5E0) ---- */
+/* ---- every frame of a battle (updateBattlePanels_800C5E0) ---- */
 
 /* object_isValidPanel returns whether the field has a panel at that
  * column and row; the original branches on the Z it leaves, which
@@ -229,21 +229,21 @@ static void update_panels(void) {
  * Each restores r4-r7 as the original's pops do; r1-r3 are left as the
  * last CopyBackgroundTiles call left them, as the original leaves them. */
 
-Next sub_800C01C(void) {
+Next drawPanel_800C01C(void) {
     const u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     draw_panel(R0, R1, R2, R3);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
     RETURN_TO_CALLER();
 }
 
-Next sub_800C0BA(void) {
+Next drawPanelOverlay_800C0BA(void) {
     const u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     draw_panel_overlay(R0, R1, R2);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
     RETURN_TO_CALLER();
 }
 
-Next sub_800C100(void) {
+Next drawPanelUnderStrip_800C100(void) {
     const u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     draw_panel_strip(R0, R1, R2);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
@@ -253,14 +253,14 @@ Next sub_800C100(void) {
 /* r2 and r3 (its only outputs) come out of the animation pass exactly
  * as the original's loop leaves them: the last delay written, the last
  * frame count, or the copy call's leftovers. */
-Next sub_800C192(void) {
+Next stepPanelTileAnimations_800C192(void) {
     advance_panel_animations();
     RETURN_TO_CALLER();
 }
 
 /* leaves the flags as the walker's final `cmp r6, #0x28` does, with the
  * loop run through all 0x28 slots (so r6 has counted up to 0x28). */
-Next sub_800C5E0(void) {
+Next updateBattlePanels_800C5E0(void) {
     const u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     update_panels();
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
