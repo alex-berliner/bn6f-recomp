@@ -9,7 +9,7 @@ import pytest
 from wf.tools import install, subsystem
 from wf.tools.install import uninstall_file
 from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Register
-from wf.tools.subsystem import (CandidateFile, CfgLine, FunctionTest, parse_reply, register_form_notes,
+from wf.tools.subsystem import (CandidateFile, CfgLine, FunctionTest, TokenUse, parse_reply, register_form_notes,
                                 register_use_outside_adapters)
 from wf.types import FunctionName, GuestAddress, SnapshotDir, SymbolStatus, ToolMessage
 
@@ -141,3 +141,13 @@ def test_a_function_whose_original_cannot_run_in_the_harness_is_left_to_the_full
 
     assert test.passed and not test.compared
     assert "left to the full verify" in test.captured
+
+
+def test_token_counts_are_read_as_logged_and_may_be_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    log = tmp_path / "usage.jsonl"
+    log.write_text('{"model": "zai/glm-5.3", "tag": "run round 1", "in": 100, "out": 64000, "reasoning": 63994}\n'
+                   '{"model": "opencode/longcat", "tag": "run round 2", "in": null, "out": null, "reasoning": null}\n')
+    monkeypatch.setattr(subsystem, "USAGE_LOG", log)
+
+    assert subsystem.tokens_for("run round 1") == TokenUse(tokens_in=100, tokens_out=64000)   # reasoning is in "out"
+    assert subsystem.tokens_for("run round 2") is None

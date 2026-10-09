@@ -467,17 +467,19 @@ class TokenUse(Result):
 
 class _UsageRow(Result):
     tag: str = ""
-    tokens_in: int = Field(default=0, alias="in")
-    tokens_out: int = Field(default=0, alias="out")
-    reasoning: int | None = 0
+    tokens_in: int | None = Field(default=None, alias="in")      # None: the provider did not say
+    tokens_out: int | None = Field(default=None, alias="out")    # reasoning already part of it
 
 
 def tokens_for(tag: str) -> TokenUse | None:
-    """What tools/llm.py logged for the call with this tag (tools/convert/usage.jsonl)."""
+    """What tools/llm.py logged for the call with this tag (tools/convert/usage.jsonl); None when the
+    call was not logged or the provider reported no counts (LongCat's streamed replies)."""
     if not USAGE_LOG.exists():
         return None
     for line in reversed(USAGE_LOG.read_text().splitlines()):
         if f'"{tag}"' in line:
             row = _UsageRow.model_validate_json(line)
-            return TokenUse(tokens_in=row.tokens_in, tokens_out=row.tokens_out + (row.reasoning or 0))
+            if row.tokens_in is None or row.tokens_out is None:
+                return None
+            return TokenUse(tokens_in=row.tokens_in, tokens_out=row.tokens_out)
     return None
