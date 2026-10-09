@@ -1,0 +1,77 @@
+name: sub_80EB194
+address: '0x080EB194'
+kind: function
+status: confirmed
+summary: Per-frame tick of an AI attack action's countdown; when the timer expires it frees the object to move,
+  reloads the timer, resets the animation if told to, and switches the AI state to 0xC.
+interface: void aiAttack_TimerTickEnd_80EB194(void)  /* r7 = object's AI attack vars; returns flags in nz/c/v and
+  the decremented/reloaded timer value in r0 */
+details: "Part of the enemy AI attack state machine. r7 points at the object's AI attack\nvariable block (oAIAttackVars_*).\
+  \ Each frame it decrements the halfword timer at\n+0x10 (Unk_10); while nonzero it returns immediately, leaving\
+  \ the decremented\nvalue in r0 and the SUBS flags set. When the timer reaches zero:\n  - clears object flag 0x40\
+  \ (a \"busy/blocking\" bit) via object_clearFlag,\n  - sets the CURRENTLY_MOVING bit (1 << 19) via object_setFlag1,\n\
+  \  - reloads the +0x10 timer from the halfword at +0x18 (Unk_18), i.e. the\n    next cooldown/repeat delay for\
+  \ this attack,\n  - calls the AI-layer check sub_80F02A2 and, if it returns nonzero, calls\n    object_setAnimation(0)\
+  \ to reset the object's animation,\n  - stores 0xC into the AI attack state field at +0x00 (Unk_00), moving on\
+  \ to\n    the next step state.\nQuirk: on the reset path the reloaded timer value is left in r0 when calling\n\
+  sub_80F02A2 (and 0xC is left in r0 for the caller at return), matching the\noriginal binary; callers also see\
+  \ the nz/c/v flags described above. r4 is\npreserved; r0-r3, r12 and lr are clobbered by the helper calls.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-025931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_14.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    14' --file leaves_farm_14.c sub_80DA9FE sub_80E0F2E sub_80E3BEA sub_80EB194
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80EB194
+
+    .venv/bin/python -m wf verify --function sub_80EB194 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261009-025931-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80EB194
+
+    .venv/bin/python -m wf verify --function sub_80EB194 --snapshots SNAPSHOT_DIR'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261009-025931-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80EB194
+
+    .venv/bin/python -m wf verify --function sub_80EB194 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-025931-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^080eb194 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_14.c
+  where: recomp 56210fa
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_14.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- sub_80DA9FE
+- sub_80E0F2E
+- sub_80E3BEA
+open_questions:
+- exact meaning of the 0x40 object flag cleared here (assumed "busy/blocking")
+- what sub_80F02A2 checks in the AI layer and why its result gates the animation reset
+- what AI state 0xC represents in the enemy's action state machine
+sources:
+- tools/wf run convert-20261009-025931
