@@ -101,29 +101,29 @@ def install(tools: FakeTools, monkeypatch: pytest.MonkeyPatch) -> None:
             raise AssertionError(f"{name} ran, but this branch should skip it")
         tools.called.append(name)
 
-    def current_sources() -> SourceVersion:
+    def current_sources(tree: Path) -> SourceVersion:
         return SourceVersion(commit=CommitHash("0123456789abcdef"), has_uncommitted_changes=False)
 
-    def lift_and_build(log_dir: Path) -> BuiltRom | BuildFailure:
+    def lift_and_build(log_dir: Path, tree: Path) -> BuiltRom | BuildFailure:
         tools.called.append("build")
         return tools.build
 
     def run_difftest(difftest: Path, functions: tuple[FunctionName, ...], trials: int,
-                     log_dir: Path) -> tuple[DifftestResult, ...]:
+                     log_dir: Path, cport: Path) -> tuple[DifftestResult, ...]:
         reached("random", tools.random)
         assert tools.random is not None
         return tuple(DifftestResult(function=function, outcome=tools.random, trials=trials, failures=0,
                                     out_of_domain=0) for function in functions)
 
     def run_captured_difftest(difftest: Path, functions: tuple[FunctionName, ...], snapshots: SnapshotDir,
-                              log_dir: Path) -> tuple[CapturedDifftestResult, ...]:
+                              log_dir: Path, cport: Path) -> tuple[CapturedDifftestResult, ...]:
         reached("captured", tools.captured)
         assert tools.captured is not None
         return tuple(CapturedDifftestResult(function=function, outcome=tools.captured, snapshots=40, runs=40,
                                             failures=0, out_of_domain=0) for function in functions)
 
     def run_oracle(difftest: Path, functions: tuple[FunctionName, ...], snapshots: SnapshotDir, states: int,
-                   log_dir: Path) -> tuple[OracleResult, ...]:
+                   log_dir: Path, tree: Path) -> tuple[OracleResult, ...]:
         reached("oracle", tools.oracle_differs)
         differed = 1 if tools.oracle_differs else 0
         return tuple(OracleResult(function=function, address=GuestAddress(0x08000000), compared=24,

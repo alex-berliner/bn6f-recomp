@@ -1,6 +1,7 @@
 """The convert graph with a fake model, quick test, verify, git and record:
 failures and review comments go back to the model, models escalate, the
 orchestrator only answers the review, give-ups take the file out again."""
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -43,6 +44,7 @@ class World:
     blocked: set[ModelSpec] = field(default_factory=set[ModelSpec])
     assembled: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
     name_failures: bool = True  # a failed quick test names its last function
+    removed_trees: list[Path] = field(default_factory=list[Path])
 
 
 def test_a_good_first_attempt_stops_for_review_then_commits_and_records(
@@ -152,14 +154,14 @@ def test_review_comments_go_to_the_model_not_the_orchestrator(monkeypatch: pytes
     assert "make draw_edge take a struct" in world.prompts[1]
 
 
-def test_a_rejection_takes_the_file_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_a_rejection_takes_the_run_tree_away(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     world = World(quick_tests=[True], verdicts=[Verdict.PASSED])
     _ = start(world, monkeypatch, tmp_path, run_id="convert-6")
 
     finished = convert_graph().resume("convert-6", Review(decision=ReviewDecision.REJECT))
 
     assert isinstance(finished, Finished) and finished.state.outcome is ConvertOutcome.REJECTED
-    assert world.installed[-1] is False and not world.commits
+    assert world.removed_trees == [tmp_path / "tree"] and not world.commits  # the file was only in the run's tree
 
 
 def test_every_model_out_of_attempts_gives_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -223,7 +225,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         return CaptureReport(snapshots=start.snapshots, routes=(), captured=(),
                              never_called=())
 
-    def build_host_difftest(log_dir: Path, build_dir: str = "") -> Path | BuildFailure:
+    def build_host_difftest(log_dir: Path, build_dir: str = "", tree: Path | None = None) -> Path | BuildFailure:
         return tmp_path / "difftest"
 
     def game_file(file_name: str) -> Path:
@@ -270,12 +272,18 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         return FileTest(passed=passed, report=ToolMessage("ok" if passed else "sub_8030808: FAIL"), functions=tests,
                         register_use_outside_adapters=(), register_form_notes=())
 
-    def install_file(file_name: str, code: CandidateFile, cfg_lines: tuple[str, ...]) -> Path:
+    def install_file(file_name: str, code: CandidateFile, cfg_lines: tuple[str, ...], tree: Path = tmp_path) -> Path:
         world.installed.append(True)
         return tmp_path / file_name
 
-    def uninstall_file(file_name: str) -> None:
+    def uninstall_file(file_name: str, tree: Path = tmp_path) -> None:
         world.installed.append(False)
+
+    def committed_tree(name: str) -> Path:
+        return tmp_path / "tree"
+
+    def remove_tree(tree: Path) -> None:
+        world.removed_trees.append(tree)
 
     def run_verify_in_full(start: VerifyState, run_id: str, tracked: bool = True) -> VerifyState:
         world.verified.append(start.functions)
@@ -308,7 +316,8 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         "run_capture": run_capture, "build_host_difftest": build_host_difftest, "game_file": game_file,
         "conversion_context": conversion_context, "other_entries": other_entries, "subsystem_prompt": subsystem_prompt,
         "ask_model_for_file": ask_model_for_file, "candidate_from_file": candidate_from_file,
-        "candidate_from_farm": candidate_from_farm,
+        "candidate_from_farm": candidate_from_farm, "committed_tree": committed_tree, "remove_tree": remove_tree,
+        "held": lambda name, exclusive=True: nullcontext(),  # pyright: ignore[reportUnknownLambdaType]
         "test_candidate_file": test_candidate_file, "install_file": install_file, "uninstall_file": uninstall_file,
         "run_verify_in_full": run_verify_in_full, "commit_files": commit_files, "write_entries": write_entries,
         "run_record": run_record, "tokens_for": tokens_for, "provider_blocked_until": provider_blocked_until,

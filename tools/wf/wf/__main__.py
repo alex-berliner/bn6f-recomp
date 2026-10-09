@@ -6,7 +6,7 @@ run is, and regenerate the docs.
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] FUNCTION...
   python -m wf drafts  --model PROVIDER/MODEL [--jobs N] [FUNCTION...]   # entries for accepted candidates
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
-                       [--candidate FILE | --farm-model P/M] [--battle-code] FUNCTION...
+                       [--candidate FILE | --farm-model P/M] [--defer-record] [--battle-code] FUNCTION...
   python -m wf record  --symbol NAME... [--rename OLD NEW]... --message-file FILE
   python -m wf waiting RUN_ID              # what a paused run needs
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
@@ -82,6 +82,7 @@ class ConvertCommand(BaseModel):
     snapshots: SnapshotDir | None
     candidate: Path | None
     farm_model: ModelSpec | None
+    defer_record: bool
     battle_code: bool
 
 
@@ -183,7 +184,7 @@ def start_convert(command: ConvertCommand) -> None:
     start = ConvertState(run_dir=run_dir, subsystem=command.subsystem, file_name=command.file,
                          functions=command.functions, models=command.models or DEFAULT_MODELS, rounds=command.rounds,
                          snapshots=command.snapshots, candidate=command.candidate, farm_model=command.farm_model,
-                         battle_code=command.battle_code)
+                         defer_record=command.defer_record, battle_code=command.battle_code)
     print_outcome(convert_graph().start(start, run_id))
 
 
@@ -320,6 +321,8 @@ def parse_command() -> Command:
     convert.add_argument("--snapshots", type=Path, help="reuse captured calls instead of capturing")
     convert.add_argument("--candidate", type=Path, help="a ready file to try first")
     convert.add_argument("--farm-model", help="try the farm's accepted candidates by this model first (with their drafts)")
+    convert.add_argument("--defer-record", action="store_true",
+                         help="commit the entries, leave renames and bn6f comments to one batch record (parallel runs)")
     convert.add_argument("--battle-code", action="store_true", help="the subsystem is battle code (battle sweep)")
 
     record = commands.add_parser("record", help="symbols/db, renames and comments into bn6f, commit")

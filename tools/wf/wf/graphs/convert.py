@@ -488,6 +488,8 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
         return GiveUpOutput(outcome=ConvertOutcome.NO_CAPTURED_CALLS)
     if given.tree is not None:
         remove_tree(given.tree)   # the file was only ever installed there
+    else:
+        uninstall_file(given.file_name)
     if isinstance(given.difftest, BuildFailure):
         return GiveUpOutput(outcome=ConvertOutcome.DIFFTEST_DID_NOT_BUILD)
     review = given.attempts[-1].review if given.attempts else None

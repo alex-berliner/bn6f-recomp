@@ -53,11 +53,16 @@ def write_entries(drafts: tuple[SymbolDraft, ...], checks: tuple[FunctionChecks,
     return tuple(written)
 
 
+# a name that says nothing yet: sub_8030808, loc_803083E, or a bare module and address (chatbox_80411BC)
+PLACEHOLDER = re.compile(r"^(?:[a-z]+)_[0-9A-Fa-f]{6,8}$")
+
+
 def renames(drafts: tuple[SymbolDraft, ...], checks: tuple[FunctionChecks, ...]) -> tuple[Rename, ...]:
-    """Proposed names for meanings that are confirmed or probable (hypotheses get comments only)."""
+    """Proposed names for meanings that are confirmed or probable (hypotheses get comments only), and only
+    for placeholder names: a name someone chose (TestCutsceneFlag) stays; the entry says what was learnt."""
     by_function = {check.function: check for check in checks}
     return tuple(Rename(old=SymbolName(draft.function), new=draft.proposed_name) for draft in drafts
-                 if draft.proposed_name != draft.function
+                 if draft.proposed_name != draft.function and PLACEHOLDER.match(draft.function)
                  and status(draft, by_function[draft.function]) is not SymbolStatus.HYPOTHESIS)
 
 

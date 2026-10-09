@@ -106,7 +106,7 @@ class SymbolDraft(Result):
             return cast(object, data)
         suffix = re.search(r"_([0-9A-Fa-f]{7,8})$", function)
         name = re.sub(r"_?ADDRESS$", f"_{suffix[1]}" if suffix else "", proposed.strip()) or function
-        if suffix and not re.search(r"_[0-9A-Fa-f]{7,8}$", name):
+        if suffix and not name.lower().endswith(f"_{suffix[1].lower()}"):   # its own address, not a RAM one
             name = f"{name}_{suffix[1]}"
         return {**fields, "proposed_name": name}
     status: SymbolStatus
