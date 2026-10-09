@@ -16,7 +16,8 @@ Runs are tracked in the Burr UI under project `recomp-farm`.
 
 ### `build_difftest` (step)
 
-Build the host difftest once, from the current sources (a stale one once accepted bad candidates).
+Build the host difftest once, from the last commit in a worktree of its own (a stale one once
+accepted bad candidates; one built from the main tree saw a conversion's verify half done).
 
 - reads: `run_dir: Path`
 - produces: `difftest: Path | BuildFailure`

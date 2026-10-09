@@ -33,7 +33,7 @@ asked to write what nothing could check); labels callers enter in the middle of 
 subsystem (a replacement must define them); build the host difftest for quick tests.
 
 - reads: `run_dir: Path`, `file_name: str`, `functions: tuple[FunctionName, ...]`, `snapshots: SnapshotDir`, `farm_model: typing.Optional[ModelSpec]`
-- produces: `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `functions: tuple[FunctionName, ...]`, `dropped: tuple[DroppedFunction, ...]`
+- produces: `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `functions: tuple[FunctionName, ...]`, `tree: Path`, `dropped: tuple[DroppedFunction, ...]`
 - then: `ask_model_for_file_step` when `ready_to_convert`; `give_up` when `cannot_convert`
 
 ### `ask_model_for_file_step` (step)
@@ -49,7 +49,7 @@ review, show it what went wrong.
 
 Take the file out of the tree again and say why there is nothing to commit.
 
-- reads: `file_name: str`, `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`
+- reads: `file_name: str`, `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`, `tree: Path | None`
 - produces: `outcome: ConvertOutcome`
 - then: the run ends
 
@@ -65,7 +65,7 @@ Each function of the file against its lifted original on the captured calls and 
 
 Put the file in the tree and run every check (a child verify run); take it out again if it fails.
 
-- reads: `run_dir: Path`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `routes: tuple[Route, ...]`, `battle_code: bool`, `attempts: tuple[Attempt, ...]`
+- reads: `run_dir: Path`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `routes: tuple[Route, ...]`, `battle_code: bool`, `attempts: tuple[Attempt, ...]`, `tree: Path | None`
 - produces: `attempts: tuple[Attempt, ...]`, `checks: tuple[FunctionChecks, ...]`
 - then: `review_conversion` when `verified`; `drop_failing_functions` when `farm_functions_to_drop`; `ask_model_for_file_step` when `not_verified_with_attempts_left`; `give_up` when `not_verified_with_no_attempts_left`
 
@@ -89,7 +89,8 @@ The orchestrator reviews: approve, request changes (they go back to the model) o
 
 ### `commit_conversion` (step)
 
-Commit the file and its difftest.cfg lines locally (never pushed).
+Put the file and its difftest.cfg lines into the main tree and commit them there (locally, never
+pushed), holding the main tree's lock: parallel runs share difftest.cfg.
 
 - reads: `subsystem: str`, `file_name: str`, `functions: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`
 - produces: `commit: CommitHash`
@@ -105,8 +106,9 @@ symbols/db entries from the model's drafts plus this run's evidence; renames for
 
 ### `record_symbols` (step)
 
-Check the entries, rename in bn6f, write the comments, re-verify, commit (a child record run).
+Check the entries, rename in bn6f, write the comments, re-verify, commit (a child record run); or, when
+runs go in parallel, commit the entries and leave the renames to one batch record (PENDING_RENAMES).
 
-- reads: `run_dir: Path`, `subsystem: str`, `functions: tuple[FunctionName, ...]`, `renames: tuple[Rename, ...]`, `attempts: tuple[Attempt, ...]`
-- produces: `record: RecordReport`, `outcome: ConvertOutcome`
+- reads: `run_dir: Path`, `subsystem: str`, `functions: tuple[FunctionName, ...]`, `renames: tuple[Rename, ...]`, `entries: tuple[Path, ...]`, `attempts: tuple[Attempt, ...]`, `defer_record: bool`, `tree: Path | None`
+- produces: `record: RecordReport | None`, `outcome: ConvertOutcome`
 - then: the run ends

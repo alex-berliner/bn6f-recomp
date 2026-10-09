@@ -17,10 +17,11 @@ Runs are tracked in the Burr UI under project `recomp-record`.
 
 ### `check_entries` (step)
 
-Check the database, that each symbol has an entry, and that renames have a confirmed or probable meaning.
+Check the database, that each symbol has an entry, and that renames have a confirmed or probable meaning;
+note what is uncommitted already (other work in the tree is never swept into this run's commit).
 
 - reads: `symbols: tuple[SymbolName, ...]`, `renames: tuple[Rename, ...]`, `run_dir: Path`
-- produces: `problems: tuple[ToolMessage, ...]`
+- produces: `problems: tuple[ToolMessage, ...]`, `changed_before: tuple[Path, ...]`
 - then: `rename_in_bn6f` when `clean_with_renames`; `write_comments_into_bn6f` when `clean_without_renames`; `write_report` when `problems_found`
 
 ### `rename_in_bn6f` (step)
@@ -73,8 +74,9 @@ Renames change the port's layout, not its behaviour: replay every route to make 
 
 ### `commit_records` (step)
 
-Commit the database, the bn6f submodule pointer and the renamed port code locally.
+Commit the database, the bn6f submodule pointer and the renamed port code locally (and the emptied
+list of deferred renames, when that is where this run's renames came from).
 
-- reads: `commit_message: str`
+- reads: `commit_message: str`, `changed_before: tuple[Path, ...]`, `pending_renames: Path | None`
 - produces: `commit: CommitHash`
 - then: `write_report`

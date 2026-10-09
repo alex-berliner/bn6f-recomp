@@ -15,7 +15,7 @@ Runs are tracked in the Burr UI under project `recomp-verify`.
 
 Record which commit is being verified, and whether it has uncommitted changes.
 
-- reads: nothing
+- reads: `tree: Path`
 - produces: `sources: SourceVersion`
 - then: `lift_and_build_everything`
 
@@ -23,7 +23,7 @@ Record which commit is being verified, and whether it has uncommitted changes.
 
 Lift bn6f with the readable functions in place; build the port ROM and the host difftest.
 
-- reads: `run_dir: Path`
+- reads: `run_dir: Path`, `tree: Path`
 - produces: `build: BuiltRom | BuildFailure`
 - then: `difftest_random_inputs` when `build_succeeded`; `write_report` when `build_failed`
 
@@ -31,7 +31,7 @@ Lift bn6f with the readable functions in place; build the port ROM and the host 
 
 Compare each changed function with its lifted original on random inputs.
 
-- reads: `build: BuiltRom`, `functions: tuple[FunctionName, ...]`, `trials: int`, `run_dir: Path`
+- reads: `build: BuiltRom`, `functions: tuple[FunctionName, ...]`, `trials: int`, `run_dir: Path`, `tree: Path`
 - produces: `difftests: tuple[DifftestResult, ...]`
 - then: `difftest_captured_calls`
 
@@ -47,7 +47,7 @@ Sum up what passed, what failed, what needs triage and what was never compared.
 
 Compare each changed function with its lifted original on the original game's own calls.
 
-- reads: `build: BuiltRom`, `functions: tuple[FunctionName, ...]`, `snapshots: typing.Optional[SnapshotDir]`, `run_dir: Path`
+- reads: `build: BuiltRom`, `functions: tuple[FunctionName, ...]`, `snapshots: typing.Optional[SnapshotDir]`, `run_dir: Path`, `tree: Path`
 - produces: `captured_difftests: tuple[CapturedDifftestResult, ...] | NotRun`
 - then: `run_cpu_oracle` when `no_difftest_failed`; `write_report` when `some_difftest_failed`
 
@@ -55,7 +55,7 @@ Compare each changed function with its lifted original on the original game's ow
 
 Run each changed function on the original game and on the port from the same real states.
 
-- reads: `build: BuiltRom`, `functions: tuple[FunctionName, ...]`, `snapshots: typing.Optional[SnapshotDir]`, `oracle_states: int`, `run_dir: Path`
+- reads: `build: BuiltRom`, `functions: tuple[FunctionName, ...]`, `snapshots: typing.Optional[SnapshotDir]`, `oracle_states: int`, `run_dir: Path`, `tree: Path`
 - produces: `oracle: tuple[OracleResult, ...] | NotRun`
 - then: `lockstep_routes` when `oracle_saw_no_difference`; `write_report` when `oracle_saw_differences`
 
