@@ -16,6 +16,7 @@ from wf.types import BuildFailure, BuiltRom, LogPath, RomPath, ToolMessage
 ROM_BUILD_DIR = "build-wf"
 HOST_BUILD_DIR = "../build-wf-host"  # relative to cport/host
 WORKTREES = REPO / "build-wf-worktrees"
+SUBMODULES = ("bn6f", "gbarecomp")  # the ROM build links ../bn6f/bn6f.gba; tools read the BIOS from gbarecomp
 
 
 def lift_and_build(log_dir: Path, tree: Path = REPO) -> BuiltRom | BuildFailure:
@@ -79,6 +80,9 @@ def _lift_command(tree: Path) -> list[str]:
 def remove_tree(tree: Path) -> None:
     """Take a run's worktree away again (its builds with it)."""
     if tree != REPO and tree.is_relative_to(WORKTREES):
+        for submodule in SUBMODULES:   # the links to the main checkout go first, so nothing follows them
+            if (tree / submodule).is_symlink():
+                (tree / submodule).unlink()
         _ = subprocess.run(["git", "-C", str(REPO), "worktree", "remove", "--force", str(tree)],
                            capture_output=True, check=False)
 
@@ -96,4 +100,10 @@ def committed_tree(name: str) -> Path:
         WORKTREES.mkdir(exist_ok=True)
         _ = subprocess.run(["git", "-C", str(REPO), "worktree", "add", "--quiet", "--detach", str(tree), head],
                            check=True)
+    for submodule in SUBMODULES:   # not checked out in a worktree: the build reads the main checkout's
+        path = tree / submodule
+        if not path.is_symlink():
+            if path.is_dir():
+                path.rmdir()
+            path.symlink_to(REPO / submodule)
     return tree
