@@ -1,0 +1,69 @@
+name: sub_8047664
+address: '0x08047664'
+kind: function
+status: confirmed
+summary: 'draws a coded chip row: the name from the banked chip-name tables, then its code letter'
+interface: 'static void draw_coded_chip_row(u32 slot, u32 chip, u32 code, u32 has_code, u32 menu); adapter: in r0
+  = slot, r1 = chip id (bank << 8 | index), r2 = code letter, r3 = has-code flag, r5 = screen state, r7 kept; out
+  r0/r5/r7 restored, r6 keeps the render''s leftover'
+details: 'The name comes from TextScriptChipNames0 or TextScriptChipNames1 (bank = chip >> 8, selected through the
+  table at off_80476E4) at index chip & 0xFF, eight tiles into the row''s slice of eDecompBuffer2013A00 / 0x6008400.
+  The code column gets one tile of TextScript86EF71C: the code letter, unless the chip has no code (r3 zero), or
+  the view word (menu+0x1C double deref) is 2 (library) and neither event flag chip+0x1E20 nor chip+0x2420 is set
+  — both cases give the no-code letter 0x1B.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261009-074159); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/routine_8047594.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'routine sub_8047594 (asm03_2) and the helpers
+    only it calls' --file routine_8047594.c sub_8047594 sub_804760E sub_8047664 sub_8047760 sub_8047790 sub_8047CFA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047664
+
+    .venv/bin/python -m wf verify --function sub_8047664 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 24 runs, 0 failures, 24 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-074159-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047664
+
+    .venv/bin/python -m wf verify --function sub_8047664 --snapshots SNAPSHOT_DIR'
+  result: 5 compared, 0 differed, 9 out of domain (verify run convert-20261009-074159-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047664
+
+    .venv/bin/python -m wf verify --function sub_8047664 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-074159-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^08047664 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/routine_8047594.c
+  where: recomp dc9af9b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/routine_8047594.c
+coverage:
+- story2
+related:
+- sub_8047594
+- sub_804760E
+- sub_8047760
+- sub_8047790
+- sub_8047CFA
+open_questions:
+- which of the two event flag bases means seen in the library and which means owned
+- whether the has-code byte r3 carries more than zero/nonzero
+sources:
+- tools/wf run convert-20261009-074159

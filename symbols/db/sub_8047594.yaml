@@ -1,0 +1,74 @@
+name: sub_8047594
+address: '0x08047594'
+kind: function
+status: confirmed
+summary: draws five rows of a chip list (name, code letter, value strip) from an array of 8-byte entries
+interface: 'static u32 draw_chip_list_rows(u32 first, u32 entries, u32 menu, u32 toolkit) returns the entry pointer
+  one past the last row; adapter: in r0 = index of the first entry to show, r1 = entry array, r5 = screen state,
+  r10 = toolkit, r6 saved; out r0 = 5, r5 = screen state, r6 restored, r7 = one past the last entry, r2/r4 keep
+  the last render''s leftovers'
+details: 'Loops screen slots 0..4 over entries[first + i]. The entry''s kind byte (+0) picks the path: 1 plain (name
+  from the fixed script text_873D9FC, blank tile in the code column), 2 coded (name from the banked name tables
+  TextScriptChipNames0/1, then the code letter), 3 secret (name row by sub_8047708, which is outside this file and
+  stays lifted), any other kind 16 blank tiles and no strip. Kinds 2 and 3 are first dimmed by dim_unowned_chip_strip
+  when the player owns none of the chip; kinds 1-3 then get their strip through draw_chip_row_strip, which also
+  publishes the entry''s value halfword (+6) via sub_8047CDC. The screen state (r5) supplies the view word at +0x1C
+  (double deref: 1 = dim strips, 2 = library view) and the symbol script at +0x24. As the original, the adapter
+  leaves r0 = 5 (its row counter run out) and r7 one entry past the last row drawn.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261009-074159); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/routine_8047594.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'routine sub_8047594 (asm03_2) and the helpers
+    only it calls' --file routine_8047594.c sub_8047594 sub_804760E sub_8047664 sub_8047760 sub_8047790 sub_8047CFA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047594
+
+    .venv/bin/python -m wf verify --function sub_8047594 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-074159-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047594
+
+    .venv/bin/python -m wf verify --function sub_8047594 --snapshots SNAPSHOT_DIR'
+  result: 3 compared, 0 differed, 8 out of domain (verify run convert-20261009-074159-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047594
+
+    .venv/bin/python -m wf verify --function sub_8047594 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-074159-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^08047594 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/routine_8047594.c
+  where: recomp dc9af9b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/routine_8047594.c
+coverage:
+- battles1
+- story2
+related:
+- sub_804760E
+- sub_8047664
+- sub_8047760
+- sub_8047790
+- sub_8047CFA
+open_questions:
+- which screen this list belongs to (folder view, chip trader result, library) and who fills the entry array
+- whether kind 0 occurs in practice or only garbage kinds reach the blank-row path
+sources:
+- tools/wf run convert-20261009-074159

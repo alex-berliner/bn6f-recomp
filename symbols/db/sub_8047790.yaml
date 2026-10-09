@@ -1,0 +1,72 @@
+name: sub_8047790
+address: '0x08047790'
+kind: function
+status: hypothesis
+summary: draws the row's 7-tile strip and publishes the entry's value halfword
+interface: 'static void draw_chip_row_strip(u32 slot, u32 value, u32 has_code, u32 chip, u32 palette, u32 menu,
+  u32 toolkit); adapter: in r0 = slot, r1 = the entry''s value halfword, r2 = has-code, r3 = chip id, r4 = palette,
+  r5 = screen state, r7 kept, r10 = toolkit; out r0/r5/r7 restored, r2/r4 keep the render''s leftovers'
+details: 'Calls sub_8047CDC with (slot, value) and r7 = palette << 3 riding along; the result in r1 (the value times
+  100, unchanged when the view word is 1) is stored at +8 of the toolkit''s 200A220 struct (oToolkit_Unk200a220_Ptr).
+  The strip''s character in the symbol script at menu+0x24 is chosen as the original''s branch tree does: view 1
+  gives the dim variant 0x0D, otherwise 0x0F; in view 2 a chip with a nonzero palette whose chip+0x2420 event flag
+  is clear gets the blank 0x10 instead (skipping the no-code check); otherwise a chip without a code gets the no-code
+  strip 0x11. Seven tiles through the 0x2013C40 buffer into the BG map at 0x6008640.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261009-074159); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/routine_8047594.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'routine sub_8047594 (asm03_2) and the helpers
+    only it calls' --file routine_8047594.c sub_8047594 sub_804760E sub_8047664 sub_8047760 sub_8047790 sub_8047CFA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047790
+
+    .venv/bin/python -m wf verify --function sub_8047790 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-074159-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047790
+
+    .venv/bin/python -m wf verify --function sub_8047790 --snapshots SNAPSHOT_DIR'
+  result: 14 compared, 0 differed, 1 out of domain (verify run convert-20261009-074159-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047790
+
+    .venv/bin/python -m wf verify --function sub_8047790 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-074159-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^08047790 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/routine_8047594.c
+  where: recomp dc9af9b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/routine_8047594.c
+coverage:
+- battles1
+- story2
+related:
+- sub_8047594
+- sub_804760E
+- sub_8047664
+- sub_8047760
+- sub_8047CFA
+open_questions:
+- what the value halfword counts and what sub_8047CDC computes from it
+- what the toolkit's 200A220 struct +8 field is read for elsewhere
+- what the strip depicts (a gauge of the value, MB, damage)
+sources:
+- tools/wf run convert-20261009-074159

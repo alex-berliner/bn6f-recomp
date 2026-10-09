@@ -1,0 +1,71 @@
+name: sub_8047CFA
+address: '0x08047CFA'
+kind: function
+status: confirmed
+summary: greys out a row's strip tilemap when the player owns none of the chip
+interface: 'static void dim_unowned_chip_strip(u32 slot, u32 entry, u32 chip, u32 code, u32 palette, u32 branch_byte,
+  bool secret); adapter: in r0 = slot, r1 = chip id, r2 = code, r3 rides along to the counter call, r4 = palette,
+  r6 = count the secret collection, r7 = entry; out r0-r7 all as they came (the original pushes and pops them)'
+details: 'Secret rows (r6 nonzero) count the collection through sub_803D138(chip + 0x90, code); the others count
+  the pack through GetChipCountOfCode(chip, code). A nonzero count returns without touching anything. Otherwise
+  the row''s strip tilemap at byte_202F800 + slot * 0x48 is repainted: ten u16 entries at +0 and ten at +0x24 keep
+  their low 12 bits, get 0x3000 ORed in on even rows and 0x4000 on odd rows, with palette << 13 added on top (the
+  addition can spill into the low 12 tile bits, exactly as the original adds it). The branch_byte parameter is only
+  the r3 the original''s kind branch leaves there when the counter is called; the counters ignore it.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261009-074159); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/routine_8047594.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'routine sub_8047594 (asm03_2) and the helpers
+    only it calls' --file routine_8047594.c sub_8047594 sub_804760E sub_8047664 sub_8047760 sub_8047790 sub_8047CFA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047CFA
+
+    .venv/bin/python -m wf verify --function sub_8047CFA --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-074159-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047CFA
+
+    .venv/bin/python -m wf verify --function sub_8047CFA --snapshots SNAPSHOT_DIR'
+  result: 18 compared, 0 differed, 6 out of domain (verify run convert-20261009-074159-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8047CFA
+
+    .venv/bin/python -m wf verify --function sub_8047CFA --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-074159-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^08047cfa ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/routine_8047594.c
+  where: recomp dc9af9b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/routine_8047594.c
+coverage:
+- story2
+related:
+- sub_8047594
+- sub_804760E
+- sub_8047664
+- sub_8047760
+- sub_8047790
+open_questions:
+- what the two runs of ten u16 entries each hold (two strips, a strip and a shadow)
+- why the OR mark alternates 0x3000 and 0x4000 by row (palette banks)
+- whether the count checks really mean owns none, and what chip + 0x90 indexes
+sources:
+- tools/wf run convert-20261009-074159
