@@ -1,0 +1,174 @@
+name: battle_setupAllianceEntryKind3_802DFC8
+address: '0x0802DFC8'
+kind: function
+status: confirmed
+summary: Allocates and zero-fills the per-alliance entry in the shared 0x1D0-byte entry pool for a battle object's
+  alliance, and if battle flag 0x40 is set, initializes it as an active kind-3 entry anchored at the object's panel
+  X and notifies sub_802E07C.
+interface: void battle_setupAllianceEntryKind3(BattleObject* obj /* r5 */); // no meaningful return value; r4 ends
+  up holding the new entry pointer per the readable C, though the contract lists r4 as preserved
+details: 'Reads the object''s alliance (oBattleObject_Alliance) and fetches that alliance''s entry from the pool
+  at 0x2036120 via getEntryPtr_2036120_1D0_802E070 (entry stride 0x1D0 bytes). The whole entry is cleared with ZeroFillByWord
+  using the odd encoding mov r1,#0xE8; add r1,r1 (0xE8*2 = 0x1D0 bytes). It then tests battle flag 0x40 (battle_testFlag0x40_800A8F8);
+  if the flag is clear the fresh entry stays all-zero and the function returns early. If set, it writes: entry+0x00
+  = 1 (active), entry+0x0B = 0xFF, entry+0x10 = 1, entry+0x11 = obj->oBattleObject_PanelX (anchor panel x), entry+0x0E
+  = 3 (entry kind/type). Finally it re-reads the alliance and calls sub_802E07C(alliance) to register/notify something
+  about the new entry. Callers appear to pass junk in r2/r3 (listed as inputs but unread by this code) and the contract
+  lists r2 and r3 as outputs.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (10 attempt(s), run convert-20261009-035817);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_24.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    24' --file leaves_farm_24.c RemoveBattleObjectPanelReserves getBattleArmPositionMaybe_8018810 object_createCollisionData
+    object_presentCollisionData object_updateCollisionData sub_800ED90 sub_800F1DC sub_800FAAC sub_800FFAA sub_8010162
+    sub_8010230 sub_8010332 sub_8010D20 sub_8010D58 sub_8012ABC sub_8012C4A sub_8012C7C sub_80133EC sub_8014040
+    sub_8014178 sub_8015B22 sub_8016460 sub_80165C2 sub_801A554 sub_801A6E8 sub_801A720 sub_801CDEC sub_801CE92
+    sub_801DBD4 sub_801E0DC sub_801E1A4 custMenuPressOK_8028D3A sub_8026CCC sub_802806C sub_80280A2 sub_80280E0
+    sub_802812C sub_8028172 sub_802869E sub_8028894 sub_80288D0 sub_8028F48 sub_8028F84 sub_802A394 sub_802A3CC
+    sub_802A4FC sub_802A5A0 sub_802A5DA sub_802BF0C sub_802C4B6 sub_802C54C sub_802C5B0 sub_802C97E sub_802C9B8
+    sub_802C9EA sub_802CA1E sub_802DFC8 sub_802F668 sub_802F7E8 sub_8030158 sub_80310B0 sub_80310EC sub_803172E
+    sub_8113162 sub_8116BC0 sub_8116C40 sub_8116DB4 sub_81179AE sub_8117B94 sub_8117E20 sub_811A268 sub_811CBD0
+    sub_811EC10 sub_811F014 sub_811F050 sub_811F08C sub_811F214
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802DFC8
+
+    .venv/bin/python -m wf verify --function sub_802DFC8 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-035817-verify-10)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802DFC8
+
+    .venv/bin/python -m wf verify --function sub_802DFC8 --snapshots SNAPSHOT_DIR'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261009-035817-verify-10)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802DFC8
+
+    .venv/bin/python -m wf verify --function sub_802DFC8 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-035817-verify-10)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0802dfc8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_24.c
+  where: recomp fa68414
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_802DFC8 -> battle_setupAllianceEntryKind3_802DFC8
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_24.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- RemoveBattleObjectPanelReserves
+- getBattleArmPositionMaybe_8018810
+- object_createCollisionData
+- object_presentCollisionData
+- object_updateCollisionData
+- sub_800ED90
+- sub_800F1DC
+- sub_800FAAC
+- sub_800FFAA
+- sub_8010162
+- sub_8010230
+- sub_8010332
+- sub_8010D20
+- sub_8010D58
+- sub_8012ABC
+- sub_8012C4A
+- sub_8012C7C
+- sub_80133EC
+- sub_8014040
+- sub_8014178
+- sub_8015B22
+- sub_8016460
+- sub_80165C2
+- sub_801A554
+- sub_801A6E8
+- sub_801A720
+- sub_801CDEC
+- sub_801CE92
+- sub_801DBD4
+- sub_801E0DC
+- sub_801E1A4
+- custMenuPressOK_8028D3A
+- sub_8026CCC
+- sub_802806C
+- sub_80280A2
+- sub_80280E0
+- sub_802812C
+- sub_8028172
+- sub_802869E
+- sub_8028894
+- sub_80288D0
+- sub_8028F48
+- sub_8028F84
+- sub_802A394
+- sub_802A3CC
+- sub_802A4FC
+- sub_802A5A0
+- sub_802A5DA
+- sub_802BF0C
+- sub_802C4B6
+- sub_802C54C
+- sub_802C5B0
+- sub_802C97E
+- sub_802C9B8
+- sub_802C9EA
+- sub_802CA1E
+- sub_802F668
+- sub_802F7E8
+- sub_8030158
+- sub_80310B0
+- sub_80310EC
+- sub_803172E
+- sub_8113162
+- sub_8116BC0
+- sub_8116C40
+- sub_8116DB4
+- sub_81179AE
+- sub_8117B94
+- sub_8117E20
+- sub_811A268
+- sub_811CBD0
+- sub_811EC10
+- sub_811F014
+- sub_811F050
+- sub_811F08C
+- sub_811F214
+open_questions:
+- What game mechanic battle flag 0x40 gates (only set in specific battle situations), and therefore which in-game
+  effect a kind-3 entry produces
+- Why the register contract lists r3 and r4 both as outputs and as preserved; the readable C claims the entry pointer
+  is left in r4, which contradicts r4 being preserved
+- What sub_802E07C does with the alliance argument
+- Meaning of entry+0x0B = 0xFF and entry+0x10 = 1 in the entry structure at 0x2036120
+sources:
+- tools/wf run convert-20261009-035817
+previous_names:
+- sub_802DFC8

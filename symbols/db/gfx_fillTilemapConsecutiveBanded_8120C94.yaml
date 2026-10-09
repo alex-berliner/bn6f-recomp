@@ -1,0 +1,148 @@
+name: gfx_fillTilemapConsecutiveBanded_8120C94
+address: '0x08120C94'
+kind: function
+status: confirmed
+summary: Fills a tilemap-sized buffer with consecutive halfword tile indices, written two rows (a "band") at a time
+  so values run down each column pair, after zero-filling the area.
+interface: void sub_8120C94(u16 *dst /*r0*/, u32 widthHalfwords /*r1*/, u32 bands /*r2*/, u16 firstIndex /*r3*/);
+  preserves r4-r7, clobbers r0-r3, lr and flags (returns CMP band-vs-bands flags)
+details: 'Fills dst (r0) with the halfword values r3, r3+1, r3+2, ... in a
+
+  banded column-major order. r1 is the row width in halfwords, r2 is the
+
+  number of 2-row bands to fill (total area = 2*width*bands halfwords).
+
+  First the whole area is cleared via ZeroFillByHalfword (size passed as
+
+  width*2*bands halfwords), then the fill loop overwrites it all:
+
+  for each band, it alternates writing one value at (band row, col) and
+
+  the next value one row directly below it, advancing col by one halfword
+
+  each step, so consecutive indices go DOWN a column first, then right —
+
+  i.e. vertical neighbors get consecutive tile numbers within each 2-row
+
+  band. After filling a band the pointer skips ahead two rows. r4-r7 are
+
+  used as scratch (rowBytes, col, dst cursor) but preserved for the
+
+  caller. Quirk: the band loop is a do-while, so with bands == 0 the body
+
+  still runs once and fills a full band anyway.
+
+  The vertical-consecutive ordering matches how an image''s tiles are laid
+
+  out in VRAM for a background/tilemap being built for a graphic block.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-042015);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_25.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    25' --file leaves_farm_25.c sub_8120AE8 sub_8120C94 sub_80C4B48 sub_80C532E sub_80C6548 sub_80EB04C sub_80EBD68
+    sub_80EBF30 sub_80EBFF4 sub_80F06CE sub_810A080 t1_0x5e_pinkRingOnCounter_80C4B18 SpawnOWPlayerObject StartBattle
+    anticheat_modCardsInit_8007036 encryption_bugfrags_8006fd0 encryption_zenny_8006f78 modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+    object_freeMemory sub_8005524 sub_8007C14 sub_8009478 sub_800A046 sub_800A152 sub_800A506 sub_800AE0C sub_800AF84
+    sub_800B110 sub_800B3A2 sub_800B79A ShuffleByteList_PrimaryRNG zeroFillVRAM sub_8125280 sub_81263D0 sub_812818C
+    sub_812AF3C CutsceneCamera_GetAutoScrollDeltaForCoord CutsceneCmd_run_or_stop_cutscene_camera_script
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8120C94
+
+    .venv/bin/python -m wf verify --function sub_8120C94 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 287 out of
+    domain (verify run convert-20261009-042015-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8120C94
+
+    .venv/bin/python -m wf verify --function sub_8120C94 --snapshots SNAPSHOT_DIR'
+  result: 3 compared, 0 differed, 4 out of domain (verify run convert-20261009-042015-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8120C94
+
+    .venv/bin/python -m wf verify --function sub_8120C94 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042015-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08120c94 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_25.c
+  where: recomp 950fadc
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_8120C94 -> gfx_fillTilemapConsecutiveBanded_8120C94
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_25.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_8120AE8
+- sub_80C4B48
+- sub_80C532E
+- sub_80C6548
+- sub_80EB04C
+- sub_80EBD68
+- sub_80EBF30
+- sub_80EBFF4
+- sub_80F06CE
+- sub_810A080
+- t1_0x5e_pinkRingOnCounter_80C4B18
+- SpawnOWPlayerObject
+- StartBattle
+- anticheat_modCardsInit_8007036
+- encryption_bugfrags_8006fd0
+- encryption_zenny_8006f78
+- modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+- object_freeMemory
+- sub_8005524
+- sub_8007C14
+- sub_8009478
+- sub_800A046
+- sub_800A152
+- sub_800A506
+- sub_800AE0C
+- sub_800AF84
+- sub_800B110
+- sub_800B3A2
+- sub_800B79A
+- ShuffleByteList_PrimaryRNG
+- zeroFillVRAM
+- sub_8125280
+- sub_81263D0
+- sub_812818C
+- sub_812AF3C
+- CutsceneCamera_GetAutoScrollDeltaForCoord
+- CutsceneCmd_run_or_stop_cutscene_camera_script
+open_questions:
+- which subsystem/callers use this (title screen, menu, battle background?), so a more specific prefix could replace
+  gfx_
+- whether the odd banded write order is intentional (matches a VRAM tile arrangement) or just how the original compiler
+  scheduled the loop
+sources:
+- tools/wf run convert-20261009-042015
+previous_names:
+- sub_8120C94

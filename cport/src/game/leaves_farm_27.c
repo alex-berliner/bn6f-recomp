@@ -7,15 +7,15 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_8035756 ── */
-/* sub_8035756:
+/* ── claimNextPendingRequest_8035756 ── */
+/* claimNextPendingRequest_8035756:
  * Scan the 32-slot table at dword_2000DC0 (8 bytes per slot: +0 = slot's
  * current value, +4 = pending request) and claim the first slot that has a
  * request queued while the slot itself is free: the request is returned and
  * both fields are cleared. Slots with no pending request have their current
  * value cleared; busy slots are left untouched. Returns the claimed request,
  * or 0 if every slot was busy or empty. Flags reflect the returned value. */
-Next sub_8035756(void) {
+Next claimNextPendingRequest_8035756(void) {
     u32 slot = A_dword_2000DC0;
 
     for (u32 i = 0; i < 0x20; i++, slot += 8) {
@@ -115,19 +115,19 @@ Next triggerSomeUpdateForInternetOrRealWorld_8033948(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8040C9C ── */
+/* ── chatbox_advanceNextState_8040C9C ── */
 /* Chatbox state offsets within the chatbox work area (r5). */
 #define CHATBOX_NEXT_STATE  0x1F0  /* mode/state byte this function updates */
 #define CHATBOX_1F1         0x1F1  /* read by the original, result unused */
 #define CHATBOX_1F2         0x1F2  /* cleared when restarting from a mid state */
 
-/* chatbox_8040C9C(r5 = chatbox work area):
+/* chatbox_advanceNextState_8040C9C(r5 = chatbox work area):
  * Advance the chatbox state byte at +0x1F0. State 0 stays 0, state 3 stays 3,
  * any other state clears +0x1F2 (touching +0x1F1 as the original does) and
  * moves to state 1.
  * r0/r1 are preserved; c/v are left as the original's last CMP leaves them
  * (CMP #0 when the state was 0, CMP #3 otherwise). */
-Next chatbox_8040C9C(void) {
+Next chatbox_advanceNextState_8040C9C(void) {
     u32 savedR0 = R0;
     u32 savedR1 = R1;
 

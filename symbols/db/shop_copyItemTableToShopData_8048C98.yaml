@@ -1,0 +1,91 @@
+name: shop_copyItemTableToShopData_8048C98
+address: '0x08048C98'
+kind: function
+status: confirmed
+summary: Copies the 464-entry shop item table (byte_8047DA0) into the current shop's data buffer, skipping empty
+  slots while keeping slot alignment.
+interface: void copy_8048C98(r10=toolkit, lr=return); writes r2, r3; clobbers r0, r1, nzcv flags
+details: 'Reads the shop data pointer from toolkit->shopDataPtr (r10 + oToolkit_ShopDataPtr) as the destination
+  and always uses the fixed source table byte_8047DA0. Copies exactly 0xE80 bytes, i.e. 464 entries of 8 bytes each,
+  one entry per iteration: +0 item id (byte), +2 price (halfword), +4 extra byte, +6 count/flags halfword. Entries
+  whose byte at offset +1 is zero are treated as empty slots and not copied, but the destination pointer still advances
+  by 8 so empty and occupied slots stay aligned in the destination buffer. The loop counter r2 counts down by 8
+  and exits after the copy that makes it negative, so it returns 0xFFFFFFF8 and r3 holds the last loaded value (on
+  a skipped entry, the empty-slot check byte itself) — the caller apparently relies only on the memory side effect.
+  Called before opening shops so the shop''s stock/price list matches the canonical item table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043156);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_28.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    28' --file leaves_farm_28.c copy_8048C98 sub_80465BC sub_804754C sub_8047800 sub_804A1FC uncomp_80471F8 NPCCommand_set_sprite
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function copy_8048C98
+
+    .venv/bin/python -m wf verify --function copy_8048C98 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out of
+    domain (verify run convert-20261009-043156-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function copy_8048C98
+
+    .venv/bin/python -m wf verify --function copy_8048C98 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-043156-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function copy_8048C98
+
+    .venv/bin/python -m wf verify --function copy_8048C98 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043156-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08048c98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_28.c
+  where: recomp 34b00e9
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename copy_8048C98 -> shop_copyItemTableToShopData_8048C98
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_28.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_80465BC
+- sub_804754C
+- sub_8047800
+- sub_804A1FC
+- uncomp_80471F8
+- NPCCommand_set_sprite
+open_questions:
+- Exact meaning of the +1 byte (only used as an "entry in use" flag) and the +4/+6 fields (extra byte, count/flags)
+  is inferred from the copy shape.
+- Whether byte_8047DA0 is ever modified elsewhere (e.g. stock decrements) or is purely a static table.
+sources:
+- tools/wf run convert-20261009-043156
+previous_names:
+- copy_8048C98

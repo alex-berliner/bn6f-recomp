@@ -923,7 +923,7 @@ Next battle_reloadObjectSprite_8116A04(void) {
  * All registers except r0/r1 (clobbered by the call) are passed through. */
 Next sprite_dispatchVariantUpdate_8116B9C(void) {
     switch (LD8(R5 + 9)) {
-    case 0: GUEST_CALL(sub_8116BC0); break; /* off_8116BB4[0] */
+    case 0: GUEST_CALL(sprite_fallingObjectStepDown_8116BC0); break; /* off_8116BB4[0] */
     case 4: GUEST_CALL(sub_8116BFC); break; /* off_8116BB4[1] */
     case 8: GUEST_CALL(sprite_scrollStepAndCullOffscreen_8116C14); break; /* off_8116BB4[2] */
     }
@@ -963,7 +963,7 @@ Next sprite_scrollStepAndCullOffscreen_8116C14(void) {
 /* battle_objectRunBehaviorStep_8116D6C: run one step of the battle object at R5, then refresh its sprite.
  *
  * [R5+9] holds a byte offset into a small table of behavior handlers
- * (off_8116D84: 0 -> battle_moveSpriteLeftUntilX170_8116D90, 4 -> sub_8116DB4, 8 -> battle_stepForwardAnimWait_8116DEC).
+ * (off_8116D84: 0 -> battle_moveSpriteLeftUntilX170_8116D90, 4 -> petMenu_updateSpriteVisibility_8116DB4, 8 -> battle_stepForwardAnimWait_8116DEC).
  * The original performs an indirect `mov lr, pc; bx r0` call, so each
  * handler returns straight back here; afterwards the object's sprite
  * animation is advanced by sprite_update before returning to the caller.
@@ -971,7 +971,7 @@ Next sprite_scrollStepAndCullOffscreen_8116C14(void) {
 Next battle_objectRunBehaviorStep_8116D6C(void) {
     switch (LD8(R5 + 9)) {
     case 0: GUEST_CALL(battle_moveSpriteLeftUntilX170_8116D90); break;
-    case 4: GUEST_CALL(sub_8116DB4); break;
+    case 4: GUEST_CALL(petMenu_updateSpriteVisibility_8116DB4); break;
     case 8: GUEST_CALL(battle_stepForwardAnimWait_8116DEC); break;
     }
 
@@ -2099,7 +2099,7 @@ Next cutscene_TryStartNotification_8035084(void) {
     if (R0 != 0) {
         /* Ask whether there is a pending notification; if so, start its
          * cutscene, passing the notification kind as the parameter. */
-        GUEST_CALL(sub_8035756);
+        GUEST_CALL(claimNextPendingRequest_8035756);
         if (R0 != 0) {
             R1 = R0;                                   /* notification parameter */
             R0 = A_CutsceneScriptNotification_8098BB8; /* CutsceneScript */
@@ -2122,7 +2122,7 @@ Next cutscene_TryStartNotification_8035084(void) {
  * its chatbox script. All registers the callers rely on are preserved. */
 Next scene_loadAndStartCutscene_812AF18(void) {
     /* Initialize the scene state. */
-    GUEST_CALL(sub_812AF3C);
+    GUEST_CALL(decomp_buildInitRefTable_812AF3C);
 
     /* Decompress the asset reference table and copy it into place. */
     R0 = A_off_812B08C;

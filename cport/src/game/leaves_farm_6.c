@@ -15,7 +15,7 @@
  * called helper leaves behind (r2 is set to 8, r3 to 8, r4 to 0 and
  * r5 to 0x10 before the window call). */
 Next text_setupTextboxAndStartPrint_8031BB2(void) {
-    GUEST_CALL(sub_803172E); /* initialise textbox state (uses r0, r5) */
+    GUEST_CALL(battle_calcRelPosToTarget_803172E); /* initialise textbox state (uses r0, r5) */
 
     R2 = 8;
     R4 = 0;
@@ -35,7 +35,7 @@ Next text_setupTextboxAndStartPrint_8031BB2(void) {
  * here. All final register/flag state comes out of the last callee. */
 Next textbox_StepAndRefreshWindow_8031BCA(void) {
     /* Advance the text engine state (reads r0/r5, returns updated r0). */
-    GUEST_CALL(sub_803172E);
+    GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     /* Blit parameters: source column 0, row 8, width 0x10, height 8.
      * Results come back in r2/r3/r4; r5 is preserved by the callee. */
@@ -54,14 +54,14 @@ Next textbox_StepAndRefreshWindow_8031BCA(void) {
 /* ── sub_8031BE2 ── */
 /* sub_8031BE2: sequence of three setup/update calls.
  *
- * R0 and R5 arrive as arguments. The first callee (sub_803172E) is invoked
+ * R0 and R5 arrive as arguments. The first callee (battle_calcRelPosToTarget_803172E) is invoked
  * with them unchanged. Then fixed tile/map parameters are loaded into
  * r2-r5 (0, 0x10, 0xC, 0xC) for math_pointCrossHalfPlaneTest_8031594, and finally sub_8031B7C is
  * called with whatever registers math_pointCrossHalfPlaneTest_8031594 left behind (r0 and r5 are
  * carried through). All register and flag effects on return come from the
  * last callee, so nothing needs to be set explicitly here. */
 Next sub_8031BE2(void) {
-    GUEST_CALL(sub_803172E);
+    GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0;
     R4 = 0xC;
@@ -76,13 +76,13 @@ Next sub_8031BE2(void) {
 
 /* ── sub_8031BFA ── */
 /* sub_8031BFA:
- * Runs sub_803172E on the values the caller left in r0/r5, then invokes
+ * Runs battle_calcRelPosToTarget_803172E on the values the caller left in r0/r5, then invokes
  * sub_8031570 with a fixed argument set (r2 = 0, r3 = r4 = 0x10, r5 = 0)
  * and finally sub_8031B7C. Register results and flags are whatever the
  * last callee leaves behind; lr is untouched (the original just pushes
  * lr and pops it back into pc). */
 Next sub_8031BFA(void) {
-    GUEST_CALL(sub_803172E);
+    GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0;
     R4 = 0x10;
@@ -98,13 +98,13 @@ Next sub_8031BFA(void) {
 /* ── sub_8031C42 ── */
 /* sub_8031C42(r0, r5): thin wrapper that chains three battle-helper calls.
  *
- * The caller's r0/r5 are passed straight through to sub_803172E; afterwards
+ * The caller's r0/r5 are passed straight through to battle_calcRelPosToTarget_803172E; afterwards
  * a fixed parameter block (r2 = 0, r3 = 14, r4 = 14, r5 = 0) is set up for
  * math_pointLeftOfLineTest_80315DC, and whatever it leaves in r0/r2/r3/r4/r5 is handed on to
  * sub_8031B7C, whose results (registers and flags) become this function's
  * results. */
 Next sub_8031C42(void) {
-    GUEST_CALL(sub_803172E);
+    GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0;
     R3 = 0xE;
@@ -657,7 +657,7 @@ Next battle_DispatchStatePhase_800945C(void) {
     R0 = phase;
     R1 = LD32(A_off_8009470 + phase * 4);   /* handler address | 1 */
     if (phase == 0)
-        GUEST_CALL(sub_8009478);
+        GUEST_CALL(battle_waitLinkSync_8009478);
     else
         GUEST_CALL(sub_80094B6);
 
@@ -785,7 +785,7 @@ Next sub_800B428(void) {
 /* ── sub_800B444 ── */
 /* sub_800B444: reload the two saved 12-byte blocks into the working battle
  * data area (byte_203F4A4 -> unk_2035260 and byte_203F5A4 -> unk_203526C),
- * then run sub_802C9EA to act on the restored data. */
+ * then run battle_syncEffectSlotBetweenBuffers_802C9EA to act on the restored data. */
 Next sub_800B444(void) {
     /* first block: 3 words */
     R0 = A_byte_203F4A4;
@@ -799,7 +799,7 @@ Next sub_800B444(void) {
     R2 = 0xC;
     GUEST_CALL(CopyWords);
 
-    GUEST_CALL(sub_802C9EA);
+    GUEST_CALL(battle_syncEffectSlotBetweenBuffers_802C9EA);
 
     RETURN_TO_CALLER();
 }

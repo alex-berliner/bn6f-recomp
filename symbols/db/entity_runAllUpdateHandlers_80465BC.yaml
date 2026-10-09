@@ -1,0 +1,111 @@
+name: entity_runAllUpdateHandlers_80465BC
+address: '0x080465BC'
+kind: function
+status: confirmed
+summary: Each frame, walks a 15-entry array of 0x58-byte entity records and calls the update handler selected by
+  each active record's type byte.
+interface: 'void sub_80465BC(void); // pure dispatcher: r0 not read, r2/r3 pass through untouched; handlers are
+  called via blx-style bx lr with r0 = handler address itself, r1 = type*4, r5 = record pointer, r7 = record index
+  (0..14)'
+details: 'Iterates the fixed 15-slot array at eStructArr2008450 with a 0x58-byte stride.
+
+  A slot is active when bit 0 of the flag byte at +0 is set (R1 is preloaded with 1
+
+  before the test, so inactive slots just leave r1 == 1). For active slots, the byte
+
+  at +1 is an index into the handler pointer table off_804646C (entry = byte * 4).
+
+  The handler is invoked with lr = pc (ARM-style "call that returns to thumb via
+
+  bx lr" idiom), receiving r0 = the handler''s own address from the table, r1 = the
+
+  scaled type index, r5 = pointer to its 0x58-byte record, and r7 = its slot index;
+
+  r2/r3 and r8-r12 pass through unchanged. r7 is pushed/popped around the call so
+
+  the loop counter survives whatever the handler does to it. The loop''s final
+
+  "cmp r7, #0xF" leaves carry set and overflow clear on exit, and r1 is 1 if the
+
+  last slot was inactive, otherwise whatever the last handler returned in r1.
+
+  The 0x58-byte records and per-type handler table suggest a lightweight
+
+  entity/object system (15 concurrent objects) rather than the main battle
+
+  entity list; handlers presumably read/write fields inside their own record.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043156);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_28.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    28' --file leaves_farm_28.c copy_8048C98 sub_80465BC sub_804754C sub_8047800 sub_804A1FC uncomp_80471F8 NPCCommand_set_sprite
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80465BC
+
+    .venv/bin/python -m wf verify --function sub_80465BC --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-043156-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80465BC
+
+    .venv/bin/python -m wf verify --function sub_80465BC --snapshots SNAPSHOT_DIR'
+  result: 18 compared, 0 differed, 6 out of domain (verify run convert-20261009-043156-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80465BC
+
+    .venv/bin/python -m wf verify --function sub_80465BC --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043156-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^080465bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_28.c
+  where: recomp 34b00e9
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_80465BC -> entity_runAllUpdateHandlers_80465BC
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_28.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- copy_8048C98
+- sub_804754C
+- sub_8047800
+- sub_804A1FC
+- uncomp_80471F8
+- NPCCommand_set_sprite
+open_questions:
+- What gameplay system owns eStructArr2008450 (the 0x58-byte records) and what the record fields beyond +0/+1 mean
+- What the entries of off_804646C correspond to (one handler per entity type/ID)
+- Whether the odd exit conditions in r1/c/v matter to any caller (contract says they are read back)
+sources:
+- tools/wf run convert-20261009-043156
+previous_names:
+- sub_80465BC

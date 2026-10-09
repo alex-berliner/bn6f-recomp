@@ -1,0 +1,84 @@
+name: chatbox_uploadWindowTileGfx_804754C
+address: '0x0804754C'
+kind: function
+status: confirmed
+summary: Uploads the current text window's tile graphics from its staging buffer into the BG tile block and renders
+  the text object into the text layer.
+interface: (r3 = passthrough context, r5 = text object ptr, r10 = toolkit) -> clobbers r0-r2, r4, r6, r7, lr; preserves
+  r5, r8, r9; NZC flags clobbered
+details: 'First copies 0x800 bytes (0x200 eight-words) of tile data from the staging buffer byte_2017204 into the
+  second half of the toolkit''s BG tile block allocation: the destination is [r10 + oToolkit_iBGTileIdBlocks_Ptr]
+  + 0x800, via CopyByEightWords, which preserves r3-r7 and r10. It then reads the text object''s font/gfx pointer
+  at +0x24 and calls renderTextGfx_8045F8C with fixed arguments: r1=0x10 (palette/ tile params), r2=unk_2015E00
+  (palette data or glyph source), r3=0x6002000 (text layer VRAM char block), r4=r5=1, r6=dword_86A5D60 (a table
+  in ROM), r7=0. The staging buffer byte_2017204 is presumably filled earlier by a text-layout step, so this routine
+  is the "commit graphics" half of drawing a text window.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043156);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_28.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    28' --file leaves_farm_28.c copy_8048C98 sub_80465BC sub_804754C sub_8047800 sub_804A1FC uncomp_80471F8 NPCCommand_set_sprite
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_804754C
+
+    .venv/bin/python -m wf verify --function sub_804754C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-043156-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_804754C
+
+    .venv/bin/python -m wf verify --function sub_804754C --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261009-043156-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_804754C
+
+    .venv/bin/python -m wf verify --function sub_804754C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043156-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^0804754c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_28.c
+  where: recomp 34b00e9
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_804754C -> chatbox_uploadWindowTileGfx_804754C
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_28.c
+coverage:
+- battles1
+- story2
+related:
+- copy_8048C98
+- sub_80465BC
+- sub_8047800
+- sub_804A1FC
+- uncomp_80471F8
+- NPCCommand_set_sprite
+open_questions:
+- exact meaning of the fixed arguments (0x10, the two 1s, and dword_86A5D60) to renderTextGfx_8045F8C
+- what fills byte_2017204 and whether this pairs with a specific layout function
+- whether the r3 value passed through is used by renderTextGfx_8045F8C
+sources:
+- tools/wf run convert-20261009-043156
+previous_names:
+- sub_804754C

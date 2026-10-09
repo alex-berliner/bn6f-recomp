@@ -363,8 +363,8 @@ Next sub_800BF88(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800E5AC ── */
-/* sub_800E5AC(r0, r1 = panel parameters, r5 = battle object):
+/* ── battle_objectCheckPanelByAlliance_800E5AC ── */
+/* battle_objectCheckPanelByAlliance_800E5AC(r0, r1 = panel parameters, r5 = battle object):
  *
  * Gate for object/panel interaction. First object_isValidPanel decides
  * whether the panel identified by the two parameters exists at all; it
@@ -382,7 +382,7 @@ Next sub_800BF88(void) {
  * r4-r7 are preserved; r1-r3 are untouched when the panel is invalid and
  * come from object_checkPanelParameters otherwise.
  */
-Next sub_800E5AC(void) {
+Next battle_objectCheckPanelByAlliance_800E5AC(void) {
     u32 paramA = R0;
     u32 paramB = R1;
 

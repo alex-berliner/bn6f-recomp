@@ -3415,7 +3415,7 @@ Next battle_resetFlashingInvisTimer_801A67E(void) {
 
 /* ── battle_objectDieOnCollisionHit_801A6D6 ── */
 /* battle_objectDieOnCollisionHit_801A6D6(r5 = battle object):
- * Check the object's collision data (passed to sub_801A6E8 in r4); if it
+ * Check the object's collision data (passed to battle_checkHPDigit4State_801A6E8 in r4); if it
  * reports a hit, the object's HP is zeroed. r4 is saved and restored around
  * the call, r7 passes through untouched. */
 Next battle_objectDieOnCollisionHit_801A6D6(void) {
@@ -3424,7 +3424,7 @@ Next battle_objectDieOnCollisionHit_801A6D6(void) {
     u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
     R4 = collisionData;
 
-    GUEST_CALL(sub_801A6E8);
+    GUEST_CALL(battle_checkHPDigit4State_801A6E8);
 
     if (R0 != 0)
         ST16(R5 + oBattleObject_HP, 0);

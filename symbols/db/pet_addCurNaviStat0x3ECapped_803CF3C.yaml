@@ -1,0 +1,91 @@
+name: pet_addCurNaviStat0x3ECapped_803CF3C
+address: '0x0803CF3C'
+kind: function
+status: confirmed
+summary: Adds a per-navi-slot offset to PET navi stat 0x3E, caps it at 1000, writes it back, and propagates the
+  new value through sub_803CF74.
+interface: void pet_addCurNaviStat0x3ECapped_803CF3C(u8 navi_slot /* r1 */, u32 mustBe0x70 /* r4 */); r4 must equal
+  0x70 or the call returns immediately; r4-r12 are preserved, flags clobbered
+details: 'Guarded by an early-out unless r4 == 0x70 (the caller passes a value that acts as a gate/opcode; only
+  the 0x70 case triggers this stat update). Computes a per-entry byte offset of 0x14 (20) * r1 — i.e. r1 is a navi
+  slot index into a 20-byte-per-navi PET stats array. Reads stat id 0x3E for navi slot 0 via GetCurPETNaviStatsHword,
+  adds the slot offset to the raw value, clamps to a max of 1000 (0x3E8), stores the clamped result back with SetCurPETNaviStatsHword
+  (again targeting navi 0 / stat 0x3E), then calls sub_803CF74 with (new value, slot offset) so the change is propagated
+  to whatever mirrors the stat (likely an active/in-memory copy of the navi stats). Note that the slot offset is
+  folded into the stat value itself rather than used as an array index, which looks intentional in this code path
+  (stat 0x3E appears to be a running/accumulated value that encodes position within the block, or the stat is only
+  meaningful for slot 0 and the offset tags which slot was adjusted).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-043200);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_30.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    30' --file leaves_farm_30.c sub_803CF3C sub_803F530 sub_803FAB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803CF3C
+
+    .venv/bin/python -m wf verify --function sub_803CF3C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-043200-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803CF3C
+
+    .venv/bin/python -m wf verify --function sub_803CF3C --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-043200-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803CF3C
+
+    .venv/bin/python -m wf verify --function sub_803CF3C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043200-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0803cf3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_30.c
+  where: recomp ef7839f
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_803CF3C -> pet_addCurNaviStat0x3ECapped_803CF3C
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_30.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_803F530
+- sub_803FAB4
+open_questions:
+- what game-side meaning stat id 0x3E has (a 1000-capped PET stat — possibly HP-related or a navi-customizer value)
+- what r4 == 0x70 represents in the caller (an operation code selecting this stat-update branch)
+- what sub_803CF74 does with the (value, slot offset) pair
+- why the slot offset is added into the stat value rather than indexing the stats array
+sources:
+- tools/wf run convert-20261009-043200
+previous_names:
+- sub_803CF3C

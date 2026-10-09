@@ -433,14 +433,14 @@ Next table_findFirstOccupiedEntry_8028050(void) {
 
 /* ── gfx_flushDataListAndContinue_802811C ── */
 /* gfx_flushDataListAndContinue_802811C: flush the dataList's pending GFX transfers, then continue with
- * sub_802812C seeded by the byte at [R5+0x10]. R4-R7 are passed through. */
+ * gfx_queueIndexedRecordTiles_802812C seeded by the byte at [R5+0x10]. R4-R7 are passed through. */
 Next gfx_flushDataListAndContinue_802811C(void) {
     /* dataList (table of GFX data references) */
     R0 = A_off_802A744;
     GUEST_CALL(QueueGFXTransfersInList);
 
     R0 = LD8(R5 + 0x10);
-    GUEST_CALL(sub_802812C);
+    GUEST_CALL(gfx_queueIndexedRecordTiles_802812C);
 
     RETURN_TO_CALLER();
 }
@@ -678,10 +678,10 @@ Next battle_setUnk20349A5Flag_802A210(void) {
 }
 
 /* ── sub_802BDB4 ── */
-/* sub_802BDB4: tail work after sub_802C97E -- store the value 4 into the
+/* sub_802BDB4: tail work after battle_checkTimerWindowSubstate_802C97E -- store the value 4 into the
  * word pointed to by r5 (likely a state/step counter being advanced). */
 Next sub_802BDB4(void) {
-    GUEST_CALL(sub_802C97E);
+    GUEST_CALL(battle_checkTimerWindowSubstate_802C97E);
 
     R0 = 4;
     ST32(R5, R0);
@@ -2289,14 +2289,14 @@ Next battle_aiAttackWindupTick_80FE284(void) {
 /* ── battle_objectTickWithExtraHandler_8109F6A ── */
 /* battle_objectTickWithExtraHandler_8109F6A: per-frame update for one battle object (r5 = object).
  * While the object is still in phase 0, run the handler pointed to by
- * its second extra variable first; the phase tick (sub_80165C2) always
+ * its second extra variable first; the phase tick (battle_objectUpdateDispatchPhase_80165C2) always
  * runs afterwards, with r0 carrying the phase byte / handler result. */
 Next battle_objectTickWithExtraHandler_8109F6A(void) {
     if (LD8(R5 + oBattleObject_CurPhase) == 0) {
         R0 = LD32(R5 + oBattleObject_ExtraVars + 4);
         GUEST_CALL(sub_800AA40);
     }
-    GUEST_CALL(sub_80165C2);
+    GUEST_CALL(battle_objectUpdateDispatchPhase_80165C2);
     RETURN_TO_CALLER();
 }
 
@@ -2528,15 +2528,15 @@ Next sub_8117998(void) {
 /* folder_CountChipsOfCodeOrSkipEntry_8117AA0(r0 = chip id, r1 = letter code index, r6 = folder entry pointer):
  * If r1 is a regular letter code (0..0x1A), count how many chips in the folder
  * match that id and code (GetChipCountOfCode) and hand the result to
- * sub_8117B94. Otherwise the entry has no letter code to match: skip past it
+ * copyTwoDigitNumberTiles_8117B94. Otherwise the entry has no letter code to match: skip past it
  * by advancing the folder pointer one entry (0x40 bytes).
  * Results are left in r2..r7 by the callee chain / the pointer bump. */
 Next folder_CountChipsOfCodeOrSkipEntry_8117AA0(void) {
     if ((s32)R1 <= 0x1A) {
         /* r0/r1 already hold the chip id and code for GetChipCountOfCode. */
         GUEST_CALL(GetChipCountOfCode);
-        /* sub_8117B94 picks up the count (and any other live registers). */
-        GUEST_CALL(sub_8117B94);
+        /* copyTwoDigitNumberTiles_8117B94 picks up the count (and any other live registers). */
+        GUEST_CALL(copyTwoDigitNumberTiles_8117B94);
     } else {
         R6 += 0x40;
     }

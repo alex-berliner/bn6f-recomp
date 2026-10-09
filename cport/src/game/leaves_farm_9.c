@@ -776,12 +776,12 @@ Next battle_DispatchPendingEvent_802A0F8(void) {
 
 /* ── fadeScreenAndAdvanceState_802A2E8 ── */
 /* fadeScreenAndAdvanceState_802A2E8: (self: *S20364C0 in r5) -> ()
- * Check some condition (sub_802A394); when it holds, start the 0x54/0x5C
+ * Check some condition (chipSelect_selectedSlotChipHasAttr20_802A394); when it holds, start the 0x54/0x5C
  * screen fade, clear the state byte at +13 and set the jump offset at +12
  * to 4. Leaves N/Z from the final MOV (or from the initial comparison when
  * nothing happened); C/V come from the last callee on the active path. */
 Next fadeScreenAndAdvanceState_802A2E8(void) {
-    GUEST_CALL(sub_802A394);
+    GUEST_CALL(chipSelect_selectedSlotChipHasAttr20_802A394);
 
     if (R0 != 0) {
         R0 = 0x54;
@@ -893,19 +893,19 @@ Next sound_pushRequest_802CA5C(void) {
 /* ── eStruct200A008_redrawOnDirtyFlags_802CA82 ── */
 /* eStruct200A008_redrawOnDirtyFlags_802CA82:
  * Refresh handler for the eStruct at 0x200A008: whenever its unk04 field is
- * non-zero, run the redraw pair sub_802C54C + sub_802CAA6, then do the same
+ * non-zero, run the redraw pair decodePackedIdFields_802C54C + sub_802CAA6, then do the same
  * for unk06. Both fields are checked independently (both may trigger).
  * r4-r7 and everything else are passed through untouched. */
 Next eStruct200A008_redrawOnDirtyFlags_802CA82(void) {
     GUEST_CALL(eStruct200A008_getUnk04);
     if (R0 != 0) {
-        GUEST_CALL(sub_802C54C);
+        GUEST_CALL(decodePackedIdFields_802C54C);
         GUEST_CALL(sub_802CAA6);
     }
 
     GUEST_CALL(eStruct200A008_getUnk06);
     if (R0 != 0) {
-        GUEST_CALL(sub_802C54C);
+        GUEST_CALL(decodePackedIdFields_802C54C);
         GUEST_CALL(sub_802CAA6);
     }
 
@@ -1160,7 +1160,7 @@ Next camera_dispatchUpdate_8030054(void) {
 /* ── sub_8031122 ── */
 /* sub_8031122(r0 = state object, r5 = forwarded to callee):
  * Zeroes the two counter/flag words of the state struct at dword_200F3E0
- * (fields dword_200F3F8 and dword_200F3FC), then runs sub_80310EC on it.
+ * (fields dword_200F3F8 and dword_200F3FC), then runs sprite_worldToScreenPos_80310EC on it.
  * The original r0 argument is handed to the callee in r6; r0 comes back
  * holding the callee's result. */
 Next sub_8031122(void) {
@@ -1172,7 +1172,7 @@ Next sub_8031122(void) {
 
     R0 = state;
     R6 = stateObj;
-    GUEST_CALL(sub_80310EC);
+    GUEST_CALL(sprite_worldToScreenPos_80310EC);
 
     RETURN_TO_CALLER();
 }
@@ -1203,7 +1203,7 @@ Next battle_setupMessageWindow_80313B0(void) {
 
     /* step 3: finalize pass with r1 = 0 */
     R1 = 0;
-    GUEST_CALL(sub_80310B0);
+    GUEST_CALL(camera_moveByDelta_80310B0);
 
     /* mark the request as handled in the caller's r12 flag word */
     R12 = R12 | 1;
@@ -1242,7 +1242,7 @@ Next battle_runTextboxUpdateAndSetStateBit1_80313D4(void) {
 
     /* Third step: called with r0 = 0. Its results in r3/r4/r6 stay live. */
     R0 = 0;
-    GUEST_CALL(sub_80310B0);
+    GUEST_CALL(camera_moveByDelta_80310B0);
 
     /* Mark the flag word: r12 |= 2, flags from the ORR. */
     R12 = flag_word | 2;
@@ -1258,7 +1258,7 @@ Next battle_runTextboxUpdateAndSetStateBit1_80313D4(void) {
 
 /* ── sub_80313FC ── */
 /* sub_80313FC: runs a three-step sequence (sub_8031176; sub_8030F7C with a fixed
- * parameter set of 0x20/0x20/0x20/1; sub_80310B0 with 0) and then sets bit 1 of
+ * parameter set of 0x20/0x20/0x20/1; camera_moveByDelta_80310B0 with 0) and then sets bit 1 of
  * the state word passed in r12.  The caller's r0, r1, r2 and r5 are preserved
  * across the calls; the Z/N flags reflect the updated r12 value. */
 Next sub_80313FC(void) {
@@ -1275,7 +1275,7 @@ Next sub_80313FC(void) {
     GUEST_CALL(sub_8030F7C);
 
     R0 = 0;
-    GUEST_CALL(sub_80310B0);
+    GUEST_CALL(camera_moveByDelta_80310B0);
 
     state |= 2;
     R12 = state;
@@ -1290,12 +1290,12 @@ Next sub_80313FC(void) {
 
 /* ── sub_8031C2A ── */
 /* sub_8031C2A(r0, r5 = context):
- * Runs a short helper sequence: first sub_803172E on the incoming context,
+ * Runs a short helper sequence: first battle_calcRelPosToTarget_803172E on the incoming context,
  * then sub_80315B8 with the fixed arguments (r2 = 1, r3 = 0x10, r4 = 1,
  * r5 = 0x10), and finally sub_8031B7C. The caller sees whatever registers
  * and flags sub_8031B7C leaves behind. */
 Next sub_8031C2A(void) {
-    GUEST_CALL(sub_803172E);
+    GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 1;
     R4 = 1;
@@ -1309,13 +1309,13 @@ Next sub_8031C2A(void) {
 
 /* ── sub_8031C7C ── */
 /* sub_8031C7C — battle helper that runs a short setup sequence:
- * 1. sub_803172E with the caller's r0/r5 arguments,
+ * 1. battle_calcRelPosToTarget_803172E with the caller's r0/r5 arguments,
  * 2. sub_80315B8 with a fixed parameter set (14, 14, 0, 16),
  * 3. sub_8031B7C to finish.
  * All results (r0, r2-r7) and the NZCV flags are whatever the last
  * callee leaves behind. */
 Next sub_8031C7C(void) {
-    GUEST_CALL(sub_803172E);
+    GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0xE;
     R4 = 0;
@@ -1330,12 +1330,12 @@ Next sub_8031C7C(void) {
 
 /* ── sub_8031C94 ── */
 /* sub_8031C94: run a three-step sequence on the object passed in r0/r5.
- * Calls sub_803172E first, then sub_80315B8 with a fixed parameter set
+ * Calls battle_calcRelPosToTarget_803172E first, then sub_80315B8 with a fixed parameter set
  * (r2=0, r3=0x10, r4=2, r5=2), then sub_8031B7C, which picks up whatever
  * r2/r5 sub_80315B8 left behind. r3/r4 must survive the final call.
  * Everything (registers and flags) is simply passed through to the caller. */
 Next sub_8031C94(void) {
-    GUEST_CALL(sub_803172E);
+    GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0;
     R4 = 2;
@@ -2106,8 +2106,8 @@ Next battle_state_endPhaseWithEffect_80079A8(void) {
  * every register (and the flags) the handler leaves behind are this
  * routine's results.
  *
- * Table (off_8007C04): entry 0 -> sub_8007C14, entry 1 -> sub_8007C50,
- *                      entry 2 -> sub_8007C50, entry 3 -> sub_8007C14.
+ * Table (off_8007C04): entry 0 -> battle_stepSubstateToState4_8007C14, entry 1 -> sub_8007C50,
+ *                      entry 2 -> sub_8007C50, entry 3 -> battle_stepSubstateToState4_8007C14.
  */
 Next eStruct200BC30_dispatchJumpOffset00_8007BF0(void) {
     /* Ask the e-struct which handler applies; leaves the table offset in R0. */
@@ -2121,10 +2121,10 @@ Next eStruct200BC30_dispatchJumpOffset00_8007BF0(void) {
     R1 = A_off_8007C04;
 
     /* The table only ever holds the two Thumb entry points, and entries 0
-     * and 3 are both sub_8007C14+1, so matching against the first entry
-     * separates sub_8007C14 from sub_8007C50. */
+     * and 3 are both battle_stepSubstateToState4_8007C14+1, so matching against the first entry
+     * separates battle_stepSubstateToState4_8007C14 from sub_8007C50. */
     if (handler == LD32(A_off_8007C04))
-        GUEST_CALL(sub_8007C14);
+        GUEST_CALL(battle_stepSubstateToState4_8007C14);
     else
         GUEST_CALL(sub_8007C50);
 

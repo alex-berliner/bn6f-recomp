@@ -7,8 +7,8 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── copy_8048C98 ── */
-/* copy_8048C98: copy the shop item table (byte_8047DA0) into the current
+/* ── shop_copyItemTableToShopData_8048C98 ── */
+/* shop_copyItemTableToShopData_8048C98: copy the shop item table (byte_8047DA0) into the current
  * shop's data buffer (toolkit->shopDataPtr). Each entry is 8 bytes:
  *   +0: item id (byte)   +2: price (halfword)
  *   +4: extra (byte)     +6: count/flags (halfword)
@@ -18,7 +18,7 @@
  * iteration (0xFFFFFFF8 when done) and R3 = the last value loaded (on a
  * skipped entry that is the empty-slot check byte itself), as the original
  * does. */
-Next copy_8048C98(void) {
+Next shop_copyItemTableToShopData_8048C98(void) {
     u32 src = A_byte_8047DA0;
     u32 dst = LD32(R10 + oToolkit_ShopDataPtr);
     u32 bytesLeft = 0xE80;
@@ -50,8 +50,8 @@ Next copy_8048C98(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80465BC ── */
-/* sub_80465BC: run the update handler of every active record in the
+/* ── entity_runAllUpdateHandlers_80465BC ── */
+/* entity_runAllUpdateHandlers_80465BC: run the update handler of every active record in the
  * 15-entry array at eStructArr2008450 (0x58 bytes per record).
  * A record is active when bit 0 of its flag byte (+0) is set; the byte at
  * +1 selects the handler from the pointer table off_804646C (byte * 4).
@@ -62,7 +62,7 @@ Next copy_8048C98(void) {
  * Exits with c/v from the loop's final "cmp r7, #0xF" (r7 == 15, so carry
  * set, overflow clear) and r1 = 1 if the last record was inactive, else
  * whatever the last handler left in r1. */
-Next sub_80465BC(void) {
+Next entity_runAllUpdateHandlers_80465BC(void) {
     u32 inR4 = R4, inR5 = R5, inR6 = R6, inR7 = R7;
     u32 inR8 = R8, inR9 = R9, inR12 = R12;
 
@@ -98,8 +98,8 @@ Next sub_80465BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804754C ── */
-/* sub_804754C: upload the current text window's tile graphics.
+/* ── chatbox_uploadWindowTileGfx_804754C ── */
+/* chatbox_uploadWindowTileGfx_804754C: upload the current text window's tile graphics.
  *
  * Copies 0x800 bytes of tile data from the staging buffer at byte_2017204
  * into the second half of the BG tile block (offset 0x800 of the toolkit's
@@ -110,7 +110,7 @@ Next sub_80465BC(void) {
  * Outputs: r3 r4 r6 r7 r10 and v as left by renderTextGfx_8045F8C;
  *          r5 r8 r9 preserved.
  */
-Next sub_804754C(void) {
+Next chatbox_uploadWindowTileGfx_804754C(void) {
     u32 textObject = R5;
 
     /* Copy tile gfx from the staging buffer into BG tile block #1. */
@@ -134,14 +134,14 @@ Next sub_804754C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8047800 ── */
-/* sub_8047800(r5 = background state struct):
+/* ── background_LoadAreaTiles_8047800 ── */
+/* background_LoadAreaTiles_8047800(r5 = background state struct):
  * Redraw both background layers for the area whose id is stored at state+8.
  * The id is an index into the area table starting at 0x15; layer 1 copies its
  * tile graphics from the shared tile-id table eTileIds2018A04 into tile block
  * 2, layer 2 copies its tile map from byte_202F800 into tile block 0.
  * Preserves r4-r7 (the original pushes/pops them around the two calls). */
-Next sub_8047800(void) {
+Next background_LoadAreaTiles_8047800(void) {
     const u32 state = R5;
     const u32 savedR4 = R4;
     const u32 savedR6 = R6;
@@ -178,13 +178,13 @@ Next sub_8047800(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804A1FC ── */
-/* sub_804A1FC(r0 = folder index, r1 = destination buffer):
+/* ── textScript_copyFolderNameToWide_804A1FC ── */
+/* textScript_copyFolderNameToWide_804A1FC(r0 = folder index, r1 = destination buffer):
  * Copy a folder name from the text script folder-name table into the destination
  * buffer, which stores one character per 2 bytes. Copying stops at the 0xE6 end
  * marker (not copied). An 0xE4 escape byte is copied together with the byte that
  * follows it. R4-R7 are preserved; R0/R1 and the flags are clobbered. */
-Next sub_804A1FC(void) {
+Next textScript_copyFolderNameToWide_804A1FC(void) {
     u32 table = A_TextScriptFolderNames_inc;
     u32 src = table + LD16(table + (R0 << 1));
     u32 dst = R1;
@@ -207,13 +207,13 @@ Next sub_804A1FC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── uncomp_80471F8 ── */
-/* uncomp_80471F8: decompress the three LZ77-compressed blobs the message
+/* ── text_decompressMessageAssets_80471F8 ── */
+/* text_decompressMessageAssets_80471F8: decompress the three LZ77-compressed blobs the message
  * system works from into their EWRAM buffers.
  *
  * The first blob's address is fetched through r5: r5->[0x1C]->[4]. The other
  * two are fixed data files. r4-r7 must come out unchanged. */
-Next uncomp_80471F8(void) {
+Next text_decompressMessageAssets_80471F8(void) {
     u32 sceneSrc = LD32(LD32(R5 + 0x1C) + 4);
 
     /* Blob reached through the r5 handle -> unk_2029A00. */

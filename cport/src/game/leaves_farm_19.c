@@ -52,11 +52,11 @@ Next camera_updateDerivedOffsets_803007C(void) {
  *      straight into step 2 (the original never reloads them),
  *   2. sub_8030E14 with the "unbounded" extent markers (r2 = r3 = -1),
  *      an extent count of 0x20, r5 = 0 and r6 = 1,
- *   3. sub_80310B0 with r1 = 0 to finish.
+ *   3. camera_moveByDelta_80310B0 with r1 = 0 to finish.
  * Afterwards the low bit of the r12 state flags is set (state marked
  * active) and nz reflects that value; c/v are whatever the last callee
  * left. r0, r1, r2 and r5 are restored to their entry values (the
- * original's push/pop pair); r3, r4 and r6 return whatever sub_80310B0
+ * original's push/pop pair); r3, r4 and r6 return whatever camera_moveByDelta_80310B0
  * left in them. */
 Next sub_8031388(void) {
     u32 ret_addr = LR;   /* push {lr} */
@@ -75,7 +75,7 @@ Next sub_8031388(void) {
 
     /* Step 3. */
     R1 = 0;
-    GUEST_CALL(sub_80310B0);
+    GUEST_CALL(camera_moveByDelta_80310B0);
 
     /* Mark the state active: set the low bit of the current r12 flags
      * (orr sets nz from the result, c/v stay as the callee left them). */

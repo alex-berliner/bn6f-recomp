@@ -829,7 +829,7 @@ Next startScreen_RunStateHandler_802F63C(void) {
     R0 = LD32(A_jt_802F654 + state);
 
     switch (state) {
-    case 0:  GUEST_CALL(sub_802F668); break;                              /* state 0 */
+    case 0:  GUEST_CALL(startScreen_init_802F668); break;                              /* state 0 */
     case 4:  GUEST_CALL(sub_802F6A4); break;                              /* state 1 */
     case 8:  GUEST_CALL(sub_802F6B2); break;                              /* state 2 */
     case 12: GUEST_CALL(startScreen_UpdateAndRenderFrame_802F704); break; /* state 3 */

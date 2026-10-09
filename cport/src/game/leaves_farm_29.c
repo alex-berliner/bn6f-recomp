@@ -179,8 +179,8 @@ Next GiveChips(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A51C4 ── */
-/* sub_80A51C4(r5 = state struct):
+/* ── npc_stateDispatchStep_80A51C4 ── */
+/* npc_stateDispatchStep_80A51C4(r5 = state struct):
  * Points r7 at a 0x10-byte record in the table at byte_80A4C64, selected by
  * the byte at r5+4, then calls one of five handlers selected by the byte at
  * r5+8, which indexes the table at off_80A51E0 bytewise (entries are 4 bytes
@@ -189,7 +189,7 @@ Next GiveChips(void) {
  *   +0x0C sub_80A5304   +0x10 sub_80A5350
  * The original branches through r0, so the handler is entered with
  * r0 = handler address, r1 = raw selector byte, r7 = selected record. */
-Next sub_80A51C4(void) {
+Next npc_stateDispatchStep_80A51C4(void) {
     u32 recordBase = A_byte_80A4C64;
     u32 recordOff  = 0x10 * (u32)LD8(R5 + 4);
 

@@ -1,0 +1,165 @@
+name: dispatchStateHandler_81179AE
+address: '0x081179AE'
+kind: function
+status: confirmed
+summary: Per-frame state dispatcher that fetches the active work area and tail-calls one of four state handlers
+  based on its leading state byte.
+interface: void sub_81179AE(void); // no meaningful register inputs — everything is read from the work area; r4-r7
+  preserved, r0/r1 and flags clobbered; r0 out depends on the invoked handler
+details: 'Obtains a work-area pointer by calling sub_8047D84 with r7 preloaded from the singleton byte byte_2011C10
+  (sub_8047D84 apparently locates the object via that singleton). Reads the state byte at offset 0 of the work area,
+  scales it by 4 (r1 = state * 4), keeps the work pointer in r4, and long-calls (lr = pc, bx) the matching entry
+  of off_81179CC: state 0 -> sub_81179E0, state 1 -> sub_81179E4, state 2 -> sub_8117A14, state 3 (and any larger
+  value, which is unreachable in practice) -> sub_8117AB4. The handlers thus see r1 = state*4 and r4 = work area,
+  with all other registers passing straight through. Because the call is a long call rather than a tail call, the
+  dispatcher itself returns to its caller after the handler returns, restoring r4-r7 from the stack. The switch
+  dispatch pattern (state byte x 4 into a jump table) is a typical scripted/NPC or battle-event state machine; the
+  owning subsystem is not yet identified beyond the singleton at byte_2011C10.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (10 attempt(s), run convert-20261009-035817);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_24.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    24' --file leaves_farm_24.c RemoveBattleObjectPanelReserves getBattleArmPositionMaybe_8018810 object_createCollisionData
+    object_presentCollisionData object_updateCollisionData sub_800ED90 sub_800F1DC sub_800FAAC sub_800FFAA sub_8010162
+    sub_8010230 sub_8010332 sub_8010D20 sub_8010D58 sub_8012ABC sub_8012C4A sub_8012C7C sub_80133EC sub_8014040
+    sub_8014178 sub_8015B22 sub_8016460 sub_80165C2 sub_801A554 sub_801A6E8 sub_801A720 sub_801CDEC sub_801CE92
+    sub_801DBD4 sub_801E0DC sub_801E1A4 custMenuPressOK_8028D3A sub_8026CCC sub_802806C sub_80280A2 sub_80280E0
+    sub_802812C sub_8028172 sub_802869E sub_8028894 sub_80288D0 sub_8028F48 sub_8028F84 sub_802A394 sub_802A3CC
+    sub_802A4FC sub_802A5A0 sub_802A5DA sub_802BF0C sub_802C4B6 sub_802C54C sub_802C5B0 sub_802C97E sub_802C9B8
+    sub_802C9EA sub_802CA1E sub_802DFC8 sub_802F668 sub_802F7E8 sub_8030158 sub_80310B0 sub_80310EC sub_803172E
+    sub_8113162 sub_8116BC0 sub_8116C40 sub_8116DB4 sub_81179AE sub_8117B94 sub_8117E20 sub_811A268 sub_811CBD0
+    sub_811EC10 sub_811F014 sub_811F050 sub_811F08C sub_811F214
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_81179AE
+
+    .venv/bin/python -m wf verify --function sub_81179AE --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-035817-verify-10)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_81179AE
+
+    .venv/bin/python -m wf verify --function sub_81179AE --snapshots SNAPSHOT_DIR'
+  result: 4 compared, 0 differed, 19 out of domain (verify run convert-20261009-035817-verify-10)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_81179AE
+
+    .venv/bin/python -m wf verify --function sub_81179AE --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-035817-verify-10)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^081179ae ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_24.c
+  where: recomp fa68414
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_81179AE -> dispatchStateHandler_81179AE
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_24.c
+coverage:
+- battles1
+- story2
+related:
+- RemoveBattleObjectPanelReserves
+- getBattleArmPositionMaybe_8018810
+- object_createCollisionData
+- object_presentCollisionData
+- object_updateCollisionData
+- sub_800ED90
+- sub_800F1DC
+- sub_800FAAC
+- sub_800FFAA
+- sub_8010162
+- sub_8010230
+- sub_8010332
+- sub_8010D20
+- sub_8010D58
+- sub_8012ABC
+- sub_8012C4A
+- sub_8012C7C
+- sub_80133EC
+- sub_8014040
+- sub_8014178
+- sub_8015B22
+- sub_8016460
+- sub_80165C2
+- sub_801A554
+- sub_801A6E8
+- sub_801A720
+- sub_801CDEC
+- sub_801CE92
+- sub_801DBD4
+- sub_801E0DC
+- sub_801E1A4
+- custMenuPressOK_8028D3A
+- sub_8026CCC
+- sub_802806C
+- sub_80280A2
+- sub_80280E0
+- sub_802812C
+- sub_8028172
+- sub_802869E
+- sub_8028894
+- sub_80288D0
+- sub_8028F48
+- sub_8028F84
+- sub_802A394
+- sub_802A3CC
+- sub_802A4FC
+- sub_802A5A0
+- sub_802A5DA
+- sub_802BF0C
+- sub_802C4B6
+- sub_802C54C
+- sub_802C5B0
+- sub_802C97E
+- sub_802C9B8
+- sub_802C9EA
+- sub_802CA1E
+- sub_802DFC8
+- sub_802F668
+- sub_802F7E8
+- sub_8030158
+- sub_80310B0
+- sub_80310EC
+- sub_803172E
+- sub_8113162
+- sub_8116BC0
+- sub_8116C40
+- sub_8116DB4
+- sub_8117B94
+- sub_8117E20
+- sub_811A268
+- sub_811CBD0
+- sub_811EC10
+- sub_811F014
+- sub_811F050
+- sub_811F08C
+- sub_811F214
+open_questions:
+- What subsystem owns byte_2011C10 and the work area returned by sub_8047D84 (NPC object? battle event controller?)
+- What the four state handlers (sub_81179E0, sub_81179E4, sub_8117A14, sub_8117AB4) do per state
+- Whether state values above 3 are truly unreachable or handled as state 3 deliberately
+sources:
+- tools/wf run convert-20261009-035817
+previous_names:
+- sub_81179AE

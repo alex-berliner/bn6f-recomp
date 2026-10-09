@@ -1,0 +1,95 @@
+name: npc_stateDispatchStep_80A51C4
+address: '0x080A51C4'
+kind: function
+status: confirmed
+summary: Per-object state-machine dispatcher — picks a 16-byte record from a table by the object's state ID, then
+  jumps to one of five phase handlers based on the object's phase byte.
+interface: 'void sub_80A51C4(void) // args passed in registers: r5 = state struct ptr; tail-dispatches to handler(r0=handler
+  addr, r1=phase selector, r7=state record ptr); flags NZCV set from recordBase+recordOff computation'
+details: "Takes no normal arguments; the caller passes the entity/state struct in r5 (lifter shows r5 as an input,\
+  \ so this is part of a register-calling-convention state machine). Two fields drive it: - byte at r5+4: state/record\
+  \ ID. Multiplied by 0x10 and added to byte_80A4C64,\n  so r7 points at a 16-byte per-state record in that table.\n\
+  - byte at r5+8: phase/step selector. Used as a *byte* offset into the handler\n  table at off_80A51E0, so valid\
+  \ values are 0x00/0x04/0x08/0x0C/0x10 (i.e. it\n  stores the byte offset itself, not an index 0-4):\n  +0x00 sub_80A51F8,\
+  \ +0x04 sub_80A5268, +0x08 sub_80A52E4,\n  +0x0C sub_80A5304, +0x10 sub_80A5350.\nThe handler is invoked with\
+  \ `mov lr, pc; bx r0` — the classic Thumb long-call idiom — so the callee returns to this function's `pop {pc}`\
+  \ and control flows back to *this function's* caller, making it effectively a tail-call trampoline. On entry to\
+  \ the handler r0 = handler address, r1 = raw selector byte, r7 = selected 16-byte record. The selector is not\
+  \ bounds-checked: any value outside 0x00-0x10 branches to whatever the bytewise load produced. The ADD of recordBase+recordOff\
+  \ sets flags before the dispatch (harmless side effect). r5 itself is never restored/validated here; the 0x10-stride\
+  \ record table (byte_80A4C64) is presumably per-state parameters (timers, counters, targets) that the phase handlers\
+  \ read via r7.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043158);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_29.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    29' --file leaves_farm_29.c SaveMenuUpdate8132C68 sub_8132F78 applyNaviStatsMaybe_813C458 GiveChips sub_80A51C4
+    initUncompSpriteState_80028d4 logoScreen_dispatch_803D1CA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80A51C4
+
+    .venv/bin/python -m wf verify --function sub_80A51C4 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-043158-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80A51C4
+
+    .venv/bin/python -m wf verify --function sub_80A51C4 --snapshots SNAPSHOT_DIR'
+  result: 5 compared, 0 differed, 5 out of domain (verify run convert-20261009-043158-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80A51C4
+
+    .venv/bin/python -m wf verify --function sub_80A51C4 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043158-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, fuzz, maps, story1, story2.'
+  reproduce: grep -l '^080a51c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_29.c
+  where: recomp 4ef93c7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_80A51C4 -> npc_stateDispatchStep_80A51C4
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_29.c
+coverage:
+- battles1
+- fuzz
+- maps
+- story1
+- story2
+related:
+- SaveMenuUpdate8132C68
+- sub_8132F78
+- applyNaviStatsMaybe_813C458
+- GiveChips
+- initUncompSpriteState_80028d4
+- logoScreen_dispatch_803D1CA
+open_questions:
+- Which subsystem owns r5 (NPC object, cutscene actor, battle entity?) — the record layout at byte_80A4C64 (16 bytes
+  per state) is undocumented here.
+- Meaning of each phase handler (sub_80A51F8, sub_80A5268, sub_80A52E4, sub_80A5304, sub_80A5350); naming this properly
+  likely requires reading them.
+- Whether the phase byte at r5+8 is always one of the five table offsets or the unchecked default path is ever exercised
+  in practice.
+sources:
+- tools/wf run convert-20261009-043158
+previous_names:
+- sub_80A51C4

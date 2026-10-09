@@ -473,7 +473,7 @@ Next navi_DecreaseMood_8015C12(void) {
  *
  * Reads the object's current phase byte and tail-calls the matching
  * handler from the table at off_80163A8:
- *   phase 0 -> sub_80163B4   phase 4 -> sub_801641A   phase 8 -> sub_8016460
+ *   phase 0 -> sub_80163B4   phase 4 -> sub_801641A   phase 8 -> battle_objectIntroEntryAndActedSetup_8016460
  *
  * The phase value doubles as the byte offset into the table (Thumb loads
  * cannot scale the index register), which is why the stored phase values
@@ -481,7 +481,7 @@ Next navi_DecreaseMood_8015C12(void) {
  *
  * Register note: the original loads the branch target into R1 and leaves
  * it there across the call, so each handler is entered with R1 holding
- * its own Thumb entry address (table word, e.g. sub_8016460+1) — and the
+ * its own Thumb entry address (table word, e.g. battle_objectIntroEntryAndActedSetup_8016460+1) — and the
  * handlers preserve R1. That value must therefore still be set up before
  * the call, exactly as the table load in the original does. The phase
  * byte reaches the handler in R0; all other registers pass through
@@ -498,7 +498,7 @@ Next battle_object_runPhaseHandler_8016396(void) {
     switch (R0) {
     case 0: GUEST_CALL(sub_80163B4); break;
     case 4: GUEST_CALL(sub_801641A); break;
-    case 8: GUEST_CALL(sub_8016460); break;
+    case 8: GUEST_CALL(battle_objectIntroEntryAndActedSetup_8016460); break;
     }
 
     RETURN_TO_CALLER();
@@ -648,14 +648,14 @@ Next battle_toggleAllianceAndAccumulateCollisionToAiData_801A308(void) {
 
 /* ── battle_incrementAllianceStatOnCollisionHit_801A6B4 ── */
 /* battle_incrementAllianceStatOnCollisionHit_801A6B4(r5 = battle object):
- * Check the object's collision data (sub_801A6E8); if it reports a hit,
+ * Check the object's collision data (battle_checkHPDigit4State_801A6E8); if it reports a hit,
  * increment the navi stat byte at offset 0x18 of the object's alliance
  * stats, capped at 7. R4 (the collision data pointer) is restored on return. */
 Next battle_incrementAllianceStatOnCollisionHit_801A6B4(void) {
     u32 savedR4 = R4;
 
     R4 = LD32(R5 + oBattleObject_CollisionDataPtr);
-    GUEST_CALL(sub_801A6E8);
+    GUEST_CALL(battle_checkHPDigit4State_801A6E8);
 
     if (R0 != 0) {
         R1 = 0x18;
@@ -1099,12 +1099,12 @@ Next ai_DealQueuedAttackDamage_8112F34(void) {
 
 /* ── sub_8116BFC ── */
 /* sub_8116BFC(r4, r5 = state object, r6, r7 = state byte ptr):
- * Runs the two phase-update helpers (sub_8116C40, sub_8116C78), then checks
+ * Runs the two phase-update helpers (record_adjustNthSubRecordFieldC_8116C40, sub_8116C78), then checks
  * the byte at [r7]; if it has reached 8, store 8 into [r5+9] as well.
  * Leaves r0 = the loaded byte (or 8 on the store path) and the flags from
  * the final CMP/MOV for the caller to branch on. */
 Next sub_8116BFC(void) {
-    GUEST_CALL(sub_8116C40);
+    GUEST_CALL(record_adjustNthSubRecordFieldC_8116C40);
     GUEST_CALL(sub_8116C78);
 
     u32 counter = LD8(R7);
@@ -1712,13 +1712,13 @@ Next battle_initObjectSpriteAndStartAnimation_811CC0C(void) {
 /* ── sub_811EC50 ── */
 /* sub_811EC50: run the full batch of per-frame updates for this subsystem.
  * Calls the five update steps in order; register and flag state on return
- * is whatever sub_811F08C (the last callee) leaves behind. */
+ * is whatever drawCurrentMapName_811F08C (the last callee) leaves behind. */
 Next sub_811EC50(void) {
     GUEST_CALL(sub_811EC68);
     GUEST_CALL(sub_811EFB8);
-    GUEST_CALL(sub_811F014);
-    GUEST_CALL(sub_811F050);
-    GUEST_CALL(sub_811F08C);
+    GUEST_CALL(updateMapNameDisplay_811F014);
+    GUEST_CALL(drawMapNamesScreen_811F050);
+    GUEST_CALL(drawCurrentMapName_811F08C);
     RETURN_TO_CALLER();
 }
 
@@ -2589,7 +2589,7 @@ Next sub_8026A50(void) {
  * Run this object's standard per-frame update sequence: refresh its
  * animation/timer state, then pass its +0x0E attribute through the shared
  * flags_clearFlagWordBit_802FE6A/sub_80062EC helpers, run the object-wide update passes
- * (sub_802A3CC, battle_DispatchPendingEvent_802A0F8), and finally report the object's state byte
+ * (sound_playCrossTransformationJingle_802A3CC, battle_DispatchPendingEvent_802A0F8), and finally report the object's state byte
  * stored at +0x04. Flags are left as battle_DispatchPendingEvent_802A0F8 returned them; r6/r7 are
  * preserved for the caller. */
 Next object_runFrameUpdate_8026A6C(void) {
@@ -2601,7 +2601,7 @@ Next object_runFrameUpdate_8026A6C(void) {
     GUEST_CALL(flags_clearFlagWordBit_802FE6A);
     GUEST_CALL(sub_80062EC);
 
-    GUEST_CALL(sub_802A3CC);
+    GUEST_CALL(sound_playCrossTransformationJingle_802A3CC);
     GUEST_CALL(battle_DispatchPendingEvent_802A0F8);
 
     R0 = LD8(self + 0x04);
@@ -2738,8 +2738,8 @@ Next customScreen_ExitSequence_8028E32(void) {
 
     GUEST_CALL(sub_8028E4C);
     GUEST_CALL(updateCustomScreen_WhenUnselectingChip_8028EC8);
-    GUEST_CALL(sub_8028F48);
-    GUEST_CALL(sub_8028F84);
+    GUEST_CALL(battle_updateActiveChipSlotB_state_8028F48);
+    GUEST_CALL(battle_updateExtraSlotChipKeepFlag_8028F84);
 
     R0 = 0;
     GUEST_CALL(sub_8028250);

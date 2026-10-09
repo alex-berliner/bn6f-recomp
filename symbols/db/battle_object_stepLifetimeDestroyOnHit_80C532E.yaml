@@ -1,0 +1,130 @@
+name: battle_object_stepLifetimeDestroyOnHit_80C532E
+address: '0x080C532E'
+kind: function
+status: confirmed
+summary: Per-frame step for a battle object that owns collision data - decrements its lifetime, destroys it (with
+  hit effect) on collision or timer expiry.
+interface: battle_object_stepLifetimeDestroyOnHit_80C532E(oBattleObject *obj /* r5 */) -> destroys obj via object_freeMemory
+  when it expires or collides; r4/r6 preserved, r7 = obj->oBattleObject_CollisionDataPtr, r0-r3/r8/lr and nzcv clobbered
+  by helpers
+details: 'Tear-down/step handler for a battle object (r5) during battle. First removes the object''s collision data
+  (object_removeCollisionData) and spawns its "hit" effect (object_spawnCollisionEffect). Then reads the object''s
+  collision data pointer (oBattleObject_CollisionDataPtr) and the collision result flags (oCollisionData_FlagsFromCollision).
+  If the object keeps a result record (oBattleObject_ExtraVars+0x10 non-null), the hit flags masked with 0x0C000000
+  (bits 26-27) are stored there, so only that flag range is reported to the owner. Destruction happens on two triggers:
+  (1) any non-zero collision flags, or (2) the 16-bit lifetime timer (oBattleObject_Timer) reaching 0 after being
+  decremented. Otherwise, while the timer is still positive, object_presentCollisionData re-presents the now-empty
+  collision data and the object survives one more frame. On destruction: object_clearCollisionRegion, object_freeCollisionData
+  on the object''s collision data block, then object_freeMemory on the object itself. Quirk: r7 retains the collision
+  data pointer on exit; the timer decrement wraps into a signed comparison (ble), so a wrapped timer is treated
+  as expired.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-042015);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_25.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    25' --file leaves_farm_25.c sub_8120AE8 sub_8120C94 sub_80C4B48 sub_80C532E sub_80C6548 sub_80EB04C sub_80EBD68
+    sub_80EBF30 sub_80EBFF4 sub_80F06CE sub_810A080 t1_0x5e_pinkRingOnCounter_80C4B18 SpawnOWPlayerObject StartBattle
+    anticheat_modCardsInit_8007036 encryption_bugfrags_8006fd0 encryption_zenny_8006f78 modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+    object_freeMemory sub_8005524 sub_8007C14 sub_8009478 sub_800A046 sub_800A152 sub_800A506 sub_800AE0C sub_800AF84
+    sub_800B110 sub_800B3A2 sub_800B79A ShuffleByteList_PrimaryRNG zeroFillVRAM sub_8125280 sub_81263D0 sub_812818C
+    sub_812AF3C CutsceneCamera_GetAutoScrollDeltaForCoord CutsceneCmd_run_or_stop_cutscene_camera_script
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C532E
+
+    .venv/bin/python -m wf verify --function sub_80C532E --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-042015-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C532E
+
+    .venv/bin/python -m wf verify --function sub_80C532E --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 23 out of domain (verify run convert-20261009-042015-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C532E
+
+    .venv/bin/python -m wf verify --function sub_80C532E --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042015-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^080c532e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_25.c
+  where: recomp 950fadc
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_80C532E -> battle_object_stepLifetimeDestroyOnHit_80C532E
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_25.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- sub_8120AE8
+- sub_8120C94
+- sub_80C4B48
+- sub_80C6548
+- sub_80EB04C
+- sub_80EBD68
+- sub_80EBF30
+- sub_80EBFF4
+- sub_80F06CE
+- sub_810A080
+- t1_0x5e_pinkRingOnCounter_80C4B18
+- SpawnOWPlayerObject
+- StartBattle
+- anticheat_modCardsInit_8007036
+- encryption_bugfrags_8006fd0
+- encryption_zenny_8006f78
+- modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+- object_freeMemory
+- sub_8005524
+- sub_8007C14
+- sub_8009478
+- sub_800A046
+- sub_800A152
+- sub_800A506
+- sub_800AE0C
+- sub_800AF84
+- sub_800B110
+- sub_800B3A2
+- sub_800B79A
+- ShuffleByteList_PrimaryRNG
+- zeroFillVRAM
+- sub_8125280
+- sub_81263D0
+- sub_812818C
+- sub_812AF3C
+- CutsceneCamera_GetAutoScrollDeltaForCoord
+- CutsceneCmd_run_or_stop_cutscene_camera_script
+open_questions:
+- Exact meaning of the two recorded flag bits (0x0C000000, bits 26-27 of collision flags) for callers of this object
+  type.
+- Whether callers use the r0/r1 values left behind (hit flags / timer / masked flags) or ignore them.
+sources:
+- tools/wf run convert-20261009-042015
+previous_names:
+- sub_80C532E

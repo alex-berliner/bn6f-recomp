@@ -544,7 +544,7 @@ Next sub_8127ACC(void) {
     GUEST_CALL(sub_8127F54);
     GUEST_CALL(sub_8127FE4);
     GUEST_CALL(sub_8128280);
-    GUEST_CALL(sub_80465BC);
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
     GUEST_CALL(sub_80465F8);
 
     RETURN_TO_CALLER();

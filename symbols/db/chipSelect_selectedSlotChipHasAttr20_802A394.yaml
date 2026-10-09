@@ -1,0 +1,173 @@
+name: chipSelect_selectedSlotChipHasAttr20_802A394
+address: '0x0802A394'
+kind: function
+status: confirmed
+summary: On the chip-select screen, checks whether the chip pending in the currently selected regular/custom slot
+  has ChipData attribute bit 0x20 set, returning 1 if so.
+interface: bool sub_802A394(ChipSelectState* state /* r5 */); also reads (but per contract ignores/passes through)
+  r2,r3,r4,r6,r7,r10,lr; returns r0 = 0/1, r1 = incidental value (slot byte, 0x20, or stale input value), preserves
+  r3-r7; clobbers NZCV.
+details: Reads the menu-mode byte at r5+1; if it is neither 0x18 nor 4 the function just returns 0 immediately (leaving
+  r1 as whatever the caller passed in). In those modes it reads the selected slot index from r5+7 and calls getLocOfActiveChips_8027E1C
+  to get that active-chip slot entry. If the entry's first byte is nonzero the slot is treated as settled and the
+  result is 0; if it is 0 the entry is considered empty/pending and the function follows the pointer at entry+8,
+  loads the halfword there, extracts the chip id as the low 9 bits (lsl 23 / lsr 23), calls getChip8021DA8 to fetch
+  the ChipData record, and tests bit 0x20 of the attribute byte at offset 9. r4 accumulates the 0/1 result and is
+  copied to r0 on return; r1 ends as the slot byte on the busy path, 0x20 on the flag-test path, or the incoming
+  r1 on the mode-check-fail path — callers evidently must not rely on r1. The meaning of ChipData byte 9 bit 0x20
+  is not independently confirmed (candidate readings include a tag/hidden/special-class marker); only that the game
+  gates chip-select behavior on it is certain.
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (10 attempt(s), run convert-20261009-035817);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_24.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    24' --file leaves_farm_24.c RemoveBattleObjectPanelReserves getBattleArmPositionMaybe_8018810 object_createCollisionData
+    object_presentCollisionData object_updateCollisionData sub_800ED90 sub_800F1DC sub_800FAAC sub_800FFAA sub_8010162
+    sub_8010230 sub_8010332 sub_8010D20 sub_8010D58 sub_8012ABC sub_8012C4A sub_8012C7C sub_80133EC sub_8014040
+    sub_8014178 sub_8015B22 sub_8016460 sub_80165C2 sub_801A554 sub_801A6E8 sub_801A720 sub_801CDEC sub_801CE92
+    sub_801DBD4 sub_801E0DC sub_801E1A4 custMenuPressOK_8028D3A sub_8026CCC sub_802806C sub_80280A2 sub_80280E0
+    sub_802812C sub_8028172 sub_802869E sub_8028894 sub_80288D0 sub_8028F48 sub_8028F84 sub_802A394 sub_802A3CC
+    sub_802A4FC sub_802A5A0 sub_802A5DA sub_802BF0C sub_802C4B6 sub_802C54C sub_802C5B0 sub_802C97E sub_802C9B8
+    sub_802C9EA sub_802CA1E sub_802DFC8 sub_802F668 sub_802F7E8 sub_8030158 sub_80310B0 sub_80310EC sub_803172E
+    sub_8113162 sub_8116BC0 sub_8116C40 sub_8116DB4 sub_81179AE sub_8117B94 sub_8117E20 sub_811A268 sub_811CBD0
+    sub_811EC10 sub_811F014 sub_811F050 sub_811F08C sub_811F214
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802A394
+
+    .venv/bin/python -m wf verify --function sub_802A394 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
+    of domain (verify run convert-20261009-035817-verify-10)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802A394
+
+    .venv/bin/python -m wf verify --function sub_802A394 --snapshots SNAPSHOT_DIR'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261009-035817-verify-10)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802A394
+
+    .venv/bin/python -m wf verify --function sub_802A394 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-035817-verify-10)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0802a394 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_24.c
+  where: recomp fa68414
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_802A394 -> chipSelect_selectedSlotChipHasAttr20_802A394
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_24.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- RemoveBattleObjectPanelReserves
+- getBattleArmPositionMaybe_8018810
+- object_createCollisionData
+- object_presentCollisionData
+- object_updateCollisionData
+- sub_800ED90
+- sub_800F1DC
+- sub_800FAAC
+- sub_800FFAA
+- sub_8010162
+- sub_8010230
+- sub_8010332
+- sub_8010D20
+- sub_8010D58
+- sub_8012ABC
+- sub_8012C4A
+- sub_8012C7C
+- sub_80133EC
+- sub_8014040
+- sub_8014178
+- sub_8015B22
+- sub_8016460
+- sub_80165C2
+- sub_801A554
+- sub_801A6E8
+- sub_801A720
+- sub_801CDEC
+- sub_801CE92
+- sub_801DBD4
+- sub_801E0DC
+- sub_801E1A4
+- custMenuPressOK_8028D3A
+- sub_8026CCC
+- sub_802806C
+- sub_80280A2
+- sub_80280E0
+- sub_802812C
+- sub_8028172
+- sub_802869E
+- sub_8028894
+- sub_80288D0
+- sub_8028F48
+- sub_8028F84
+- sub_802A3CC
+- sub_802A4FC
+- sub_802A5A0
+- sub_802A5DA
+- sub_802BF0C
+- sub_802C4B6
+- sub_802C54C
+- sub_802C5B0
+- sub_802C97E
+- sub_802C9B8
+- sub_802C9EA
+- sub_802CA1E
+- sub_802DFC8
+- sub_802F668
+- sub_802F7E8
+- sub_8030158
+- sub_80310B0
+- sub_80310EC
+- sub_803172E
+- sub_8113162
+- sub_8116BC0
+- sub_8116C40
+- sub_8116DB4
+- sub_81179AE
+- sub_8117B94
+- sub_8117E20
+- sub_811A268
+- sub_811CBD0
+- sub_811EC10
+- sub_811F014
+- sub_811F050
+- sub_811F08C
+- sub_811F214
+open_questions:
+- What gameplay property does ChipData byte 9 bit 0x20 encode (tag chip, hidden chip, class marker, etc.)?
+- Which menu states 0x18 and 4 correspond to (custom screen vs. folder/tag editor), and what r5 structure is this
+  exactly?
+- Why is r5+7's slot only honored when the slot's first byte is 0 — is 0 'empty/pending' or something else?
+- Whether any caller depends on the outgoing r1 value despite it looking incidental.
+sources:
+- tools/wf run convert-20261009-035817
+previous_names:
+- sub_802A394

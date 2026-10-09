@@ -1,0 +1,120 @@
+name: battle_objectCheckPanelByAlliance_800E5AC
+address: '0x0800E5AC'
+kind: function
+status: confirmed
+summary: Gates an object's use of a panel — validates the panel, then picks per-alliance panel parameters (selected
+  by a panel flag bit) and runs the parameter check on them.
+interface: int battle_objectCheckPanelByAlliance(u32 panelParamA, u32 panelParamB, struct BattleObject* obj /* in
+  r5 */); returns 0 (Z set) for an invalid panel; otherwise returns object_checkPanelParameters's r1-r3 results
+  and NZCV flags unchanged
+details: 'Takes two panel-identifying parameters in r0/r1 and a battle object in r5
+
+  (only oBattleObject_Alliance is read). Calls object_isValidPanel on the
+
+  parameters; if it reports an invalid panel, the function returns 0 in r0
+
+  with Z set (C/V untouched) and r1-r3 left as they were on entry.
+
+
+  For a valid panel, object_getFlag is called to fetch the panel''s flag
+
+  word. Bit 4 (0x10) of that flag selects one of two halves of the table at
+
+  byte_800E660, and the object''s alliance (byte, shifted left by 3) selects
+
+  the 8-byte row within it — i.e. 16 entries of two words total, arranged as
+
+  two halves of 8 alliance-indexed rows. The two words at
+
+  byte_800E660 + (flag & 0x10) + (alliance << 3) are loaded into r2/r3, the
+
+  original panel parameters are restored into r0/r1, and
+
+  object_checkPanelParameters is tail-called; its return values (r1-r3) and
+
+  flags are passed straight back to the caller.
+
+
+  Effectively this is the shared "can this object (of this alliance)
+
+  interact with / stand on this panel" test, where the acceptable panel
+
+  parameter thresholds differ per alliance and per a panel property
+
+  (flag bit 4, e.g. some panel state/category). r4-r7 are preserved.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800E5AC
+
+    .venv/bin/python -m wf verify --function sub_800E5AC --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800E5AC
+
+    .venv/bin/python -m wf verify --function sub_800E5AC --snapshots SNAPSHOT_DIR'
+  result: 23 compared, 0 differed, 1 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800E5AC
+
+    .venv/bin/python -m wf verify --function sub_800E5AC --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, chips, story2.'
+  reproduce: grep -l '^0800e5ac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_800E5AC -> battle_objectCheckPanelByAlliance_800E5AC
+  where: bn6f d1676a90
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f5b08caa
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- battles1
+- battlesweep
+- chips
+- story2
+related:
+- CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+- playCertainMapMusicBasedOnEventByte_8036e44
+- object_breakPanel
+- object_dimScreen
+- object_getPanelsInRowFiltered
+- object_spawnHiteffect
+- object_timefreezeBegin
+- sub_800BF88
+open_questions:
+- exact meaning of panel-flag bit 4 (which panel property splits the table in two)
+- what the two table words per alliance mean to object_checkPanelParameters (min/max panel parameters? allowed panel
+  types?)
+- whether r5 is always the acting battle object or can be another entity's struct
+sources:
+- tools/wf run convert-20261009-042017
+previous_names:
+- sub_800E5AC

@@ -7,13 +7,13 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_803CF3C ── */
-/* sub_803CF3C(r1 = navi slot index; expects r4 == 0x70):
+/* ── pet_addCurNaviStat0x3ECapped_803CF3C ── */
+/* pet_addCurNaviStat0x3ECapped_803CF3C(r1 = navi slot index; expects r4 == 0x70):
  * Adjusts one PET navi stat word: reads stat 0x3E of navi slot 0, adds
  * r1 * 20 (the per-slot stride), clamps the result to 1000, stores it back,
  * and calls sub_803CF74 to apply the same value/offset pair elsewhere.
  * All registers r4-r12 are preserved. */
-Next sub_803CF3C(void) {
+Next pet_addCurNaviStat0x3ECapped_803CF3C(void) {
     u32 r4_in = R4, r5_in = R5, r6_in = R6, r7_in = R7;
 
     if (R4 != 0x70)
@@ -58,8 +58,8 @@ Next sub_803CF3C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803F530 ── */
-/* sub_803F530: countdown gate attached to the flag byte at byte_200AD04.
+/* ── tickCountdownGate_803F530 ── */
+/* tickCountdownGate_803F530: countdown gate attached to the flag byte at byte_200AD04.
  *
  * While the flag byte is set, consults sub_803F560 each tick; when it
  * approves, decrements the halfword counter at 200AD06. The flag byte is
@@ -67,7 +67,7 @@ Next sub_803CF3C(void) {
  * zero or when sub_803F560 vetoes immediately. On return, the Z flag
  * reports whether the countdown is still active (r6 == 1 internally means
  * "still counting"); r4/r6 themselves are callee-saved and restored. */
-Next sub_803F530(void) {
+Next tickCountdownGate_803F530(void) {
     u32 saved_r4 = R4;
     u32 saved_r6 = R6;
 
@@ -110,13 +110,13 @@ Next sub_803F530(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803FAB4 ── */
-/* sub_803FAB4: back up the current save block to the game pak, retrying up
+/* ── save_BackupToGamePakWithRetry_803FAB4 ── */
+/* save_BackupToGamePakWithRetry_803FAB4: back up the current save block to the game pak, retrying up
  * to three times.  Each attempt refills the RNG seed buffer, copies the
  * 0x80-byte block at dword_20067C0 to the game pak (0xE007F80) and verifies
  * the copy.  Returns r0 = 1 if at least one attempt verified OK, r0 = 0 if
  * all three failed. */
-Next sub_803FAB4(void) {
+Next save_BackupToGamePakWithRetry_803FAB4(void) {
     const u32 entryR4 = R4;
     const u32 entryR6 = R6;
     const u32 entryR7 = R7;
