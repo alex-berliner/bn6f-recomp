@@ -1,0 +1,99 @@
+name: sub_80A9B70
+address: '0x080A9B70'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's behaviour step by calling one of three handler routines selected from the
+  object's state, passing the object's per-character data table entry to the handler.
+interface: void battle_dispatchObjectBehaviorStep_80A9B70(Object *obj /* r5 */); tail-calls the selected handler
+  (r0 = handler entry address, r7 = byte_80A9AA0 + 0x10*obj->charId); returns to this function's caller when the
+  handler returns, with r0-r7 and NZCV as the handler left them
+details: 'r5 points to a battle object/work structure. Field r5+4 (a character/entity id,
+
+  u8) is multiplied by 0x10 and added to byte_80A9AA0 to give a per-character
+
+  0x10-byte data entry, which is left in r7 for the handler. Field r5+8 (u8) is
+
+  used directly as a byte offset (valid values 0, 4, 8) into the handler table at
+
+  off_80A9B8C, which holds {sub_80A9B9C, sub_80A9C26, sub_80A9CA6}. The chosen
+
+  handler pointer is loaded into r0, then "mov lr, pc / bx r0" is used as a
+
+  tail-call: the callee starts with r0 = its own entry point (a self-reference
+
+  the handlers presumably use for state tables or re-dispatch), and lr points
+
+  just past the bx, so when the handler returns, control goes straight back to
+
+  sub_80A9B70''s caller. No registers are saved or restored beyond lr; everything
+
+  else passes through untouched, including flags (the mul/add set NZCV as a
+
+  side effect before the call, but the handler''s exit values are what the
+
+  caller sees). r6, r8-r12 are simply forwarded to the handler per the contract.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80A9B70
+
+    .venv/bin/python -m wf verify --function sub_80A9B70 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80A9B70
+
+    .venv/bin/python -m wf verify --function sub_80A9B70 --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 7 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80A9B70
+
+    .venv/bin/python -m wf verify --function sub_80A9B70 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^080a9b70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- maps
+- story2
+related:
+- renderTextGfx_8045F8C
+- sub_8046CC8
+- sub_804733C
+- sub_803423C
+- sub_8035054
+- sub_80AA104
+- sub_80AA2F8
+- sub_80AA8E0
+- getOffsetToQuantityOfChipCodeMaybe_8021c7c
+- sub_8021AB4
+open_questions:
+- exact layout/meaning of the 0x10-byte entries in byte_80A9AA0 (one per character id)
+- semantics of the three handlers sub_80A9B9C/sub_80A9C26/sub_80A9CA6 (init/update/cleanup? phase steps?)
+- what field r5+8 indices beyond 0/4/8 would do (out-of-range offsets read past off_80A9B8C, no bounds check)
+- whether handlers rely on r0 being their own entry address or treat it as scratch
+sources:
+- tools/wf run convert-20261009-024946

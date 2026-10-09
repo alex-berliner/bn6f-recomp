@@ -1,0 +1,97 @@
+name: sub_8021AB4
+address: '0x08021AB4'
+kind: function
+status: confirmed
+summary: Copies a 60-byte S-chip record into one slot of the S-chip table and unpacks/registers each of its 9-bit
+  packed fields.
+interface: void sub_8021AB4(const u32* src, u32 slot) — r0 = record source, r1 = slot index; r10 = toolkit (base
+  pointer read from [r10 + oToolkit_S_Chip_2002178_Ptr]); exits with r2 = 1 and r3 = result of the last sub_8021B2A
+  call
+details: 'Computes the destination as S-chip table base ([r10 + oToolkit_S_Chip_2002178_Ptr]) + slot * 0x3C,
+
+  then CopyWords()s 0x3C bytes (15 words) from r0 into that slot. It then re-scans the freshly
+
+  copied slot data as 30 halfwords (loop step 2, limit 0x3C): each halfword is passed to
+
+  split9BitsFromBitfield_8021AE0, which splits it into two 9-bit values (returned in r0/r1), and
+
+  those values are handed to sub_8021B2A with r2 = 1 (a count/flag of 1 per entry). The structure
+
+  appears to be a packed bitfield record whose halfwords each hold two 9-bit fields — likely a
+
+  compressed chip/part definition being installed into the S-chip (secret/special chip) table and
+
+  its entries individually registered. r4-r7 are preserved across the whole routine; r6/r7 are
+
+  used as loop counter and slot pointer only internally.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8021AB4
+
+    .venv/bin/python -m wf verify --function sub_8021AB4 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8021AB4
+
+    .venv/bin/python -m wf verify --function sub_8021AB4 --snapshots SNAPSHOT_DIR'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8021AB4
+
+    .venv/bin/python -m wf verify --function sub_8021AB4 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08021ab4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- renderTextGfx_8045F8C
+- sub_8046CC8
+- sub_804733C
+- sub_803423C
+- sub_8035054
+- sub_80A9B70
+- sub_80AA104
+- sub_80AA2F8
+- sub_80AA8E0
+- getOffsetToQuantityOfChipCodeMaybe_8021c7c
+open_questions:
+- exact meaning of the 9-bit values and what sub_8021B2A does with them (count/lookup/duplicate check)
+- what game object the "S-chip" table represents (secret chips vs. another packed-record table)
+- whether r0 source record always points at ROM data or can be RAM
+sources:
+- tools/wf run convert-20261009-024946

@@ -1,0 +1,80 @@
+name: sub_80AA2F8
+address: '0x080AA2F8'
+kind: function
+status: confirmed
+summary: 'Initializes an object''s sprite: sets its state fields, loads a sprite sheet (gfx 0x80, palette 0x1C,
+  sprite 0x98), starts animation 0 with no shadow, then runs the follow-up init step.'
+interface: void sub_80AA2F8(void); /* object struct pointer passed in r5, preserved; trashes r0-r3 */
+details: "Acts on an object/entity record whose pointer the caller leaves in r5 (r4-r7 and r12 are\npreserved, so\
+  \ this is an \"r5 = struct\" helper in the object-update family). It writes three\none-byte state fields of that\
+  \ record:\n  +0 = 3  (object state / phase byte; 3 likely means \"initializing\"),\n  +4 = 0  (animation frame\
+  \ or counter, reset to 0),\n  +8 = 4  (next/queued state, written just before the tail call).\nIt then sets up\
+  \ the object's graphics: sprite_load(0x80, 0x1C, 0x98) loads VRAM/OAM data for\ngraphics slot 0x80, palette 0x1C,\
+  \ sprite entry 0x98; sprite_setAnimation(0) selects animation\nindex 0; sprite_loadAnimationData() loads that\
+  \ animation's frame data; sprite_noShadow()\ndisables the entity's ground shadow. Finally it tail-calls sub_80AA322\
+  \ with r0 = 4 (matching\nthe next-state value just stored at +8), which presumably continues the initialization\
+  \ for\nthat state. This looks like the shared \"spawn with sprite, enter state 4\" init used by a\ncommon object\
+  \ type (the fixed gfx/palette/sprite IDs suggest one specific sprite).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA2F8
+
+    .venv/bin/python -m wf verify --function sub_80AA2F8 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA2F8
+
+    .venv/bin/python -m wf verify --function sub_80AA2F8 --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA2F8
+
+    .venv/bin/python -m wf verify --function sub_80AA2F8 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: maps, story1, story2.'
+  reproduce: grep -l '^080aa2f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- maps
+- story1
+- story2
+related:
+- renderTextGfx_8045F8C
+- sub_8046CC8
+- sub_804733C
+- sub_803423C
+- sub_8035054
+- sub_80A9B70
+- sub_80AA104
+- sub_80AA8E0
+- getOffsetToQuantityOfChipCodeMaybe_8021c7c
+- sub_8021AB4
+open_questions:
+- meaning of the state values 3 and 4 in the object record (offsets +0 and +8)
+- which object type(s) use sprite gfx 0x80 / palette 0x1C / sprite 0x98
+- what sub_80AA322 does with the r0 = 4 argument and how it relates to the byte at +8
+sources:
+- tools/wf run convert-20261009-024946

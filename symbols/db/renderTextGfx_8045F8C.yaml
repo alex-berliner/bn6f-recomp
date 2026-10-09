@@ -1,0 +1,87 @@
+name: renderTextGfx_8045F8C
+address: '0x08045F8C'
+kind: function
+status: confirmed
+summary: Publishes a text-graphics base pointer into the toolkit's text-renderer state, then hands the glyph chunk
+  selected by an index to the renderer at sub_3006B94.
+interface: void renderTextGfxChunk(u32* gfx, int entryIndex /* r0, r1; r9 = second arg to sub_3006B94 */)
+details: 'r0 is the base of a text graphics blob and r1 an entry index into the u16 offset table at its start (r1<<1,
+  ldrh, add). The base pointer is stashed at +0x40 of the object pointed to by toolkit field oToolkit_Unk200a220_Ptr
+  (r10-relative load), i.e. the current text-renderer/work state, so later steps can find the graphics again. The
+  resolved chunk pointer gfx + offsetTable[index] goes in r0 and r9 is passed as r1 to sub_3006B94 (called via a
+  literal-pool long call with the mov lr,pc / bx Thumb trick). r8 and r9 are saved/restored around the call with
+  push/pop pairs since Thumb cannot push high registers directly; as a side effect the final pop {r1}; mov r8,r1
+  sequence leaves r1 holding the caller''s r8 value on return. Effectively a small dispatcher/wrapper: pick which
+  chunk of the text graphics to render and delegate.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function renderTextGfx_8045F8C
+
+    .venv/bin/python -m wf verify --function renderTextGfx_8045F8C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function renderTextGfx_8045F8C
+
+    .venv/bin/python -m wf verify --function renderTextGfx_8045F8C --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function renderTextGfx_8045F8C
+
+    .venv/bin/python -m wf verify --function renderTextGfx_8045F8C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08045f8c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_8046CC8
+- sub_804733C
+- sub_803423C
+- sub_8035054
+- sub_80A9B70
+- sub_80AA104
+- sub_80AA2F8
+- sub_80AA8E0
+- getOffsetToQuantityOfChipCodeMaybe_8021c7c
+- sub_8021AB4
+open_questions:
+- exact meaning of the +0x40 field in the state object behind oToolkit_Unk200a220_Ptr
+- what r9 means to sub_3006B94 (row/destination/palette parameter?)
+- which caller-side structures feed r9 (not visible in this function)
+sources:
+- tools/wf run convert-20261009-024946

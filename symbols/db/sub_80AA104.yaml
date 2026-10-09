@@ -1,0 +1,101 @@
+name: sub_80AA104
+address: '0x080AA104'
+kind: function
+status: confirmed
+summary: Copies one 8-byte palette-row entry (selected by index 0..2) from a fixed ROM table into the work buffer
+  byte_20018B0 and returns 0.
+interface: int palette_copyTableRow(int row /* r0 = entry index, expected 0..2 */);
+details: 'Uses r0*8 to index into the 24-byte table byte_80AA11C, which holds three
+
+  8-byte entries laid out as four BGR555 halfwords (colors plus 0xFFFF
+
+  terminator/padding): row 0 and row 2 are {0x6878, 0x7050, 0xFFFF, 0xFFFF}
+
+  and row 1 is {0x2020, 0x2020, 0xFFFF, 0xFFFF}. It calls CopyBytes with
+
+  (src = table entry, dest = byte_20018B0, count = 8) — i.e. the caller''s
+
+  selected palette row lands in the shared IWRAM scratch buffer at
+
+  0x20018B0, presumably for subsequent palette/hardware upload by the
+
+  caller. Always returns 0; the "mov r0, #0" also clears N/Z, leaving C/V
+
+  as the callee left them. r0 is not bounds-checked: an index above 2 reads
+
+  past the table into whatever follows at 0x080aa134. r4-r7 and lr are only
+
+  pushed/popped for the call, not otherwise used; CopyBytes preserves
+
+  r4-r7.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA104
+
+    .venv/bin/python -m wf verify --function sub_80AA104 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA104
+
+    .venv/bin/python -m wf verify --function sub_80AA104 --snapshots SNAPSHOT_DIR'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA104
+
+    .venv/bin/python -m wf verify --function sub_80AA104 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^080aa104 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- renderTextGfx_8045F8C
+- sub_8046CC8
+- sub_804733C
+- sub_803423C
+- sub_8035054
+- sub_80A9B70
+- sub_80AA2F8
+- sub_80AA8E0
+- getOffsetToQuantityOfChipCodeMaybe_8021c7c
+- sub_8021AB4
+open_questions:
+- What code consumes byte_20018B0 after the copy (palette upload vs. some other 8-byte descriptor)?
+- Which callers pass which row indices, i.e. what gameplay feature the three rows (0x6878/0x7050 vs. 0x2020) select.
+- Whether the 0xFFFF halfwords are terminator colors consumed by the uploader or just padding.
+sources:
+- tools/wf run convert-20261009-024946

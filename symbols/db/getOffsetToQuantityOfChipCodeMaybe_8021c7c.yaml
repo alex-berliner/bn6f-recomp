@@ -1,0 +1,100 @@
+name: getOffsetToQuantityOfChipCodeMaybe_8021c7c
+address: '0x08021C7C'
+kind: function
+status: confirmed
+summary: Returns the address of the pack-stock quantity byte for a given chip id and code letter (falling back to
+  the first code slot if the chip has no such code).
+interface: 'u8 *pack_getChipCodeQuantityPtr(u32 chipId, u32 code); // out: r0=ptr, r1=12*chipId, r2=chipId, r3=codeIndex;
+  clobbers nzcv'
+details: 'Looks up the chip''s static data via getChip8021DA8 and scans its four code
+
+  letters (bytes 0..3 of the ChipData entry) for the wanted code r1. If none
+
+  of the four codes match, the index falls back to 0 (first code slot)
+
+  instead of erroring. Then it loads Toolkit.unk_2002230 (a pointer at
+
+  R10+oToolkit_Unk2002230_Ptr) to a per-chip table laid out as 12 bytes per
+
+  chip (four code slots of 3 bytes each, or a 12-byte per-chip record), and
+
+  returns table + 12*chipId + codeIndex — i.e. a pointer to the byte holding
+
+  the quantity of that chip+code in the player''s pack/folder library.
+
+  Unlike a normal AAPCS call it also returns extra state in r1-r3
+
+  (12*chipId, chipId, codeIndex) for callers to reuse, and preserves r4/r7
+
+  while clobbering flags.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function getOffsetToQuantityOfChipCodeMaybe_8021c7c
+
+    .venv/bin/python -m wf verify --function getOffsetToQuantityOfChipCodeMaybe_8021c7c --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 36 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 252 out
+    of domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function getOffsetToQuantityOfChipCodeMaybe_8021c7c
+
+    .venv/bin/python -m wf verify --function getOffsetToQuantityOfChipCodeMaybe_8021c7c --snapshots SNAPSHOT_DIR'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function getOffsetToQuantityOfChipCodeMaybe_8021c7c
+
+    .venv/bin/python -m wf verify --function getOffsetToQuantityOfChipCodeMaybe_8021c7c --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08021c7c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- renderTextGfx_8045F8C
+- sub_8046CC8
+- sub_804733C
+- sub_803423C
+- sub_8035054
+- sub_80A9B70
+- sub_80AA104
+- sub_80AA2F8
+- sub_80AA8E0
+- sub_8021AB4
+open_questions:
+- exact meaning of the 12 bytes per chip in the unk_2002230 table (only the code-indexed byte is confirmed)
+- whether the code-not-found fallback to index 0 is intended behaviour or a latent bug callers rely on
+sources:
+- tools/wf run convert-20261009-024946

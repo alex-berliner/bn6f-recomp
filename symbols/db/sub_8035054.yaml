@@ -1,0 +1,87 @@
+name: sub_8035054
+address: '0x08035054'
+kind: function
+status: confirmed
+summary: Checks that the player has normal control and no cutscene is active, then starts the one-time "notification"
+  cutscene (guarded by event flag 0x171A); returns 0 if it started, 1 otherwise.
+interface: int tryStartNotificationCutscene(void); // returns 0 = cutscene started, 1 = blocked; preserves r2,r4-r7;
+  reads GameState via toolkit in r10
+details: "Gate function for the one-time notification cutscene (CutsceneScriptNotification_809AE68).\nThe cutscene\
+  \ is only allowed to start when all of the following hold:\n  1. IsNotSlipRunningAndNotInCutscene returns nonzero\
+  \ (Slip/Beast mode overlay not running AND no cutscene already active),\n  2. the byte at GameState+oGameState_Unk_12\
+  \ is not 0xFF (unknown state byte; 0xFF blocks the notification),\n  3. event flag EVENT_171A is not yet set.\n\
+  If all conditions pass, it calls StartCutscene(script=CutsceneScriptNotification_809AE68, param=r1) and\npresumably\
+  \ the script itself (or the cutscene system) sets EVENT_171A, making this fire only once per save.\nQuirk: the\
+  \ cutscene's u32 parameter is whatever r1 TestEventFlagFromImmediate left behind (0x1A, the low\nhalf of the flag\
+  \ id) — effectively an accident of register reuse rather than a meaningful parameter.\nThe r2/r4-r7 \"inputs/outputs\"\
+  \ in the contract are just preservation across the call chain; the function\nitself takes no meaningful arguments.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8035054
+
+    .venv/bin/python -m wf verify --function sub_8035054 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8035054
+
+    .venv/bin/python -m wf verify --function sub_8035054 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8035054
+
+    .venv/bin/python -m wf verify --function sub_8035054 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08035054 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- renderTextGfx_8045F8C
+- sub_8046CC8
+- sub_804733C
+- sub_803423C
+- sub_80A9B70
+- sub_80AA104
+- sub_80AA2F8
+- sub_80AA8E0
+- getOffsetToQuantityOfChipCodeMaybe_8021c7c
+- sub_8021AB4
+open_questions:
+- what GameState+oGameState_Unk_12 normally holds and which game state makes it 0xFF
+- whether EVENT_171A is set by the notification cutscene script itself or elsewhere
+sources:
+- tools/wf run convert-20261009-024946

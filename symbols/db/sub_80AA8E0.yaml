@@ -1,0 +1,87 @@
+name: sub_80AA8E0
+address: '0x080AA8E0'
+kind: function
+status: hypothesis
+summary: Wrapper that, when enabled by its second argument, invokes setup helper sub_80AA910 with a six-word parameter
+  block and returns its result plus the current battle state's halfword field 0x36; otherwise returns (0, 0).
+interface: 'u32x2 sub_80AA8E0(u32 arg0 /*r0*/, u32 enable /*r1*/, u32 arg2 /*r2*/, u32 arg3 /*r3*/, u32 arg4 /*r4*/,
+  u32 arg5 /*r5*/, r10 = toolkit pointer); returns r0 = result of sub_80AA910, r1 = battleState->oBattleState_Unk_36
+  (halfword, zero-extended); clobbers C/V.
+
+  '
+details: 'Thin trampoline in front of sub_80AA910. The six incoming words r0-r5 are stored at the bottom of a 0x2C-byte
+  stack frame (offsets 0x00-0x14) and two more words (offsets 0x1C, 0x20) are zero-initialized; sub_80AA910 reads
+  its arguments back out of the caller''s stack frame rather than from registers. The call is gated on r1 != 0:
+  if r1 is zero the helper is skipped entirely and both outputs are 0. r7 is forced to 0 for the duration of the
+  call (sub_80AA910 expects r7 == 0) while the caller''s r7 is saved and restored, so r7 appears preserved to outside
+  callers. r4-r6 are pushed/popped as callee-saved. After the helper returns, the function loads the toolkit''s
+  battle state pointer (r10 + oToolkit_BattleStatePtr), reads the halfword at oBattleState_Unk_36, and passes it
+  back in r1 alongside the helper''s r0 result in r0. What sub_80AA910 actually does with the parameter block is
+  not determined here, so the in-game meaning is only as specific as "setup/setup-like operation guarded by an enable
+  flag, paired with a battle-state query". The C/V flag carry-through is incidental (the tst / ldr pair before the
+  epilogue), not a designed output.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA8E0
+
+    .venv/bin/python -m wf verify --function sub_80AA8E0 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA8E0
+
+    .venv/bin/python -m wf verify --function sub_80AA8E0 --snapshots SNAPSHOT_DIR'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80AA8E0
+
+    .venv/bin/python -m wf verify --function sub_80AA8E0 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^080aa8e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- battles1
+- story2
+related:
+- renderTextGfx_8045F8C
+- sub_8046CC8
+- sub_804733C
+- sub_803423C
+- sub_8035054
+- sub_80A9B70
+- sub_80AA104
+- sub_80AA2F8
+- getOffsetToQuantityOfChipCodeMaybe_8021c7c
+- sub_8021AB4
+open_questions:
+- What sub_80AA910 does with the six-word parameter block (offsets 0x00-0x14) and the two zeroed trailing words
+  — this determines the real game meaning of both this wrapper and its enable flag r1.
+- 'Semantic meaning of oBattleState_Unk_36: why the caller wants this halfword returned alongside the setup result.'
+- Which call sites use this wrapper versus calling sub_80AA910 directly, and what values they pass in r0-r5.
+sources:
+- tools/wf run convert-20261009-024946
