@@ -62,7 +62,9 @@ CONVENTIONS = r"""
   add r7, sp, #M`), reserve it on the guest stack too: `u32 buf = SP -= N; ... SP += N;`.
 - Write readable C: named local variables, if/else and loops instead of goto where possible,
   no copies of the machine-translated style (no nz/c/v locals, no SUBS()/COND_ macros, no
-  L_xxxxxxxx labels, no SAVE/LOAD/CALL_DIRECT).
+  L_xxxxxxxx labels, no SAVE/LOAD/CALL_DIRECT). Where the original branches on the flags a
+  callee left (`bl f; beq ...`), read them with ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG() or
+  OVERFLOW_FLAG() (game.h), never cpu.nz/cpu.c/cpu.v.
 
 ## Example (another function of the game, already converted)
 Original assembly of sub_30068E8, which queues one OAM entry:

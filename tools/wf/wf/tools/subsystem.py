@@ -134,7 +134,7 @@ class FunctionTest(Result):
     captured: ToolMessage
     random: ToolMessage
     passed: bool
-    compared: bool = True  # False: no captured calls and every random input out of domain (review sees it)
+    compared: bool = True  # False: every captured call and random input out of domain (review sees it)
 
 
 class FileTest(Result):
@@ -383,6 +383,7 @@ def _test_function(context: ConversionContext, library: Path, snapshots: Snapsho
     env = {**os.environ, "BN6F_ROM": str(ORIGINAL_ROM)}
     results: list[ToolMessage] = []
     passed = True
+    captured_compared = True
     captured = snapshots / context.function
     if not captured.is_dir():   # an extra entry nothing was seen calling
         results.append(ToolMessage("no captured calls (random inputs only)"))
@@ -401,11 +402,15 @@ def _test_function(context: ConversionContext, library: Path, snapshots: Snapsho
             passed = False
         nothing = re.search(r"\((\d+) snapshots, (\d+) runs, \d+ failures, (\d+) out-of-domain\)", line)
         if nothing and int(nothing[2]) == int(nothing[3]):
-            results[-1] = ToolMessage(results[-1] + "\nevery captured call was out of domain: nothing was compared")
-            passed = False
+            # out of domain: the original itself faults or spins in the host harness (it polls hardware
+            # the harness does not model), so no candidate can be compared here; the full verify's
+            # lockstep routes still run it, and review sees it marked NOT COMPARED
+            results[-1] = ToolMessage(results[-1] + "\nevery captured call was out of domain (the original "
+                                      "cannot run in the host harness): left to the full verify")
+            captured_compared = False
     random = results[1] if len(results) > 1 else ToolMessage("not run")
     trials = re.search(r"\((\d+) trials, \d+ failures, (\d+) out-of-domain\)", random)
-    compared = captured.is_dir() or not (trials and trials[1] == trials[2])
+    compared = (captured.is_dir() and captured_compared) or not (trials and trials[1] == trials[2])
     return FunctionTest(function=context.function, captured=results[0], random=random, passed=passed,
                         compared=compared)
 

@@ -43,6 +43,14 @@
 #define SET_FLAGS_ADD(a, b) do { u32 a_ = (a), b_ = (b), r_ = a_ + b_; cpu.nz = r_; \
     cpu.c = r_ < a_; cpu.v = (~(a_ ^ b_) & (a_ ^ r_)) >> 31; } while (0)
 
+/* The condition flags a callee left, for code that branches on them right
+ * after a GUEST_CALL as the original does (`bl f; beq ...` is
+ * `if (ZERO_FLAG())`). */
+#define ZERO_FLAG()     (cpu.nz == 0)
+#define NEGATIVE_FLAG() ((s32)cpu.nz < 0)
+#define CARRY_FLAG()    (cpu.c != 0)
+#define OVERFLOW_FLAG() (cpu.v != 0)
+
 /* Return to the guest caller (the address in LR). */
 #define RETURN_TO_CALLER() do { cpu.ret = LR & ~1u; return DONE; } while (0)
 

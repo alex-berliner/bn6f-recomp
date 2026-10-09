@@ -1,13 +1,14 @@
 """The pieces of the subsystem writer that need no model or difftest: reading a
 reply, what review is shown about register use and register-form notes, and
 the difftest.cfg section a run installs and removes."""
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from wf.tools import install, subsystem
 from wf.tools.install import uninstall_file
-from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC
+from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Register
 from wf.tools.subsystem import (CandidateFile, CfgLine, FunctionTest, parse_reply, register_form_notes,
                                 register_use_outside_adapters)
 from wf.types import FunctionName, GuestAddress, SnapshotDir, SymbolStatus, ToolMessage
@@ -116,3 +117,27 @@ def test_the_cfg_section_is_replaced_and_removed(monkeypatch: pytest.MonkeyPatch
 
     uninstall_file("x.c")
     assert cfg.read_text() == "existing compare=r0\n" and not (tmp_path / "x.c").exists()
+
+
+def test_a_function_whose_original_cannot_run_in_the_harness_is_left_to_the_full_verify(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Every captured call and random input out of domain: the original faults or spins there, so
+    nothing a model writes could be compared; it passes on, marked not compared."""
+    lines = {"-S": "sub_1  ok    (6 snapshots, 6 runs, 0 failures, 6 out-of-domain)",
+             "-n": "sub_1  ok    (300 trials, 0 failures, 300 out-of-domain)"}
+
+    def run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        line = next(line for flag, line in lines.items() if flag in command)
+        return subprocess.CompletedProcess(command, 0, stdout=line + "\n", stderr="")
+
+    (tmp_path / "sub_1").mkdir()
+    monkeypatch.setattr(subsystem.subprocess, "run", run)
+    context = ConversionContext(function=FunctionName("sub_1"), address=GuestAddress(0x08000100),
+                                assembly=AssemblyText("bx lr"), lifted=LiftedC("Next L_sub_1(void) {}"),
+                                contract=Contract(inputs=(Register("r0"),), outputs=(Register("r0"),), clobbers=(), preserved=()))
+
+    test = subsystem._test_function(context, tmp_path / "lib.so", SnapshotDir(tmp_path), tmp_path / "difftest",  # pyright: ignore[reportPrivateUsage]
+                                    None)
+
+    assert test.passed and not test.compared
+    assert "left to the full verify" in test.captured
