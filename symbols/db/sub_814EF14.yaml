@@ -1,0 +1,83 @@
+name: sub_814EF14
+address: '0x0814EF14'
+kind: function
+status: confirmed
+summary: 'm4a''s m4aSoundVSyncOff: takes the PCM DMA off — releases the block''s ident, stops Timer 0, stops the
+  repeating PCM DMAs, sets both DMA controls to 32-bit and zero-fills the PCM buffer.'
+interface: "static VsyncOffRegisters sound_vsync_off(void) ->\n    VsyncOffRegisters { u32 r2, r3; }\nNext sub_814EF14:\
+  \ in lr; out r2/r3 as the original leaves them; r0, r1, LR\nand the flags are documented scratch.\n"
+details: 'The live test is (ident - ID_NUMBER) <= 1, spelled as ident + 0x978C92AD
+
+  <= 1; a live block gets ident += 10, then TM0CNT_H = 0, the pause word
+
+  0x84400004 for either PCM DMA still showing m4a''s active bit 0x02000000, and
+
+  0x0400 (32-bit) in both DMA controls. The buffer is cleared by SWI 0xB
+
+  (CpuSet) in CpuFill32 mode 0x5000318 over SoundInfo+pcmBuffer (0x318 words),
+
+  from a zero word reserved on the guest stack. r2/r3 are the register
+
+  contract: the pointer plus the tag constant when offline, else whatever the
+
+  SWI left.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by opencode/step-5-preview-free through the convert workflow (4 attempt(s), run convert-20261009-114939);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/sound_lib_setup.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'sound library setup (the sound info pointer
+    at 0x3007FF0)' --file sound_lib_setup.c sub_814DA9C sub_814EDC0 sub_814EF14 sub_814EF94
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814EF14
+
+    .venv/bin/python -m wf verify --function sub_814EF14 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out of
+    domain (verify run convert-20261009-114939-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814EF14
+
+    .venv/bin/python -m wf verify --function sub_814EF14 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-114939-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814EF14
+
+    .venv/bin/python -m wf verify --function sub_814EF14 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-114939-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0814ef14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/sound_lib_setup.c
+  where: recomp f8ace1f
+  tool: tools/wf convert (opencode/step-5-preview-free)
+readable_c: cport/src/game/sound_lib_setup.c
+coverage:
+- battle
+- battles1
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_814DA9C
+- sub_814EDC0
+- sub_814EF94
+open_questions:
+- the DMA words follow m4a's convention; only the active-bit test is visible here
+sources:
+- tools/wf run convert-20261009-114939

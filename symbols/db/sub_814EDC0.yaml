@@ -1,0 +1,87 @@
+name: sub_814EDC0
+address: '0x0814EDC0'
+kind: function
+status: probable
+summary: 'm4a''s SampleFreqSet: turns a sound id''s rate group into pcmDmaPeriod, pcmFreq and divFreq and restarts
+  the PCM DMA.'
+interface: 'static VsyncOnRegisters sample_freq_set(u32 sound_id) (runs sound_vsync_off
+
+  inside and returns what sound_vsync_on leaves)
+
+  Next sub_814EDC0: in r0 sound id, r4/r5 preserved, lr; out r0 the popped
+
+  return word, r1/r2/r3/r12 from m4aSoundVSyncOn, r4/r5 restored, nz/c/v.
+
+  '
+details: 'Bits 16-19 of the id select the rate entry in m4a''s halfword table at
+
+  byte_81C058C (index freq-1); stores go to SoundInfo +0x08, +0x10, +0x0B,
+
+  +0x14, +0x18 in the original''s order, each quotient coming from divsi3.
+
+  divFreq = (16777216/pcmFreq + 1) >> 1. The m4aSoundVSyncOff call first and
+
+  the m4aSoundVSyncOn call last are the ones in the assembly, so the ending
+
+  registers and flags are m4aSoundVSyncOn''s.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by opencode/step-5-preview-free through the convert workflow (4 attempt(s), run convert-20261009-114939);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/sound_lib_setup.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'sound library setup (the sound info pointer
+    at 0x3007FF0)' --file sound_lib_setup.c sub_814DA9C sub_814EDC0 sub_814EF14 sub_814EF94
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814EDC0
+
+    .venv/bin/python -m wf verify --function sub_814EDC0 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 3 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-114939-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814EDC0
+
+    .venv/bin/python -m wf verify --function sub_814EDC0 --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261009-114939-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_814EDC0
+
+    .venv/bin/python -m wf verify --function sub_814EDC0 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-114939-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0814edc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/sound_lib_setup.c
+  where: recomp f8ace1f
+  tool: tools/wf convert (opencode/step-5-preview-free)
+readable_c: cport/src/game/sound_lib_setup.c
+coverage:
+- battle
+- battles1
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_814DA9C
+- sub_814EF14
+- sub_814EF94
+open_questions:
+- what the rate groups themselves mean is not visible here; only the table lookup is
+- the +1 in divFreq is an undocumented rounding-up
+sources:
+- tools/wf run convert-20261009-114939
