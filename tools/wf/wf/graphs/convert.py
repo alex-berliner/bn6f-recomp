@@ -10,7 +10,9 @@ committed, its symbols/db entries are written from the model's drafts plus the
 run's own evidence, and a child record run renames and documents it.
 The orchestrator never writes the code: it chooses the work and reviews."""
 import re
+import time
 from enum import Enum
+from time import sleep
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -247,8 +249,7 @@ def ask_model_for_file_step(given: AskInput) -> AskOutput:
         reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name)
         return AskOutput(attempts=(Attempt(number=number, model=given.farm_model, given=True, reply=reply),))
     escalation = given.models[min(_model_attempts(given.attempts) // given.rounds, len(given.models) - 1):]
-    # a model whose provider is rate-limited (for hours, at times) is passed over for the next one
-    model = next((model for model in escalation if provider_blocked_until(model) is None), escalation[0])
+    model = available_model(escalation)
     prompt = subsystem_prompt(given.subsystem, given.file_name, given.contexts)
     if given.attempts:
         what_failed, report = _what_went_wrong(given.attempts[-1])
@@ -502,6 +503,22 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
 
 def _has_calls(snapshots: SnapshotDir, function: FunctionName) -> bool:
     return any(not path.name.endswith(".exit.bin") for path in (snapshots / function).glob("snap_*.bin"))
+
+
+def available_model(escalation: tuple[ModelSpec, ...]) -> ModelSpec:
+    """The first model whose provider takes requests now (a rate-limited one is passed over). When none
+    does, wait for the one that frees up first, up to two hours: a pacer holds a request to a limited
+    provider until the limit lifts, which can be days."""
+    while True:
+        blocked = {model: provider_blocked_until(model) for model in escalation}
+        free = [model for model in escalation if blocked[model] is None]
+        if free:
+            return free[0]
+        soonest = min(escalation, key=lambda model: blocked[model] or 0.0)
+        wait = (blocked[soonest] or 0.0) - time.time()
+        if wait > 7200:
+            return soonest   # nothing frees up soon: ask anyway, and the run reports the provider's answer
+        sleep(min(wait + 30, 600))
 
 
 def _model_attempts(attempts: tuple[Attempt, ...]) -> int:

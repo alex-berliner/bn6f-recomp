@@ -117,6 +117,27 @@ def test_a_rate_limited_provider_is_passed_over(monkeypatch: pytest.MonkeyPatch,
     assert world.asked == [STRONGER]
 
 
+def test_when_every_provider_is_limited_it_waits_for_the_first_to_free_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [1000.0]
+    lifts = {STRONG: 1000.0 + 5000, STRONGER: 1000.0 + 1200}
+
+    def now() -> float:
+        return clock[0]
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    def blocked_until(model: ModelSpec) -> float | None:
+        return lifts[model] if lifts[model] > clock[0] else None
+
+    monkeypatch.setattr(convert.time, "time", now)
+    monkeypatch.setattr(convert, "sleep", sleep)
+    monkeypatch.setattr(convert, "provider_blocked_until", blocked_until)
+
+    assert convert.available_model((STRONG, STRONGER)) == STRONGER
+    assert 2200.0 <= clock[0] < 2900.0
+
+
 def test_a_failed_quick_test_goes_back_to_the_same_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     world = World(quick_tests=[False, True], verdicts=[Verdict.PASSED])
     paused = start(world, monkeypatch, tmp_path, run_id="convert-2")
