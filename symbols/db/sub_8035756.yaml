@@ -1,0 +1,97 @@
+name: sub_8035756
+address: '0x08035756'
+kind: function
+status: confirmed
+summary: Scans a 32-entry request queue at dword_2000DC0 and claims the first pending request whose slot is free,
+  clearing the slot; returns 0 if none available.
+interface: uint32 sub_8035756(void) — takes no register inputs (r4-r7/lr preserved); returns the claimed request
+  value in r0 (0 if none), with NZ flags set from r0. r3 is scratch (holds the last slot's current value on exit).
+details: 'Iterates over 32 fixed 8-byte slots at dword_2000DC0 (IWRAM, ~0x100 bytes total
+
+  per the trailing .word 0x100 literal). Each slot is {+0 current value, +4 pending request}.
+
+  Per slot: if the pending field (+4) is 0, the slot is idle and its current field (+0) is
+
+  cleared (note the code stores the just-read zero back to +0); if pending != 0 but current
+
+  != 0, the slot is busy — both fields are left untouched; if pending != 0 and current == 0,
+
+  the slot is free to claim: both fields are zeroed and the pending value is returned
+
+  immediately. The loop exits early on a claim; otherwise, after all 32 slots, returns 0.
+
+  Z/N flags always reflect the returned value, so callers can branch directly on the result.
+
+  Values are opaque handles/requests — this function only moves them between the queue''s
+
+  two fields; it never dereferences them.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_27.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    27' --file leaves_farm_27.c sub_8035756 triggerSomeUpdateForInternetOrRealWorld_8033948 chatbox_8040C9C chatbox_EC_label
+    chatbox_F1_textspeed chatbox_F7_move chatbox_uncompMapTextArchives_803FD08
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8035756
+
+    .venv/bin/python -m wf verify --function sub_8035756 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-043154-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8035756
+
+    .venv/bin/python -m wf verify --function sub_8035756 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-043154-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8035756
+
+    .venv/bin/python -m wf verify --function sub_8035756 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043154-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08035756 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_27.c
+  where: recomp e8ac6e9
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_27.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- triggerSomeUpdateForInternetOrRealWorld_8033948
+- chatbox_8040C9C
+- chatbox_EC_label
+- chatbox_F1_textspeed
+- chatbox_F7_move
+- chatbox_uncompMapTextArchives_803FD08
+open_questions:
+- What subsystem owns dword_2000DC0 — the slots' meaning (e.g. thread/mailbox tokens, DMA/IRQ work items, task handles)
+  is not evident from this function alone.
+- Whether the "current" field being nonzero really means "slot busy" or tracks some other lifetime state set by
+  the consumer side.
+sources:
+- tools/wf run convert-20261009-043154

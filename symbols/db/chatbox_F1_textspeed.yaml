@@ -1,0 +1,83 @@
+name: chatbox_F1_textspeed
+address: '0x08041BA4'
+kind: function
+status: confirmed
+summary: Chatbox text-script opcode 0xF1 handler that sets the text print speed and queues the next speed to use
+  afterwards.
+interface: void chatbox_F1_textspeed(u8 *scriptCursor /*r4*/, struct Chatbox *chatbox /*r5*/); returns r0=1 (advance
+  flag), r1=speed+1, r2=0x1F3, r4=cursor+3, c/v from the r4+3 add, nz from "mov r0,#1"
+details: 'Called by the chatbox text-script interpreter for opcode 0xF1 ("set text speed"). Reads the speed byte
+  at scriptCursor+2 and stores it to chatbox+8 (oChatbox_TextScriptPrintSpeed, the current print speed). Always
+  stores speed+1 to chatbox+0x1F3, interpreted as the print speed to use for the next message/after this one; note
+  that speed==0 still stores 1 there, so a single store covers both. Sets a flag in the chatbox 0x3E flag word via
+  chatbox_setflags_3e: 0x0040 (FLAGS_3E_UNK_0040) when the requested speed is 0, 0x0800 (FLAGS_3E_UNK_0800) otherwise
+  — likely distinguishing "instant/default" from a numeric speed for the interpreter''s follow-up logic. The command
+  is 3 bytes long, so the script cursor (r4) is advanced by 3 and the caller receives r0=1 to continue processing.
+  Register contract quirks: r1 (speed+1) and r2 (0x1F3) are leftovers from the store address computation that callers
+  apparently read or tolerate; the offset constant 0x1F3 is kept in a literal pool at 0x8041BD4 and the 0x0800 flag
+  in a literal at 0x8041BD0.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_27.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    27' --file leaves_farm_27.c sub_8035756 triggerSomeUpdateForInternetOrRealWorld_8033948 chatbox_8040C9C chatbox_EC_label
+    chatbox_F1_textspeed chatbox_F7_move chatbox_uncompMapTextArchives_803FD08
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_F1_textspeed
+
+    .venv/bin/python -m wf verify --function chatbox_F1_textspeed --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 256 out
+    of domain (verify run convert-20261009-043154-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_F1_textspeed
+
+    .venv/bin/python -m wf verify --function chatbox_F1_textspeed --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-043154-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_F1_textspeed
+
+    .venv/bin/python -m wf verify --function chatbox_F1_textspeed --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043154-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08041ba4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_27.c
+  where: recomp e8ac6e9
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_27.c
+coverage:
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_8035756
+- triggerSomeUpdateForInternetOrRealWorld_8033948
+- chatbox_8040C9C
+- chatbox_EC_label
+- chatbox_F7_move
+- chatbox_uncompMapTextArchives_803FD08
+open_questions:
+- Exact meaning of chatbox+0x1F3 (next speed vs. temporary speed) and how the 0x3E flags 0x0040/0x0800 are consumed
+  later
+- Whether speed==0 means 'instant text' or 'fastest' in game terms
+sources:
+- tools/wf run convert-20261009-043154

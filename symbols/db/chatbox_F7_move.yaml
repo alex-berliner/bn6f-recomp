@@ -1,0 +1,96 @@
+name: chatbox_F7_move
+address: '0x08042830'
+kind: function
+status: confirmed
+summary: Chatbox state-machine dispatcher — reads the chatbox object's state byte and tail-jumps to one of ten per-state
+  update handlers.
+interface: void chatbox_dispatchState(Chatbox* r4) — r4 = chatbox object; returns whatever/wherever the selected
+  handler returns (the handler's results and flags pass straight through to this function's caller)
+details: 'r4 points at the chatbox state object; the byte at [r4,+1] is the current
+
+  state (0-9 in practice). The state is shifted left by 2 and used as an
+
+  index into a jump table of ten handler pointers (0x0804286C, 0x080428B8,
+
+  0x080428C0, 0x080428E4, 0x080428EC, 0x080428FC, 0x08042910, 0x0804293C,
+
+  0x08042990, 0x080429D8 — the chatbox''s typewriter-text / input / close
+
+  update steps). The dispatch is a tail call done with `mov lr, pc / bx r0`,
+
+  so the selected handler returns directly to chatbox_F7_move''s own caller
+
+  rather than back here; the handler receives R1 = state*4 and R0 = its own
+
+  table entry address (an artifact of the computed call), and its register
+
+  and flag outputs become this function''s outputs. There is no bounds
+
+  check — an out-of-range state byte would fetch a garbage pointer from
+
+  beyond the table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_27.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    27' --file leaves_farm_27.c sub_8035756 triggerSomeUpdateForInternetOrRealWorld_8033948 chatbox_8040C9C chatbox_EC_label
+    chatbox_F1_textspeed chatbox_F7_move chatbox_uncompMapTextArchives_803FD08
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_F7_move
+
+    .venv/bin/python -m wf verify --function chatbox_F7_move --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261009-043154-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_F7_move
+
+    .venv/bin/python -m wf verify --function chatbox_F7_move --snapshots SNAPSHOT_DIR'
+  result: 3 compared, 0 differed, 8 out of domain (verify run convert-20261009-043154-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_F7_move
+
+    .venv/bin/python -m wf verify --function chatbox_F7_move --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043154-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08042830 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_27.c
+  where: recomp e8ac6e9
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_27.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_8035756
+- triggerSomeUpdateForInternetOrRealWorld_8033948
+- chatbox_8040C9C
+- chatbox_EC_label
+- chatbox_F1_textspeed
+- chatbox_uncompMapTextArchives_803FD08
+open_questions:
+- exact per-state semantics of the ten handlers (typewriter advance, wait-for-A, close, etc.) not verified individually
+- whether any caller ever passes a state value outside 0-9 (no bounds check exists)
+sources:
+- tools/wf run convert-20261009-043154

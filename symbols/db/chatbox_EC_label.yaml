@@ -1,0 +1,82 @@
+name: chatbox_EC_label
+address: '0x08041288'
+kind: function
+status: confirmed
+summary: Chatbox script opcode 0xEC handler - advances the text-cursor counters in the chatbox object by a per-command
+  step, then continues the script.
+interface: int chatbox_scriptOpEC_advanceCursor(u8 *scriptCmd /*r4*/, Chatbox *chatbox /*r5*/); returns r0=1 (keep
+  interpreting), r1=new Unk_7C, r2=new Unk_70, r4 bumped past the 3-byte command; NZCV set per the C version
+details: 'Handler for chatbox script opcode 0xEC. r4 points at the current 3-byte script command (opcode, sub-opcode,
+  operand) and r5 at the chatbox object. The step is taken from the operand byte at [r4+2]: if the sub-opcode byte
+  at [r4+1] is 1 the operand is used raw, otherwise it is treated as an index into an 8-byte-per-entry table and
+  the step is operand*8. The step is added to the 32-bit counter at chatbox+oChatbox_Unk_70 and four times the step
+  (i.e. advance*4, the byte offset of the same table entry) to chatbox+oChatbox_Unk_7C, so the two fields track
+  the same position in byte and entry-index units. Both updated values are also handed back in r2 (Unk_70) and r1
+  (Unk_7C). The command is 3 bytes, so r4 += 3 skips to the next script command, and r0 = 1 tells the interpreter
+  to keep running. Falls through a trailing .word 0x303 literal pool entry (padding, not executed).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_27.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    27' --file leaves_farm_27.c sub_8035756 triggerSomeUpdateForInternetOrRealWorld_8033948 chatbox_8040C9C chatbox_EC_label
+    chatbox_F1_textspeed chatbox_F7_move chatbox_uncompMapTextArchives_803FD08
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_EC_label
+
+    .venv/bin/python -m wf verify --function chatbox_EC_label --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 256 out
+    of domain (verify run convert-20261009-043154-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_EC_label
+
+    .venv/bin/python -m wf verify --function chatbox_EC_label --snapshots SNAPSHOT_DIR'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261009-043154-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_EC_label
+
+    .venv/bin/python -m wf verify --function chatbox_EC_label --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043154-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08041288 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_27.c
+  where: recomp e8ac6e9
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_27.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_8035756
+- triggerSomeUpdateForInternetOrRealWorld_8033948
+- chatbox_8040C9C
+- chatbox_F1_textspeed
+- chatbox_F7_move
+- chatbox_uncompMapTextArchives_803FD08
+open_questions:
+- what Unk_70 / Unk_7C actually index (likely a glyph/tile table for a text effect); the 8-byte entry table they
+  walk is not identified here
+- what sub-opcode values other than 0 and 1 mean (both non-1 values take the operand*8 path)
+sources:
+- tools/wf run convert-20261009-043154
