@@ -453,7 +453,7 @@ def drop_failing_functions(given: DropInput) -> DropOutput:
     """A farm group keeps what passes: the functions the quick test, the verify or the review named
     are taken out (they stay in the farm's pool), and the rest is assembled again and re-tested."""
     assert given.farm_model is not None
-    failing = _failing_functions(given.attempts[-1])
+    failing = failing_functions(given.attempts[-1])
     kept = tuple(context for context in given.contexts if context.function not in failing)
     functions = tuple(context.function for context in kept)
     reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name)
@@ -536,7 +536,7 @@ def _attempts_left(state: ConvertState) -> bool:
     return _model_attempts(state.attempts) < state.rounds * len(state.models)
 
 
-def _failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
+def failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
     """The functions of a farm group the latest test, verify or review named, with why."""
     failing: dict[FunctionName, str] = {}
     code = attempt.reply.file or ""
@@ -580,11 +580,10 @@ def _failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
 def _parts_defining(code: str, name: str) -> list[FunctionName]:
     """Whose parts of an assembled farm file define `Next NAME(void)`."""
     owners: list[FunctionName] = []
-    for number, line in enumerate(code.splitlines(), start=1):
-        if re.match(rf"^\s*Next\s+{re.escape(name)}\s*\(\s*void\s*\)\s*\{{", line):
-            owner = function_at_line(code, number)
-            if owner is not None:
-                owners.append(owner)
+    for match in re.finditer(rf"^[ \t]*(Next)\s+{re.escape(name)}\s*\(\s*void\s*\)\s*\{{", code, re.M):
+        owner = function_at_line(code, code.count("\n", 0, match.start(1)) + 1)   # the brace may be a line down
+        if owner is not None:
+            owners.append(owner)
     return owners
 
 
@@ -620,7 +619,7 @@ def farm_functions_to_drop(state: ConvertState) -> bool:
     stage_failed = (not quick_test_passed(state) if latest.verification is None and latest.review is None
                     else not verified(state) if latest.review is None
                     else latest.review.decision is ReviewDecision.REQUEST_CHANGES)
-    failing = _failing_functions(latest)
+    failing = failing_functions(latest)
     return stage_failed and bool(failing) and any(context.function not in failing for context in _contexts(state))
 
 

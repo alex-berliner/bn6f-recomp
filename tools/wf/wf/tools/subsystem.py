@@ -345,8 +345,10 @@ def _compile(code: str, names: tuple[FunctionName, ...], workdir: Path) -> tuple
     flags = cast(list[str], _farm.CFLAGS)  # pyright: ignore[reportAny]
     done = subprocess.run(["gcc", *flags, "-o", str(library), str(source)], capture_output=True, text=True, check=False)
     if done.returncode != 0:
-        errors = [line.replace(str(source) + ":", "line ") for line in done.stderr.splitlines() if "error" in line]
-        return None, "\n".join(errors[:12])
+        # an error inside a header names the file's line only in a note ("in expansion of macro")
+        errors = [line.replace(str(source) + ":", "line ") for line in done.stderr.splitlines()
+                  if "error" in line or (line.startswith(str(source) + ":") and "note:" in line)]
+        return None, "\n".join(errors[:80])
     return library, ""
 
 
