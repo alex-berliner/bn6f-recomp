@@ -2,6 +2,7 @@
 changed functions against their lifted originals on random inputs and on the
 original game's captured calls, run them on the CPU oracle, replay every
 recorded route in lockstep, and the battle sweep when battle code changed."""
+from collections import Counter
 from enum import Enum
 from pathlib import Path
 
@@ -75,6 +76,7 @@ class VerifyReport(Result):
     routes_checked: tuple[RouteName, ...]
     failed_routes: tuple[RouteName, ...]
     battle_sweep: BattleSweepResult | NotRun | None
+    route_failures: tuple[ToolMessage, ...] = ()    # each failed route: its verdict and what the emulator said
 
 
 class VerifyState(BaseModel):
@@ -261,8 +263,21 @@ def write_report(given: ReportInput) -> ReportOutput:
         routes_checked=tuple(result.route for result in given.locksteps),
         failed_routes=tuple(result.route for result in given.locksteps if not result.passed),
         battle_sweep=battle_sweep,
+        route_failures=tuple(route_failure(result) for result in given.locksteps if not result.passed),
     )
     return ReportOutput(report=report.model_copy(update={"verdict": _verdict(given, report)}))
+
+
+def route_failure(result: LockstepResult) -> ToolMessage:
+    """The route's verdict line, then each distinct message the emulator printed (e.g. `Illegal opcode ...
+    (pc=03005a78 ...)`, which says where the port went wrong) with how often, at most five."""
+    try:
+        lines = Path(result.log).read_text(errors="replace").splitlines()
+    except OSError:
+        lines = []
+    said = Counter(line.strip() for line in lines if line.startswith("[GBA]"))
+    notes = [f"{line} (x{count})" if count > 1 else line for line, count in said.most_common(5)]
+    return ToolMessage("\n  ".join([f"{result.route}: {result.summary}", *notes]))
 
 
 def _verdict(given: ReportInput, report: VerifyReport) -> Verdict:

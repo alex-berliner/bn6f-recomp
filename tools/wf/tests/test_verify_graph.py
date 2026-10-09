@@ -149,3 +149,17 @@ def install(tools: FakeTools, monkeypatch: pytest.MonkeyPatch) -> None:
     }
     for name, fake in fakes.items():
         monkeypatch.setattr(verify, name, fake)
+
+
+def test_a_failed_route_says_what_the_emulator_said(tmp_path: Path) -> None:
+    """The model repairing a conversion sees where the port went wrong, not just which route failed."""
+    log = tmp_path / "lockstep.log"
+    log.write_text("1 checkpoints to game frame 0\nFAIL: tested ROM stopped early (1 vs 1000 checkpoints)\n"
+                   + "[GBA] Illegal opcode: e14db773 (pc=03005a78)\n" * 3)
+    result = LockstepResult(route=ALL_ROUTES[0].name, outcome=Outcome.FAILED, checkpoints=1, reached_frame=FrameCount(0),
+                            summary=ToolMessage("FAIL: tested ROM stopped early (1 vs 1000 checkpoints)"), seconds=1.0,
+                            log=LogPath(log))
+
+    message = verify.route_failure(result)
+
+    assert "stopped early" in message and "Illegal opcode: e14db773 (pc=03005a78) (x3)" in message
