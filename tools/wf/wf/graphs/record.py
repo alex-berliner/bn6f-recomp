@@ -16,14 +16,17 @@ from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify
 from wf.repo import REPO
 from wf.routes import ALL_ROUTES
 from wf.tools.git import changed_files, commit_files
-from wf.tools.symbols import (check_database, entry, refresh_pc_port_symbols, rename_symbols, render_database,
+from wf.tools.symbols import (DATABASE, check_database, entry, refresh_pc_port_symbols, rename_symbols, render_database,
                               write_bn6f_comments)
 from wf.types import CommitHash, LogPath, Rename, Result, SymbolName, SymbolStatus, ToolMessage
 
 PROJECT = "recomp-record"
 RENAMEABLE = (SymbolStatus.CONFIRMED, SymbolStatus.PROBABLE)
 ACCEPTED_VERDICTS = (Verdict.PASSED, Verdict.PASSED_WITH_UNCHECKED_FUNCTIONS)
-RECORDED_PATHS = (REPO / "symbols", REPO / "bn6f", REPO / "cport", REPO / "tools", REPO / "docs")
+# what the record tools change: the database and the PC port's symbol files, the bn6f pointer, and the
+# port's hand-written code and test files that rename_symbol.py renames in (nothing else is ever committed)
+RECORDED_PATHS = (REPO / "symbols", REPO / "bn6f", REPO / "cport/src/game", REPO / "cport/host/difftest.cfg",
+                  REPO / "cport/host/difftest_gen.c", REPO / "tools/lifter/iwram.txt")
 
 
 def record_graph() -> Graph["RecordState"]:
@@ -76,6 +79,7 @@ class RecordState(BaseModel):
     renames: tuple[Rename, ...] = ()
     commit_message: str                      # in full, attribution lines included
     problems: tuple[ToolMessage, ...] = ()
+    changed_before: tuple[Path, ...] = ()    # uncommitted already when the run began: not this run's to commit
     renamed_in_bn6f: CommitHash | None = None
     comments_in_bn6f: CommitHash | None = None
     verification: VerifyReport | None = None
@@ -96,11 +100,15 @@ class CheckInput(Result):
 
 class CheckOutput(Result):
     problems: tuple[ToolMessage, ...]
+    changed_before: tuple[Path, ...]
 
 
 @workflow.step
 def check_entries(given: CheckInput) -> CheckOutput:
-    """Check the database, that each symbol has an entry, and that renames have a confirmed or probable meaning."""
+    """Check the database, that each symbol has an entry, and that renames have a confirmed or probable meaning;
+    note what is uncommitted already (other work in the tree is never swept into this run's commit)."""
+    changed_before = tuple(path for path in changed_files(RECORDED_PATHS)
+                           if not (path.is_relative_to(DATABASE) and SymbolName(path.stem) in given.symbols))
     problems = list(check_database(LogPath(given.run_dir / "symdb.log")))
     for symbol in given.symbols:
         if entry(symbol) is None:
@@ -112,7 +120,7 @@ def check_entries(given: CheckInput) -> CheckOutput:
         elif found.status not in RENAMEABLE:
             problems.append(ToolMessage(f"{rename.old}: status {found.status.value}; "
                                         "hypotheses get comments only, not renames"))
-    return CheckOutput(problems=tuple(problems))
+    return CheckOutput(problems=tuple(problems), changed_before=changed_before)
 
 
 class RenameInput(Result):
@@ -194,6 +202,7 @@ def reverify_port(given: ReverifyInput) -> ReverifyOutput:
 
 class CommitInput(Result):
     commit_message: str
+    changed_before: tuple[Path, ...]
 
 
 class CommitOutput(Result):
@@ -203,7 +212,8 @@ class CommitOutput(Result):
 @workflow.step
 def commit_records(given: CommitInput) -> CommitOutput:
     """Commit the database, the bn6f submodule pointer and the renamed port code locally."""
-    return CommitOutput(commit=commit_files(changed_files(RECORDED_PATHS), given.commit_message))
+    mine = tuple(path for path in changed_files(RECORDED_PATHS) if path not in given.changed_before)
+    return CommitOutput(commit=commit_files(mine, given.commit_message))
 
 
 class ReportInput(Result):
