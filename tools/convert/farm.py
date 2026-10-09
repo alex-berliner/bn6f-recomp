@@ -163,16 +163,17 @@ LIFTED_STYLE = re.compile(r"\b(nz|SUBS|ADDS|COND_\w+|CALL_DIRECT|CALL_LEAF|SAVE|
 
 # review rules a machine can check (docs/PROCESS.md §2): rejected here so the model fixes them itself
 REVIEW_RULES = (
-    (re.compile(r"^\s*#\s*ifndef\s+\w+\s*\n\s*#\s*define", re.M),
+    (re.compile(r"^[ \t]*(#)\s*ifndef\s+\w+\s*\n\s*#\s*define", re.M),
      "struct offsets and constants come from enums taken from bn6f include/structs, not #ifndef fallbacks"),
-    (re.compile(r"\(\s*s16\s*\)\s*LD16\b"),
+    (re.compile(r"(\()\s*s16\s*\)\s*LD16\b"),
      "use LDS16 for the original's ldrsh ((s16)LD16 differs at a misaligned address)"),
 )
 
 
 def review_rule_problems(code):
     """[(line, rule)] for each place the code breaks a review rule."""
-    return [(code.count("\n", 0, m.start()) + 1, rule) for pattern, rule in REVIEW_RULES for m in pattern.finditer(code)]
+    # the line of the rule's token itself (group 1), not of whitespace a match may start in
+    return [(code.count("\n", 0, m.start(1)) + 1, rule) for pattern, rule in REVIEW_RULES for m in pattern.finditer(code)]
 
 
 def test(name, code, snaps, contract, workdir):

@@ -3,6 +3,7 @@ beside it (tools/convert/accepted/NAME.MODEL.yaml), and a group of accepted
 candidates becomes one file for the convert workflow: the code, and an entry
 for every function, so review and record never wait on a strong model for
 the documentation of small functions."""
+import functools
 import re
 import time
 from pathlib import Path
@@ -124,7 +125,8 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
               f"model farm, each checked against\n * the lifted original before it was kept.\n */\n"
               '#include "game.h"\n#include "runtime.h"\n')
     renamed = _renamed_since()
-    sections = [f"{SECTION.format(function=function)}\n{_with_current_names(body, renamed)}"
+    in_headers = _header_names()
+    sections = [f"{SECTION.format(function=function)}\n{_with_current_names(_without_fallbacks(body, in_headers), renamed)}"
                 for function, body in _names_kept_apart(bodies)]
     code = header + "\n" + "\n\n".join(sections) + "\n" if sections else None
     return FileReply(file=CandidateFile(code) if code else None, cfg_lines=(), drafts=tuple(drafts),
@@ -173,6 +175,33 @@ def _names_kept_apart(bodies: list[tuple[FunctionName, str]]) -> list[tuple[Func
         seen |= names
         kept.append((function, body))
     return kept
+
+
+_FALLBACK = re.compile(r"^[ \t]*#\s*ifndef\s+(\w+)\s*\n[ \t]*#\s*define\s+\1\b[ \t]*([^\n]*?)[ \t]*\n[ \t]*#\s*endif[^\n]*$",
+                       re.M)
+
+
+def _without_fallbacks(body: str, in_headers: set[str]) -> str:
+    """`#ifndef X / #define X V / #endif` (a rule says no): when the shared headers define X the fallback
+    was never compiled in, so it goes; otherwise it becomes `enum { X = V };`, which fails loudly if a
+    header ever defines X. The tested code is the same either way."""
+    def replace(match: re.Match[str]) -> str:
+        name, value = match[1], re.sub(r"/\*.*?\*/|//.*$", "", match[2]).strip()
+        if name in in_headers or not value:
+            return ""
+        return f"enum {{ {name} = {value} }};"
+    return _FALLBACK.sub(replace, body)
+
+
+@functools.cache
+def _header_names() -> set[str]:
+    """Names the port's shared headers define (macros and enum constants)."""
+    names: set[str] = set()
+    for header in (REPO / "cport/include").glob("*.h"):
+        text = header.read_text(errors="replace")
+        names |= set(re.findall(r"^\s*#\s*define\s+(\w+)", text, re.M))
+        names |= set(re.findall(r"^\s*(\w+)\s*=\s*[^=]", text, re.M))
+    return names
 
 
 def _renamed_since() -> dict[str, str]:
