@@ -1,0 +1,130 @@
+name: sprite_makeUnscalable
+address: '0x08002D52'
+kind: function
+status: confirmed
+summary: Strips the "scalable" state from an object's sprite, clearing its scale bits and the matching sprite flag-word
+  bit.
+interface: void sprite_makeUnscalable(ObjectHeader* r5); clobbers r0-r3 and NZCV; preserves r5; flags are caller-visible
+  (see quirks)
+details: 'Takes an object header in r5 and locates its sprite block as header + (high nibble of header byte 2 <<
+  4), i.e. 16-byte sprite units indexed by the top nibble of oObjectHeader_TypeAndSpriteOffset. It temporarily repoints
+  r5 at the sprite block (needed because the flag-word callee consumes r5) but restores the header pointer before
+  returning. If oObjectSprite_Unk_11 bits 0-1 (the current scale state) are already 0, it exits early without touching
+  anything. Otherwise it clears Unk_11 bits 0-1 and Unk_13 bits 1-5 (mask 0x3e), where (Unk_13 & 0x3e) >> 1 is the
+  bit index into the sprite flag word, then calls flags_clearFlagWordBit_802FE6A to clear that bit. Net effect in
+  game terms: the sprite stops being drawn with scaling applied.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-023333);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    12' --file leaves_farm_12.c sub_80077D2 sub_8008492 sub_80084C0 sub_80092C0 sub_8009FCC sub_800A540 sub_800A772
+    sub_800A7A6 sub_800AA64 copyMemory_8001850 copyToVRAMAndClear_iBGTileIdBlocks_Ptr sub_8000DE0 CutsceneCmd_run_text_script
+    CutsceneCmd_spawn_cutscene_process MapScriptCutsceneCmd_jump_if_flag_range_clear MapScriptCutsceneCmd_jump_if_progress_in_range
+    MapScriptCutsceneCmd_set_screen_fade MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims cutscene_8036ED4 sub_8144380
+    sub_8146BF4 sub_814E190 sub_814E528 sub_814EA58 chatbox_8041748 chatbox_80419D0 chatbox_8042678 chatbox_8045F60
+    chatbox_CopyBackgroundTiles_8040344 chatbox_E9_newline chatbox_F3_control sub_8126404 sub_812B504 sub_809DF00
+    sub_809E01C sub_809E46E sprite_initialize sprite_makeUnscalable NPCCommand_change_movement_direction npc_inChatbox_809EADA
+    sub_800C84A sub_800C8C2 sub_800D58C sub_800ED00 sub_803DD30 sub_803F8C4 copy_8048C68
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sprite_makeUnscalable
+
+    .venv/bin/python -m wf verify --function sprite_makeUnscalable --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-023333-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sprite_makeUnscalable
+
+    .venv/bin/python -m wf verify --function sprite_makeUnscalable --snapshots SNAPSHOT_DIR'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261009-023333-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sprite_makeUnscalable
+
+    .venv/bin/python -m wf verify --function sprite_makeUnscalable --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-023333-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08002d52 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_12.c
+  where: recomp b841d89
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_12.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_80077D2
+- sub_8008492
+- sub_80084C0
+- sub_80092C0
+- sub_8009FCC
+- sub_800A540
+- sub_800A772
+- sub_800A7A6
+- sub_800AA64
+- copyMemory_8001850
+- copyToVRAMAndClear_iBGTileIdBlocks_Ptr
+- sub_8000DE0
+- CutsceneCmd_run_text_script
+- CutsceneCmd_spawn_cutscene_process
+- MapScriptCutsceneCmd_jump_if_flag_range_clear
+- MapScriptCutsceneCmd_jump_if_progress_in_range
+- MapScriptCutsceneCmd_set_screen_fade
+- MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims
+- cutscene_8036ED4
+- sub_8144380
+- sub_8146BF4
+- sub_814E190
+- sub_814E528
+- sub_814EA58
+- chatbox_8041748
+- chatbox_80419D0
+- chatbox_8042678
+- chatbox_8045F60
+- chatbox_CopyBackgroundTiles_8040344
+- chatbox_E9_newline
+- chatbox_F3_control
+- sub_8126404
+- sub_812B504
+- sub_809DF00
+- sub_809E01C
+- sub_809E46E
+- sprite_initialize
+- NPCCommand_change_movement_direction
+- npc_inChatbox_809EADA
+- sub_800C84A
+- sub_800C8C2
+- sub_800D58C
+- sub_800ED00
+- sub_803DD30
+- sub_803F8C4
+- copy_8048C68
+open_questions:
+- Exact meaning of the Unk_11 bits 0-1 scale-state encoding (what values other than 0 do).
+- Which flag word flags_clearFlagWordBit_802FE6A indexes into (sprite-block-relative or a global word) and what
+  the flag gates visually.
+sources:
+- tools/wf run convert-20261009-023333

@@ -1,0 +1,129 @@
+name: chatbox_8042678
+address: '0x08042678'
+kind: function
+status: confirmed
+summary: Processes one chatbox text-script entry - plays the text blip if the chatbox core is idle, then either
+  starts the entry's script or skips past the 5-byte end-marker record.
+interface: int chatbox_processScriptEntry(void* entry /*r4*/, u32 coreArg0..3 /*r0-r3 passed through*/); /* returns
+  1 in r0; r4 is advanced by 5 when the entry's terminator (0xFF) is consumed; NZCV flags set from the final mov
+  r0,#1 / add */
+details: 'Entry point of one step of chatbox script execution. r4 points at the current chatbox entry record. It
+  first calls the chatbox core helper sub_803F798 with the caller''s r0-r3 untouched; the returned value doubles
+  as (a) a "chatbox busy" flag and (b) an offset into the entry. If the core reports 0 (nothing pending/idle), sound
+  effect SOUND_UNK_74 (0x74, presumably the text blip) is played via PlaySoundEffect. The script-ID byte is then
+  read at r4 + state + 2: any value except 0xFF is forwarded to chatbox_config_80408D0(notUsed = state+2, scriptID),
+  which starts the corresponding text script; 0xFF marks the end of the entry, and the entry pointer in the caller''s
+  r4 is advanced by 5 (the record size), since r4 was restored from the stack before the increment. Always returns
+  1. Stack quirk: the function push/pop-shuffles lr, r4 and the core result so that the core''s return value survives
+  the sound-effect call, and the final pop {pc} returns through the saved lr; the r4+5 in the 0xFF branch is a genuine
+  side effect visible to the caller.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-023333);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    12' --file leaves_farm_12.c sub_80077D2 sub_8008492 sub_80084C0 sub_80092C0 sub_8009FCC sub_800A540 sub_800A772
+    sub_800A7A6 sub_800AA64 copyMemory_8001850 copyToVRAMAndClear_iBGTileIdBlocks_Ptr sub_8000DE0 CutsceneCmd_run_text_script
+    CutsceneCmd_spawn_cutscene_process MapScriptCutsceneCmd_jump_if_flag_range_clear MapScriptCutsceneCmd_jump_if_progress_in_range
+    MapScriptCutsceneCmd_set_screen_fade MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims cutscene_8036ED4 sub_8144380
+    sub_8146BF4 sub_814E190 sub_814E528 sub_814EA58 chatbox_8041748 chatbox_80419D0 chatbox_8042678 chatbox_8045F60
+    chatbox_CopyBackgroundTiles_8040344 chatbox_E9_newline chatbox_F3_control sub_8126404 sub_812B504 sub_809DF00
+    sub_809E01C sub_809E46E sprite_initialize sprite_makeUnscalable NPCCommand_change_movement_direction npc_inChatbox_809EADA
+    sub_800C84A sub_800C8C2 sub_800D58C sub_800ED00 sub_803DD30 sub_803F8C4 copy_8048C68
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_8042678
+
+    .venv/bin/python -m wf verify --function chatbox_8042678 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-023333-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_8042678
+
+    .venv/bin/python -m wf verify --function chatbox_8042678 --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261009-023333-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_8042678
+
+    .venv/bin/python -m wf verify --function chatbox_8042678 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-023333-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08042678 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_12.c
+  where: recomp b841d89
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_12.c
+coverage:
+- battles1
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_80077D2
+- sub_8008492
+- sub_80084C0
+- sub_80092C0
+- sub_8009FCC
+- sub_800A540
+- sub_800A772
+- sub_800A7A6
+- sub_800AA64
+- copyMemory_8001850
+- copyToVRAMAndClear_iBGTileIdBlocks_Ptr
+- sub_8000DE0
+- CutsceneCmd_run_text_script
+- CutsceneCmd_spawn_cutscene_process
+- MapScriptCutsceneCmd_jump_if_flag_range_clear
+- MapScriptCutsceneCmd_jump_if_progress_in_range
+- MapScriptCutsceneCmd_set_screen_fade
+- MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims
+- cutscene_8036ED4
+- sub_8144380
+- sub_8146BF4
+- sub_814E190
+- sub_814E528
+- sub_814EA58
+- chatbox_8041748
+- chatbox_80419D0
+- chatbox_8045F60
+- chatbox_CopyBackgroundTiles_8040344
+- chatbox_E9_newline
+- chatbox_F3_control
+- sub_8126404
+- sub_812B504
+- sub_809DF00
+- sub_809E01C
+- sub_809E46E
+- sprite_initialize
+- sprite_makeUnscalable
+- NPCCommand_change_movement_direction
+- npc_inChatbox_809EADA
+- sub_800C84A
+- sub_800C8C2
+- sub_800D58C
+- sub_800ED00
+- sub_803DD30
+- sub_803F8C4
+- copy_8048C68
+open_questions:
+- Exact semantics of sub_803F798's return value (busy flag vs. byte offset into the entry) and what fields it reads
+- What sound effect 0x74 is in game terms (likely the textbox open/blip sound)
+- Meaning of the 'notUsed' first argument passed to chatbox_config_80408D0
+- Layout of the 5-byte chatbox entry record beyond the script-ID byte at offset +2
+sources:
+- tools/wf run convert-20261009-023333

@@ -1,0 +1,132 @@
+name: MapScriptCutsceneCmd_jump_if_flag_range_clear
+address: '0x080359EE'
+kind: function
+status: confirmed
+summary: Map script/cutscene command that jumps to a script address if every event flag in a given range is still
+  clear.
+interface: 'int MapScriptCutsceneCmd_jump_if_flag_range_clear(void); // in: r7 = current script position, r10 =
+  script/cutscene context (consumed by ReadMapScript* helpers via r5/r6 selector); out: r0 = 1, r7 = next script
+  position (either old+8 or the word operand), flags nz/c/v set; r5 preserved'
+details: 'Implements the map-script interpreter command "jump if a range of event flags is clear". Operands are
+  pulled from the script stream with the ReadMapScript* helpers, which return their value in r4; the r6 value selects
+  the operand size (1 = byte, 2 = halfword, 4 = word). First a byte operand gives the number of flags to test, then
+  a halfword operand gives the first flag index; these are passed to TestEventFlagRange (first flag in r0, count
+  in r2, count also left in r1), which reports whether any flag in [first, first+count) is set. If at least one
+  flag is set, the interpreter just steps over the whole command: r7 (script position) is advanced by 8 (1 opcode
+  byte + 1 byte + 2 halfword + 4 word operands). If the entire range is clear, a following word operand is read
+  and becomes the new script position in r7, i.e. the jump is taken. Both exit paths return r0 = 1 with flags set
+  from it (via SET_FLAGS_NZ), which the dispatcher presumably treats as "continue script". Touches no structures
+  directly; all state flows through r4 (helper return), r6 (helper selector), and r7 (script cursor). The name is
+  already in game terms and matches the observed logic, so it is kept.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-023333);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    12' --file leaves_farm_12.c sub_80077D2 sub_8008492 sub_80084C0 sub_80092C0 sub_8009FCC sub_800A540 sub_800A772
+    sub_800A7A6 sub_800AA64 copyMemory_8001850 copyToVRAMAndClear_iBGTileIdBlocks_Ptr sub_8000DE0 CutsceneCmd_run_text_script
+    CutsceneCmd_spawn_cutscene_process MapScriptCutsceneCmd_jump_if_flag_range_clear MapScriptCutsceneCmd_jump_if_progress_in_range
+    MapScriptCutsceneCmd_set_screen_fade MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims cutscene_8036ED4 sub_8144380
+    sub_8146BF4 sub_814E190 sub_814E528 sub_814EA58 chatbox_8041748 chatbox_80419D0 chatbox_8042678 chatbox_8045F60
+    chatbox_CopyBackgroundTiles_8040344 chatbox_E9_newline chatbox_F3_control sub_8126404 sub_812B504 sub_809DF00
+    sub_809E01C sub_809E46E sprite_initialize sprite_makeUnscalable NPCCommand_change_movement_direction npc_inChatbox_809EADA
+    sub_800C84A sub_800C8C2 sub_800D58C sub_800ED00 sub_803DD30 sub_803F8C4 copy_8048C68
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_jump_if_flag_range_clear
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_jump_if_flag_range_clear --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-023333-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_jump_if_flag_range_clear
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_jump_if_flag_range_clear --snapshots SNAPSHOT_DIR'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261009-023333-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_jump_if_flag_range_clear
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_jump_if_flag_range_clear --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-023333-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^080359ee ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_12.c
+  where: recomp b841d89
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_12.c
+coverage:
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_80077D2
+- sub_8008492
+- sub_80084C0
+- sub_80092C0
+- sub_8009FCC
+- sub_800A540
+- sub_800A772
+- sub_800A7A6
+- sub_800AA64
+- copyMemory_8001850
+- copyToVRAMAndClear_iBGTileIdBlocks_Ptr
+- sub_8000DE0
+- CutsceneCmd_run_text_script
+- CutsceneCmd_spawn_cutscene_process
+- MapScriptCutsceneCmd_jump_if_progress_in_range
+- MapScriptCutsceneCmd_set_screen_fade
+- MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims
+- cutscene_8036ED4
+- sub_8144380
+- sub_8146BF4
+- sub_814E190
+- sub_814E528
+- sub_814EA58
+- chatbox_8041748
+- chatbox_80419D0
+- chatbox_8042678
+- chatbox_8045F60
+- chatbox_CopyBackgroundTiles_8040344
+- chatbox_E9_newline
+- chatbox_F3_control
+- sub_8126404
+- sub_812B504
+- sub_809DF00
+- sub_809E01C
+- sub_809E46E
+- sprite_initialize
+- sprite_makeUnscalable
+- NPCCommand_change_movement_direction
+- npc_inChatbox_809EADA
+- sub_800C84A
+- sub_800C8C2
+- sub_800D58C
+- sub_800ED00
+- sub_803DD30
+- sub_803F8C4
+- copy_8048C68
+open_questions:
+- Whether the word operand is an absolute script address or an offset relative to the script base is decided inside
+  the dispatcher/ReadMapScriptWord, not here
+- Exact meaning of the r0 = 1 return to the cutscene/script dispatcher (continue vs. consumed-command handshake)
+  not verified from callers
+- Whether r1 carrying the flag count into TestEventFlagRange matters (the verified C only documents the r0/r2 contract)
+sources:
+- tools/wf run convert-20261009-023333

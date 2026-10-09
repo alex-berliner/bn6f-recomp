@@ -1,0 +1,131 @@
+name: MapScriptCutsceneCmd_set_screen_fade
+address: '0x08035D6A'
+kind: function
+status: confirmed
+summary: Map-script cutscene command handler that starts a screen fade using two byte parameters, then advances
+  to the next script command.
+interface: 'Next MapScriptCutsceneCmd_set_screen_fade(void); inputs: r5 = script data pointer, r7 = script command
+  pointer, lr; clobbers r0-r4, r6, flags; preserves r5; returns r0 = 1, r7 += 4'
+details: 'Handler for a map-script cutscene command (executed with the script state in r5 and the command pointer
+  in r7). It first reads script argument 1 via ReadMapScriptByte (argument index passed in r6, result returned in
+  r4). If that byte is 0xFF, the two fade parameters follow immediately in the script stream: argument 2 is the
+  first parameter and argument 3 the second. Otherwise the byte is treated as an offset into the script data (r5),
+  and the two parameter bytes are read from r5[offset] and r5[offset+1]. The two bytes are passed to SetScreenFade(r0
+  = param1, r1 = param2), which starts the requested screen fade (presumably fade-in vs fade-out and target color/speed).
+  The command pointer r7 is advanced by 4 bytes (2-byte opcode word + 2 parameter bytes) and the function returns
+  1 in r0, signaling continuation to the dispatcher. r4 is left as the last byte position touched (offset+1 in the
+  indirect form, second immediate byte in the immediate form); the add r7,#4 sets c/v and the final mov r0,#1 sets
+  n/z, so the full NZCV state is observable by the caller dispatch table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-023333);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    12' --file leaves_farm_12.c sub_80077D2 sub_8008492 sub_80084C0 sub_80092C0 sub_8009FCC sub_800A540 sub_800A772
+    sub_800A7A6 sub_800AA64 copyMemory_8001850 copyToVRAMAndClear_iBGTileIdBlocks_Ptr sub_8000DE0 CutsceneCmd_run_text_script
+    CutsceneCmd_spawn_cutscene_process MapScriptCutsceneCmd_jump_if_flag_range_clear MapScriptCutsceneCmd_jump_if_progress_in_range
+    MapScriptCutsceneCmd_set_screen_fade MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims cutscene_8036ED4 sub_8144380
+    sub_8146BF4 sub_814E190 sub_814E528 sub_814EA58 chatbox_8041748 chatbox_80419D0 chatbox_8042678 chatbox_8045F60
+    chatbox_CopyBackgroundTiles_8040344 chatbox_E9_newline chatbox_F3_control sub_8126404 sub_812B504 sub_809DF00
+    sub_809E01C sub_809E46E sprite_initialize sprite_makeUnscalable NPCCommand_change_movement_direction npc_inChatbox_809EADA
+    sub_800C84A sub_800C8C2 sub_800D58C sub_800ED00 sub_803DD30 sub_803F8C4 copy_8048C68
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_set_screen_fade
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_set_screen_fade --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 14 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 252 out
+    of domain (verify run convert-20261009-023333-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_set_screen_fade
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_set_screen_fade --snapshots SNAPSHOT_DIR'
+  result: 3 compared, 0 differed, 21 out of domain (verify run convert-20261009-023333-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_set_screen_fade
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_set_screen_fade --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-023333-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battlesweep, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08035d6a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_12.c
+  where: recomp b841d89
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_12.c
+coverage:
+- battle
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_80077D2
+- sub_8008492
+- sub_80084C0
+- sub_80092C0
+- sub_8009FCC
+- sub_800A540
+- sub_800A772
+- sub_800A7A6
+- sub_800AA64
+- copyMemory_8001850
+- copyToVRAMAndClear_iBGTileIdBlocks_Ptr
+- sub_8000DE0
+- CutsceneCmd_run_text_script
+- CutsceneCmd_spawn_cutscene_process
+- MapScriptCutsceneCmd_jump_if_flag_range_clear
+- MapScriptCutsceneCmd_jump_if_progress_in_range
+- MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims
+- cutscene_8036ED4
+- sub_8144380
+- sub_8146BF4
+- sub_814E190
+- sub_814E528
+- sub_814EA58
+- chatbox_8041748
+- chatbox_80419D0
+- chatbox_8042678
+- chatbox_8045F60
+- chatbox_CopyBackgroundTiles_8040344
+- chatbox_E9_newline
+- chatbox_F3_control
+- sub_8126404
+- sub_812B504
+- sub_809DF00
+- sub_809E01C
+- sub_809E46E
+- sprite_initialize
+- sprite_makeUnscalable
+- NPCCommand_change_movement_direction
+- npc_inChatbox_809EADA
+- sub_800C84A
+- sub_800C8C2
+- sub_800D58C
+- sub_800ED00
+- sub_803DD30
+- sub_803F8C4
+- copy_8048C68
+open_questions:
+- Exact meaning of the two SetScreenFade parameters (e.g. direction and speed, or color and duration) not verified
+  here.
+- Whether the 0xFF immediate marker is a convention shared by all map-script commands or specific to this one.
+sources:
+- tools/wf run convert-20261009-023333

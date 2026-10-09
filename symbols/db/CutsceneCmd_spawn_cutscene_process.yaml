@@ -1,0 +1,132 @@
+name: CutsceneCmd_spawn_cutscene_process
+address: '0x080378C2'
+kind: function
+status: confirmed
+summary: 'Map-script command "spawn cutscene process": writes a byte value into a chosen cutscene-state script-position
+  field, unpausing that script slot, then continues the script.'
+interface: "u32 CutsceneCmd_spawn_cutscene_process(\n    /* r1 */ preserved scratch,\n    /* r4 */ struct CutsceneState*\
+  \ cutsceneState,\n    /* r5 */ cutsceneState base pointer,\n    /* r7 */ u8* scriptPtr /* current command cursor\
+  \ */,\n    /* lr */ return address)\n-> /* r0 */ u32 continueResult /* 1 = keep running script */,\n   /* r7 */\
+  \ advanced scriptPtr, flags NZ from r0=1 and CV from r7+=6\n"
+details: 'Implements one cutscene/map-script opcode handler in the cutscene command dispatcher. It reads a word
+  parameter from the script stream via ReadMapScriptWord (r6=2 selects the width): that word is the offset of the
+  target field within the cutscene state, relative to oCutsceneState_CutsceneScriptPos. It then reads a byte parameter
+  (ReadMapScriptByte with r6=1) and stores it as a 32-bit value at cutsceneState + offset (str r0,[r5,r4]), which
+  (re)starts that cutscene script slot''s process. The field offset is turned into a slot index: (offset - oCutsceneState_CutsceneScriptPos)
+  >> 2, i.e. one of the per-slot "script position" entries, each 4 bytes apart. For that slot it clears both pause
+  flags in the cutscene flag array: slot index + CUTSCENE_FLAG_SCRIPT_1_PAUSED (slots 0-3) and slot index + CUTSCENE_FLAG_SCRIPT_1_PAUSED_LONG
+  (slots 4-7), so the spawned script runs unpaused regardless of which pause mechanism held it. Finally it advances
+  the script cursor r7 by 6 (the full command word + word param + byte param) and returns r0 = 1 to signal "continue
+  executing the script". r1 is preserved across the call; r6 is used internally as the width selector for the script-read
+  helpers.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-023333);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    12' --file leaves_farm_12.c sub_80077D2 sub_8008492 sub_80084C0 sub_80092C0 sub_8009FCC sub_800A540 sub_800A772
+    sub_800A7A6 sub_800AA64 copyMemory_8001850 copyToVRAMAndClear_iBGTileIdBlocks_Ptr sub_8000DE0 CutsceneCmd_run_text_script
+    CutsceneCmd_spawn_cutscene_process MapScriptCutsceneCmd_jump_if_flag_range_clear MapScriptCutsceneCmd_jump_if_progress_in_range
+    MapScriptCutsceneCmd_set_screen_fade MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims cutscene_8036ED4 sub_8144380
+    sub_8146BF4 sub_814E190 sub_814E528 sub_814EA58 chatbox_8041748 chatbox_80419D0 chatbox_8042678 chatbox_8045F60
+    chatbox_CopyBackgroundTiles_8040344 chatbox_E9_newline chatbox_F3_control sub_8126404 sub_812B504 sub_809DF00
+    sub_809E01C sub_809E46E sprite_initialize sprite_makeUnscalable NPCCommand_change_movement_direction npc_inChatbox_809EADA
+    sub_800C84A sub_800C8C2 sub_800D58C sub_800ED00 sub_803DD30 sub_803F8C4 copy_8048C68
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_spawn_cutscene_process
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_spawn_cutscene_process --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 244 out of
+    domain (verify run convert-20261009-023333-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_spawn_cutscene_process
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_spawn_cutscene_process --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-023333-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_spawn_cutscene_process
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_spawn_cutscene_process --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-023333-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^080378c2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_12.c
+  where: recomp b841d89
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_12.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_80077D2
+- sub_8008492
+- sub_80084C0
+- sub_80092C0
+- sub_8009FCC
+- sub_800A540
+- sub_800A772
+- sub_800A7A6
+- sub_800AA64
+- copyMemory_8001850
+- copyToVRAMAndClear_iBGTileIdBlocks_Ptr
+- sub_8000DE0
+- CutsceneCmd_run_text_script
+- MapScriptCutsceneCmd_jump_if_flag_range_clear
+- MapScriptCutsceneCmd_jump_if_progress_in_range
+- MapScriptCutsceneCmd_set_screen_fade
+- MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims
+- cutscene_8036ED4
+- sub_8144380
+- sub_8146BF4
+- sub_814E190
+- sub_814E528
+- sub_814EA58
+- chatbox_8041748
+- chatbox_80419D0
+- chatbox_8042678
+- chatbox_8045F60
+- chatbox_CopyBackgroundTiles_8040344
+- chatbox_E9_newline
+- chatbox_F3_control
+- sub_8126404
+- sub_812B504
+- sub_809DF00
+- sub_809E01C
+- sub_809E46E
+- sprite_initialize
+- sprite_makeUnscalable
+- NPCCommand_change_movement_direction
+- npc_inChatbox_809EADA
+- sub_800C84A
+- sub_800C8C2
+- sub_800D58C
+- sub_800ED00
+- sub_803DD30
+- sub_803F8C4
+- copy_8048C68
+open_questions:
+- Exact meaning of the byte value written into the script-position field (likely a script/process id or an initial
+  position), not confirmed from this function alone.
+- Whether any of slots 0-3/4-7 map to specific known cutscene scripts in this game.
+sources:
+- tools/wf run convert-20261009-023333

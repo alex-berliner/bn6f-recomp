@@ -1,0 +1,136 @@
+name: chatbox_E9_newline
+address: '0x08041134'
+kind: function
+status: confirmed
+summary: Advances the chatbox text-box graphics loader to the next state after a printed newline, raising the "box
+  ready" flag once loading completes.
+interface: void chatbox_E9_newline(Chatbox* r5 box, u32* r4 cursor) — clobbers r0, r2, r3; always increments r4
+  by 1 and returns r0 = 0 (with N/Z cleared); C/V reflect the r4 increment (NZCV written); r5 and lr are not preserved
+  (lr holds the return address).
+details: "Called as part of the chatbox text-script interpreter when a newline is printed\n(the \"E9\" of the name\
+  \ is presumably the textbox opcode). r5 points to the chatbox\nobject; r4 is the script/cursor position used by\
+  \ the interpreter loop.\n\nSteps:\n- Reads the box's graphics-load state byte at oChatbox_BoxGfxLoadState_0F,\n\
+  \  increments it, and stores it back.\n- Clears the 32-bit scratch field oChatbox_Unk_70 (per-line/per-state work\
+  \ field).\n- If the new state is 3 (box graphics fully loaded): stores 1 (a \"ready/done\"\n  flag) into the word\
+  \ at box+0x8C and skips the table lookup.\n- Otherwise (states 1..2): computes (newState-1)*4 and loads a word\
+  \ from a\n  pointer/state table at byte_803FCE4 (off_804115C holds its address), storing\n  the result into oChatbox_Unk_7C.\
+  \ This appears to be the next chunk pointer or\n  parameters for the box-gfx DMA/OAM load for that state.\n- Always\
+  \ does r4 += 1 (advancing the interpreter cursor) and returns 0 in r0.\n\nQuirks: the \"done\" write uses mov\
+  \ r2,#0x8c followed by str r0,[r5,r2] rather than\na named offset field. The state counter is allowed to increment\
+  \ past 3; on states\n>3 the table read indexes off the end of byte_803FCE4 (state-1 >= 3 reads beyond\nthe three\
+  \ entries), so the interpreter presumably switches away from this handler\nonce the ready flag at +0x8C is set.\
+  \ The flag outputs (NZ/C/V) come from the r4\nincrement and the final mov r0,#0, matching how callers use flags.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-023333);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    12' --file leaves_farm_12.c sub_80077D2 sub_8008492 sub_80084C0 sub_80092C0 sub_8009FCC sub_800A540 sub_800A772
+    sub_800A7A6 sub_800AA64 copyMemory_8001850 copyToVRAMAndClear_iBGTileIdBlocks_Ptr sub_8000DE0 CutsceneCmd_run_text_script
+    CutsceneCmd_spawn_cutscene_process MapScriptCutsceneCmd_jump_if_flag_range_clear MapScriptCutsceneCmd_jump_if_progress_in_range
+    MapScriptCutsceneCmd_set_screen_fade MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims cutscene_8036ED4 sub_8144380
+    sub_8146BF4 sub_814E190 sub_814E528 sub_814EA58 chatbox_8041748 chatbox_80419D0 chatbox_8042678 chatbox_8045F60
+    chatbox_CopyBackgroundTiles_8040344 chatbox_E9_newline chatbox_F3_control sub_8126404 sub_812B504 sub_809DF00
+    sub_809E01C sub_809E46E sprite_initialize sprite_makeUnscalable NPCCommand_change_movement_direction npc_inChatbox_809EADA
+    sub_800C84A sub_800C8C2 sub_800D58C sub_800ED00 sub_803DD30 sub_803F8C4 copy_8048C68
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_E9_newline
+
+    .venv/bin/python -m wf verify --function chatbox_E9_newline --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
+    of domain (verify run convert-20261009-023333-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_E9_newline
+
+    .venv/bin/python -m wf verify --function chatbox_E9_newline --snapshots SNAPSHOT_DIR'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261009-023333-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_E9_newline
+
+    .venv/bin/python -m wf verify --function chatbox_E9_newline --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-023333-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08041134 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_12.c
+  where: recomp b841d89
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_12.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_80077D2
+- sub_8008492
+- sub_80084C0
+- sub_80092C0
+- sub_8009FCC
+- sub_800A540
+- sub_800A772
+- sub_800A7A6
+- sub_800AA64
+- copyMemory_8001850
+- copyToVRAMAndClear_iBGTileIdBlocks_Ptr
+- sub_8000DE0
+- CutsceneCmd_run_text_script
+- CutsceneCmd_spawn_cutscene_process
+- MapScriptCutsceneCmd_jump_if_flag_range_clear
+- MapScriptCutsceneCmd_jump_if_progress_in_range
+- MapScriptCutsceneCmd_set_screen_fade
+- MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims
+- cutscene_8036ED4
+- sub_8144380
+- sub_8146BF4
+- sub_814E190
+- sub_814E528
+- sub_814EA58
+- chatbox_8041748
+- chatbox_80419D0
+- chatbox_8042678
+- chatbox_8045F60
+- chatbox_CopyBackgroundTiles_8040344
+- chatbox_F3_control
+- sub_8126404
+- sub_812B504
+- sub_809DF00
+- sub_809E01C
+- sub_809E46E
+- sprite_initialize
+- sprite_makeUnscalable
+- NPCCommand_change_movement_direction
+- npc_inChatbox_809EADA
+- sub_800C84A
+- sub_800C8C2
+- sub_800D58C
+- sub_800ED00
+- sub_803DD30
+- sub_803F8C4
+- copy_8048C68
+open_questions:
+- Exact meaning of the states 0..3 in oChatbox_BoxGfxLoadState_0F (which gfx chunks each loads).
+- 'Contents/layout of the table at byte_803FCE4 (per-state word: pointer? size? both packed?).'
+- Meaning of the fields at +0x70, +0x7C and the ready flag at +0x8C in the chatbox struct; whether behavior past
+  state 3 is reachable or guarded by the caller.
+sources:
+- tools/wf run convert-20261009-023333

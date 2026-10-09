@@ -1,0 +1,131 @@
+name: chatbox_CopyBackgroundTiles_8040344
+address: '0x08040344'
+kind: function
+status: confirmed
+summary: Redraws the chatbox's background tiles by blitting the tile-id array matching its current background graphic
+  and open state at its current position and size.
+interface: void chatbox_CopyBackgroundTiles(chatbox *cb /* r5 */) — reads cb fields at 0x1D2, 0x10 (OpenState),
+  CurTileXBlockPos, CurTileYBlockPos, CurTileWidth16, CurTileHeight16; r0-r4 are scratch handed to CopyBackgroundTiles;
+  r5-r7, r10 preserved; c/v set per CopyBackgroundTiles.
+details: "Wrapper around CopyBackgroundTiles that picks the right tile-id pointer for the\nchatbox's current look.\
+  \ From the chatbox struct it reads:\n  - bgId       = [cb + 0x1D2]   (current background tileset/graphic id)\n\
+  \  - openState  = [cb + 0x10]    (which open-state variant of the frame)\n  - j          = [cb + oChatbox_CurTileXBlockPos]\
+  \  (horizontal start, in tiles)\n  - i          = [cb + oChatbox_CurTileYBlockPos]  (vertical start, in tiles)\n\
+  \  - j_size     = [cb + oChatbox_CurTileWidth16]    (width in tiles)\n  - i_size     = [cb + oChatbox_CurTileHeight16]\
+  \   (height in tiles)\nThe tile-id pointer is spritePtrArr8045CEC[bgId*8 + openState] (bgId<<5 +\nopenState<<2),\
+  \ i.e. 8 pointer slots per background id, one per open state, so\nthe frame graphic changes with the box's open/closed\
+  \ animation state.\nIt then calls CopyBackgroundTiles(j, i, 0 /* 32x32 tile block #0 */, tileIds,\nj_size, i_size)\
+  \ — the block index is hardcoded to 0.\nQuirk: to keep the stack layout identical to the original while the callee\n\
+  runs, it pushes r5 then lr (callee sees [SP]=chatbox ptr, [SP+4]=return addr);\nr5 is restored after the call.\
+  \ This function name matches an already-named\ncallee; it is essentially the chatbox-level \"redraw background\"\
+  \ step.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-023333);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    12' --file leaves_farm_12.c sub_80077D2 sub_8008492 sub_80084C0 sub_80092C0 sub_8009FCC sub_800A540 sub_800A772
+    sub_800A7A6 sub_800AA64 copyMemory_8001850 copyToVRAMAndClear_iBGTileIdBlocks_Ptr sub_8000DE0 CutsceneCmd_run_text_script
+    CutsceneCmd_spawn_cutscene_process MapScriptCutsceneCmd_jump_if_flag_range_clear MapScriptCutsceneCmd_jump_if_progress_in_range
+    MapScriptCutsceneCmd_set_screen_fade MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims cutscene_8036ED4 sub_8144380
+    sub_8146BF4 sub_814E190 sub_814E528 sub_814EA58 chatbox_8041748 chatbox_80419D0 chatbox_8042678 chatbox_8045F60
+    chatbox_CopyBackgroundTiles_8040344 chatbox_E9_newline chatbox_F3_control sub_8126404 sub_812B504 sub_809DF00
+    sub_809E01C sub_809E46E sprite_initialize sprite_makeUnscalable NPCCommand_change_movement_direction npc_inChatbox_809EADA
+    sub_800C84A sub_800C8C2 sub_800D58C sub_800ED00 sub_803DD30 sub_803F8C4 copy_8048C68
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_CopyBackgroundTiles_8040344
+
+    .venv/bin/python -m wf verify --function chatbox_CopyBackgroundTiles_8040344 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 239 out
+    of domain (verify run convert-20261009-023333-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_CopyBackgroundTiles_8040344
+
+    .venv/bin/python -m wf verify --function chatbox_CopyBackgroundTiles_8040344 --snapshots SNAPSHOT_DIR'
+  result: 10 compared, 0 differed, 8 out of domain (verify run convert-20261009-023333-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_CopyBackgroundTiles_8040344
+
+    .venv/bin/python -m wf verify --function chatbox_CopyBackgroundTiles_8040344 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-023333-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08040344 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_12.c
+  where: recomp b841d89
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_12.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_80077D2
+- sub_8008492
+- sub_80084C0
+- sub_80092C0
+- sub_8009FCC
+- sub_800A540
+- sub_800A772
+- sub_800A7A6
+- sub_800AA64
+- copyMemory_8001850
+- copyToVRAMAndClear_iBGTileIdBlocks_Ptr
+- sub_8000DE0
+- CutsceneCmd_run_text_script
+- CutsceneCmd_spawn_cutscene_process
+- MapScriptCutsceneCmd_jump_if_flag_range_clear
+- MapScriptCutsceneCmd_jump_if_progress_in_range
+- MapScriptCutsceneCmd_set_screen_fade
+- MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims
+- cutscene_8036ED4
+- sub_8144380
+- sub_8146BF4
+- sub_814E190
+- sub_814E528
+- sub_814EA58
+- chatbox_8041748
+- chatbox_80419D0
+- chatbox_8042678
+- chatbox_8045F60
+- chatbox_E9_newline
+- chatbox_F3_control
+- sub_8126404
+- sub_812B504
+- sub_809DF00
+- sub_809E01C
+- sub_809E46E
+- sprite_initialize
+- sprite_makeUnscalable
+- NPCCommand_change_movement_direction
+- npc_inChatbox_809EADA
+- sub_800C84A
+- sub_800C8C2
+- sub_800D58C
+- sub_800ED00
+- sub_803DD30
+- sub_803F8C4
+- copy_8048C68
+open_questions: []
+sources:
+- tools/wf run convert-20261009-023333
