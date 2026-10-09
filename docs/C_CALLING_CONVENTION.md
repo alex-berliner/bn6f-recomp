@@ -1,9 +1,10 @@
 # C calling convention and global state for readable code
 
-**Status: future work, not started.** Design agreed 2026-10-08; nothing here is
-implemented. Decisions taken with the user: the C function keeps the bn6f name and
-the register adapter is `abi_NAME`; "global state" covers registers and typed
-structs; tools first, then a LangGraph orchestrator.
+**Status: phase 1 tools partly built (2026-10-09): 3.1, 3.2, 3.3 (mechanical part),
+3.4, 3.5, 3.8; see "Built so far" under §3.** Nothing uses them in the build yet (3.7);
+no `abi:` blocks exist. Design agreed 2026-10-08. Decisions taken with the user: the C
+function keeps the bn6f name and the register adapter is `abi_NAME`; "global state"
+covers registers and typed structs; tools first, then a LangGraph orchestrator.
 
 ## Context
 
@@ -99,6 +100,63 @@ functions, normalised to C types).
 | 3.8 | `tools/abi/lint.py` | Fails when hand-written code outside generated files uses `R0..R12`, `SP`, `LR`, `SET_FLAGS_*`, `cpu.`, `GUEST_CALL` — except in functions whose spec says `convention: registers`. Run from the build or as a pre-commit check. | — |
 | 3.9 | difftest | Compares `abi_NAME` with `L_NAME` on the generated contract (memory, `cpu.ret`, SP, ret registers, flags, keep); r10 pinned. Candidate mode (`-L cand.so`) compiles core + generated adapter, so model candidates are testable without a full rebuild. | `cport/host/difftest.c`, `farm.py` `test()` |
 
+### Built so far (2026-10-09)
+
+- **3.1** `python3 tools/lifter/lift.py --export-abi build/abi/graph.json [--call-edges EDGES...]`
+  (`tools/lifter/abi_export.py`): stops before writing C; a lift without the option is
+  byte-identical. Masks are name lists (`r0`..`r12`, `lr`, `nz`, `c`, `v`).
+- **3.2** `python3 tools/abi/call_edges.py build/abi/graph.json [ROUTE...]` runs
+  `mgba_run --call-edges SITES OUT` (steps like a coverage run, ~4 min for all routes in
+  parallel) and writes `tools/traces/coverage/ROUTE.edges` ("SITE TARGET LR COUNT").
+  Merged by the export (`*_observed` fields): an indirect target whose entries were all
+  observed gets the liveness at its edges' return points (for a jump, the LR when it is
+  the return point of a call to the jumping unit, e.g. a `bx r3` veneer); an observed
+  site reads and writes what its targets do. Evidence from the routes, not proof.
+- **3.3, mechanical part** `python3 tools/abi/report.py build/abi/graph.json NAME... | --summary`:
+  contract, proposed `args`/`ret`/`globals`/`keep`, blockers (`unwinds`, `flags_in`,
+  `flags_out`: a flag result needs a z/!z/c choice, `keep`, `callers_unknown`) and every
+  known call site with what it reads after. Not yet: bn6f comments and db `interface:`,
+  stack arguments, hand-listed RAM pointer sites.
+- **3.4** `python3 tools/abi/gen.py [--out DIR] [SPEC...]` (default `symbols/db`, output
+  `cport/build-abi/gen`); `gen.py --test` compiles the fixtures in `tools/abi/tests/`
+  (the pilot, `TestEventFlag`/`TestEventFlagFromImmediate` as `convention: registers`
+  callees returning `bool` from Z) for GBA and host. `convention: registers` specs give a
+  typed `call_NAME` wrapper (`NAME` is still `Next NAME(void)` in `lifted.h` until 3.7).
+  Adapters save and restore r0-r12 and the flags around the C call, because a C body may
+  call register-form code through the wrappers; in/out registers are written `"&r6"`.
+  The `PAIR(n)` macro cannot yet pair `abi_NAME` with `L_NAME` (3.7/3.9).
+- **3.5** `python3 tools/abi/gen_structs.py` → `cport/include/gen/structs.h` (git-ignored,
+  not built yet): 50 structs and 362 RAM instances (`toolkit` = `eToolkit`), every offset
+  asserted against the ELF's `oStruct_Field` symbols; `G(T, addr)`. `S20047CC` is left out
+  (never assembled).
+- **3.8** `python3 tools/abi/lint.py [--check]`: register-level code per function (typed,
+  `Next` body, thin adapter, `register form:` exception) as JSON; `--check` fails only on
+  hits beyond `tools/abi/lint_baseline.json` (1,456 functions today). Not in `make` or the
+  workflows yet.
+
+What the export says today (1,435 readable entries in 1,434 units; 13 routes, 1,314
+distinct edges from 340 of 1,862 computed call/jump sites):
+
+| | static (lifter) | with observed edges | ceiling |
+|---|---|---|---|
+| readable units whose callers may read all of r0-r12 | 124 | 7 | |
+| proposals auto-acceptable | 238 | 329 (23%) | 383 |
+
+The ceiling assumes indirect calls no route reached read nothing. The 7 left: `MPlayMain`,
+`custMenuPressOK_8028D3A`, `keyItems_RemoveFromInventoryAndGive_803CDF8` (several callers
+each read some), `battle_objectUpdateDispatchPhase_80165C2`, `sub_803F798` (a caller
+reads everything), `chatbox_processScriptEntry_8042678` (an observed return point reads
+everything), `SoundMainRAM_iwram_03005700` (callers unknown). Blockers with edges: `keep`
+984 (r2 625, r3 611, then r1 279), `flags_out` 573, `unwinds` 55, `callers_unknown` 55,
+`flags_in` 6. A rough trace of the 950 `keep` blocks left at the ceiling: 55 end at an
+instruction that reads the leftover (some are SWIs, which count as reading r0-r3), 225 at
+a later callee whose inputs claim the register, about 450 come through indirect callers
+(not traced further), the rest through a caller's own return (callers_live is one set per
+function, not per call site). How many are real leftover use is open: few are a direct
+read, and many may be imprecision. Next: per-SWI inputs, per-call-site liveness, and
+checking in captured calls whether a "kept" register is in fact unchanged (then the
+adapter, which preserves it, is exact).
+
 ## 4. Per-function workflow (callees before callers)
 
 1. **Select** a call tree from the routes' coverage (callees first; topological order from
@@ -152,6 +210,7 @@ Allowed only with `convention: registers` and a stated reason:
 ## 7. Open questions
 
 - Should C-only functions drop the address suffix when renamed, or keep bn6f names exactly?
-- Generated files committed or built (lifted C is not committed today)?
+- Generated files committed or built (lifted C is not committed today)? For now built and
+  git-ignored (`cport/include/gen/`, `cport/build-abi/`); only generators and fixtures are committed.
 - Typed struct field naming: keep bn6f CamelCase (`UnkCallback_18`) for traceability, or
   camelCase in C?
