@@ -44,18 +44,29 @@ def blocked_until(spec: str, log_dir: str = "/tmp/bn-pacer"):
         lines = open(path, errors="replace").read().splitlines()[-50:]
     except OSError:
         return None
+    now = time.time()
+    today = time.localtime(now)
+
+    def when(m):
+        at = time.mktime(today[:3] + (int(m.group(1)), int(m.group(2)), int(m.group(3))) + today[6:])
+        return at - 86400 if at > now + 60 else at   # a log line from yesterday
+
+    upstream_errors = []
     for line in reversed(lines):
+        failed = re.match(r"(\d\d):(\d\d):(\d\d) \S+ upstream error", line)
+        if failed:
+            # the provider takes requests but none come back (read timeouts, 5xx): after three in a
+            # row within 45 minutes, count it unavailable for half an hour after the last one
+            upstream_errors.append(when(failed))
+            if len(upstream_errors) == 3:
+                return upstream_errors[0] + 1800 if now - upstream_errors[0] < 2700 and upstream_errors[0] + 1800 > now else None
+            continue
         m = re.match(r"(\d\d):(\d\d):(\d\d) \S+ (\d+)(?: retry \d+ in (\d+)s)?", line)
         if not m:
             continue
         if m.group(4) != "429" or not m.group(5):
             return None          # the latest answer got through
-        now = time.time()
-        today = time.localtime(now)
-        at = time.mktime(today[:3] + (int(m.group(1)), int(m.group(2)), int(m.group(3))) + today[6:])
-        if at > now + 60:
-            at -= 86400          # the log line is from yesterday
-        lifts = at + int(m.group(5))
+        lifts = when(m) + int(m.group(5))
         return lifts if lifts > now else None
     return None
 
