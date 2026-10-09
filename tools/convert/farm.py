@@ -161,6 +161,19 @@ def extract_code(reply):
 
 LIFTED_STYLE = re.compile(r"\b(nz|SUBS|ADDS|COND_\w+|CALL_DIRECT|CALL_LEAF|SAVE|LOAD)\b|L_[0-9A-F]{8}")
 
+# review rules a machine can check (docs/PROCESS.md §2): rejected here so the model fixes them itself
+REVIEW_RULES = (
+    (re.compile(r"^\s*#\s*ifndef\s+\w+\s*\n\s*#\s*define", re.M),
+     "struct offsets and constants come from enums taken from bn6f include/structs, not #ifndef fallbacks"),
+    (re.compile(r"\(\s*s16\s*\)\s*LD16\b"),
+     "use LDS16 for the original's ldrsh ((s16)LD16 differs at a misaligned address)"),
+)
+
+
+def review_rule_problems(code):
+    """[(line, rule)] for each place the code breaks a review rule."""
+    return [(code.count("\n", 0, m.start()) + 1, rule) for pattern, rule in REVIEW_RULES for m in pattern.finditer(code)]
+
 
 def test(name, code, snaps, contract, workdir):
     """(ok, report): compile the candidate and run the comparisons."""
@@ -171,6 +184,9 @@ def test(name, code, snaps, contract, workdir):
     style = {m.group(0) for m in LIFTED_STYLE.finditer(bare)}
     if style:
         return False, "the code still uses machine-translated style: " + ", ".join(sorted(style))[:200]
+    rules = review_rule_problems(bare)
+    if rules:
+        return False, "\n".join(f"line {line}: {rule}" for line, rule in rules)
     src = os.path.join(workdir, "cand.c")
     so = os.path.join(workdir, "cand.so")
     renamed = re.sub(rf"\bNext\s+{re.escape(name)}\s*\(\s*void\s*\)", f"Next cand_{name}(void)", code)

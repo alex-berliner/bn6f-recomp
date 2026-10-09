@@ -333,7 +333,14 @@ def _shape_problems(code: str, names: tuple[FunctionName, ...]) -> list[ToolMess
                            cast(re.Pattern[str], _farm.LIFTED_STYLE).finditer(_strip_comments(code))})  # pyright: ignore[reportAny]
     if lifted_style:
         problems.append(ToolMessage("still machine-translated style: " + ", ".join(lifted_style)[:200]))
+    rules = cast(list[tuple[int, str]], _farm.review_rule_problems(_blank_comments(code)))  # pyright: ignore[reportAny]
+    problems += [ToolMessage(f"line {line}: {rule}") for line, rule in rules]   # line numbers: a farm group drops that part
     return problems
+
+
+def _blank_comments(code: str) -> str:
+    """The code with comments blanked, keeping every line where it was."""
+    return re.sub(r"/\*.*?\*/|//[^\n]*", lambda match: re.sub(r"[^\n]", " ", match[0]), code, flags=re.S)
 
 
 def _compile(code: str, names: tuple[FunctionName, ...], workdir: Path) -> tuple[Path | None, str]:
