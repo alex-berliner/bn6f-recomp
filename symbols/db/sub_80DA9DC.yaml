@@ -1,0 +1,193 @@
+name: sub_80DA9DC
+address: '0x080DA9DC'
+kind: function
+status: confirmed
+summary: Spawns a battle object of type ID 0xA9 on a given panel with a given element, and marks it with header
+  flag bits 0x14.
+interface: battle_spawnTypeA9ObjectAtPanel(u8 panelX in r0, u8 panelY in r1, u8 element in r2) -> battle_object*
+  in r0; sets nz c v (nz from the object pointer test, orr sets nz only); clobbers r1, r2, r3, lr; preserves r4-r7
+details: 'Wrapper around object_spawnType3: passes type ID 0xA9 in r0 and 0 in r3 (leaving the caller''s panelX/panelY
+  untouched in r1/r2 so the spawner can read them), and the spawn helper returns the new object pointer in r5 (0
+  = spawn failed). The function uses the original''s spilled-register trick (push r0-r2,r5 before the call, pop
+  shifted by one slot) so that on return r0 = object pointer, r1 = original panelX, r2 = original panelY, r3 = original
+  element. If an object was created, it stores panelX to oBattleObject_PanelX, panelY to oBattleObject_PanelY, and
+  element to oBattleObject_Element, then ORs 0x14 into the object header flags byte at offset 0 (oObjectHeader_Flags)
+  — likely enabling update/draw for the new object. Quirk: the flag-setting "mov r0, r5" is really adds r0, r5,
+  #0, so it sets nz according to the pointer and clears c/v; the trailing orr updates nz only, leaving c = v = 0.
+  What gameplay entity type ID 0xA9 is is not identified from this function alone.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-003052);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_5.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    5' --file leaves_farm_5.c GetNaviStatsAddrGivenCurPETNavi SetBeastOutCounterTo3 object_updateCollisionPanels
+    sub_800F35C sub_800F378 sub_800F394 sub_800F3E8 sub_800F404 sub_800FC7C sub_80100EC sub_8010DDA sub_80111B8
+    sub_8013FAE sub_8013FF8 sub_80141F4 sub_80142C2 sub_80143E4 sub_8015A16 sub_8015C12 sub_8016396 sub_80168F0
+    sub_8016CE8 sub_801A264 sub_801A2B0 sub_801A308 sub_801A6B4 sub_801A75A sub_801BABE sub_801C984 sub_801C9C8
+    sub_801CA0C sub_801DDD8 sub_801DED0 sub_801DFEA sub_801E022 sub_801E03E sub_801E0A0 sub_801E8CC sub_8112F34
+    sub_8116BFC sub_8116DEC sub_8116E10 sub_81176B0 sub_81176C0 sub_8117A84 sub_8117D10 sub_8117D2C sub_8118FC0
+    sub_8119364 sub_811979C sub_8119ACC sub_8119BE8 sub_8119C58 sub_8119C74 sub_8119E40 sub_811A11C sub_811A148
+    sub_811A190 sub_811B1EC sub_811B284 sub_811B48C sub_811BDCC sub_811BDFC sub_811C23C sub_811CC0C sub_811EC50
+    sub_811EF0C sub_811F6C0 sub_811F708 sub_811FE34 sub_811FF6C chargeShotChargeObject_80E0DF0 megamanChargeShotAiAttack_80EBE00
+    spawnChargeShotChargeObject_80E0F02 sub_80C6AB8 sub_80C6CE4 sub_80C6CFC sub_80C9CC4 sub_80CB078 sub_80DA9DC
+    sub_80DFF84 sub_80E06E0 sub_80E06F8 sub_80E08A6 sub_80E1A6A sub_80E1D54 sub_80EB436 sub_80EB758 sub_80EBC0E
+    sub_80EC884 sub_8109DBA sub_8109F4C t4_0x4_80E0844 cleareMemory_802FF2C copyObjAttributesToIWRAM_802FE0C sub_8026A50
+    sub_8026A6C sub_8027F6A sub_80281A8 sub_8028238 sub_8028320 sub_80283B0 sub_8028E32 sub_802A564 sub_802C1D4
+    sub_802DD2A sub_802DE5C sub_802DFFC sub_802EF5C sub_802F0D8 sub_802F0F4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80DA9DC
+
+    .venv/bin/python -m wf verify --function sub_80DA9DC --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-003052-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80DA9DC
+
+    .venv/bin/python -m wf verify --function sub_80DA9DC --snapshots SNAPSHOT_DIR'
+  result: 19 compared, 0 differed, 5 out of domain (verify run convert-20261009-003052-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80DA9DC
+
+    .venv/bin/python -m wf verify --function sub_80DA9DC --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-003052-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: fuzz, story2.'
+  reproduce: grep -l '^080da9dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_5.c
+  where: recomp 298955b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_5.c
+coverage:
+- fuzz
+- story2
+related:
+- GetNaviStatsAddrGivenCurPETNavi
+- SetBeastOutCounterTo3
+- object_updateCollisionPanels
+- sub_800F35C
+- sub_800F378
+- sub_800F394
+- sub_800F3E8
+- sub_800F404
+- sub_800FC7C
+- sub_80100EC
+- sub_8010DDA
+- sub_80111B8
+- sub_8013FAE
+- sub_8013FF8
+- sub_80141F4
+- sub_80142C2
+- sub_80143E4
+- sub_8015A16
+- sub_8015C12
+- sub_8016396
+- sub_80168F0
+- sub_8016CE8
+- sub_801A264
+- sub_801A2B0
+- sub_801A308
+- sub_801A6B4
+- sub_801A75A
+- sub_801BABE
+- sub_801C984
+- sub_801C9C8
+- sub_801CA0C
+- sub_801DDD8
+- sub_801DED0
+- sub_801DFEA
+- sub_801E022
+- sub_801E03E
+- sub_801E0A0
+- sub_801E8CC
+- sub_8112F34
+- sub_8116BFC
+- sub_8116DEC
+- sub_8116E10
+- sub_81176B0
+- sub_81176C0
+- sub_8117A84
+- sub_8117D10
+- sub_8117D2C
+- sub_8118FC0
+- sub_8119364
+- sub_811979C
+- sub_8119ACC
+- sub_8119BE8
+- sub_8119C58
+- sub_8119C74
+- sub_8119E40
+- sub_811A11C
+- sub_811A148
+- sub_811A190
+- sub_811B1EC
+- sub_811B284
+- sub_811B48C
+- sub_811BDCC
+- sub_811BDFC
+- sub_811C23C
+- sub_811CC0C
+- sub_811EC50
+- sub_811EF0C
+- sub_811F6C0
+- sub_811F708
+- sub_811FE34
+- sub_811FF6C
+- chargeShotChargeObject_80E0DF0
+- megamanChargeShotAiAttack_80EBE00
+- spawnChargeShotChargeObject_80E0F02
+- sub_80C6AB8
+- sub_80C6CE4
+- sub_80C6CFC
+- sub_80C9CC4
+- sub_80CB078
+- sub_80DFF84
+- sub_80E06E0
+- sub_80E06F8
+- sub_80E08A6
+- sub_80E1A6A
+- sub_80E1D54
+- sub_80EB436
+- sub_80EB758
+- sub_80EBC0E
+- sub_80EC884
+- sub_8109DBA
+- sub_8109F4C
+- t4_0x4_80E0844
+- cleareMemory_802FF2C
+- copyObjAttributesToIWRAM_802FE0C
+- sub_8026A50
+- sub_8026A6C
+- sub_8027F6A
+- sub_80281A8
+- sub_8028238
+- sub_8028320
+- sub_80283B0
+- sub_8028E32
+- sub_802A564
+- sub_802C1D4
+- sub_802DD2A
+- sub_802DE5C
+- sub_802DFFC
+- sub_802EF5C
+- sub_802F0D8
+- sub_802F0F4
+open_questions:
+- what battle object type ID 0xA9 actually is in game terms (which attack/effect spawns it)
+- which callers use this wrapper and what element values they pass
+- exact meaning of header flag bits 0x14 (0x04 and 0x10) on a freshly spawned object
+sources:
+- tools/wf run convert-20261009-003052

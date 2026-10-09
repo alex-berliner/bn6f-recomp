@@ -1,0 +1,192 @@
+name: sub_8016CE8
+address: '0x08016CE8'
+kind: function
+status: confirmed
+summary: Reads a battle object's state byte and tail-jumps to one of three per-state handlers, passing the state
+  byte through.
+interface: void sub_8016CE8(struct BattleObject* obj /* in r5 */); // r0 = state byte and r1 = handler address passed
+  on to the selected handler; all other registers pass through untouched
+details: 'Trampoline/state dispatcher for a battle object. r5 points to the battle object; the byte at oBattleObject_Unk_0d
+  is used as a *byte offset* (not a scaled index) into the handler table at off_8016CFC, so only values 0, 4 and
+  8 are valid and select sub_8016D08, sub_8016D8C and sub_8016E3C respectively. The dispatcher is a tail call: it
+  loads the handler address, sets r0 = the state byte and leaves r1 = the handler address from the table load, then
+  bx''s into the handler with lr still pointing at this function''s caller (mov lr, pc + bx r1 with the pop {pc}
+  epilogue only reached if the handler returns to this frame). Every register except r0 and r1 passes through unchanged,
+  so the handlers see the caller''s full register context.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-003052);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_5.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    5' --file leaves_farm_5.c GetNaviStatsAddrGivenCurPETNavi SetBeastOutCounterTo3 object_updateCollisionPanels
+    sub_800F35C sub_800F378 sub_800F394 sub_800F3E8 sub_800F404 sub_800FC7C sub_80100EC sub_8010DDA sub_80111B8
+    sub_8013FAE sub_8013FF8 sub_80141F4 sub_80142C2 sub_80143E4 sub_8015A16 sub_8015C12 sub_8016396 sub_80168F0
+    sub_8016CE8 sub_801A264 sub_801A2B0 sub_801A308 sub_801A6B4 sub_801A75A sub_801BABE sub_801C984 sub_801C9C8
+    sub_801CA0C sub_801DDD8 sub_801DED0 sub_801DFEA sub_801E022 sub_801E03E sub_801E0A0 sub_801E8CC sub_8112F34
+    sub_8116BFC sub_8116DEC sub_8116E10 sub_81176B0 sub_81176C0 sub_8117A84 sub_8117D10 sub_8117D2C sub_8118FC0
+    sub_8119364 sub_811979C sub_8119ACC sub_8119BE8 sub_8119C58 sub_8119C74 sub_8119E40 sub_811A11C sub_811A148
+    sub_811A190 sub_811B1EC sub_811B284 sub_811B48C sub_811BDCC sub_811BDFC sub_811C23C sub_811CC0C sub_811EC50
+    sub_811EF0C sub_811F6C0 sub_811F708 sub_811FE34 sub_811FF6C chargeShotChargeObject_80E0DF0 megamanChargeShotAiAttack_80EBE00
+    spawnChargeShotChargeObject_80E0F02 sub_80C6AB8 sub_80C6CE4 sub_80C6CFC sub_80C9CC4 sub_80CB078 sub_80DA9DC
+    sub_80DFF84 sub_80E06E0 sub_80E06F8 sub_80E08A6 sub_80E1A6A sub_80E1D54 sub_80EB436 sub_80EB758 sub_80EBC0E
+    sub_80EC884 sub_8109DBA sub_8109F4C t4_0x4_80E0844 cleareMemory_802FF2C copyObjAttributesToIWRAM_802FE0C sub_8026A50
+    sub_8026A6C sub_8027F6A sub_80281A8 sub_8028238 sub_8028320 sub_80283B0 sub_8028E32 sub_802A564 sub_802C1D4
+    sub_802DD2A sub_802DE5C sub_802DFFC sub_802EF5C sub_802F0D8 sub_802F0F4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8016CE8
+
+    .venv/bin/python -m wf verify --function sub_8016CE8 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-003052-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8016CE8
+
+    .venv/bin/python -m wf verify --function sub_8016CE8 --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 7 out of domain (verify run convert-20261009-003052-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8016CE8
+
+    .venv/bin/python -m wf verify --function sub_8016CE8 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-003052-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, story2.'
+  reproduce: grep -l '^08016ce8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_5.c
+  where: recomp 298955b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_5.c
+coverage:
+- battles1
+- battlesweep
+- story2
+related:
+- GetNaviStatsAddrGivenCurPETNavi
+- SetBeastOutCounterTo3
+- object_updateCollisionPanels
+- sub_800F35C
+- sub_800F378
+- sub_800F394
+- sub_800F3E8
+- sub_800F404
+- sub_800FC7C
+- sub_80100EC
+- sub_8010DDA
+- sub_80111B8
+- sub_8013FAE
+- sub_8013FF8
+- sub_80141F4
+- sub_80142C2
+- sub_80143E4
+- sub_8015A16
+- sub_8015C12
+- sub_8016396
+- sub_80168F0
+- sub_801A264
+- sub_801A2B0
+- sub_801A308
+- sub_801A6B4
+- sub_801A75A
+- sub_801BABE
+- sub_801C984
+- sub_801C9C8
+- sub_801CA0C
+- sub_801DDD8
+- sub_801DED0
+- sub_801DFEA
+- sub_801E022
+- sub_801E03E
+- sub_801E0A0
+- sub_801E8CC
+- sub_8112F34
+- sub_8116BFC
+- sub_8116DEC
+- sub_8116E10
+- sub_81176B0
+- sub_81176C0
+- sub_8117A84
+- sub_8117D10
+- sub_8117D2C
+- sub_8118FC0
+- sub_8119364
+- sub_811979C
+- sub_8119ACC
+- sub_8119BE8
+- sub_8119C58
+- sub_8119C74
+- sub_8119E40
+- sub_811A11C
+- sub_811A148
+- sub_811A190
+- sub_811B1EC
+- sub_811B284
+- sub_811B48C
+- sub_811BDCC
+- sub_811BDFC
+- sub_811C23C
+- sub_811CC0C
+- sub_811EC50
+- sub_811EF0C
+- sub_811F6C0
+- sub_811F708
+- sub_811FE34
+- sub_811FF6C
+- chargeShotChargeObject_80E0DF0
+- megamanChargeShotAiAttack_80EBE00
+- spawnChargeShotChargeObject_80E0F02
+- sub_80C6AB8
+- sub_80C6CE4
+- sub_80C6CFC
+- sub_80C9CC4
+- sub_80CB078
+- sub_80DA9DC
+- sub_80DFF84
+- sub_80E06E0
+- sub_80E06F8
+- sub_80E08A6
+- sub_80E1A6A
+- sub_80E1D54
+- sub_80EB436
+- sub_80EB758
+- sub_80EBC0E
+- sub_80EC884
+- sub_8109DBA
+- sub_8109F4C
+- t4_0x4_80E0844
+- cleareMemory_802FF2C
+- copyObjAttributesToIWRAM_802FE0C
+- sub_8026A50
+- sub_8026A6C
+- sub_8027F6A
+- sub_80281A8
+- sub_8028238
+- sub_8028320
+- sub_80283B0
+- sub_8028E32
+- sub_802A564
+- sub_802C1D4
+- sub_802DD2A
+- sub_802DE5C
+- sub_802DFFC
+- sub_802EF5C
+- sub_802F0D8
+- sub_802F0F4
+open_questions:
+- which battle entity/attack this object type is; the three handlers' identities would pin it down
+- what oBattleObject_Unk_0d means semantically (state counter? phase?); other objects may use wider state ranges
+- why r1 is left holding the handler address — possibly expected by the handlers as a scratch/informative argument
+sources:
+- tools/wf run convert-20261009-003052

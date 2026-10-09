@@ -1,0 +1,192 @@
+name: sub_800F394
+address: '0x0800F394'
+kind: function
+status: confirmed
+summary: Tail-calls the shared actor dispatcher with a 3-entry table of handler tables, so each actor's AI handler
+  is chosen by its actor type and AI index and run with all caller registers forwarded.
+interface: 'void battle_dispatchActorAIByTypeAndAIIdx(void) — in: r4-r12 carry per-actor/context state to the dispatched
+  handler (r0 is overwritten); out: whatever the dispatched handler returns, r4-r12 passed through.'
+details: A pure trampoline. It pushes lr only to be able to return, loads r0 with the pointer to off_800F3A4 — a
+  table of three word-sized entries (off_8109350, off_80F26CC, off_80EAA68), evidently one handler table per actor
+  type — and tail-calls indexByActorTypeAndAIIdxThenDispatch_800F420 via bl, leaving lr pointing at the original
+  caller so the callee returns straight to it. The dispatcher presumably indexes the selected sub-table by the current
+  actor's AI index (read from actor data in the preserved registers) and jumps to the resulting handler, which continues
+  with r4-r12 intact. No game state is touched here directly; the three sub-tables are the actual per-type AI handler
+  lists (likely the three enemy/family actor kinds used by this script/battle module).
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-003052);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_5.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    5' --file leaves_farm_5.c GetNaviStatsAddrGivenCurPETNavi SetBeastOutCounterTo3 object_updateCollisionPanels
+    sub_800F35C sub_800F378 sub_800F394 sub_800F3E8 sub_800F404 sub_800FC7C sub_80100EC sub_8010DDA sub_80111B8
+    sub_8013FAE sub_8013FF8 sub_80141F4 sub_80142C2 sub_80143E4 sub_8015A16 sub_8015C12 sub_8016396 sub_80168F0
+    sub_8016CE8 sub_801A264 sub_801A2B0 sub_801A308 sub_801A6B4 sub_801A75A sub_801BABE sub_801C984 sub_801C9C8
+    sub_801CA0C sub_801DDD8 sub_801DED0 sub_801DFEA sub_801E022 sub_801E03E sub_801E0A0 sub_801E8CC sub_8112F34
+    sub_8116BFC sub_8116DEC sub_8116E10 sub_81176B0 sub_81176C0 sub_8117A84 sub_8117D10 sub_8117D2C sub_8118FC0
+    sub_8119364 sub_811979C sub_8119ACC sub_8119BE8 sub_8119C58 sub_8119C74 sub_8119E40 sub_811A11C sub_811A148
+    sub_811A190 sub_811B1EC sub_811B284 sub_811B48C sub_811BDCC sub_811BDFC sub_811C23C sub_811CC0C sub_811EC50
+    sub_811EF0C sub_811F6C0 sub_811F708 sub_811FE34 sub_811FF6C chargeShotChargeObject_80E0DF0 megamanChargeShotAiAttack_80EBE00
+    spawnChargeShotChargeObject_80E0F02 sub_80C6AB8 sub_80C6CE4 sub_80C6CFC sub_80C9CC4 sub_80CB078 sub_80DA9DC
+    sub_80DFF84 sub_80E06E0 sub_80E06F8 sub_80E08A6 sub_80E1A6A sub_80E1D54 sub_80EB436 sub_80EB758 sub_80EBC0E
+    sub_80EC884 sub_8109DBA sub_8109F4C t4_0x4_80E0844 cleareMemory_802FF2C copyObjAttributesToIWRAM_802FE0C sub_8026A50
+    sub_8026A6C sub_8027F6A sub_80281A8 sub_8028238 sub_8028320 sub_80283B0 sub_8028E32 sub_802A564 sub_802C1D4
+    sub_802DD2A sub_802DE5C sub_802DFFC sub_802EF5C sub_802F0D8 sub_802F0F4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800F394
+
+    .venv/bin/python -m wf verify --function sub_800F394 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-003052-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800F394
+
+    .venv/bin/python -m wf verify --function sub_800F394 --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 1 out of domain (verify run convert-20261009-003052-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800F394
+
+    .venv/bin/python -m wf verify --function sub_800F394 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-003052-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, chips, story2.'
+  reproduce: grep -l '^0800f394 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_5.c
+  where: recomp 298955b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_5.c
+coverage:
+- battles1
+- battlesweep
+- chips
+- story2
+related:
+- GetNaviStatsAddrGivenCurPETNavi
+- SetBeastOutCounterTo3
+- object_updateCollisionPanels
+- sub_800F35C
+- sub_800F378
+- sub_800F3E8
+- sub_800F404
+- sub_800FC7C
+- sub_80100EC
+- sub_8010DDA
+- sub_80111B8
+- sub_8013FAE
+- sub_8013FF8
+- sub_80141F4
+- sub_80142C2
+- sub_80143E4
+- sub_8015A16
+- sub_8015C12
+- sub_8016396
+- sub_80168F0
+- sub_8016CE8
+- sub_801A264
+- sub_801A2B0
+- sub_801A308
+- sub_801A6B4
+- sub_801A75A
+- sub_801BABE
+- sub_801C984
+- sub_801C9C8
+- sub_801CA0C
+- sub_801DDD8
+- sub_801DED0
+- sub_801DFEA
+- sub_801E022
+- sub_801E03E
+- sub_801E0A0
+- sub_801E8CC
+- sub_8112F34
+- sub_8116BFC
+- sub_8116DEC
+- sub_8116E10
+- sub_81176B0
+- sub_81176C0
+- sub_8117A84
+- sub_8117D10
+- sub_8117D2C
+- sub_8118FC0
+- sub_8119364
+- sub_811979C
+- sub_8119ACC
+- sub_8119BE8
+- sub_8119C58
+- sub_8119C74
+- sub_8119E40
+- sub_811A11C
+- sub_811A148
+- sub_811A190
+- sub_811B1EC
+- sub_811B284
+- sub_811B48C
+- sub_811BDCC
+- sub_811BDFC
+- sub_811C23C
+- sub_811CC0C
+- sub_811EC50
+- sub_811EF0C
+- sub_811F6C0
+- sub_811F708
+- sub_811FE34
+- sub_811FF6C
+- chargeShotChargeObject_80E0DF0
+- megamanChargeShotAiAttack_80EBE00
+- spawnChargeShotChargeObject_80E0F02
+- sub_80C6AB8
+- sub_80C6CE4
+- sub_80C6CFC
+- sub_80C9CC4
+- sub_80CB078
+- sub_80DA9DC
+- sub_80DFF84
+- sub_80E06E0
+- sub_80E06F8
+- sub_80E08A6
+- sub_80E1A6A
+- sub_80E1D54
+- sub_80EB436
+- sub_80EB758
+- sub_80EBC0E
+- sub_80EC884
+- sub_8109DBA
+- sub_8109F4C
+- t4_0x4_80E0844
+- cleareMemory_802FF2C
+- copyObjAttributesToIWRAM_802FE0C
+- sub_8026A50
+- sub_8026A6C
+- sub_8027F6A
+- sub_80281A8
+- sub_8028238
+- sub_8028320
+- sub_80283B0
+- sub_8028E32
+- sub_802A564
+- sub_802C1D4
+- sub_802DD2A
+- sub_802DE5C
+- sub_802DFFC
+- sub_802EF5C
+- sub_802F0D8
+- sub_802F0F4
+open_questions:
+- Which actor-type value maps to which of the three tables in off_800F3A4 (0x8109350, 0x80F26CC, 0x80EAA68) needs
+  confirmation from indexByActorTypeAndAIIdxThenDispatch_800F420.
+- Whether the same dispatcher is reused by other modules with different tables (this function exists only to supply
+  this module's table).
+sources:
+- tools/wf run convert-20261009-003052
