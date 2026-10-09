@@ -7,13 +7,13 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_809FBF2 ── */
-/* sub_809FBF2(r0 = map group id, r1 = base pointer):
+/* ── mysteryData_resolveMapGroupEntry_809FBF2 ── */
+/* mysteryData_resolveMapGroupEntry_809FBF2(r0 = map group id, r1 = base pointer):
  * Resolve the pointer for the requested map group. Group 5 (the mystery
  * data groups) uses a table of 12-byte entries and here always selects
  * entry 0; every other group passes the base pointer through unchanged.
  * Outputs: r0 = table pointer. */
-Next sub_809FBF2(void) {
+Next mysteryData_resolveMapGroupEntry_809FBF2(void) {
     u32 base = R1;
 
     if (R0 == 5) {

@@ -7,15 +7,15 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_8109CBC ── */
-/* sub_8109CBC (r5 = battle object, r7 = this attack's variable block):
+/* ── battle_attackTimerTick_8109CBC ── */
+/* battle_attackTimerTick_8109CBC (r5 = battle object, r7 = this attack's variable block):
  * Per-frame tick for an AI attack. Counts the attack's remaining-frames
  * counter (oAIAttackVars_Unk_10) down by one; while it is still non-negative
  * the attack simply stays active for another frame. Once the counter runs out,
  * the attack's teardown helpers are run on the object's extra var, its state
  * word (pointed to by oAIAttackVars_Unk_30) is cleared, and the object leaves
  * the attack state. */
-Next sub_8109CBC(void) {
+Next battle_attackTimerTick_8109CBC(void) {
     /* Decrement the attack countdown (halfword), keeping the SUBS flags for
      * the early-out path. */
     u32 timer = LD16(R7 + oAIAttackVars_Unk_10);

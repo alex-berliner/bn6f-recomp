@@ -355,8 +355,8 @@ Next getOffsetToQuantityOfChipCodeMaybe_8021c7c(void) {
  * base pointer is stored at [r10 + oToolkit_S_Chip_2002178_Ptr] (slot r1
  * begins at base + r1 * 0x3C).  It then scans the copy's 30 halfwords: each
  * one is unpacked into two 9-bit values by split9BitsFromBitfield_8021AE0
- * and handed to sub_8021B2A together with a count of 1.
- * Exits with r2 = 1 and r3 = the result of the last sub_8021B2A call;
+ * and handed to pack_addChipByIdSetLibraryFlag_8021B2A together with a count of 1.
+ * Exits with r2 = 1 and r3 = the result of the last pack_addChipByIdSetLibraryFlag_8021B2A call;
  * r4-r7 are preserved (the loop's r6/r7 live only inside this routine). */
 Next sChip_loadRecordIntoSlot_8021AB4(void) {
     u32 src = R0;
@@ -377,7 +377,7 @@ Next sChip_loadRecordIntoSlot_8021AB4(void) {
         R0 = LD16(dest + R6);
         GUEST_CALL(split9BitsFromBitfield_8021AE0); /* -> r0, r1 */
         R2 = 1;
-        GUEST_CALL(sub_8021B2A); /* -> r3 */
+        GUEST_CALL(pack_addChipByIdSetLibraryFlag_8021B2A); /* -> r3 */
     }
 
     /* The original pops r6/r7 here, restoring the caller's values. */

@@ -7,8 +7,8 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_810971A ── */
-/* sub_810971A: pick a random object from the row selected by the current
+/* ── battle_pickRandomRowObjectFields_810971A ── */
+/* battle_pickRandomRowObjectFields_810971A: pick a random object from the row selected by the current
  * alliance-dependent panel parameters and split its entry byte into two
  * fields:
  *   r0 = low 3 bits of the entry byte,
@@ -16,7 +16,7 @@
  * with nz taken from the final r0.
  * If the row is empty, r0 stays 0 and the flags come from the count
  * comparison. r2/r3 are left as the helpers left them; r4-r7 preserved. */
-Next sub_810971A(void) {
+Next battle_pickRandomRowObjectFields_810971A(void) {
     u32 savedR7 = R7;
 
     /* The original pushes {r7,lr} and then reserves 8 more bytes; the list

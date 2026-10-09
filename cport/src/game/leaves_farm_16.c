@@ -7,7 +7,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_80C6CBA ── */
+/* ── battleObject_dyingTickDespawn_80C6CBA ── */
 /* Field offsets/state constants used here that game.h spells differently
  * (the assembler listing calls them oBattleObject_Param1 /
  * oBattleObject_CurStateActionPhaseAndPhaseInitialized / CUR_STATE_DESTROY):
@@ -17,14 +17,14 @@
 #define oBattleObject_CurStateActionPhaseAndPhaseInitialized 8
 #define CUR_STATE_DESTROY 8
 
-/* sub_80C6CBA(r5 = battle object):
+/* battleObject_dyingTickDespawn_80C6CBA(r5 = battle object):
  * Death tick. Objects with Param1 < 12 vanish as soon as their sprite
  * animation reports the end-of-animation bit (0x80); objects with
  * Param1 >= 12 linger for Timer2 more ticks first. Once the trigger fires,
  * the object is parked offscreen (X = 0xF0), its collision region is
  * cleared, and it is marked destroyed. Flags: nz from the last test/mov,
  * c/v carried over from the getFrameParameters call or the timer subtract. */
-Next sub_80C6CBA(void) {
+Next battleObject_dyingTickDespawn_80C6CBA(void) {
     if (LD8(R5 + oBattleObject_Param1) < 0xC) {
         /* Ask the current sprite whether its animation has finished. */
         GUEST_CALL(sprite_getFrameParameters);
@@ -51,8 +51,8 @@ Next sub_80C6CBA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80DA974 ── */
-/* sub_80DA974 (r5 = battle object, r10 = toolkit):
+/* ── battle_objectLingerThenDestroyPhase_80DA974 ── */
+/* battle_objectLingerThenDestroyPhase_80DA974 (r5 = battle object, r10 = toolkit):
  * Death phase of an object that lingers briefly before despawning.
  * On the first entry it copies the object's halfword parameter at +4 into
  * the battle state, switches to animation 1, loads a 90-frame timer,
@@ -64,7 +64,7 @@ Next sub_80C6CBA(void) {
  * `mov r0, #8` on the destroy path; c/v untouched there). */
 #define CUR_STATE_DESTROY_sub_80DA974 8
 
-Next sub_80DA974(void) {
+Next battle_objectLingerThenDestroyPhase_80DA974(void) {
     if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
         /* one-time setup for this phase */
         u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
@@ -96,8 +96,8 @@ Next sub_80DA974(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81169D8 ── */
-/* sub_81169D8: run one step of an object's exit/disappear sequence.
+/* ── npc_tickDisappearTimer_81169D8 ── */
+/* npc_tickDisappearTimer_81169D8: run one step of an object's exit/disappear sequence.
  * While the signed 16-bit flag at r7+0x10 is set, do nothing. Otherwise
  * count the byte timer at r5+0xC down; when it reaches zero, put the
  * object into state 4 with animation id 0x23 and reload its sprite
@@ -105,7 +105,7 @@ Next sub_80DA974(void) {
  *
  * r4/r5 are preserved; r2/r3 are never touched. r0/r1 keep the values
  * the original leaves behind on the early-exit paths. */
-Next sub_81169D8(void) {
+Next npc_tickDisappearTimer_81169D8(void) {
     /* Nothing to do while the +0x10 flag is set. (r0 holds the 0x10
      * offset the original computes before the load.) */
     R0 = 0x10;
@@ -133,7 +133,7 @@ Next sub_81169D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116F34 ── */
+/* ── battle_objectUpdateByKind_8116F34 ── */
 /* Jump table jt_8116F4C: Thumb entry points of the per-object update handlers,
  * exactly as they appear in the table the original indexes through. */
 enum {
@@ -142,13 +142,13 @@ enum {
     ADDR_sub_8116F9C                       = 0x08116F9C + 1,
 };
 
-/* sub_8116F34: run one battle object's type-specific update, then its sprite update.
+/* battle_objectUpdateByKind_8116F34: run one battle object's type-specific update, then its sprite update.
  * R5 points at the battle object; the byte at obj+4 selects which handler runs:
  *   0/3 -> sub_8116F60, 1/4 -> battle_objectUpdateWithFieldC_8116F8C, 2 -> sub_8116F9C.
  * For fidelity with the original `mov lr, pc; bx r0`, each handler is entered with
  * R0 = its own jump-table entry and R1 = type*4 (result of the `lsl r1, r1, #2`).
  * Tail behaviour: after the handler returns, sprite_update is called on the object. */
-Next sub_8116F34(void) {
+Next battle_objectUpdateByKind_8116F34(void) {
     u32 kind = LD8(R5 + 4);
 
     switch (kind) {
@@ -183,8 +183,8 @@ Next sub_8116F34(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8117084 ── */
-/* sub_8117084(r0 = halfword A, r1 = halfword B, r2 = first struct index):
+/* ── sprite_setStructHalfwordPairOnThree_8117084 ── */
+/* sprite_setStructHalfwordPairOnThree_8117084(r0 = halfword A, r1 = halfword B, r2 = first struct index):
  * Walks the three struct indices r2..r2+2. For each index, looks up the
  * corresponding struct from the pool at 0x2008450; while a struct is found,
  * its halfwords at +0xC and +0xE are filled with the two values passed in.
@@ -193,7 +193,7 @@ Next sub_8116F34(void) {
  * on an early abort they are whatever the lookup left behind.
  * r4-r7 are untouched, and r1/r2 end up holding the values the last lookup
  * returned, exactly as in the original. */
-Next sub_8117084(void) {
+Next sprite_setStructHalfwordPairOnThree_8117084(void) {
     u32 valueA = R0;
     u32 valueB = R1;
     u32 index = R2;
@@ -220,13 +220,13 @@ Next sub_8117084(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81179E4 ── */
-/* sub_81179E4: render the description of the selected key item.
+/* ── keyItemMenu_renderDescription_81179E4 ── */
+/* keyItemMenu_renderDescription_81179E4: render the description of the selected key item.
  * r4 = key item menu state (halfword at +2 is the item id),
  * r7 = menu context ([r7+0x24] selects which gfx block to render),
  * r10 = toolkit. The result of the key item lookup is stored into the
  * toolkit's unk_200A220 work struct. */
-Next sub_81179E4(void) {
+Next keyItemMenu_renderDescription_81179E4(void) {
     /* original push {r4-r7,lr}: r4-r7 are read here and restored on exit */
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
 
@@ -260,8 +260,8 @@ Next sub_81179E4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811976C ── */
-/* sub_811976C(r5 = sprite state record):
+/* ── sprite_stepZoomShrinkOut_811976C ── */
+/* sprite_stepZoomShrinkOut_811976C(r5 = sprite state record):
  * One step of a sprite's zoom animation. The scale byte at +0x12 counts down
  * in steps of 0x30; while it is still above 0x40 the new scale is applied to
  * the sprite. Once it drops to 0x40 or below (including wrapping below zero,
@@ -270,7 +270,7 @@ Next sub_81179E4(void) {
  * is cleared and the sprite is marked as no longer scalable. The "scaling"
  * bit (0x02) is set in the state byte at +0x00 on every step.
  * On return the N/Z flags are whatever the called sprite routine left. */
-Next sub_811976C(void) {
+Next sprite_stepZoomShrinkOut_811976C(void) {
     u32 scale;
 
     /* Set the "scale in progress" flag (r1 = 2 stays live into the call). */
@@ -300,8 +300,8 @@ Next sub_811976C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811980C ── */
-/* sub_811980C(r0 = halfword value for struct+0x0E, r1 = byte value for struct+0x0C,
+/* ── setFieldsInThreeTableEntries_811980C ── */
+/* setFieldsInThreeTableEntries_811980C(r0 = halfword value for struct+0x0E, r1 = byte value for struct+0x0C,
  *             r2 = first table index, r3 = halfword value for struct+0x18):
  * For the three table entries starting at index r2, look up the matching
  * struct in the table rooted at 0x2008450 (getStructFrom2008450 returns a
@@ -310,7 +310,7 @@ Next sub_811976C(void) {
  * r4-r7 are callee-saved in the original (push/pop), so they are left
  * untouched; r0/r1 hold the last loop iteration's results, and the flags
  * come from the final loop counter compare (always equal on exit). */
-Next sub_811980C(void) {
+Next setFieldsInThreeTableEntries_811980C(void) {
     u32 halfwordE  = R0;   /* value stored at struct+0x0E */
     u32 byteC      = R1;   /* value stored at struct+0x0C */
     u32 first      = R2;   /* first of the three entries to fill in */
@@ -335,15 +335,15 @@ Next sub_811980C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8119854 ── */
-/* sub_8119854(r0 = x, r1 = y, r2 = first sprite id):
+/* ── sprite_setPositionForIdRange3_8119854 ── */
+/* sprite_setPositionForIdRange3_8119854(r0 = x, r1 = y, r2 = first sprite id):
  * Position the group of three sprites whose ids run from r2 to r2+2 at
  * the coordinates (x, y). Each id is looked up in the sprite table rooted
  * at 0x2008450; ids with no entry there are skipped. The lookup's r1
  * result is handed to sprite_setCoordinates in r5, and its r2/r3 results
  * are forwarded to that call unchanged. On return the flags are those of
  * the loop's final `cmp id, end` (i.e. the loop counter against its limit). */
-Next sub_8119854(void) {
+Next sprite_setPositionForIdRange3_8119854(void) {
     u32 x = R0;
     u32 y = R1;
     u32 firstId = R2;
@@ -369,8 +369,8 @@ Next sub_8119854(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811A0A4 ── */
-/* sub_811A0A4: per-frame update for the battle object whose struct is in R5.
+/* ── object_runTypeUpdateThenSpriteUpdate_811A0A4 ── */
+/* object_runTypeUpdateThenSpriteUpdate_811A0A4: per-frame update for the battle object whose struct is in R5.
  * The type byte at [R5+4] selects one of four update routines from the jump
  * table at off_811A0BC (entries 0 and 3 share a handler). The selected
  * routine is called through the table — so it is entered with R0 = table
@@ -379,7 +379,7 @@ Next sub_8119854(void) {
  * sprite_update. The original wraps this in push {lr}/pop {pc}, so it
  * returns to the return address it was entered with, not to whatever LR the
  * last call left behind. */
-Next sub_811A0A4(void) {
+Next object_runTypeUpdateThenSpriteUpdate_811A0A4(void) {
     u32 returnAddress = LR; /* push {lr} */
 
     u32 type = LD8(R5 + 4);
@@ -404,8 +404,8 @@ Next sub_811A0A4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811A160 ── */
-/* sub_811A160(r5 = sprite/effect object):
+/* ── sprite_scaleShrinkStep_811A160 ── */
+/* sprite_scaleShrinkStep_811A160(r5 = sprite/effect object):
  * Shrink the object's scale value (field 0x12) by 0x20 and mark it (field 0,
  * bit 1) as being scaled. If the scale is still above 0x40, hand the new scale
  * to sprite_setScaleParameters (base 0, new scale, target 0x40). Once it drops
@@ -413,7 +413,7 @@ Next sub_811A0A4(void) {
  * sprite unscalable — the shrink animation has finished its cycle.
  * Leaves r4-r7 untouched; r0-r3 and the flags are whatever the called sprite
  * routine leaves behind. */
-Next sub_811A160(void) {
+Next sprite_scaleShrinkStep_811A160(void) {
     u32 scale;
 
     ST8(R5, LD8(R5) | 2);
@@ -436,8 +436,8 @@ Next sub_811A160(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EBD3C ── */
-/* sub_80EBD3C(r5 = battle object, r7 = AI attack vars):
+/* ── aiAttack_windupTick_80EBD3C ── */
+/* aiAttack_windupTick_80EBD3C(r5 = battle object, r7 = AI attack vars):
  * Per-tick update for an AI-controlled attack. On the first tick (state byte
  * at [r7,#1] still 0) the object detaches its linked object, clears AI field
  * 0x68, plays the wind-up animation (7), and arms a short timer (3) before
@@ -446,7 +446,7 @@ Next sub_811A160(void) {
  *
  * Flags out: from the timer subtraction, or from object_exitAttackState when
  * that call is made. r0 ends as timer-1 (or whatever the exit call leaves). */
-Next sub_80EBD3C(void) {
+Next aiAttack_windupTick_80EBD3C(void) {
     if (LD8(R7 + 1) == 0) {         /* oAIAttackVars_Unk_01: state byte */
         /* First tick: tear down the previous attack's leftovers and start
          * the wind-up animation. */

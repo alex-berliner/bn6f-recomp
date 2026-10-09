@@ -7,8 +7,8 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_811A1F4 ── */
-/* sub_811A1F4(r0 = halfword value, r1 = byte value, r2 = first slot, r3 = halfword value):
+/* ── setSlotFieldsFromStartTo3_811A1F4 ── */
+/* setSlotFieldsFromStartTo3_811A1F4(r0 = halfword value, r1 = byte value, r2 = first slot, r3 = halfword value):
  * Walk the entity slots starting at r2, up to but not including slot 4, and for
  * every slot that currently has a struct registered, refresh three of its fields:
  *   +0x0C (byte)  = r1
@@ -19,7 +19,7 @@
  * back in r1 and may hold junk when the slot is empty, so only r0 may be tested.
  * Although the original moves the loop counter into r4, it saves and restores
  * r4 around the routine (push {r4,lr} / pop {r4,pc}), so r4 is left unchanged. */
-Next sub_811A1F4(void) {
+Next setSlotFieldsFromStartTo3_811A1F4(void) {
     u16 val0E = (u16)R0;
     u8  val0C = (u8)R1;
     u16 val18 = (u16)R3;
@@ -39,15 +39,15 @@ Next sub_811A1F4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811A220 ── */
-/* sub_811A220(r0 = x, r1 = y, r2 = first slot index):
+/* ── sprite_moveSlotGroupXY_811A220 ── */
+/* sprite_moveSlotGroupXY_811A220(r0 = x, r1 = y, r2 = first slot index):
  * For the four object slots starting at the index in r2, look each entry up
  * in the table at 0x2008450 and, if an object exists there, move its sprite
  * to (x, y).
  *
  * Flags on return come from the final slot/index comparison (callers test V).
  * r2/r3 are whatever the last callee left them as; r4-r7 are preserved. */
-Next sub_811A220(void) {
+Next sprite_moveSlotGroupXY_811A220(void) {
     u32 x = R0;
     u32 y = R1;
     u32 slot = R2;
@@ -76,15 +76,15 @@ Next sub_811A220(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811CBA0 ── */
-/* sub_811CBA0 (r5 = state object):
+/* ── timerCountdown_step_811CBA0 ── */
+/* timerCountdown_step_811CBA0 (r5 = state object):
  * Runs the countdown timer at +0x10. The first time it runs (active flag in
  * the byte at +0x9 still clear) it marks itself active and initialises the
  * timer from the halfword at +2 of the entry returned by sub_811CC68.
  * Every call decrements the timer; once it goes negative the timer is reset
  * to 0, the active flag is cleared, 4 is added to the u32 counter at +0xC,
  * and the function returns 1. Otherwise it returns 0. */
-Next sub_811CBA0(void) {
+Next timerCountdown_step_811CBA0(void) {
     u32 obj = R5;
     u32 timer;
 
@@ -117,13 +117,13 @@ Next sub_811CBA0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811F728 ── */
-/* sub_811F728: leave the current game mode and return to the map.
+/* ── next_exitToMap_811F728 ── */
+/* next_exitToMap_811F728: leave the current game mode and return to the map.
  * Called with r10 = toolkit. Resets the main jumptable to state 4
  * (cbGameState_80050EC), tells the game state to run subsystem 0 (EnterMap),
  * flags the render info with 0x40, plays sound effect 6, refreshes the
  * chatbox, and clears event flag 0x40 in the chatbox event flags. */
-Next sub_811F728(void) {
+Next next_exitToMap_811F728(void) {
     u32 toolkit = R10;
 
     /* switch the main jumptable to cbGameState_80050EC
@@ -182,13 +182,13 @@ Next LoadVirusNameIDsForUpToFourSlots_800A998(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8005F40 ── */
-/* sub_8005F40: reset all graphics state for a fresh scene.
+/* ── resetAllGraphicsState_8005F40 ── */
+/* resetAllGraphicsState_8005F40: reset all graphics state for a fresh scene.
  * Clears VRAM and the various work RAM buffers, installs the dummy
  * BG scroll callbacks, clears the extended palettes, and resets the
  * render info structures. Takes no arguments and returns none, but
  * r2-r7 pass through unchanged. */
-Next sub_8005F40(void) {
+Next resetAllGraphicsState_8005F40(void) {
     GUEST_CALL(zeroFillVRAM);                        /* blank out VRAM */
     GUEST_CALL(ZeroFill_byte_3001960);               /* clear sprite/OAM work area */
     GUEST_CALL(SetDummyBGScrollCallbacks);           /* no-op BG scroll until a scene sets real ones */
@@ -202,14 +202,14 @@ Next sub_8005F40(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8021B2A ── */
-/* sub_8021B2A(r0 = chip id, r1 = search item, r2 = amount):
+/* ── pack_addChipByIdSetLibraryFlag_8021B2A ── */
+/* pack_addChipByIdSetLibraryFlag_8021B2A(r0 = chip id, r1 = search item, r2 = amount):
  * Adds copies of a chip to the spare chip pack. First re-applies the pack
  * encryption; if an amount was requested, sets the chip's library event flag
  * (flag 0x1E20 + chip id), finds the pack slot holding that chip's code, and
  * adds the chips there. Returns the result addChipsToChipPackOffset leaves in
  * r3, or 0 when the amount is zero. r2/r4-r7 are preserved for the caller. */
-Next sub_8021B2A(void) {
+Next pack_addChipByIdSetLibraryFlag_8021B2A(void) {
     u32 chip_id = R0;
     u32 search_item = R1;
     u32 amount = R2;

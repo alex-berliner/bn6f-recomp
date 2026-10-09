@@ -7,13 +7,13 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_803007C ── */
-/* sub_803007C(r5 = camera state):
+/* ── camera_updateDerivedOffsets_803007C ── */
+/* camera_updateDerivedOffsets_803007C(r5 = camera state):
  * Recompute the camera's two 16.16 fixed-point offset fields at +4/+6
  * from the pending scroll target nextX/nextY/nextZ, negating the results.
  * Leaves r1/r2/r4/r6/r7/r8 and the flags (from the final `neg r6`) as the
  * original does, since callers inspect them. */
-Next sub_803007C(void) {
+Next camera_updateDerivedOffsets_803007C(void) {
     u32 cam = R5;
 
     /* Load the pending scroll target and negate X and Y. */
@@ -93,11 +93,11 @@ Next sub_8031388(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C6A08 ── */
-/* sub_80C6A08: step an object sideways by its X velocity and destroy it if the
+/* ── battle_stepObjectXByVelocityAndDestroyIfInvalidPanel_80C6A08 ── */
+/* battle_stepObjectXByVelocityAndDestroyIfInvalidPanel_80C6A08: step an object sideways by its X velocity and destroy it if the
  * panel it ends up on is not a valid standing spot.  r5 = battle object.
  * Leaves nz/c/v reflecting the panel-validity test (or the destroy state value). */
-Next sub_80C6A08(void) {
+Next battle_stepObjectXByVelocityAndDestroyIfInvalidPanel_80C6A08(void) {
     /* PanelX is a byte, so the velocity add wraps to one tile dimension. */
     u32 newX = LD8(R5 + oBattleObject_PanelX) + LD32(R5 + oBattleObject_XVelocity);
     ST8(R5 + oBattleObject_PanelX, newX);

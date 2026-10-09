@@ -1148,7 +1148,7 @@ Next battle_stepForwardAnimWait_8116DEC(void) {
  *
  * Reads the word offset of the current state from [R5+8] and tail-calls the
  * matching handler out of the table at off_8116E24:
- *   offset 0 -> sub_8116E30, 4 -> sub_8116F34, 8 -> sub_8116FD4.
+ *   offset 0 -> sub_8116E30, 4 -> battle_objectUpdateByKind_8116F34, 8 -> sub_8116FD4.
  *
  * The original does this with `mov lr, pc; bx r0` followed by `pop {pc}`,
  * so the handler returns straight to this function's caller: it is a tail
@@ -1169,7 +1169,7 @@ Next stateDispatcher_3states_8116E10(void) {
         GUEST_CALL(sub_8116E30);
         break;
     case 4:
-        GUEST_CALL(sub_8116F34);
+        GUEST_CALL(battle_objectUpdateByKind_8116F34);
         break;
     case 8:
         GUEST_CALL(sub_8116FD4);
@@ -1469,14 +1469,14 @@ Next registry_setEntryStatusByKey_8119C74(void) {
  * Registers and flags after the call are passed through. */
 Next entity_RunStateHandler_8119E40(void) {
     u32 sel = LD8(R5 + 8);
-    u32 handler = LD32(A_off_8119E54 + sel); /* off_8119E54: sub_8119E60+1, sub_811A0A4+1, sub_811A1EC+1 */
+    u32 handler = LD32(A_off_8119E54 + sel); /* off_8119E54: sub_8119E60+1, object_runTypeUpdateThenSpriteUpdate_811A0A4+1, sub_811A1EC+1 */
 
     R0 = handler;
     R1 = sel;
 
     switch (sel) {
     case 0: GUEST_CALL(sub_8119E60); break;
-    case 4: GUEST_CALL(sub_811A0A4); break;
+    case 4: GUEST_CALL(object_runTypeUpdateThenSpriteUpdate_811A0A4); break;
     case 8: GUEST_CALL(sub_811A1EC); break;
     /* any other byte offset would make the original jump to garbage; it
      * never occurs in practice, so there is nothing to do */
@@ -1512,15 +1512,15 @@ Next battle_initScalableSpriteObject_811A11C(void) {
 /* ── stateObj_advanceToState0x10_811A148 ── */
 /* stateObj_advanceToState0x10_811A148(r5 = state object pointer):
  * If the byte at r5+4 is still zero, run its initialization (sub_8119EEC).
- * Then mark the object with state 0x10 at r5+9 and advance it via sub_811A160.
- * r5 is preserved; r0 on return is whatever sub_811A160 left there. */
+ * Then mark the object with state 0x10 at r5+9 and advance it via sprite_scaleShrinkStep_811A160.
+ * r5 is preserved; r0 on return is whatever sprite_scaleShrinkStep_811A160 left there. */
 Next stateObj_advanceToState0x10_811A148(void) {
     if (LD8(R5 + 4) == 0)
         GUEST_CALL(sub_8119EEC);
 
     ST8(R5 + 9, 0x10);
 
-    GUEST_CALL(sub_811A160);
+    GUEST_CALL(sprite_scaleShrinkStep_811A160);
     RETURN_TO_CALLER();
 }
 
@@ -1782,7 +1782,7 @@ Next pet_prepareMenuOnReturn_811F6C0(void) {
  *   +9 = 3 (menu sub-state).
  * Returns with r0 = 3 and r1 = &ePETMenuData; flags reflect `mov r0, #3`. */
 Next pet_menuExitToMap_811F708(void) {
-    GUEST_CALL(sub_811F728);
+    GUEST_CALL(next_exitToMap_811F728);
 
     u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
     ST8(gameState + oGameState_EnterMapFadeParam1, 8);
@@ -2375,7 +2375,7 @@ Next aiAttackTimerTick_80EB758(void) {
 /* aiAttack_dispatchStateHandler_80EBC0E: dispatch an AI attack sub-state handler.
  * R7 points at the AI attack vars; the state byte in its first field
  * selects the handler from a two-entry table in ROM:
- *   0 -> sub_80EBC28, 1 -> sub_80EBD3C.
+ *   0 -> sub_80EBC28, 1 -> aiAttack_windupTick_80EBD3C.
  * The state byte is passed to the handler in R0 and the handler pointer
  * in R1 (as the original's `ldr r1, [table, state]` leaves it); the
  * `mov lr, pc / bx r1` sequence makes this an effective tail call, so the
@@ -2389,7 +2389,7 @@ Next aiAttack_dispatchStateHandler_80EBC0E(void) {
     if (attackState == 0)
         GUEST_CALL(sub_80EBC28);
     else
-        GUEST_CALL(sub_80EBD3C); /* state >= 2 reads past the table in the original */
+        GUEST_CALL(aiAttack_windupTick_80EBD3C); /* state >= 2 reads past the table in the original */
 
     RETURN_TO_CALLER();
 }

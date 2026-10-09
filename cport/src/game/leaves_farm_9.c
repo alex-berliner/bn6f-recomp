@@ -1122,7 +1122,7 @@ Next startScreen_runTriggerHandler_802FC9C(void) {
  * r5 points at the camera object. The byte at offset 2 selects which
  * handler to run; it acts as a byte offset into the handler table at
  * off_8030068, whose entries are:
- *   0x00, 0x04, 0x10 -> sub_803007C (default/idle camera update)
+ *   0x00, 0x04, 0x10 -> camera_updateDerivedOffsets_803007C (default/idle camera update)
  *   0x08             -> sub_80300AC
  *   0x0C             -> sub_8030104
  *
@@ -1142,7 +1142,7 @@ Next camera_dispatchUpdate_8030054(void) {
     case 0x00: /* default camera update */
     case 0x04: /* default camera update */
     case 0x10: /* default camera update */
-        GUEST_CALL(sub_803007C);
+        GUEST_CALL(camera_updateDerivedOffsets_803007C);
         break;
 
     case 0x08:

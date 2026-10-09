@@ -7,8 +7,8 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_81169B0 ── */
-/* sub_81169B0: per-frame update of one PET menu object (object pointer in r5).
+/* ── petMenu_updateObject_81169B0 ── */
+/* petMenu_updateObject_81169B0: per-frame update of one PET menu object (object pointer in r5).
  *
  * The object's mode byte at (r5 + 9) selects an entry of the three-entry
  * handler table off_81169CC by byte offset (0, 4 or 8). The chosen handler
@@ -18,7 +18,7 @@
  * sprite_update, then r7 is restored and the function returns to its own
  * caller via pop {r7,pc} -- which resumes at the lr saved on entry, NOT at
  * the link register left behind by the internal calls. */
-Next sub_81169B0(void) {
+Next petMenu_updateObject_81169B0(void) {
     u32 returnAddr = LR;    /* push {r7,lr}: pop {pc} returns here */
     u32 savedR7 = R7;
 
@@ -31,7 +31,7 @@ Next sub_81169B0(void) {
     R0 = LD32(A_off_81169CC + mode);     /* table entry: handler address | 1 */
 
     switch (mode) {
-    case 0: GUEST_CALL(sub_81169D8); break;
+    case 0: GUEST_CALL(npc_tickDisappearTimer_81169D8); break;
     case 4: GUEST_CALL(battle_reloadObjectSprite_8116A04); break;
     case 8: GUEST_CALL(sub_8116A28); break;
     default: break;  /* unreachable: the mode byte is always 0, 4 or 8 */

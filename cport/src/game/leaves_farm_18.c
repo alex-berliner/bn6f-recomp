@@ -7,8 +7,8 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── dispatch_801FEEE ── */
-/* dispatch_801FEEE(r0 = handler argument):
+/* ── eStruct200BC30_dispatchStateHandler_801FEEE ── */
+/* eStruct200BC30_dispatchStateHandler_801FEEE(r0 = handler argument):
  * State-machine dispatcher for eStruct200BC30. Asks the struct which jump-table
  * slot is active (eStruct200BC30_getJumpOffset00), fetches the handler address
  * from off_801FF08, and calls it with the original argument restored in r0
@@ -18,7 +18,7 @@
  * in the original, so they are preserved here even though the callees may
  * clobber them; r8-r12 and lr flow through to the handler untouched.
  * Flags (c, v) are whatever the handler leaves behind. */
-Next dispatch_801FEEE(void) {
+Next eStruct200BC30_dispatchStateHandler_801FEEE(void) {
     u32 arg = R0;
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
 
@@ -47,12 +47,12 @@ Next dispatch_801FEEE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802FBFC ── */
-/* sub_802FBFC(r5 = start screen): if the start screen's state field has
+/* ── startScreen_printTextIfFlag3_802FBFC ── */
+/* startScreen_printTextIfFlag3_802FBFC(r5 = start screen): if the start screen's state field has
  * bit 3 set, hand the text descriptor table at byte_802FC14 to the
  * text printer helper sub_8001158. r2/r3, the c and v flags (and r5-r7)
  * are whatever sub_8001158 leaves behind when it runs. */
-Next sub_802FBFC(void) {
+Next startScreen_printTextIfFlag3_802FBFC(void) {
     if (LD16(R5 + 0xA) & 8) {
         R0 = A_byte_802FC14;
         GUEST_CALL(sub_8001158); /* () -> void */
@@ -60,8 +60,8 @@ Next sub_802FBFC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802FC70 ── */
-/* sub_802FC70: start-screen per-frame helper (r5 = StartScreen state block).
+/* ── startScreen_playFlaggedSfx_802FC70 ── */
+/* startScreen_playFlaggedSfx_802FC70: start-screen per-frame helper (r5 = StartScreen state block).
  * If bit 0x100 of the halfword at +0x0A is set, trigger the effect whose
  * parameter table is byte_802FC88 (passed to sub_8001158 in r0).
  *
@@ -71,7 +71,7 @@ Next sub_802FBFC(void) {
  * N/Z. So on the early-out path C is always 0, V is untouched, and N/Z come
  * from (state & 0x100). On the call path the flags are whatever
  * sub_8001158 leaves behind. */
-Next sub_802FC70(void) {
+Next startScreen_playFlaggedSfx_802FC70(void) {
     u32 state = LD16(R5 + 0xA);
 
     /* Emulate the flag effect of the mask setup: LSL r1, r1, #4 cleared C. */

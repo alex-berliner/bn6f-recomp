@@ -2566,14 +2566,14 @@ Next sub_811974C(void) {
 /* ── npc_stepChainSetState0x10_811975C ── */
 /* npc_stepChainSetState0x10_811975C: advance the state machine on the object in r5.
  * Runs sub_8119438's step, marks the object's state byte as 0x10
- * (state done/waiting to advance), then runs sub_811976C's step.
- * r4-r9 are preserved; r0 and the flags come back from sub_811976C. */
+ * (state done/waiting to advance), then runs sprite_stepZoomShrinkOut_811976C's step.
+ * r4-r9 are preserved; r0 and the flags come back from sprite_stepZoomShrinkOut_811976C. */
 Next npc_stepChainSetState0x10_811975C(void) {
     GUEST_CALL(sub_8119438);
 
     ST8(R5 + 9, 0x10);
 
-    GUEST_CALL(sub_811976C);
+    GUEST_CALL(sprite_stepZoomShrinkOut_811976C);
 
     RETURN_TO_CALLER();
 }
