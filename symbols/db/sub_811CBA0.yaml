@@ -1,0 +1,100 @@
+name: sub_811CBA0
+address: '0x0811CBA0'
+kind: function
+status: confirmed
+summary: Steps a one-shot countdown timer on a state object (r5); on the first call it initializes the delay from
+  a lookup entry, and once the timer runs out it bumps a counter by 4 and reports completion.
+interface: Next sub_811CBA0(void *obj /* r5 */); returns r0 = 1 when the timer expired this call, 0 while still
+  counting; clobbers r0-r1, lr, flags (NZCV reflect the timer decrement/expiry)
+details: 'r5 points to a small state object. Byte +0x9 is an "active/started" flag,
+
+  word +0x10 is the remaining-timer count, and word +0xC is a u32 counter the
+
+  expiry path advances. On the first invocation (flag clear) it sets the flag
+
+  to 1, calls sub_811CC68 (no args, likely a getter for the current table/
+
+  script entry given the shared r5 context), loads the halfword at entry+2,
+
+  and stores it as the initial timer value at +0x10. Each subsequent call
+
+  decrements +0x10 (subs r0, #1, flags preserved to caller). While the result
+
+  is >= 0 it stores the new count and returns 0. When the decrement goes
+
+  negative it resets the active flag to 0, stores 0 back into +0x10, calls
+
+  counter_addU32_r5Plus0C_811CC60 with r0 = 4 (adds 4 to the u32 at obj+0xC,
+
+  probably an event/progress counter advancing to the next step), and returns
+
+  1. The +0xC counter being bumped by exactly 4 suggests step-coded event
+
+  progression rather than a plain tick counter. Note the timer is compared
+
+  as signed after the decrement, so a stored delay of 0 expires immediately
+
+  on the first call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-031604);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_15.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    15' --file leaves_farm_15.c sub_811A1F4 sub_811A220 sub_811CBA0 sub_811F728 LoadVirusNameIDsForUpToFourSlots_800A998
+    sub_8005F40 sub_8021B2A saveMenuTextGfx_8132F4C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811CBA0
+
+    .venv/bin/python -m wf verify --function sub_811CBA0 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-031604-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811CBA0
+
+    .venv/bin/python -m wf verify --function sub_811CBA0 --snapshots SNAPSHOT_DIR'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261009-031604-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811CBA0
+
+    .venv/bin/python -m wf verify --function sub_811CBA0 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-031604-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: maps, menus2, story1, story2.'
+  reproduce: grep -l '^0811cba0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_15.c
+  where: recomp 28fc97c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_15.c
+coverage:
+- maps
+- menus2
+- story1
+- story2
+related:
+- sub_811A1F4
+- sub_811A220
+- sub_811F728
+- LoadVirusNameIDsForUpToFourSlots_800A998
+- sub_8005F40
+- sub_8021B2A
+- saveMenuTextGfx_8132F4C
+open_questions:
+- what sub_811CC68 returns / where the delay halfword at entry+2 comes from (script or table entry not identified)
+- which subsystem owns the r5 object and what the counter at +0xC counts (event progress? scripted sequence step?)
+- semantic of the value 4 added to the counter
+sources:
+- tools/wf run convert-20261009-031604

@@ -1,0 +1,91 @@
+name: sub_811A220
+address: '0x0811A220'
+kind: function
+status: confirmed
+summary: Moves the four object slots starting at a given index to a shared (x, y) screen position.
+interface: void sub_811A220(int x /*r0*/, int y /*r1*/, int firstSlot /*r2*/); clobbers r0-r3, r5, lr, N/Z/C flags;
+  preserves r4, r6, r7; outgoing flags come from the final slot<firstSlot+4 comparison
+details: 'Takes an x coordinate (r0), a y coordinate (r1), and a starting slot index (r2).
+
+  For each of the four consecutive slot indices firstSlot..firstSlot+3, it calls
+
+  getStructFrom2008450(slot) to look the entry up in the object table rooted at
+
+  0x2008450; if the slot is occupied (nonzero struct pointer in r0, struct/sprite
+
+  handle in r1), it calls sprite_setCoordinates(x, y) with the object''s sprite
+
+  handle passed in r5. Empty slots are skipped silently. The x/y arguments are
+
+  spilled to the stack at entry so they survive the calls. r4-r7 are saved and
+
+  r4 serves as the loop cursor (r4 = firstSlot, r7 = firstSlot+4 loop bound);
+
+  r5 is reused as the sprite_setCoordinates argument and restored from its entry
+
+  value on exit. On return, the N/Z/V flags reflect the final "slot < slotEnd"
+
+  comparison, so callers can test V to see how the loop ended; r2/r3 hold
+
+  whatever the last callee left in them.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-031604);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_15.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    15' --file leaves_farm_15.c sub_811A1F4 sub_811A220 sub_811CBA0 sub_811F728 LoadVirusNameIDsForUpToFourSlots_800A998
+    sub_8005F40 sub_8021B2A saveMenuTextGfx_8132F4C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A220
+
+    .venv/bin/python -m wf verify --function sub_811A220 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 185 out
+    of domain (verify run convert-20261009-031604-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A220
+
+    .venv/bin/python -m wf verify --function sub_811A220 --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-031604-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A220
+
+    .venv/bin/python -m wf verify --function sub_811A220 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-031604-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^0811a220 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_15.c
+  where: recomp 28fc97c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_15.c
+coverage:
+- story2
+related:
+- sub_811A1F4
+- sub_811CBA0
+- sub_811F728
+- LoadVirusNameIDsForUpToFourSlots_800A998
+- sub_8005F40
+- sub_8021B2A
+- saveMenuTextGfx_8132F4C
+open_questions:
+- What gameplay objects live in the table at 0x2008450 (the callee getStructFrom2008450 suggests a struct lookup
+  keyed by slot index); a concrete game-term name for the subsystem would sharpen the prefix.
+- Why exactly four slots are grouped (fixed-size group of related sprites, e.g. a multi-part object or NPC cluster)
+  is not evident from this function alone.
+sources:
+- tools/wf run convert-20261009-031604

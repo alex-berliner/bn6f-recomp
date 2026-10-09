@@ -1,0 +1,76 @@
+name: sub_811A1F4
+address: '0x0811A1F4'
+kind: function
+status: confirmed
+summary: For every entity slot from a caller-chosen start slot up to (not including) slot 4, looks up the slot's
+  struct and overwrites three of its fields with values passed by the caller.
+interface: void sub_811A1F4(u16 halfwordVal /*r0*/, u8 byteVal /*r1*/, u32 startSlot /*r2*/, u16 halfwordVal2 /*r3*/);
+  preserves r4; no meaningful return
+details: "Calls getStructFrom2008450(slot) for each slot index from r2 through 3. That helper\nreturns r0 = pointer/flag\
+  \ for the struct registered in the per-slot table at\n0x2008450 (r0 == 0 means \"no struct for this slot\") and\
+  \ the struct address in r1.\nWhen a struct exists, it writes three fields:\n  +0x0C (byte)  = r1 argument\n  +0x0E\
+  \ (halfword) = r0 argument\n  +0x18 (halfword) = r3 argument\nNote that the struct fields are written even for\
+  \ the start slot itself, and the\nloop never reaches slot index 4, so the write range is [startSlot, 3]. The loop\n\
+  counter lives in r4 but the function pushes/pops r4, so it is preserved. The\nvalues are pushed to the stack first\
+  \ (a 0x10-byte frame) because r0-r3 are needed\nafter the call to getStructFrom2008450 clobbers them. What the\
+  \ three fields mean\n(likely per-entity state such as an id/type byte and two counters/flags) is not\nconfirmed\
+  \ from this function alone; the pattern suggests a bulk update applied to\na group of slots, e.g. refreshing properties\
+  \ on the player's side or a group of\nNPCs/custom entities when some game state changes.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-031604);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_15.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    15' --file leaves_farm_15.c sub_811A1F4 sub_811A220 sub_811CBA0 sub_811F728 LoadVirusNameIDsForUpToFourSlots_800A998
+    sub_8005F40 sub_8021B2A saveMenuTextGfx_8132F4C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A1F4
+
+    .venv/bin/python -m wf verify --function sub_811A1F4 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 185 out
+    of domain (verify run convert-20261009-031604-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A1F4
+
+    .venv/bin/python -m wf verify --function sub_811A1F4 --snapshots SNAPSHOT_DIR'
+  result: 11 compared, 0 differed, 12 out of domain (verify run convert-20261009-031604-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A1F4
+
+    .venv/bin/python -m wf verify --function sub_811A1F4 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-031604-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^0811a1f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_15.c
+  where: recomp 28fc97c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_15.c
+coverage:
+- story2
+related:
+- sub_811A220
+- sub_811CBA0
+- sub_811F728
+- LoadVirusNameIDsForUpToFourSlots_800A998
+- sub_8005F40
+- sub_8021B2A
+- saveMenuTextGfx_8132F4C
+open_questions:
+- what structure getStructFrom2008450 hands back and what fields +0x0C/+0x0E/+0x18 mean
+- which callers use which startSlot values (0 gives all four slots, higher gives a suffix range)
+- whether the halfword at +0x0E and the byte at +0x0C are related fields of the same enum/state
+sources:
+- tools/wf run convert-20261009-031604

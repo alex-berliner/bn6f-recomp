@@ -1,0 +1,80 @@
+name: LoadVirusNameIDsForUpToFourSlots_800A998
+address: '0x0800A998'
+kind: function
+status: confirmed
+summary: Writes the NameIDs of the up to four living actors on the side of the battle opposite the current one into
+  a caller-provided array and returns how many were written.
+interface: u32 battle_collectOpponentActorNameIds_800A998(u16 nameIds_out[4]) // r0 = u16[4] out; returns entry
+  count (0-4); clobbers r1-r3 and flags, preserves r4
+details: Reads the battle state pointer from the toolkit (r10 + oToolkit_BattleStatePtr), takes the byte oBattleState_Unk_0d
+  (an actor-list side selector) and flips it with 1^side, then indexes oBattleState_AliveBattleActors at 0x00 for
+  side 0 and 0x10 for side 1 - i.e. the list of AlivePlayerActors vs AliveOpponentActors. Loops over the 4 pointer
+  slots; each non-null battle object's oBattleObject_NameID (u16) is stored packed into the caller's array (2 bytes
+  per entry, empty slots skipped so entries are compacted to the front). Returns byteOffset/2, the number of entries
+  written. Only 4 slots are supported, matching the 4-virus-per-panel encounter display use case. r4 is push/pop'd
+  only as a scratch save, not used as an input.
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-031604);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_15.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    15' --file leaves_farm_15.c sub_811A1F4 sub_811A220 sub_811CBA0 sub_811F728 LoadVirusNameIDsForUpToFourSlots_800A998
+    sub_8005F40 sub_8021B2A saveMenuTextGfx_8132F4C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function LoadVirusNameIDsForUpToFourSlots_800A998
+
+    .venv/bin/python -m wf verify --function LoadVirusNameIDsForUpToFourSlots_800A998 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-031604-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function LoadVirusNameIDsForUpToFourSlots_800A998
+
+    .venv/bin/python -m wf verify --function LoadVirusNameIDsForUpToFourSlots_800A998 --snapshots SNAPSHOT_DIR'
+  result: 20 compared, 0 differed, 4 out of domain (verify run convert-20261009-031604-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function LoadVirusNameIDsForUpToFourSlots_800A998
+
+    .venv/bin/python -m wf verify --function LoadVirusNameIDsForUpToFourSlots_800A998 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-031604-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0800a998 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_15.c
+  where: recomp 28fc97c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_15.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- sub_811A1F4
+- sub_811A220
+- sub_811CBA0
+- sub_811F728
+- sub_8005F40
+- sub_8021B2A
+- saveMenuTextGfx_8132F4C
+open_questions:
+- exact gameplay consumer of the returned NameID list (virus name popup? chip/encyclopedia check? custom-opponent
+  display?)
+- meaning of oBattleState_Unk_0d beyond "side/list selector"
+sources:
+- tools/wf run convert-20261009-031604

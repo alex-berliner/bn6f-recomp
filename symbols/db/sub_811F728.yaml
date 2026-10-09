@@ -1,0 +1,83 @@
+name: sub_811F728
+address: '0x0811F728'
+kind: function
+status: confirmed
+summary: Coroutine step that abandons the current game mode and transitions back to the overworld map (EnterMap
+  subsystem), resetting the chatbox on the way.
+interface: void next_exitToMap_811F728(Toolkit *toolkit /*r10*/); // r5 passed in and preserved; returns to caller's
+  continuation via lr (pop {pc}); r0-r3 and flags clobbered
+details: 'Reads the toolkit from r10 and performs a mode switch to the map: writes 4 to the byte pointed to by oToolkit_MainJumptableIndexPtr
+  (offset 0), selecting main state cbGameState_80050EC; then writes 0 to gameState->oGameState_SubsystemIndex so
+  that state runs the EnterMap subsystem (subsystem index 0). Stores 0x40 (halfword) into the header field of the
+  RenderInfo pointed to by oToolkit_RenderInfoPtr (toolkit offset 8) — likely a screen/render mode or fade flag.
+  Plays sound effect 6 via sub_80015FC, then calls sub_809F68C (chatbox state reset) and chatbox_8040818 (refresh/redraw
+  the text window), and finally clears chatbox event flag 0x40 via chatbox_clear_eFlags2009F38. It is a Next-style
+  coroutine: lr holds the resumption point and the function returns with pop {pc} rather than a plain branch link
+  chain.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-031604);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_15.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    15' --file leaves_farm_15.c sub_811A1F4 sub_811A220 sub_811CBA0 sub_811F728 LoadVirusNameIDsForUpToFourSlots_800A998
+    sub_8005F40 sub_8021B2A saveMenuTextGfx_8132F4C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811F728
+
+    .venv/bin/python -m wf verify --function sub_811F728 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-031604-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811F728
+
+    .venv/bin/python -m wf verify --function sub_811F728 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-031604-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811F728
+
+    .venv/bin/python -m wf verify --function sub_811F728 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-031604-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^0811f728 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_15.c
+  where: recomp 28fc97c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_15.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_811A1F4
+- sub_811A220
+- sub_811CBA0
+- LoadVirusNameIDsForUpToFourSlots_800A998
+- sub_8005F40
+- sub_8021B2A
+- saveMenuTextGfx_8132F4C
+open_questions:
+- exact meaning of the 0x40 halfword written to RenderInfo (screen mode vs fade/transition flag)
+- what game mode typically calls this (e.g. end-of-battle or end-of-event exit) — no caller list available here
+- purpose of the r5 input, which is neither read nor modified in the visible body
+sources:
+- tools/wf run convert-20261009-031604
