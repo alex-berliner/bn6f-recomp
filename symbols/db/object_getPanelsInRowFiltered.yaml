@@ -1,0 +1,82 @@
+name: object_getPanelsInRowFiltered
+address: '0x0800D012'
+kind: function
+status: confirmed
+summary: Scans the six columns of one battle row and collects the coordinates of panels passing a filter into a
+  caller-supplied byte buffer.
+interface: "int object_getPanelsInRowFiltered(u32 row /* r0 */, u32 filterA /* r2 */,\n                        \
+  \          u32 filterB /* r3 */, u8* out /* r7, in-register */);\nreturns r0 = number of panel coordinates written;\
+  \ r4-r7 preserved; flags clobbered."
+details: 'Saves filter parameters r2/r3 on the stack, then loops columns 1..6 of the row given in r0, calling object_checkPanelParameters(column,
+  row, filterA, filterB) for each panel. For every panel that passes (nonzero return), it stores the packed coordinate
+  column | (row << 4) as a byte at r7[count] — note the output pointer arrives in r7, so this must be called from
+  code that has that buffer pinned in a high register (likely a wrapper using r7 as a local). Returns the panel
+  count in r0. Coordinates use the usual battle grid encoding: low nibble = column (1-based), high nibble = row.
+  r4-r7 are pushed/popped so the caller''s r7 buffer pointer survives, though the object_checkPanelParameters call
+  could in principle clobber it; it evidently preserves r7 in practice.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_getPanelsInRowFiltered
+
+    .venv/bin/python -m wf verify --function object_getPanelsInRowFiltered --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_getPanelsInRowFiltered
+
+    .venv/bin/python -m wf verify --function object_getPanelsInRowFiltered --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_getPanelsInRowFiltered
+
+    .venv/bin/python -m wf verify --function object_getPanelsInRowFiltered --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz, story2.'
+  reproduce: grep -l '^0800d012 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+- story2
+related:
+- CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+- playCertainMapMusicBasedOnEventByte_8036e44
+- object_breakPanel
+- object_dimScreen
+- object_spawnHiteffect
+- object_timefreezeBegin
+- sub_800BF88
+- sub_800E5AC
+open_questions:
+- Exact meaning of the two filter parameters passed through to object_checkPanelParameters (panel type? object kind?).
+- Why the row loops from 1 to 6 while columns run 1..6 — confirms the 6x3 grid indexing convention but the row range
+  should be checked at call sites.
+sources:
+- tools/wf run convert-20261009-042017

@@ -1,0 +1,83 @@
+name: sub_800BF88
+address: '0x0800BF88'
+kind: function
+status: hypothesis
+summary: Reinitializes six two-byte selection slots (counts cleared, values set to a descending 0xE..9 default)
+  and writes 0x8C to a state word, after delegating to a helper whose register results it passes through.
+interface: void sub_800BF88(void); // no meaningful inputs; returns caller's r2-r7 unchanged, c/nz/v flags from
+  the final "mov r0,#9" (c/v from sub_800C4BC)
+details: 'First calls sub_800C4BC and passes its r2/r3/r4/r5/r6/r7 results and c/v flags through to this function''s
+  callers, only saving/restoring r4/r6/r7 around the call (they are dead inside). Then stores 0x8C into the word
+  at byte_203CB04 (likely a UI/menu state or cursor field). Finally, at the array byte_2036740 it treats six consecutive
+  two-byte slots: clears the even byte (offset +2, +4, ... +0xC) to 0 (a count/quantity field) and sets the odd
+  byte (offset +3, +5, ... +0xD) to 0xE, 0xD, 0xC, 0xB, 0xA, 9 respectively (an id/priority/preset value per slot).
+  The descending defaults look like per-slot fixed identifiers rather than data-driven values. The exact game subsystem
+  owning byte_2036740 is not established from this function alone.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800BF88
+
+    .venv/bin/python -m wf verify --function sub_800BF88 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800BF88
+
+    .venv/bin/python -m wf verify --function sub_800BF88 --snapshots SNAPSHOT_DIR'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800BF88
+
+    .venv/bin/python -m wf verify --function sub_800BF88 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0800bf88 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+- playCertainMapMusicBasedOnEventByte_8036e44
+- object_breakPanel
+- object_dimScreen
+- object_getPanelsInRowFiltered
+- object_spawnHiteffect
+- object_timefreezeBegin
+- sub_800E5AC
+open_questions:
+- What subsystem byte_2036740 belongs to (chip/folder selection, shop stock, menu cursor slots?) — guess based only
+  on the six count+id slot layout
+- What the 0x8C word at byte_203CB04 selects (mode/state/next-screen id?)
+- Why callers depend on sub_800C4BC's r2-r7 outputs being passed through — which results those actually are
+sources:
+- tools/wf run convert-20261009-042017

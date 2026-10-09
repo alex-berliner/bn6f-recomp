@@ -1,0 +1,82 @@
+name: object_spawnHiteffect
+address: '0x0800EB9E'
+kind: function
+status: confirmed
+summary: Plays the hit sound and spawns a hit-spark effect (effect type 8) over a battle object when it takes a
+  collision carrying the hit-effect flag.
+interface: void object_spawnHiteffect(BattleObject* obj /* r5, object just hit */); preserves r4-r7,r10; returns
+  nothing meaningful (r0/r1 clobbered by calls)
+details: 'Early-outs while the battle is paused (battle_isPaused). Reads the object''s collision data via oBattleObject_CollisionDataPtr
+  (+ collision data pointer field) and tests oCollisionData_FlagsFromCollision against bit 0x20000 (the "spawn hit
+  effect" flag); if clear, returns without doing anything. Otherwise plays sound effect 0x6E (object hit SFX), then
+  builds an effect position from the object''s three fixed-point coordinate words at obj+0x34: the third coordinate
+  (z/vertical) is raised by 0x100000 (=16.0 in fixed point) so the spark floats above the object. Calls AddRandomVarianceToTwoCoords
+  with r0=15 to jitter two of the coordinates by up to 15 units, then calls sub_80E08C4 with r4=8 to spawn effect
+  type 8 (the hit spark). r4 is used as scratch for the effect type and restored on exit (pushed/popped with r6,lr).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_spawnHiteffect
+
+    .venv/bin/python -m wf verify --function object_spawnHiteffect --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_spawnHiteffect
+
+    .venv/bin/python -m wf verify --function object_spawnHiteffect --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_spawnHiteffect
+
+    .venv/bin/python -m wf verify --function object_spawnHiteffect --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^0800eb9e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+- playCertainMapMusicBasedOnEventByte_8036e44
+- object_breakPanel
+- object_dimScreen
+- object_getPanelsInRowFiltered
+- object_timefreezeBegin
+- sub_800BF88
+- sub_800E5AC
+open_questions:
+- exact meaning of effect type 8's parameter layout in sub_80E08C4
+- which collision-flag semantic 0x20000 corresponds to by name in the project's flag table
+sources:
+- tools/wf run convert-20261009-042017

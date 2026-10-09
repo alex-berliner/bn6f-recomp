@@ -1,0 +1,82 @@
+name: object_timefreezeBegin
+address: '0x0800B916'
+kind: function
+status: confirmed
+summary: Starts a time freeze for the battle object in R5, queueing the freeze dispatch, raising battle flag 4 for
+  player-side objects, clearing its freeze counter, and switching it to the UPDATE state.
+interface: void object_timefreezeBegin(BattleObject *obj /* r5, caller-provided */); clobbers r0-r2 and flags (nz,
+  c set by the <<2 index shift and final mov)
+details: 'Operates on the battle object whose pointer is already in R5 (a battle-object "this" passed in by callers
+  rather than a register argument). Reads the object''s oBattleObject_Alliance byte and calls battle_networkInvert;
+  if the network is not inverted it calls dispatch_801DACC with a0=0x40, presumably queueing the engine-wide time-freeze
+  dispatch (bit 0x40). Then calls sub_800B8D8 with the alliance byte — likely a "is this the player''s side" check
+  — and if true sets battle flag 4 via battle_setFlags. Finally indexes the per-alliance freeze counter table dword_200F3B8
+  (alliance<<2, so one u32 per alliance), zeroes that entry, and stores CUR_STATE_UPDATE (4) into the object''s
+  oBattleObject_CurState byte so the object resumes its normal update loop. Note the function both starts the freeze
+  (dispatch/flag) and resets the object''s own freeze counter, so it behaves like "begin freeze on this object /
+  enter frozen-update mode" rather than a plain state setter.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_timefreezeBegin
+
+    .venv/bin/python -m wf verify --function object_timefreezeBegin --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_timefreezeBegin
+
+    .venv/bin/python -m wf verify --function object_timefreezeBegin --snapshots SNAPSHOT_DIR'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_timefreezeBegin
+
+    .venv/bin/python -m wf verify --function object_timefreezeBegin --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battlesweep, chips, menus2, story2.'
+  reproduce: grep -l '^0800b916 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- battlesweep
+- chips
+- menus2
+- story2
+related:
+- CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+- playCertainMapMusicBasedOnEventByte_8036e44
+- object_breakPanel
+- object_dimScreen
+- object_getPanelsInRowFiltered
+- object_spawnHiteffect
+- sub_800BF88
+- sub_800E5AC
+open_questions:
+- Exact meaning of dispatch id 0x40 in dispatch_801DACC
+- What sub_800B8D8 tests besides 'player side' (returns nonzero on some alliances only)
+- Semantic of the cleared dword_200F3B8[alliance] entry (freeze tick counter?)
+sources:
+- tools/wf run convert-20261009-042017

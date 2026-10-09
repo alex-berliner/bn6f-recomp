@@ -1,0 +1,80 @@
+name: object_breakPanel
+address: '0x0800C9F8'
+kind: function
+status: confirmed
+summary: Breaks the panel under the given object (turning a cracked panel into a hole), playing the panel-break
+  sound, and returns 1 on success or 0 if there is no breakable panel there.
+interface: int object_breakPanel(void *object /* r0 */); returns 1 if the panel was broken, 0 otherwise. Uses r0-r1
+  on entry (object pointer passed through to object_getPanelDataOffset), clobbers r0-r3 and flags.
+details: "Calls object_getPanelDataOffset(r0) to get the address of the panel data\nrecord for the tile the object\
+  \ stands on. Returns 0 if there is no panel\ndata (r0 == 0). Reads the panel's 32-bit flags field (oPanelData_Flags)\n\
+  and bails out with 0 if:\n  - flag 0x10 is not set (panel not yet in the cracked state, so it cannot\n    be broken),\
+  \ or\n  - any bit of mask 0x0F880080 is set (unbreakable panel kinds such as\n    holes and holy panels).\nOtherwise\
+  \ it breaks the panel: the old panel-state bits (mask 0x00003F5F)\nare cleared and 1 is added to the flags word,\
+  \ then the byte fields at\noPanelData_Type (+2) and oPanelData_Animation (+6) are both set to 1\n(\"broken\" type/animation).\
+  \ Finally plays sound effect 0x97 (panel break)\nvia PlaySoundEffect and returns 1.\nOnly c/v are observable on\
+  \ return, and they are just whatever\nobject_getPanelDataOffset / PlaySoundEffect left behind.\nNote: the verified\
+  \ C labels flag 0x10 \"already broken\", but since the\nfunction requires it to proceed, it more likely marks\
+  \ a *cracked* panel;\nbreaking a panel in MMBN is the step after cracking it.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_breakPanel
+
+    .venv/bin/python -m wf verify --function object_breakPanel --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_breakPanel
+
+    .venv/bin/python -m wf verify --function object_breakPanel --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_breakPanel
+
+    .venv/bin/python -m wf verify --function object_breakPanel --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, fuzz, story2.'
+  reproduce: grep -l '^0800c9f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- battles1
+- fuzz
+- story2
+related:
+- CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+- playCertainMapMusicBasedOnEventByte_8036e44
+- object_dimScreen
+- object_getPanelsInRowFiltered
+- object_spawnHiteffect
+- object_timefreezeBegin
+- sub_800BF88
+- sub_800E5AC
+open_questions:
+- exact meaning of panel flag 0x10 (cracked vs. some other pre-break state)
+- meaning of the individual bits in the unbreakable mask 0x0F880080 and the state mask 0x00003F5F
+- which callers pass which object kinds (player, enemies, obstacles) and whether return value is ever checked
+sources:
+- tools/wf run convert-20261009-042017

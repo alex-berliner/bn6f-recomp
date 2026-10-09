@@ -1,0 +1,95 @@
+name: CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+address: '0x08037DAC'
+kind: function
+status: confirmed
+summary: Map-script cutscene command that sets the overworld player's fixed animation select, either to an immediate/table
+  value or to an offset from the player's current facing direction.
+interface: void CutsceneCmd_setOwPlayerFixedAnimSelect(void) — reads script operands via ReadMapScriptByte; returns
+  r0 = 1 (success); advances the script pointer r7 by 4; uses r5 (script context/table base) and r10 (script state),
+  clobbers r0, r1, r3, r4, r6 and flags (nz c v)
+details: "Cutscene/map-script command handler for the overworld player's \"fixed animation select\"\n(the animation-slot\
+  \ selector in the s200ace0 overworld-player structure).\n\nTwo script operands are consumed via ReadMapScriptByte,\
+  \ whose mode is selected in r6:\n  1. Animation value (mode 2 read): if the byte read is 0xFF, the value follows\
+  \ as a\n     raw immediate (fetched with a mode-3 read); otherwise the byte is an index into\n     the lookup\
+  \ table at r5 and the actual value is loaded from there (ldrb r4,[r5,r4]).\n  2. Offset flag (mode 1 read): if\
+  \ nonzero, the animation value is treated as a\n     relative offset and added to GetOWPlayerFacingDirection()'s\
+  \ result, so the\n     effective animation is (facing + offset) — e.g. to pick a directional animation\n     relative\
+  \ to which way the player sprite is currently facing. Note the code relies\n     on GetOWPlayerFacingDirection\
+  \ preserving r4 (the offset).\n\nThe final value (in r0) is passed to owPlayer_setS200ace0_fixedAnimationSelect_809e13c,\n\
+  which writes the fixed-animation selector on the overworld player object at s200ace0.\n\nOn completion the handler\
+  \ adds 4 to the script pointer (r7) — this command's total\nencoded length — and returns r0 = 1 to signal the\
+  \ script step succeeded.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac --snapshots
+    SNAPSHOT_DIR'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac --snapshots
+    SNAPSHOT_DIR'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac --snapshots
+    SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08037dac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- playCertainMapMusicBasedOnEventByte_8036e44
+- object_breakPanel
+- object_dimScreen
+- object_getPanelsInRowFiltered
+- object_spawnHiteffect
+- object_timefreezeBegin
+- sub_800BF88
+- sub_800E5AC
+open_questions:
+- Exact meaning/range of the fixed animation select values and how they index the player's fixed-animation set.
+- Whether the table at r5 is a per-script constant table or shared script-data storage, and how the 0xFF immediate
+  marker interacts with larger operand encodings.
+- Behavior when facing-direction + offset wraps past the valid direction/animation range.
+sources:
+- tools/wf run convert-20261009-042017

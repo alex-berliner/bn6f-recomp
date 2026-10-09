@@ -1,0 +1,91 @@
+name: playCertainMapMusicBasedOnEventByte_8036e44
+address: '0x08036E44'
+kind: function
+status: confirmed
+summary: Selects and stores the music track for the map the player is currently on, looked up per map group/number
+  with a per-sub-area table, defaulting to track 0x63.
+interface: void playMapMusicForCurrentSubArea(toToolkit* toolkit in r10 /* r4-r7 preserved */); leaves r1 = current
+  map group (gameState+4), r2 = current map number (gameState+5) in registers on return; clobbers r0 and flags.
+details: 'Reads the GameState pointer and the s2001c04 music work-area pointer from the toolkit (r10). Takes the
+  current map group (oGameState_MapGroup, +4) and map number (oGameState_MapNumber, +5), and uses game state byte
+  7 (oGameState_Unk_07, treated as a map sub-area selector) shifted left by 2 to index the table at off_80360E4,
+  yielding a per-sub-area list of 8-byte entries: byte 0 is a map group and bytes 4..7 are a pointer to a byte array
+  of tracks indexed by map number. Walks the entries until one whose group matches; stores the track byte for the
+  current map number into oS2001c04_MapMusic (+4 of the s2001c04 work area). If an entry with group byte 0xFF is
+  reached (terminator / no match for this group), stores the default track 0x63 instead. r1 and r2 still hold the
+  map group and map number on return, which callers may rely on; r4-r7 are pushed/popped and thus preserved. Despite
+  the current name, the lookup is driven by the map group/number and the sub-area byte at oGameState_Unk_07, not
+  obviously by an event flag byte — hence the proposed rename.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function playCertainMapMusicBasedOnEventByte_8036e44
+
+    .venv/bin/python -m wf verify --function playCertainMapMusicBasedOnEventByte_8036e44 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 28 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function playCertainMapMusicBasedOnEventByte_8036e44
+
+    .venv/bin/python -m wf verify --function playCertainMapMusicBasedOnEventByte_8036e44 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function playCertainMapMusicBasedOnEventByte_8036e44
+
+    .venv/bin/python -m wf verify --function playCertainMapMusicBasedOnEventByte_8036e44 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08036e44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+- object_breakPanel
+- object_dimScreen
+- object_getPanelsInRowFiltered
+- object_spawnHiteffect
+- object_timefreezeBegin
+- sub_800BF88
+- sub_800E5AC
+open_questions:
+- What oGameState_Unk_07 actually represents (map sub-area / area variant?) — the current name's "event byte" reading
+  is unconfirmed.
+- Whether off_80360E4 has one pointer per sub-area value or a different structure for values beyond the table's
+  size.
+- Where the track value stored to oS2001c04_MapMusic is consumed (music playback task) and whether 0x63 has special
+  meaning as the default.
+sources:
+- tools/wf run convert-20261009-042017

@@ -1,0 +1,79 @@
+name: object_dimScreen
+address: '0x0800B94C'
+kind: function
+status: confirmed
+summary: Battle-scene phase that fades the screen to dark (e.g. when the round is decided) and waits for the fade
+  to finish before advancing the object's action state.
+interface: 'void object_dimScreen(BattleObject *obj /* r5 */);  // returns flags/r0-r3 as side effects of the original:
+  r0 = IsScreenFadeActive result on early return, 0 otherwise'
+details: 'State-machine step for a battle object (r5 = oBattleObject). On first entry (PhaseInitialized == 0) it
+  calls SetScreenFade(0x3C, 4) — a fade parameter of 0x3C (60, presumably frames to full dark) with mode/type 4
+  — resets the object''s Timer (u16) to 0, and stores 4 into PhaseInitialized to mark the phase as set up. Every
+  call afterwards increments the u16 Timer field. It then polls IsScreenFadeActive; while the fade is still running
+  it simply returns. Once the fade completes it advances the object''s action state by storing CurAction + 4 into
+  the byte at offset 9 (named oBattleObject_CurAnim in the shared header but used here as the current action), and
+  clears the u16 CurPhaseAndPhaseInitialized field to 0 so the next phase re-runs its one-time setup. Purely a sequencing
+  helper: touches only the object''s own Timer/CurAction/PhaseInitialized fields plus the global screen-fade system.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-042017);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_26.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    26' --file leaves_farm_26.c CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac playCertainMapMusicBasedOnEventByte_8036e44
+    object_breakPanel object_dimScreen object_getPanelsInRowFiltered object_spawnHiteffect object_timefreezeBegin
+    sub_800BF88 sub_800E5AC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_dimScreen
+
+    .venv/bin/python -m wf verify --function object_dimScreen --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-042017-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_dimScreen
+
+    .venv/bin/python -m wf verify --function object_dimScreen --snapshots SNAPSHOT_DIR'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261009-042017-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_dimScreen
+
+    .venv/bin/python -m wf verify --function object_dimScreen --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042017-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: chips, menus2, story2.'
+  reproduce: grep -l '^0800b94c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_26.c
+  where: recomp 3cfeb39
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_26.c
+coverage:
+- chips
+- menus2
+- story2
+related:
+- CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac
+- playCertainMapMusicBasedOnEventByte_8036e44
+- object_breakPanel
+- object_getPanelsInRowFiltered
+- object_spawnHiteffect
+- object_timefreezeBegin
+- sub_800BF88
+- sub_800E5AC
+open_questions:
+- exact meaning of SetScreenFade's second argument (4) and whether 0x3C is a frame count
+- which battle events route into this dim step (round end assumed, not confirmed)
+sources:
+- tools/wf run convert-20261009-042017
