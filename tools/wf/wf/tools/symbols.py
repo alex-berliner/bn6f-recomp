@@ -8,6 +8,7 @@ from pathlib import Path
 from wf.repo import REPO, TOOLCHAIN_BIN
 from wf.tools.errors import ToolOutputError
 from wf.types import CommitHash, LogPath, Rename, SymbolEntry, SymbolName, SymbolStatus, ToolMessage
+from wf.tools.locks import BN6F, held
 
 DATABASE = REPO / "symbols/db"
 
@@ -44,7 +45,8 @@ def render_database(log: LogPath) -> None:
 def rename_symbols(renames: tuple[Rename, ...], log: LogPath) -> CommitHash:
     """Rename in bn6f (ROM must stay identical; bn6f gets a commit) and regenerate the lifted C."""
     pairs = [name for rename in renames for name in (rename.old, rename.new)]
-    done = _tool(["python3", "tools/rename_symbol.py", *pairs], log)
+    with held(BN6F):   # no run may lift while bn6f's names change
+        done = _tool(["python3", "tools/rename_symbol.py", *pairs], log)
     commit = _BN6F_COMMIT.search(done.stdout)
     if done.returncode != 0 or commit is None:
         raise ToolOutputError(f"rename_symbol.py failed, see {log}")
@@ -53,7 +55,8 @@ def rename_symbols(renames: tuple[Rename, ...], log: LogPath) -> CommitHash:
 
 def write_bn6f_comments(log: LogPath) -> CommitHash | None:
     """`// symdb:` blocks at each definition in bn6f, committed there; None when nothing changed."""
-    done = _tool(["python3", "tools/symdoc.py", "--commit"], log)
+    with held(BN6F):
+        done = _tool(["python3", "tools/symdoc.py", "--commit"], log)
     if done.returncode != 0:
         raise ToolOutputError(f"symdoc.py failed (bn6f may be left modified), see {log}")
     commit = _BN6F_COMMIT.search(done.stdout)

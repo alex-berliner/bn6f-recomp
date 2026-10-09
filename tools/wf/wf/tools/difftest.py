@@ -19,12 +19,12 @@ JOBS = os.cpu_count() or 4   # difftest runs one function at a time: functions a
 
 
 def run_difftest(difftest: Path, functions: tuple[FunctionName, ...], trials: int,
-                 log_dir: Path) -> tuple[DifftestResult, ...]:
+                 log_dir: Path, cport: Path = CPORT) -> tuple[DifftestResult, ...]:
     shares = [functions[start::JOBS] for start in range(min(JOBS, len(functions)))]
 
     def run_share(number: int) -> str:
         log = log_dir / ("difftest-random.log" if len(shares) == 1 else f"difftest-random-{number}.log")
-        return _difftest(difftest, ["-n", str(trials), *shares[number]], log)
+        return _difftest(difftest, ["-n", str(trials), *shares[number]], log, cport)
 
     with ThreadPoolExecutor(max_workers=max(1, len(shares))) as pool:
         outputs = list(pool.map(run_share, range(len(shares))))
@@ -33,10 +33,10 @@ def run_difftest(difftest: Path, functions: tuple[FunctionName, ...], trials: in
 
 
 def run_captured_difftest(difftest: Path, functions: tuple[FunctionName, ...], snapshots: SnapshotDir,
-                          log_dir: Path) -> tuple[CapturedDifftestResult, ...]:
+                          log_dir: Path, cport: Path = CPORT) -> tuple[CapturedDifftestResult, ...]:
     def run_one(function: FunctionName) -> str:
         return _difftest(difftest, ["-S", str(snapshots / function), function],
-                         log_dir / f"difftest-captured-{function}.log")
+                         log_dir / f"difftest-captured-{function}.log", cport)
 
     with ThreadPoolExecutor(max_workers=JOBS) as pool:
         outputs = list(pool.map(run_one, functions))
@@ -44,8 +44,9 @@ def run_captured_difftest(difftest: Path, functions: tuple[FunctionName, ...], s
     return tuple(_result_for(function, results, "captured") for function in functions)
 
 
-def _difftest(difftest: Path, arguments: list[str], log: Path) -> str:
-    done = subprocess.run([str(difftest), *arguments], cwd=CPORT, capture_output=True, text=True,
+def _difftest(difftest: Path, arguments: list[str], log: Path, cport: Path) -> str:
+    """cport: the tree whose host/difftest.cfg (read from the working directory) gives the promises."""
+    done = subprocess.run([str(difftest), *arguments], cwd=cport, capture_output=True, text=True,
                           env={**os.environ, "BN6F_ROM": str(ORIGINAL_ROM)}, check=False)
     log.write_text(done.stdout + done.stderr)
     return done.stdout

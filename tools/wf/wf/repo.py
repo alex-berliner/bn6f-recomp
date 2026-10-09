@@ -17,12 +17,12 @@ TOOLCHAIN_BIN = REPO / "toolchain" / "bin"
 RUNS = REPO / "build-wf-runs"  # tool logs of workflow runs (ignored by git as build-*/)
 
 
-def current_sources() -> SourceVersion:
-    commit = _git("rev-parse", "HEAD")
-    changes = _git("status", "--porcelain", "--untracked-files=no")
+def current_sources(tree: Path = REPO) -> SourceVersion:
+    commit = _git(tree, "rev-parse", "HEAD")
+    changes = _git(tree, "status", "--porcelain", "--untracked-files=no")
     return SourceVersion(commit=CommitHash(commit), has_uncommitted_changes=changes != "")
 
 
-def _git(*args: str) -> str:
-    done = subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True, check=True)
+def _git(tree: Path, *args: str) -> str:
+    done = subprocess.run(["git", "-C", str(tree), *args], capture_output=True, text=True, check=True)
     return done.stdout.strip()

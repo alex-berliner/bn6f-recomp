@@ -10,19 +10,18 @@ from wf.repo import REPO
 from wf.tools.errors import ToolOutputError
 from wf.types import FunctionName, GuestAddress, OracleResult, SnapshotDir, ToolMessage
 
-ORACLE = REPO / "tools/oracle.py"
-
 # "sprite_queueOamEntry 08002f04 ok=20 fail=0 ood=4 MEM: ... | REG: ..."
 _REPORT = re.compile(r"^(\w+) ([0-9a-f]{8}) ok=(\d+) fail=(\d+) ood=(\d+) ?(.*)$")
 
 
 def run_oracle(difftest: Path, functions: tuple[FunctionName, ...], snapshots: SnapshotDir, states: int,
-               log_dir: Path) -> tuple[OracleResult, ...]:
+               log_dir: Path, tree: Path = REPO) -> tuple[OracleResult, ...]:
+    """tree: whose tools/oracle.py runs (it reads that tree's difftest.cfg)."""
     out = log_dir / "oracle"
     temporary = log_dir / "oracle-tmp"
     temporary.mkdir(parents=True, exist_ok=True)
     done = subprocess.run(
-        ["python3", str(ORACLE), "--base", str(snapshots), "--states", str(states), "--out", str(out), *functions],
+        ["python3", str(tree / "tools/oracle.py"), "--base", str(snapshots), "--states", str(states), "--out", str(out), *functions],
         capture_output=True, text=True, check=False,
         env={**os.environ, "ORACLE_TMP": str(temporary), "ORACLE_DIFFTEST": str(difftest)})
     (log_dir / "oracle.log").write_text(done.stdout + done.stderr)

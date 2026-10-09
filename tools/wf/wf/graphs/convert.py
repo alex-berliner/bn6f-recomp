@@ -20,10 +20,12 @@ from wf.graphs.capture import CaptureReport, CaptureState, run_capture
 from wf.graphs.record import RecordReport, RecordState, run_record
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify_in_full
 from wf.routes import ALL_ROUTES
-from wf.tools.build import build_host_difftest
+from wf.repo import REPO
+from wf.tools.build import build_host_difftest, committed_tree, remove_tree
 from wf.tools.drafts import candidate_from_farm, function_at_line
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
 from wf.tools.git import commit_files
+from wf.tools.locks import MAIN_TREE, held
 from wf.tools.install import DIFFTEST_CFG, game_file, install_file, uninstall_file
 from wf.tools.models import ConversionContext, conversion_context, other_entries, provider_blocked_until
 from wf.tools.subsystem import (FileReply, FileTest, TokenUse, ask_model_for_file, candidate_from_file, repair_prompt,
@@ -99,6 +101,7 @@ class ConvertOutcome(Enum):
     OUT_OF_ATTEMPTS = "every model ran out of attempts"
     NOTHING_TO_CONVERT = "nothing to convert (no lifted code, or the file exists)"
     NO_CAPTURED_CALLS = "some functions have no captured calls, so they could not be checked"
+    COMMITTED_RECORD_PENDING = "committed with its entries; renames and bn6f comments wait for a batch record"
     DIFFTEST_DID_NOT_BUILD = "the host difftest did not build"
 
 
@@ -119,6 +122,8 @@ class ConvertState(BaseModel):
     snapshots: SnapshotDir | None = None             # reuse a capture instead of capturing
     candidate: Path | None = None                    # a ready file tried first
     farm_model: ModelSpec | None = None              # or: the farm's accepted candidates by this model, tried first
+    defer_record: bool = False                       # leave renames and bn6f comments to one batch record run
+    tree: Path | None = None                         # the run's own worktree (installs, builds and checks happen there)
     capture: CaptureReport | NotRun | None = None
     contexts: tuple[ConversionContext, ...] | NotRun | None = None
     difftest: Path | BuildFailure | None = None
@@ -174,6 +179,7 @@ class GatherOutput(Result):
     difftest: Path | BuildFailure
     without_calls: tuple[FunctionName, ...]
     functions: tuple[FunctionName, ...]
+    tree: Path
     dropped: tuple[DroppedFunction, ...] = ()
 
 
@@ -182,22 +188,25 @@ def gather_context(given: GatherInput) -> GatherOutput:
     """Each function's assembly, lifted C and register contract, and that it has captured calls (no model is
     asked to write what nothing could check); labels callers enter in the middle of a function join the
     subsystem (a replacement must define them); build the host difftest for quick tests."""
-    difftest = build_host_difftest(given.run_dir)
+    tree = committed_tree(current_run_id())   # the run's own worktree: parallel runs never meet in one tree
+    difftest = build_host_difftest(given.run_dir, tree=tree)
     without_calls = tuple(function for function in given.functions if not _has_calls(given.snapshots, function))
     if game_file(given.file_name).exists():
         return GatherOutput(contexts=NotRun(reason=ToolMessage(f"cport/src/game/{given.file_name} already exists")),
-                            difftest=difftest, without_calls=without_calls, functions=given.functions)
+                            difftest=difftest, without_calls=without_calls, functions=given.functions,
+                            tree=tree)
     found = {function: conversion_context(function) for function in given.functions}
     missing = [function for function, context in found.items() if context is None]
     if missing and given.farm_model is None:
         return GatherOutput(contexts=NotRun(reason=ToolMessage(f"no lifted code or assembly: {', '.join(missing)}")),
-                            difftest=difftest, without_calls=without_calls, functions=given.functions)
+                            difftest=difftest, without_calls=without_calls, functions=given.functions,
+                            tree=tree)
     contexts = tuple(context for context in found.values() if context is not None)
     entries = {context.function: other_entries(context) for context in contexts}
     if given.farm_model is None:
         with_entries = tuple(each for context in contexts for each in (context, *entries[context.function]))
         return GatherOutput(contexts=with_entries, difftest=difftest, without_calls=without_calls,
-                            functions=given.functions)
+                            functions=given.functions, tree=tree)
     # a farm group leaves out what cannot go in rather than refusing the whole group
     dropped = ([DroppedFunction(function=function, reason="no lifted code or assembly") for function in missing]
                + [DroppedFunction(function=function, reason="no captured calls") for function in without_calls]
@@ -206,7 +215,7 @@ def gather_context(given: GatherInput) -> GatherOutput:
     out = {each.function for each in dropped}
     kept = tuple(context for context in contexts if context.function not in out)
     return GatherOutput(contexts=kept, difftest=difftest, without_calls=(), dropped=tuple(dropped),
-                        functions=tuple(context.function for context in kept))
+                        functions=tuple(context.function for context in kept), tree=tree)
 
 
 class AskInput(Result):
@@ -276,6 +285,7 @@ class VerifyInput(Result):
     routes: tuple[Route, ...]
     battle_code: bool
     attempts: tuple[Attempt, ...]
+    tree: Path | None
 
 
 class VerifyOutput(Result):
@@ -288,16 +298,17 @@ def install_and_verify(given: VerifyInput) -> VerifyOutput:
     """Put the file in the tree and run every check (a child verify run); take it out again if it fails."""
     latest = given.attempts[-1]
     assert latest.reply.file is not None
-    install_file(given.file_name, latest.reply.file, latest.reply.cfg_lines)
+    tree = given.tree or REPO
+    install_file(given.file_name, latest.reply.file, latest.reply.cfg_lines, tree)
     run_id = f"{current_run_id()}-verify-{latest.number}"
     run_dir = given.run_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     functions = tuple(context.function for context in given.contexts if context.entry_of is None)
     state = run_verify_in_full(VerifyState(run_dir=run_dir, functions=functions, snapshots=given.snapshots,
-                                           routes=given.routes, battle_code=given.battle_code), run_id)
+                                           routes=given.routes, battle_code=given.battle_code, tree=tree), run_id)
     assert state.report is not None
     if state.report.verdict not in ACCEPTED_VERDICTS:
-        uninstall_file(given.file_name)
+        uninstall_file(given.file_name, tree)
     checks = tuple(_checks(context, state) for context in given.contexts)
     updated = latest.model_copy(update={"verification": state.report, "verify_run": run_id})
     return VerifyOutput(attempts=(*given.attempts[:-1], updated), checks=checks)
@@ -335,7 +346,8 @@ class CommitOutput(Result):
 
 @workflow.step
 def commit_conversion(given: CommitInput) -> CommitOutput:
-    """Commit the file and its difftest.cfg lines locally (never pushed)."""
+    """Put the file and its difftest.cfg lines into the main tree and commit them there (locally, never
+    pushed), holding the main tree's lock: parallel runs share difftest.cfg."""
     latest = given.attempts[-1]
     assert latest.review is not None and latest.verification is not None
     message = (f"Readable {given.subsystem} ({len(given.functions)} functions, written by {latest.model})\n\n"
@@ -344,7 +356,10 @@ def commit_conversion(given: CommitInput) -> CommitOutput:
                f"(verify run {latest.verify_run}: {latest.verification.verdict.value}); reviewed and approved"
                + (f": {latest.review.comments}" if latest.review.comments else "") + ".\n\n"
                + latest.review.attribution)
-    return CommitOutput(commit=commit_files((game_file(given.file_name), DIFFTEST_CFG), message.strip() + "\n"))
+    assert latest.reply.file is not None
+    with held(MAIN_TREE):
+        install_file(given.file_name, latest.reply.file, latest.reply.cfg_lines)
+        return CommitOutput(commit=commit_files((game_file(given.file_name), DIFFTEST_CFG), message.strip() + "\n"))
 
 
 class EntriesInput(Result):
@@ -377,18 +392,33 @@ class RecordInput(Result):
     subsystem: str
     functions: tuple[FunctionName, ...]
     renames: tuple[Rename, ...]
+    entries: tuple[Path, ...]
     attempts: tuple[Attempt, ...]
+    defer_record: bool
+    tree: Path | None
 
 
 class RecordOutput(Result):
-    record: RecordReport
+    record: RecordReport | None
     outcome: ConvertOutcome
 
 
 @workflow.step
 def record_symbols(given: RecordInput) -> RecordOutput:
-    """Check the entries, rename in bn6f, write the comments, re-verify, commit (a child record run)."""
+    """Check the entries, rename in bn6f, write the comments, re-verify, commit (a child record run); or, when
+    runs go in parallel, commit the entries and leave the renames to one batch record (PENDING_RENAMES)."""
+    if given.tree is not None:
+        remove_tree(given.tree)
     review = given.attempts[-1].review
+    if given.defer_record:
+        message = (f"Document {given.subsystem}: symbols/db entries (renames wait for a batch record)\n\n"
+                   f"Entries drafted by {given.attempts[-1].model}, evidence from convert run {current_run_id()}.\n\n"
+                   + (review.attribution if review else ""))
+        with held(MAIN_TREE):
+            with open(PENDING_RENAMES, "a") as pending:
+                _ = pending.write("".join(f"{rename.old} {rename.new}\n" for rename in given.renames))
+            _ = commit_files((*given.entries, PENDING_RENAMES), message.strip() + "\n")
+        return RecordOutput(record=None, outcome=ConvertOutcome.COMMITTED_RECORD_PENDING)
     message = (f"Document {given.subsystem}: symbols/db entries"
                + (f"; rename {len(given.renames)} symbols in bn6f" if given.renames else "")
                + f"\n\nEntries drafted by {given.attempts[-1].model}, evidence from convert run {current_run_id()}.\n\n"
@@ -433,12 +463,16 @@ def drop_failing_functions(given: DropInput) -> DropOutput:
                                                  for function, reason in failing.items())))
 
 
+PENDING_RENAMES = REPO / "symbols/pending_renames.txt"   # OLD NEW per line, for the next batch record
+
+
 class GiveUpInput(Result):
     file_name: str
     contexts: tuple[ConversionContext, ...] | NotRun
     difftest: Path | BuildFailure
     without_calls: tuple[FunctionName, ...]
     attempts: tuple[Attempt, ...]
+    tree: Path | None
 
 
 class GiveUpOutput(Result):
@@ -452,7 +486,8 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
         return GiveUpOutput(outcome=ConvertOutcome.NOTHING_TO_CONVERT)
     if given.without_calls and not given.attempts:
         return GiveUpOutput(outcome=ConvertOutcome.NO_CAPTURED_CALLS)
-    uninstall_file(given.file_name)
+    if given.tree is not None:
+        remove_tree(given.tree)   # the file was only ever installed there
     if isinstance(given.difftest, BuildFailure):
         return GiveUpOutput(outcome=ConvertOutcome.DIFFTEST_DID_NOT_BUILD)
     review = given.attempts[-1].review if given.attempts else None

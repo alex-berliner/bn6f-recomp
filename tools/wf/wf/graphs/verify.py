@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow
-from wf.repo import current_sources
+from wf.repo import REPO, current_sources
 from wf.tools.battlesweep import run_battle_sweep
 from wf.tools.build import lift_and_build
 from wf.tools.difftest import run_captured_difftest, run_difftest
@@ -85,6 +85,7 @@ class VerifyState(BaseModel):
     routes: tuple[Route, ...]
     battle_code: bool                         # the change touches battle code: run the battle sweep
     trials: int = 300                         # random difftest inputs per function
+    tree: Path = REPO                         # the main checkout, or a convert run's worktree
     oracle_states: int = 24                   # entry states per function on the CPU oracle
     sources: SourceVersion | None = None
     build: BuiltRom | BuildFailure | None = None
@@ -101,8 +102,8 @@ workflow = Workflow[VerifyState](VerifyState, project=PROJECT)
 
 # ── steps ──────────────────────────────────────────────────────────────
 
-class Nothing(Result):
-    pass
+class SourcesInput(Result):
+    tree: Path
 
 
 class SourcesOutput(Result):
@@ -110,13 +111,14 @@ class SourcesOutput(Result):
 
 
 @workflow.step
-def note_sources(given: Nothing) -> SourcesOutput:
+def note_sources(given: SourcesInput) -> SourcesOutput:
     """Record which commit is being verified, and whether it has uncommitted changes."""
-    return SourcesOutput(sources=current_sources())
+    return SourcesOutput(sources=current_sources(given.tree))
 
 
 class BuildInput(Result):
     run_dir: Path
+    tree: Path
 
 
 class BuildOutput(Result):
@@ -126,7 +128,7 @@ class BuildOutput(Result):
 @workflow.step
 def lift_and_build_everything(given: BuildInput) -> BuildOutput:
     """Lift bn6f with the readable functions in place; build the port ROM and the host difftest."""
-    return BuildOutput(build=lift_and_build(given.run_dir))
+    return BuildOutput(build=lift_and_build(given.run_dir, given.tree))
 
 
 class RandomDifftestInput(Result):
@@ -134,6 +136,7 @@ class RandomDifftestInput(Result):
     functions: tuple[FunctionName, ...]
     trials: int
     run_dir: Path
+    tree: Path
 
 
 class RandomDifftestOutput(Result):
@@ -144,7 +147,7 @@ class RandomDifftestOutput(Result):
 def difftest_random_inputs(given: RandomDifftestInput) -> RandomDifftestOutput:
     """Compare each changed function with its lifted original on random inputs."""
     return RandomDifftestOutput(
-        difftests=run_difftest(given.build.difftest, given.functions, given.trials, given.run_dir))
+        difftests=run_difftest(given.build.difftest, given.functions, given.trials, given.run_dir, given.tree / "cport"))
 
 
 class CapturedDifftestInput(Result):
@@ -152,6 +155,7 @@ class CapturedDifftestInput(Result):
     functions: tuple[FunctionName, ...]
     snapshots: SnapshotDir | None
     run_dir: Path
+    tree: Path
 
 
 class CapturedDifftestOutput(Result):
@@ -164,7 +168,7 @@ def difftest_captured_calls(given: CapturedDifftestInput) -> CapturedDifftestOut
     if given.snapshots is None:
         return CapturedDifftestOutput(captured_difftests=NotRun(reason=ToolMessage("no captured calls given")))
     return CapturedDifftestOutput(captured_difftests=run_captured_difftest(
-        given.build.difftest, given.functions, given.snapshots, given.run_dir))
+        given.build.difftest, given.functions, given.snapshots, given.run_dir, given.tree / "cport"))
 
 
 class OracleInput(Result):
@@ -173,6 +177,7 @@ class OracleInput(Result):
     snapshots: SnapshotDir | None
     oracle_states: int
     run_dir: Path
+    tree: Path
 
 
 class OracleOutput(Result):
@@ -185,7 +190,7 @@ def run_cpu_oracle(given: OracleInput) -> OracleOutput:
     if given.snapshots is None:
         return OracleOutput(oracle=NotRun(reason=ToolMessage("no captured calls to build entry states from")))
     return OracleOutput(oracle=run_oracle(given.build.difftest, given.functions, given.snapshots,
-                                          given.oracle_states, given.run_dir))
+                                          given.oracle_states, given.run_dir, given.tree))
 
 
 class LockstepInput(Result):
