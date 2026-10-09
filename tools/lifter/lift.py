@@ -16,7 +16,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = "lifter"
 
-from . import elfinfo  # noqa: E402
+from . import abi_export, elfinfo  # noqa: E402
 from .analysis import (ALL, ALLF, ALLR, NZ, C, V, RB, CodeCopy, Program, Unit, build,  # noqa: E402
                        flag_effects, mask_names, reg_effects, writes_pc)
 from .emit import Ctx, UnitEmitter, cname, h  # noqa: E402
@@ -186,6 +186,17 @@ def reg_locals(body: list[str]):
 
 
 GENERATED: set[str] = set()
+# hand-written C in --overrides replacing a lifted function: `Next NAME(void) {`
+OVERRIDE_RE = re.compile(r"^(?:IWRAM_\w+\s+|ARM_CODE\s+)*Next\s+(\w+)\s*\(\s*void\s*\)\s*\{", re.M)
+
+
+def overridden_names(directory: str | None) -> set[str]:
+    out: set[str] = set()
+    if directory and os.path.isdir(directory):
+        for f in sorted(os.listdir(directory)):
+            if f.endswith(".c"):
+                out |= set(OVERRIDE_RE.findall(open(os.path.join(directory, f)).read()))
+    return out
 
 
 def write_if_changed(path: str, text: str):
@@ -208,6 +219,11 @@ def main():
     ap.add_argument("--inc", default="cport/include")
     ap.add_argument("--overrides", default="cport/src/game",
                     help="directory of hand-written C replacing lifted functions")
+    ap.add_argument("--export-abi", metavar="OUT.json",
+                    help="write register contracts and call sites as JSON (docs/C_CALLING_CONVENTION.md 3.1) "
+                         "and stop without writing C")
+    ap.add_argument("--call-edges", nargs="+", metavar="EDGES",
+                    help="with --export-abi: call edges observed by mgba_run --call-edges (tools/abi/call_edges.py)")
     args = ap.parse_args()
     t0 = time.time()
     info = elfinfo.load(args.bn6f)
@@ -387,7 +403,9 @@ def main():
         if not changed:
             break
 
-    def unit_liveness(u: Unit, entry_in: dict, ret_live: int):
+    def unit_liveness(u: Unit, entry_in: dict, ret_live: int, seen=None):
+        # seen(site, live_in, entry_in, ret_live): what the targets observed at a computed
+        # call or jump read (--export-abi with --call-edges); without it, everything
         eff = effects[u.start]
         addrs = sorted(u.insns, reverse=True)
         live_in: dict[int, int] = {a: 0 for a in addrs}
@@ -414,11 +432,13 @@ def main():
                         after = live_in[ret] if ret in u.insns else entry_in.get(ret, ALL)
                         out |= after
                         prop |= after & ~(must_write[tgt] if tgt is not None else 0)
-                        extra |= entry_in[tgt] if tgt is not None else ALL
+                        extra |= entry_in[tgt] if tgt is not None else \
+                            ALL if seen is None else seen(a, live_in, entry_in, ret_live)
                     elif kx == "return":
                         out |= ret_live; prop |= ret_live
                     elif kx == "jump":
-                        out |= ALL; prop |= ALL
+                        v = ALL if seen is None else seen(a, live_in, entry_in, ret_live)
+                        out |= v; prop |= v
                 if ins.cond != "al":
                     li = r | prop | out | extra
                 else:
@@ -758,6 +778,17 @@ def main():
 
     use_live_sync = os.environ.get("LIFT_NO_LIVE_SYNC") != "1"
 
+    if args.export_abi:
+        summary = abi_export.write(args.export_abi, abi_export.Analysis(
+            p=p, info=info, names=names, effects=effects, flags_in=flags_in, callers_live=callers_live,
+            indirect_ret=indirect_ret, indirect_targets=indirect_targets, tail_targets=tail_targets,
+            inputs=inputs, may_write=may_write, preserved=preserved, must_write=must_write,
+            may_unwind=may_unwind, needs_ret=needs_ret, unit_liveness=unit_liveness, local_w=local_w,
+            overridden=overridden_names(args.overrides)), args.call_edges)
+        print(f"[lift] wrote {args.export_abi}: " + ", ".join(
+            f"{k} {len(v) if isinstance(v, list) else v}" for k, v in summary.items()))
+        return
+
     def call_masks(t, call_addr, unit_start):
         """(save, load, may_write, clobbers) for a call site: registers/flags
         to store before the call, to reload after it, that the callee may
@@ -841,13 +872,7 @@ def main():
                 if mode not in ("thumb", "arm"):
                     sys.exit(f"iwram.txt: {f[0]}: unknown mode {mode!r}")
                 iwram_names[f[0]] = mode
-    overridden = set()
-    if args.overrides and os.path.isdir(args.overrides):
-        for f in sorted(os.listdir(args.overrides)):
-            if f.endswith(".c"):
-                txt = open(os.path.join(args.overrides, f)).read()
-                overridden |= set(re.findall(r"^(?:IWRAM_\w+\s+|ARM_CODE\s+)*Next\s+(\w+)\s*\(\s*void\s*\)\s*\{",
-                                             txt, re.M))
+    overridden = overridden_names(args.overrides)
     files: dict[str, list[str]] = defaultdict(list)
     protos: list[str] = []
     fn_names = set(names.values())
