@@ -114,7 +114,8 @@ def main():
         prev = e.get("previous_names") or []
         if old not in prev:
             prev.append(old)
-        e["previous_names"] = prev
+        # renaming back to an earlier name: that name is current again, not a previous one
+        e["previous_names"] = [name for name in prev if name != new]
         e.setdefault("changes", []).append({"date": today, "what": f"rename {old} -> {new}",
                                             "where": f"bn6f {commit}", "tool": "tools/rename_symbol.py"})
         dst = os.path.join(DB, f"{new}.yaml")
