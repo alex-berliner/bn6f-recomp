@@ -1,0 +1,93 @@
+name: STWI_init_timer
+address: '0x0814C1E4'
+kind: function
+status: confirmed
+summary: Hooks the wireless library's timer interrupt handler into a caller-supplied callback slot and enables the
+  chosen hardware timer's IRQ.
+interface: void STWI_init_timer(u32* callbackSlot /*r0*/, u8 timerId /*r1*/); returns r2 = saved REG_IME, r3 = &REG_IME
+details: 'Part of the Nintendo STWI (wireless adapter / Union/Trade helper) library used by the
+
+  Crossover/Union network battles. r0 points to a function-pointer slot (e.g. in the caller''s
+
+  IRQ dispatch table) which receives the thumb address of STWI_intr_timer (+1). The timer id
+
+  (r1, 0..3) is stored at offset 0xA of the STWI work area pointed to by dword_2010CCC.
+
+  It then reads REG_IME (InterruptMasterEnableRegister), zeroes it to block interrupts during
+
+  the update, sets the REG_IE (InterruptEnableRegister) bit for the timer — bit (8 << timerId),
+
+  i.e. timer 0 = bit 3, timer 1 = bit 4, ... since the code computes 8 << id — ORing in any
+
+  previously enabled bits, restores the saved REG_IME, and returns. r2 gets the pre-update
+
+  REG_IME value and r3 the REG_IME address, presumably as vestigial outputs from the library''s
+
+  build; r4/r5 are used internally but pushed/popped so they are preserved. Note the id byte is
+
+  re-read from the work area rather than reused from r1, and no validation of the id is done
+
+  (an id > 3 would set wrong/out-of-range IE bits).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-044107);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_31.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    31' --file leaves_farm_31.c STWI_init_timer
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function STWI_init_timer
+
+    .venv/bin/python -m wf verify --function STWI_init_timer --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-044107-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function STWI_init_timer
+
+    .venv/bin/python -m wf verify --function STWI_init_timer --snapshots SNAPSHOT_DIR'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261009-044107-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function STWI_init_timer
+
+    .venv/bin/python -m wf verify --function STWI_init_timer --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-044107-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0814c1e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_31.c
+  where: recomp 64ded3e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_31.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related: []
+open_questions:
+- Which caller-supplied slot r0 points into (likely a dispatch table entry of the STWI IRQ manager) — would clarify
+  the callback contract.
+- Why the timer id is re-read from the work area instead of using r1 directly (probably just how the original library
+  was compiled).
+- Whether r2/r3 outputs are ever consumed by any caller or are purely vestigial.
+sources:
+- tools/wf run convert-20261009-044107
