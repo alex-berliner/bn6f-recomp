@@ -6,6 +6,8 @@
  *
  * TRACE uses gbarecomp's keyinput format: "frame,0xKEYINPUT" (active low).
  * Screenshots are binary PPMs (DIR/frame_NNNNNN.ppm).
+ *
+ * Build: gcc -O2 -o build-tools/mgba_run tools/mgba_run.c -lmgba
  */
 #include <mgba/core/core.h>
 #include <mgba/core/serialize.h>
@@ -127,6 +129,32 @@ static void count_dump(void) {
 
 static uint64_t pg_rom[0x01000000 / 2], pg_ram[0x8000 / 2], pg_ewram[0x40000 / 2], pg_bios[0x4000 / 2];
 
+/* --call-edges SITES OUT: the indirect branch sites to watch (one bit per
+ * halfword of ROM and IWRAM) and the (site, target, lr) triples seen there,
+ * with how often. */
+static uint8_t ce_rom[0x02000000 / 16], ce_iwram[0x8000 / 16];
+static int ce_watched(uint32_t a) {
+    if (a >= 0x08000000u && a < 0x0A000000u) return ce_rom[(a - 0x08000000u) >> 4] >> ((a >> 1) & 7) & 1;
+    if (a >= 0x03000000u && a < 0x03008000u) return ce_iwram[(a - 0x03000000u) >> 4] >> ((a >> 1) & 7) & 1;
+    return 0;
+}
+static void ce_watch(uint32_t a) {
+    a &= ~1u;
+    if (a >= 0x08000000u && a < 0x0A000000u) ce_rom[(a - 0x08000000u) >> 4] |= 1u << ((a >> 1) & 7);
+    else if (a >= 0x03000000u && a < 0x03008000u) ce_iwram[(a - 0x03000000u) >> 4] |= 1u << ((a >> 1) & 7);
+}
+#define NEDGE 65536
+static struct { uint32_t site, target, lr; unsigned long n; } edges[NEDGE];
+static unsigned long ce_lost;   /* edges dropped because the table is full */
+static void ce_count(uint32_t site, uint32_t target, uint32_t lr) {
+    uint32_t h = (site * 2654435761u ^ target * 40503u ^ lr * 69069u) & (NEDGE - 1);
+    for (unsigned k = 0; k < NEDGE; k++, h = (h + 1) & (NEDGE - 1)) {
+        if (edges[h].n && edges[h].site == site && edges[h].target == target && edges[h].lr == lr) { edges[h].n++; return; }
+        if (!edges[h].n) { edges[h].site = site; edges[h].target = target; edges[h].lr = lr; edges[h].n = 1; return; }
+    }
+    ce_lost++;
+}
+
 int main(int argc, char **argv) {
     const char *rom = NULL, *input = NULL, *shots = NULL, *bios = NULL, *dump = NULL;
     unsigned frames = 600, every = 0, bios_intro = 0;
@@ -188,6 +216,14 @@ int main(int argc, char **argv) {
     const char *snapf_dir = NULL;
     unsigned long snapf_max = 0;
     int snapf_keep_interrupted = 0;   /* --snap-keep-interrupted: keep the entry of a call an IRQ interrupted */
+    /* --call-edges SITES OUT: step the whole run and record, at every listed
+     * indirect branch site (hex addresses, e.g. from lift.py --export-abi via
+     * tools/abi/call_edges.py), where it went and the LR it went with (the
+     * return point of the call, also for jumps through veneers). OUT lines:
+     * "SITE TARGET LR COUNT" (hex; TARGET has the Thumb bit). */
+    const char *ce_out = NULL;
+    int ce_pending = 0;
+    uint32_t ce_site = 0, ce_lr = 0, ce_mode = 0, ce_next = 0;
     struct { uint32_t lr, sp, func; unsigned long step; int irq; char name[32]; } pend[256];
     unsigned long steps_total = 0;
     int npend = 0;
@@ -252,6 +288,15 @@ int main(int argc, char **argv) {
                 if (a >= 0x08000000u && a < 0x0A000000u) snapf_bits[(a - 0x08000000u) >> 4] |= 1u << ((a >> 1) & 7);
             }
             if (f) fclose(f);
+        }
+        else if (!strcmp(argv[i], "--call-edges")) {
+            FILE *f = fopen(argv[++i], "r");
+            ce_out = argv[++i];
+            char line[64];
+            if (!f) { fprintf(stderr, "cannot read %s\n", argv[i - 1]); return 2; }
+            while (fgets(line, sizeof line, f))
+                if (line[0] != '#') ce_watch(strtoul(line, 0, 16));
+            fclose(f);
         }
         else if (!strcmp(argv[i], "--snap-filter")) {
             snapf_reg = atoi(argv[++i]); snapf_off = strtoul(argv[++i], 0, 0);
@@ -645,7 +690,7 @@ int main(int argc, char **argv) {
         }
         /* a pending --poke-at steps its frame on its own */
         int poke_step = poke_spec && !poked && game_frame_addr && when + 1 >= poke_g;
-        if (pg_active || poke_step) {
+        if (pg_active || poke_step || ce_out) {
             /* step one hardware frame, attributing cycles to the PC */
             uint32_t f0 = core->frameCounter(core);
             uint64_t t0 = mTimingGlobalTime(core->timing);
@@ -654,6 +699,24 @@ int main(int argc, char **argv) {
                 core->readRegister(core, "pc", &pc);
                 core->readRegister(core, "cpsr", &cpsr);
                 pc -= (cpsr & 0x20) ? 2 : 4;      /* mGBA pipeline PC -> next instruction to execute */
+                if (ce_out) {
+                    uint32_t u = (uint32_t)pc;
+                    if (ce_pending) {
+                        ce_pending = 0;
+                        /* a conditional branch not taken, or an interrupt came first: nothing seen */
+                        if (u != ce_next && (uint32_t)(cpsr & 0x1F) == ce_mode)
+                            ce_count(ce_site, u | ((cpsr & 0x20) ? 1u : 0u), ce_lr);
+                    }
+                    if (ce_watched(u)) {
+                        int32_t lr = 0;
+                        core->readRegister(core, "lr", &lr);
+                        ce_pending = 1;
+                        ce_site = u;
+                        ce_lr = (uint32_t)lr;
+                        ce_mode = (uint32_t)cpsr & 0x1F;
+                        ce_next = u + ((cpsr & 0x20) ? 2 : 4);
+                    }
+                }
                 if (poke_spec && !poked && when >= poke_g && ((uint32_t)pc & ~1u) == (poke_pc & ~1u)) {
                     static char spec[16384];
                     snprintf(spec, sizeof spec, "%s", poke_spec);
@@ -819,6 +882,19 @@ int main(int argc, char **argv) {
         }
     }
 done:
+    if (ce_out) {
+        FILE *o = fopen(ce_out, "w");
+        unsigned long distinct = 0;
+        if (!o) { perror(ce_out); return 1; }
+        fprintf(o, "# site target lr count (mgba_run --call-edges; %lu edges lost to a full table)\n", ce_lost);
+        for (unsigned k = 0; k < NEDGE; k++)
+            if (edges[k].n) {
+                fprintf(o, "%08x %08x %08x %lu\n", edges[k].site, edges[k].target, edges[k].lr, edges[k].n);
+                distinct++;
+            }
+        fclose(o);
+        printf("call-edges: %lu distinct (site, target, lr)%s\n", distinct, ce_lost ? " (table full: some lost)" : "");
+    }
     if (save_state) {
         size_t n = core->stateSize(core);
         void *buf = calloc(1, n);
