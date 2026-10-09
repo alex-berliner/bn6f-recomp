@@ -1,7 +1,8 @@
 """A strong outside model converts a subsystem (callers and callees together)
 to readable C with C call and return semantics (docs/PROCESS.md §4): capture
-the original's calls, ask the model for the whole file, quick-test it per
-function against the lifted originals, install it and run the full verify,
+the original's calls, ask the model for the whole file, check it keeps guest
+registers to thin adapters (tools/abi/lint.py), quick-test it per function
+against the lifted originals, install it and run the full verify,
 then stop for the orchestrator's review. Failures and review comments go back
 to the model (3 attempts per model, then the next model). A group of farm
 candidates goes the same way, except that failing functions are taken out of
@@ -29,6 +30,7 @@ from wf.tools.git import commit_files
 from wf.tools.locks import MAIN_TREE, held
 from wf.tools.install import DIFFTEST_CFG, game_file, install_file, uninstall_file
 from wf.tools.models import ConversionContext, conversion_context, other_entries
+from wf.tools.registers import RegisterCheck, check_register_use
 from wf.tools.sources import TIERS, Tier, first_up, is_source_failure
 from wf.tools.subsystem import (FileReply, FileTest, TokenUse, ask_model_for_file, candidate_from_file, repair_prompt,
                                 subsystem_prompt, test_candidate_file, tokens_for)
@@ -49,7 +51,10 @@ def convert_graph() -> Graph["ConvertState"]:
             Transition(after=capture_original_calls, go_to=gather_context),
             Transition(after=gather_context, go_to=ask_model_for_file_step, when=ready_to_convert),
             Transition(after=gather_context, go_to=give_up, when=cannot_convert),
-            Transition(after=ask_model_for_file_step, go_to=quick_test),
+            Transition(after=ask_model_for_file_step, go_to=check_registers),
+            Transition(after=check_registers, go_to=quick_test, when=registers_clean),
+            Transition(after=check_registers, go_to=ask_model_for_file_step, when=registers_used_with_attempts_left),
+            Transition(after=check_registers, go_to=give_up, when=registers_used_with_no_attempts_left),
             Transition(after=quick_test, go_to=install_and_verify, when=quick_test_passed),
             Transition(after=quick_test, go_to=drop_failing_functions, when=farm_functions_to_drop),
             Transition(after=quick_test, go_to=ask_model_for_file_step, when=quick_test_failed_with_attempts_left),
@@ -91,6 +96,7 @@ class Attempt(Result):
     given: bool = False       # a ready file (--candidate, --farm-model): not one of the models' attempts
     reply: FileReply
     tokens: TokenUse | None = None
+    registers: RegisterCheck | None = None
     test: FileTest | None = None
     verification: VerifyReport | None = None
     verify_run: str | None = None
@@ -106,6 +112,7 @@ class ConvertOutcome(Enum):
     COMMITTED_RECORD_PENDING = "committed with its entries; renames and bn6f comments wait for a batch record"
     DIFFTEST_DID_NOT_BUILD = "the host difftest did not build"
     SOURCES_OUT = "every model's provider was out of quota for longer than the run waits"
+    REGISTER_FORM = "the given file keeps guest registers outside thin adapters (tools/abi/lint.py)"
 
 
 class DroppedFunction(Result):
@@ -264,6 +271,26 @@ def ask_model_for_file_step(given: AskInput) -> AskOutput:
 
     model, reply = first_up(models, ask, failure)
     return AskOutput(attempts=(*given.attempts, Attempt(number=number, model=model, reply=reply, tokens=tokens_for(tag))))
+
+
+class RegistersInput(Result):
+    file_name: str
+    attempts: tuple[Attempt, ...]
+
+
+class RegistersOutput(Result):
+    attempts: tuple[Attempt, ...]
+
+
+@workflow.step
+def check_registers(given: RegistersInput) -> RegistersOutput:
+    """Guest registers only in thin `Next` adapters, or where a `register form` note says why
+    (tools/abi/lint.py on the candidate file, before any test)."""
+    latest = given.attempts[-1]
+    if latest.reply.file is None:
+        return RegistersOutput(attempts=given.attempts)   # nothing to lint: the quick test reports the reply
+    check = check_register_use(latest.reply.file, given.file_name)
+    return RegistersOutput(attempts=(*given.attempts[:-1], latest.model_copy(update={"registers": check})))
 
 
 class QuickTestInput(Result):
@@ -505,6 +532,9 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
         return GiveUpOutput(outcome=ConvertOutcome.REJECTED)
     if given.attempts and _sources_out(given.attempts[-1]):
         return GiveUpOutput(outcome=ConvertOutcome.SOURCES_OUT)
+    registers = given.attempts[-1].registers if given.attempts else None
+    if given.attempts and given.attempts[-1].given and registers is not None and not registers.clean:
+        return GiveUpOutput(outcome=ConvertOutcome.REGISTER_FORM)
     return GiveUpOutput(outcome=ConvertOutcome.OUT_OF_ATTEMPTS)
 
 
@@ -535,6 +565,8 @@ def _what_went_wrong(attempt: Attempt) -> tuple[str, str]:
                 attempt.verification.model_dump_json(indent=1, exclude={"sources"}))
     if attempt.test is not None:
         return "The quick test failed (your functions against the lifted originals)", attempt.test.report
+    if attempt.registers is not None and not attempt.registers.clean:
+        return "The register check failed (before any test)", attempt.registers.report
     return "The reply could not be used", "\n".join(attempt.reply.problems) or (attempt.reply.error or "")
 
 
@@ -637,6 +669,19 @@ def ready_to_convert(state: ConvertState) -> bool:
 
 def cannot_convert(state: ConvertState) -> bool:
     return not ready_to_convert(state)
+
+
+def registers_clean(state: ConvertState) -> bool:
+    check = _latest(state).registers
+    return check is None or check.clean
+
+
+def registers_used_with_attempts_left(state: ConvertState) -> bool:
+    return not registers_clean(state) and _attempts_left(state)
+
+
+def registers_used_with_no_attempts_left(state: ConvertState) -> bool:
+    return not registers_clean(state) and not _attempts_left(state)
 
 
 def quick_test_passed(state: ConvertState) -> bool:

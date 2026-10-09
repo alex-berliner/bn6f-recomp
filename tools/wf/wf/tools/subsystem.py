@@ -48,6 +48,25 @@ registers-as-arguments origin.
 - Where C semantics truly cannot work (e.g. the function returns somewhere other than its
   caller, or shares its caller's stack frame), keep the register form for that function and say
   so in a comment right above it: `/* register form: <why C semantics cannot work here> */`.
+- Before any test, tools/abi/lint.py checks the file: guest registers (R0..R12, SP, LR, flags,
+  `cpu.`, GUEST_CALL, RETURN_*) may appear only in thin adapters (argument registers in, one call
+  of a typed function, result registers and flags out; no memory access, no branches) and in
+  functions with a `register form` note. A call to a function outside your file goes through a
+  small helper with the note `/* register form: calls NAME outside this file, which has no typed
+  C interface yet */`. The reference files below predate this check: copy their conventions,
+  not their register use. The shape:
+      /* register form: calls getMapCellTileIds_80305E4 outside this file, which has no typed C
+       * interface yet */
+      static u32 map_cell_tile_ids(u32 tiles, u32 x, u32 y) {
+          R0 = x; R1 = y; R5 = tiles;
+          GUEST_CALL(getMapCellTileIds_80305E4);
+          return R0;
+      }
+      static u32 redraw_cell(u32 tiles, u32 x, u32 y) { ... map_cell_tile_ids(tiles, x, y) ... }
+      Next redrawCell_8030808(void) {
+          R0 = redraw_cell(R5, R8, R9);
+          RETURN_TO_CALLER();
+      }
 - A function may promise fewer output registers than its contract only when every caller is
   inside your file or provably ignores them; then give a difftest.cfg line for it
   (`NAME compare=r5,r10` lists what it still promises) with a `# reason` comment line above it.

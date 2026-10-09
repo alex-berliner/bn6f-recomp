@@ -405,6 +405,12 @@ STEP_SUMMARIES: dict[tuple[str, str], str] = {
         "(cport/src/game/NAME.c), with a symbols/db draft for each function. The models are tried in order "
         "({convert_models}), {convert_rounds} attempts each, and later attempts include what failed or the "
         "reviewer's comments. With --candidate, a ready file such as reviewed farm output is tried first.",
+    ("convert", "check_registers"):
+        "A convert run checks that the model's new C file keeps guest registers (R0 to R12, flags, GUEST_CALL) to "
+        "thin Next adapters, using tools/abi/lint.py, before any test runs. A typed function may touch registers "
+        "only with a `register form` note saying why C cannot work there, such as a call to code outside the "
+        "file that has no typed interface yet. A file that fails goes back to the model with each offending "
+        "function and line while attempts are left; a given farm file that fails ends the run.",
     ("convert", "quick_test"):
         "A convert run checks the model's new C file before it touches the source tree. The file must have the "
         "expected shape and a symbols/db draft for each function, and it must compile. Each function is then "
@@ -482,7 +488,7 @@ FIELD_GLOSSARY: dict[str, str] = {
     "sources": "the commit verified, and whether the checkout had uncommitted changes",
     "model": "an outside model, written provider/model (e.g. hyper/glm-5.3-flash)",
     "models": "outside models, written provider/model, in the order they are tried",
-    "attempts": "every model reply so far, with its tests, verify run and review",
+    "attempts": "every model reply so far, with its register check, tests, verify run and review",
     "context": "the function's assembly, lifted C and register contract",
     "contexts": "each function's assembly, lifted C and register contract",
     "subsystem": "what the functions do together, in a few words",

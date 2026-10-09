@@ -2,8 +2,9 @@
 
 A strong outside model converts a subsystem (callers and callees together)
 to readable C with C call and return semantics (docs/PROCESS.md §4): capture
-the original's calls, ask the model for the whole file, quick-test it per
-function against the lifted originals, install it and run the full verify,
+the original's calls, ask the model for the whole file, check it keeps guest
+registers to thin adapters (tools/abi/lint.py), quick-test it per function
+against the lifted originals, install it and run the full verify,
 then stop for the orchestrator's review. Failures and review comments go back
 to the model (3 attempts per model, then the next model). A group of farm
 candidates goes the same way, except that failing functions are taken out of
@@ -43,7 +44,7 @@ after a failure or review, show it what went wrong.
 
 - reads: `run_dir: Path`, `subsystem: str`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `models: tuple[ModelSpec, ...]`, `rounds: int`, `candidate: Path | None`, `farm_model: typing.Optional[ModelSpec]`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`
-- then: `quick_test`
+- then: `check_registers`
 
 ### `give_up` (step)
 
@@ -52,6 +53,15 @@ Take the file out of the tree again and say why there is nothing to commit.
 - reads: `file_name: str`, `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`, `tree: Path | None`
 - produces: `outcome: ConvertOutcome`
 - then: the run ends
+
+### `check_registers` (step)
+
+Guest registers only in thin `Next` adapters, or where a `register form` note says why
+(tools/abi/lint.py on the candidate file, before any test).
+
+- reads: `file_name: str`, `attempts: tuple[Attempt, ...]`
+- produces: `attempts: tuple[Attempt, ...]`
+- then: `quick_test` when `registers_clean`; `ask_model_for_file_step` when `registers_used_with_attempts_left`; `give_up` when `registers_used_with_no_attempts_left`
 
 ### `quick_test` (step)
 
