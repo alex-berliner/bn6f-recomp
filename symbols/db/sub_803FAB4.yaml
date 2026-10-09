@@ -1,0 +1,77 @@
+name: sub_803FAB4
+address: '0x0803FAB4'
+kind: function
+status: confirmed
+summary: Backs up the 0x80-byte save block at dword_20067C0 into the game pak backup area, retrying up to three
+  times, and returns 1 if any attempt verified successfully.
+interface: bool sub_803FAB4(void); returns r0 = 1 if at least one of three attempts copied and verified, r0 = 0
+  if all three failed; r4-r7 and NZ flags (on r0) are the observable outputs; clobbers r0-r3 and lr
+details: 'Runs a three-attempt loop. Each iteration first calls rng_FillSeedBuffer_803FAEE to refresh the RNG seed
+  buffer (the save seed is redrawn before every write), then calls libSave_CopyToGamePak with source dword_20067C0
+  (the 0x80-byte save block in EWRAM), destination 0xE007F80 (the game pak/flash backup area at the top of ROM space)
+  and length 0x80. It then calls sub_814D9C4 with the same three arguments to verify the copy, counting the attempt
+  as failed when the verifier returns 0 (tst r4,r4; failure increment taken on zero). If fewer than 3 attempts failed
+  it returns 1; only when all three verifications fail does it return 0. r6 is a failure counter and r7 the attempt
+  counter; the function itself never passes meaningful values in r4-r7 to its callees except r7. The verify call
+  is allowed to clobber r7, hence the pop/push of r7 between the copy and verify calls in the original. Presumably
+  part of the save/continue flow guarding against a corrupted or half-written backup.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-043200);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_30.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    30' --file leaves_farm_30.c sub_803CF3C sub_803F530 sub_803FAB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803FAB4
+
+    .venv/bin/python -m wf verify --function sub_803FAB4 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-043200-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803FAB4
+
+    .venv/bin/python -m wf verify --function sub_803FAB4 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-043200-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803FAB4
+
+    .venv/bin/python -m wf verify --function sub_803FAB4 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043200-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, menus2, story1, story2, story3.'
+  reproduce: grep -l '^0803fab4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_30.c
+  where: recomp ef7839f
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_30.c
+coverage:
+- battles1
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_803CF3C
+- sub_803F530
+open_questions:
+- Exact success convention of sub_814D9C4 (nonzero treated as verify pass here); its real name and semantics are
+  unknown.
+- Why the RNG seed buffer is refilled per attempt rather than once per save.
+- What the 0x80-byte block at dword_20067C0 contains exactly (likely a small save/option record feeding the game
+  pak backup).
+sources:
+- tools/wf run convert-20261009-043200
