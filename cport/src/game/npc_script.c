@@ -86,7 +86,7 @@ Next npc_standard_809E5E2(void) {
     u32 npc = R5;
     R0 = LD8(npc + oOverworldNPCObject_ChatTriggered);
     if (R0) {
-        GUEST_CALL(sub_809F5FC);
+        GUEST_CALL(npc_beginChatboxState_809F5FC);
     } else {
         GUEST_CALL(npc_runPrimaryScript_809ebdc);
         R0 = LD8(npc + NPC_CUR_ACTION);

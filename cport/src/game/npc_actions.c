@@ -85,7 +85,7 @@ Next npc_nonCutsceneMovementInit_809E704(void) {
     RETURN_TO_CALLER();
 }
 
-/* Walking, every frame: unless blocked (sub_809F638, skipped for NPCs that
+/* Walking, every frame: unless blocked (npc_overworld_CheckStateFlags50000_809F638, skipped for NPCs that
  * do not collide), move to Next*; when the step's frames run out, land
  * exactly on the target and start the next step, or end the walk. */
 Next npc_nonCutsceneMovementUpdate_809E7D8(void) {
@@ -94,7 +94,7 @@ Next npc_nonCutsceneMovementUpdate_809E7D8(void) {
     R0 = flags60;
     R1 = OW_NPC_UNK_FLAGS_60_DISABLE_COLLISION_0x10;
     if (!(flags60 & OW_NPC_UNK_FLAGS_60_DISABLE_COLLISION_0x10)) {
-        GUEST_CALL(sub_809F638);
+        GUEST_CALL(npc_overworld_CheckStateFlags50000_809F638);
         if (R0) {                         /* blocked this frame */
             SET_FLAGS_NZ(R0);
             GUEST_CALL(sub_809F5B0);

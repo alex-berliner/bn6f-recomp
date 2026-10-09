@@ -485,17 +485,17 @@ Next ReadNPCScriptHalfword(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809F5FC ── */
+/* ── npc_beginChatboxState_809F5FC ── */
 /* Offsets not present in game.h; taken from the disassembly. */
 #define oOverworldNPCObject_CurState   8   /* byte  */
 #define oOverworldNPCObject_CurAction  9   /* byte  */
 #define NPC_CUR_STATE_IN_CHATBOX       8
 
-/* sub_809F5FC (r5 = overworld NPC object):
+/* npc_beginChatboxState_809F5FC (r5 = overworld NPC object):
  * Begin talking to an NPC: back up its current action and movement flags,
  * switch it to the "in chatbox" state, and clear the action/movement
  * fields while the conversation runs. */
-Next sub_809F5FC(void) {
+Next npc_beginChatboxState_809F5FC(void) {
     ST8(R5 + oOverworldNPCObject_Unk_1d,
         LD8(R5 + oOverworldNPCObject_CurAction));
     ST8(R5 + oOverworldNPCObject_Unk_1e,
@@ -506,12 +506,12 @@ Next sub_809F5FC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809F638 ── */
-/* sub_809F638(r5 = NPC object):
+/* ── npc_overworld_CheckStateFlags50000_809F638 ── */
+/* npc_overworld_CheckStateFlags50000_809F638(r5 = NPC object):
  * Checks the NPC's state flags for bits 0x50000 (some movement/animation state
  * marker) and returns 1 in r0 if any of them is set, 0 otherwise.
  * Also leaves the flag word in r1 and the mask 0x50000 in r2, as the original does. */
-Next sub_809F638(void) {
+Next npc_overworld_CheckStateFlags50000_809F638(void) {
     u32 flags = LD32(R5 + oOverworldNPCObject_Unk_54);
 
     R1 = flags;
@@ -917,14 +917,14 @@ Next object_updatePanelParameters(void) {
 
 /* ── sub_800B884 ── */
 /* sub_800B884(r0 = object, r1 = value):
- * Resolve an address via sub_800BF5C (passing r0 through unchanged),
+ * Resolve an address via byte_203CF00_getEntryPtr_800BF5C (passing r0 through unchanged),
  * then store the saved byte value at [result + 1].
- * Returns r0 = sub_800BF5C's result, r1 unchanged; flags are whatever
- * sub_800BF5C leaves behind. */
+ * Returns r0 = byte_203CF00_getEntryPtr_800BF5C's result, r1 unchanged; flags are whatever
+ * byte_203CF00_getEntryPtr_800BF5C leaves behind. */
 Next sub_800B884(void) {
     u32 value = R1;
 
-    GUEST_CALL(sub_800BF5C);
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
 
     ST8(R0 + 1, value);
     R1 = value;
@@ -933,24 +933,24 @@ Next sub_800B884(void) {
 
 /* ── sub_800B892 ── */
 /* sub_800B892(r0 = object pointer): return the byte at offset 1 of
- * whatever sub_800BF5C resolves the object to (its type/flag field). */
+ * whatever byte_203CF00_getEntryPtr_800BF5C resolves the object to (its type/flag field). */
 Next sub_800B892(void) {
-    GUEST_CALL(sub_800BF5C);
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
     R0 = LD8(R0 + 1);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800B89C ── */
-/* sub_800B89C(r0 = battle object):
- * Clears an object's animation state. sub_800BF5C resolves the object's
+/* ── battle_resetObjAnimState_800B89C ── */
+/* battle_resetObjAnimState_800B89C(r0 = battle object):
+ * Clears an object's animation state. byte_203CF00_getEntryPtr_800BF5C resolves the object's
  * sprite/animation entry, then the byte at +1 (current animation frame) and
  * the word at +8 (animation timer/counter) are reset to 0.
  *
  * Flags: the only flag-setting instructions here are the two Thumb "mov r1,#0"
  * encodings (MOVS, which only affects n/z), so c and v are left exactly as
- * sub_800BF5C returned them. The stores below set no flags, preserving that. */
-Next sub_800B89C(void) {
-    GUEST_CALL(sub_800BF5C); /* r0 passes through unchanged as the argument */
+ * byte_203CF00_getEntryPtr_800BF5C returned them. The stores below set no flags, preserving that. */
+Next battle_resetObjAnimState_800B89C(void) {
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C); /* r0 passes through unchanged as the argument */
 
     u32 anim = R0;
 
@@ -960,19 +960,19 @@ Next sub_800B89C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800B8AC ── */
-/* sub_800B8AC(r0 = value):
+/* ── writeByteToWorkSlots0And1_800B8AC ── */
+/* writeByteToWorkSlots0And1_800B8AC(r0 = value):
  * Store the given byte into two consecutive single-byte state slots,
- * fetched via sub_800BF5C with slot indices 0 and 1. r4 is preserved. */
-Next sub_800B8AC(void) {
+ * fetched via byte_203CF00_getEntryPtr_800BF5C with slot indices 0 and 1. r4 is preserved. */
+Next writeByteToWorkSlots0And1_800B8AC(void) {
     u32 value = R0;
 
     R0 = 0;
-    GUEST_CALL(sub_800BF5C);
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
     ST8(R0, value);
 
     R0 = 1;
-    GUEST_CALL(sub_800BF5C);
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
     ST8(R0, value);
 
     RETURN_TO_CALLER();
@@ -980,14 +980,14 @@ Next sub_800B8AC(void) {
 
 /* ── sub_800B8C2 ── */
 /* sub_800B8C2(r0 = slot/index):
- * Calls sub_800BF5C with the given argument, reads the byte it points to, and
+ * Calls byte_203CF00_getEntryPtr_800BF5C with the given argument, reads the byte it points to, and
  * reports whether that byte matches the original argument.
  * Returns r0 = 1 if equal, 0 otherwise; r2 is left holding the original argument. */
 Next sub_800B8C2(void) {
     u32 arg = R0;
 
     R0 = arg;
-    GUEST_CALL(sub_800BF5C);
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
 
     u8 value = LD8(R0);
 
@@ -999,7 +999,7 @@ Next sub_800B8C2(void) {
 
 /* ── sub_800B8D8 ── */
 /* sub_800B8D8(r0 = entry index):
- * Fetch the entry for this index via sub_800BF5C and compare its byte at
+ * Fetch the entry for this index via byte_203CF00_getEntryPtr_800BF5C and compare its byte at
  * offset 3 (the entry's type/kind field) against the index we were given.
  * Returns r0 = 1 on a match, 0 otherwise; r2 is left holding the index and
  * the flags reflect the comparison (CMP) so callers can branch directly.
@@ -1007,7 +1007,7 @@ Next sub_800B8C2(void) {
 Next sub_800B8D8(void) {
     u32 index = R0;
 
-    GUEST_CALL(sub_800BF5C);
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
     u32 entry = R0;
 
     u32 kind = LD8(entry + 3);
@@ -1019,13 +1019,13 @@ Next sub_800B8D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800BF5C ── */
-/* sub_800BF5C(r0 = index):
+/* ── byte_203CF00_getEntryPtr_800BF5C ── */
+/* byte_203CF00_getEntryPtr_800BF5C(r0 = index):
  * Convert a slot index into an address within the byte_203CF00 array,
  * which has 0x50 (80) bytes per entry.
  * Returns: r0 = byte_203CF00 + index * 0x50, r1 = byte_203CF00,
  * flags set by the final address computation (ADDS). */
-Next sub_800BF5C(void) {
+Next byte_203CF00_getEntryPtr_800BF5C(void) {
     u32 base = A_byte_203CF00;
 
     u32 result = R0 * 0x50 + base;
@@ -1037,26 +1037,26 @@ Next sub_800BF5C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800C6D6 ── */
-/* sub_800C6D6(r0 = table index):
+/* ── getTable12Record_800D730_800C6D6 ── */
+/* getTable12Record_800D730_800C6D6(r0 = table index):
  * Returns the address of entry r0 in a table of 12-byte records at byte_800D730.
  * Output: r0 = byte_800D730 + r0 * 12. */
-Next sub_800C6D6(void) {
+Next getTable12Record_800D730_800C6D6(void) {
     R0 = R0 * 12 + A_byte_800D730;
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800C6E0 ── */
+/* ── battle_getPanelDataPtr_800C6E0 ── */
 /* Panel geometry on the battle field: 8 columns per row, and each panel's
  * data entry is 0x20 bytes inside ePanelData. */
 #define PANELS_PER_ROW 8
 #define PANEL_SIZE     0x20
 
-/* sub_800C6E0(r0 = panel column, r1 = panel row):
+/* battle_getPanelDataPtr_800C6E0(r0 = panel column, r1 = panel row):
  * compute the address of a panel's data entry in ePanelData.
  * Returns r0 = &ePanelData[(row * 8 + column) * 0x20]; r2 is left at 8
  * (a leftover scratch value callers rely on as an output). */
-Next sub_800C6E0(void) {
+Next battle_getPanelDataPtr_800C6E0(void) {
     u32 panelIndex = R0 + R1 * PANELS_PER_ROW;
 
     R0 = panelIndex * PANEL_SIZE + A_ePanelData;
@@ -1437,15 +1437,15 @@ Next returnZero_809E228(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809D7C8 ── */
-/* sub_809D7C8: the player object (r5) just finished interacting with an NPC.
+/* ── ow_player_setCounterTalkStateAfterNpcInteract_809D7C8 ── */
+/* ow_player_setCounterTalkStateAfterNpcInteract_809D7C8: the player object (r5) just finished interacting with an NPC.
  * Read the NPC's movement flag; if it is 4, store 8 into the player's
  * object field Unk_0a (marks the "talking to counter NPC" state).
  * r0 ends up holding the movement flag (or 8 when the store happens),
  * r7 ends up holding the NPC object pointer. Flags: CMP result, except
  * that in the store path the final "mov r0,#8" refreshes only N/Z while
  * C/V keep the values from the CMP. */
-Next sub_809D7C8(void) {
+Next ow_player_setCounterTalkStateAfterNpcInteract_809D7C8(void) {
     R7 = LD32(R5 + oOWPlayerObject_interactedNPCObject_58);
     R0 = LD8(R7 + oOverworldNPCObject_MovementFlag_0a);
 
@@ -1459,11 +1459,11 @@ Next sub_809D7C8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DAF8 ── */
-/* sub_809DAF8(r5 = overworld object):
+/* ── overworldObj_testStateBit10_809DAF8 ── */
+/* overworldObj_testStateBit10_809DAF8(r5 = overworld object):
  * Tests the object's state flags at +0x4C for bit 4 (0x10).
  * Returns: r0 = flag value (0 or 0x10), r1 = 0x10, r3 = 0x4C. Flags reflect r0. */
-Next sub_809DAF8(void) {
+Next overworldObj_testStateBit10_809DAF8(void) {
     R3 = 0x4C;
     R0 = LD16(R5 + R3);
     R1 = 0x10;
@@ -1472,8 +1472,8 @@ Next sub_809DAF8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DB50 ── */
-/* sub_809DB50: check the queued "player advance forward" event request.
+/* ── event_TestPlayerAdvanceForward_809DB50 ── */
+/* event_TestPlayerAdvanceForward_809DB50: check the queued "player advance forward" event request.
  *
  * Asks TestEventFlagFromImmediate about EVENT_1717_PLAYER_ADVANCE_FORWARD
  * (flag word 0x17, bit 0x17, set up by the movflag pseudo-op). The helper
@@ -1482,7 +1482,7 @@ Next sub_809DAF8(void) {
  * is left exactly as the helper left it; otherwise R0 is zeroed ("movs r0,#0")
  * so the caller reads a clean "no". R0 is scratch here, so zeroing it only
  * matters for the caller's view of the result. R3 passes through untouched. */
-Next sub_809DB50(void) {
+Next event_TestPlayerAdvanceForward_809DB50(void) {
     /* movflag EVENT_1717_PLAYER_ADVANCE_FORWARD: flag word 0x17, bit 0x17 */
     R0 = 0x17;
     R1 = 0x17;
@@ -1499,15 +1499,15 @@ Next sub_809DB50(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DDCC ── */
-/* sub_809DDCC(r5 = overworld player object):
+/* ── owPlayer_TickCountdownOrWait_809DDCC ── */
+/* owPlayer_TickCountdownOrWait_809DDCC(r5 = overworld player object):
  * Tick the object's Unk_18 countdown timer. While it is still counting down,
  * decrement it and return 1. Once it hits zero, only fail (return 0) while
  * one of the 0xC00000 status bits of Unk_50 is set; otherwise return 1.
  * r0 = result. r2 = 0xC00000 on the status-check path (untouched otherwise).
  * c/v come from the countdown SUBS on the timer path, and are left as the
  * caller set them on the status-check path (TST only updates nz). */
-Next sub_809DDCC(void) {
+Next owPlayer_TickCountdownOrWait_809DDCC(void) {
     u32 countdown = LD16(R5 + oOWPlayerObject_Unk_18);
 
     if (countdown != 0) {
@@ -1526,8 +1526,8 @@ Next sub_809DDCC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DFA0 ── */
-/* sub_809DFA0(r5 = overworld player object):
+/* ── owPlayer_isMoving_809DFA0 ── */
+/* owPlayer_isMoving_809DFA0(r5 = overworld player object):
  * Reports whether the player object is still in motion. The player counts as
  * moving as long as any of its current X/Y/Z coordinates differs from the
  * corresponding "next" coordinate it is heading toward.
@@ -1550,7 +1550,7 @@ static s32 player_axis_moved(u32 obj, u32 curOff, u32 nextOff) {
     return cur != next;
 }
 
-Next sub_809DFA0(void) {
+Next owPlayer_isMoving_809DFA0(void) {
     R0 = player_axis_moved(R5, oOWPlayerObject_X, oOWPlayerObject_NextX)
       || player_axis_moved(R5, oOWPlayerObject_Y, oOWPlayerObject_NextY)
       || player_axis_moved(R5, oOWPlayerObject_Z, oOWPlayerObject_NextZ);
@@ -1558,11 +1558,11 @@ Next sub_809DFA0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809E04C ── */
-/* sub_809E04C:
+/* ── owPlayer_ClearStateBytes_D_E_F_809E04C ── */
+/* owPlayer_ClearStateBytes_D_E_F_809E04C:
  * Clear three state bytes (0xD..0xF) of the overworld player object.
  * The caller's r0/r1 are passed through untouched. */
-Next sub_809E04C(void) {
+Next owPlayer_ClearStateBytes_D_E_F_809E04C(void) {
     u32 player = A_eOWPlayerObject;
 
     ST8(player + 0xD, 0); /* byte_2009F4D */
@@ -1592,10 +1592,10 @@ Next sub_809E3AA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809E3B2 ── */
-/* sub_809E3B2: reset the state struct at 0x2000AA0 — clear the byte flag
+/* ── resetStruct2000aa0State_809E3B2 ── */
+/* resetStruct2000aa0State_809E3B2: reset the state struct at 0x2000AA0 — clear the byte flag
  * at +0x0B and the halfword counters at +0x0C, +0x10, +0x14 and +0x18. */
-Next sub_809E3B2(void) {
+Next resetStruct2000aa0State_809E3B2(void) {
     u32 state = A_eStruct2000aa0;
 
     ST8(state + 0x0B, 0);
@@ -2010,11 +2010,11 @@ Next sub_80027B4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80027D4 ── */
-/* sub_80027D4: initialize the palette-transfer state at byte_20098A8.
+/* ── palette_InitTransferState_80027D4 ── */
+/* palette_InitTransferState_80027D4: initialize the palette-transfer state at byte_20098A8.
  * Sets the entry size to 4, the entry count to 10, and the halfword
  * transfer length to 0x2FF for the upcoming palette DMA copy. */
-Next sub_80027D4(void) {
+Next palette_InitTransferState_80027D4(void) {
     u32 state = A_ePalette20097a0_21_Size;  /* = byte_20098A8 */
 
     ST8(state + 1, 4);        /* byte_20098A9 = 4  */
@@ -2032,14 +2032,14 @@ Next sub_800286C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8002986 ── */
-/* sub_8002986(r0 = id, r5 preserved):
+/* ── lookupValueForIdInTableAt_200DCA0_8002986 ── */
+/* lookupValueForIdInTableAt_200DCA0_8002986(r0 = id, r5 preserved):
  * Search the 12-entry table rooted at byte_200DCA0. Each entry i has a
  * u16 id at table+4+i*2 and a u32 payload at table+0x1C+i*4. Returns the
  * payload of the entry whose id matches r0, or 0 if no entry matches.
  * r1/r2 are scratch in the original; they are set to the same values the
  * original leaves behind (last compared id / loop index) for exactness. */
-Next sub_8002986(void) {
+Next lookupValueForIdInTableAt_200DCA0_8002986(void) {
     u32 table = A_byte_200DCA0;
     u32 key = R0;
     u32 result = 0;
@@ -2069,12 +2069,12 @@ Next sub_8002986(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8002F3E ── */
-/* sub_8002F3E(r0 = object header, r10 = toolkit):
+/* ── obj_getSpriteFlag10AndRenderInfoHigh_8002F3E ── */
+/* obj_getSpriteFlag10AndRenderInfoHigh_8002F3E(r0 = object header, r10 = toolkit):
  *   r0 = high byte of the render info halfword at renderInfo+2
  *        (low 8 bits masked off, then shifted down),
  *   r2 = bit 4 (0x10) of the sprite's Unk_11 flag byte. */
-Next sub_8002F3E(void) {
+Next obj_getSpriteFlag10AndRenderInfoHigh_8002F3E(void) {
     u32 object = R0;
 
     /* The sprite struct for this object lives at object + (spriteOffset & 0xF0):
@@ -2092,14 +2092,14 @@ Next sub_8002F3E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8002FEC ── */
-/* sub_8002FEC(r0 = value, r5 = object):
+/* ── object_writeSubstructField30_8002FEC ── */
+/* object_writeSubstructField30_8002FEC(r0 = value, r5 = object):
  * Store `value` into a field of one of the sub-structures attached to `object`.
  * The high nibble of the byte at object+2 selects which sub-structure
  * (index * 0x10 bytes), and the value goes to its field at +0x30.
  * Returns the address written to in r3; the v flag reflects the address
  * computation (ADDS), as callers expect. */
-Next sub_8002FEC(void) {
+Next object_writeSubstructField30_8002FEC(void) {
     u32 base = R5;
     u32 offset = (LD8(base + 2) >> 4) << 4; /* high nibble -> byte offset */
     u32 target = offset + base;
@@ -2111,15 +2111,15 @@ Next sub_8002FEC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800304A ── */
-/* sub_800304A(r0 = palette bank, r5 = object base):
+/* ── sprite_setSubEntryPaletteBank_800304A ── */
+/* sprite_setSubEntryPaletteBank_800304A(r0 = palette bank, r5 = object base):
  * The high nibble of the object's byte at +2 selects one 0x10-byte
  * sub-entry within the object; store the palette bank (r0) into the high
  * nibble of that sub-entry's byte at +0x15, leaving its low nibble intact.
  * Leaves r0 = bank << 4, r1 = new byte value, r2 = 0xF0, r3 = byte address.
  * Flags: NZ from the stored value, C from the carry-out of the LSL #4,
  * V from the pointer addition. */
-Next sub_800304A(void) {
+Next sprite_setSubEntryPaletteBank_800304A(void) {
     u32 slot = LD8(R5 + 2) & 0xF0;   /* sub-entry index * 0x10 */
     u32 addr = R5 + slot;
 
@@ -2139,14 +2139,14 @@ Next sub_800304A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8003060 ── */
-/* sub_8003060(r0 = value, r5 = sprite object):
+/* ── sprite_setSubRecordFieldA_8003060 ── */
+/* sprite_setSubRecordFieldA_8003060(r0 = value, r5 = sprite object):
  * Store r0 into a field of the sprite object's 16-byte-aligned record.
  * The object holds a bank/index in bits 4-7 of its byte at +2; masking it
  * back down selects the base of the record, and the value is written to
  * that record's byte at +0xA. r3 is left pointing at the record base.
  * Flags: c/v come from the ADD that forms the record base. */
-Next sub_8003060(void) {
+Next sprite_setSubRecordFieldA_8003060(void) {
     u32 record = R5 + ((LD8(R5 + 2) >> 4) << 4);
 
     ST8(record + 0xA, R0);
@@ -2156,12 +2156,12 @@ Next sub_8003060(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800306C ── */
-/* sub_800306C(r0 = value, r5 = list base):
+/* ── slotList_storeHalfwordAndClearField_800306C ── */
+/* slotList_storeHalfwordAndClearField_800306C(r0 = value, r5 = list base):
  * The high nibble of the byte at r5+2 selects a 16-byte slot in the list.
  * Store r0 as a halfword at slot+8 and clear the 32-bit field at slot+0x24
  * (which extends into the following slot). */
-Next sub_800306C(void) {
+Next slotList_storeHalfwordAndClearField_800306C(void) {
     u32 slot = R5 + (LD8(R5 + 2) & 0xF0);
 
     ST16(slot + 8, R0);
@@ -2170,11 +2170,11 @@ Next sub_800306C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── start_8000288 ── */
-/* start_8000288: trampoline that invokes sub_3005E2C as a leaf call and
+/* ── crt0_entry_trampoline_8000288 ── */
+/* crt0_entry_trampoline_8000288: trampoline that invokes sub_3005E2C as a leaf call and
  * returns straight back to our own caller. sub_3005E2C's results in
  * r2/r3 are passed through unchanged; r4 is untouched. */
-Next start_8000288(void) {
+Next crt0_entry_trampoline_8000288(void) {
     GUEST_CALL(sub_3005E2C);
     RETURN_TO_CALLER();
 }
