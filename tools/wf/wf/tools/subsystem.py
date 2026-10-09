@@ -57,7 +57,8 @@ registers-as-arguments origin.
 REPLY_FORMAT = """
 ## Reply format (three blocks, nothing else)
 1. One ```c block: the complete file cport/src/game/{file}: a header comment saying what the
-   subsystem does, `#include "game.h"` and `#include "runtime.h"`, then the code. Define exactly
+   subsystem does (no authorship line: the commit records who wrote the file), `#include "game.h"`
+   and `#include "runtime.h"`, then the code. Define exactly
    these functions as `Next NAME(void)`: {names}. No other `Next ...(void)` definitions.
 2. One ```cfg block: difftest.cfg lines for narrowed promises, each after a `# reason` line
    (empty block if none).
@@ -129,7 +130,7 @@ class FileTest(Result):
 # ── asking ─────────────────────────────────────────────────────────────
 
 def subsystem_prompt(subsystem: str, file_name: str, contexts: tuple[ConversionContext, ...]) -> Prompt:
-    references = "\n\n".join(f"### {path.relative_to(CPORT.parent)}\n```c\n{path.read_text()}```"
+    references = "\n\n".join(f"### {path.relative_to(CPORT.parent)}\n```c\n{_without_authorship(path.read_text())}```"
                              for path in REFERENCE_FILES)
     functions = "\n\n".join(_function_section(context) for context in contexts)
     names = ", ".join(context.function for context in contexts)
@@ -138,6 +139,12 @@ def subsystem_prompt(subsystem: str, file_name: str, contexts: tuple[ConversionC
         + f"\n## Reference files (already converted, the style wanted)\n{references}\n"
         + f"\n## The subsystem to convert: {subsystem}\n{functions}\n"
         + REPLY_FORMAT.format(file=file_name, names=names))
+
+
+def _without_authorship(code: str) -> str:
+    """A reference file without its "Written by ..." line: models copied it into their own files
+    (the commit message says who wrote a file)."""
+    return re.sub(r"^ \*\s*\n \* Written by [^\n]*\n|^ \* Written by [^\n]*\n", "", code, flags=re.M)
 
 
 def repair_prompt(base: Prompt, what_failed: str, report: str, previous: FileReply | None) -> Prompt:
@@ -201,12 +208,8 @@ def parse_reply(reply: str) -> FileReply:
     if code is None:
         problems.append(ToolMessage("the reply had no ```c block"))
     cfg = tuple(CfgLine(line) for block in blocks["cfg"] for line in block.splitlines() if line.strip())
-    drafts: tuple[SymbolDraft, ...] = ()
-    if blocks["yaml"]:
-        try:
-            drafts = TypeAdapter(tuple[SymbolDraft, ...]).validate_python(_load_yaml(blocks["yaml"][0]) or [])
-        except (yaml.YAMLError, ValidationError) as error:
-            problems.append(ToolMessage(f"the ```yaml block is not a valid list of entries: {str(error)[:400]}"))
+    drafts, yaml_problems = parse_drafts(blocks["yaml"][0]) if blocks["yaml"] else ((), ())
+    problems += yaml_problems
     return FileReply(file=CandidateFile(code) if code else None, cfg_lines=cfg, drafts=drafts,
                      problems=tuple(problems), seconds=0.0)
 
@@ -223,6 +226,18 @@ def _load_yaml(text: str) -> object:
         quoted = _PLAIN_VALUE.sub(lambda match: match[1] + '"' + match[2].replace("\\", "\\\\").replace('"', '\\"') + '"',
                                   text)
         return cast(object, yaml.safe_load(quoted))
+
+
+def parse_drafts(text: str) -> tuple[tuple[SymbolDraft, ...], tuple[ToolMessage, ...]]:
+    """A yaml list of symbol entries, or why it is not one."""
+    try:
+        return TypeAdapter(tuple[SymbolDraft, ...]).validate_python(_load_yaml(text) or []), ()
+    except (yaml.YAMLError, ValidationError) as error:
+        return (), (ToolMessage(f"the ```yaml block is not a valid list of entries: {str(error)[:400]}"),)
+
+
+def yaml_blocks(reply: str) -> list[str]:
+    return _blocks(reply, "yaml")
 
 
 def _blocks(reply: str, kind: str) -> list[str]:

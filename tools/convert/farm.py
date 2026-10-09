@@ -116,7 +116,7 @@ untouched registers unchanged."""
 def find_asm(name):
     for path in glob.glob(os.path.join(ROOT, "bn6f", "asm", "*.s")):
         text = open(path).read()
-        m = re.search(rf"^{re.escape(name)}::?\s*$", text, re.M)
+        m = re.search(rf"^{re.escape(name)}::?\s*(?://.*)?$", text, re.M)   # labels may carry `// () -> u32?`
         if not m:
             continue
         end = re.search(rf"^\s*(?:thumb|arm)_func_end {re.escape(name)}\b.*$", text[m.start():], re.M)

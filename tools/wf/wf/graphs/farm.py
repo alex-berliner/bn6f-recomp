@@ -1,8 +1,9 @@
-"""Outside models convert small lifted functions (docs/PROCESS.md §4, "By
-outside models"). One `farm` run is one function and one model: the model
+"""Outside models convert small lifted functions in volume (docs/PROCESS.md
+§4). One `farm` run is one function and one model: the model
 writes readable C, the farm's acceptance test checks it against the lifted
 original on the captured calls and random inputs, failures go back to the
-model for repair. A `farm batch` run builds the host difftest once, skips
+model for repair, and an accepted function gets its symbols/db entry drafted
+by the same model. A `farm batch` run builds the host difftest once, skips
 pairs that are already finished, and runs the rest as its child runs."""
 import contextvars
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.tools.build import build_host_difftest
+from wf.tools.drafts import Draft, draft_entry
 from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, accept, already_accepted,
                              ask_model, conversion_context, first_prompt, log_round, out_of_rounds_before,
                              repair_prompt, test_candidate)
@@ -24,7 +26,7 @@ PROJECT = "recomp-farm"
 def farm_graph() -> Graph["FarmState"]:
     return farm.graph(
         first=gather_context,
-        ends=[accept_candidate, give_up],
+        ends=[draft_symbol_entry, give_up],
         transitions=[
             Transition(after=gather_context, go_to=ask_model_for_c, when=there_is_something_to_convert),
             Transition(after=gather_context, go_to=give_up, when=there_is_nothing_to_convert),
@@ -33,6 +35,7 @@ def farm_graph() -> Graph["FarmState"]:
             Transition(after=test_reply, go_to=accept_candidate, when=the_candidate_passed),
             Transition(after=test_reply, go_to=ask_model_for_c, when=it_failed_with_rounds_left),
             Transition(after=test_reply, go_to=give_up, when=it_failed_with_no_rounds_left),
+            Transition(after=accept_candidate, go_to=draft_symbol_entry),
         ],
     )
 
@@ -75,6 +78,7 @@ class FarmState(BaseModel):
     attempts: tuple[Attempt, ...] = ()
     accepted: Path | None = None
     outcome: FarmOutcome | None = None
+    draft: Draft | None = None
 
 
 farm = Workflow[FarmState](FarmState, project=PROJECT)
@@ -164,6 +168,21 @@ def accept_candidate(given: AcceptInput) -> AcceptOutput:
     candidate = given.attempts[-1].reply.candidate
     assert candidate is not None
     return AcceptOutput(accepted=accept(given.function, given.model, candidate), outcome=FarmOutcome.ACCEPTED)
+
+
+class DraftInput(Result):
+    model: ModelSpec
+    accepted: Path
+
+
+class DraftOutput(Result):
+    draft: Draft
+
+
+@farm.step
+def draft_symbol_entry(given: DraftInput) -> DraftOutput:
+    """Have the same model draft the function's symbols/db entry, beside the candidate."""
+    return DraftOutput(draft=draft_entry(given.model, given.accepted, current_run_id()))
 
 
 class GiveUpInput(Result):

@@ -4,8 +4,9 @@ run is, and regenerate the docs.
   python -m wf verify  [--function NAME]... [--snapshots DIR] [--route NAME]... [--battle-code] [--trials N]
   python -m wf capture --function NAME... [--route NAME]... [--calls N]
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] FUNCTION...
+  python -m wf drafts  --model PROVIDER/MODEL [--jobs N] [FUNCTION...]   # entries for accepted candidates
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
-                       [--candidate FILE] [--battle-code] FUNCTION...
+                       [--candidate FILE | --farm-model P/M] [--battle-code] FUNCTION...
   python -m wf record  --symbol NAME... [--rename OLD NEW]... --message-file FILE
   python -m wf waiting RUN_ID              # what a paused run needs
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
@@ -28,6 +29,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 from wf.burr_typed import Finished, Paused
 from wf.describe import write_docs
 from wf.graphs.capture import CaptureState, run_capture
+from wf.graphs.drafts import DraftsState, run_drafts
 from wf.graphs.convert import DEFAULT_MODELS, ConvertState, ReviewRequest, convert_graph, review_sheet
 from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.record import RecordState, record_graph
@@ -63,6 +65,13 @@ class FarmCommand(BaseModel):
     jobs: int
 
 
+class DraftsCommand(BaseModel):
+    command: Literal["drafts"]
+    model: ModelSpec
+    functions: tuple[FunctionName, ...]
+    jobs: int
+
+
 class ConvertCommand(BaseModel):
     command: Literal["convert"]
     subsystem: str
@@ -72,6 +81,7 @@ class ConvertCommand(BaseModel):
     rounds: int
     snapshots: SnapshotDir | None
     candidate: Path | None
+    farm_model: ModelSpec | None
     battle_code: bool
 
 
@@ -107,7 +117,7 @@ class DocsCommand(BaseModel):
     out_dir: Path
 
 
-Command = (VerifyCommand | CaptureCommand | FarmCommand | ConvertCommand | RecordCommand
+Command = (VerifyCommand | CaptureCommand | FarmCommand | DraftsCommand | ConvertCommand | RecordCommand
            | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | DocsCommand)
 
 
@@ -120,6 +130,8 @@ def main() -> None:
             start_capture(command)
         case FarmCommand():
             start_farm(command)
+        case DraftsCommand():
+            start_drafts(command)
         case ConvertCommand():
             start_convert(command)
         case RecordCommand():
@@ -160,11 +172,18 @@ def start_farm(command: FarmCommand) -> None:
     print_outcome(farm_batch_graph().start(start, run_id))
 
 
+def start_drafts(command: DraftsCommand) -> None:
+    run_id, _ = new_run("drafts")
+    start = DraftsState(model=command.model, functions=command.functions or None, jobs=command.jobs)
+    print_json(run_drafts(start, run_id))
+
+
 def start_convert(command: ConvertCommand) -> None:
     run_id, run_dir = new_run("convert")
     start = ConvertState(run_dir=run_dir, subsystem=command.subsystem, file_name=command.file,
                          functions=command.functions, models=command.models or DEFAULT_MODELS, rounds=command.rounds,
-                         snapshots=command.snapshots, candidate=command.candidate, battle_code=command.battle_code)
+                         snapshots=command.snapshots, candidate=command.candidate, farm_model=command.farm_model,
+                         battle_code=command.battle_code)
     print_outcome(convert_graph().start(start, run_id))
 
 
@@ -282,6 +301,11 @@ def parse_command() -> Command:
     farm.add_argument("--rounds", type=int, default=3)
     farm.add_argument("--jobs", type=int, default=4)
 
+    drafts = commands.add_parser("drafts", help="a farm model drafts symbol entries for its accepted candidates")
+    drafts.add_argument("functions", nargs="*")
+    drafts.add_argument("--model", required=True)
+    drafts.add_argument("--jobs", type=int, default=16)
+
     convert = commands.add_parser("convert", help="a strong model converts a subsystem; stops for review")
     convert.add_argument("functions", nargs="+")
     convert.add_argument("--subsystem", required=True, help="what the functions do together, in a few words")
@@ -290,7 +314,8 @@ def parse_command() -> Command:
                          help="escalation order (default: " + ", ".join(DEFAULT_MODELS) + ")")
     convert.add_argument("--rounds", type=int, default=3, help="attempts per model")
     convert.add_argument("--snapshots", type=Path, help="reuse captured calls instead of capturing")
-    convert.add_argument("--candidate", type=Path, help="a ready file to try first (e.g. reviewed farm candidates)")
+    convert.add_argument("--candidate", type=Path, help="a ready file to try first")
+    convert.add_argument("--farm-model", help="try the farm's accepted candidates by this model first (with their drafts)")
     convert.add_argument("--battle-code", action="store_true", help="the subsystem is battle code (battle sweep)")
 
     record = commands.add_parser("record", help="symbols/db, renames and comments into bn6f, commit")

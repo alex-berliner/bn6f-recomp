@@ -7,6 +7,7 @@ import pytest
 from wf.burr_typed import Finished
 from wf.graphs import farm
 from wf.graphs.farm import FarmBatchState, FarmOutcome, FarmState, farm_batch_graph, farm_graph
+from wf.tools.drafts import Draft
 from wf.tools.models import (AssemblyText, CandidateC, CandidateTest, Contract, ConversionContext, LiftedC,
                              ModelReply, Prompt)
 from wf.types import BuildFailure, FunctionName, GuestAddress, LogPath, ModelSpec, SnapshotDir, ToolMessage
@@ -22,6 +23,7 @@ def test_a_candidate_passing_first_time_is_accepted(monkeypatch: pytest.MonkeyPa
 
     assert state.outcome is FarmOutcome.ACCEPTED
     assert len(state.attempts) == 1
+    assert state.draft is not None and state.draft.path == tmp_path / f"{FUNCTION}.yaml"
 
 
 def test_a_failure_goes_back_to_the_model_with_the_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -148,10 +150,14 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
                   test: CandidateTest | None) -> None:
         return None
 
+    def draft_entry(model: ModelSpec, candidate: Path, tag: str) -> Draft:
+        return Draft(function=FUNCTION, path=candidate.with_suffix(".yaml"), problem=None, seconds=1.0)
+
     fakes: dict[str, object] = {
         "conversion_context": conversion_context, "ask_model": ask_model, "first_prompt": first_prompt,
         "repair_prompt": repair_prompt, "test_candidate": test_candidate, "accept": accept,
         "already_accepted": nothing_before, "out_of_rounds_before": not_out_of_rounds, "log_round": log_round,
+        "draft_entry": draft_entry,
     }
     for name, fake in fakes.items():
         monkeypatch.setattr(farm, name, fake)

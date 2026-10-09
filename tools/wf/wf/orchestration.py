@@ -104,7 +104,7 @@ ORCHESTRATOR: tuple[OrchestratorAction, ...] = (
         "A capture run for the chosen functions, then a farm batch over its snapshot directory.",
         ("python -m wf capture --function NAME... [--calls N]",
          "python -m wf farm --model PROVIDER/MODEL... --snapshots DIR FUNCTION..."),
-        "docs/PROCESS.md §4 (by outside models)"),
+        "docs/PROCESS.md §4"),
     OrchestratorAction(
         "review_subsystem", "Review a converted\nsubsystem", ActionKind.ANSWERS_PAUSE,
         "Claude answers the convert workflow's review pause point. A convert run stops there once a strong outside "
@@ -117,20 +117,20 @@ ORCHESTRATOR: tuple[OrchestratorAction, ...] = (
         "The review sheet (a ReviewRequest), printed by `wf waiting RUN_ID`.",
         "A Review: approve, request changes or reject, with comments and the attribution lines for the commits.",
         ("python -m wf waiting RUN_ID", "python -m wf answer RUN_ID review.json"),
-        "tools/wf/wf/graphs/convert.py; the review checklist in docs/PROCESS.md §4"),
+        "tools/wf/wf/graphs/convert.py (REVIEW_CHECKLIST is printed on the review sheet)"),
     OrchestratorAction(
-        "review_farm", "Review farm\ncandidates", ActionKind.BY_HAND,
-        "Farm runs leave passing versions of single functions in tools/convert/accepted/ without committing them. "
-        "Claude picks the clearest version of each function and checks it by hand: no LR writes before calls, "
-        "table dispatch enters each handler with the registers the original sets, a second entry point takes its "
-        "sibling's stack frame, signed loads use LDS16, struct offsets use enums, and the captured calls covered "
-        "every code path (a snapshot mutator in difftest_gen.c reaches the rest). The reviewed functions then go "
-        "through a convert run with --candidate, which tests, verifies, stops for review, commits and records "
-        "them. This review is not yet a pause point in any workflow.",
-        "The accepted farm candidates in tools/convert/accepted/.",
-        "A convert run whose first candidate is the reviewed file, reusing the farm's captured calls.",
-        ("python -m wf convert --candidate FILE --snapshots DIR --subsystem WHAT --file NAME.c FUNCTION...",),
-        "docs/PROCESS.md §4 step 3; docs/PROCESS_TO_WORKFLOWS.md lists it as not yet in a workflow"),
+        "integrate_farm", "Integrate farm\ncandidates", ActionKind.JUDGEMENT,
+        "Farm runs leave passing versions of single functions in tools/convert/accepted/, each with a drafted "
+        "symbols/db entry, without committing them. Claude groups them (by bn6f source file, until their "
+        "subsystems are converted) and starts a convert run per group with --farm-model: the group becomes one "
+        "file that gets the quick test, the full verify and the same review pause as a model-written subsystem, "
+        "then is committed and recorded. A failed group goes to the strong models for repair.",
+        "The accepted farm candidates and their drafts in tools/convert/accepted/, and a snapshot directory with "
+        "their captured calls.",
+        "A convert run per group, its first candidate built from the farm's accepted files.",
+        ("python -m wf convert --farm-model PROVIDER/MODEL --snapshots DIR --subsystem WHAT --file NAME.c "
+         "FUNCTION...",),
+        "docs/PROCESS.md §4"),
     OrchestratorAction(
         "verify_tree", "Verify the tree\nand triage", ActionKind.JUDGEMENT,
         "Claude runs the verify workflow on the main checkout after changes made outside a convert run (hand "
@@ -203,10 +203,13 @@ STARTS: tuple[Start, ...] = (
     Start("pick_leaves", "farm-batch", "wf farm",
           "Claude starts a farm batch over the chosen leaf functions and their captured calls: one farm run per "
           "function and model."),
-    Start("review_farm", "convert", "wf convert --candidate",
-          "Claude sends reviewed farm output through a convert run as its first candidate file, reusing the farm's "
-          "captured calls. It then gets the same verify, review, commit and symbol recording as a model-written "
-          "file."),
+    Start("pick_leaves", "drafts", "wf drafts",
+          "Claude starts a drafts run when accepted farm candidates have no symbols/db entry yet (farm runs draft "
+          "one for each function they accept)."),
+    Start("integrate_farm", "convert", "wf convert --farm-model",
+          "Claude sends a group of accepted farm candidates through a convert run as its first candidate file, "
+          "reusing their captured calls. The group then gets the same verify, review, commit and symbol recording "
+          "as a model-written file."),
     Start("verify_tree", "verify", "wf verify", "Claude starts a verify run on the main checkout."),
     Start("record_other", "record", "wf record", "Claude starts a record run for the symbols/db entries it wrote."),
 )
@@ -215,8 +218,10 @@ HANDBACKS: tuple[Handback, ...] = (
     Handback("capture", "pick_leaves", "snapshots\nfor wf farm",
              "A finished capture run hands back a CaptureReport: the snapshot directory with the original game's "
              "calls, and which functions no route called. `wf farm --snapshots` takes that directory."),
-    Handback("farm", "review_farm", "accepted\ncandidates",
-             "A farm run whose candidate passed leaves it in tools/convert/accepted/ for Claude's review."),
+    Handback("farm", "integrate_farm", "accepted\ncandidates",
+             "A farm run whose candidate passed leaves it, with its drafted entry, in tools/convert/accepted/."),
+    Handback("drafts", "integrate_farm", "entries",
+             "A drafts run hands back how many entries it wrote, and the candidates that got none."),
     Handback("farm-batch", "cost", "tallies\nper model",
              "A finished farm batch hands back how many functions each model converted."),
     Handback("verify", "verify_tree", "VerifyReport",
@@ -238,8 +243,8 @@ COMMAND_FOR_WORKFLOW = {"farm-batch": "farm"}   # `wf farm` starts a farm-batch 
 # Left to right on the map, in the order work goes through the process: leaf functions are captured and
 # farmed, farm output and subsystems are converted, conversions are verified, and findings are recorded.
 # Claude's actions sit in the same order, each above the workflow it works with; watching runs applies to all.
-WORKFLOW_ORDER = ("capture", "farm-batch", "farm", "convert", "verify", "record")
-ACTION_ORDER = ("recordings", "pick_leaves", "cost", "review_farm", "pick_subsystem", "review_subsystem",
+WORKFLOW_ORDER = ("capture", "farm-batch", "farm", "drafts", "convert", "verify", "record")
+ACTION_ORDER = ("recordings", "pick_leaves", "cost", "integrate_farm", "pick_subsystem", "review_subsystem",
                 "verify_tree", "sweeps", "record_other", "watch")
 CLAUDE_LANE = ("Orchestrator: Claude",
                "Claude chooses the work, starts runs, answers their pause points, and does what no workflow does "
@@ -275,12 +280,17 @@ WORKFLOW_SUMMARIES: dict[str, str] = {
         "One cheap outside model tries to convert one lifted bn6f function into readable C. The model sees the "
         "function's assembly, lifted C and register contract. Its reply is tested against the lifted original on "
         "the captured calls and on random inputs; a failure goes back to the same model with the test output, "
-        "for up to 3 rounds by default. A passing version is saved in tools/convert/accepted/ for Claude's "
-        "review. Nothing is committed.",
+        "for up to 3 rounds by default. A passing version is saved in tools/convert/accepted/, and the same "
+        "model drafts its symbols/db entry beside it. Nothing is committed.",
     "farm-batch":
         "Runs the farm over many functions and models at once; `wf farm` starts it. It builds the host difftest "
         "once from the current sources, starts one farm run per function and model in parallel, skips pairs "
         "that passed or ran out of rounds in an earlier batch, and counts how many functions each model converted.",
+    "drafts":
+        "Catches up on documentation for small functions: for every accepted farm candidate of a model that has "
+        "no drafted symbols/db entry, the same cheap model reads the function's assembly, register contract and "
+        "verified C and drafts the entry (name, status, summary, interface, details, open questions) beside the "
+        "candidate. The convert workflow takes these drafts into review and the symbol database.",
     "convert":
         "Turns a subsystem (a group of lifted bn6f functions that call each other) into one new readable C file "
         "under cport/src/game. Strong outside models write the file; Claude reviews it. The run captures the "
@@ -331,17 +341,26 @@ STEP_SUMMARIES: dict[tuple[str, str], str] = {
         "Every verify run ends by summing up the build, the difftests, the CPU oracle, each route and the battle "
         "sweep into a VerifyReport. Its verdict is one of: passed; passed, but some functions were never "
         "compared; the CPU oracle saw differences; failed; or build failed.",
-    ("capture", "choose_route"):
-        "A capture run picks, from the recorded gameplay routes, the one whose coverage profile "
-        "(tools/traces/coverage) executes the most of the functions it was asked to capture. If no route "
-        "executes any of them, the run ends with nothing captured.",
-    ("capture", "capture_calls_on_route"):
-        "A capture run replays its chosen route on the original game in mGBA (tools/convert/capture.sh) and "
-        "saves the CPU and memory state at the first calls of each requested function (40 by default) into the "
-        "run's snapshot directory.",
+    ("capture", "assign_routes"):
+        "A capture run gives each function it was asked to capture a recorded gameplay route whose coverage "
+        "profile (tools/traces/coverage) executes it, using as few routes as possible: it repeatedly takes the "
+        "route that runs the most functions still unassigned. If no route executes any of them, the run ends "
+        "with nothing captured.",
+    ("capture", "capture_calls_on_routes"):
+        "A capture run replays each assigned route on the original game in mGBA (tools/convert/capture.sh), all "
+        "routes in parallel, and saves the CPU and memory state at the first calls of each function assigned to "
+        "the route (40 by default) into the run's snapshot directory.",
     ("capture", "write_report"):
-        "Every capture run ends with a CaptureReport: where the snapshot directory is, how many calls were saved "
-        "for each function, and which functions the route never called.",
+        "Every capture run ends with a CaptureReport: where the snapshot directory is, which route each function "
+        "was captured on, how many calls were saved for each, and which functions no route called.",
+    ("drafts", "find_undrafted_candidates"):
+        "A drafts run lists the model's accepted farm candidates in tools/convert/accepted/ that have no drafted "
+        "symbols/db entry beside them (of the functions it was given, or all).",
+    ("drafts", "draft_each_candidate"):
+        "A drafts run asks the model for each candidate's entry, several at a time (16 by default), and saves "
+        "each as NAME.MODEL.yaml beside the candidate. An unusable reply is asked for once more.",
+    ("drafts", "summarise_drafts"):
+        "A drafts run ends with how many entries it wrote and which candidates got none, with the reason.",
     ("farm", "gather_context"):
         "A farm run (one lifted bn6f function, one outside model) starts by collecting what the model needs: "
         "the function's assembly from bn6f, its lifted C, its register contract from difftest.cfg, and its "
@@ -357,6 +376,9 @@ STEP_SUMMARIES: dict[tuple[str, str], str] = {
     ("farm", "accept_candidate"):
         "When the model's C passes, the farm run saves it in tools/convert/accepted/ for Claude's review. "
         "Nothing is installed or committed.",
+    ("farm", "draft_symbol_entry"):
+        "After saving a passing version, the farm run asks the same model to draft the function's symbols/db "
+        "entry (name in game terms, status, summary, interface, details) and saves it beside the candidate.",
     ("farm", "give_up"):
         "A farm run that produced no passing version records why: there was nothing to convert, the model's "
         "provider failed, or every round failed its test.",

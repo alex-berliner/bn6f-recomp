@@ -66,6 +66,17 @@ def test_labels_entered_mid_function_are_written_but_only_the_functions_verified
     assert world.verified == [(FUNCTION,)]
 
 
+def test_farm_candidates_go_first_and_are_credited_to_their_model(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[False, True], verdicts=[Verdict.PASSED])
+    farm_model = ModelSpec("hyper/cheap")
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm", farm_model=farm_model)
+
+    assert isinstance(paused, Paused) and isinstance(paused.request, ReviewRequest)
+    assert [attempt.model for attempt in paused.request.attempts] == [farm_model, STRONG]
+    assert world.asked == [STRONG]  # the farm's file was not one of the strong model's attempts
+
+
 def test_a_failed_quick_test_goes_back_to_the_same_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     world = World(quick_tests=[False, True], verdicts=[Verdict.PASSED])
     paused = start(world, monkeypatch, tmp_path, run_id="convert-2")
@@ -150,14 +161,15 @@ def test_no_model_is_asked_when_a_function_has_no_captured_calls(
 # ── the fakes ──────────────────────────────────────────────────────────
 
 def start(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_id: str, rounds: int = 3,
-          candidate: Path | None = None, with_calls: bool = True) -> Finished[ConvertState] | Paused:
+          candidate: Path | None = None, with_calls: bool = True,
+          farm_model: ModelSpec | None = None) -> Finished[ConvertState] | Paused:
     install(world, monkeypatch, tmp_path)
     if with_calls:
         (tmp_path / "snaps" / FUNCTION).mkdir(parents=True, exist_ok=True)
         _ = (tmp_path / "snaps" / FUNCTION / "snap_wander_0.bin").write_bytes(b"")
     state = ConvertState(run_dir=tmp_path, subsystem="BG map redraw", file_name="bg_redraw.c", functions=(FUNCTION,),
                          models=(STRONG, STRONGER), rounds=rounds, snapshots=SnapshotDir(tmp_path / "snaps"),
-                         candidate=candidate)
+                         candidate=candidate, farm_model=farm_model)
     return convert_graph().start(state, run_id=run_id)
 
 
@@ -199,6 +211,11 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         world.prompts.append(prompt)
         return FileReply(file=CandidateFile("Next sub_8030808(void) { RETURN_TO_CALLER(); }"), cfg_lines=(),
                          drafts=(DRAFT,), problems=(), seconds=1.0)
+
+    def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, subsystem: str,
+                            file_name: str) -> FileReply:
+        return FileReply(file=CandidateFile("Next sub_8030808(void) { RETURN_TO_CALLER(); }"), cfg_lines=(),
+                         drafts=(DRAFT,), problems=(), seconds=0.0)
 
     def candidate_from_file(path: Path) -> FileReply:
         return FileReply(file=CandidateFile(path.read_text()), cfg_lines=(), drafts=(DRAFT,), problems=(), seconds=0.0)
@@ -244,6 +261,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         "run_capture": run_capture, "build_host_difftest": build_host_difftest, "game_file": game_file,
         "conversion_context": conversion_context, "other_entries": other_entries, "subsystem_prompt": subsystem_prompt,
         "ask_model_for_file": ask_model_for_file, "candidate_from_file": candidate_from_file,
+        "candidate_from_farm": candidate_from_farm,
         "test_candidate_file": test_candidate_file, "install_file": install_file, "uninstall_file": uninstall_file,
         "run_verify_in_full": run_verify_in_full, "commit_files": commit_files, "write_entries": write_entries,
         "run_record": run_record, "tokens_for": tokens_for,

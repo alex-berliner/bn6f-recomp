@@ -30,12 +30,12 @@ tag=$(basename "$TRACE" .trace)
 for f in "$RAW"/snaps/snap_*.bin; do
   [ -e "$f" ] || continue
   case "$f" in *.exit.bin) continue ;; esac
-  b=$(basename "$f" .bin); id=${b#snap_}; addr=${id%_*}; n=${id#*_}
+  b=${f##*/}; b=${b%.bin}; id=${b#snap_}; addr=${id%_*}; n=${id#*_}   # no forks: tens of thousands of files
   fn=${NAME[$addr]:-}
   [ -n "$fn" ] || continue
   # without KEEP_INTERRUPTED only calls with an exit are kept (mgba_run removed the rest)
   [ -e "$RAW/snaps/$b.exit.bin" ] || [ -n "${KEEP_INTERRUPTED:-}" ] || continue
-  mkdir -p "$OUT/$fn"
+  [ -d "$OUT/$fn" ] || mkdir -p "$OUT/$fn"
   mv "$f" "$OUT/$fn/snap_${tag}_$n.bin"
   if [ -e "$RAW/snaps/$b.exit.bin" ]; then mv "$RAW/snaps/$b.exit.bin" "$OUT/$fn/snap_${tag}_$n.exit.bin"; fi
 done

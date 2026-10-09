@@ -18,6 +18,7 @@ from wf.graphs.record import RecordReport, RecordState, run_record
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify_in_full
 from wf.routes import ALL_ROUTES
 from wf.tools.build import build_host_difftest
+from wf.tools.drafts import candidate_from_farm
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
 from wf.tools.git import commit_files
 from wf.tools.install import DIFFTEST_CFG, game_file, install_file, uninstall_file
@@ -74,7 +75,8 @@ class Review(Result):
 
 class Attempt(Result):
     number: int
-    model: ModelSpec
+    model: ModelSpec          # who wrote the file
+    given: bool = False       # a ready file (--candidate, --farm-model): not one of the models' attempts
     reply: FileReply
     tokens: TokenUse | None = None
     test: FileTest | None = None
@@ -102,7 +104,8 @@ class ConvertState(BaseModel):
     routes: tuple[Route, ...] = ALL_ROUTES
     battle_code: bool = False
     snapshots: SnapshotDir | None = None             # reuse a capture instead of capturing
-    candidate: Path | None = None                    # a ready file (e.g. reviewed farm candidates) tried first
+    candidate: Path | None = None                    # a ready file tried first
+    farm_model: ModelSpec | None = None              # or: the farm's accepted candidates by this model, tried first
     capture: CaptureReport | NotRun | None = None
     contexts: tuple[ConversionContext, ...] | NotRun | None = None
     difftest: Path | BuildFailure | None = None
@@ -185,6 +188,7 @@ class AskInput(Result):
     models: tuple[ModelSpec, ...]
     rounds: int
     candidate: Path | None
+    farm_model: ModelSpec | None
     attempts: tuple[Attempt, ...]
 
 
@@ -197,8 +201,12 @@ def ask_model_for_file_step(given: AskInput) -> AskOutput:
     """Ask the next model for the whole file; after a failure or review, show it what went wrong."""
     number = len(given.attempts) + 1
     if not given.attempts and given.candidate is not None:
-        attempt = Attempt(number=number, model=GIVEN_CANDIDATE, reply=candidate_from_file(given.candidate))
+        attempt = Attempt(number=number, model=GIVEN_CANDIDATE, given=True, reply=candidate_from_file(given.candidate))
         return AskOutput(attempts=(attempt,))
+    if not given.attempts and given.farm_model is not None:
+        functions = tuple(context.function for context in given.contexts)
+        reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name)
+        return AskOutput(attempts=(Attempt(number=number, model=given.farm_model, given=True, reply=reply),))
     model = given.models[min(_model_attempts(given.attempts) // given.rounds, len(given.models) - 1)]
     prompt = subsystem_prompt(given.subsystem, given.file_name, given.contexts)
     if given.attempts:
@@ -396,7 +404,7 @@ def _has_calls(snapshots: SnapshotDir, function: FunctionName) -> bool:
 
 
 def _model_attempts(attempts: tuple[Attempt, ...]) -> int:
-    return sum(1 for attempt in attempts if attempt.model != GIVEN_CANDIDATE)
+    return sum(1 for attempt in attempts if not attempt.given)
 
 
 def _what_went_wrong(attempt: Attempt) -> tuple[str, str]:
@@ -481,6 +489,19 @@ def rejected_or_no_attempts_left(state: ConvertState) -> bool:
 
 # ── what the orchestrator reads at review ──────────────────────────────
 
+REVIEW_CHECKLIST = (
+    "struct offsets come from enums taken from bn6f include/structs (no `#ifndef` fallbacks)",
+    "`ldrsh`/`ldrsb` loads use LDS16/LDS8 (a misaligned ldrsh is a sign-extended byte load)",
+    "no `LR = ...` before a GUEST_CALL unless the original returns there (GUEST_CALL keeps LR)",
+    "table dispatch enters each handler with the registers the original sets",
+    "a second entry reached from a sibling takes the sibling's frame",
+    "flags the contract lists as outputs are left as the original leaves them",
+    "each narrowed promise (difftest.cfg) holds for every caller, not just one",
+    "paths the captured calls never ran are named (a difftest_gen.c mutator can reach them)",
+    "typed functions use no registers; every `register form` reason really rules C out",
+)
+
+
 def review_sheet(request: ReviewRequest) -> str:
     """The review request as a short text: history, then the latest file and everything about it."""
     latest = request.attempts[-1]
@@ -508,6 +529,7 @@ def review_sheet(request: ReviewRequest) -> str:
     for draft in latest.reply.drafts:
         lines += [f"- {draft.function} -> {draft.proposed_name} ({draft.status.value}): {draft.summary}",
                   f"  interface: {draft.interface}"]
+    lines += ["", "## Check while reading", *(f"- {item}" for item in REVIEW_CHECKLIST)]
     lines += ["", "## The file", "```c", latest.reply.file or "", "```",
               "", "Answer with `python -m wf answer RUN REVIEW.json`: "
               '{"decision": "approve" | "request changes" | "reject", "comments": "...", "attribution": "..."}']

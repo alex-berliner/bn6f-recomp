@@ -6,7 +6,7 @@ and Z.ai go through the local pacing proxies).
   tools/llm.py PROVIDER/MODEL < prompt.txt > reply.txt
   import llm; llm.complete("opencode/kimi-k3", prompt, system=...)
 """
-import json, os, sys, time, urllib.error, urllib.request
+import json, os, re, sys, time, urllib.error, urllib.request
 
 PI = os.path.expanduser("~/.pi/agent")
 
@@ -15,6 +15,15 @@ def _providers():
     models = json.load(open(os.path.join(PI, "models.json")))["providers"]
     auth = json.load(open(os.path.join(PI, "auth.json")))
     return models, auth
+
+
+def _limit_lifts_in(message: str):
+    """Seconds until a rate limit lifts, when the provider says ("try again in 1h2m3s"), else None."""
+    m = re.search(r"try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s)?)", message)
+    if not m or not m.group(1):
+        return None
+    parts = dict((unit, float(n)) for n, unit in re.findall(r"(\d+(?:\.\d+)?)([hms])", m.group(1)))
+    return int(parts.get("h", 0) * 3600 + parts.get("m", 0) * 60 + parts.get("s", 0))
 
 
 def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, timeout: int = 900,
@@ -39,7 +48,9 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
         body = {"model": model, "max_tokens": max_tokens, "messages": msgs}
         headers = {"Authorization": f"Bearer {key}", "content-type": "application/json"}
     data = json.dumps(body).encode()
-    for attempt in range(retries + 1):
+    waits = 0
+    attempt = 0
+    while True:
         try:
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -47,12 +58,21 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
             break
         except urllib.error.HTTPError as e:
             msg = e.read().decode(errors="replace")[:300]
+            # a rate limit that says when it lifts (Hyper's hourly limit: "try again in 42m12s"):
+            # wait for it, without counting a retry (at most 3 such waits per call)
+            wait = _limit_lifts_in(msg) if e.code == 429 else None
+            if wait is not None and waits < 3 and wait <= 3900:
+                waits += 1
+                time.sleep(wait + 10)
+                t0 = time.time()   # the logged seconds are the call's, not the wait's
+                continue
             if attempt == retries or e.code not in (429, 500, 502, 503, 504):
                 raise RuntimeError(f"{spec}: HTTP {e.code}: {msg}") from None
         except (urllib.error.URLError, TimeoutError) as e:
             if attempt == retries:
                 raise RuntimeError(f"{spec}: {e}") from None
         time.sleep(5 * (attempt + 1))
+        attempt += 1
     log = usage_log or os.environ.get("LLM_USAGE_LOG", "")
     if log:
         u = reply.get("usage") or {}
