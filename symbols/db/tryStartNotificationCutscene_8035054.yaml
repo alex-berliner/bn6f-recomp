@@ -2,19 +2,21 @@ name: tryStartNotificationCutscene_8035054
 address: '0x08035054'
 kind: function
 status: confirmed
-summary: Checks that the player has normal control and no cutscene is active, then starts the one-time "notification"
-  cutscene (guarded by event flag 0x171A); returns 0 if it started, 1 otherwise.
+summary: Checks that the player has normal control and no cutscene is active, then starts the "notification" cutscene
+  (the comm-error text) if event flag 0x171A requests it; returns 0 if it started, 1 otherwise.
 interface: int tryStartNotificationCutscene(void); // returns 0 = cutscene started, 1 = blocked; preserves r2,r4-r7;
   reads GameState via toolkit in r10
-details: "Gate function for the one-time notification cutscene (CutsceneScriptNotification_809AE68).\nThe cutscene\
-  \ is only allowed to start when all of the following hold:\n  1. IsNotSlipRunningAndNotInCutscene returns nonzero\
-  \ (Slip/Beast mode overlay not running AND no cutscene already active),\n  2. the byte at GameState+oGameState_Unk_12\
-  \ is not 0xFF (unknown state byte; 0xFF blocks the notification),\n  3. event flag EVENT_171A is not yet set.\n\
-  If all conditions pass, it calls StartCutscene(script=CutsceneScriptNotification_809AE68, param=r1) and\npresumably\
-  \ the script itself (or the cutscene system) sets EVENT_171A, making this fire only once per save.\nQuirk: the\
-  \ cutscene's u32 parameter is whatever r1 TestEventFlagFromImmediate left behind (0x1A, the low\nhalf of the flag\
-  \ id) — effectively an accident of register reuse rather than a meaningful parameter.\nThe r2/r4-r7 \"inputs/outputs\"\
-  \ in the contract are just preservation across the call chain; the function\nitself takes no meaningful arguments.\n"
+details: "Gate function for the notification cutscene (CutsceneScriptNotification_809AE68, which fades the screen,\
+  \ respawns the map's NPCs and shows TextScriptCommError873B9E0).\nThe cutscene starts only when all of the following\
+  \ hold:\n  1. IsNotSlipRunningAndNotInCutscene returns nonzero (Slip/Beast mode overlay not running AND no cutscene\
+  \ already active),\n  2. the byte at GameState+oGameState_Unk_12 is not 0xFF (unknown state byte; 0xFF blocks\
+  \ it),\n  3. event flag EVENT_171A is SET (beq after TestEventFlagFromImmediate skips when Z is set, i.e. when\
+  \ the flag is clear). Text scripts set EVENT_171A (ts_flag_set in CompText876A5B4, CompText8772974, CompText8781048),\
+  \ so the flag is a request for the notification.\n(An earlier version of this entry said 'not yet set'; that was\
+  \ wrong.)\nIf all pass, it calls StartCutscene(script=CutsceneScriptNotification_809AE68, param=r1).\nQuirk: the\
+  \ cutscene's u32 parameter is whatever r1 TestEventFlagFromImmediate left behind (the flag's bit mask), an accident\
+  \ of register reuse rather than a meaningful parameter.\nThe r2/r4-r7 \"inputs/outputs\" in the contract are just\
+  \ preservation across the call chain; the function itself takes no meaningful arguments.\n"
 evidence:
 - method: readable-c
   date: '2026-10-09'
@@ -51,6 +53,41 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
   reproduce: grep -l '^08035054 ' tools/traces/coverage/*.prof
+- method: lockstep
+  date: '2026-10-09'
+  detail: 'The readable version decided on r0 after TestEventFlag(FromImmediate), but that call answers through
+    the Z flag (tst r0, r1) and leaves r0 = the flag''s whole byte, nonzero whenever any of the 8 flags sharing
+    it is set. With a neighbouring flag set and this one clear, the readable version took the ''set'' path. Fixed
+    to test the Z flag (cpu.nz), as the original''s beq/bne does. Found by the story4 recording (Cyber Academy,
+    the classroom fire): the port''s palette went dark at game frame 32905 (story5: frame 1120) because the port
+    started CutsceneScriptNotification_809AE68, whose screen fades the original never ran. Bisected over the 107
+    converted functions executed in frames 32880-32906: switching tryStartNotificationCutscene_8035054 alone back
+    to its lifted original made the frames identical. The other three entries were found by sweeping cport/src/game
+    for any readable code that tests r0 after a call documented as returning in Z. Why verification passed it: the
+    random-input difftest is out of domain for it (the event flags are reached through r10), and no captured call
+    or oracle state had a neighbouring flag set with this flag clear.'
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  - 'bn6f/asm/asm03_0.s (TestEventFlag: r0 = byte, Z = !(byte & mask))'
+  - tools/traces/story4.trace
+  - tools/traces/story5.trace
+  - tools/bisect_readable.py
+  reproduce: 'tools/check_recording.sh story4 ROM   # before the fix (b221f0d): lockstep FAIL, first difference
+    at game=32920
+
+    tools/check_recording.sh story5 ROM   # before the fix: first difference at game=1120
+
+    tools/wf/.venv/bin/python tools/bisect_readable.py story5 1120 --rev b221f0d
+
+    # -> 109 candidates (readable functions run in game frames 1090-1121), 8 builds, culprit:
+
+    #    tryStartNotificationCutscene_8035054 (the first bisect, on story4 at 32905, found the same)
+
+    grep -n -A2 ''GUEST_CALL(TestEventFlag'' cport/src/game/*.c   # the sweep for the same mistake
+
+    '
+  result: 'before: story4 and story5 diverged (palette from game frame 32905 / 1120); after the fix (recomp 67673ff):
+    every route identical, including story4 and story5'
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_13.c
@@ -64,6 +101,14 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f 7e065978
   tool: tools/symdoc.py
+- date: '2026-10-09'
+  what: 'fix the readable version: test the Z flag after TestEventFlag, not r0 (leaves_farm_13.c)'
+  where: recomp 67673ff
+  tool: by hand (Claude), after a bisect of the story4 divergence
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ffb7f717
+  tool: tools/symdoc.py
 readable_c: cport/src/game/leaves_farm_13.c
 coverage:
 - battle
@@ -76,6 +121,11 @@ coverage:
 - story1
 - story2
 - story3
+- story4
+- story5
+- story6
+- story7
+- story8
 - wander
 related:
 - renderTextGfx_8045F8C
@@ -91,6 +141,7 @@ related:
 open_questions:
 - what GameState+oGameState_Unk_12 normally holds and which game state makes it 0xFF
 - whether EVENT_171A is set by the notification cutscene script itself or elsewhere
+- Who clears EVENT_171A after the notification has played (the cutscene script or a native call)?
 sources:
 - tools/wf run convert-20261009-024946
 previous_names:
