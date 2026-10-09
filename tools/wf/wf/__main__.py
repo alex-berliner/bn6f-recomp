@@ -7,7 +7,7 @@ run is, and regenerate the docs.
   python -m wf drafts  --model PROVIDER/MODEL [--jobs N] [FUNCTION...]   # entries for accepted candidates
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
                        [--candidate FILE | --farm-model P/M] [--defer-record] [--battle-code] FUNCTION...
-  python -m wf record  --symbol NAME... [--rename OLD NEW]... --message-file FILE
+  python -m wf record  [--symbol NAME]... [--rename OLD NEW]... [--pending] --message-file FILE
   python -m wf waiting RUN_ID              # what a paused run needs
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
   python -m wf retry   RUN_ID              # carry on a failed or interrupted run from where it stopped
@@ -30,7 +30,7 @@ from wf.burr_typed import Finished, Paused
 from wf.describe import write_docs
 from wf.graphs.capture import CaptureState, run_capture
 from wf.graphs.drafts import DraftsState, run_drafts
-from wf.graphs.convert import DEFAULT_MODELS, ConvertState, ReviewRequest, convert_graph, review_sheet
+from wf.graphs.convert import DEFAULT_MODELS, PENDING_RENAMES, ConvertState, ReviewRequest, convert_graph, review_sheet
 from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, run_verify
@@ -90,6 +90,7 @@ class RecordCommand(BaseModel):
     command: Literal["record"]
     symbols: tuple[SymbolName, ...] = Field(alias="symbol")
     renames: tuple[tuple[SymbolName, SymbolName], ...] = Field(alias="rename")
+    pending: bool
     message_file: Path
 
 
@@ -190,9 +191,14 @@ def start_convert(command: ConvertCommand) -> None:
 
 def start_record(command: RecordCommand) -> None:
     run_id, run_dir = new_run("record")
-    start = RecordState(run_dir=run_dir, symbols=command.symbols,
-                        renames=tuple(Rename(old=old, new=new) for old, new in command.renames),
-                        commit_message=command.message_file.read_text())
+    pairs = list(command.renames)
+    if command.pending:   # the renames parallel convert runs deferred (they keep their entries' names until now)
+        pairs += [(SymbolName(old), SymbolName(new)) for old, new in
+                  (line.split() for line in PENDING_RENAMES.read_text().splitlines() if line.strip())]
+    start = RecordState(run_dir=run_dir, symbols=(*command.symbols, *(old for old, _ in pairs[len(command.renames):])),
+                        renames=tuple(Rename(old=old, new=new) for old, new in pairs),
+                        commit_message=command.message_file.read_text(),
+                        pending_renames=PENDING_RENAMES if command.pending else None)
     print_outcome(record_graph().start(start, run_id))
 
 
@@ -328,6 +334,8 @@ def parse_command() -> Command:
     record = commands.add_parser("record", help="symbols/db, renames and comments into bn6f, commit")
     record.add_argument("--symbol", action="append", default=[])
     record.add_argument("--rename", action="append", nargs=2, default=[], metavar=("OLD", "NEW"))
+    record.add_argument("--pending", action="store_true",
+                        help="also make the renames convert runs deferred (symbols/pending_renames.txt), emptying it")
     record.add_argument("--message-file", type=Path, required=True)
 
     waiting = commands.add_parser("waiting", help="what a paused run needs")

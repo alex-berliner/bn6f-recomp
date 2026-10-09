@@ -64,13 +64,22 @@ def test_a_port_broken_by_renames_is_not_committed(monkeypatch: pytest.MonkeyPat
     assert "commit" not in database.called
 
 
+def test_deferred_renames_are_emptied_in_the_commit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    database = FakeDatabase()
+    pending = tmp_path / "pending_renames.txt"
+    _ = pending.write_text(f"{KNOWN} {NEW_NAME}\n")
+    report = record_with(database, monkeypatch, tmp_path, renames=(Rename(old=KNOWN, new=NEW_NAME),), pending=pending)
+
+    assert report.verdict is RecordVerdict.RECORDED and pending.read_text() == ""
+
+
 # ── helpers ────────────────────────────────────────────────────────────
 
 def record_with(database: FakeDatabase, monkeypatch: pytest.MonkeyPatch, run_dir: Path,
-                renames: tuple[Rename, ...]) -> RecordReport:
+                renames: tuple[Rename, ...], pending: Path | None = None) -> RecordReport:
     install(database, monkeypatch, run_dir)
     start = RecordState(run_dir=run_dir, symbols=(KNOWN,), renames=renames,
-                        commit_message="Document knownSymbol")
+                        commit_message="Document knownSymbol", pending_renames=pending)
     outcome = record_graph().start(start, run_id="record", tracked=False)
     assert isinstance(outcome, Finished) and outcome.state.report is not None
     return outcome.state.report

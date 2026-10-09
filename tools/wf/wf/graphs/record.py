@@ -80,6 +80,7 @@ class RecordState(BaseModel):
     commit_message: str                      # in full, attribution lines included
     problems: tuple[ToolMessage, ...] = ()
     changed_before: tuple[Path, ...] = ()    # uncommitted already when the run began: not this run's to commit
+    pending_renames: Path | None = None      # the deferred renames this run makes: emptied in its commit
     renamed_in_bn6f: CommitHash | None = None
     comments_in_bn6f: CommitHash | None = None
     verification: VerifyReport | None = None
@@ -203,6 +204,7 @@ def reverify_port(given: ReverifyInput) -> ReverifyOutput:
 class CommitInput(Result):
     commit_message: str
     changed_before: tuple[Path, ...]
+    pending_renames: Path | None
 
 
 class CommitOutput(Result):
@@ -211,7 +213,10 @@ class CommitOutput(Result):
 
 @workflow.step
 def commit_records(given: CommitInput) -> CommitOutput:
-    """Commit the database, the bn6f submodule pointer and the renamed port code locally."""
+    """Commit the database, the bn6f submodule pointer and the renamed port code locally (and the emptied
+    list of deferred renames, when that is where this run's renames came from)."""
+    if given.pending_renames is not None:
+        _ = given.pending_renames.write_text("")
     mine = tuple(path for path in changed_files(RECORDED_PATHS) if path not in given.changed_before)
     return CommitOutput(commit=commit_files(mine, given.commit_message))
 
