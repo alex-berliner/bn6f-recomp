@@ -1,0 +1,86 @@
+name: GiveChips
+address: '0x08021AEE'
+kind: function
+status: confirmed
+summary: Grants `count` copies of a chip (id + code) to the player's chip pack, marking it as collected in the chip
+  library.
+interface: int GiveChips(u32 chipId /*r0*/, u32 chipCode /*r1*/, u32 count /*r2*/) -> int result /*r0*/; r3 also
+  carries result; nzcv clobbered
+details: 'Chip-award routine, presumably called by script/event rewards and boss defeats. Flow:
+
+  1. Calls encryption_applyPack_8006e70 first so the chip pack''s obfuscated data is applied/verified before it
+  is modified. If count (r2) is 0, returns 0 immediately without touching the pack.
+
+  2. Sets the "chip obtained" library flag via SetEventFlag with event id 0x1E20 + chipId, so the chip shows as
+  collected in the Library.
+
+  3. Calls getOffsetToQuantityOfChipCodeMaybe_8021c7c(chipId, chipCode, count) to locate the pack slot (offset)
+  that holds this chip''s code; returns the slot offset in r0 and a per-code field pointer/value in r3.
+
+  4. Calls addChipsToChipPackOffset_8021b5a to append `count` copies at that offset (r1 is passed through as whatever
+  the lookup left in it, matching the original''s behaviour).
+
+  5. Calls setUnkFieldOfChipCodeInChipPack_81376b8 (thumb/rom-tail call into 0x81376b8) with the saved code field
+  in r1 to refresh that slot''s bookkeeping field.
+
+  Returns the value addChipsToChipPackOffset_8021b5a left in r3 (also re-placed in r3). r4 is used as scratch for
+  the code field and restored to the caller''s value on exit.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043158);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_29.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    29' --file leaves_farm_29.c SaveMenuUpdate8132C68 sub_8132F78 applyNaviStatsMaybe_813C458 GiveChips sub_80A51C4
+    initUncompSpriteState_80028d4 logoScreen_dispatch_803D1CA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function GiveChips
+
+    .venv/bin/python -m wf verify --function GiveChips --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-043158-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function GiveChips
+
+    .venv/bin/python -m wf verify --function GiveChips --snapshots SNAPSHOT_DIR'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261009-043158-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function GiveChips
+
+    .venv/bin/python -m wf verify --function GiveChips --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043158-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, maps, story2.'
+  reproduce: grep -l '^08021aee ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_29.c
+  where: recomp 4ef93c7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_29.c
+coverage:
+- battles1
+- maps
+- story2
+related:
+- SaveMenuUpdate8132C68
+- sub_8132F78
+- applyNaviStatsMaybe_813C458
+- sub_80A51C4
+- initUncompSpriteState_80028d4
+- logoScreen_dispatch_803D1CA
+open_questions:
+- exact meaning of the r1 pass-through value into addChipsToChipPackOffset_8021b5a
+- meaning of the bookkeeping field updated by setUnkFieldOfChipCodeInChipPack_81376b8
+- semantics of the returned r3 value from the pack-add helper (error code? new quantity?)
+sources:
+- tools/wf run convert-20261009-043158

@@ -1,0 +1,82 @@
+name: sub_8132F78
+address: '0x08132F78'
+kind: function
+status: hypothesis
+summary: Reads a BCD-coded 4-digit counter (most plausibly the in-game clock, HHMM) and stores its two digit-pairs
+  as binary numbers in the Unk200a220 work structure.
+interface: void sub_8132F78(void); /* r10 = toolkit; no register return value, flags clobbered */
+details: 'Loads the toolkit''s S2001c04 pointer (r10 + oToolkit_S2001c04_Ptr), fetches the word at +0x18 of that
+  structure, and passes it to memory_bcd_8000D84, which returns a BCD value in r0. Only the upper 16 bits of the
+  result are used; they are treated as four packed BCD nibbles (digits 3..0). Each byte pair is converted to a plain
+  0..99 number (tens*10 + ones) by an inlined bcd_byte_to_number: the low pair (digits 1..0) is stored at Unk200a220+0xC
+  and the high pair (digits 3..2) at Unk200a220+0x8 (r10 + oToolkit_Unk200a220_Ptr). The low 16 bits of the BCD
+  value are computed but discarded, suggesting a larger time/counter field (e.g. seconds/frames below the HHMM).
+  r4-r7 are pushed/popped only to satisfy the ABI; they are never used. No branch or flag outputs matter.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043158);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_29.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    29' --file leaves_farm_29.c SaveMenuUpdate8132C68 sub_8132F78 applyNaviStatsMaybe_813C458 GiveChips sub_80A51C4
+    initUncompSpriteState_80028d4 logoScreen_dispatch_803D1CA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8132F78
+
+    .venv/bin/python -m wf verify --function sub_8132F78 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-043158-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8132F78
+
+    .venv/bin/python -m wf verify --function sub_8132F78 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-043158-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8132F78
+
+    .venv/bin/python -m wf verify --function sub_8132F78 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043158-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08132f78 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_29.c
+  where: recomp 4ef93c7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_29.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- SaveMenuUpdate8132C68
+- applyNaviStatsMaybe_813C458
+- GiveChips
+- sub_80A51C4
+- initUncompSpriteState_80028d4
+- logoScreen_dispatch_803D1CA
+open_questions:
+- Which counter lives at S2001c04+0x18 — the in-game clock (HHMM) is the best fit for the 2x2-digit split, but it
+  could be another 4-digit BCD display value
+- What the discarded lower 16 bits of the BCD value represent (seconds? sub-tick?)
+- What Unk200a220+0x8/+0xC are consumed by (a HUD/menu time display is likely)
+- Why memory_bcd_8000D84 is called with the word loaded from +0x18 rather than the pointer being dereferenced here
+  — the helper's exact semantics
+sources:
+- tools/wf run convert-20261009-043158

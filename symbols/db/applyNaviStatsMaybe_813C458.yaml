@@ -1,0 +1,86 @@
+name: applyNaviStatsMaybe_813C458
+address: '0x0813C458'
+kind: function
+status: confirmed
+summary: Rebuilds and re-applies the equipped NaviCust programs and stock PET navi stats, then restores the player's
+  selected navi and refreshes its display.
+interface: void reapplyNavicustAndPetNaviStats_813C458(void); // r2, r5-r12 passed through untouched, r4 callee-saved
+  scratch, flags clobbered
+details: "Runs the full \"refresh navi customisation\" pipeline:\n1. sub_813BBD4 and sub_8136C24 rebuild some navi-related\
+  \ derived tables.\n2. Reads the currently selected PET navi via GetCurPETNavi (returns u8 navi id in r0).\n3.\
+  \ Temporarily selects navi slot 0 (SetCurPETNavi(0)) so the *stock* navi's stats\n   get applied first (sub_813C678).\n\
+  4. Clears event flag EVENT_170D via ClearEventFlagFromImmediate (movflag loads\n   r0=0x17, r1=0xD, i.e. flag\
+  \ number \"0x170D\" split across r0/r1).\n5. Calls applyNavicustPrograms_813C684 with the saved navi id in r4\
+  \ — note this\n   function takes its argument in r4, not r0, so r4 is used as scratch here\n   (hence the push\
+  \ {r4,lr} / pop {r4,pc}).\n6. Runs follow-up fixups in sub_813CBCC.\n7. Restores the player's actual navi via\
+  \ SetCurPETNavi(naviId) and refreshes the\n   HUD/display via sub_803CE44.\nEverything else the caller had in\
+  \ r2 and r5-r12 is simply left alone across the\nwhole sequence; the register contract reflects that pass-through\
+  \ rather than a\nreal parameter list. The 2 bytes of padding (.byte 0,0) after the pop align the\nnext function.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043158);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_29.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    29' --file leaves_farm_29.c SaveMenuUpdate8132C68 sub_8132F78 applyNaviStatsMaybe_813C458 GiveChips sub_80A51C4
+    initUncompSpriteState_80028d4 logoScreen_dispatch_803D1CA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function applyNaviStatsMaybe_813C458
+
+    .venv/bin/python -m wf verify --function applyNaviStatsMaybe_813C458 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-043158-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function applyNaviStatsMaybe_813C458
+
+    .venv/bin/python -m wf verify --function applyNaviStatsMaybe_813C458 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-043158-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function applyNaviStatsMaybe_813C458
+
+    .venv/bin/python -m wf verify --function applyNaviStatsMaybe_813C458 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043158-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0813c458 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_29.c
+  where: recomp 4ef93c7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_29.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- SaveMenuUpdate8132C68
+- sub_8132F78
+- GiveChips
+- sub_80A51C4
+- initUncompSpriteState_80028d4
+- logoScreen_dispatch_803D1CA
+open_questions:
+- exact purpose of sub_813BBD4, sub_8136C24, sub_813C678, sub_813CBCC and sub_803CE44
+- why event flag EVENT_170D is cleared as part of this refresh (possibly a "stats changed" or transer-menu state
+  flag)
+- which callers rely on the odd r4-in register convention of applyNavicustPrograms_813C684
+sources:
+- tools/wf run convert-20261009-043158

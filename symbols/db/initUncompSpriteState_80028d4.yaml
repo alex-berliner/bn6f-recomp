@@ -1,0 +1,83 @@
+name: initUncompSpriteState_80028d4
+address: '0x080028D4'
+kind: function
+status: confirmed
+summary: Initializes the 0x50-byte uncompressed-sprite work block at byte_200DCA0, recording the sprite data pointer
+  and pre-filling its tables before a sprite is decompressed into it.
+interface: void resetUncompSpriteWorkBlock_80028d4(const void *spriteData /* r0 */); // preserves r3, r5; r2/r3/r5
+  and carry/overflow read back by callers (r2 ends as 0xFF, flags from the last ByteFill)
+details: "Takes a pointer (r0) to the source sprite data and resets the per-sprite\nwork block at byte_200DCA0 so\
+  \ a later decompression step can fill it:\n  - zeroes the whole 0x50-byte block with ZeroFillByWord,\n  - stores\
+  \ the sprite data pointer at block+0x4C (dword_200DCEC) so the\n    state remembers which sprite it belongs to,\n\
+  \  - fills the 0x18-halfword table at block+0x04 with 0x7FFF (built\n    in code as ~(0x80<<24) >> 16; likely\
+  \ per-entry \"no value\" markers,\n    possibly OAM/affine or attribute indices),\n  - fills the 0x30-byte buffer\
+  \ at block+0x1C with 0xFF (likely a\n    tile/pixel buffer primed to transparent/background color 0xFF).\nr0 is\
+  \ spilled to the stack around the first fill call; r3 and r5 are\npreserved. The 0x30-byte buffer plus surrounding\
+  \ fields up to 0x4C make\nup the rest of the record, presumably filled in by the decompression\nroutine that follows.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043158);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_29.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    29' --file leaves_farm_29.c SaveMenuUpdate8132C68 sub_8132F78 applyNaviStatsMaybe_813C458 GiveChips sub_80A51C4
+    initUncompSpriteState_80028d4 logoScreen_dispatch_803D1CA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function initUncompSpriteState_80028d4
+
+    .venv/bin/python -m wf verify --function initUncompSpriteState_80028d4 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-043158-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function initUncompSpriteState_80028d4
+
+    .venv/bin/python -m wf verify --function initUncompSpriteState_80028d4 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-043158-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function initUncompSpriteState_80028d4
+
+    .venv/bin/python -m wf verify --function initUncompSpriteState_80028d4 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043158-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^080028d4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_29.c
+  where: recomp 4ef93c7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_29.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- SaveMenuUpdate8132C68
+- sub_8132F78
+- applyNaviStatsMaybe_813C458
+- GiveChips
+- sub_80A51C4
+- logoScreen_dispatch_803D1CA
+open_questions:
+- exact meaning of the 0x7FFF halfword table at +0x04
+- what the 0xFF-filled 0x30-byte buffer at +0x1C holds (tiles? palette indices?)
+- which decompression/render routine consumes this block next
+sources:
+- tools/wf run convert-20261009-043158

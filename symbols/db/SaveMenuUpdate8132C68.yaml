@@ -1,0 +1,81 @@
+name: SaveMenuUpdate8132C68
+address: '0x08132C68'
+kind: function
+status: confirmed
+summary: Per-frame update for a save-menu state; waits for the chatbox text (and confirmation flag) to finish, then
+  stores the fade-out state, starts a screen fade, and refreshes the menu text graphics.
+interface: void SaveMenuUpdate8132C68(void); /* uses R5 = menu state block pointer supplied by the caller; writes
+  byte at [R5+1]; no return value, clobbers lr */
+details: 'Reads the shared chatbox/engine flag word at 0x02009F38 via chatbox_mask_eFlags2009F38. If flag bit 8
+  is already set, the menu has been dismissed and the fade may begin immediately. Otherwise the fade only starts
+  once both bit 0x20 (chatbox text finished) and bit 0x110 (extra confirmation flag) are set. When starting the
+  fade it: (1) stores 8 into byte offset 1 of the state block pointed to by R5, which is the next menu state in
+  the caller''s state machine (the fade-out state); (2) calls SetScreenFade(0xC, 0xC) to fade both screens; (3)
+  sets bit 0x40 in the 0x02009F38 flags to record that the fade was initiated. Unconditionally calls saveMenuTextGfx_8132F4C
+  at the end to refresh the menu''s text graphics, whether or not the fade started. The R5 state-block pointer is
+  arranged by the caller, so this function is a state-machine step, not self-contained.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043158);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_29.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    29' --file leaves_farm_29.c SaveMenuUpdate8132C68 sub_8132F78 applyNaviStatsMaybe_813C458 GiveChips sub_80A51C4
+    initUncompSpriteState_80028d4 logoScreen_dispatch_803D1CA
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SaveMenuUpdate8132C68
+
+    .venv/bin/python -m wf verify --function SaveMenuUpdate8132C68 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-043158-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SaveMenuUpdate8132C68
+
+    .venv/bin/python -m wf verify --function SaveMenuUpdate8132C68 --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261009-043158-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SaveMenuUpdate8132C68
+
+    .venv/bin/python -m wf verify --function SaveMenuUpdate8132C68 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043158-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08132c68 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_29.c
+  where: recomp 4ef93c7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_29.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- sub_8132F78
+- applyNaviStatsMaybe_813C458
+- GiveChips
+- sub_80A51C4
+- initUncompSpriteState_80028d4
+- logoScreen_dispatch_803D1CA
+open_questions:
+- exact meaning of flag bits 0x20, 0x40 and 0x110 in the 0x02009F38 flag word
+- what the byte values 8 and 0xC passed to SetScreenFade mean (fade speed/target?)
+- which menu(s) use this state block layout (offset 1 = next state)
+sources:
+- tools/wf run convert-20261009-043158
