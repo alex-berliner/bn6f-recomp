@@ -1,0 +1,117 @@
+name: releaseSlotByValue_801DC36
+address: '0x0801DC36'
+kind: function
+status: confirmed
+summary: Searches a six-entry slot table for the first occupied entry matching a given value and frees (zeroes)
+  that slot, returning 0 on success or 1 if no match was found.
+interface: int releaseSlotByValue(u32 value /* r5 */); /* also called with r4, r6, r7, lr preserved; r0 = 0 if a
+  slot was cleared, 1 if none matched; c/v set by the last comparison (value match or final loop decrement); r2
+  = last flag byte read, r3 = slots left unexamined */
+details: 'Walks the fixed table at dword_20352E0 (0x20352E0), which holds six 8-byte slots: byte 0 is an "in use"
+  flag and bytes 4-7 a u32 payload. It skips empty slots, and for the first occupied slot whose u32 value equals
+  the argument it clears both the flag and the payload (two STR #0 writes), returning 0. If the scan exhausts all
+  six slots without a match it returns 1 and leaves the table untouched. The loop counts down from 6, so r2/r3 and
+  the carry/overflow flags on exit carry the state of the last comparison performed (the value comparison on a hit,
+  the final decrement on a miss). The function also takes r4/r6/r7 as call-preserved registers per the lifter''s
+  caller analysis, but only r4 (the table pointer) is actually used.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801DC36
+
+    .venv/bin/python -m wf verify --function sub_801DC36 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801DC36
+
+    .venv/bin/python -m wf verify --function sub_801DC36 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801DC36
+
+    .venv/bin/python -m wf verify --function sub_801DC36 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^0801dc36 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_801DC36 -> releaseSlotByValue_801DC36
+  where: bn6f b051503e
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7e065978
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- What game system owns the six-slot table at dword_20352E0 (the paired insert/allocate routine and other accessors
+  would identify the subsystem)
+- Whether the u32 payload is an entity/object pointer, an id, or a raw value
+- Whether any caller relies on the c/v flag outputs rather than r0
+sources:
+- tools/wf run convert-20261009-014533
+previous_names:
+- sub_801DC36

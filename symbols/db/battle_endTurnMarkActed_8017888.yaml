@@ -1,0 +1,122 @@
+name: battle_endTurnMarkActed_8017888
+address: '0x08017888'
+kind: function
+status: confirmed
+summary: Turn-end handler for a battle object that optionally runs an enemy AI cleanup (sub_80E1620) and then marks
+  the object as having acted (CurAction = 8, phase cleared).
+interface: void sub_8017888(battle_object *obj /* r5 */); returns r0 = 0; clobbers r0-r3, r7 (scratch, restored),
+  flags NZ set from "mov r0,#0"
+details: "Reads a battle object pointer from r5 (no null check; callers always pass one).\n1. Calls battle_testFlag0x40_800A8F8;\
+  \ if the global battle flag 0x40 is clear,\n   skips the AI-side branch entirely.\n2. Loads the object's NameID\
+  \ (oBattleObject_NameID) and looks up its\n   (version, actor_type, ai_index) record via GetVerActorTyAndAIIdx_80182B4.\n\
+  \   Only when actor_type (byte 1 of the record) == 2 does it continue.\n3. Computes the object's AI data block\
+  \ pointer as\n   [obj + oBattleObject_AIDataPtr] + 0x40 and reads the first word there.\n   Only when that word\
+  \ is still zero does it call sub_80E1620, passing\n   r1 = actor type (2) and r7 = AI data block pointer; this\
+  \ looks like a\n   one-shot initialization/teardown for type-2 enemies that hasn't run yet.\n4. Unconditionally,\
+  \ in all paths: stores 8 into obj + oBattleObject_CurAction\n   (byte, offset 9) — action id 8 evidently means\
+  \ \"no action/turn finished\" —\n   and stores halfword 0 into obj + oBattleObject_CurPhaseAndPhaseInitialized,\n\
+  \   resetting the action phase for the next turn.\nReturns r0 = 0 in every path. r7 is used as scratch for the\
+  \ AI data pointer\nbut is popped back from the stack on exit, so it is preserved to callers.\nQuirk: the conditional\
+  \ call only happens once per battle (guarded by the\nzero word at aidata+0x40), since the callee presumably sets\
+  \ it.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8017888
+
+    .venv/bin/python -m wf verify --function sub_8017888 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8017888
+
+    .venv/bin/python -m wf verify --function sub_8017888 --snapshots SNAPSHOT_DIR'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8017888
+
+    .venv/bin/python -m wf verify --function sub_8017888 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^08017888 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_8017888 -> battle_endTurnMarkActed_8017888
+  where: bn6f b051503e
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7e065978
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- exact meaning of battle flag 0x40 set by battle_testFlag0x40_800A8F8
+- what actor_type 2 denotes (a specific enemy class/behavior group)
+- what sub_80E1620 does with the AI data block (likely sets the word it checks)
+- whether action id 8 is specifically "turn complete" or a named idle action
+sources:
+- tools/wf run convert-20261009-014533
+previous_names:
+- sub_8017888

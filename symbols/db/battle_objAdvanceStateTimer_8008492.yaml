@@ -1,0 +1,137 @@
+name: battle_objAdvanceStateTimer_8008492
+address: '0x08008492'
+kind: function
+status: confirmed
+summary: State-machine step for a battle object pointed to by r5, choosing between starting a timed state 4 and
+  jumping to state 6 based on battle mode 5, battle flag 0x40 and a check in sub_801483C.
+interface: 'void sub_8008492(void); /* in: r5 = battle object/work struct ptr; out: none (r0 holds 4/6 or the sub_801483C
+  result on the early-return path, NZ flags per last tst/mov) */'
+details: 'Reads the current battle mode via GetBattleMode. If the mode is not 5, it tests battle flag 0x40 (TestBattleFlag_0x40);
+  if that flag is set, it immediately stores state 6 into the object byte at r5+4 and returns. The same state-6
+  store happens on the "other" path when the object''s state byte at r5+2 is already non-zero. Only when mode ==
+  5 (or flag 0x40 is clear), sub_801483C returns 0, and r5+2 is still 0 does it take the "start" branch: it calls
+  timer_resetAndStart_801482C (start a fresh countdown), stores state 4 into r5+2, and returns. So r5+2 is the object''s
+  current state/phase byte (0 = not started, 4 = timed state running) and r5+4 is a next-state/exit byte set to
+  6 when the sequence is skipped or already finished. What sub_801483C tests is unknown from this call site; its
+  non-zero result simply aborts the step without touching the object. Flags on return differ per path (tst of sub_801483C''s
+  result vs the mov of the stored constant 4/6); c/v inherit from the last callee.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-023333);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    12' --file leaves_farm_12.c sub_80077D2 sub_8008492 sub_80084C0 sub_80092C0 sub_8009FCC sub_800A540 sub_800A772
+    sub_800A7A6 sub_800AA64 copyMemory_8001850 copyToVRAMAndClear_iBGTileIdBlocks_Ptr sub_8000DE0 CutsceneCmd_run_text_script
+    CutsceneCmd_spawn_cutscene_process MapScriptCutsceneCmd_jump_if_flag_range_clear MapScriptCutsceneCmd_jump_if_progress_in_range
+    MapScriptCutsceneCmd_set_screen_fade MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims cutscene_8036ED4 sub_8144380
+    sub_8146BF4 sub_814E190 sub_814E528 sub_814EA58 chatbox_8041748 chatbox_80419D0 chatbox_8042678 chatbox_8045F60
+    chatbox_CopyBackgroundTiles_8040344 chatbox_E9_newline chatbox_F3_control sub_8126404 sub_812B504 sub_809DF00
+    sub_809E01C sub_809E46E sprite_initialize sprite_makeUnscalable NPCCommand_change_movement_direction npc_inChatbox_809EADA
+    sub_800C84A sub_800C8C2 sub_800D58C sub_800ED00 sub_803DD30 sub_803F8C4 copy_8048C68
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8008492
+
+    .venv/bin/python -m wf verify --function sub_8008492 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-023333-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8008492
+
+    .venv/bin/python -m wf verify --function sub_8008492 --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-023333-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8008492
+
+    .venv/bin/python -m wf verify --function sub_8008492 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-023333-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^08008492 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_12.c
+  where: recomp b841d89
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_8008492 -> battle_objAdvanceStateTimer_8008492
+  where: bn6f b051503e
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7e065978
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_12.c
+coverage:
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- sub_80077D2
+- sub_80084C0
+- sub_80092C0
+- sub_8009FCC
+- sub_800A540
+- sub_800A772
+- sub_800A7A6
+- sub_800AA64
+- copyMemory_8001850
+- copyToVRAMAndClear_iBGTileIdBlocks_Ptr
+- sub_8000DE0
+- CutsceneCmd_run_text_script
+- CutsceneCmd_spawn_cutscene_process
+- MapScriptCutsceneCmd_jump_if_flag_range_clear
+- MapScriptCutsceneCmd_jump_if_progress_in_range
+- MapScriptCutsceneCmd_set_screen_fade
+- MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims
+- cutscene_8036ED4
+- sub_8144380
+- sub_8146BF4
+- sub_814E190
+- sub_814E528
+- sub_814EA58
+- chatbox_8041748
+- chatbox_80419D0
+- chatbox_8042678
+- chatbox_8045F60
+- chatbox_CopyBackgroundTiles_8040344
+- chatbox_E9_newline
+- chatbox_F3_control
+- sub_8126404
+- sub_812B504
+- sub_809DF00
+- sub_809E01C
+- sub_809E46E
+- sprite_initialize
+- sprite_makeUnscalable
+- NPCCommand_change_movement_direction
+- npc_inChatbox_809EADA
+- sub_800C84A
+- sub_800C8C2
+- sub_800D58C
+- sub_800ED00
+- sub_803DD30
+- sub_803F8C4
+- copy_8048C68
+open_questions:
+- what sub_801483C checks (returns non-zero to skip the state change)
+- which battle entity/scripted object owns this struct (r5 layout beyond +2/+4 unknown)
+- what battle mode 5 and battle flag 0x40 represent in game terms
+sources:
+- tools/wf run convert-20261009-023333
+previous_names:
+- sub_8008492

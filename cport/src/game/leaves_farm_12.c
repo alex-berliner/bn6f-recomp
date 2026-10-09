@@ -7,8 +7,8 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_80077D2 ── */
-/* sub_80077D2 (r5 = battle object, r10 = toolkit):
+/* ── battle_addObjectToAllianceEntryList_80077D2 ── */
+/* battle_addObjectToAllianceEntryList_80077D2 (r5 = battle object, r10 = toolkit):
  * Append a battle object to its alliance's entry list in the battle state.
  * Each alliance has an entry counter at battleState+8[alliance] and a list of
  * halfword name-ID slots at battleState+0x4C + alliance*8. The object's name
@@ -20,7 +20,7 @@
 #define oBattleState_Unk_08 8    /* per-alliance entry counter base */
 #define oBattleState_Unk_4C 0x4C /* per-alliance entry list base */
 
-Next sub_80077D2(void) {
+Next battle_addObjectToAllianceEntryList_80077D2(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
 
     u32 nameID = LD16(R5 + oBattleObject_NameID);
@@ -42,8 +42,8 @@ Next sub_80077D2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8008492 ── */
-/* sub_8008492: advance the per-object battle state byte of the object in r5.
+/* ── battle_objAdvanceStateTimer_8008492 ── */
+/* battle_objAdvanceStateTimer_8008492: advance the per-object battle state byte of the object in r5.
  *
  * - In battle mode 5, or when the 0x40 battle flag is clear, the object is
  *   driven by sub_801483C: once it reports "done" (r0 == 0) and the object's
@@ -54,7 +54,7 @@ Next sub_80077D2(void) {
  * Flags on return follow the original's last flag-setting instruction on
  * each path: tst r0 (sub_801483C result) or the mov of the stored constant.
  * c/v are left as the last callee left them, matching the original. */
-Next sub_8008492(void) {
+Next battle_objAdvanceStateTimer_8008492(void) {
     GUEST_CALL(GetBattleMode);
 
     if (R0 != 5) {
@@ -86,18 +86,18 @@ Next sub_8008492(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80084C0 ── */
-/* sub_80084C0: clear the 12-byte record at dword_203CA70 (3 words).
+/* ── clearDword_203CA70Record_80084C0 ── */
+/* clearDword_203CA70Record_80084C0: clear the 12-byte record at dword_203CA70 (3 words).
  * Flags, r2, r3 and r5 are left exactly as ZeroFillByWord leaves them. */
-Next sub_80084C0(void) {
+Next clearDword_203CA70Record_80084C0(void) {
     R0 = A_dword_203CA70;  /* block to clear */
     R1 = 0xC;              /* size in bytes */
     GUEST_CALL(ZeroFillByWord);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80092C0 ── */
-/* sub_80092C0: battle-flow helper driven from the battle state object in r5.
+/* ── battle_runState4CountdownOrAdvance_80092C0 ── */
+/* battle_runState4CountdownOrAdvance_80092C0: battle-flow helper driven from the battle state object in r5.
  *
  * - If the state byte at offset 3 is already running, count the 16-bit timer
  *   (oBattleState_Unk_28) down; while it is still positive just return with
@@ -113,7 +113,7 @@ Next sub_80084C0(void) {
  * to state 8), r1 = the pending flag read on the state-0 path (0 when it was
  * clear), flags as the original's last flag-setting instruction leaves them
  * (nz from that MOV, c/v left over from the timer SUBS where it ran). */
-Next sub_80092C0(void) {
+Next battle_runState4CountdownOrAdvance_80092C0(void) {
     if (LD8(R5 + 3) != 0) {
         /* State already running: tick the countdown timer. */
         u32 timer = LD16(R5 + oBattleState_Unk_28);
@@ -184,13 +184,13 @@ Next sub_8009FCC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800A540 ── */
-/* sub_800A540(r0 = arg0, r1 = arg1): fetch one byte of the currently
+/* ── battle_getNaviStatsByte_800A540 ── */
+/* battle_getNaviStatsByte_800A540(r0 = arg0, r1 = arg1): fetch one byte of the currently
  * selected navi's stats. If the battle-effect flag 0x200000 is set, read it
  * from the active navi's stats block (0x203CCE0, keeping r0 as passed in);
  * otherwise read it from the current PET's navi stats.
  * Returns the byte in r0; r4 and r6 are preserved. */
-Next sub_800A540(void) {
+Next battle_getNaviStatsByte_800A540(void) {
     u32 arg0 = R0;
     u32 arg1 = R1;
 
@@ -209,8 +209,8 @@ Next sub_800A540(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800A772 ── */
-/* sub_800A772(r0 = alliance selector (0 = player, else opponent), r5 = battle object):
+/* ── battle_canAllianceAct_800A772 ── */
+/* battle_canAllianceAct_800A772(r0 = alliance selector (0 = player, else opponent), r5 = battle object):
  * Decide whether this object is allowed to act.
  * Loads the object's AI data and returns 0 immediately if its chip lockout
  * timer is still running. Otherwise checks the battle state's Unk_5c flags
@@ -219,7 +219,7 @@ Next sub_800A540(void) {
  * alliance. Returns r0 = 1 if the bit is set, 0 if not.
  * Side effects matching the original: r1 ends as the tested bit (or the
  * lockout timer in the early-out path) and r2 ends as the caller's r0. */
-Next sub_800A772(void) {
+Next battle_canAllianceAct_800A772(void) {
     u32 callerR0 = R0;
 
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
@@ -242,14 +242,14 @@ Next sub_800A772(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800A7A6 ── */
-/* sub_800A7A6(r1 = lowest name ID, r2 = highest name ID):
+/* ── battle_countOpponentActorsWithNameIdInRange_800A7A6 ── */
+/* battle_countOpponentActorsWithNameIdInRange_800A7A6(r1 = lowest name ID, r2 = highest name ID):
  * Count the opponent-side battle actors whose name ID falls within
  * [r1, r2] (inclusive). The opponent actor list holds four slots
  * (0x10 bytes), each a pointer that may be NULL.
  * Returns r0 = number of matching actors, r3 = 0x10 (loop end value),
  * with the flags left by the final MOV r0, r4 (ADDS r0, r4, #0). */
-Next sub_800A7A6(void) {
+Next battle_countOpponentActorsWithNameIdInRange_800A7A6(void) {
     u32 minNameID = R1;
     u32 maxNameID = R2;
     u32 actorList = LD32(R10 + oToolkit_BattleStatePtr) + oBattleState_OpponentActors;
@@ -270,14 +270,14 @@ Next sub_800A7A6(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800AA64 ── */
-/* sub_800AA64: compact the 7-word entry (0x1C bytes) returned by
+/* ── compactEntryWords_800AA64 ── */
+/* compactEntryWords_800AA64: compact the 7-word entry (0x1C bytes) returned by
  * getNextEntryAddress_800AAAE. Non-zero words are shifted to the front of the
  * entry and the remainder is zero-filled, so the entry has no holes.
  * Leaves R0 = 0, R1/R3 = one past the entry's last word, and flags from the
  * final CMP of the fill loop. The incoming R4 is preserved.
  * Inputs: R0 is passed through to getNextEntryAddress_800AAAE. */
-Next sub_800AA64(void) {
+Next compactEntryWords_800AA64(void) {
     u32 savedR4 = R4;
 
     GUEST_CALL(getNextEntryAddress_800AAAE);
@@ -360,7 +360,7 @@ Next copyToVRAMAndClear_iBGTileIdBlocks_Ptr(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8000DE0 ── */
+/* ── clock_breakPlayTimeIntoHMSF_8000DE0 ── */
 /* Frame counts used by the in-game clock: the play-time counter is measured
  * in frames at 60 fps, so one second is 60 frames, one minute 3600 and
  * one hour 216000. */
@@ -368,7 +368,7 @@ Next copyToVRAMAndClear_iBGTileIdBlocks_Ptr(void) {
 #define FRAMES_PER_MINUTE   0xE10u    /*  60 * 60 frames */
 #define FRAMES_PER_HOUR     0x34BC0u  /*  60 * 60 * 60 frames */
 
-/* sub_8000DE0(r0 = frame counter):
+/* clock_breakPlayTimeIntoHMSF_8000DE0(r0 = frame counter):
  * Breaks the play-time frame counter down into clock units with three
  * chained divisions (BIOS Div, svc 6, quotient in r0 / remainder in r1):
  *   counter / 216000                -> hours
@@ -378,7 +378,7 @@ Next copyToVRAMAndClear_iBGTileIdBlocks_Ptr(void) {
  * The r2/r3 values the caller passes in are irrelevant; Div only reads
  * r0/r1 and the function overwrites r2/r3 with the last division's
  * quotient and remainder. */
-Next sub_8000DE0(void) {
+Next clock_breakPlayTimeIntoHMSF_8000DE0(void) {
     u32 totalFrames = R0;
 
     R0 = totalFrames;
@@ -673,12 +673,12 @@ Next MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── cutscene_8036ED4 ── */
+/* ── cutscene_end_8036ED4 ── */
 /* Script value the cutscene interpreter is parked on when a cutscene ends:
  * the "script position" marker consumed by the dummy cutscene script. */
 #define CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1 1
 
-/* cutscene_8036ED4: end/abandon the currently running cutscene.
+/* cutscene_end_8036ED4: end/abandon the currently running cutscene.
  *
  * Parks the cutscene script interpreter on the dummy "do nothing" script
  * (script position 1), clears the state used to resume a script after a
@@ -687,7 +687,7 @@ Next MapScriptCutsceneCmd_terminate_one_or_all_gfx_anims(void) {
  *
  * r10 = toolkit. Returns with r1/r3/c/v exactly as ClearEventFlagFromImmediate
  * left them (callers branch on its flags and reuse its r1/r3). */
-Next cutscene_8036ED4(void) {
+Next cutscene_end_8036ED4(void) {
     u32 cutscene = LD32(R10 + oToolkit_CutsceneStatePtr);
 
     /* Point the script interpreter at the dummy cutscene script. */
@@ -713,12 +713,12 @@ Next cutscene_8036ED4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8144380 ── */
-/* sub_8144380: update the e-Reader timer-enable flag (eTimerEnable200F460)
+/* ── ereader_updateTimerEnable_8144380 ── */
+/* ereader_updateTimerEnable_8144380: update the e-Reader timer-enable flag (eTimerEnable200F460)
  * based on the current SIO mode. When the link port is in the 0x8 mode
  * and the secondary byte_200F462 flag is clear, the flag byte is set to
  * that mode value (0x8); in every other case it is cleared to 0. */
-Next sub_8144380(void) {
+Next ereader_updateTimerEnable_8144380(void) {
     u32 sioMode = LD32(A_SIOControlRegister) & 0xC;
     u32 flagBase = A_eTimerEnable200F460;
 
@@ -753,14 +753,14 @@ Next sub_8146BF4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E190 ── */
-/* sub_814E190(r0 = owner struct, r1 = work struct):
+/* ── loadNextQueuedParams_814E190 ── */
+/* loadNextQueuedParams_814E190(r0 = owner struct, r1 = work struct):
  * Read the next entry index from the byte queue at r1+0x40, then fetch the
  * three words of that 12-byte entry from the table pointed to by r0+0x30.
  * Each word is passed through sub_814E0B6 and stored to r1+0x24/0x28/0x2C.
  * Like the original, this uses r12 to hold the return address (mov r12, lr;
  * bx r12), so r12 must be set to the incoming LR before returning. */
-Next sub_814E190(void) {
+Next loadNextQueuedParams_814E190(void) {
     R12 = LR;
 
     u32 cursor = LD32(R1 + 0x40);
@@ -785,7 +785,7 @@ Next sub_814E190(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E528 ── */
+/* ── sprite_crossfadeColorChannels_814E528 ── */
 /* Applies one channel of a color crossfade: multiply the source channel by a
  * fixed-point factor (12.14), then saturate at 0xFF. Only values above 0xFF
  * are clamped, matching the original. */
@@ -797,13 +797,13 @@ static u32 fade_channel(u32 channel, u32 factor) {
     return result;
 }
 
-/* sub_814E528(r4 = destination color struct, r5 = source color struct):
+/* sprite_crossfadeColorChannels_814E528(r4 = destination color struct, r5 = source color struct):
  * Crossfade the two color bytes at [r4+2]/[r4+3] toward the source bytes at
  * [r5+0x10]/[r5+0x11]. The signed byte at [r4+0x14] is the fade position
  * (-0x80..0x7F): the first channel fades in with (0x80 + pos), the second
  * fades out with (0x7F - pos). The byte at [r4+0x12] scales both factors.
  * Leaves r2 = the sign-extended fade position. */
-Next sub_814E528(void) {
+Next sprite_crossfadeColorChannels_814E528(void) {
     u32 weight = LD8(R4 + 0x12);
     u32 pos = (u32)(s8)LD8(R4 + 0x14);
 
@@ -817,8 +817,8 @@ Next sub_814E528(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814EA58 ── */
-/* sub_814EA58: walk the fixed music-player table gMPlayTable (0x20 entries,
+/* ── sound_tickAllMusicPlayers_814EA58 ── */
+/* sound_tickAllMusicPlayers_814EA58: walk the fixed music-player table gMPlayTable (0x20 entries,
  * 12 bytes each, first word is the player info pointer) and call
  * sub_814F1E8 on every entry. The entry count is a literal pool constant
  * in the original, so its "count == 0" early-out can never be taken.
@@ -828,7 +828,7 @@ Next sub_814E528(void) {
 #define MPLAY_TABLE_COUNT      0x20u
 #define MPLAY_TABLE_ENTRY_SIZE 0xCu
 
-Next sub_814EA58(void) {
+Next sound_tickAllMusicPlayers_814EA58(void) {
     const u32 *entry = (const u32 *)A_gMPlayTable;
 
     for (u32 i = MPLAY_TABLE_COUNT; i != 0; i--) {
@@ -844,8 +844,8 @@ Next sub_814EA58(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8041748 ── */
-/* chatbox_8041748: chatbox script command "run script depending on game progress".
+/* ── chatbox_cmdRunScriptByGameProgress_8041748 ── */
+/* chatbox_cmdRunScriptByGameProgress_8041748: chatbox script command "run script depending on game progress".
  *
  * r4 points at a 6-byte command laid out as:
  *   [2] = lowest game-progress value that satisfies the condition
@@ -856,7 +856,7 @@ Next sub_814EA58(void) {
  * The current game progress is read from the game state, the matching
  * sub-script (if any) is started through chatbox_config_80408D0, and r4 is
  * advanced past the command. Always returns r0 = 1. */
-Next chatbox_8041748(void) {
+Next chatbox_cmdRunScriptByGameProgress_8041748(void) {
     u32 minProgress = LD8(R4 + 2);
     u32 maxProgress = LD8(R4 + 3);
 
@@ -892,8 +892,8 @@ Next chatbox_8041748(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80419D0 ── */
-/* chatbox_80419D0: process one chatbox script entry.
+/* ── chatbox_processScriptEntry_80419D0 ── */
+/* chatbox_processScriptEntry_80419D0: process one chatbox script entry.
  * r4 points at the current entry. Its state byte ([r4+2]) is passed to
  * sub_8048C24, which returns a value deciding which of the two trailing
  * bytes holds the script ID (offset 3 when nonzero, offset 4 when zero).
@@ -901,7 +901,7 @@ Next chatbox_8041748(void) {
  *   entry (r4 += 5) and return.
  * - Otherwise hand the ID to chatbox_config_80408D0 and return.
  * Always returns r0 = 1. r5/r6/r7 are preserved. */
-Next chatbox_80419D0(void) {
+Next chatbox_processScriptEntry_80419D0(void) {
     u32 entry = R4;
 
     /* Ask the chatbox state handler which script-ID byte is current. */
@@ -931,8 +931,8 @@ Next chatbox_80419D0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8042678 ── */
-/* chatbox_8042678: handle one chatbox script entry.
+/* ── chatbox_processScriptEntry_8042678 ── */
+/* chatbox_processScriptEntry_8042678: handle one chatbox script entry.
  *
  * r4 points at the chatbox entry to process.  The chatbox core helper
  * (sub_803F798) is consulted first; when it reports 0 a sound effect is
@@ -942,7 +942,7 @@ Next chatbox_80419D0(void) {
  *     (which starts the corresponding text script),
  *   - 0xFF marks the end of the entry, so r4 is advanced past it (5 bytes).
  * Always returns 1 in R0. */
-Next chatbox_8042678(void) {
+Next chatbox_processScriptEntry_8042678(void) {
     u32 savedR4 = R4;
 
     /* Consult the chatbox core; it gets the caller's r0..r3 unchanged.
@@ -975,13 +975,13 @@ Next chatbox_8042678(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8045F60 ── */
-/* chatbox_8045F60(r5 = chatbox work area):
+/* ── chatbox_resetAndClearBuffers_8045F60 ── */
+/* chatbox_resetAndClearBuffers_8045F60(r5 = chatbox work area):
  * Reset the chatbox: clear its state fields, then wipe the text buffer at
  * unk_200BEA0 (0xF00 bytes) and the glyph/tile buffer at dword_200CDA0
  * (same 0xF00 size, still in r1 from the first call).
  * Leaves r1 = 0xF00 and the flags from the last ZeroFillByEightWords. */
-Next chatbox_8045F60(void) {
+Next chatbox_resetAndClearBuffers_8045F60(void) {
     ST32(R5 + oChatbox_Unk_70, 0);
     ST8(R5 + oChatbox_BoxGfxLoadState_0F, 0);
     ST8(R5 + oChatbox_Unk_0E, 0);
@@ -1109,8 +1109,8 @@ Next chatbox_F3_control(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8126404 ── */
-/* sub_8126404(r0 = j, r1 = i, r2 = tileIds, r3 = iSize):
+/* ── bg_drawTileStripTileBlock2_8126404 ── */
+/* bg_drawTileStripTileBlock2_8126404(r0 = j, r1 = i, r2 = tileIds, r3 = iSize):
  * Redraws a strip of the background from tile block 2 (a 32x32 tile block),
  * 8 tiles wide. All caller arguments are forwarded to the drawing routine:
  * r0/r1 pass straight through, and r3 doubles as the strip's i size.
@@ -1121,7 +1121,7 @@ Next chatbox_F3_control(void) {
  *
  * On return r3 holds whatever the drawing routine left there; r0, r4-r7
  * and r10 are left as they were on entry. */
-Next sub_8126404(void) {
+Next bg_drawTileStripTileBlock2_8126404(void) {
     u32 tileIds = R2;
     u32 stripSize = R3;
     u32 savedR4 = R4;
@@ -1155,15 +1155,15 @@ Next sub_8126404(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812B504 ── */
-/* sub_812B504(r5 = pointer to an object):
+/* ── sprite_drawIfFlagSet_812B504 ── */
+/* sprite_drawIfFlagSet_812B504(r5 = pointer to an object):
  * Test the flag byte at r5+0x1B for bit 4 (0x10). If set, invoke
  * sub_811FAF4 with a fixed argument block (0xC80008, 0x20004, 0,
  * &dword_8129184, 0x80004000); otherwise return immediately.
  * r0 and r1 are always written (the load and the #0x10 happen before
  * the branch), r4 is preserved around the call, and on the early-exit
  * path the flags come from the TST. */
-Next sub_812B504(void) {
+Next sprite_drawIfFlagSet_812B504(void) {
     u32 flagByte = LD8(R5 + 0x1B);
 
     R0 = flagByte;   /* ldrb r0, [r5,#0x1b] */
@@ -1188,18 +1188,18 @@ Next sub_812B504(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DF00 ── */
-/* sub_809DF00(r5 = overworld player object, r10 = toolkit):
+/* ── ow_tryTileInteraction_809DF00 ── */
+/* ow_tryTileInteraction_809DF00(r5 = overworld player object, r10 = toolkit):
  * Called when the player tries to interact with the tile in front of them.
- * sub_809E01C checks whether tile interaction is currently blocked (e.g. by
+ * ow_findInteractableNPC_809E01C checks whether tile interaction is currently blocked (e.g. by
  * a cutscene); if so, the game state byte oGameState_Unk_10 is set to 1 and
  * the function returns 1. Otherwise the tile's interaction value
  * (oOWPlayerObject_Unk_0f) is copied into oGameState_CoordInteractionValue,
  * and if it is nonzero it is also latched into game state offset 0x03, then
  * the function returns 0. R7 is left pointing at the game state struct; NZ
  * reflect the return value. */
-Next sub_809DF00(void) {
-    GUEST_CALL(sub_809E01C);
+Next ow_tryTileInteraction_809DF00(void) {
+    GUEST_CALL(ow_findInteractableNPC_809E01C);
 
     if (R0 == 0) {
         /* Interaction is blocked: flag the state and report "blocked". */
@@ -1220,8 +1220,8 @@ Next sub_809DF00(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809E01C ── */
-/* sub_809E01C(r5 = player object):
+/* ── ow_findInteractableNPC_809E01C ── */
+/* ow_findInteractableNPC_809E01C(r5 = player object):
  * Walk the overworld NPC object array looking for the first NPC the player can
  * interact with (slot in use, interaction not disabled) and record it in the
  * player's interactedNPCObject slot.
@@ -1229,7 +1229,7 @@ Next sub_809DF00(void) {
  * disabled, r0 is that NPC's flags word and nothing is stored; r0 = 1 when no
  * live NPC exists.
  * r1 = 1 and r2 = one-past-end of the NPC array on every exit. */
-Next sub_809E01C(void) {
+Next ow_findInteractableNPC_809E01C(void) {
     u32 player = R5;
     u32 npc = A_eOverworldNPCObject0_Flags; /* == eOverworldNPCObjects */
     u32 arrayEnd = npc + 0xD80; /* dword_809E048: byte size of the NPC array */
@@ -1260,14 +1260,14 @@ Next sub_809E01C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809E46E ── */
-/* sub_809E46E: overworld hook that checks the coordinate trigger at
+/* ── overworld_CheckPlayerAdvanceForwardTrigger_809E46E ── */
+/* overworld_CheckPlayerAdvanceForwardTrigger_809E46E: overworld hook that checks the coordinate trigger at
  * player + 0x1C.  If it is one of the "player advances forward" trigger
  * tiles (0x48..0x4F), store the trigger index (0..7) into the player
  * object at + 0x64 and set the EVENT_1717 event flag. */
 #define EVENT_1717_PLAYER_ADVANCE_FORWARD 0x1717u
 
-Next sub_809E46E(void) {
+Next overworld_CheckPlayerAdvanceForwardTrigger_809E46E(void) {
     u32 callerR7 = R7; /* r7 is used as scratch below but must be preserved */
 
     u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
@@ -1461,17 +1461,17 @@ Next npc_inChatbox_809EADA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800C84A ── */
-/* sub_800C84A(r0 = start row, r1 = step):
+/* ── countMatchingRun_800C84A ── */
+/* countMatchingRun_800C84A(r0 = start row, r1 = step):
  * Measures a run of identically-valued entries in a byte table whose entries
- * are 8 bytes apart. sub_800C8C2 is asked for the address of the entry lying
+ * are 8 bytes apart. battle_getPanelEntry_800C8C2 is asked for the address of the entry lying
  * next to the start row in the direction given by step (+1/-1); the value
  * stored there is the run's value, and the run grows entry by entry for as
  * long as the row counter stays within the 1..6 range and the entries keep
  * matching it.
  * Returns r0 = run length, r1 = the value the run consists of.
  * r4-r6 are only scratch here and are restored for the caller. */
-Next sub_800C84A(void) {
+Next countMatchingRun_800C84A(void) {
     u32 savedR4 = R4;
     u32 savedR5 = R5;
     u32 savedR6 = R6;
@@ -1485,7 +1485,7 @@ Next sub_800C84A(void) {
      * incoming values here, as in the original. */
     R4 = row;
     R5 = step;
-    GUEST_CALL(sub_800C8C2);
+    GUEST_CALL(battle_getPanelEntry_800C8C2);
 
     u32 cell = R0;              /* address of the first entry of the run */
     u32 stride = 8u * step;     /* entries sit 8 bytes apart */
@@ -1507,16 +1507,16 @@ Next sub_800C84A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800C8C2 ── */
-/* sub_800C8C2(r0 = panel index): return a pointer to the panel's entry in the
+/* ── battle_getPanelEntry_800C8C2 ── */
+/* battle_getPanelEntry_800C8C2(r0 = panel index): return a pointer to the panel's entry in the
  * battle panel array at unk_2034010 (each entry is 8 bytes). */
-Next sub_800C8C2(void) {
+Next battle_getPanelEntry_800C8C2(void) {
     R0 = A_unk_2034010 + 8 * R0;
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800D58C ── */
-/* sub_800D58C(r5 = battle object):
+/* ── battle_scanPanelsInFront_800D58C ── */
+/* battle_scanPanelsInFront_800D58C(r5 = battle object):
  * Sweep the panels in front of the acting object, one panel at a time in
  * the direction it faces, and return the panel index (r0) where the sweep
  * stops. The sweep stops early when battle_countAdjacentPanelsOfOtherAlliance_800D5F0 reports a hit on a panel
@@ -1524,7 +1524,7 @@ Next sub_800C8C2(void) {
  * (in which case object_isValidPanel's result is returned instead).
  * r4/r6/r7 are saved and restored by the original's push/pop, so they keep
  * their entry values; flags on return come from the final "mov r0, r6". */
-Next sub_800D58C(void) {
+Next battle_scanPanelsInFront_800D58C(void) {
     /* The original pushes/pops r4, r6 and r7: they must end unchanged. */
     u32 saved_r4 = R4;
     u32 saved_r6 = R6;
@@ -1573,8 +1573,8 @@ Next sub_800D58C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800ED00 ── */
-/* sub_800ED00: reset the AI actor pool.
+/* ── ai_resetAIDataSlots_800ED00 ── */
+/* ai_resetAIDataSlots_800ED00: reset the AI actor pool.
  *
  * For each of the eight AI slots, store a one-hot mask word at offset 0x7C:
  * slot i gets 0x80000000 >> i. Then clear the "AI data in use" bitfield.
@@ -1582,7 +1582,7 @@ Next sub_800D58C(void) {
  * Register side effects (from the final loop iteration and tail):
  *   r0 = 0, r1 = &eUsedAIDataBitfield, r2 = 8, r3 = 0x100 (slot stride),
  *   flags from the loop's last "cmp r2, #8" (equal: Z=1, C=1, V=0). */
-Next sub_800ED00(void) {
+Next ai_resetAIDataSlots_800ED00(void) {
     u32 ai = A_eAIData0_ActorType;   /* base of eAIData, one slot per AI actor */
     u32 mask = 0x80000000;
     u32 slot = 0;
@@ -1605,8 +1605,8 @@ Next sub_800ED00(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803DD30 ── */
-/* sub_803DD30: derive a small "link state" selector and return it in R0
+/* ── link_getModeSelector_803DD30 ── */
+/* link_getModeSelector_803DD30: derive a small "link state" selector and return it in R0
  * (zero flag set iff the result is 0).
  *
  * It reads the jump offset slot of the structure at eStruct200BC30:
@@ -1614,7 +1614,7 @@ Next sub_800ED00(void) {
  *   offset 8 -> 1
  *   anything else (including 0) -> the low 2 bits of the word at
  *   eLinkState + 0x48 (dword_2009A18). */
-Next sub_803DD30(void) {
+Next link_getModeSelector_803DD30(void) {
     GUEST_CALL(eStruct200BC30_getJumpOffset00);
     u32 jumpOffset = R0;
 
@@ -1631,13 +1631,13 @@ Next sub_803DD30(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803F8C4 ── */
-/* sub_803F8C4: recompute the checksum over the EWRAM work area
+/* ── verifyEwramWorkAreaChecksum_803F8C4 ── */
+/* verifyEwramWorkAreaChecksum_803F8C4: recompute the checksum over the EWRAM work area
  * (ewram_2000000, 0x6710 bytes) and compare it against the value saved at
  * S2001c04+0x68, which is then cleared.
  * Returns r0 = 0 if the checksum matches (data intact), r0 = 1 otherwise.
  * Sets Z/NZ flags from r0; r1-r7 are preserved. */
-Next sub_803F8C4(void) {
+Next verifyEwramWorkAreaChecksum_803F8C4(void) {
     u32 state = LD32(R10 + oToolkit_S2001c04_Ptr);
     u32 storedChecksum = LD32(state + 0x68);
     ST32(state + 0x68, 0);
@@ -1652,8 +1652,8 @@ Next sub_803F8C4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── copy_8048C68 ── */
-/* copy_8048C68:
+/* ── shop_resetStockTable_8048C68 ── */
+/* shop_resetStockTable_8048C68:
  * (Re)initialize the shop data buffer owned by the toolkit: clear all 0xE80
  * bytes, then copy the default stock table from ROM over it. The table is a
  * run of 8-byte entries; an entry whose second byte is 0 is an empty slot and
@@ -1663,7 +1663,7 @@ Next sub_803F8C4(void) {
  * outputs: r2 (leftover byte count from the copy loop, negative on exit)
  * clobbers: r0 r1 r3 lr, flags
  */
-Next copy_8048C68(void) {
+Next shop_resetStockTable_8048C68(void) {
     u32 shopData = LD32(R10 + oToolkit_ShopDataPtr);
 
     R0 = shopData;

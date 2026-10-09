@@ -1,0 +1,91 @@
+name: reqBBS_initRequestWorkArea_8046CC8
+address: '0x08046CC8'
+kind: function
+status: confirmed
+summary: Initializes the BBS request-board work area for the selected request board entry, zeroing its 0x34-byte
+  buffer and recording the current map group for the return trip.
+interface: void reqBBS_initRequestWorkArea_8046CC8(u32 slot /* r0 */, u32 toolkit /* r10 */); sets r2 = dword_8046B98
+  (request data table base); clobbers r0, r1, lr, nzcv; preserves r3-r7
+details: "Called when the player opens/picks an entry on the BBS request board (job requests).\nTakes the request\
+  \ slot index in r0 (used later as \"byte_2011C14\") and the toolkit in r10.\n1) Zero-fills the 0x34-byte work\
+  \ area at byte_2011C10 with ZeroFillByWord.\n2) Stores the slot index at byte_2011C10+4.\n3) Computes &dword_8046B98[slot\
+  \ * 0x10] — the per-request data record (0x10-byte stride) —\n   and stores it at byte_2011C10+0x1C (dword_2011C2C);\
+  \ also leaves the table base in r2.\n4) Stores reqBBS_requestInfo_textOffsets (per-request description/text offset\
+  \ table) at\n   byte_2011C10+0x24 (dword_2011C34).\n5) Reads the toolkit's GameState pointer, copies the current\
+  \ MapGroup (offset 4 of the game\n   state, halfword) into oGameState_LastMapGroup, so leaving the board can restore\
+  \ the map.\nQuirk: despite the lifter listing r4/r6/r7 as outputs, the code only pushes/pops r4-r7 and\nwrites\
+  \ nothing through them; only r2 is meaningfully returned. The r10 (toolkit) input is\nunusual — most callers here\
+  \ pass it in a low register or via a global.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-024946);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_13.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    13' --file leaves_farm_13.c renderTextGfx_8045F8C sub_8046CC8 sub_804733C sub_803423C sub_8035054 sub_80A9B70
+    sub_80AA104 sub_80AA2F8 sub_80AA8E0 getOffsetToQuantityOfChipCodeMaybe_8021c7c sub_8021AB4
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8046CC8
+
+    .venv/bin/python -m wf verify --function sub_8046CC8 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261009-024946-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8046CC8
+
+    .venv/bin/python -m wf verify --function sub_8046CC8 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-024946-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8046CC8
+
+    .venv/bin/python -m wf verify --function sub_8046CC8 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-024946-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^08046cc8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_13.c
+  where: recomp 2f71aef
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_8046CC8 -> reqBBS_initRequestWorkArea_8046CC8
+  where: bn6f b051503e
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7e065978
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_13.c
+coverage:
+- battles1
+- story2
+related:
+- renderTextGfx_8045F8C
+- sub_804733C
+- sub_803423C
+- sub_8035054
+- sub_80A9B70
+- sub_80AA104
+- sub_80AA2F8
+- sub_80AA8E0
+- getOffsetToQuantityOfChipCodeMaybe_8021c7c
+- sub_8021AB4
+open_questions:
+- Exact meaning of each field in the 0x10-byte per-request record at dword_8046B98 (job board entry data) is not
+  shown here.
+- Which caller consumes the returned r2 (table base) — possibly the next setup step in the BBS flow.
+- Whether byte_2011C10+4 is a slot index or a board/page index; range of valid values not visible.
+sources:
+- tools/wf run convert-20261009-024946
+previous_names:
+- sub_8046CC8

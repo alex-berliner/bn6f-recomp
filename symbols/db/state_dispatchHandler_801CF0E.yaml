@@ -1,0 +1,119 @@
+name: state_dispatchHandler_801CF0E
+address: '0x0801CF0E'
+kind: function
+status: confirmed
+summary: State-machine dispatcher that reads the current state index from a work block and tail-calls the matching
+  handler from a 5-entry ROM table.
+interface: void sub_801CF0E(void); /* r7 in/out preserved around the handler call; NZC set by the state*4 shift;
+  control passes to the handler, which returns to this function's caller */
+details: 'Dispatcher for the state block rooted at byte_2036840. Reads the current state index from byte_2036848
+  (block + 0x8), multiplies it by 4 (setting NZ from the shifted value and C from bit 30 of the index), and loads
+  the handler pointer from the ROM table off_801CF28. The handler is invoked via mov lr, pc / bx r0, but since the
+  dispatcher immediately does pop {r7,pc}, the handlers effectively return straight to this function''s caller,
+  making this a tail-call-style dispatch. Handlers receive: r0 = their own handler address (thumb bit set), r1 =
+  &off_801CF28 (the jump table itself), r7 = &byte_2036840 (the state block), and the caller''s r7 is restored on
+  return. Table layout: states 0-2 all point to sub_801CF3C, state 3 to sub_801CF9E, and state 4 to sub_801D048.
+  No bounds check on the state index; values >4 would jump through whatever follows the table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801CF0E
+
+    .venv/bin/python -m wf verify --function sub_801CF0E --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801CF0E
+
+    .venv/bin/python -m wf verify --function sub_801CF0E --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801CF0E
+
+    .venv/bin/python -m wf verify --function sub_801CF0E --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^0801cf0e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_801CF0E -> state_dispatchHandler_801CF0E
+  where: bn6f b051503e
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7e065978
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- Which game subsystem the byte_2036840 block belongs to (would need callers of sub_801CF0E or writers of byte_2036848
+  to identify it)
+- Whether the caller passes arguments in r0-r3 that the dispatcher forwards unexamined to the handlers
+- Whether states beyond 4 are ever stored in byte_2036848 (no bounds check present)
+sources:
+- tools/wf run convert-20261009-014533
+previous_names:
+- sub_801CF0E

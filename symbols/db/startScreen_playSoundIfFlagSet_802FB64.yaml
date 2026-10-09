@@ -1,0 +1,136 @@
+name: startScreen_playSoundIfFlagSet_802FB64
+address: '0x0802FB64'
+kind: function
+status: confirmed
+summary: On the start/title screen, if the screen state halfword has flag 0x80 set, feeds the small audio command
+  table at byte_802FB7C to the sound sequencer helper sub_8001158 (e.g. a jingle/cursor sound), otherwise does nothing.
+interface: void sub_802FB64(const StartScreen* self /* r5 */) /* clobbers r0,r1,r2,r3, flags; sets C,V */
+details: 'Takes the start screen object pointer in r5 and tests bit 0x80 of the
+
+  halfword at self+0xA (a state/status flags field). If clear, it returns
+
+  immediately. If set, it loads the address of byte_802FB7C (a 20-byte
+
+  inline table right after the function: 02 40 04 80 80 92 00 00 /
+
+  12 40 04 40 88 92 00 00 / 00 00 00 00) and calls sub_8001158 with r0
+
+  pointing at it; sub_8001158 is presumed to be the sound/SSEQ driver
+
+  entry that parses such command blocks. The table looks like two
+
+  parameterized sound-driver commands (0x02 and 0x12 opcodes with 0x40/0x04
+
+  sub-parameters, 0x80/0x88 track params, 0x92 terminators) followed by
+
+  padding. Per the register contract, r2/r3 are trashed and C/V are marked
+
+  as outputs (side effects of the tst/beq path on flags); r4-r7 are
+
+  preserved throughout. The flag at +0xA&0x80 is not cleared here, so the
+
+  caller is responsible for managing that state bit.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FB64
+
+    .venv/bin/python -m wf verify --function sub_802FB64 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 191 out
+    of domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FB64
+
+    .venv/bin/python -m wf verify --function sub_802FB64 --snapshots SNAPSHOT_DIR'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FB64
+
+    .venv/bin/python -m wf verify --function sub_802FB64 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0802fb64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_802FB64 -> startScreen_playSoundIfFlagSet_802FB64
+  where: bn6f b051503e
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7e065978
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+open_questions:
+- exact meaning of each byte in the byte_802FB7C table (which sound driver opcodes/params they encode)
+- which sound or jingle this actually triggers on the start screen
+- which code sets/clears the 0x80 flag in the start screen state halfword at +0xA
+sources:
+- tools/wf run convert-20261009-014533
+previous_names:
+- sub_802FB64

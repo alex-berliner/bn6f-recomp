@@ -253,8 +253,8 @@ Next sub_800F26C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801336C ── */
-/* sub_801336C (r5 = battle object):
+/* ── aiTrySelectChipFromHand_801336C ── */
+/* aiTrySelectChipFromHand_801336C (r5 = battle object):
  * Decide whether the enemy AI should play the chip currently in its battle
  * hand this frame.  The attack-power hint in the AI data must be unset
  * (0xFF, for both the normal value and the Beast-Out override), the AI
@@ -262,7 +262,7 @@ Next sub_800F26C(void) {
  * hand; otherwise the function bails out with r0 = 0.  When every check
  * passes, sub_8013236 performs the actual chip selection and its results
  * (r2/r3, flags) are returned to the caller. */
-Next sub_801336C(void) {
+Next aiTrySelectChipFromHand_801336C(void) {
     /* r1 = the battle object's AI data block */
     R1 = LD32(R5 + oBattleObject_AIDataPtr);
 
@@ -304,15 +304,15 @@ Next sub_801336C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8013B20 ── */
-/* sub_8013B20(r5 = battle object):
+/* ── battle_aiAddCounterFromCollision_8013B20 ── */
+/* battle_aiAddCounterFromCollision_8013B20(r5 = battle object):
  * Checks two bytes of the object's collision data. When byte 0xA4 reports the
  * custom-bar/full-custom state (0x18), the AI's byte at oAIData_Unk_12 is
  * raised by the amount in collision byte 0xA5, saturating at 7.
  * Leaves r3 = collision data pointer; flags come from the last comparison
  * performed (TST on byte 0xA4 when it is zero, otherwise the CMP that decided
  * the exit path). r4 is preserved. */
-Next sub_8013B20(void) {
+Next battle_aiAddCounterFromCollision_8013B20(void) {
     u32 collision = LD32(R5 + oBattleObject_CollisionDataPtr);
     u32 ai = LD32(R5 + oBattleObject_AIDataPtr);
     R3 = collision;
@@ -340,8 +340,8 @@ Next sub_8013B20(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801690A ── */
-/* sub_801690A: recolor a battle object's sprite to match the battle state.
+/* ── battle_applyStateSpriteColorShader_801690A ── */
+/* battle_applyStateSpriteColorShader_801690A: recolor a battle object's sprite to match the battle state.
  *
  * If the object's flags (object_getFlag) have bit 0x4000 set, read the current
  * battle phase (battle_getStateUnk40_800A704) and use bit 1 of it to pick one
@@ -352,7 +352,7 @@ Next sub_8013B20(void) {
  * Reads the current object via r5/r10 (passed through to object_getFlag).
  * The original never writes r3 itself; it ends up holding whatever
  * sprite_setColorShader leaves behind, which GUEST_CALL reproduces. */
-Next sub_801690A(void) {
+Next battle_applyStateSpriteColorShader_801690A(void) {
     /* R0 = flags of the current battle object */
     GUEST_CALL(object_getFlag);
 
@@ -369,8 +369,8 @@ Next sub_801690A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8017888 ── */
-/* sub_8017888(r5 = battle object):
+/* ── battle_endTurnMarkActed_8017888 ── */
+/* battle_endTurnMarkActed_8017888(r5 = battle object):
  * Turn-end handling for a battle object. If the battle flag 0x40 is set, the
  * object's actor type (byte 1 of the GetVerActorTyAndAIIdx record for its
  * NameID) is 2, and the first word of its AI data block (aidata+0x40) is
@@ -378,7 +378,7 @@ Next sub_801690A(void) {
  * In every case the object is marked as having acted: CurAction (offset 9)
  * = 8 and the current phase is cleared. r0 = 0 on return.
  * Flags: N/Z from the final "mov r0,#0"; C/V from the last compare or callee. */
-Next sub_8017888(void) {
+Next battle_endTurnMarkActed_8017888(void) {
     u32 saved_r7 = R7;
     u32 obj = R5;
 
@@ -409,15 +409,15 @@ Next sub_8017888(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801A42E ── */
-/* sub_801A42E(r5 = battle object):
+/* ── battle_spawnHitEffectAtArm_801A42E ── */
+/* battle_spawnHitEffectAtArm_801A42E(r5 = battle object):
  * While the object is in a hit/collision state (collision timer byte at
  * +0x74 and hit-flash counter at +0x80 of its collision data are both
  * non-zero), compute the object's arm position and call sub_80E8124 to
  * spawn/draw the associated effect there.
  * Preserves r4-r7; r3 on return is whatever sub_80E8124 left (or the
  * incoming r3 when it returns early). */
-Next sub_801A42E(void) {
+Next battle_spawnHitEffectAtArm_801A42E(void) {
     u32 savedR4 = R4;
 
     u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
@@ -444,13 +444,13 @@ Next sub_801A42E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801A4A6 ── */
-/* sub_801A4A6(r5 = battle object):
+/* ── battle_spawnArmHitEffect_801A4A6 ── */
+/* battle_spawnArmHitEffect_801A4A6(r5 = battle object):
  * Checks the object's collision data byte at offset 0xA4; when it reports
  * hit type 0xF4 or 0xF7, looks up where the arm attack connects for this
  * object and hands the result to the battle-effect helper sub_80E8124.
  * Returns with r3 and the c/v flags as left by sub_80E8124; r4-r7 preserved. */
-Next sub_801A4A6(void) {
+Next battle_spawnArmHitEffect_801A4A6(void) {
     u32 savedR4 = R4;
 
     u32 hitType = LD8(LD32(R5 + oBattleObject_CollisionDataPtr) + 0xA4);
@@ -483,8 +483,8 @@ Next sub_801A4A6(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801BA92 ── */
-/* sub_801BA92(r5 = battle object):
+/* ── battle_object_postAction4CheckClearFlags_801BA92 ── */
+/* battle_object_postAction4CheckClearFlags_801BA92(r5 = battle object):
  * Post-action check for a battle object. If its current action is 4,
  * inspect its flag2 bits:
  *   - bit 14 set: nothing to do (result 1)
@@ -492,7 +492,7 @@ Next sub_801A4A6(void) {
  *   - otherwise clear flags and collision counter (result 2)
  * Any other action leaves state alone (result 0).
  * Result in r0; r1 ends up as the last mask tested on the flag paths. */
-Next sub_801BA92(void) {
+Next battle_object_postAction4CheckClearFlags_801BA92(void) {
     u32 result = 0;
 
     /* oBattleObject_CurAction is at offset 9 */
@@ -515,8 +515,8 @@ Next sub_801BA92(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801CF0E ── */
-/* sub_801CF0E: state-machine dispatcher for the block at byte_2036840.
+/* ── state_dispatchHandler_801CF0E ── */
+/* state_dispatchHandler_801CF0E: state-machine dispatcher for the block at byte_2036840.
  *
  * byte_2036848 holds the current state index; the matching handler from the
  * ROM table at off_801CF28 is tail-called with:
@@ -526,7 +526,7 @@ Next sub_801BA92(void) {
  * and the caller's r7 is restored afterwards (the original pushes/pops it
  * around the call). Control never comes back here: the handlers return
  * straight to our caller, so this behaves like a tail call. */
-Next sub_801CF0E(void) {
+Next state_dispatchHandler_801CF0E(void) {
     u32 callerR7 = R7;
 
     u32 state = LD8(A_byte_2036840 + 8);
@@ -608,8 +608,8 @@ Next sub_801DC06(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801DC36 ── */
-/* sub_801DC36(r5 = entry value to release):
+/* ── releaseSlotByValue_801DC36 ── */
+/* releaseSlotByValue_801DC36(r5 = entry value to release):
  * Searches the six 8-byte slots of the table at dword_20352E0 (each slot is a
  * u8 "in use" flag followed by a u32 value) for the first occupied slot whose
  * value equals r5, and clears that slot. Leaves r0 = 0 if a slot was cleared,
@@ -617,7 +617,7 @@ Next sub_801DC06(void) {
  * the number of slots that were still unexamined. The c/v flags come from the
  * last comparison executed: the value comparison on a match, the final
  * "subs r3, #1" (1 - 1) when the table is exhausted. */
-Next sub_801DC36(void) {
+Next releaseSlotByValue_801DC36(void) {
     u32 slot = A_eStruct2035280_Size; /* == dword_20352E0, start of the slot table */
     u32 slotsLeft = 6;
 
@@ -650,14 +650,14 @@ Next sub_801DC36(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E10E ── */
-/* sub_801E10E: prepare the mode-specific battle gfx and raise eStruct flag 0x400.
+/* ── battle_loadModeGfx_801E10E ── */
+/* battle_loadModeGfx_801E10E: prepare the mode-specific battle gfx and raise eStruct flag 0x400.
  *
  * If the current battle mode is not 6, queue a 0x20-word gfx transfer copying
  * the dword_86E1C78 tiles into the buffer at unk_3001A80.  Afterwards set bit
  * 10 (mask 1 << 10) in the eStruct at 0x2035280 via flagSetBits.
  */
-Next sub_801E10E(void) {
+Next battle_loadModeGfx_801E10E(void) {
     GUEST_CALL(GetBattleMode);
     u32 battleMode = R0;
 
@@ -681,15 +681,15 @@ Next sub_801E10E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E754 ── */
-/* sub_801E754: inspect cross-net battle state flags.
+/* ── comm_checkCrossNetBattleReady_801E754 ── */
+/* comm_checkCrossNetBattleReady_801E754: inspect cross-net battle state flags.
  * Returns in R0:
  *   0 - bit 15 of dword_20352C0 is clear
  *   1 - flag set, but the byte_2036840/2036848 state doesn't match
  *   2 - flag set and byte_2036840 holds the expected value 4
  * R1/R2 are preserved; C/V are left as the original's last flag-setting
  * instruction leaves them. */
-Next sub_801E754(void) {
+Next comm_checkCrossNetBattleReady_801E754(void) {
     u32 stateWord = LD32(A_eStruct2035280 + 0x40); /* dword_20352C0 */
 
     /* The original builds the test mask with `mov r0,#1; lsl r0,#15`.
@@ -807,8 +807,8 @@ Next LoadGFXAnimsForMapGroup(void)
     RETURN_TO_CALLER();
 }
 
-/* ── ho_802F63C ── */
-/* ho_802F63C(self: *StartScreen in r5) -> ():
+/* ── startScreen_RunStateHandler_802F63C ── */
+/* startScreen_RunStateHandler_802F63C(self: *StartScreen in r5) -> ():
  * Start screen state dispatcher. Reads the screen's state byte and calls the
  * matching handler from the jump table jt_802F654, passing it r0 = handler
  * address | thumb bit and r1 = the state byte, then runs the common
@@ -818,7 +818,7 @@ Next LoadGFXAnimsForMapGroup(void)
  * (ldrb r1, [r5, #oStartScreen_JumpTableOff_01]). */
 #define oStartScreen_JumpTableOff_01 1
 
-Next ho_802F63C(void) {
+Next startScreen_RunStateHandler_802F63C(void) {
     u32 state = LD8(R5 + oStartScreen_JumpTableOff_01);
 
     /* The state byte is a byte offset into the jump table (ldr r0, [r0, r1]
@@ -904,14 +904,14 @@ Next npc_freeAllObjectsThenSpawnObjectsFromList(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8026E4C ── */
-/* sub_8026E4C (r5 = chatbox state struct, S20364C0):
+/* ── chatbox_stateMaybeFinishText_8026E4C ── */
+/* chatbox_stateMaybeFinishText_8026E4C (r5 = chatbox state struct, S20364C0):
  * Advance the chatbox one step. If flag 0x80 of eFlags2009F38 is set, ask
  * sub_802A220 whether the text is still busy: while it reports 0xFF, just
  * run the periodic update. Otherwise (flag clear, or text finished) play
  * sound effect 0x9E, set the state byte at +1 to 4, clear the timer
  * halfword at +2, and run the periodic update. */
-Next sub_8026E4C(void) {
+Next chatbox_stateMaybeFinishText_8026E4C(void) {
     R0 = 0x80;
     GUEST_CALL(chatbox_mask_eFlags2009F38);
 
@@ -934,8 +934,8 @@ Next sub_8026E4C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8026E98 ── */
-/* sub_8026E98(self = R5): one update step for a battle object.
+/* ── battle_updateObjectByKind_8026E98 ── */
+/* battle_updateObjectByKind_8026E98(self = R5): one update step for a battle object.
  *
  * Reads the global battle effect flags and passes 4 in R4 if the 0x200000
  * effect is active, 0 otherwise. It then dispatches through the handler
@@ -952,7 +952,7 @@ Next sub_8026E4C(void) {
  *   - effect absent:  N/Z from "tst r0, #0x200000" (Z set)
  * C/V are untouched by both. The flags on return are whatever
  * sub_8029C08 leaves. */
-Next sub_8026E98(void) {
+Next battle_updateObjectByKind_8026E98(void) {
     u32 self = R5;
     u32 saved_r4 = R4;
 
@@ -981,13 +981,13 @@ Next sub_8026E98(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802945A ── */
-/* sub_802945A: compact the battle folder chip list (30 shorts at eBattleFolder).
+/* ── battle_compactFolderChipList_802945A ── */
+/* battle_compactFolderChipList_802945A: compact the battle folder chip list (30 shorts at eBattleFolder).
  * Drops every empty slot (ID 0xFFFF), shifts the kept entries to the front,
  * and pads the freed tail with 0xFFFF so the list always has 30 entries.
  * r4/r6/r7 are only used as scratch by the original, which pushes and pops
  * them, so their values are preserved for the caller. */
-Next sub_802945A(void) {
+Next battle_compactFolderChipList_802945A(void) {
     u32 savedR4 = R4, savedR6 = R6, savedR7 = R7;
 
     u32 folder = A_eBattleFolder;
@@ -1019,14 +1019,14 @@ Next sub_802945A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802BE0C ── */
-/* sub_802BE0C — finish step for the object in r5 (r10 = toolkit pointer):
+/* ── objStepFinishSetState4_802BE0C ── */
+/* objStepFinishSetState4_802BE0C — finish step for the object in r5 (r10 = toolkit pointer):
  * calls call_sub_3005EBA with the fixed argument set (0, 0, 3, 0, 6, 2),
  * clears the render-info frame counter, calls sub_801E0A0(0, 0), then
  * writes state 4 into the object's halfword field at +2.
  * Preserves the entry values of r4 and r5 for the caller; exits with
  * NZ flags from "MOV r0, #4" and r1/r2/r3/r10 as sub_801E0A0 left them. */
-Next sub_802BE0C(void) {
+Next objStepFinishSetState4_802BE0C(void) {
     u32 saved_r4 = R4;
     u32 saved_r5 = R5;
     u32 toolkit = R10;
@@ -1116,12 +1116,12 @@ Next sub_802C460(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802CEC8 ── */
-/* sub_802CEC8: for each of the two entries in the table at unk_2036720
+/* ── runPendingHandlerForEntryPair_802CEC8 ── */
+/* runPendingHandlerForEntryPair_802CEC8: for each of the two entries in the table at unk_2036720
  * (stride 0x10, entry pointer at +0x8), if the entry exists and its
  * halfword flag at +0x24 is clear, call sub_802CEA6 with the byte value
  * at +0x16 of that entry. r4 is left pointing at the second entry. */
-Next sub_802CEC8(void) {
+Next runPendingHandlerForEntryPair_802CEC8(void) {
     u32 table = A_unk_2036720;
 
     for (u32 i = 0; i < 2; i++) {
@@ -1137,14 +1137,14 @@ Next sub_802CEC8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802E4B8 ── */
-/* sub_802E4B8(r5 = battle object):
+/* ── battle_getAllianceEntryStatus_802E4B8 ── */
+/* battle_getAllianceEntryStatus_802E4B8(r5 = battle object):
  * Fetch the alliance entry for the battle object's alliance slot and return its
  * status code in r0: 9 if the byte at entry+0x50 is set, 13 if the byte at
  * entry+0x54 is set, otherwise 1. r7 is only used as scratch internally and is
  * restored on return (the original pushes/pops it). r1 = 0x54 is left behind on
  * the paths that read the +0x54 flag byte. */
-Next sub_802E4B8(void) {
+Next battle_getAllianceEntryStatus_802E4B8(void) {
     /* r0 = this object's alliance slot index */
     R0 = LD8(R5 + oBattleObject_Alliance);
     GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
@@ -1161,11 +1161,11 @@ Next sub_802E4B8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802FB64 ── */
-/* sub_802FB64(self: *const StartScreen r5):
+/* ── startScreen_playSoundIfFlagSet_802FB64 ── */
+/* startScreen_playSoundIfFlagSet_802FB64(self: *const StartScreen r5):
  * If the start screen's status halfword has bit 0x80 set, run the sound/data
  * sequence at byte_802FB7C through sub_8001158. Otherwise do nothing. */
-Next sub_802FB64(void) {
+Next startScreen_playSoundIfFlagSet_802FB64(void) {
     if (LD16(R5 + 0xA) & 0x80) {
         R0 = A_byte_802FB7C;
         GUEST_CALL(sub_8001158);

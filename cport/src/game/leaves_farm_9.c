@@ -2188,7 +2188,7 @@ Next battle_initTypeAndFieldFromSettings_800A2F8(void) {
  * If the battle is in mode 1 (special/extra mode), report 0xFF and stop.
  * Otherwise look up a value for the navi currently equipped on the PET and
  * use it as an offset for a second lookup, returning whatever
- * sub_800A540 leaves in r0/r1. */
+ * battle_getNaviStatsByte_800A540 leaves in r0/r1. */
 Next pet_getCurNaviChainedLookup_800A4E0(void) {
     GUEST_CALL(GetBattleMode);
     if (R0 == 1) {
@@ -2202,12 +2202,12 @@ Next pet_getCurNaviChainedLookup_800A4E0(void) {
     /* First lookup: base value for this navi. */
     R0 = navi;
     R1 = 0x2D;
-    GUEST_CALL(sub_800A540);
+    GUEST_CALL(battle_getNaviStatsByte_800A540);
 
     /* Second lookup: same navi, offset by the first result. */
     R0 = navi;
     R1 = 0x2E + R0;
-    GUEST_CALL(sub_800A540);
+    GUEST_CALL(battle_getNaviStatsByte_800A540);
 
     RETURN_TO_CALLER();
 }

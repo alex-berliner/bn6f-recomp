@@ -62,7 +62,7 @@ enum { CGB_VOL_CHANGED = 1, CGB_FREQ_CHANGED = 2 };
 #define ClearChain      sub_814ECA0
 #define Clear64byte     sub_814ECB4
 #define TrkVolPitSet    sub_814F2F0
-#define ChnVolSetAsm    sub_814E528
+#define ChnVolSetAsm    sprite_crossfadeColorChannels_814E528
 #define MidiKeyToFreq   sub_814E7F4
 
 static void call1(GuestFn fn, u32 a0) { R0 = a0; GUEST_CALL(fn); }

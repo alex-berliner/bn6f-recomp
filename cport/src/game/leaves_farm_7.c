@@ -120,7 +120,7 @@ Next main_zeroFill_80017EC(void) {
 /* ── musicGameState_8000784 ── */
 /* musicGameState_8000784(r0, r2 = sound-driver args, r10 = Toolkit):
  * Forward a music-state request to the sound driver (sound_8000808) with the
- * callback sub_814EA58 in r3, keeping r10 safe across the call. Afterwards,
+ * callback sound_tickAllMusicPlayers_814EA58 in r3, keeping r10 safe across the call. Afterwards,
  * flag the game state so the engine treats background music as switched off
  * (bgMusicIndicator = 0xFF).
  * r0 ends as 0xFF (NZ set by the "mov r0,#0xFF"), r1 = incoming r10,
@@ -129,7 +129,7 @@ Next musicGameState_8000784(void) {
     u32 toolkit = R10;
 
     R1 = toolkit;                    /* saved r10, passed as arg to the driver */
-    R3 = A_sub_814EA58 | 1;          /* music-state handler callback (thumb) */
+    R3 = A_sound_tickAllMusicPlayers_814EA58 | 1;          /* music-state handler callback (thumb) */
     GUEST_CALL(sound_8000808);       /* r0 and r2 pass through unchanged */
 
     /* restore the values the original keeps across the call */

@@ -524,7 +524,7 @@ Next m4a_800061E(void) {
 /* sound_dispatchTask_8000630(r0 = arg0, r2 = arg2, r4-r7/r10 = context):
  * Tail-wrapper around the sound engine's dispatcher sound_8000808.
  * It passes the caller's arguments straight through, supplies the
- * sound task entry point sub_814EA58 as the callback (r3), and hands
+ * sound task entry point sound_tickAllMusicPlayers_814EA58 as the callback (r3), and hands
  * the caller's r10 to the callee as its second argument (r1) while
  * keeping r10 itself intact across the call.
  * Flags and r10 are returned to the caller unchanged from the callee. */
@@ -532,7 +532,7 @@ Next sound_dispatchTask_8000630(void) {
     u32 savedR10 = R10;
 
     R1 = savedR10;                 /* second argument: caller's r10 */
-    R3 = A_sub_814EA58 | 1;        /* callback: sound task routine (thumb) */
+    R3 = A_sound_tickAllMusicPlayers_814EA58 | 1;        /* callback: sound task routine (thumb) */
     GUEST_CALL(sound_8000808);
 
     R10 = savedR10;                /* r10 is preserved across the call */
@@ -3187,7 +3187,7 @@ Next battle_beginTurnOpenProcess_80144C0(void) {
             GUEST_CALL(battle_findPlayer);
             if (R0 != 0) {
                 R5 = R0;
-                GUEST_CALL(sub_801DC36);
+                GUEST_CALL(releaseSlotByValue_801DC36);
                 R5 = savedR5;
             }
         }

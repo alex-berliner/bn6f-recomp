@@ -602,7 +602,7 @@ Next battle_RevealFieldColumnsStep_80079F0(void) {
  *
  * r5 points to the battle state; the byte at offset 2 selects an entry in
  * the handler table at off_80092B4 (entries at byte offsets 0, 4 and 8):
- *   0 -> sub_80092C0, 4 -> sub_80092F0, 8 -> sub_8009314.
+ *   0 -> battle_runState4CountdownOrAdvance_80092C0, 4 -> sub_80092F0, 8 -> sub_8009314.
  *
  * The original does `ldr r1, [table, phase]; mov lr, pc; bx r1`, so the
  * handler is entered with r0 = the phase byte and r1 = its own (Thumb)
@@ -616,8 +616,8 @@ Next battle_dispatchStatePhase_80092A0(void) {
     R1 = handler;
 
     switch (handler) {
-    case 0x080092C1: /* sub_80092C0 + 1 (Thumb) */
-        GUEST_CALL(sub_80092C0);
+    case 0x080092C1: /* battle_runState4CountdownOrAdvance_80092C0 + 1 (Thumb) */
+        GUEST_CALL(battle_runState4CountdownOrAdvance_80092C0);
         break;
     case 0x080092F1: /* sub_80092F0 + 1 (Thumb) */
         GUEST_CALL(sub_80092F0);
@@ -818,7 +818,7 @@ Next sub_800B444(void) {
 Next subsystem_launchShop(void) {
     /* Run the pre-transition hook; it takes no arguments and its results
      * are unused, but it may trash r0-r3 like any ATPCS callee. */
-    GUEST_CALL(sub_8046CC8);
+    GUEST_CALL(reqBBS_initRequestWorkArea_8046CC8);
 
     u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
 

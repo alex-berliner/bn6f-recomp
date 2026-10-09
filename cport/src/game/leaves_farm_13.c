@@ -41,13 +41,13 @@ Next renderTextGfx_8045F8C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8046CC8 ── */
-/* sub_8046CC8(r0 = BBS request slot index, r10 = toolkit):
+/* ── reqBBS_initRequestWorkArea_8046CC8 ── */
+/* reqBBS_initRequestWorkArea_8046CC8(r0 = BBS request slot index, r10 = toolkit):
  * Prepares the BBS request work area for the selected request:
  * clears the 0x34-byte buffer, stores the slot index and the per-request
  * data pointer/text-offset table, and records the current map group as
  * the group to return to. Leaves r2 = request data table base. */
-Next sub_8046CC8(void) {
+Next reqBBS_initRequestWorkArea_8046CC8(void) {
     u32 slot = R0;
     u32 toolkit = R10;
 
@@ -70,8 +70,8 @@ Next sub_8046CC8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804733C ── */
-/* sub_804733C(r0 = base value, r5 = object):
+/* ── storeObfuscatedRandomToken_804733C ── */
+/* storeObfuscatedRandomToken_804733C(r0 = base value, r5 = object):
  * Rolls a random byte (retrying until it is nonzero) and stores an obfuscated
  * code derived from it into object+0x30:
  *
@@ -87,7 +87,7 @@ Next sub_8046CC8(void) {
  * overflow of `base + byte` (from the `adds r1,r1,r2`); N/Z come from the
  * final `mvn r1,r1`.
  */
-Next sub_804733C(void) {
+Next storeObfuscatedRandomToken_804733C(void) {
     u32 in0 = R0, in1 = R1, in2 = R2, in3 = R3, in4 = R4;
     u32 base = R0;
     u32 obj = R5;
@@ -118,12 +118,12 @@ Next sub_804733C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803423C ── */
-/* sub_803423C: begin the enter-map sequence after a warp.
+/* ── map_setupEnterMapAfterWarp_803423C ── */
+/* map_setupEnterMapAfterWarp_803423C: begin the enter-map sequence after a warp.
  * Switches the main jumptable to state 4, blanks video memory and the
  * shared GFX buffer, clears the map-entry fade parameter, then runs the
  * warp-landing handlers and the area music update. */
-Next sub_803423C(void) {
+Next map_setupEnterMapAfterWarp_803423C(void) {
     /* The toolkit pointer lives in r10; the original also mirrors it into
      * r7 and leaves it there on return. */
     R7 = R10;
@@ -164,10 +164,10 @@ Next sub_803423C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8035054 ── */
-/* sub_8035054: decide whether to start the "notification" cutscene.
+/* ── tryStartNotificationCutscene_8035054 ── */
+/* tryStartNotificationCutscene_8035054: decide whether to start the "notification" cutscene.
  * Returns r0 = 0 if the cutscene was started, r0 = 1 if it was blocked. */
-Next sub_8035054(void) {
+Next tryStartNotificationCutscene_8035054(void) {
     u32 blocked = 1;
 
     /* Only allowed while the player has normal control:
@@ -197,8 +197,8 @@ Next sub_8035054(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9B70 ── */
-/* sub_80A9B70: dispatch one battle-object behaviour step.
+/* ── battle_dispatchObjectBehaviorStep_80A9B70 ── */
+/* battle_dispatchObjectBehaviorStep_80A9B70: dispatch one battle-object behaviour step.
  *
  * r5 points to the object: r5+4 is a character id selecting a 0x10-byte
  * entry in byte_80A9AA0 (left in r7 for the handler), r5+8 is a byte
@@ -208,7 +208,7 @@ Next sub_8035054(void) {
  * and invoked; all other registers pass through unchanged. Control
  * returns straight to this function's caller when the handler finishes,
  * with r0..r7 and the flags as the handler left them. */
-Next sub_80A9B70(void) {
+Next battle_dispatchObjectBehaviorStep_80A9B70(void) {
     u32 handlerOffset = LD8(R5 + 8);
 
     R7 = A_byte_80A9AA0 + 0x10 * LD8(R5 + 4);
@@ -225,13 +225,13 @@ Next sub_80A9B70(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA104 ── */
-/* sub_80AA104(r0 = row selector, 0..2):
+/* ── palette_copyTableRow_80AA104 ── */
+/* palette_copyTableRow_80AA104(r0 = row selector, 0..2):
  * Copies one 8-byte entry (a palette row: three colors plus terminator)
  * from the table byte_80AA11C into the buffer byte_20018B0, then
  * returns 0 with the flags set by "mov r0, #0" (N/Z clear, C/V unchanged).
  * r4-r7 are untouched by this routine and by CopyBytes. */
-Next sub_80AA104(void) {
+Next palette_copyTableRow_80AA104(void) {
     /* Each entry in byte_80AA11C is 8 bytes: R0 selects which one. */
     R0 = A_byte_80AA11C + (R0 << 3);
     R1 = A_byte_20018B0;
@@ -243,12 +243,12 @@ Next sub_80AA104(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA2F8 ── */
-/* sub_80AA2F8: sprite setup for an object whose struct pointer is in r5.
+/* ── object_initSpriteState3_80AA2F8 ── */
+/* object_initSpriteState3_80AA2F8: sprite setup for an object whose struct pointer is in r5.
  * Stores the object's initial state fields (+0 = 3, +4 = 0, +8 = 4), loads
  * its sprite (gfx 0x80, palette 0x1C, sprite 0x98), resets the animation,
  * and finishes with the follow-up init in sub_80AA322. */
-Next sub_80AA2F8(void) {
+Next object_initSpriteState3_80AA2F8(void) {
     ST8(R5, 3);                       /* object state = 3 */
 
     R0 = 0x80;                        /* sprite_load(gfx, palette, sprite) */
@@ -349,8 +349,8 @@ Next getOffsetToQuantityOfChipCodeMaybe_8021c7c(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8021AB4 ── */
-/* sub_8021AB4(r0 = source record, r1 = slot index):
+/* ── sChip_loadRecordIntoSlot_8021AB4 ── */
+/* sChip_loadRecordIntoSlot_8021AB4(r0 = source record, r1 = slot index):
  * Copies a 0x3C-unit record from r0 into slot r1 of the S-chip table whose
  * base pointer is stored at [r10 + oToolkit_S_Chip_2002178_Ptr] (slot r1
  * begins at base + r1 * 0x3C).  It then scans the copy's 30 halfwords: each
@@ -358,7 +358,7 @@ Next getOffsetToQuantityOfChipCodeMaybe_8021c7c(void) {
  * and handed to sub_8021B2A together with a count of 1.
  * Exits with r2 = 1 and r3 = the result of the last sub_8021B2A call;
  * r4-r7 are preserved (the loop's r6/r7 live only inside this routine). */
-Next sub_8021AB4(void) {
+Next sChip_loadRecordIntoSlot_8021AB4(void) {
     u32 src = R0;
     u32 slot = R1;
     u32 savedR6 = R6;

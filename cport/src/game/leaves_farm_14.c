@@ -7,12 +7,12 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_80DA9FE ── */
-/* sub_80DA9FE(r0 = entry index):
+/* ── rng_pickRandomHalfwordFromTableEntry_80DA9FE ── */
+/* rng_pickRandomHalfwordFromTableEntry_80DA9FE(r0 = entry index):
  * Pick one of the eight halfwords inside the 16-byte table entry at
  * byte_80211A0 + index*16, using a positive RNG value masked to 0..7.
  * r0 = the selected halfword; r4 and r7 are untouched. */
-Next sub_80DA9FE(void) {
+Next rng_pickRandomHalfwordFromTableEntry_80DA9FE(void) {
     u32 entry = A_byte_80211A0 + ((u32)R0 << 4);
 
     GUEST_CALL(GetPositiveSignedRNG);
@@ -21,15 +21,15 @@ Next sub_80DA9FE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E0F2E ── */
-/* sub_80E0F2E(r0 = selector, r5 = battle object):
+/* ── battle_setExtraAnimState_80E0F2E ── */
+/* battle_setExtraAnimState_80E0F2E(r0 = selector, r5 = battle object):
  * Reset an object's extra-var timer to 0x15 (r0 == 1) or 8 (otherwise).
  * If the timer actually changed, reload the object's sprite animation
  * (sprite 0x80, animation 0x14), drop any queued animation, and clear
  * the "shadowless" flag (bit 3) in the object header.
  * Leaves r3 = value sprite_noShadow leaves behind, or the old timer
  * value when the early-exit path is taken; r4/r5 preserved. */
-Next sub_80E0F2E(void) {
+Next battle_setExtraAnimState_80E0F2E(void) {
     u32 animId = (R0 == 1) ? 0x15 : 8;
     u32 oldTimer = LD32(R5 + oBattleObject_ExtraVars + 0xC);
 
@@ -55,8 +55,8 @@ Next sub_80E0F2E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E3BEA ── */
-/* sub_80E3BEA (r5 = battle object):
+/* ── battle_objectUpdatePosAndRunAction_80E3BEA ── */
+/* battle_objectUpdatePosAndRunAction_80E3BEA (r5 = battle object):
  * Update this object's position via sub_80E3D1A — first from its current
  * (X, Y), then again from the position advanced by its X velocity — and
  * then hand control to the handler for its current action, selected from
@@ -64,8 +64,8 @@ Next sub_80E0F2E(void) {
  * r0 = CurAction (offset 9 in the battle object), r1 = its table entry
  * (thumb address), r2 = whatever sub_80E3D1A left there; everything else
  * passes through untouched. When the handler returns, return to
- * sub_80E3BEA's caller. */
-Next sub_80E3BEA(void) {
+ * battle_objectUpdatePosAndRunAction_80E3BEA's caller. */
+Next battle_objectUpdatePosAndRunAction_80E3BEA(void) {
     R0 = LD32(R5 + oBattleObject_X);
     R1 = LD32(R5 + oBattleObject_Y);
     GUEST_CALL(sub_80E3D1A);
@@ -85,12 +85,12 @@ Next sub_80E3BEA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EB194 ── */
+/* ── aiAttack_TimerTickEnd_80EB194 ── */
 /* Offsets/bit positions referenced by the assembly that aren't in game.h. */
 #define OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT 19   /* lsl r0, r0, #19 */
 #define oAIAttackVars_Unk_00 0                   /* strh r0, [r7,#0] */
 
-/* sub_80EB194: per-frame tick of an AI attack action. R7 points at the object's
+/* aiAttack_TimerTickEnd_80EB194: per-frame tick of an AI attack action. R7 points at the object's
  * AI attack variables.
  *
  * Decrements the action timer (Unk_10) and leaves that value in R0. While it
@@ -104,7 +104,7 @@ Next sub_80E3BEA(void) {
  * Flags left behind: on the early-return path those of the decrement; on the
  * reset path nz from the final MOV (Thumb MOVS) and c/v from the last helper
  * call, matching the original. */
-Next sub_80EB194(void) {
+Next aiAttack_TimerTickEnd_80EB194(void) {
     /* timer--; done for this frame unless it just hit zero. R0 keeps the
      * decremented value, as the original leaves it there for callers. */
     R0 = LD16(R7 + oAIAttackVars_Unk_10);

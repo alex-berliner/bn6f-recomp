@@ -1,0 +1,129 @@
+name: battle_updateObjectByKind_8026E98
+address: '0x08026E98'
+kind: function
+status: confirmed
+summary: Runs one update step for a battle object, dispatching to the handler matching the object's kind byte and
+  passing in a battle-effect flag.
+interface: void battle_updateObjectByKind_8026E98(S20364C0 *self /* in R5 */); also reads GetBattleEffects() and
+  clobbers/sets NZ from the effect check
+details: 'Generic per-step entry point for a battle object whose struct pointer is expected in R5
+
+  (struct S20364C0). It queries the global battle effect flags via GetBattleEffects(); if
+
+  effect bit 0x200000 is active, the constant 4 is prepared as a flag argument (R4=4),
+
+  otherwise 0. It then reads the kind byte at self+2 and uses it as an index into the
+
+  handler table at off_8026EBC, which has three entries: kind 0 -> sub_8026EC8,
+
+  kind 4 -> sub_8026F1A, kind 8 -> sub_8026FAA. The handler is called in thumb mode with
+
+  kind in R0, its own thumb pointer in R1, self in R5 and the effect flag in R4. After the
+
+  handler returns, sub_8029C08 is run on the same object (self in R5); this likely does
+
+  shared per-step bookkeeping (position/animation/timer updates). The caller''s R4 is saved
+
+  and restored, so the effect flag lives only for the duration of the two calls.
+
+  Quirk: the NZ flags left before the dispatched call depend on which branch was taken -
+
+  "movs r4, #4" when the effect is present, the TST result (Z set) when absent.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8026E98
+
+    .venv/bin/python -m wf verify --function sub_8026E98 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8026E98
+
+    .venv/bin/python -m wf verify --function sub_8026E98 --snapshots SNAPSHOT_DIR'
+  result: 2 compared, 0 differed, 4 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8026E98
+
+    .venv/bin/python -m wf verify --function sub_8026E98 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: chips, fuzz, story2.'
+  reproduce: grep -l '^08026e98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_8026E98 -> battle_updateObjectByKind_8026E98
+  where: bn6f b051503e
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7e065978
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- chips
+- fuzz
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- meaning of battle effect bit 0x200000 (which in-game effect or panel state sets it)
+- semantics of the kind values 0/4/8 (object classes? states? spacing of 4 suggests other kinds may exist elsewhere)
+- what sub_8029C08 does after the kind handler
+sources:
+- tools/wf run convert-20261009-014533
+previous_names:
+- sub_8026E98
