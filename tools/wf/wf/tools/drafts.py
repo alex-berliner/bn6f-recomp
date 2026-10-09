@@ -16,11 +16,31 @@ from wf.types import FunctionName, ModelSpec, Result, ToolMessage
 
 DRAFT_SYSTEM = "You document functions of a GBA game's disassembly for its symbol database. Reply exactly in the format asked."
 
-DRAFT_REQUEST = """Below is one function of MegaMan Battle Network 6 Falzar (GBA): its assembly from the
-bn6f disassembly, its register contract (the lifter's analysis of every caller), and a readable C
-version that was checked against the original. Say what it does in game terms.
+# The fixed instructions come first and the function last, so every request shares a long prefix
+# that the provider can cache (Hyper caches whole 256-token blocks of a shared prefix).
+DRAFT_FORMAT = """You will be shown one function of MegaMan Battle Network 6 Falzar (GBA): its assembly from the
+bn6f disassembly, its register contract (the lifter's analysis of every caller: which registers and
+flags callers pass in, read back, or ignore), and a readable C version that was checked against the
+original game. Say what the function does in game terms, for the project's symbol database.
 
-### {function} (at {address:#010x})
+Reply with one ```yaml block holding a list with exactly one entry:
+- function: the function's current name, exactly as given
+  proposed_name: a name in game terms in the disassembly's style (camelCase, a subsystem prefix such
+    as sprite_, npc_, chatbox_ or battle_ where one fits), keeping the _ADDRESS suffix when the
+    current name has one; or the current name when nothing better is known
+  status: probable or hypothesis
+  summary: one line in game terms
+  interface: its registers in and out (and flags), as a C-like signature where you can
+  details: what it does, the structures and fields it touches, quirks
+  open_questions: [list]
+  register_form: null
+Status: probable = read from the code and consistent with what it touches, not independently
+checked; hypothesis = a guess with partial evidence (it gets a comment, not a rename). Quote any
+value that contains a colon. Nothing outside the yaml block.
+
+"""
+
+DRAFT_FUNCTION = """### {function} (at {address:#010x})
 Register contract:
 {contract}
 Assembly:
@@ -31,17 +51,6 @@ Readable C (verified):
 ```c
 {code}
 ```
-
-Reply with one ```yaml block holding a list with exactly one entry:
-- function: {function}
-  proposed_name: a name in game terms, keeping the _ADDRESS suffix when the name has one (or the current name)
-  status: probable or hypothesis (how sure the meaning is from the code alone)
-  summary: one line in game terms
-  interface: its registers in and out (and flags), as a C-like signature where you can
-  details: what it does, structures and fields it touches, quirks
-  open_questions: [list]
-  register_form: null
-Quote any value that contains a colon.
 """
 
 
@@ -118,8 +127,9 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
 
 def _request(context: ConversionContext, code: str) -> Prompt:
     contract = "\n".join(f"  {part}: {' '.join(names) or '-'}" for part, names in context.contract.by_part().items())
-    return Prompt(DRAFT_REQUEST.format(function=context.function, address=context.address, contract=contract,
-                                       assembly=context.assembly, code=code.strip()))
+    return Prompt(DRAFT_FORMAT + DRAFT_FUNCTION.format(function=context.function, address=context.address,
+                                                       contract=contract, assembly=context.assembly,
+                                                       code=code.strip()))
 
 
 def _ask(model: ModelSpec, prompt: Prompt, tag: str) -> str:

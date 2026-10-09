@@ -6,7 +6,7 @@ and Z.ai go through the local pacing proxies).
   tools/llm.py PROVIDER/MODEL < prompt.txt > reply.txt
   import llm; llm.complete("opencode/kimi-k3", prompt, system=...)
 """
-import json, os, re, sys, time, urllib.error, urllib.request
+import json, os, re, sys, threading, time, urllib.error, urllib.request
 
 PI = os.path.expanduser("~/.pi/agent")
 
@@ -15,6 +15,24 @@ def _providers():
     models = json.load(open(os.path.join(PI, "models.json")))["providers"]
     auth = json.load(open(os.path.join(PI, "auth.json")))
     return models, auth
+
+
+_pace_lock = threading.Lock()
+_next_start: dict = {}
+
+
+def _pace(provider: str):
+    """Space this process's requests to a provider evenly when $LLM_PACE asks for it
+    (`hyper:15` = 15 requests a minute; comma-separated for several providers). Hyper has no local
+    pacer; an even pace keeps its prompt cache warm, where bursts let it go cold between hours."""
+    rates = dict(item.split(":", 1) for item in os.environ.get("LLM_PACE", "").split(",") if ":" in item)
+    if provider not in rates:
+        return
+    interval = 60.0 / float(rates[provider])
+    with _pace_lock:
+        start = max(time.time(), _next_start.get(provider, 0.0))
+        _next_start[provider] = start + interval
+    time.sleep(max(0.0, start - time.time()))
 
 
 def blocked_until(spec: str, log_dir: str = "/tmp/bn-pacer"):
@@ -73,6 +91,8 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
         body = {"model": model, "max_tokens": max_tokens, "messages": msgs}
         headers = {"Authorization": f"Bearer {key}", "content-type": "application/json"}
     data = json.dumps(body).encode()
+    _pace(provider)
+    t0 = time.time()   # the logged seconds are the call's, not the pacing wait's
     waits = 0
     attempt = 0
     while True:
