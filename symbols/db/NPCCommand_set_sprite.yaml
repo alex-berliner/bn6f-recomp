@@ -1,0 +1,107 @@
+name: NPCCommand_set_sprite
+address: '0x0809EF00'
+kind: function
+status: confirmed
+summary: NPC script command that assigns a sprite id to an overworld NPC, applying special-case palette/hidden-OAM
+  overrides from a lookup table.
+interface: void NPCCommand_set_sprite(OverworldNPCObject* npc /*r5*/, const u8* cmdStream /*r6*/); // sets nz/c/v
+  from r6 += 2, clobbers r0-r3, preserves r5
+details: 'Handles one opcode of an overworld NPC script/command stream. r5 points at an
+
+  OverworldNPCObject and r6 at the current command; the command''s second byte
+
+  ([r6+1]) is a sprite id. The routine stores the id into
+
+  OverworldNPCObject_NPCSprite (halfword), resets PaletteIndex to 0 and
+
+  HiddenOAMPieces to 0, then walks OverworldNPCSpriteVariations (3-byte entries:
+
+  {u8 SpriteId, u8 HiddenOAMPieces, u8 PaletteIndex}, terminated by SpriteId 0xFF)
+
+  looking for a matching sprite id. On a match, the entry''s HiddenOAMPieces is
+
+  copied into the object''s HiddenOAMPieces field shifted left by 24 (the count
+
+  lives in the top byte of the 32-bit field, matching the original''s
+
+  lsl r0,#24 store), and its PaletteIndex overwrites the object''s palette index.
+
+  If the search hits the 0xFF terminator first, the defaults just written remain.
+
+  Afterwards NPCSpriteCategory is forced to 0x18 (the standard NPC sprite
+
+  category) and the shadow flag (OW_NPC_UNK_FLAGS_60_SHADOW_FLAG_0x80, bit 0x80)
+
+  is cleared in OverworldNPCObject_UnkFlags_60, so a newly set sprite never
+
+  starts with a shadow. Finally r6 is advanced past the 2-byte command and the
+
+  ADDS that does so sets the flags for the dispatcher; lr is moved to pc, so the
+
+  command handler table returns through lr.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-043156);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_28.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    28' --file leaves_farm_28.c copy_8048C98 sub_80465BC sub_804754C sub_8047800 sub_804A1FC uncomp_80471F8 NPCCommand_set_sprite
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function NPCCommand_set_sprite
+
+    .venv/bin/python -m wf verify --function NPCCommand_set_sprite --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 262 out
+    of domain (verify run convert-20261009-043156-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function NPCCommand_set_sprite
+
+    .venv/bin/python -m wf verify --function NPCCommand_set_sprite --snapshots SNAPSHOT_DIR'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261009-043156-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function NPCCommand_set_sprite
+
+    .venv/bin/python -m wf verify --function NPCCommand_set_sprite --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-043156-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battlesweep, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0809ef00 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_28.c
+  where: recomp 34b00e9
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_28.c
+coverage:
+- battle
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- copy_8048C98
+- sub_80465BC
+- sub_804754C
+- sub_8047800
+- sub_804A1FC
+- uncomp_80471F8
+open_questions:
+- exact meaning of the HiddenOAMPieces top-byte encoding (count of OAM entries hidden for special sprites?)
+- what other values NPCSpriteCategory can take from sibling commands (0x18 assumed "standard NPC")
+- which sprites are listed in OverworldNPCSpriteVariations and why they need palette/hidden-OAM overrides
+sources:
+- tools/wf run convert-20261009-043156
