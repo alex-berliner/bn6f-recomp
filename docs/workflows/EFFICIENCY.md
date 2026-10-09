@@ -22,6 +22,7 @@ what it cost, and what was done (or is still open).
 | Picking a farm batch from every coverage profile, including sweeps the capture cannot replay. | 522 of batch B's 1,200 functions had no route to capture on. | Select from the eight replayable routes' profiles only. |
 | A finished farm candidate had no symbols/db entry, so integrating it would make a strong model write the documentation. | One strong-model round per group of small functions. | The farm model drafts each accepted function's entry (`draft_symbol_entry`; `wf drafts` for older ones): about 4 s and 1-2k tokens on Hyper. |
 | Stuck background jobs. A background job only reports when it ends, so a stuck one is invisible. | An hour lost on the stuck capture. | Shell watchdogs (no model cost until they fire): a process over its expected time, or a log that stops growing. Match the process, not the `bash -c` wrapper whose command line repeats the pattern (both mistakes were made). |
+| `wf status` showed killed runs as "running": the tracking log of a killed run and of a working one both end with a step that began. | Five stale runs listed as running. | Each tracked run records its process (pid and start time) in `owner.json`; a run whose process is gone shows "stopped ... its process ended during this step". |
 | Hyper has an hourly rate limit, not only a daily balance. | After 1,025 calls in 19 minutes (3.3M tokens, about 23 of 217 units), every call failed with HTTP 429 "try again in 42m12s"; 45 farm pairs and the drafts run recorded provider failures. | `tools/llm.py` waits out a 429 that says when it lifts (up to 3 waits per call, not counted as retries), so one long queue uses each hour's allowance as it opens. |
 
 ## Measurements
@@ -51,7 +52,6 @@ what it cost, and what was done (or is still open).
   (executed on a replayable route, not hand-written, never farmed, by size).
 - **Hyper's balance has whole-unit granularity**, so cost per call is only
   measurable over a few hundred calls.
-- **`wf status` shows stale runs**: runs killed mid-step stay "running".
 - **Integrating farm candidates** goes through `wf convert --farm-model`, one
   file per group, with one full verify each; review of hundreds of small
   functions is the slowest part left.

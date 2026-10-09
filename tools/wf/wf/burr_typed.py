@@ -68,6 +68,37 @@ def burr_dir() -> Path:
     return Path(os.environ.get("WF_BURR_DIR", Path.home() / ".burr"))
 
 
+class RunOwner(BaseModel):
+    """The process running a tracked run. The tracking log alone shows a working run and one whose
+    process died the same way (a step that began and never ended); this tells them apart."""
+    pid: int
+    process_started: int  # clock ticks after boot: a reused pid belongs to a process started later
+
+
+def owner_alive(project: str, run_id: str) -> bool | None:
+    """Whether the process that last ran this run is still running (None: not recorded)."""
+    path = burr_dir() / project / run_id / "owner.json"
+    if not path.exists():
+        return None
+    owner = RunOwner.model_validate_json(path.read_text())
+    return _process_started(owner.pid) == owner.process_started
+
+
+def _claim(project: str, run_id: str) -> None:
+    path = burr_dir() / project / run_id / "owner.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pid = os.getpid()
+    _ = path.write_text(RunOwner(pid=pid, process_started=_process_started(pid) or 0).model_dump_json())
+
+
+def _process_started(pid: int) -> int | None:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    return int(stat.rsplit(")", 1)[1].split()[19])  # field 22 (starttime); the split starts at field 3
+
+
 def current_run_id() -> str:
     """The id of the run whose step is running now (for naming the runs it starts)."""
     context = ApplicationContext.get()
@@ -236,6 +267,7 @@ class Graph(Generic[StateT]):
         if tracked:
             builder = builder.with_tracker("local", project=self.workflow.project,
                                            params={"storage_dir": str(burr_dir())})
+            _claim(self.workflow.project, run_id)
         parent = ApplicationContext.get()  # set while a step of another run is running
         if parent is not None and parent.sequence_id is not None:
             builder = builder.with_spawning_parent(parent.app_id, parent.sequence_id)

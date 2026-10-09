@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
-from wf.burr_typed import burr_dir
+from wf.burr_typed import burr_dir, owner_alive
 from wf.registry import WORKFLOWS, WorkflowEntry
 from wf.types import Result
 
@@ -84,10 +84,13 @@ def _status(workflow: WorkflowEntry, run_dir: Path) -> RunStatus:
         return RunStatus(workflow=workflow.name, run_id=run_dir.name, phase=phase, step=step, detail=detail,
                          last_activity=last_activity)
 
+    process_gone = owner_alive(workflow.project, run_dir.name) is False
     if not tracked:
-        return status(Phase.RUNNING, None, "started")
+        return status(Phase.STOPPED, None, "its process ended") if process_gone else status(Phase.RUNNING, None, "started")
     last = tracked[-1]
     if last.type == "begin_entry":
+        if process_gone:
+            return status(Phase.STOPPED, last.action, "its process ended during this step")
         return status(Phase.RUNNING, last.action, "")
     if last.exception:
         return status(Phase.FAILED, last.action, last.exception.strip().splitlines()[-1][:200])
