@@ -58,6 +58,7 @@ class ModelReply(Result):
     candidate: CandidateC | None  # None when the reply had no ```c block
     seconds: float
     error: ToolMessage | None = None  # the provider failed (HTTP error, timeout)
+    model: ModelSpec | None = None    # who answered (a farm run on a tier asks whichever source is up)
 
 
 class CandidateTest(Result):
@@ -118,17 +119,19 @@ def repair_prompt(context: ConversionContext, failure: ToolMessage, candidate: C
     return Prompt(first_prompt(context) + "\n\n" + repair.format(failure=failure[:3000], code=candidate or ""))
 
 
-def ask_model(model: ModelSpec, prompt: Prompt, tag: str) -> ModelReply:
+def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True) -> ModelReply:
+    """wait_out_limits=False: a rate limit comes back as an error at once (another source can answer)."""
     llm = cast(ModuleType, _farm.llm)  # pyright: ignore[reportAny]
     started = time.monotonic()
     try:
         reply = cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=24000,  # pyright: ignore[reportAny]
-                                       tag=tag, usage_log=str(USAGE_LOG)))
+                                       tag=tag, usage_log=str(USAGE_LOG), wait_out_limits=wait_out_limits))
     except Exception as error:  # the provider's own errors: HTTP, timeouts, bad JSON
         return ModelReply(candidate=None, seconds=round(time.monotonic() - started, 1),
-                          error=ToolMessage(f"model error: {error}"[:500]))
+                          error=ToolMessage(f"model error: {error}"[:500]), model=model)
     code = cast(str | None, _farm.extract_code(reply))  # pyright: ignore[reportAny]
-    return ModelReply(candidate=CandidateC(code) if code else None, seconds=round(time.monotonic() - started, 1))
+    return ModelReply(candidate=CandidateC(code) if code else None, seconds=round(time.monotonic() - started, 1),
+                      model=model)
 
 
 def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots: SnapshotDir,
@@ -171,6 +174,12 @@ def already_accepted(function: FunctionName, model: ModelSpec) -> Path | None:
 
 def _tag(model: ModelSpec) -> str:
     return re.sub(r"/", "_", model)
+
+
+def logged_rounds(function: FunctionName, model: ModelSpec) -> int:
+    """How many rounds farm runs have logged for this function and model."""
+    log = LOG_DIR / f"{function}.{_tag(model)}.jsonl"
+    return sum(1 for line in log.read_text().splitlines() if line.strip()) if log.exists() else 0
 
 
 def out_of_rounds_before(function: FunctionName, model: ModelSpec, rounds: int) -> bool:

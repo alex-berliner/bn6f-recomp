@@ -37,8 +37,8 @@ def _pace(provider: str):
 
 def blocked_until(spec: str, log_dir: str = "/tmp/bn-pacer"):
     """When a provider behind a local pacer is rate-limited, when that lifts (epoch seconds), read
-    from the pacer's log (`20:55:21 /v1/chat/completions 429 retry 1 in 12520s`): the pacer holds
-    requests that long without telling the client. None when not limited or there is no pacer log."""
+    from the pacer's log (`20:55:21 /v1/chat/completions 429 retry 1 in 12520s`, or `429 passed back,
+    retry after 12520s` when it hands a long limit back). None when not limited or there is no pacer log."""
     path = os.path.join(log_dir, spec.split("/", 1)[0] + ".log")
     try:
         lines = open(path, errors="replace").read().splitlines()[-50:]
@@ -61,12 +61,13 @@ def blocked_until(spec: str, log_dir: str = "/tmp/bn-pacer"):
             if len(upstream_errors) == 3:
                 return upstream_errors[0] + 1800 if now - upstream_errors[0] < 2700 and upstream_errors[0] + 1800 > now else None
             continue
-        m = re.match(r"(\d\d):(\d\d):(\d\d) \S+ (\d+)(?: retry \d+ in (\d+)s)?", line)
+        # a 429 the pacer waits out, or (a long one) passes back: `429 passed back, retry after 223208s`
+        m = re.match(r"(\d\d):(\d\d):(\d\d) \S+ (\d+)(?: retry \d+ in (\d+)s| passed back, retry after (\d+)s)?", line)
         if not m:
             continue
-        if m.group(4) != "429" or not m.group(5):
+        if m.group(4) != "429" or not (m.group(5) or m.group(6)):
             return None          # the latest answer got through
-        lifts = when(m) + int(m.group(5))
+        lifts = when(m) + int(m.group(5) or m.group(6))
         return lifts if lifts > now else None
     return None
 
@@ -81,10 +82,12 @@ def _limit_lifts_in(message: str):
 
 
 def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, timeout: int = 900,
-             retries: int = 3, tag: str = "", usage_log: str = "") -> str:
+             retries: int = 3, tag: str = "", usage_log: str = "", wait_out_limits: bool = True) -> str:
     """The reply text. With usage_log (or $LLM_USAGE_LOG), appends one JSON line
     per call: model, tag, seconds, input/output tokens as the provider reports
-    them (reasoning tokens are part of the output where reported)."""
+    them (reasoning tokens are part of the output where reported).
+    wait_out_limits=False: a rate limit is raised at once (with when it lifts, as
+    "retry after Ns") for a caller that can use another provider instead."""
     provider, model = spec.split("/", 1)
     t0 = time.time()
     models, auth = _providers()
@@ -114,9 +117,13 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
             break
         except urllib.error.HTTPError as e:
             msg = e.read().decode(errors="replace")[:300]
-            # a rate limit that says when it lifts (Hyper's hourly limit: "try again in 42m12s"):
-            # wait for it, without counting a retry (at most 3 such waits per call)
-            wait = _limit_lifts_in(msg) if e.code == 429 else None
+            # a rate limit that says when it lifts (Hyper's hourly limit: "try again in 42m12s", or a
+            # Retry-After header): wait for it, without counting a retry (at most 3 such waits per call)
+            after = e.headers.get("Retry-After") if e.headers else None
+            wait = (_limit_lifts_in(msg) or (int(float(after)) if after and after.replace(".", "").isdigit() else None)
+                    if e.code == 429 else None)
+            if wait is not None and not wait_out_limits:
+                raise RuntimeError(f"{spec}: HTTP {e.code} (retry after {wait}s): {msg}") from None
             if wait is not None and waits < 3 and wait <= 3900:
                 waits += 1
                 time.sleep(wait + 10)

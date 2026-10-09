@@ -16,8 +16,9 @@ from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.tools.build import build_host_difftest, committed_tree
 from wf.tools.drafts import Draft, draft_entry
 from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, accept, already_accepted,
-                             ask_model, conversion_context, first_prompt, log_round, out_of_rounds_before,
-                             repair_prompt, test_candidate)
+                             ask_model, conversion_context, first_prompt, log_round, logged_rounds,
+                             out_of_rounds_before, repair_prompt, test_candidate)
+from wf.tools.sources import first_up, models_for, out_for_long
 from wf.types import BuildFailure, FunctionName, ModelSpec, NotRun, Result, SnapshotDir, ToolMessage
 
 PROJECT = "recomp-farm"
@@ -58,6 +59,7 @@ class FarmOutcome(Enum):
     ACCEPTED = "accepted"
     OUT_OF_ROUNDS = "failed every round"
     MODEL_ERROR = "the model's provider failed"
+    SOURCES_OUT = "every source was out of quota (left for a later batch)"
     NOTHING_TO_CONVERT = "no lifted code, assembly or captured calls"
 
 
@@ -116,7 +118,8 @@ class AskOutput(Result):
 
 @farm.step
 def ask_model_for_c(given: AskInput) -> AskOutput:
-    """Ask the model for readable C; after a failure, show it the failure and its code."""
+    """Ask the model (or the first source of a tier that is up) for readable C; after a failure, show it the
+    failure and its code."""
     if given.attempts:
         last = given.attempts[-1]
         failure = last.test.report if last.test else ToolMessage("the reply had no ```c code block")
@@ -124,7 +127,10 @@ def ask_model_for_c(given: AskInput) -> AskOutput:
     else:
         prompt = first_prompt(given.context)
     round_number = len(given.attempts)
-    reply = ask_model(given.model, prompt, tag=f"{given.context.function} round {round_number}")
+    models = models_for(given.model)   # one model, or a tier: the first source that is up answers
+    tag = f"{given.context.function} round {round_number}"
+    _, reply = first_up(models, lambda model: ask_model(model, prompt, tag, wait_out_limits=len(models) == 1),
+                        lambda reply: reply.error)
     attempt = Attempt(round_number=round_number, prompt=prompt, reply=reply, test=None)
     return AskOutput(attempts=(*given.attempts, attempt))
 
@@ -147,7 +153,7 @@ def test_reply(given: TestInput) -> TestOutput:
     latest = given.attempts[-1]
     test = (test_candidate(given.context, latest.reply.candidate, given.snapshots, given.difftest)
             if latest.reply.candidate is not None else None)
-    log_round(given.context.function, given.model, latest.round_number, latest.reply, test)
+    log_round(given.context.function, latest.reply.model or given.model, latest.round_number, latest.reply, test)
     return TestOutput(attempts=(*given.attempts[:-1], latest.model_copy(update={"test": test})))
 
 
@@ -165,9 +171,10 @@ class AcceptOutput(Result):
 @farm.step
 def accept_candidate(given: AcceptInput) -> AcceptOutput:
     """Keep the passing candidate in tools/convert/accepted for review."""
-    candidate = given.attempts[-1].reply.candidate
-    assert candidate is not None
-    return AcceptOutput(accepted=accept(given.function, given.model, candidate), outcome=FarmOutcome.ACCEPTED)
+    reply = given.attempts[-1].reply
+    assert reply.candidate is not None
+    return AcceptOutput(accepted=accept(given.function, reply.model or given.model, reply.candidate),
+                        outcome=FarmOutcome.ACCEPTED)
 
 
 class DraftInput(Result):
@@ -300,14 +307,19 @@ def convert_each_pair(given: ConvertPairsInput) -> ConvertPairsOutput:
     batch_run_id = current_run_id()
 
     def convert(function: FunctionName, model: ModelSpec) -> PairResult:
-        accepted = already_accepted(function, model)
+        sources = models_for(model)   # a tier's pair is finished by any of its models
+        accepted = next((path for path in (already_accepted(function, source) for source in sources) if path), None)
         if accepted is not None:
             return PairResult(function=function, model=model, run_id=None, outcome=FarmOutcome.ACCEPTED,
                               accepted=accepted)
-        if out_of_rounds_before(function, model, given.rounds):
+        if (out_of_rounds_before(function, model, given.rounds) if len(sources) == 1
+                else sum(logged_rounds(function, source) for source in sources) > given.rounds):
             return PairResult(function=function, model=model, run_id=None, outcome=FarmOutcome.OUT_OF_ROUNDS,
                               accepted=None)
-        run_id = f"{batch_run_id}-{function}-{model.replace('/', '_')}"
+        if out_for_long(sources):
+            return PairResult(function=function, model=model, run_id=None, outcome=FarmOutcome.SOURCES_OUT,
+                              accepted=None)
+        run_id = f"{batch_run_id}-{function}-{model.replace('/', '_')}"   # tier/cheap -> tier_cheap
         start = FarmState(function=function, model=model, snapshots=given.snapshots, difftest=given.difftest,
                           rounds=given.rounds)
         outcome = farm_graph().start(start, run_id)

@@ -14,6 +14,7 @@ from wf.graphs.convert import (GIVEN_CANDIDATE, ConvertOutcome, ConvertState, Re
                                convert_graph, review_sheet)
 from wf.graphs.record import RecordReport, RecordState, RecordVerdict
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState
+from wf.tools import sources
 from wf.tools.evidence import FunctionChecks, Provenance
 from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Prompt
 from wf.tools.subsystem import CandidateFile, FileReply, FileTest, FunctionTest, SymbolDraft, TokenUse
@@ -23,7 +24,8 @@ from wf.types import (BuildFailure, CommitHash, FunctionName, GuestAddress, Mode
 FUNCTION = FunctionName("sub_8030808")
 OTHER = FunctionName("sub_8030892")
 FARM_MODEL = ModelSpec("hyper/cheap")
-STRONG, STRONGER = ModelSpec("opencode/strong"), ModelSpec("opencode/stronger")
+STRONG, STRONGER = ModelSpec("opencode/strong"), ModelSpec("zai/stronger")
+QUOTA_SPENT = ToolMessage("model error: opencode/strong: HTTP 429 (retry after 200000s): weekly quota used")
 APPROVE = Review(decision=ReviewDecision.APPROVE, attribution="Reviewed-by: test")
 
 
@@ -42,6 +44,8 @@ class World:
     prompted: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
     verified: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
     blocked: set[ModelSpec] = field(default_factory=set[ModelSpec])
+    out_of_quota: set[ModelSpec] = field(default_factory=set[ModelSpec])   # these answer with a 429
+    reported: list[ModelSpec] = field(default_factory=list[ModelSpec])     # sources recorded as down
     assembled: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
     name_failures: bool = True  # a failed quick test names its last function
     removed_trees: list[Path] = field(default_factory=list[Path])
@@ -117,25 +121,21 @@ def test_a_rate_limited_provider_is_passed_over(monkeypatch: pytest.MonkeyPatch,
     assert world.asked == [STRONGER]
 
 
-def test_when_every_provider_is_limited_it_waits_for_the_first_to_free_up(monkeypatch: pytest.MonkeyPatch) -> None:
-    clock = [1000.0]
-    lifts = {STRONG: 1000.0 + 5000, STRONGER: 1000.0 + 1200}
+def test_a_provider_out_of_quota_hands_the_same_round_to_the_next(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[False, True], verdicts=[Verdict.PASSED], out_of_quota={STRONG})
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-quota")
 
-    def now() -> float:
-        return clock[0]
+    assert isinstance(paused, Paused)
+    assert world.asked == [STRONG, STRONGER, STRONGER] and world.reported == [STRONG]
 
-    def sleep(seconds: float) -> None:
-        clock[0] += seconds
 
-    def blocked_until(model: ModelSpec) -> float | None:
-        return lifts[model] if lifts[model] > clock[0] else None
+def test_every_provider_out_of_quota_gives_up_saying_so(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[False], out_of_quota={STRONG, STRONGER})
+    finished = start(world, monkeypatch, tmp_path, run_id="convert-all-out")
 
-    monkeypatch.setattr(convert.time, "time", now)
-    monkeypatch.setattr(convert, "sleep", sleep)
-    monkeypatch.setattr(convert, "provider_blocked_until", blocked_until)
-
-    assert convert.available_model((STRONG, STRONGER)) == STRONGER
-    assert 2200.0 <= clock[0] < 2900.0
+    assert isinstance(finished, Finished) and finished.state.outcome is ConvertOutcome.SOURCES_OUT
+    assert world.asked == [STRONG, STRONGER]
 
 
 def test_a_failed_quick_test_goes_back_to_the_same_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -269,9 +269,12 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         world.prompted.append(tuple(context.function for context in contexts))
         return Prompt("convert these")
 
-    def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: Path) -> FileReply:
+    def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: Path,
+                           wait_out_limits: bool = True) -> FileReply:
         world.asked.append(model)
         world.prompts.append(prompt)
+        if model in world.out_of_quota:
+            return FileReply(file=None, cfg_lines=(), drafts=(), problems=(), seconds=1.0, error=QUOTA_SPENT)
         return FileReply(file=CandidateFile("Next sub_8030808(void) { RETURN_TO_CALLER(); }"), cfg_lines=(),
                          drafts=(DRAFT,), problems=(), seconds=1.0)
 
@@ -327,8 +330,11 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         return RecordReport(verdict=RecordVerdict.RECORDED, problems=(), renamed_in_bn6f=None, comments_in_bn6f=None,
                             verification=None, commit=CommitHash("d0c0"))
 
-    def provider_blocked_until(model: ModelSpec) -> float | None:
-        return 1e12 if model in world.blocked else None
+    def down_until(model: ModelSpec) -> float | None:
+        return 1e12 if model in world.blocked or model in world.reported else None
+
+    def report_failure(model: ModelSpec, error: str) -> None:
+        world.reported.append(model)
 
     def tokens_for(tag: str) -> TokenUse:
         return TokenUse(tokens_in=100, tokens_out=50)
@@ -341,7 +347,9 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         "held": lambda name, exclusive=True: nullcontext(),  # pyright: ignore[reportUnknownLambdaType]
         "test_candidate_file": test_candidate_file, "install_file": install_file, "uninstall_file": uninstall_file,
         "run_verify_in_full": run_verify_in_full, "commit_files": commit_files, "write_entries": write_entries,
-        "run_record": run_record, "tokens_for": tokens_for, "provider_blocked_until": provider_blocked_until,
+        "run_record": run_record, "tokens_for": tokens_for,
     }
     for name, fake in fakes.items():
         monkeypatch.setattr(convert, name, fake)
+    monkeypatch.setattr(sources, "down_until", down_until)
+    monkeypatch.setattr(sources, "report_failure", report_failure)

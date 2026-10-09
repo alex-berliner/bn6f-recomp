@@ -5,6 +5,7 @@ run is, and regenerate the docs.
   python -m wf capture --function NAME... [--route NAME]... [--calls N]
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] FUNCTION...
   python -m wf drafts  --model PROVIDER/MODEL [--jobs N] [FUNCTION...]   # entries for accepted candidates
+  (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
                        [--candidate FILE | --farm-model P/M] [--defer-record] [--battle-code] FUNCTION...
   python -m wf record  [--symbol NAME]... [--rename OLD NEW]... [--pending] --message-file FILE
@@ -35,6 +36,7 @@ from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, run_verify
 from wf.repo import REPO, RUNS
+from wf.tools.sources import models_for
 from wf.routes import ALL_ROUTES, route_named
 from wf.status import all_runs, workflow_of_run
 from wf.types import FunctionName, ModelSpec, Rename, Route, RouteName, SnapshotDir, SymbolName
@@ -183,7 +185,9 @@ def start_drafts(command: DraftsCommand) -> None:
 def start_convert(command: ConvertCommand) -> None:
     run_id, run_dir = new_run("convert")
     start = ConvertState(run_dir=run_dir, subsystem=command.subsystem, file_name=command.file,
-                         functions=command.functions, models=command.models or DEFAULT_MODELS, rounds=command.rounds,
+                         functions=command.functions,
+                         models=tuple(model for spec in command.models for model in models_for(spec)) or DEFAULT_MODELS,
+                         rounds=command.rounds,
                          snapshots=command.snapshots, candidate=command.candidate, farm_model=command.farm_model,
                          defer_record=command.defer_record, battle_code=command.battle_code)
     print_outcome(convert_graph().start(start, run_id))
@@ -322,7 +326,8 @@ def parse_command() -> Command:
     convert.add_argument("--subsystem", required=True, help="what the functions do together, in a few words")
     convert.add_argument("--file", required=True, help="the new file under cport/src/game, e.g. bg_redraw.c")
     convert.add_argument("--model", action="append", default=[],
-                         help="escalation order (default: " + ", ".join(DEFAULT_MODELS) + ")")
+                         help="the models in order of preference; a tier stands for its models (default: tier/strong = "
+                              + ", ".join(DEFAULT_MODELS) + ")")
     convert.add_argument("--rounds", type=int, default=3, help="attempts per model")
     convert.add_argument("--snapshots", type=Path, help="reuse captured calls instead of capturing")
     convert.add_argument("--candidate", type=Path, help="a ready file to try first")

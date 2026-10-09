@@ -14,6 +14,7 @@ import yaml
 
 from wf.repo import REPO
 from wf.tools.models import ACCEPTED_DIR, FARM, USAGE_LOG, ConversionContext, Prompt, conversion_context
+from wf.tools.sources import first_up, models_for
 from wf.tools.subsystem import CandidateFile, FileReply, SymbolDraft, parse_drafts, yaml_blocks
 from wf.types import FunctionName, ModelSpec, Result, ToolMessage
 
@@ -70,16 +71,20 @@ def draft_path(candidate: Path) -> Path:
 
 
 def undrafted(model: ModelSpec, functions: tuple[FunctionName, ...] | None) -> tuple[Path, ...]:
-    """The model's accepted candidates (of `functions`, in their order, or all) that have no draft yet."""
-    tag = model.replace("/", "_")
+    """The accepted candidates of the model (or of a tier's models) that have no draft yet: of `functions`,
+    in their order, or all."""
+    tags = [source.replace("/", "_") for source in models_for(model)]
     if functions is not None:
-        candidates = [ACCEPTED_DIR / f"{function}.{tag}.c" for function in functions]
-        return tuple(path for path in candidates if path.exists() and not draft_path(path).exists())
-    return tuple(path for path in sorted(ACCEPTED_DIR.glob(f"*.{tag}.c")) if not draft_path(path).exists())
+        candidates = [path for function in functions
+                      for path in (ACCEPTED_DIR / f"{function}.{tag}.c" for tag in tags) if path.exists()]
+    else:
+        candidates = sorted(path for tag in tags for path in ACCEPTED_DIR.glob(f"*.{tag}.c"))
+    return tuple(path for path in candidates if not draft_path(path).exists())
 
 
 def draft_entry(model: ModelSpec, candidate: Path, tag: str) -> Draft:
-    """Ask the model for the candidate's entry (once more if the yaml is unusable) and write it."""
+    """Ask the model (or the first source of a tier that is up) for the candidate's entry, once more if the
+    yaml is unusable, and write it."""
     started = time.monotonic()
     function = FunctionName(candidate.name.split(".")[0])
     context = conversion_context(function)
@@ -87,10 +92,14 @@ def draft_entry(model: ModelSpec, candidate: Path, tag: str) -> Draft:
         return Draft(function=function, path=None, problem=ToolMessage("no lifted code or assembly"), seconds=0.0)
     prompt = _request(context, candidate.read_text())
     problem = ToolMessage("")
+    sources = models_for(model)
     for attempt in range(2):
-        try:
-            reply = _ask(model, prompt, f"{tag} draft {function} {attempt}")
-        except RuntimeError as error:
+        def ask(source: ModelSpec, prompt: Prompt = prompt, attempt: int = attempt) -> tuple[str, str | None]:
+            return _ask(source, prompt, f"{tag} draft {function} {attempt}", wait_out_limits=len(sources) == 1)
+        def failure(answer: tuple[str, str | None]) -> str | None:
+            return answer[1]
+        _, (reply, error) = first_up(sources, ask, failure)
+        if error is not None:
             problem = ToolMessage(f"model error: {error}"[:300])
             continue
         blocks = yaml_blocks(reply)
@@ -108,12 +117,13 @@ def draft_entry(model: ModelSpec, candidate: Path, tag: str) -> Draft:
 def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, subsystem: str,
                         file_name: str) -> FileReply:
     """The model's accepted candidates of `functions` as one file, with their drafted entries."""
-    tag = model.replace("/", "_")
+    tags = [source.replace("/", "_") for source in models_for(model)]
     bodies: list[tuple[FunctionName, str]] = []
     drafts: list[SymbolDraft] = []
     problems: list[ToolMessage] = []
     for function in functions:
-        candidate = ACCEPTED_DIR / f"{function}.{tag}.c"
+        candidate = next((path for path in (ACCEPTED_DIR / f"{function}.{tag}.c" for tag in tags) if path.exists()),
+                         ACCEPTED_DIR / f"{function}.{tags[0]}.c")
         if not candidate.exists():
             problems.append(ToolMessage(f"no accepted {model} candidate for {function}"))
             continue
@@ -240,7 +250,12 @@ def _request(context: ConversionContext, code: str) -> Prompt:
                                                        code=code.strip()))
 
 
-def _ask(model: ModelSpec, prompt: Prompt, tag: str) -> str:
+def _ask(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool) -> tuple[str, str | None]:
+    """(the reply, or "" and the provider's error)."""
     llm = cast(ModuleType, FARM.llm)  # pyright: ignore[reportAny]
-    return cast(str, llm.complete(model, prompt, system=DRAFT_SYSTEM, max_tokens=16000,  # pyright: ignore[reportAny]
-                                  timeout=600, retries=2, tag=tag, usage_log=str(USAGE_LOG)))
+    try:
+        return cast(str, llm.complete(model, prompt, system=DRAFT_SYSTEM, max_tokens=16000,  # pyright: ignore[reportAny]
+                                      timeout=600, retries=2, tag=tag, usage_log=str(USAGE_LOG),
+                                      wait_out_limits=wait_out_limits)), None
+    except RuntimeError as error:
+        return "", str(error)

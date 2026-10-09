@@ -178,7 +178,9 @@ def repair_prompt(base: Prompt, what_failed: str, report: str, previous: FileRep
     return Prompt("\n".join(parts))
 
 
-def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: Path) -> FileReply:
+def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: Path,
+                       wait_out_limits: bool = True) -> FileReply:
+    """wait_out_limits=False: a rate limit comes back as an error at once (another source can answer)."""
     llm = cast(ModuleType, _farm.llm)  # pyright: ignore[reportAny]
     record_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = record_dir / f"{tag.replace(' ', '-')}.prompt.md"
@@ -186,7 +188,7 @@ def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: P
     prompt_file.write_text(prompt)
     started = time.monotonic()
     try:
-        reply = _complete(llm, model, prompt, tag)
+        reply = _complete(llm, model, prompt, tag, wait_out_limits)
     except Exception as error:  # the provider's own errors: HTTP, timeouts, bad JSON
         return FileReply(file=None, cfg_lines=(), drafts=(), problems=(), seconds=round(time.monotonic() - started, 1),
                          error=ToolMessage(f"model error: {error}"[:500]), prompt_file=prompt_file)
@@ -200,18 +202,14 @@ def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: P
                                      "prompt_file": prompt_file, "reply_file": reply_file})
 
 
-PACER_LOGS = Path("/tmp/bn-pacer")   # a provider with a log here goes through the user's local pacer
-
-
-def _complete(llm: ModuleType, model: ModelSpec, prompt: Prompt, tag: str) -> str:
-    """The reply, with room for long reasoning (the models spent 35-48k tokens reasoning on a subsystem).
-    A local pacer gives up on an upstream call after 600 s without data, so behind one the budget is 44k,
-    which glm-5.3 and deepseek finish inside that; elsewhere 64k (48k if a provider refuses 64k)."""
+def _complete(llm: ModuleType, model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool) -> str:
+    """The reply, with room for long reasoning (the models spent 35-48k tokens reasoning on a subsystem,
+    so 48k cut replies off): 64k, or 48k for a provider that refuses 64k. Replies are not streamed, so the
+    wait is the whole generation: glm-5.3 took up to 20 minutes at 48k (the local pacers allow 40, this 45)."""
     def ask(max_tokens: int) -> str:
         return cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=max_tokens,  # pyright: ignore[reportAny]
-                                      timeout=900, retries=1, tag=tag, usage_log=str(USAGE_LOG)))
-    if (PACER_LOGS / f"{model.split('/', 1)[0]}.log").exists():
-        return ask(44000)
+                                      timeout=2700, retries=1, tag=tag, usage_log=str(USAGE_LOG),
+                                      wait_out_limits=wait_out_limits))
     try:
         return ask(64000)
     except RuntimeError as error:

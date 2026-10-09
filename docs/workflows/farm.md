@@ -24,7 +24,8 @@ Find the function's assembly, lifted C and register contract, and its captured c
 
 ### `ask_model_for_c` (step)
 
-Ask the model for readable C; after a failure, show it the failure and its code.
+Ask the model (or the first source of a tier that is up) for readable C; after a failure, show it the
+failure and its code.
 
 - reads: `context: ConversionContext`, `model: ModelSpec`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`

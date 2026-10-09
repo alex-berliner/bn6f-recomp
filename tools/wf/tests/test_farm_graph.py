@@ -122,7 +122,7 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
                                  lifted=LiftedC("Next f(void) {}"),
                                  contract=Contract(inputs=(), outputs=(), clobbers=(), preserved=()))
 
-    def ask_model(model: ModelSpec, prompt: Prompt, tag: str) -> ModelReply:
+    def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True) -> ModelReply:
         prompts.append(prompt)
         if provider_fails:
             return ModelReply(candidate=None, seconds=1.0, error=ToolMessage("model error: HTTP 500"))

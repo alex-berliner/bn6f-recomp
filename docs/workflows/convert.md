@@ -38,8 +38,8 @@ subsystem (a replacement must define them); build the host difftest for quick te
 
 ### `ask_model_for_file_step` (step)
 
-Ask the next model for the whole file (passing over a rate-limited provider); after a failure or
-review, show it what went wrong.
+Ask the first model with rounds left whose provider is up (sources.first_up) for the whole file;
+after a failure or review, show it what went wrong.
 
 - reads: `run_dir: Path`, `subsystem: str`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `models: tuple[ModelSpec, ...]`, `rounds: int`, `candidate: Path | None`, `farm_model: typing.Optional[ModelSpec]`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`

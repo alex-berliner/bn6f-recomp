@@ -10,9 +10,8 @@ committed, its symbols/db entries are written from the model's drafts plus the
 run's own evidence, and a child record run renames and documents it.
 The orchestrator never writes the code: it chooses the work and reviews."""
 import re
-import time
+from collections import Counter
 from enum import Enum
-from time import sleep
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -29,14 +28,15 @@ from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
 from wf.tools.git import commit_files
 from wf.tools.locks import MAIN_TREE, held
 from wf.tools.install import DIFFTEST_CFG, game_file, install_file, uninstall_file
-from wf.tools.models import ConversionContext, conversion_context, other_entries, provider_blocked_until
+from wf.tools.models import ConversionContext, conversion_context, other_entries
+from wf.tools.sources import TIERS, Tier, first_up, is_source_failure
 from wf.tools.subsystem import (FileReply, FileTest, TokenUse, ask_model_for_file, candidate_from_file, repair_prompt,
                                 subsystem_prompt, test_candidate_file, tokens_for)
 from wf.types import (BuildFailure, CommitHash, FunctionName, ModelSpec, NotRun, Rename, Result, Route, SnapshotDir,
                       SymbolName, ToolMessage)
 
 PROJECT = "recomp-convert"
-DEFAULT_MODELS = (ModelSpec("opencode/deepseek-v4-pro"), ModelSpec("opencode/kimi-k3"), ModelSpec("zai/glm-5.3"))
+DEFAULT_MODELS = TIERS[Tier.STRONG]
 GIVEN_CANDIDATE = ModelSpec("given candidate")
 ACCEPTED_VERDICTS = (Verdict.PASSED, Verdict.PASSED_WITH_UNCHECKED_FUNCTIONS)
 
@@ -105,6 +105,7 @@ class ConvertOutcome(Enum):
     NO_CAPTURED_CALLS = "some functions have no captured calls, so they could not be checked"
     COMMITTED_RECORD_PENDING = "committed with its entries; renames and bn6f comments wait for a batch record"
     DIFFTEST_DID_NOT_BUILD = "the host difftest did not build"
+    SOURCES_OUT = "every model's provider was out of quota for longer than the run waits"
 
 
 class DroppedFunction(Result):
@@ -238,8 +239,8 @@ class AskOutput(Result):
 
 @workflow.step
 def ask_model_for_file_step(given: AskInput) -> AskOutput:
-    """Ask the next model for the whole file (passing over a rate-limited provider); after a failure or
-    review, show it what went wrong."""
+    """Ask the first model with rounds left whose provider is up (sources.first_up) for the whole file;
+    after a failure or review, show it what went wrong."""
     number = len(given.attempts) + 1
     if not given.attempts and given.candidate is not None:
         attempt = Attempt(number=number, model=GIVEN_CANDIDATE, given=True, reply=candidate_from_file(given.candidate))
@@ -248,14 +249,20 @@ def ask_model_for_file_step(given: AskInput) -> AskOutput:
         functions = tuple(context.function for context in given.contexts)
         reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name)
         return AskOutput(attempts=(Attempt(number=number, model=given.farm_model, given=True, reply=reply),))
-    escalation = given.models[min(_model_attempts(given.attempts) // given.rounds, len(given.models) - 1):]
-    model = available_model(escalation)
+    models = _with_rounds_left(given.models, given.attempts, given.rounds)
     prompt = subsystem_prompt(given.subsystem, given.file_name, given.contexts)
     if given.attempts:
         what_failed, report = _what_went_wrong(given.attempts[-1])
         prompt = repair_prompt(prompt, what_failed, report, given.attempts[-1].reply)
     tag = f"{current_run_id()} round {number}"
-    reply = ask_model_for_file(model, prompt, tag, given.run_dir / "prompts")
+
+    def ask(model: ModelSpec) -> FileReply:
+        return ask_model_for_file(model, prompt, tag, given.run_dir / "prompts", wait_out_limits=len(models) == 1)
+
+    def failure(reply: FileReply) -> str | None:
+        return reply.error
+
+    model, reply = first_up(models, ask, failure)
     return AskOutput(attempts=(*given.attempts, Attempt(number=number, model=model, reply=reply, tokens=tokens_for(tag))))
 
 
@@ -496,6 +503,8 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
     review = given.attempts[-1].review if given.attempts else None
     if review is not None and review.decision is ReviewDecision.REJECT:
         return GiveUpOutput(outcome=ConvertOutcome.REJECTED)
+    if given.attempts and _sources_out(given.attempts[-1]):
+        return GiveUpOutput(outcome=ConvertOutcome.SOURCES_OUT)
     return GiveUpOutput(outcome=ConvertOutcome.OUT_OF_ATTEMPTS)
 
 
@@ -505,24 +514,17 @@ def _has_calls(snapshots: SnapshotDir, function: FunctionName) -> bool:
     return any(not path.name.endswith(".exit.bin") for path in (snapshots / function).glob("snap_*.bin"))
 
 
-def available_model(escalation: tuple[ModelSpec, ...]) -> ModelSpec:
-    """The first model whose provider takes requests now (a rate-limited one is passed over). When none
-    does, wait for the one that frees up first, up to two hours: a pacer holds a request to a limited
-    provider until the limit lifts, which can be days."""
-    while True:
-        blocked = {model: provider_blocked_until(model) for model in escalation}
-        free = [model for model in escalation if blocked[model] is None]
-        if free:
-            return free[0]
-        soonest = min(escalation, key=lambda model: blocked[model] or 0.0)
-        wait = (blocked[soonest] or 0.0) - time.time()
-        if wait > 7200:
-            return soonest   # nothing frees up soon: ask anyway, and the run reports the provider's answer
-        sleep(min(wait + 30, 600))
+def _with_rounds_left(models: tuple[ModelSpec, ...], attempts: tuple[Attempt, ...],
+                      rounds: int) -> tuple[ModelSpec, ...]:
+    """The models (in order) that have had fewer than `rounds` attempts: each model gets its rounds,
+    whichever order the providers' quotas let them come in."""
+    used = Counter(attempt.model for attempt in attempts if not attempt.given)
+    return tuple(model for model in models if used[model] < rounds)
 
 
-def _model_attempts(attempts: tuple[Attempt, ...]) -> int:
-    return sum(1 for attempt in attempts if not attempt.given)
+def _sources_out(attempt: Attempt) -> bool:
+    """The attempt failed because every provider was out (first_up waited as long as it may)."""
+    return attempt.reply.error is not None and is_source_failure(attempt.reply.error)
 
 
 def _what_went_wrong(attempt: Attempt) -> tuple[str, str]:
@@ -550,7 +552,9 @@ def _checks(context: ConversionContext, state: VerifyState) -> FunctionChecks:
 def _attempts_left(state: ConvertState) -> bool:
     if state.farm_model is not None:
         return False   # a farm group drops failing functions; its file is too big for a model to repair
-    return _model_attempts(state.attempts) < state.rounds * len(state.models)
+    if state.attempts and _sources_out(state.attempts[-1]):
+        return False
+    return bool(_with_rounds_left(state.models, state.attempts, state.rounds))
 
 
 _SECTION_START = re.compile(r"^/\* ── \w+ ── \*/$")
