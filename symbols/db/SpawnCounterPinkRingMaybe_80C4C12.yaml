@@ -1,0 +1,174 @@
+name: SpawnCounterPinkRingMaybe_80C4C12
+address: '0x080C4C12'
+kind: function
+status: confirmed
+summary: Spawns the pink counter-hit ring (object type 0x5E) over the counterattacked enemy and links it to the
+  object that scored the counter.
+interface: '(x: u32 r1, y: u32 r2, z: u32 r3, params: u32 r4, owner: *BattleObject r5, outPtr: *BattleObject* r7)
+  -> *BattleObject r5 (new ring object, or NULL on failure); r1..r4 are passed straight through to object_spawnType1'
+details: "Wrapper around object_spawnType1: sets the object type to 0x5E (the pink ring\nthat hovers over MegaMan's\
+  \ target when a counter hit connects) and forwards\nx/y/z (r1-r3) and the spawn params (r4) unchanged. The callee\
+  \ returns the new\nobject in r5, which clobbers the owner pointer, so the owner is saved on the\nstack (push/pop\
+  \ r5) and restored before use — the caller's r5 value comes back\nreplaced by the ring pointer.\n\nIf the spawn\
+  \ succeeded (r5 != 0):\n  - copies the owner's oBattleObject_AllianceAndDirectionFlip halfword into the\n    ring,\
+  \ so it inherits the owner's alliance and direction-flip state;\n  - stores the owner pointer in the ring's oBattleObject_RelatedObject1Ptr,\n\
+  \    linking ring -> owner;\n  - stores the caller's r7 pointer in the ring's oBattleObject_ExtraVars+4 and\n\
+  \    writes the ring's own pointer back through r7 (ring -> caller), i.e. r7 is\n    an out-pointer slot that\
+  \ also gets kept inside the ring's extra vars;\n  - sets oBattleObject_Unk_0c to 1;\n  - sets OBJECT_FLAG_PAUSE_UPDATE\
+  \ (bit 4 of oObjectHeader_Flags), suspending\n    the ring's normal update until its script/other code clears\
+  \ it.\n\nOn spawn failure it just returns with r5 = 0 and touches nothing.\nNote r0 (type argument) is set after\
+  \ push {lr} but the owner in r5 is what's\nstacked; r4-r7 are preserved for the caller per the contract.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261009-010742);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_9.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    9' --file leaves_farm_9.c AddRandomVarianceToTwoCoords GetBattleNaviStatsAddr getBattleObjectPalette_800F334
+    object_removePanelReserve returnBoolIfAIDataFlagsAreSet_8012F3E setChipsForPlayerObject_800FDEA sub_8013FD0
+    sub_8014150 sub_80143FC sub_8014498 sub_80159A2 sub_8015BEC sub_80165B8 sub_80168C8 sub_8016E3C sub_801986C
+    sub_801A648 sub_801C9A4 sub_801CE6C sub_801CED2 sub_801DA24 sub_8027320 sub_80273EC sub_8028284 sub_802A0F8
+    sub_802A2E8 sub_802BED4 sub_802C1F0 sub_802CA5C sub_802CA82 sub_802D064 sub_802D6A0 sub_802DCEC sub_802FB90
+    sub_802FBB4 sub_802FBD8 sub_802FC28 sub_802FC4C sub_802FC9C sub_8030054 sub_8031122 sub_80313B0 sub_80313D4
+    sub_80313FC sub_8031C2A sub_8031C7C sub_8031C94 SpawnCounterPinkRingMaybe_80C4C12 chargeShotChargeObject_init_80E0E10
+    sub_80C44A8 sub_80C6AAC sub_80C9CA2 sub_80CAC44 sub_80CAD14 sub_80EC90E sub_80ECA0C sub_80FDF4C sub_80FDF84
+    sub_80FDF98 sub_80FE1FE sub_80FE452 sub_8109FA2 t3_0x16_80C6B40 t3_0xd3_80DFE40 InitializeT1BattleObjectStructs
+    clearBattleObjectLinkedLists_800318C clearBattleStateUnk11Flag_800A9D6 clear_flags32_20093A4 reset_flags32_20093A4
+    setBattleStateUnk11Flag_800A9CA set_flags32_20093A4 sub_800596C sub_800768C sub_8007978 sub_80079A8 sub_8007BF0
+    sub_800927C sub_800A2F8 sub_800A4E0 sub_800A7EA sub_800AA1A sub_800AAFC warp_setSubsystemIndexTo0x14AndOthers_8005f14
+    GetCurPETNavi GetRNG GetRNGSecondary GetRenderInfoLCDControl SeedRNG SetRenderInfoLCDControl ZeroFillByByte
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SpawnCounterPinkRingMaybe_80C4C12
+
+    .venv/bin/python -m wf verify --function SpawnCounterPinkRingMaybe_80C4C12 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-010742-verify-7)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SpawnCounterPinkRingMaybe_80C4C12
+
+    .venv/bin/python -m wf verify --function SpawnCounterPinkRingMaybe_80C4C12 --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-010742-verify-7)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SpawnCounterPinkRingMaybe_80C4C12
+
+    .venv/bin/python -m wf verify --function SpawnCounterPinkRingMaybe_80C4C12 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-010742-verify-7)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, menus2, story2.'
+  reproduce: grep -l '^080c4c12 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_9.c
+  where: recomp de7782d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_9.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story2
+related:
+- AddRandomVarianceToTwoCoords
+- GetBattleNaviStatsAddr
+- getBattleObjectPalette_800F334
+- object_removePanelReserve
+- returnBoolIfAIDataFlagsAreSet_8012F3E
+- setChipsForPlayerObject_800FDEA
+- sub_8013FD0
+- sub_8014150
+- sub_80143FC
+- sub_8014498
+- sub_80159A2
+- sub_8015BEC
+- sub_80165B8
+- sub_80168C8
+- sub_8016E3C
+- sub_801986C
+- sub_801A648
+- sub_801C9A4
+- sub_801CE6C
+- sub_801CED2
+- sub_801DA24
+- sub_8027320
+- sub_80273EC
+- sub_8028284
+- sub_802A0F8
+- sub_802A2E8
+- sub_802BED4
+- sub_802C1F0
+- sub_802CA5C
+- sub_802CA82
+- sub_802D064
+- sub_802D6A0
+- sub_802DCEC
+- sub_802FB90
+- sub_802FBB4
+- sub_802FBD8
+- sub_802FC28
+- sub_802FC4C
+- sub_802FC9C
+- sub_8030054
+- sub_8031122
+- sub_80313B0
+- sub_80313D4
+- sub_80313FC
+- sub_8031C2A
+- sub_8031C7C
+- sub_8031C94
+- chargeShotChargeObject_init_80E0E10
+- sub_80C44A8
+- sub_80C6AAC
+- sub_80C9CA2
+- sub_80CAC44
+- sub_80CAD14
+- sub_80EC90E
+- sub_80ECA0C
+- sub_80FDF4C
+- sub_80FDF84
+- sub_80FDF98
+- sub_80FE1FE
+- sub_80FE452
+- sub_8109FA2
+- t3_0x16_80C6B40
+- t3_0xd3_80DFE40
+- InitializeT1BattleObjectStructs
+- clearBattleObjectLinkedLists_800318C
+- clearBattleStateUnk11Flag_800A9D6
+- clear_flags32_20093A4
+- reset_flags32_20093A4
+- setBattleStateUnk11Flag_800A9CA
+- set_flags32_20093A4
+- sub_800596C
+- sub_800768C
+- sub_8007978
+- sub_80079A8
+- sub_8007BF0
+- sub_800927C
+- sub_800A2F8
+- sub_800A4E0
+- sub_800A7EA
+- sub_800AA1A
+- sub_800AAFC
+- warp_setSubsystemIndexTo0x14AndOthers_8005f14
+- GetCurPETNavi
+- GetRNG
+- GetRNGSecondary
+- GetRenderInfoLCDControl
+- SeedRNG
+- SetRenderInfoLCDControl
+- ZeroFillByByte
+open_questions:
+- exact meaning of oBattleObject_Unk_0c = 1 (possibly a "just spawned"/state byte)
+- whether r4 params selects ring size/variant
+sources:
+- tools/wf run convert-20261009-010742

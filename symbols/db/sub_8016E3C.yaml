@@ -1,0 +1,173 @@
+name: sub_8016E3C
+address: '0x08016E3C'
+kind: function
+status: confirmed
+summary: Decrements a battle object's phase counter each tick and, when it expires, resets the object's flags and
+  hands its saved state word back to the state machine.
+interface: void sub_8016E3C(battle object in r5); returns decremented phase in r0 (0 on the reset path), also sets
+  r1/r2, NZCV and lr per caller contract
+details: 'Works on the battle object whose address callers keep in r5. Reads the byte at oBattleObject_CurPhase,
+  subtracts 1, and stores it back; if the result is still >= 0 the object simply continues its current phase and
+  the function returns that new value. When the counter goes negative (phase expired), the object is fully reset:
+  object_clearFlag(0x101000) clears the corresponding bits in the object''s main flag bitfield, object_clearFlag2(0x10)
+  clears bit 0x10 of its second flag word, byte oBattleObject_Unk_1f is zeroed, the word at oBattleObject_Unk_5c
+  is copied into oBattleObject_CurStateActionPhaseAndPhaseInitialized (returning the saved state/action word to
+  the state machine), and Unk_5c itself is cleared to 0. Note the state restore also rewrites oBattleObject_CurPhase,
+  since that byte is part of the CurStateActionPhaseAndPhaseInitialized word. The 0x101000 clear value (bits 0x100000
+  and 0x1000) presumably ends whichever behavior the flags enabled, e.g. a timed state or animation; the exact meaning
+  of the flags is unconfirmed.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261009-010742);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_9.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    9' --file leaves_farm_9.c AddRandomVarianceToTwoCoords GetBattleNaviStatsAddr getBattleObjectPalette_800F334
+    object_removePanelReserve returnBoolIfAIDataFlagsAreSet_8012F3E setChipsForPlayerObject_800FDEA sub_8013FD0
+    sub_8014150 sub_80143FC sub_8014498 sub_80159A2 sub_8015BEC sub_80165B8 sub_80168C8 sub_8016E3C sub_801986C
+    sub_801A648 sub_801C9A4 sub_801CE6C sub_801CED2 sub_801DA24 sub_8027320 sub_80273EC sub_8028284 sub_802A0F8
+    sub_802A2E8 sub_802BED4 sub_802C1F0 sub_802CA5C sub_802CA82 sub_802D064 sub_802D6A0 sub_802DCEC sub_802FB90
+    sub_802FBB4 sub_802FBD8 sub_802FC28 sub_802FC4C sub_802FC9C sub_8030054 sub_8031122 sub_80313B0 sub_80313D4
+    sub_80313FC sub_8031C2A sub_8031C7C sub_8031C94 SpawnCounterPinkRingMaybe_80C4C12 chargeShotChargeObject_init_80E0E10
+    sub_80C44A8 sub_80C6AAC sub_80C9CA2 sub_80CAC44 sub_80CAD14 sub_80EC90E sub_80ECA0C sub_80FDF4C sub_80FDF84
+    sub_80FDF98 sub_80FE1FE sub_80FE452 sub_8109FA2 t3_0x16_80C6B40 t3_0xd3_80DFE40 InitializeT1BattleObjectStructs
+    clearBattleObjectLinkedLists_800318C clearBattleStateUnk11Flag_800A9D6 clear_flags32_20093A4 reset_flags32_20093A4
+    setBattleStateUnk11Flag_800A9CA set_flags32_20093A4 sub_800596C sub_800768C sub_8007978 sub_80079A8 sub_8007BF0
+    sub_800927C sub_800A2F8 sub_800A4E0 sub_800A7EA sub_800AA1A sub_800AAFC warp_setSubsystemIndexTo0x14AndOthers_8005f14
+    GetCurPETNavi GetRNG GetRNGSecondary GetRenderInfoLCDControl SeedRNG SetRenderInfoLCDControl ZeroFillByByte
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8016E3C
+
+    .venv/bin/python -m wf verify --function sub_8016E3C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 178 out
+    of domain (verify run convert-20261009-010742-verify-7)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8016E3C
+
+    .venv/bin/python -m wf verify --function sub_8016E3C --snapshots SNAPSHOT_DIR'
+  result: 3 compared, 0 differed, 21 out of domain (verify run convert-20261009-010742-verify-7)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8016E3C
+
+    .venv/bin/python -m wf verify --function sub_8016E3C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-010742-verify-7)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, story2.'
+  reproduce: grep -l '^08016e3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_9.c
+  where: recomp de7782d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_9.c
+coverage:
+- battles1
+- battlesweep
+- story2
+related:
+- AddRandomVarianceToTwoCoords
+- GetBattleNaviStatsAddr
+- getBattleObjectPalette_800F334
+- object_removePanelReserve
+- returnBoolIfAIDataFlagsAreSet_8012F3E
+- setChipsForPlayerObject_800FDEA
+- sub_8013FD0
+- sub_8014150
+- sub_80143FC
+- sub_8014498
+- sub_80159A2
+- sub_8015BEC
+- sub_80165B8
+- sub_80168C8
+- sub_801986C
+- sub_801A648
+- sub_801C9A4
+- sub_801CE6C
+- sub_801CED2
+- sub_801DA24
+- sub_8027320
+- sub_80273EC
+- sub_8028284
+- sub_802A0F8
+- sub_802A2E8
+- sub_802BED4
+- sub_802C1F0
+- sub_802CA5C
+- sub_802CA82
+- sub_802D064
+- sub_802D6A0
+- sub_802DCEC
+- sub_802FB90
+- sub_802FBB4
+- sub_802FBD8
+- sub_802FC28
+- sub_802FC4C
+- sub_802FC9C
+- sub_8030054
+- sub_8031122
+- sub_80313B0
+- sub_80313D4
+- sub_80313FC
+- sub_8031C2A
+- sub_8031C7C
+- sub_8031C94
+- SpawnCounterPinkRingMaybe_80C4C12
+- chargeShotChargeObject_init_80E0E10
+- sub_80C44A8
+- sub_80C6AAC
+- sub_80C9CA2
+- sub_80CAC44
+- sub_80CAD14
+- sub_80EC90E
+- sub_80ECA0C
+- sub_80FDF4C
+- sub_80FDF84
+- sub_80FDF98
+- sub_80FE1FE
+- sub_80FE452
+- sub_8109FA2
+- t3_0x16_80C6B40
+- t3_0xd3_80DFE40
+- InitializeT1BattleObjectStructs
+- clearBattleObjectLinkedLists_800318C
+- clearBattleStateUnk11Flag_800A9D6
+- clear_flags32_20093A4
+- reset_flags32_20093A4
+- setBattleStateUnk11Flag_800A9CA
+- set_flags32_20093A4
+- sub_800596C
+- sub_800768C
+- sub_8007978
+- sub_80079A8
+- sub_8007BF0
+- sub_800927C
+- sub_800A2F8
+- sub_800A4E0
+- sub_800A7EA
+- sub_800AA1A
+- sub_800AAFC
+- warp_setSubsystemIndexTo0x14AndOthers_8005f14
+- GetCurPETNavi
+- GetRNG
+- GetRNGSecondary
+- GetRenderInfoLCDControl
+- SeedRNG
+- SetRenderInfoLCDControl
+- ZeroFillByByte
+open_questions:
+- exact meaning of the 0x101000 and 0x10 flag bits being cleared
+- semantics of oBattleObject_Unk_1f (only that it is zeroed here)
+- whether callers use the returned phase value or ignore r0
+sources:
+- tools/wf run convert-20261009-010742
