@@ -1,0 +1,79 @@
+name: sub_80C6CBA
+address: '0x080C6CBA'
+kind: function
+status: confirmed
+summary: Per-frame "dying" tick for a battle object — despawns it once its death animation finishes (or after a
+  Timer2 linger), parking it offscreen and marking it destroyed.
+interface: void battleObject_dyingTickDespawn(BattleObject* obj /* r5 */); clobbers r0-r3, lr; caller ignores flags
+  and registers on return (returns via pop {pc})
+details: "Runs one frame of a battle object's death sequence (r5 = battle object).\nTwo despawn triggers, selected\
+  \ by the object's Param1 byte (+0x04):\n  - Param1 < 12: calls sprite_getFrameParameters and checks the\n    end-of-animation\
+  \ bit 0x80 in the result; while it is clear the object\n    stays alive and the function returns.\n  - Param1\
+  \ >= 12: decrements the 16-bit Timer2 field (+0x12 per the\n    listing's oBattleObject_Timer2); until it hits\
+  \ zero the object lingers.\nOnce the trigger fires: writes 0xF0 (offscreen park position) to the\n16-bit X field\
+  \ (oBattleObject_X16), calls object_clearCollisionRegion to\ndrop the hitbox, and stores CUR_STATE_DESTROY (=8)\
+  \ into the object's\ncurrent-state word (oBattleObject_CurStateActionPhaseAndPhaseInitialized),\nwhich the engine\
+  \ treats as \"object is dead / ready for cleanup\".\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-032350);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_16.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    16' --file leaves_farm_16.c sub_80C6CBA sub_80DA974 sub_81169D8 sub_8116F34 sub_8117084 sub_81179E4 sub_811976C
+    sub_811980C sub_8119854 sub_811A0A4 sub_811A160 sub_80EBD3C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C6CBA
+
+    .venv/bin/python -m wf verify --function sub_80C6CBA --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-032350-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C6CBA
+
+    .venv/bin/python -m wf verify --function sub_80C6CBA --snapshots SNAPSHOT_DIR'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261009-032350-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C6CBA
+
+    .venv/bin/python -m wf verify --function sub_80C6CBA --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032350-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, menus2, story2.'
+  reproduce: grep -l '^080c6cba ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_16.c
+  where: recomp 855d17e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_16.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story2
+related:
+- sub_80DA974
+- sub_81169D8
+- sub_8116F34
+- sub_8117084
+- sub_81179E4
+- sub_811976C
+- sub_811980C
+- sub_8119854
+- sub_811A0A4
+- sub_811A160
+- sub_80EBD3C
+open_questions: []
+sources:
+- tools/wf run convert-20261009-032350

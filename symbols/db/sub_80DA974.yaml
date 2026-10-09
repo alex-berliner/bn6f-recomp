@@ -1,0 +1,81 @@
+name: sub_80DA974
+address: '0x080DA974'
+kind: function
+status: confirmed
+summary: 'Death-linger phase for a battle object: publish a parameter to the battle state, play animation 1 for
+  90 frames with collision disabled, then switch the object to the DESTROY state.'
+interface: void sub_80DA974(r5 = BattleObject*, r10 = Toolkit*) ; returns in r0 the decremented timer (or CUR_STATE_DESTROY=8
+  on the destroy path), in r1 the object's Param1 on the setup path, and NZ(+C,V) from the timer decrement / destroy-state
+  load
+details: "Standard per-frame state-action handler for a battle object in some \"dying/lingering\" phase,\nusing\
+  \ the common phase-initialized pattern (PhaseInitialized at +? equals 4 once set up).\n\nOne-time setup (PhaseInitialized\
+  \ == 0):\n  - loads the toolkit's battle state pointer (r10 + oToolkit_BattleStatePtr) and stores the\n    object's\
+  \ halfword Param1 (+4) into battle state halfword field oBattleState_Unk_36 (+0x36),\n    i.e. it communicates\
+  \ some value (id/param) to the battle state for this object;\n  - sets CurAnim (+?) = 1 (switches the object to\
+  \ animation 1, presumably a death/fade pose);\n  - loads Timer (+?) = 0x5A (90 frames, ~1.5 s);\n  - calls object_clearCollisionRegion(r5),\
+  \ so the lingering object no longer collides;\n  - stores PhaseInitialized = 4.\n\nEvery frame afterwards:\n \
+  \ - decrements Timer; if it is still > 0 the object just keeps animating;\n  - when the timer reaches <= 0, stores\
+  \ CUR_STATE_DESTROY (8) into\n    oBattleObject_CurStateActionPhaseAndPhaseInitialized (+8), sending the object\
+  \ through the\n    usual destroy state next frame.\n\nQuirk: the low byte of the destroy store doubles as writing\
+  \ PhaseInitialized = 8 (destroy),\nwhich is what actually prevents the setup block from running again.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-032350);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_16.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    16' --file leaves_farm_16.c sub_80C6CBA sub_80DA974 sub_81169D8 sub_8116F34 sub_8117084 sub_81179E4 sub_811976C
+    sub_811980C sub_8119854 sub_811A0A4 sub_811A160 sub_80EBD3C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80DA974
+
+    .venv/bin/python -m wf verify --function sub_80DA974 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-032350-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80DA974
+
+    .venv/bin/python -m wf verify --function sub_80DA974 --snapshots SNAPSHOT_DIR'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261009-032350-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80DA974
+
+    .venv/bin/python -m wf verify --function sub_80DA974 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032350-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^080da974 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_16.c
+  where: recomp 855d17e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_16.c
+coverage:
+- story2
+related:
+- sub_80C6CBA
+- sub_81169D8
+- sub_8116F34
+- sub_8117084
+- sub_81179E4
+- sub_811976C
+- sub_811980C
+- sub_8119854
+- sub_811A0A4
+- sub_811A160
+- sub_80EBD3C
+open_questions:
+- what oBattleState_Unk_36 means in the battle state struct and which object kinds use it
+- which enemies/objects route their death phase into this handler (Param1's game meaning)
+sources:
+- tools/wf run convert-20261009-032350

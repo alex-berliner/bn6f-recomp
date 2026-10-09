@@ -1,0 +1,81 @@
+name: sub_811980C
+address: '0x0811980C'
+kind: function
+status: confirmed
+summary: For three consecutive entries of a table rooted at 0x2008450, writes a byte, a halfword and another halfword
+  into each entry's struct when that entry exists.
+interface: void sub_811980C(u16 valE /*r0*/, u8 valC /*r1*/, u32 startIndex /*r2*/, u16 val18 /*r3*/)
+details: "Saves all four argument registers on the stack, then loops over exactly\nthree table indices: startIndex\
+  \ (r2) through startIndex+2 (r7 = r2+3 is\nthe loop end). Each iteration calls getStructFrom2008450 with the index\n\
+  in r0; that lookup returns a status in r0 (nonzero = entry found) and\nthe struct pointer in r1. If the entry\
+  \ exists, it stores:\n  - halfword value at struct+0x0E (from the original r0)\n  - byte value at struct+0x0C\
+  \ (from the original r1)\n  - halfword value at struct+0x18 (from the original r3)\nEmpty/nonexistent entries\
+  \ are simply skipped (the conditional branch\njumps past the stores). No error is reported; the loop always runs\
+  \ all\nthree indices. Callee-saved r4-r7 are preserved; r0/r1 on return hold\nthe last lookup's status/pointer,\
+  \ and the NZCV flags come from the\nfinal CMP of the loop counter against the end index (always equal on\nexit).\
+  \ The meaning of the three fields (0x0C byte, 0x0E halfword,\n0x18 halfword) is unknown without knowing the struct\
+  \ layout of the\n0x2008450 table.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-032350);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_16.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    16' --file leaves_farm_16.c sub_80C6CBA sub_80DA974 sub_81169D8 sub_8116F34 sub_8117084 sub_81179E4 sub_811976C
+    sub_811980C sub_8119854 sub_811A0A4 sub_811A160 sub_80EBD3C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811980C
+
+    .venv/bin/python -m wf verify --function sub_811980C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 185 out
+    of domain (verify run convert-20261009-032350-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811980C
+
+    .venv/bin/python -m wf verify --function sub_811980C --snapshots SNAPSHOT_DIR'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261009-032350-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811980C
+
+    .venv/bin/python -m wf verify --function sub_811980C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032350-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, maps, story2.'
+  reproduce: grep -l '^0811980c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_16.c
+  where: recomp 855d17e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_16.c
+coverage:
+- battles1
+- maps
+- story2
+related:
+- sub_80C6CBA
+- sub_80DA974
+- sub_81169D8
+- sub_8116F34
+- sub_8117084
+- sub_81179E4
+- sub_811976C
+- sub_8119854
+- sub_811A0A4
+- sub_811A160
+- sub_80EBD3C
+open_questions:
+- what subsystem owns the table rooted at 0x2008450 (struct layout and field semantics of +0x0C/+0x0E/+0x18 unknown)
+- what the caller typically passes as startIndex (only three consecutive entries are ever touched)
+- whether getStructFrom2008450's status value carries more information than "entry exists"
+sources:
+- tools/wf run convert-20261009-032350

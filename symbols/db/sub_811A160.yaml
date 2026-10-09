@@ -1,0 +1,77 @@
+name: sub_811A160
+address: '0x0811A160'
+kind: function
+status: confirmed
+summary: Steps a looping shrink animation on a sprite object, decrementing its scale by 0x20 each call and restarting
+  from 0xC0 once it reaches 0x40.
+interface: void sprite_scaleShrinkStep(struct SpriteEffect* obj /* r5 */); clobbers r0-r3, preserves r4-r7; returns
+  with NZCV and r0-r3 as left by the called sprite routine
+details: 'Operates on a sprite/effect object passed in r5. Sets bit 1 of the byte at offset 0x00 (a flag marking
+  the object as currently being scaled), then subtracts 0x20 from the scale byte at offset 0x12. If the new scale
+  is still greater than 0x40, calls sprite_setScaleParameters(0, scale, 0x40) to apply it. Once the scale drops
+  to 0x40 or below, the cycle resets: scale is snapped back to 0xC0, the byte at offset 0x09 is cleared, and sprite_makeUnscalable()
+  is called, ending that pass of the shrink effect. Because each call subtracts 0x20 and the wrap goes back to 0xC0,
+  repeated calls produce a repeating pulse/shrink cycle (0xC0 -> 0x40 is 4 steps of 0x20). Tail-called via pop {pc};
+  padding bytes follow the routine.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-032350);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_16.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    16' --file leaves_farm_16.c sub_80C6CBA sub_80DA974 sub_81169D8 sub_8116F34 sub_8117084 sub_81179E4 sub_811976C
+    sub_811980C sub_8119854 sub_811A0A4 sub_811A160 sub_80EBD3C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A160
+
+    .venv/bin/python -m wf verify --function sub_811A160 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261009-032350-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A160
+
+    .venv/bin/python -m wf verify --function sub_811A160 --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-032350-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A160
+
+    .venv/bin/python -m wf verify --function sub_811A160 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032350-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^0811a160 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_16.c
+  where: recomp 855d17e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_16.c
+coverage:
+- story2
+related:
+- sub_80C6CBA
+- sub_80DA974
+- sub_81169D8
+- sub_8116F34
+- sub_8117084
+- sub_81179E4
+- sub_811976C
+- sub_811980C
+- sub_8119854
+- sub_811A0A4
+- sub_80EBD3C
+open_questions:
+- exact meaning of the byte at offset 0x09 that is cleared on cycle completion
+- whether bit 1 of the field at offset 0x00 is specifically a "scaling in progress" flag or a broader state bit
+- which in-game effects call this (object type at r5 not independently confirmed)
+sources:
+- tools/wf run convert-20261009-032350

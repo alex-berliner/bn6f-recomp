@@ -1,0 +1,83 @@
+name: sub_811976C
+address: '0x0811976C'
+kind: function
+status: confirmed
+summary: One step of a sprite's shrink-zoom animation, snapping scale back to normal and clearing the scaling state
+  once the zoom finishes.
+interface: void sub_811976C(sprite state record *r5 /* also uses r4, r6, r7 live-in from caller context */); clobbers
+  r0-r3, lr; sets flags from the called sprite routines (nz c v)
+details: "Operates on a sprite state record passed in r5:\n  +0x00 (byte): state flags — sets bit 0x02 (\"scale\
+  \ in progress\") on every call.\n  +0x09 (byte): animation/frame counter — cleared to 0 when the zoom ends.\n\
+  \  +0x12 (byte): current scale value — decremented by 0x30 per step.\nPer step: scale -= 0x30. If the (signed\
+  \ 32-bit) result is still > 0x40,\nsprite_setScaleParameters(0, newScale, 0x40) applies the intermediate scale.\n\
+  If it drops to 0x40 or below (including wrapping below 0, e.g. from 0x20 to\n0xF0 which compares as > 0x40 unsigned\
+  \ but is negative signed — actually a\nwrapped small start value would read as large positive; the signed compare\n\
+  treats the 32-bit subtract result, so a wrap to e.g. 0xFFFFFFC0 is negative\nand terminates), the zoom is finished:\
+  \ scale byte is reset to 0xC0 (the\ndefault/rest scale), the counter at +0x09 is cleared, and\nsprite_makeUnscalable(0)\
+  \ removes the sprite's scalable flag.\nr4/r6/r7 are read in per the contract but not used by this body — they\
+  \ are\npreserved, likely part of a larger caller-owned state block.\nN/Z/C/V flags on return come from the last\
+  \ called sprite routine.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-032350);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_16.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    16' --file leaves_farm_16.c sub_80C6CBA sub_80DA974 sub_81169D8 sub_8116F34 sub_8117084 sub_81179E4 sub_811976C
+    sub_811980C sub_8119854 sub_811A0A4 sub_811A160 sub_80EBD3C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811976C
+
+    .venv/bin/python -m wf verify --function sub_811976C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 34 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-032350-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811976C
+
+    .venv/bin/python -m wf verify --function sub_811976C --snapshots SNAPSHOT_DIR'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261009-032350-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811976C
+
+    .venv/bin/python -m wf verify --function sub_811976C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032350-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, maps, story2.'
+  reproduce: grep -l '^0811976c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_16.c
+  where: recomp 855d17e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_16.c
+coverage:
+- battles1
+- maps
+- story2
+related:
+- sub_80C6CBA
+- sub_80DA974
+- sub_81169D8
+- sub_8116F34
+- sub_8117084
+- sub_81179E4
+- sub_811980C
+- sub_8119854
+- sub_811A0A4
+- sub_811A160
+- sub_80EBD3C
+open_questions:
+- Exact meaning of the bit 0x02 in the state byte at +0x00 (assumed 'scale in progress').
+- Which gameplay effects use this shrink-zoom (e.g. enemy despawn, chip effect) — caller context not checked.
+- Why r4/r6/r7 appear in the input contract though unused here; possibly tail-integrated with sibling routines.
+sources:
+- tools/wf run convert-20261009-032350

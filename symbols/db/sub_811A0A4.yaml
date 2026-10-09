@@ -1,0 +1,81 @@
+name: sub_811A0A4
+address: '0x0811A0A4'
+kind: function
+status: confirmed
+summary: Per-frame battle-object update that dispatches on the object's type byte to one of four update handlers,
+  then advances the object's sprite state.
+interface: void object_runTypeUpdateThenSpriteUpdate_811A0A4(Object* obj /* r5 */); flags N/Z set from the shifted
+  type index, C cleared before dispatch
+details: "The object struct is passed in R5. The type byte at [R5+4] is shifted left by 2 and used\nas an index\
+  \ into a 4-entry jump table at off_811A0BC:\n  entry 0 -> sub_811A0CC\n  entry 1 -> object_runUpdateDispatch_811A190\n\
+  \  entry 2 -> sub_811A1E8\n  entry 3 -> sub_811A0CC (same handler as entry 0, so types 0 and 3 share behavior).\n\
+  The dispatch is done with the classic \"ldr r0,[table,index]; mov lr,pc; bx r0\" pattern, so\nthe handler is entered\
+  \ with R0 = table entry (handler address) and R1 = shifted index\n(type<<2), and returns via LR to the sprite_update\
+  \ call. The N/Z flags reflect the shifted\nindex and C is clear at that point (a byte value shifted left by 2\
+  \ never shifts a bit out).\nAfter the handler returns, sprite_update is called (no visible arguments set up here,\
+  \ so it\npresumably works on the object still in R5 or off a fixed pointer). The routine is wrapped\nin push {lr}/pop\
+  \ {pc}: it returns to its own entry LR regardless of what the calls left in LR.\nQuirk: handlers inherit the odd\
+  \ side effects of the dispatch idiom (R0/R1 holding the table\npointer and shifted index, LR pointing at the sprite_update\
+  \ call) rather than a clean ABI call.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-032350);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_16.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    16' --file leaves_farm_16.c sub_80C6CBA sub_80DA974 sub_81169D8 sub_8116F34 sub_8117084 sub_81179E4 sub_811976C
+    sub_811980C sub_8119854 sub_811A0A4 sub_811A160 sub_80EBD3C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A0A4
+
+    .venv/bin/python -m wf verify --function sub_811A0A4 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-032350-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A0A4
+
+    .venv/bin/python -m wf verify --function sub_811A0A4 --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 8 out of domain (verify run convert-20261009-032350-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_811A0A4
+
+    .venv/bin/python -m wf verify --function sub_811A0A4 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032350-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^0811a0a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_16.c
+  where: recomp 855d17e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_16.c
+coverage:
+- story2
+related:
+- sub_80C6CBA
+- sub_80DA974
+- sub_81169D8
+- sub_8116F34
+- sub_8117084
+- sub_81179E4
+- sub_811976C
+- sub_811980C
+- sub_8119854
+- sub_811A160
+- sub_80EBD3C
+open_questions:
+- exact meaning of the four type values at [R5+4] (0 and 3 share sub_811A0CC; 2 is sub_811A1E8)
+- how R5 is set by callers and whether sprite_update also reads the object from R5 or from elsewhere
+- whether the R0/R1 values passed to the handlers are intentionally consumed by them or just dispatch residue
+sources:
+- tools/wf run convert-20261009-032350

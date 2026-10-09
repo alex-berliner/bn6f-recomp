@@ -1,0 +1,82 @@
+name: sub_8117084
+address: '0x08117084'
+kind: function
+status: confirmed
+summary: Fills the halfword pair at +0xC/+0xE with the two given values on up to three consecutive structs from
+  the pool at 0x2008450, stopping at the first index with no struct.
+interface: void sub_8117084(u16 valueA r0, u16 valueB r1, s32 startIndex r2); also returns last lookup's r0/r1 and
+  final cmp flags as side effects; r4-r7 preserved
+details: 'Takes two halfword-sized values (r0, r1) and a starting index (r2), and walks the three consecutive indices
+  r2..r2+2. Each index is passed to getStructFrom2008450, which resolves it to a struct pointer (r1) from the pool/array
+  anchored at 0x2008450 (or returns 0 if there is no struct for that index). While a struct is found, its halfwords
+  at +0xC and +0xE are overwritten with valueA and valueB respectively, then the loop advances to the next index.
+  The loop aborts early on the first index whose lookup returns NULL, leaving that call''s registers/flags in place;
+  a full run ends with the flags of the final index comparison. Only ever touches the two halfword fields; the meaning
+  of +0xC/+0xE depends on the struct type served by 0x2008450 (likely per-entity/sprite state shared by a small
+  group, since exactly three consecutive indices are processed). Quirks: r1 and r2 do not survive as inputs — they
+  end up holding the last lookup''s returned pointer/value, and the return value/flags are unspecified side effects
+  rather than a designed result.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-032350);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_16.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    16' --file leaves_farm_16.c sub_80C6CBA sub_80DA974 sub_81169D8 sub_8116F34 sub_8117084 sub_81179E4 sub_811976C
+    sub_811980C sub_8119854 sub_811A0A4 sub_811A160 sub_80EBD3C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8117084
+
+    .venv/bin/python -m wf verify --function sub_8117084 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 185 out
+    of domain (verify run convert-20261009-032350-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8117084
+
+    .venv/bin/python -m wf verify --function sub_8117084 --snapshots SNAPSHOT_DIR'
+  result: 17 compared, 0 differed, 7 out of domain (verify run convert-20261009-032350-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8117084
+
+    .venv/bin/python -m wf verify --function sub_8117084 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032350-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08117084 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_16.c
+  where: recomp 855d17e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_16.c
+coverage:
+- maps
+- story2
+related:
+- sub_80C6CBA
+- sub_80DA974
+- sub_81169D8
+- sub_8116F34
+- sub_81179E4
+- sub_811976C
+- sub_811980C
+- sub_8119854
+- sub_811A0A4
+- sub_811A160
+- sub_80EBD3C
+open_questions:
+- what struct type lives at 0x2008450 and what the halfwords at +0xC/+0xE mean (coordinates? counters? state ids?)
+- which game systems call this and why exactly three consecutive indices are targeted
+sources:
+- tools/wf run convert-20261009-032350

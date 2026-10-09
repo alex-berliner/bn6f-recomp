@@ -1,0 +1,80 @@
+name: sub_8116F34
+address: '0x08116F34'
+kind: function
+status: confirmed
+summary: Runs one battle object's type-specific update (selected by the kind byte at obj+4) and then updates its
+  sprite.
+interface: void battle_objectUpdateByKind_8116F34(BattleObject* obj /* r5 */)
+details: 'Dispatches a battle object''s per-frame update through a jump table keyed by the byte at obj+4 (the object''s
+  update kind, valid values 0..4): kinds 0 and 3 call sub_8116F60, kinds 1 and 4 call battle_objectUpdateWithFieldC_8116F8C,
+  and kind 2 calls sub_8116F9C. R5 holds the battle object pointer on entry and is passed through to the handlers.
+  For fidelity, each handler is entered with R0 = its own jump-table entry (Thumb | 1) and R1 = kind*4, matching
+  the original `mov lr, pc; bx r0` dispatch; after the handler returns, sprite_update is called (via bl) on the
+  object and the function returns via the saved LR. A kind byte outside 0..4 would index past jt_8116F4C and jump
+  to garbage, but in practice the kind is always 0..4.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-032350);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_16.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    16' --file leaves_farm_16.c sub_80C6CBA sub_80DA974 sub_81169D8 sub_8116F34 sub_8117084 sub_81179E4 sub_811976C
+    sub_811980C sub_8119854 sub_811A0A4 sub_811A160 sub_80EBD3C
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8116F34
+
+    .venv/bin/python -m wf verify --function sub_8116F34 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-032350-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8116F34
+
+    .venv/bin/python -m wf verify --function sub_8116F34 --snapshots SNAPSHOT_DIR'
+  result: 2 compared, 0 differed, 10 out of domain (verify run convert-20261009-032350-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8116F34
+
+    .venv/bin/python -m wf verify --function sub_8116F34 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032350-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08116f34 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_16.c
+  where: recomp 855d17e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_16.c
+coverage:
+- maps
+- story2
+related:
+- sub_80C6CBA
+- sub_80DA974
+- sub_81169D8
+- sub_8117084
+- sub_81179E4
+- sub_811976C
+- sub_811980C
+- sub_8119854
+- sub_811A0A4
+- sub_811A160
+- sub_80EBD3C
+open_questions:
+- Which game entity/attack this updater serves; identity of sub_8116F60 and sub_8116F9C (their role is inferred
+  from position in the dispatch table only).
+- Whether the update-kind byte at obj+4 can ever hold a value above 4 in shipped gameplay (out-of-range would crash
+  via the table overrun).
+sources:
+- tools/wf run convert-20261009-032350
