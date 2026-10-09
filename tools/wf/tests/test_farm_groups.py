@@ -2,9 +2,10 @@
 the assembled file: the part holding a stray definition (not the function it
 defines), and the part a compile error or its macro note points into."""
 from wf.graphs.convert import Attempt, failing_functions
+from wf.graphs.verify import Verdict, VerifyReport
 from wf.tools.drafts import SECTION
 from wf.tools.subsystem import CandidateFile, FileReply, FileTest
-from wf.types import FunctionName, ModelSpec, ToolMessage
+from wf.types import CommitHash, FunctionName, ModelSpec, RouteName, SourceVersion, ToolMessage
 
 FILE = "\n".join([
     SECTION.format(function="first"),       # line 1
@@ -38,3 +39,14 @@ def test_an_error_inside_a_header_drops_the_part_its_note_points_into() -> None:
     report = ("compile errors:\ninclude/bn6f_syms.h:2811:35: error: makes pointer from integer\n"
               "line 9:25: note: in expansion of macro 'A_table'")
     assert list(failing(report)) == ["third"]
+
+
+def test_a_route_difference_no_check_names_sets_the_later_half_aside() -> None:
+    reply = FileReply(file=CandidateFile(FILE), cfg_lines=(), drafts=(), problems=(), seconds=0.0)
+    report = VerifyReport(sources=SourceVersion(commit=CommitHash("c0ffee"), has_uncommitted_changes=True),
+                          verdict=Verdict.FAILED, build_failure=None, failed_functions=(), oracle_differences=(),
+                          never_compared=(), routes_checked=(RouteName("story2"),), failed_routes=(RouteName("story2"),),
+                          battle_sweep=None)
+    attempt = Attempt(number=1, model=ModelSpec("hyper/cheap"), given=True, reply=reply, verification=report)
+
+    assert list(failing_functions(attempt)) == ["second", "third"]

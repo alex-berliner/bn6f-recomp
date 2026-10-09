@@ -536,6 +536,9 @@ def _attempts_left(state: ConvertState) -> bool:
     return _model_attempts(state.attempts) < state.rounds * len(state.models)
 
 
+_SECTION_START = re.compile(r"^/\* ── \w+ ── \*/$")
+
+
 def failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
     """The functions of a farm group the latest test, verify or review named, with why."""
     failing: dict[FunctionName, str] = {}
@@ -554,6 +557,16 @@ def failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
             owner = function_at_line(code, int(where[1])) if where else None
             if owner is not None:
                 failing[owner] = f"the full build failed in its code: {line.strip()}"[:300]
+        routes = attempt.verification.failed_routes
+        if routes and not failing:
+            # the game differs on a route and no check names a function: set the later half aside (it goes
+            # back to the pool and halves again in a later group) and verify the rest
+            parts = [owner for owner in (function_at_line(code, number)
+                                         for number, line in enumerate(code.splitlines(), start=1)
+                                         if _SECTION_START.match(line)) if owner is not None]
+            for function in parts[len(parts) // 2:]:
+                failing[function] = (f"set aside: lockstep differed on {', '.join(routes)} and no check named a "
+                                     "function; bisecting")
     if attempt.test is not None and not attempt.test.passed:
         for test in attempt.test.functions:
             if not test.passed:
