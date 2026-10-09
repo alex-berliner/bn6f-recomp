@@ -66,9 +66,10 @@ def test_a_batch_skips_finished_pairs_and_tallies(monkeypatch: pytest.MonkeyPatc
     def accepted_before(function: FunctionName, model: ModelSpec) -> Path | None:
         return tmp_path / "accepted.c" if function == done else None
 
-    def build_host_difftest(log_dir: Path, build_dir: str = "") -> Path:
+    def build_host_difftest(log_dir: Path, build_dir: str = "", tree: Path | None = None) -> Path:
         return tmp_path / "difftest"
 
+    monkeypatch.setattr(farm, "committed_tree", lambda name: tmp_path / name)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     monkeypatch.setattr(farm, "already_accepted", accepted_before)
     monkeypatch.setattr(farm, "build_host_difftest", build_host_difftest)
     for function in (FUNCTION, done):
@@ -84,9 +85,10 @@ def test_a_batch_skips_finished_pairs_and_tallies(monkeypatch: pytest.MonkeyPatc
 
 
 def test_a_batch_stops_when_difftest_does_not_build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    def build_host_difftest(log_dir: Path, build_dir: str = "") -> BuildFailure:
+    def build_host_difftest(log_dir: Path, build_dir: str = "", tree: Path | None = None) -> BuildFailure:
         return BuildFailure(log=LogPath(tmp_path / "build.log"), last_lines=(ToolMessage("error"),))
 
+    monkeypatch.setattr(farm, "committed_tree", lambda name: tmp_path / name)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     monkeypatch.setattr(farm, "build_host_difftest", build_host_difftest)
 
     start = FarmBatchState(run_dir=tmp_path, functions=(FUNCTION,), models=(MODEL,),

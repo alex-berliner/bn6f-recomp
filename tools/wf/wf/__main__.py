@@ -197,6 +197,10 @@ def start_record(command: RecordCommand) -> None:
 
 def new_run(workflow: str) -> tuple[str, Path]:
     run_id = time.strftime(f"{workflow}-%Y%m%d-%H%M%S")
+    taken = 1
+    while (RUNS / run_id).exists():   # two runs started in the same second
+        taken += 1
+        run_id = time.strftime(f"{workflow}-%Y%m%d-%H%M%S-{taken}")
     run_dir = RUNS / run_id
     run_dir.mkdir(parents=True)
     print(f"{run_id}: tool logs in {run_dir}")

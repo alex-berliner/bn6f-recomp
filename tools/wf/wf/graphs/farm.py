@@ -13,7 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
-from wf.tools.build import build_host_difftest
+from wf.tools.build import build_host_difftest, committed_tree
 from wf.tools.drafts import Draft, draft_entry
 from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, accept, already_accepted,
                              ask_model, conversion_context, first_prompt, log_round, out_of_rounds_before,
@@ -274,8 +274,10 @@ class BuildDifftestOutput(Result):
 
 @batch.step
 def build_difftest(given: BuildDifftestInput) -> BuildDifftestOutput:
-    """Build the host difftest once, from the current sources (a stale one once accepted bad candidates)."""
-    return BuildDifftestOutput(difftest=build_host_difftest(given.run_dir, build_dir="build-wf-farm-host"))
+    """Build the host difftest once, from the last commit in a worktree of its own (a stale one once
+    accepted bad candidates; one built from the main tree saw a conversion's verify half done)."""
+    return BuildDifftestOutput(difftest=build_host_difftest(given.run_dir, build_dir="build-wf-farm-host",
+                                                            tree=committed_tree("farm")))
 
 
 class ConvertPairsInput(Result):
