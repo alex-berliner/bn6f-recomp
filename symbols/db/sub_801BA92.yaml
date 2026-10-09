@@ -1,0 +1,109 @@
+name: sub_801BA92
+address: '0x0801BA92'
+kind: function
+status: confirmed
+summary: After a battle object finishes action 4, clears its flag2 bits and collision counter once its "done" condition
+  is met.
+interface: int battle_object_postAction4CheckClearFlags_801BA92(struct BattleObject* obj /* r5 */); returns 0 (not
+  action 4), 1 (action 4 but still flagged/waiting), or 2 (flags just cleared); r4 preserved, r0-r3 clobbered, flags
+  clobbered
+details: 'Reads the battle object''s current action (oBattleObject_CurAction at offset 9 in the object struct pointed
+  to by r5). If the action is not 4, returns 0 without touching anything. If it is 4, calls object_getFlag2 and
+  tests bit 14 (0x4000): if that bit is set, the object is left alone and 1 is returned. Otherwise the same getter
+  is called again and bit 1 (0x2) is tested; if it is clear, the object is left alone and 1 is returned. If bit
+  1 is set, it calls battle_object_clearFlagsAndCollisionCounter_801A284, wiping the object''s flag state and its
+  collision counter, and returns 2. So action 4 looks like a transient state (hit/flinch/teleport- style one-shot
+  action) that stays pending until bit 14 of flag2 drops, then requires bit 1 to still be pending before the flags
+  and collision counter are reset to let the object resume. r1 leaks the last mask value used (1<<14 or 2) on the
+  flag-testing paths.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801BA92
+
+    .venv/bin/python -m wf verify --function sub_801BA92 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801BA92
+
+    .venv/bin/python -m wf verify --function sub_801BA92 --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801BA92
+
+    .venv/bin/python -m wf verify --function sub_801BA92 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^0801ba92 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- exact meaning of action id 4 and of flag2 bits 14 and 1 for this object type
+- which battle object kinds call this (caller survey needed to confirm the state-machine role)
+sources:
+- tools/wf run convert-20261009-014533

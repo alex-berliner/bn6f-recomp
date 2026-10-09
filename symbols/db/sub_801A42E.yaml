@@ -1,0 +1,134 @@
+name: sub_801A42E
+address: '0x0801A42E'
+kind: function
+status: confirmed
+summary: While a battle object is being hit, computes its arm position and spawns the hit/damage effect there.
+interface: void sub_801A42E(battleObject* obj /* r5 */, void* r4 /* preserved only */, ...); no meaningful return
+  (r0-r3 clobbered, r4-r7 preserved)
+details: 'Takes the battle object whose base pointer callers leave in r5 (self-ish "this" convention
+
+  shared by battle object code) and reads its collision data pointer at
+
+  oBattleObject_CollisionDataPtr. The effect is only spawned while the object is actually in a
+
+  hit state: the collision timer byte at collisionData+0x74 and the hit-flash/hitstun counter
+
+  halfword at collisionData+0x80 must both be non-zero; otherwise the routine returns without
+
+  doing anything (note the early path leaves incoming r0-r3 untouched, so the "outputs r3"
+
+  in the contract is just whatever flows through on the early exit).
+
+  When active, it loads the object''s oBattleObject_NameID (halfword), passes literal 5 in r1
+
+  (an attachment-point/hardpoint index, presumably "arm"), the oBattleObject_Alliance byte in
+
+  r2 and oBattleObject_DirectionFlip in r3 to getBattleArmPositionMaybe_8018810, which returns
+
+  an (x, y) position in r0/r1. It then calls sub_80E8124 with r0 = x, r1 = x<<16, r2 = 0,
+
+  r3 = y<<16, r4 = 0 — the <<16 fixed-point packing suggests sub_80E8124 takes a fixed-point
+
+  position effect spawner (hit spark / damage flash). r4 is saved/restored around the call and
+
+  flags nzcv are all clobbered.
+
+  Quirk: the x coordinate is passed both raw (r0) and shifted (r1), so sub_80E8124''s parameter
+
+  convention is unusual or one of the two is a secondary use (e.g. scale/variant); the odd
+
+  call signature is worth double-checking against other callers of sub_80E8124.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801A42E
+
+    .venv/bin/python -m wf verify --function sub_801A42E --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801A42E
+
+    .venv/bin/python -m wf verify --function sub_801A42E --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_801A42E
+
+    .venv/bin/python -m wf verify --function sub_801A42E --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0801a42e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- exact effect type spawned by sub_80E8124 (hit spark vs. flash vs. other), pending analysis of that callee
+- meaning of the constant 5 passed as attachment index to getBattleArmPositionMaybe_8018810
+- why the x coordinate is passed both raw and <<16 to sub_80E8124 (parameter layout of that callee)
+- which objects/callers route here (likely shared per-frame hit-state handler for battle objects)
+sources:
+- tools/wf run convert-20261009-014533

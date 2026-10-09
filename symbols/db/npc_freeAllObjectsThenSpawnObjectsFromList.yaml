@@ -1,0 +1,123 @@
+name: npc_freeAllObjectsThenSpawnObjectsFromList
+address: '0x08030A60'
+kind: function
+status: confirmed
+summary: Switches the overworld's active NPC spawn list — frees all existing overworld NPC objects, stores the new
+  list pointer in the game state, and spawns one NPC per entry until a 0xFF terminator.
+interface: 'void npc_freeAllObjectsThenSpawnObjectsFromList(const NPCScript *const *list /* r0 */); returns with
+  r0 = pointer to the terminator entry, r1 = number of objects spawned (early exit: r1 = previous list pointer),
+  r2 = 0xFF; flags from the last compare (list vs. current on early exit, terminator vs. 0xFF otherwise); r4-r6
+  preserved'
+details: 'Reads the toolkit''s GameState pointer (oToolkit_GameStatePtr via r10) and its current
+
+  NPC list pointer at oGameState_Ptr_20. If the caller''s list pointer already equals
+
+  the current one, returns immediately without side effects. Otherwise stores the new
+
+  list pointer into oGameState_Ptr_20, calls FreeAllObjectsOfSpecifiedTypes with
+
+  object type 4 (OVERWORLD_NPC_OBJECT_F) to despawn every overworld NPC, then walks
+
+  the list: each entry is a script pointer, passed with the entry index to
+
+  npc_spawnObjectThenSetUnk10_TempAnimScriptPtr_8030a8c to spawn the NPC. A 0xFF
+
+  entry terminates the list. r1 accumulates the spawned-object count; r2 holds the
+
+  current entry''s script pointer for the spawn call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function npc_freeAllObjectsThenSpawnObjectsFromList
+
+    .venv/bin/python -m wf verify --function npc_freeAllObjectsThenSpawnObjectsFromList --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 28 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function npc_freeAllObjectsThenSpawnObjectsFromList
+
+    .venv/bin/python -m wf verify --function npc_freeAllObjectsThenSpawnObjectsFromList --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function npc_freeAllObjectsThenSpawnObjectsFromList
+
+    .venv/bin/python -m wf verify --function npc_freeAllObjectsThenSpawnObjectsFromList --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08030a60 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- Exact meaning of the oGameState_Ptr_20 field beyond "current NPC list pointer" (does anything else read it, e.g.
+  respawn logic?).
+- Whether the spawn helper's "TempAnimScriptPtr" (Unk10) state persists or is overwritten by the next list switch.
+sources:
+- tools/wf run convert-20261009-014533

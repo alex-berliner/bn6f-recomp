@@ -1,0 +1,108 @@
+name: sub_8013B20
+address: '0x08013B20'
+kind: function
+status: confirmed
+summary: When a battle object's collision data reports event 0x18, adds the amount in the next collision byte to
+  the AI's counter at oAIData_Unk_12, clamping it at 7.
+interface: void sub_8013B20(battle_object *r5 /* in r5, object whose CollisionDataPtr/AIDataPtr are read */); clobbers
+  r0-r3, NZCV-defined; preserves r4
+details: 'Loads the object''s collision data pointer (r3) and AI data pointer (r4) from the battle object at r5.
+  Reads collision byte 0xA4 as an event/state id; if it is zero the function returns without doing anything. If
+  the state is not 0x18 it only reads collision byte 0xA5 into r2 and returns (no side effect). When the state is
+  exactly 0x18, it reads the AI byte oAIData_Unk_12, adds collision byte 0xA5 to it, saturates the sum at 7, writes
+  it back to oAIData_Unk_12, and leaves the final value in r2. Byte 0xA4/0xA5 look like a two-byte "event id + parameter"
+  pair in the collision data structure. The 7-cap suggests a 0-7 counter such as an AI difficulty/aggression level
+  or charge gauge. Registers as left for callers: r2 = resulting counter (or the 0xA5 amount when state != 0x18),
+  r3 = collision data pointer, r4 = AI data pointer (though the C contract lists r4 as output, the assembly actually
+  preserves the incoming r4); flags reflect the last executed compare (TST on the state byte when it is zero, CMP
+  state vs 0x18 otherwise, CMP counter vs 7 on the add path).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8013B20
+
+    .venv/bin/python -m wf verify --function sub_8013B20 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8013B20
+
+    .venv/bin/python -m wf verify --function sub_8013B20 --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8013B20
+
+    .venv/bin/python -m wf verify --function sub_8013B20 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, menus2, story2.'
+  reproduce: grep -l '^08013b20 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- exact meaning of collision state 0x18 (full custom gauge? specific attack/hit event?) and of byte 0xA5 as its
+  parameter
+- what oAIData_Unk_12 counts (AI difficulty/aggression level, gauge, etc.) and which AI routines consume it
+sources:
+- tools/wf run convert-20261009-014533

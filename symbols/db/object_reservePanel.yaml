@@ -1,0 +1,109 @@
+name: object_reservePanel
+address: '0x0801BB1C'
+kind: function
+status: confirmed
+summary: Attempts to claim (reserve) the panel under one object for another object, marking the panel reserved and
+  flagging the reserving object; fails if there is no panel or it is already reserved.
+interface: bool object_reservePanel(ObjectHeader *targetObject /*r0*/, u32 unused /*r1*/, ObjectHeader *reserverObject
+  /*r5*/); returns 1 on successful reservation, 0 if the target has no panel or the panel is already reserved; sets
+  NZ flags from the return value, clobbers r1-r3 (r2 carries the prior reserver pointer on failure)
+details: "Calls object_getPanelDataOffset with r0 to find the panel data for the panel under the\ngiven object.\
+  \ If there is no panel (offset 0) the panel cannot be reserved, so it\nreturns 0. If the panel already has a reserver\
+  \ (oPanelData_ReserverObjectPtr != 0) it\nalso returns 0 (the previous reserver pointer is left in r2, presumably\
+  \ incidental).\nOn success it:\n  - stores r5 (the claiming object) into panel's oPanelData_ReserverObjectPtr,\n\
+  \  - sets bit 0x80 in the panel's oPanelData_Flags word (the \"reserved\" flag),\n  - sets bit 0x20 in the reserving\
+  \ object's oObjectHeader_Flags byte (offset 0 of the\n    object header, the \"standing on a reserved panel\"\
+  \ flag),\n  - returns 1.\nThis is the panel-claiming mechanic used in battle (e.g. objects like panels/areas\n\
+  reserving a tile so others can't take it); callers pass the object whose panel is\ntargeted in r0 and the claiming\
+  \ object in r5, an unusual calling convention that\nsuggests r5 is already holding a relevant object pointer at\
+  \ call sites.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_reservePanel
+
+    .venv/bin/python -m wf verify --function object_reservePanel --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_reservePanel
+
+    .venv/bin/python -m wf verify --function object_reservePanel --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_reservePanel
+
+    .venv/bin/python -m wf verify --function object_reservePanel --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^0801bb1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- why r5 rather than a standard argument register for the reserving object (likely an artifact of caller context)
+- exact gameplay meaning of panel flag 0x80 and object flag 0x20 beyond 'reserved'
+- whether r1 is ever meaningfully used by callers
+sources:
+- tools/wf run convert-20261009-014533

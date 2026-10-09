@@ -1,0 +1,109 @@
+name: enemy_getStruct2
+address: '0x0800F23C'
+kind: function
+status: confirmed
+summary: Resolves an enemy index to a pointer into a per-version 6-byte data record, selected by actor type (virus/navi/player)
+  and AI index.
+interface: u8* enemy_getStruct2(u16 enemy_idx) -> r0 = pointer to 6-byte per-version record (r3 = 6 as a side effect,
+  r1/r2 clobbered)
+details: 'Calls GetVerActorTyAndAIIdx_80182B4(enemy_idx), which returns a pointer to a triple {version (u8), actor_type
+  (u8), ai_index (u8)}. The actor_type byte indexes the group table at off_800F260, which holds one pointer per
+  actor type: virus (off_8109150), navi (off_80F253C), player (off_80EA8D8). Each group is itself an array of tables
+  indexed by ai_index; the chosen table is an array of 6-byte records indexed by the version byte. The returned
+  r0 is recordTable + version*6, so callers treat the result as a base pointer into per-version enemy data (stats/params
+  laid out one 6-byte entry per game version). Quirk: the multiply-by-6 constant is left sitting in r3 on return,
+  matching the original binary; r1 and r2 are scratch. The "struct 2" name suggests this is one of several per-enemy
+  record accessors.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function enemy_getStruct2
+
+    .venv/bin/python -m wf verify --function enemy_getStruct2 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 204 out
+    of domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function enemy_getStruct2
+
+    .venv/bin/python -m wf verify --function enemy_getStruct2 --snapshots SNAPSHOT_DIR'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function enemy_getStruct2
+
+    .venv/bin/python -m wf verify --function enemy_getStruct2 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0800f23c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- nullsub_43
+- object_reservePanel
+- object_updateSpriteTimestop
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions:
+- Exact meaning/layout of the 6 bytes in each per-version record (need callers to confirm field offsets).
+- Whether actor_type has more than 3 valid values and what off_800F260 entries beyond virus/navi/player would point
+  to.
+sources:
+- tools/wf run convert-20261009-014533

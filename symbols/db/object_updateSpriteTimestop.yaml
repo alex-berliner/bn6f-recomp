@@ -1,0 +1,105 @@
+name: object_updateSpriteTimestop
+address: '0x0801BBF4'
+kind: function
+status: confirmed
+summary: Advances one battle object's sprite animation unless the battle is paused, the object has no sprite, or
+  a time stop has frozen its animation.
+interface: void object_updateSpriteTimestop(battle_object *obj /* r5 */, void *unused /* r4 */, void *unused2 /*
+  r10 */)
+details: "Called per battle object with r5 = object header and r4/r10 unused but preserved\n(callers' contract lists\
+  \ them as inputs; the function pushes only lr, so r4-r11 must\nalready be live from the caller loop). Behaviour:\n\
+  \n* Calls battle_isPaused(); if the battle is paused, returns without touching anything\n  so all sprites hold\
+  \ still.\n* Reads oObjectHeader_Flags (offset 0) from the object header:\n  - bit 0 clear: object has no sprite\
+  \ (invisible/none) -> return early.\n  - bit 3 set: animation is frozen by a time stop (e.g. TimeStop/FullSynchro-style\n\
+  \    effects) -> return early, sprite holds its current frame.\n* Compares oBattleObject_CurAnim with oBattleObject_CurAnimCopy\
+  \ (the animation id the\n  sprite was last set up with). If they differ, calls sprite_setAnimation(newAnimId)\n\
+  \  and sprite_loadAnimationData() to reapply the changed animation, then writes the new\n  id back to oBattleObject_CurAnimCopy.\n\
+  * Always (when not skipped above) calls sprite_update() to advance the current frame.\n\nStructures: battle object\
+  \ header at r5 with oObjectHeader_Flags (bit 0 = has sprite,\nbit 3 = time-stop-frozen) and oBattleObject_CurAnim\
+  \ / oBattleObject_CurAnimCopy (current\nanimation id and last-applied copy).\nQuirk: the early-return path for\
+  \ bit 0 executes SET_FLAGS_NZ on the masked value, so NZ\nflags leak out of this function (the contract marks\
+  \ nz as an output); callers in the\nobject loop appear not to rely on them.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_11.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    11' --file leaves_farm_11.c RunAIAttack enemy_getStruct1 enemy_getStruct2 nullsub_43 object_reservePanel object_updateSpriteTimestop
+    sub_800F26C sub_801336C sub_8013B20 sub_801690A sub_8017888 sub_801A42E sub_801A4A6 sub_801BA92 sub_801CF0E
+    sub_801DC06 sub_801DC36 sub_801E10E sub_801E754 EnterMap_RunMapGroupAsmFunction_8030A00 LoadGFXAnimsForMapGroup
+    ho_802F63C npc_freeAllObjectsThenSpawnObjectsFromList sub_8026E4C sub_8026E98 sub_802945A sub_802BE0C sub_802C460
+    sub_802CEC8 sub_802E4B8 sub_802FB64
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_updateSpriteTimestop
+
+    .venv/bin/python -m wf verify --function object_updateSpriteTimestop --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261009-014533-verify-11)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_updateSpriteTimestop
+
+    .venv/bin/python -m wf verify --function object_updateSpriteTimestop --snapshots SNAPSHOT_DIR'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261009-014533-verify-11)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function object_updateSpriteTimestop
+
+    .venv/bin/python -m wf verify --function object_updateSpriteTimestop --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battlesweep, maps, menus2, story2.'
+  reproduce: grep -l '^0801bbf4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_11.c
+  where: recomp 25fe81c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_11.c
+coverage:
+- battlesweep
+- maps
+- menus2
+- story2
+related:
+- RunAIAttack
+- enemy_getStruct1
+- enemy_getStruct2
+- nullsub_43
+- object_reservePanel
+- sub_800F26C
+- sub_801336C
+- sub_8013B20
+- sub_801690A
+- sub_8017888
+- sub_801A42E
+- sub_801A4A6
+- sub_801BA92
+- sub_801CF0E
+- sub_801DC06
+- sub_801DC36
+- sub_801E10E
+- sub_801E754
+- EnterMap_RunMapGroupAsmFunction_8030A00
+- LoadGFXAnimsForMapGroup
+- ho_802F63C
+- npc_freeAllObjectsThenSpawnObjectsFromList
+- sub_8026E4C
+- sub_8026E98
+- sub_802945A
+- sub_802BE0C
+- sub_802C460
+- sub_802CEC8
+- sub_802E4B8
+- sub_802FB64
+open_questions: []
+sources:
+- tools/wf run convert-20261009-014533
