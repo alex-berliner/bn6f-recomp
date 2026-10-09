@@ -1,0 +1,77 @@
+name: redrawBGTileMapWholeWindow_803086C
+address: '0x0803086C'
+kind: function
+status: confirmed
+summary: 'The maps'' whole-window redraw callback (+0x20): redraw both tilemap layers straight into the 32x32 window
+  at the given camera tile.'
+interface: 'static void redraw_from_tilemap(u32 tiles, u32 window_x, u32 window_y); adapter: in r0/r1 = camera tile,
+  r5 = eMapTilesState200be70; out r8/r9 = the window origin, r4-r7 restored, Z set (cmp 32, 32); r0-r3 and lr keep
+  the last row call''s leftovers'
+details: Reads the decompressed tilemap (+0xc) and its two layer tables (+4/+8), copying layer 1 then layer 2; moves
+  the window origin into r8/r9 exactly as the original does, where set_row_callee_context keeps it.
+evidence:
+- method: readable-c
+  date: '2026-10-08'
+  detail: Written by zai/glm-5.3 through the convert workflow (2 attempt(s), run convert-20261008-212520); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/bg_redraw.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'BG tile-map full redraw' --file bg_redraw.c
+    sub_8030808 sub_803086C sub_8030892
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803086C
+
+    .venv/bin/python -m wf verify --function sub_803086C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261008-212520-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803086C
+
+    .venv/bin/python -m wf verify --function sub_803086C --snapshots SNAPSHOT_DIR'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261008-212520-verify-2)
+- method: lockstep
+  date: '2026-10-08'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803086C
+
+    .venv/bin/python -m wf verify --function sub_803086C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261008-212520-verify-2)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by: battle, battlesweep, fuzz, menus2, story2, story3, wander.'
+  reproduce: grep -l '^0803086c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/bg_redraw.c
+  where: recomp 4695ed2
+  tool: tools/wf convert (zai/glm-5.3)
+- date: '2026-10-08'
+  what: rename sub_803086C -> redrawBGTileMapWholeWindow_803086C
+  where: bn6f 84bdd810
+  tool: tools/rename_symbol.py
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 146ab789
+  tool: tools/symdoc.py
+readable_c: cport/src/game/bg_redraw.c
+coverage:
+- battle
+- battlesweep
+- fuzz
+- menus2
+- story2
+- story3
+- wander
+related:
+- sub_8030808
+- sub_8030892
+open_questions:
+- why the two layers are numbered 1 and 2 in r2 for sub_80018E0 (BG block index?)
+sources:
+- tools/wf run convert-20261008-212520
+previous_names:
+- sub_803086C

@@ -5,15 +5,15 @@
  * The BG tile-id blocks hold a 32x32 window on the map (bg_scroll.c keeps
  * it up to date as the camera scrolls). Two full-redraw paths live here:
  *
- *   - sub_8030808 redraws the window cell by cell: it moves the window
+ *   - redrawBGTileIdsWindowCellByCell_8030808 redraws the window cell by cell: it moves the window
  *     origin (eMapTilesState200be70 +4/+6) to the camera's tile, then for
  *     each window cell asks getMapCellTileIds_80305E4 for the map cell's
  *     two tile ids and hands them to the map's put-tile-ids callback
  *     (+0x18).
  *
- *   - sub_803086C is the maps' redraw callback (+0x20 in every callback
+ *   - redrawBGTileMapWholeWindow_803086C is the maps' redraw callback (+0x20 in every callback
  *     table): it redraws the same window straight from the tilemap, one
- *     layer at a time through sub_8030892 — each on-map row is copied by
+ *     layer at a time through copyTilemapLayerRowsToWindow_8030892 — each on-map row is copied by
  *     sub_80018E0, each off-map row is filled with tile 0 by
  *     call_sub_3005EBA. Only the row (map y) is bounds-checked.
  *
@@ -102,9 +102,9 @@ static WindowCell redraw_window(u32 camera, u32 tiles) {
     return (WindowCell){ .tiles = tiles, .cell_x = cell_x, .cell_y = cell_y };
 }
 
-/* sub_8030808(r5 = eMapTilesState200be70, r10 = toolkit): full window redraw,
+/* redrawBGTileIdsWindowCellByCell_8030808(r5 = eMapTilesState200be70, r10 = toolkit): full window redraw,
  * cell by cell. r10-r12 are never touched. */
-Next sub_8030808(void) {
+Next redrawBGTileIdsWindowCellByCell_8030808(void) {
     WindowCell end = redraw_window(LD32(R10 + oToolkit_CameraPtr), R5);
     /* registers as the original's loops run out: both counters reach 32,
      * r3 is the row-start value popped one last time, r4 has counted 32
@@ -177,10 +177,10 @@ static void copy_layer_rows(u32 layer_data, u32 layer, u32 map_width, u32 map_he
     }
 }
 
-/* sub_8030892(r0 = layer data, r1 = layer, r2 = map width, r3 = map height,
+/* copyTilemapLayerRowsToWindow_8030892(r0 = layer data, r1 = layer, r2 = map width, r3 = map height,
  * r8 = window x, r9 = window y): copy the layer's rows into the window.
  * r4-r7 are restored; r0-r3 and lr are the last row call's leftovers. */
-Next sub_8030892(void) {
+Next copyTilemapLayerRowsToWindow_8030892(void) {
     const u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     copy_layer_rows(R0, R1, R2, R3, R8, R9);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
@@ -200,10 +200,10 @@ static void redraw_from_tilemap(u32 tiles, u32 window_x, u32 window_y) {
                     window_x, window_y);
 }
 
-/* sub_803086C(r0 = window x, r1 = window y, r5 = eMapTilesState200be70): the
+/* redrawBGTileMapWholeWindow_803086C(r0 = window x, r1 = window y, r5 = eMapTilesState200be70): the
  * maps' redraw callback (+0x20). r4-r7 are restored, r8/r9 keep the window
  * origin, r0-r3 and lr are the last row call's leftovers. */
-Next sub_803086C(void) {
+Next redrawBGTileMapWholeWindow_803086C(void) {
     const u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     R8 = R0;  /* the original moves the window origin into r8/r9, where the row helpers keep it */
     R9 = R1;

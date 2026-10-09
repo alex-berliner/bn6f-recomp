@@ -12,7 +12,7 @@
  *
  * Every map's callback table (bn6f data/SpritePointersList.s) holds the same
  * functions: +0x18 setBGTileIdsBlocks1And2_8030628 (reads r0, r1, r3, r4,
- * r10) and +0x20 sub_803086C (reads r0, r1, r5); those are the registers set
+ * r10) and +0x20 redrawBGTileMapWholeWindow_803086C (reads r0, r1, r5); those are the registers set
  * for them here.
  *
  * Written by Claude through the convert workflow (tools/wf).
@@ -54,7 +54,7 @@ static TileIds tile_ids_at(u32 tiles, u32 x, u32 y) {
 }
 
 /* getMapCellTileIds_80305E4(r0 = map x, r1 = map y, r5 = eMapTilesState200be70) -> r0, r1 = the
- * cell's tile ids. sub_8030808 (still lifted) passes the registers it leaves
+ * cell's tile ids. redrawBGTileIdsWindowCellByCell_8030808 (still lifted) passes the registers it leaves
  * on to the put-tile-ids callback, so they are left as the original's loop
  * leaves them. */
 Next getMapCellTileIds_80305E4(void) {
