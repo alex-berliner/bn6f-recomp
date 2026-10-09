@@ -3,6 +3,7 @@ beside it (tools/convert/accepted/NAME.MODEL.yaml), and a group of accepted
 candidates becomes one file for the convert workflow: the code, and an entry
 for every function, so review and record never wait on a strong model for
 the documentation of small functions."""
+import re
 import time
 from pathlib import Path
 from types import ModuleType
@@ -105,7 +106,7 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
                         file_name: str) -> FileReply:
     """The model's accepted candidates of `functions` as one file, with their drafted entries."""
     tag = model.replace("/", "_")
-    bodies: list[str] = []
+    bodies: list[tuple[FunctionName, str]] = []
     drafts: list[SymbolDraft] = []
     problems: list[ToolMessage] = []
     for function in functions:
@@ -113,16 +114,68 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
         if not candidate.exists():
             problems.append(ToolMessage(f"no accepted {model} candidate for {function}"))
             continue
-        bodies.append(candidate.read_text().strip())
+        bodies.append((function, candidate.read_text().strip()))
         if draft_path(candidate).exists():
             found, _ = parse_drafts(draft_path(candidate).read_text())
             drafts += found
     header = (f"/*\n * {file_name}: {subsystem}.\n *\n * Small functions converted one at a time by the "
               f"model farm, each checked against\n * the lifted original before it was kept.\n */\n"
               '#include "game.h"\n#include "runtime.h"\n')
-    code = header + "\n" + "\n\n".join(bodies) + "\n" if bodies else None
+    sections = [f"{SECTION.format(function=function)}\n{body}" for function, body in _names_kept_apart(bodies)]
+    code = header + "\n" + "\n\n".join(sections) + "\n" if sections else None
     return FileReply(file=CandidateFile(code) if code else None, cfg_lines=(), drafts=tuple(drafts),
                      problems=tuple(problems), seconds=0.0)
+
+
+SECTION = "/* ── {function} ── */"   # starts each function's part of an assembled file
+
+
+def function_at_line(code: str, line: int) -> FunctionName | None:
+    """Whose part of an assembled farm file a line (1-based) is in."""
+    owner: FunctionName | None = None
+    for number, text in enumerate(code.splitlines(), start=1):
+        if number > line:
+            break
+        match = _SECTION_LINE.match(text)
+        if match:
+            owner = FunctionName(match[1])
+    return owner
+
+
+_SECTION_LINE = re.compile(r"^/\* ── (\w+) ── \*/$")
+
+# names a candidate defines at file level: static functions and variables, macros, types, enum constants
+_DEFINED = (
+    re.compile(r"^static\s+(?:inline\s+)?(?:const\s+)?[\w\s*]*?\b(\w+)\s*\(", re.M),
+    re.compile(r"^static\s+(?:const\s+)?[\w\s*]*?\b(\w+)\s*(?:\[[^\]]*\]\s*)*(?:=|;)", re.M),
+    re.compile(r"^#define\s+(\w+)", re.M),
+    re.compile(r"^typedef\b[^;{]*?\b(\w+)\s*;", re.M),
+    re.compile(r"^(?:typedef\s+)?(?:struct|union|enum)\s+(\w+)\s*\{", re.M),
+    re.compile(r"^}\s*(\w+)\s*;", re.M),
+)
+_ENUM_BODY = re.compile(r"\benum\b[^{;]*\{([^}]*)\}", re.S)
+
+
+def _names_kept_apart(bodies: list[tuple[FunctionName, str]]) -> list[tuple[FunctionName, str]]:
+    """Each candidate compiled alone in the farm; in one file, two that define the same file-level
+    name (a helper, a macro, an enum constant) would clash, so later ones get the name suffixed with
+    their function's name."""
+    seen: set[str] = set()
+    kept: list[tuple[FunctionName, str]] = []
+    for function, body in bodies:
+        names = _defined_names(body)
+        for name in sorted(names & seen):
+            body = re.sub(rf"\b{re.escape(name)}\b", f"{name}_{function}", body)
+        seen |= names
+        kept.append((function, body))
+    return kept
+
+
+def _defined_names(body: str) -> set[str]:
+    names = {match[1] for pattern in _DEFINED for match in pattern.finditer(body)}
+    for enum in _ENUM_BODY.finditer(body):
+        names |= {item.split("=")[0].strip() for item in enum[1].split(",") if item.split("=")[0].strip().isidentifier()}
+    return names - {"Next"}
 
 
 def _request(context: ConversionContext, code: str) -> Prompt:

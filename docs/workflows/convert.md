@@ -5,7 +5,9 @@ to readable C with C call and return semantics (docs/PROCESS.md §4): capture
 the original's calls, ask the model for the whole file, quick-test it per
 function against the lifted originals, install it and run the full verify,
 then stop for the orchestrator's review. Failures and review comments go back
-to the model (3 attempts per model, then the next model). Approved work is
+to the model (3 attempts per model, then the next model). A group of farm
+candidates goes the same way, except that failing functions are taken out of
+it (they stay in the farm's pool) instead of going to a model. Approved work is
 committed, its symbols/db entries are written from the model's drafts plus the
 run's own evidence, and a child record run renames and documents it.
 The orchestrator never writes the code: it chooses the work and reviews.
@@ -30,13 +32,14 @@ Each function's assembly, lifted C and register contract, and that it has captur
 asked to write what nothing could check); labels callers enter in the middle of a function join the
 subsystem (a replacement must define them); build the host difftest for quick tests.
 
-- reads: `run_dir: Path`, `file_name: str`, `functions: tuple[FunctionName, ...]`, `snapshots: SnapshotDir`
-- produces: `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`
+- reads: `run_dir: Path`, `file_name: str`, `functions: tuple[FunctionName, ...]`, `snapshots: SnapshotDir`, `farm_model: typing.Optional[ModelSpec]`
+- produces: `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `functions: tuple[FunctionName, ...]`, `dropped: tuple[DroppedFunction, ...]`
 - then: `ask_model_for_file_step` when `ready_to_convert`; `give_up` when `cannot_convert`
 
 ### `ask_model_for_file_step` (step)
 
-Ask the next model for the whole file; after a failure or review, show it what went wrong.
+Ask the next model for the whole file (passing over a rate-limited provider); after a failure or
+review, show it what went wrong.
 
 - reads: `run_dir: Path`, `subsystem: str`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `models: tuple[ModelSpec, ...]`, `rounds: int`, `candidate: Path | None`, `farm_model: typing.Optional[ModelSpec]`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`
@@ -56,7 +59,7 @@ Each function of the file against its lifted original on the captured calls and 
 
 - reads: `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `difftest: Path`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`
-- then: `install_and_verify` when `quick_test_passed`; `ask_model_for_file_step` when `quick_test_failed_with_attempts_left`; `give_up` when `quick_test_failed_with_no_attempts_left`
+- then: `install_and_verify` when `quick_test_passed`; `drop_failing_functions` when `farm_functions_to_drop`; `ask_model_for_file_step` when `quick_test_failed_with_attempts_left`; `give_up` when `quick_test_failed_with_no_attempts_left`
 
 ### `install_and_verify` (step)
 
@@ -64,16 +67,25 @@ Put the file in the tree and run every check (a child verify run); take it out a
 
 - reads: `run_dir: Path`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `routes: tuple[Route, ...]`, `battle_code: bool`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`, `checks: tuple[FunctionChecks, ...]`
-- then: `review_conversion` when `verified`; `ask_model_for_file_step` when `not_verified_with_attempts_left`; `give_up` when `not_verified_with_no_attempts_left`
+- then: `review_conversion` when `verified`; `drop_failing_functions` when `farm_functions_to_drop`; `ask_model_for_file_step` when `not_verified_with_attempts_left`; `give_up` when `not_verified_with_no_attempts_left`
+
+### `drop_failing_functions` (step)
+
+A farm group keeps what passes: the functions the quick test, the verify or the review named
+are taken out (they stay in the farm's pool), and the rest is assembled again and re-tested.
+
+- reads: `subsystem: str`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `farm_model: typing.Optional[ModelSpec]`, `attempts: tuple[Attempt, ...]`, `dropped: tuple[DroppedFunction, ...]`
+- produces: `contexts: tuple[ConversionContext, ...]`, `functions: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`, `dropped: tuple[DroppedFunction, ...]`
+- then: `quick_test`
 
 ### `review_conversion` (pause point)
 
 The orchestrator reviews: approve, request changes (they go back to the model) or reject.
 
-- reads: `subsystem: str`, `file_name: str`, `attempts: tuple[Attempt, ...]`
-- waits for: `Review` (`decision: ReviewDecision`, `comments: str`, `attribution: str`)
+- reads: `subsystem: str`, `file_name: str`, `attempts: tuple[Attempt, ...]`, `dropped: tuple[DroppedFunction, ...]`
+- waits for: `Review` (`decision: ReviewDecision`, `comments: str`, `attribution: str`, `drop: tuple[FunctionName, ...]`)
 - produces: `attempts: tuple[Attempt, ...]`
-- then: `commit_conversion` when `approved`; `ask_model_for_file_step` when `changes_requested_with_attempts_left`; `give_up` when `rejected_or_no_attempts_left`
+- then: `commit_conversion` when `approved`; `drop_failing_functions` when `farm_functions_to_drop`; `ask_model_for_file_step` when `changes_requested_with_attempts_left`; `give_up` when `rejected_or_no_attempts_left`
 
 ### `commit_conversion` (step)
 

@@ -15,11 +15,13 @@ from wf.graphs.record import RecordReport, RecordState, RecordVerdict
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState
 from wf.tools.evidence import FunctionChecks, Provenance
 from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Prompt
-from wf.tools.subsystem import CandidateFile, FileReply, FileTest, SymbolDraft, TokenUse
+from wf.tools.subsystem import CandidateFile, FileReply, FileTest, FunctionTest, SymbolDraft, TokenUse
 from wf.types import (BuildFailure, CommitHash, FunctionName, GuestAddress, ModelSpec, SnapshotDir,
                       SourceVersion, SymbolName, SymbolStatus, ToolMessage)
 
 FUNCTION = FunctionName("sub_8030808")
+OTHER = FunctionName("sub_8030892")
+FARM_MODEL = ModelSpec("hyper/cheap")
 STRONG, STRONGER = ModelSpec("opencode/strong"), ModelSpec("opencode/stronger")
 APPROVE = Review(decision=ReviewDecision.APPROVE, attribution="Reviewed-by: test")
 
@@ -39,6 +41,8 @@ class World:
     prompted: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
     verified: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
     blocked: set[ModelSpec] = field(default_factory=set[ModelSpec])
+    assembled: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
+    name_failures: bool = True  # a failed quick test names its last function
 
 
 def test_a_good_first_attempt_stops_for_review_then_commits_and_records(
@@ -67,15 +71,40 @@ def test_labels_entered_mid_function_are_written_but_only_the_functions_verified
     assert world.verified == [(FUNCTION,)]
 
 
-def test_farm_candidates_go_first_and_are_credited_to_their_model(
+def test_a_farm_group_drops_failing_functions_and_keeps_the_rest(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     world = World(quick_tests=[False, True], verdicts=[Verdict.PASSED])
-    farm_model = ModelSpec("hyper/cheap")
-    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm", farm_model=farm_model)
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm", farm_model=FARM_MODEL,
+                   functions=(FUNCTION, OTHER))
 
     assert isinstance(paused, Paused) and isinstance(paused.request, ReviewRequest)
-    assert [attempt.model for attempt in paused.request.attempts] == [farm_model, STRONG]
-    assert world.asked == [STRONG]  # the farm's file was not one of the strong model's attempts
+    assert [attempt.model for attempt in paused.request.attempts] == [FARM_MODEL, FARM_MODEL]
+    assert world.assembled == [(FUNCTION, OTHER), (FUNCTION,)]
+    assert [each.function for each in paused.request.dropped] == [OTHER]
+    assert world.asked == []  # a farm group never goes to the strong models
+
+
+def test_a_farm_group_is_given_up_when_no_function_is_named(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[False], verdicts=[], name_failures=False)
+    finished = start(world, monkeypatch, tmp_path, run_id="convert-farm-2", farm_model=FARM_MODEL,
+                     functions=(FUNCTION, OTHER))
+
+    assert isinstance(finished, Finished) and finished.state.outcome is ConvertOutcome.OUT_OF_ATTEMPTS
+    assert world.asked == []
+
+
+def test_review_can_take_functions_out_of_a_farm_group(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[True, True], verdicts=[Verdict.PASSED, Verdict.PASSED])
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm-3", farm_model=FARM_MODEL,
+                   functions=(FUNCTION, OTHER))
+    assert isinstance(paused, Paused)
+
+    again = convert_graph().resume("convert-farm-3", Review(decision=ReviewDecision.REQUEST_CHANGES,
+                                                            comments="unclear", drop=(OTHER,)))
+
+    assert isinstance(again, Paused) and isinstance(again.request, ReviewRequest)
+    assert world.assembled[-1] == (FUNCTION,) and world.verified[-1] == (FUNCTION,)
 
 
 def test_a_rate_limited_provider_is_passed_over(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -171,12 +200,14 @@ def test_no_model_is_asked_when_a_function_has_no_captured_calls(
 
 def start(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_id: str, rounds: int = 3,
           candidate: Path | None = None, with_calls: bool = True,
-          farm_model: ModelSpec | None = None) -> Finished[ConvertState] | Paused:
+          farm_model: ModelSpec | None = None,
+          functions: tuple[FunctionName, ...] = (FUNCTION,)) -> Finished[ConvertState] | Paused:
     install(world, monkeypatch, tmp_path)
     if with_calls:
-        (tmp_path / "snaps" / FUNCTION).mkdir(parents=True, exist_ok=True)
-        _ = (tmp_path / "snaps" / FUNCTION / "snap_wander_0.bin").write_bytes(b"")
-    state = ConvertState(run_dir=tmp_path, subsystem="BG map redraw", file_name="bg_redraw.c", functions=(FUNCTION,),
+        for function in functions:
+            (tmp_path / "snaps" / function).mkdir(parents=True, exist_ok=True)
+            _ = (tmp_path / "snaps" / function / "snap_wander_0.bin").write_bytes(b"")
+    state = ConvertState(run_dir=tmp_path, subsystem="BG map redraw", file_name="bg_redraw.c", functions=functions,
                          models=(STRONG, STRONGER), rounds=rounds, snapshots=SnapshotDir(tmp_path / "snaps"),
                          candidate=candidate, farm_model=farm_model)
     return convert_graph().start(state, run_id=run_id)
@@ -223,6 +254,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
 
     def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, subsystem: str,
                             file_name: str) -> FileReply:
+        world.assembled.append(functions)
         return FileReply(file=CandidateFile("Next sub_8030808(void) { RETURN_TO_CALLER(); }"), cfg_lines=(),
                          drafts=(DRAFT,), problems=(), seconds=0.0)
 
@@ -232,7 +264,10 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     def test_candidate_file(contexts: tuple[ConversionContext, ...], reply: FileReply, snapshots: SnapshotDir,
                             difftest: Path) -> FileTest:
         passed = world.quick_tests.pop(0)
-        return FileTest(passed=passed, report=ToolMessage("ok" if passed else "sub_8030808: FAIL"), functions=(),
+        named = not passed and world.name_failures
+        tests = tuple(FunctionTest(function=context.function, captured=ToolMessage("ok"), random=ToolMessage("ok"),
+                                   passed=not (named and context is contexts[-1])) for context in contexts)
+        return FileTest(passed=passed, report=ToolMessage("ok" if passed else "sub_8030808: FAIL"), functions=tests,
                         register_use_outside_adapters=(), register_form_notes=())
 
     def install_file(file_name: str, code: CandidateFile, cfg_lines: tuple[str, ...]) -> Path:

@@ -3,10 +3,13 @@ to readable C with C call and return semantics (docs/PROCESS.md §4): capture
 the original's calls, ask the model for the whole file, quick-test it per
 function against the lifted originals, install it and run the full verify,
 then stop for the orchestrator's review. Failures and review comments go back
-to the model (3 attempts per model, then the next model). Approved work is
+to the model (3 attempts per model, then the next model). A group of farm
+candidates goes the same way, except that failing functions are taken out of
+it (they stay in the farm's pool) instead of going to a model. Approved work is
 committed, its symbols/db entries are written from the model's drafts plus the
 run's own evidence, and a child record run renames and documents it.
 The orchestrator never writes the code: it chooses the work and reviews."""
+import re
 from enum import Enum
 from pathlib import Path
 
@@ -18,7 +21,7 @@ from wf.graphs.record import RecordReport, RecordState, run_record
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify_in_full
 from wf.routes import ALL_ROUTES
 from wf.tools.build import build_host_difftest
-from wf.tools.drafts import candidate_from_farm
+from wf.tools.drafts import candidate_from_farm, function_at_line
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
 from wf.tools.git import commit_files
 from wf.tools.install import DIFFTEST_CFG, game_file, install_file, uninstall_file
@@ -44,14 +47,18 @@ def convert_graph() -> Graph["ConvertState"]:
             Transition(after=gather_context, go_to=give_up, when=cannot_convert),
             Transition(after=ask_model_for_file_step, go_to=quick_test),
             Transition(after=quick_test, go_to=install_and_verify, when=quick_test_passed),
+            Transition(after=quick_test, go_to=drop_failing_functions, when=farm_functions_to_drop),
             Transition(after=quick_test, go_to=ask_model_for_file_step, when=quick_test_failed_with_attempts_left),
             Transition(after=quick_test, go_to=give_up, when=quick_test_failed_with_no_attempts_left),
             Transition(after=install_and_verify, go_to=review_conversion, when=verified),
+            Transition(after=install_and_verify, go_to=drop_failing_functions, when=farm_functions_to_drop),
             Transition(after=install_and_verify, go_to=ask_model_for_file_step, when=not_verified_with_attempts_left),
             Transition(after=install_and_verify, go_to=give_up, when=not_verified_with_no_attempts_left),
             Transition(after=review_conversion, go_to=commit_conversion, when=approved),
+            Transition(after=review_conversion, go_to=drop_failing_functions, when=farm_functions_to_drop),
             Transition(after=review_conversion, go_to=ask_model_for_file_step, when=changes_requested_with_attempts_left),
             Transition(after=review_conversion, go_to=give_up, when=rejected_or_no_attempts_left),
+            Transition(after=drop_failing_functions, go_to=quick_test),
             Transition(after=commit_conversion, go_to=write_symbol_entries),
             Transition(after=write_symbol_entries, go_to=record_symbols),
         ],
@@ -71,6 +78,7 @@ class Review(Result):
     decision: ReviewDecision
     comments: str = ""
     attribution: str = ""   # lines appended to the commit messages (who reviewed, the session)
+    drop: tuple[FunctionName, ...] = ()   # a farm group: take these out, test and verify the rest again
 
 
 class Attempt(Result):
@@ -94,6 +102,11 @@ class ConvertOutcome(Enum):
     DIFFTEST_DID_NOT_BUILD = "the host difftest did not build"
 
 
+class DroppedFunction(Result):
+    function: FunctionName
+    reason: str
+
+
 class ConvertState(BaseModel):
     run_dir: Path
     subsystem: str
@@ -110,6 +123,7 @@ class ConvertState(BaseModel):
     contexts: tuple[ConversionContext, ...] | NotRun | None = None
     difftest: Path | BuildFailure | None = None
     without_calls: tuple[FunctionName, ...] = ()
+    dropped: tuple[DroppedFunction, ...] = ()        # a farm group's functions taken out (they stay in the farm pool)
     attempts: tuple[Attempt, ...] = ()
     checks: tuple[FunctionChecks, ...] = ()
     commit: CommitHash | None = None
@@ -152,12 +166,15 @@ class GatherInput(Result):
     file_name: str
     functions: tuple[FunctionName, ...]
     snapshots: SnapshotDir
+    farm_model: ModelSpec | None
 
 
 class GatherOutput(Result):
     contexts: tuple[ConversionContext, ...] | NotRun
     difftest: Path | BuildFailure
     without_calls: tuple[FunctionName, ...]
+    functions: tuple[FunctionName, ...]
+    dropped: tuple[DroppedFunction, ...] = ()
 
 
 @workflow.step
@@ -169,15 +186,27 @@ def gather_context(given: GatherInput) -> GatherOutput:
     without_calls = tuple(function for function in given.functions if not _has_calls(given.snapshots, function))
     if game_file(given.file_name).exists():
         return GatherOutput(contexts=NotRun(reason=ToolMessage(f"cport/src/game/{given.file_name} already exists")),
-                            difftest=difftest, without_calls=without_calls)
+                            difftest=difftest, without_calls=without_calls, functions=given.functions)
     found = {function: conversion_context(function) for function in given.functions}
     missing = [function for function, context in found.items() if context is None]
-    if missing:
+    if missing and given.farm_model is None:
         return GatherOutput(contexts=NotRun(reason=ToolMessage(f"no lifted code or assembly: {', '.join(missing)}")),
-                            difftest=difftest, without_calls=without_calls)
+                            difftest=difftest, without_calls=without_calls, functions=given.functions)
     contexts = tuple(context for context in found.values() if context is not None)
-    with_entries = tuple(each for context in contexts for each in (context, *other_entries(context)))
-    return GatherOutput(contexts=with_entries, difftest=difftest, without_calls=without_calls)
+    entries = {context.function: other_entries(context) for context in contexts}
+    if given.farm_model is None:
+        with_entries = tuple(each for context in contexts for each in (context, *entries[context.function]))
+        return GatherOutput(contexts=with_entries, difftest=difftest, without_calls=without_calls,
+                            functions=given.functions)
+    # a farm group leaves out what cannot go in rather than refusing the whole group
+    dropped = ([DroppedFunction(function=function, reason="no lifted code or assembly") for function in missing]
+               + [DroppedFunction(function=function, reason="no captured calls") for function in without_calls]
+               + [DroppedFunction(function=context.function, reason="its code has other entries the farm did not write")
+                  for context in contexts if entries[context.function] and context.function not in without_calls])
+    out = {each.function for each in dropped}
+    kept = tuple(context for context in contexts if context.function not in out)
+    return GatherOutput(contexts=kept, difftest=difftest, without_calls=(), dropped=tuple(dropped),
+                        functions=tuple(context.function for context in kept))
 
 
 class AskInput(Result):
@@ -279,6 +308,7 @@ class ReviewRequest(Result):
     subsystem: str
     file_name: str
     attempts: tuple[Attempt, ...]
+    dropped: tuple[DroppedFunction, ...] = ()
 
 
 class ReviewOutput(Result):
@@ -372,6 +402,37 @@ def record_symbols(given: RecordInput) -> RecordOutput:
     return RecordOutput(record=report, outcome=ConvertOutcome.RECORDED)
 
 
+class DropInput(Result):
+    subsystem: str
+    file_name: str
+    contexts: tuple[ConversionContext, ...]
+    farm_model: ModelSpec | None
+    attempts: tuple[Attempt, ...]
+    dropped: tuple[DroppedFunction, ...]
+
+
+class DropOutput(Result):
+    contexts: tuple[ConversionContext, ...]
+    functions: tuple[FunctionName, ...]
+    attempts: tuple[Attempt, ...]
+    dropped: tuple[DroppedFunction, ...]
+
+
+@workflow.step
+def drop_failing_functions(given: DropInput) -> DropOutput:
+    """A farm group keeps what passes: the functions the quick test, the verify or the review named
+    are taken out (they stay in the farm's pool), and the rest is assembled again and re-tested."""
+    assert given.farm_model is not None
+    failing = _failing_functions(given.attempts[-1])
+    kept = tuple(context for context in given.contexts if context.function not in failing)
+    functions = tuple(context.function for context in kept)
+    reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name)
+    attempt = Attempt(number=len(given.attempts) + 1, model=given.farm_model, given=True, reply=reply)
+    return DropOutput(contexts=kept, functions=functions, attempts=(*given.attempts, attempt),
+                      dropped=(*given.dropped, *(DroppedFunction(function=function, reason=reason)
+                                                 for function, reason in failing.items())))
+
+
 class GiveUpInput(Result):
     file_name: str
     contexts: tuple[ConversionContext, ...] | NotRun
@@ -433,7 +494,49 @@ def _checks(context: ConversionContext, state: VerifyState) -> FunctionChecks:
 
 
 def _attempts_left(state: ConvertState) -> bool:
+    if state.farm_model is not None:
+        return False   # a farm group drops failing functions; its file is too big for a model to repair
     return _model_attempts(state.attempts) < state.rounds * len(state.models)
+
+
+def _failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
+    """The functions of a farm group the latest test, verify or review named, with why."""
+    failing: dict[FunctionName, str] = {}
+    code = attempt.reply.file or ""
+    if attempt.review is not None:
+        for function in attempt.review.drop:
+            failing[function] = f"taken out at review: {attempt.review.comments}"[:300]
+    if attempt.verification is not None:
+        for function in attempt.verification.failed_functions:
+            failing[function] = "difftest found a difference in the full verify"
+        for function in attempt.verification.oracle_differences:
+            failing[function] = "the CPU oracle found a difference in the full verify"
+        build = attempt.verification.build_failure
+        for line in build.last_lines if build is not None else ():
+            where = re.search(r"src/game/[\w.]+:(\d+):", line)
+            owner = function_at_line(code, int(where[1])) if where else None
+            if owner is not None:
+                failing[owner] = f"the full build failed in its code: {line.strip()}"[:300]
+    if attempt.test is not None and not attempt.test.passed:
+        for test in attempt.test.functions:
+            if not test.passed:
+                failing[test.function] = f"quick test: {test.captured.splitlines()[0]}; {test.random.splitlines()[0]}"[:300]
+        for line in attempt.test.report.splitlines():
+            where = re.match(r"line (\d+)", line)
+            owner = function_at_line(code, int(where[1])) if where else None
+            if owner is not None:
+                failing[owner] = f"does not compile with the others: {line.strip()}"[:300]
+            named = re.match(r"`Next (\w+)\(void\)` must be defined exactly once", line)
+            if named:
+                failing[FunctionName(named[1])] = line.strip()
+            undrafted = re.match(r"no ```yaml entry for: (.*)", line)
+            for function in undrafted[1].split(", ") if undrafted else ():
+                failing[FunctionName(function)] = "no drafted symbols/db entry yet"
+    return failing
+
+
+def _contexts(state: ConvertState) -> tuple[ConversionContext, ...]:
+    return state.contexts if isinstance(state.contexts, tuple) else ()
 
 
 def _latest(state: ConvertState) -> Attempt:
@@ -455,12 +558,25 @@ def quick_test_passed(state: ConvertState) -> bool:
     return test is not None and test.passed
 
 
+def farm_functions_to_drop(state: ConvertState) -> bool:
+    """A farm group whose latest stage failed (or was sent back at review) and names functions to take
+    out, with some left to keep."""
+    latest = _latest(state)
+    if state.farm_model is None or not latest.given:
+        return False
+    stage_failed = (not quick_test_passed(state) if latest.verification is None and latest.review is None
+                    else not verified(state) if latest.review is None
+                    else latest.review.decision is ReviewDecision.REQUEST_CHANGES)
+    failing = _failing_functions(latest)
+    return stage_failed and bool(failing) and any(context.function not in failing for context in _contexts(state))
+
+
 def quick_test_failed_with_attempts_left(state: ConvertState) -> bool:
-    return not quick_test_passed(state) and _attempts_left(state)
+    return not quick_test_passed(state) and not farm_functions_to_drop(state) and _attempts_left(state)
 
 
 def quick_test_failed_with_no_attempts_left(state: ConvertState) -> bool:
-    return not quick_test_passed(state) and not _attempts_left(state)
+    return not quick_test_passed(state) and not farm_functions_to_drop(state) and not _attempts_left(state)
 
 
 def verified(state: ConvertState) -> bool:
@@ -469,11 +585,11 @@ def verified(state: ConvertState) -> bool:
 
 
 def not_verified_with_attempts_left(state: ConvertState) -> bool:
-    return not verified(state) and _attempts_left(state)
+    return not verified(state) and not farm_functions_to_drop(state) and _attempts_left(state)
 
 
 def not_verified_with_no_attempts_left(state: ConvertState) -> bool:
-    return not verified(state) and not _attempts_left(state)
+    return not verified(state) and not farm_functions_to_drop(state) and not _attempts_left(state)
 
 
 def approved(state: ConvertState) -> bool:
@@ -483,11 +599,12 @@ def approved(state: ConvertState) -> bool:
 
 def changes_requested_with_attempts_left(state: ConvertState) -> bool:
     review = _latest(state).review
-    return review is not None and review.decision is ReviewDecision.REQUEST_CHANGES and _attempts_left(state)
+    return (review is not None and review.decision is ReviewDecision.REQUEST_CHANGES
+            and not farm_functions_to_drop(state) and _attempts_left(state))
 
 
 def rejected_or_no_attempts_left(state: ConvertState) -> bool:
-    return not approved(state) and not changes_requested_with_attempts_left(state)
+    return not approved(state) and not farm_functions_to_drop(state) and not changes_requested_with_attempts_left(state)
 
 
 # ── what the orchestrator reads at review ──────────────────────────────
@@ -515,6 +632,9 @@ def review_sheet(request: ReviewRequest) -> str:
         tokens = f"{attempt.tokens.tokens_in}/{attempt.tokens.tokens_out} tokens" if attempt.tokens else ""
         review = f", review: {attempt.review.decision.value}" if attempt.review else ""
         lines.append(f"{attempt.number}. {attempt.model}: quick test {test}, verify {verdict}{review} {tokens}")
+    if request.dropped:
+        lines += ["", f"## Taken out of this farm group ({len(request.dropped)}; they stay in the farm pool)",
+                  *(f"- {each.function}: {each.reason}" for each in request.dropped)]
     if latest.verification is not None:
         report = latest.verification
         lines += ["", f"## Verify ({latest.verify_run}): {report.verdict.value}",
@@ -535,5 +655,6 @@ def review_sheet(request: ReviewRequest) -> str:
     lines += ["", "## Check while reading", *(f"- {item}" for item in REVIEW_CHECKLIST)]
     lines += ["", "## The file", "```c", latest.reply.file or "", "```",
               "", "Answer with `python -m wf answer RUN REVIEW.json`: "
-              '{"decision": "approve" | "request changes" | "reject", "comments": "...", "attribution": "..."}']
+              '{"decision": "approve" | "request changes" | "reject", "comments": "...", "attribution": "...", '
+              '"drop": [farm groups: functions to take out]}']
     return "\n".join(lines)
