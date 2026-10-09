@@ -1,0 +1,113 @@
+name: sub_80EBD68
+address: '0x080EBD68'
+kind: function
+status: confirmed
+summary: Returns a per-AI-index flag byte for AI-controlled battle actors (0 for anything that is not an AI actor),
+  reading it from a small lookup table.
+interface: 'u8 battle_getAiIndexFlag_80EBD68(battleObject* obj /* r5 */); flags: NZCV clobbered per the C note (CMP
+  actorType,#2, plus forced NZ=Z-set on the zero path); r1 clobbered'
+details: 'Loads the battle object''s AI data pointer (oBattleObject_AIDataPtr) and checks oAIData_ActorType. If
+  the actor type is 2 (AI-controlled), uses oAIData_AIIndex as an index into the byte table at off_80EBD80 and returns
+  that byte via a tail "mov pc, lr". Any other actor type returns 0. The table''s set bits (from the words 0x100,
+  0x0 and the trailing bytes) are at AI indices 1, 9 and 10 only; all other indices are 0, so this reads as a boolean
+  property of specific AI behavior ids (e.g. which AI routines enable some particular conduct). Presumably called
+  with a battle object in r5; only r0 is returned, r1 is scratch. Branchless tail return means callers see the CMP''s
+  flags unless the zero path ran.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-042015);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_25.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    25' --file leaves_farm_25.c sub_8120AE8 sub_8120C94 sub_80C4B48 sub_80C532E sub_80C6548 sub_80EB04C sub_80EBD68
+    sub_80EBF30 sub_80EBFF4 sub_80F06CE sub_810A080 t1_0x5e_pinkRingOnCounter_80C4B18 SpawnOWPlayerObject StartBattle
+    anticheat_modCardsInit_8007036 encryption_bugfrags_8006fd0 encryption_zenny_8006f78 modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+    object_freeMemory sub_8005524 sub_8007C14 sub_8009478 sub_800A046 sub_800A152 sub_800A506 sub_800AE0C sub_800AF84
+    sub_800B110 sub_800B3A2 sub_800B79A ShuffleByteList_PrimaryRNG zeroFillVRAM sub_8125280 sub_81263D0 sub_812818C
+    sub_812AF3C CutsceneCamera_GetAutoScrollDeltaForCoord CutsceneCmd_run_or_stop_cutscene_camera_script
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80EBD68
+
+    .venv/bin/python -m wf verify --function sub_80EBD68 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-042015-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80EBD68
+
+    .venv/bin/python -m wf verify --function sub_80EBD68 --snapshots SNAPSHOT_DIR'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261009-042015-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80EBD68
+
+    .venv/bin/python -m wf verify --function sub_80EBD68 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042015-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, menus2, story2.'
+  reproduce: grep -l '^080ebd68 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_25.c
+  where: recomp 950fadc
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_25.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story2
+related:
+- sub_8120AE8
+- sub_8120C94
+- sub_80C4B48
+- sub_80C532E
+- sub_80C6548
+- sub_80EB04C
+- sub_80EBF30
+- sub_80EBFF4
+- sub_80F06CE
+- sub_810A080
+- t1_0x5e_pinkRingOnCounter_80C4B18
+- SpawnOWPlayerObject
+- StartBattle
+- anticheat_modCardsInit_8007036
+- encryption_bugfrags_8006fd0
+- encryption_zenny_8006f78
+- modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+- object_freeMemory
+- sub_8005524
+- sub_8007C14
+- sub_8009478
+- sub_800A046
+- sub_800A152
+- sub_800A506
+- sub_800AE0C
+- sub_800AF84
+- sub_800B110
+- sub_800B3A2
+- sub_800B79A
+- ShuffleByteList_PrimaryRNG
+- zeroFillVRAM
+- sub_8125280
+- sub_81263D0
+- sub_812818C
+- sub_812AF3C
+- CutsceneCamera_GetAutoScrollDeltaForCoord
+- CutsceneCmd_run_or_stop_cutscene_camera_script
+open_questions:
+- What the flag at indices 1/9/10 gates downstream (exact game meaning of the AI behavior classes) is not determined
+  from this function alone.
+- Whether callers rely on the returned flags (the CMP/mov flag side effects) or only on r0 is unknown.
+sources:
+- tools/wf run convert-20261009-042015

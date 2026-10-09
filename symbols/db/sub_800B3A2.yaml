@@ -1,0 +1,118 @@
+name: sub_800B3A2
+address: '0x0800B3A2'
+kind: function
+status: confirmed
+summary: Snapshots the current battle state (work buffer, active Navi stats, and a small inventory block) into backup
+  buffers and stamps a validity marker before the battle is restarted or restored.
+interface: '(r10: Toolkit*, r3: unused) -> r2, r3 and c/v flags as left by sub_80200A4(0x32); clobbers r0, r1, lr,
+  nz'
+details: 'Creates a restore point of the live battle so the game can later fall back to it (e.g. the "restart battle
+  / continue" path after a loss or a mid-battle restore). Steps: (1) CopyWords copies 0x50 words from byte_20366C0
+  into the backup buffer dword_203CBE4 — this is the battle work area. (2) Writes the magic marker 0x56789123 to
+  dword_203CBE0, which presumably flags "backup data is valid" for the matching restore routine. (3) Reads the battle
+  state pointer from Toolkit+oToolkit_BattleStatePtr, takes byte at offset 0xD (which Navi/alliance slot is active),
+  calls GetBattleNaviStatsAddr to get that Navi''s stats block, and CopyWords copies 0x64 words of it to the backup
+  at byte_203CC34. (4) Copies a 0x10-word block from byte_203CED0 to backup byte_203CC98 (looks like a small bag/inventory
+  or item snapshot). (5) Calls sub_80200A4 with r0 = 0x32 as a final post-processing step for the snapshot. Note
+  the magic value 0x56789123 is stored at dword_203CBE0, distinct from the buffer at dword_203CBE4.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-042015);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_25.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    25' --file leaves_farm_25.c sub_8120AE8 sub_8120C94 sub_80C4B48 sub_80C532E sub_80C6548 sub_80EB04C sub_80EBD68
+    sub_80EBF30 sub_80EBFF4 sub_80F06CE sub_810A080 t1_0x5e_pinkRingOnCounter_80C4B18 SpawnOWPlayerObject StartBattle
+    anticheat_modCardsInit_8007036 encryption_bugfrags_8006fd0 encryption_zenny_8006f78 modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+    object_freeMemory sub_8005524 sub_8007C14 sub_8009478 sub_800A046 sub_800A152 sub_800A506 sub_800AE0C sub_800AF84
+    sub_800B110 sub_800B3A2 sub_800B79A ShuffleByteList_PrimaryRNG zeroFillVRAM sub_8125280 sub_81263D0 sub_812818C
+    sub_812AF3C CutsceneCamera_GetAutoScrollDeltaForCoord CutsceneCmd_run_or_stop_cutscene_camera_script
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800B3A2
+
+    .venv/bin/python -m wf verify --function sub_800B3A2 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-042015-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800B3A2
+
+    .venv/bin/python -m wf verify --function sub_800B3A2 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-042015-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800B3A2
+
+    .venv/bin/python -m wf verify --function sub_800B3A2 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042015-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
+  reproduce: grep -l '^0800b3a2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_25.c
+  where: recomp 950fadc
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_25.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+related:
+- sub_8120AE8
+- sub_8120C94
+- sub_80C4B48
+- sub_80C532E
+- sub_80C6548
+- sub_80EB04C
+- sub_80EBD68
+- sub_80EBF30
+- sub_80EBFF4
+- sub_80F06CE
+- sub_810A080
+- t1_0x5e_pinkRingOnCounter_80C4B18
+- SpawnOWPlayerObject
+- StartBattle
+- anticheat_modCardsInit_8007036
+- encryption_bugfrags_8006fd0
+- encryption_zenny_8006f78
+- modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+- object_freeMemory
+- sub_8005524
+- sub_8007C14
+- sub_8009478
+- sub_800A046
+- sub_800A152
+- sub_800A506
+- sub_800AE0C
+- sub_800AF84
+- sub_800B110
+- sub_800B79A
+- ShuffleByteList_PrimaryRNG
+- zeroFillVRAM
+- sub_8125280
+- sub_81263D0
+- sub_812818C
+- sub_812AF3C
+- CutsceneCamera_GetAutoScrollDeltaForCoord
+- CutsceneCmd_run_or_stop_cutscene_camera_script
+open_questions:
+- exact meaning of the 0x10-word block copied from byte_203CED0 to byte_203CC98
+- what sub_80200A4(0x32) does (final snapshot step; 0x32 may be a mode/id)
+- which routine consumes the 0x56789123 marker to restore the backup
+- meaning of byte at battleState+0xD passed to GetBattleNaviStatsAddr (assumed active Navi/alliance id)
+sources:
+- tools/wf run convert-20261009-042015

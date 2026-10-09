@@ -1,0 +1,135 @@
+name: sub_8009478
+address: '0x08009478'
+kind: function
+status: confirmed
+summary: Link-battle sync wait state handler — waits until both linked GBA systems report the same tracked ID (or
+  a ~3 s timeout) before letting the battle advance.
+interface: void battle_waitLinkSync(battleState *state /* r5 */) // called with r4-r7,r10 live; returns flags nz/c/v
+  and r0 = 4 (init/match paths), incremented frame counter, or 0xC (timeout) as side effects of the tail dispatch
+details: 'Per-frame handler for one state of the battle state machine; the state struct pointer
+
+  arrives in r5 and fields are accessed at fixed offsets: oBattleState_Index_00 (+0,
+
+  next handler index), Unk_02_03 (+2, halfword result/status), Unk_03 (+3, byte
+
+  sub-state), Unk_28 (+0x28, halfword frame timer).
+
+  First entry (state+3 == 0): calls sub_800B428 to (re)initialize the link tracked-ID
+
+  checker, clears the timer at +0x28, sets the sub-state byte to 4, and returns r0=4.
+
+  After that: loads constant 0x1F2F3F4F (the "both sides tracked ID" magic selector)
+
+  and calls battle_doBothTrackedIdsMatch_800B46C. If both sides match, it tears the
+
+  tracker down via sub_800B460/sub_800B444, stores 4 into the halfword at +2 as the
+
+  "sync complete" result, and returns r0=4.
+
+  While unmatched it increments the frame counter at +0x28; once it exceeds 0xB4
+
+  (180 frames, ~3 seconds) it writes 0xC into the state index at +0, forcing the
+
+  battle state machine to move on even if the link peers never agreed (comment in
+
+  disassembly notes the switch happens via battle_main_8007800 dispatch).
+
+  r0/r1/r2/r3 and flags are whatever the dispatch machinery expects afterwards; r5
+
+  is preserved.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-042015);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_25.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    25' --file leaves_farm_25.c sub_8120AE8 sub_8120C94 sub_80C4B48 sub_80C532E sub_80C6548 sub_80EB04C sub_80EBD68
+    sub_80EBF30 sub_80EBFF4 sub_80F06CE sub_810A080 t1_0x5e_pinkRingOnCounter_80C4B18 SpawnOWPlayerObject StartBattle
+    anticheat_modCardsInit_8007036 encryption_bugfrags_8006fd0 encryption_zenny_8006f78 modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+    object_freeMemory sub_8005524 sub_8007C14 sub_8009478 sub_800A046 sub_800A152 sub_800A506 sub_800AE0C sub_800AF84
+    sub_800B110 sub_800B3A2 sub_800B79A ShuffleByteList_PrimaryRNG zeroFillVRAM sub_8125280 sub_81263D0 sub_812818C
+    sub_812AF3C CutsceneCamera_GetAutoScrollDeltaForCoord CutsceneCmd_run_or_stop_cutscene_camera_script
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8009478
+
+    .venv/bin/python -m wf verify --function sub_8009478 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-042015-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8009478
+
+    .venv/bin/python -m wf verify --function sub_8009478 --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-042015-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8009478
+
+    .venv/bin/python -m wf verify --function sub_8009478 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042015-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^08009478 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_25.c
+  where: recomp 950fadc
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_25.c
+coverage:
+- battles1
+- story2
+related:
+- sub_8120AE8
+- sub_8120C94
+- sub_80C4B48
+- sub_80C532E
+- sub_80C6548
+- sub_80EB04C
+- sub_80EBD68
+- sub_80EBF30
+- sub_80EBFF4
+- sub_80F06CE
+- sub_810A080
+- t1_0x5e_pinkRingOnCounter_80C4B18
+- SpawnOWPlayerObject
+- StartBattle
+- anticheat_modCardsInit_8007036
+- encryption_bugfrags_8006fd0
+- encryption_zenny_8006f78
+- modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+- object_freeMemory
+- sub_8005524
+- sub_8007C14
+- sub_800A046
+- sub_800A152
+- sub_800A506
+- sub_800AE0C
+- sub_800AF84
+- sub_800B110
+- sub_800B3A2
+- sub_800B79A
+- ShuffleByteList_PrimaryRNG
+- zeroFillVRAM
+- sub_8125280
+- sub_81263D0
+- sub_812818C
+- sub_812AF3C
+- CutsceneCamera_GetAutoScrollDeltaForCoord
+- CutsceneCmd_run_or_stop_cutscene_camera_script
+open_questions:
+- exact meaning of the value 4 stored at oBattleState_Unk_02_03 on success (read by some other handler?)
+- what sub_800B428/sub_800B460/sub_800B444 each do to the link tracker internals
+- semantics of sub-state value 4 at oBattleState_Unk_03 (only init path observed here)
+- whether timeout value 0xC at oBattleState_Index_00 is a shared "skip/sync failed" state used by other wait handlers
+sources:
+- tools/wf run convert-20261009-042015

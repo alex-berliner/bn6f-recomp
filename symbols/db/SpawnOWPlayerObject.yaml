@@ -1,0 +1,123 @@
+name: SpawnOWPlayerObject
+address: '0x08003B4C'
+kind: function
+status: confirmed
+summary: Allocates the first free slot in the overworld player object pool, initialises it from five register arguments,
+  and returns the slot pointer (0 if the pool is full).
+interface: "void SpawnOWPlayerObject(u32 r0_kindByte, u32 r1, u32 r2, u32 r3, u32 r4, /* lr clobbered */)\n  ->\
+  \ returns r5 = slot pointer or NULL, r0 = 0 on success; r1-r4 pass through unchanged;\nflags: on success N=0/Z=1/C=0\
+  \ (from the free-bit TST), on failure flags come from the final CMP slot >= poolEnd (C=1). Unusual ABI: result\
+  \ in r5, not r0.\n"
+details: 'Overworld (map-mode) player object allocator. The pool is a fixed array of 0xC8-byte slots at eOWPlayerObject,
+  ending at eOWPlayerObjectEnd; the u32 at eActiveOWPlayerObjectBitfield holds one live/free bit per slot, scanned
+  from bit 31 (first slot) downwards. For each set bit the candidate pointer advances by 0xC8 until it reaches the
+  pool end, in which case r5 = 0 is returned (allocation failure). On finding a clear bit the function sets that
+  bit in the bitfield, then fills the new slot: byte at +0x00 = 9 (object type/kind id, "overworld player"), byte
+  at +0x01 = arg0 (r0), word at +0x04 = arg4 (r4), word at +0x08 = 0, words at +0x1C, +0x20 and +0x24 = arg1, arg2,
+  arg3 (r1-r3) — likely coordinates/state/handler style fields of the 0xC8-byte overworld object structure. Note
+  the pops are interleaved with stores (the popped r0 is stored to +0x01), and the success/failure paths return
+  with different flag states.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-042015);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_25.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    25' --file leaves_farm_25.c sub_8120AE8 sub_8120C94 sub_80C4B48 sub_80C532E sub_80C6548 sub_80EB04C sub_80EBD68
+    sub_80EBF30 sub_80EBFF4 sub_80F06CE sub_810A080 t1_0x5e_pinkRingOnCounter_80C4B18 SpawnOWPlayerObject StartBattle
+    anticheat_modCardsInit_8007036 encryption_bugfrags_8006fd0 encryption_zenny_8006f78 modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+    object_freeMemory sub_8005524 sub_8007C14 sub_8009478 sub_800A046 sub_800A152 sub_800A506 sub_800AE0C sub_800AF84
+    sub_800B110 sub_800B3A2 sub_800B79A ShuffleByteList_PrimaryRNG zeroFillVRAM sub_8125280 sub_81263D0 sub_812818C
+    sub_812AF3C CutsceneCamera_GetAutoScrollDeltaForCoord CutsceneCmd_run_or_stop_cutscene_camera_script
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SpawnOWPlayerObject
+
+    .venv/bin/python -m wf verify --function SpawnOWPlayerObject --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-042015-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SpawnOWPlayerObject
+
+    .venv/bin/python -m wf verify --function SpawnOWPlayerObject --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-042015-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function SpawnOWPlayerObject
+
+    .venv/bin/python -m wf verify --function SpawnOWPlayerObject --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042015-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08003b4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_25.c
+  where: recomp 950fadc
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_25.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_8120AE8
+- sub_8120C94
+- sub_80C4B48
+- sub_80C532E
+- sub_80C6548
+- sub_80EB04C
+- sub_80EBD68
+- sub_80EBF30
+- sub_80EBFF4
+- sub_80F06CE
+- sub_810A080
+- t1_0x5e_pinkRingOnCounter_80C4B18
+- StartBattle
+- anticheat_modCardsInit_8007036
+- encryption_bugfrags_8006fd0
+- encryption_zenny_8006f78
+- modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+- object_freeMemory
+- sub_8005524
+- sub_8007C14
+- sub_8009478
+- sub_800A046
+- sub_800A152
+- sub_800A506
+- sub_800AE0C
+- sub_800AF84
+- sub_800B110
+- sub_800B3A2
+- sub_800B79A
+- ShuffleByteList_PrimaryRNG
+- zeroFillVRAM
+- sub_8125280
+- sub_81263D0
+- sub_812818C
+- sub_812AF3C
+- CutsceneCamera_GetAutoScrollDeltaForCoord
+- CutsceneCmd_run_or_stop_cutscene_camera_script
+open_questions:
+- Exact meaning of the fields written at +0x01, +0x1C, +0x20 and +0x24 (coordinates? script/state pointers?)
+- Who frees these slots (clears the bitfield bits) and whether slot kind 9 is read elsewhere as a type tag
+- Whether the fixed +0x08 = 0 field is an initial state, timer, or pointer that other code later overwrites
+sources:
+- tools/wf run convert-20261009-042015

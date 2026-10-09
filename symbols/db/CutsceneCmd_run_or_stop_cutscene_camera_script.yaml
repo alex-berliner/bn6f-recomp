@@ -1,0 +1,121 @@
+name: CutsceneCmd_run_or_stop_cutscene_camera_script
+address: '0x0803816A'
+kind: function
+status: confirmed
+summary: Map-script command that either starts a named cutscene camera script or stops the running one and recenters
+  the camera on the player.
+interface: 'void CutsceneCmd_run_or_stop_cutscene_camera_script(CutsceneState* r5, /* r7 */ u8*& scriptReadPos,
+  u8 r10 /* unused/ignored */); returns r0 = 1 (script interpreter keeps running); also outputs NZ/C/V flags from
+  that 1, trashes r1/r2/r4/r6, returns advanced r7 and lr. No registers preserved.
+
+  '
+details: 'Map-script command handler for cutscene camera control. r5 is the cutscene state block and r7 is the current
+  read cursor in the map script. It reads a one-byte flag (r6 is set to 1 before ReadMapScriptByte, telling it the
+  operand width). If the flag is 0, it reads a 2-byte script id (r6 = 2 before ReadMapScriptWord), stores it in
+  CutsceneState.CutsceneCameraScriptPtr (oCutsceneState_CutsceneCameraScriptPtr), passes it to SetCutsceneCameraScript,
+  and sets CutsceneState.CutsceneCameraScriptActive (byte) = 1; r7 advances by 6 (flag byte + word). If the flag
+  is nonzero, it NULLs the script pointer, calls cutsceneCamera_focusCameraOnPlayerMaybe_8036faa to snap the camera
+  back to the player, sets CutsceneCameraScriptActive = 0, and advances r7 by 2 (flag byte only). Both paths end
+  with r0 = 1 so the map-script interpreter continues. Quirk: the flag byte is a "stop" flag — 0 means start the
+  following script, any nonzero value stops.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-042015);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_25.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    25' --file leaves_farm_25.c sub_8120AE8 sub_8120C94 sub_80C4B48 sub_80C532E sub_80C6548 sub_80EB04C sub_80EBD68
+    sub_80EBF30 sub_80EBFF4 sub_80F06CE sub_810A080 t1_0x5e_pinkRingOnCounter_80C4B18 SpawnOWPlayerObject StartBattle
+    anticheat_modCardsInit_8007036 encryption_bugfrags_8006fd0 encryption_zenny_8006f78 modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+    object_freeMemory sub_8005524 sub_8007C14 sub_8009478 sub_800A046 sub_800A152 sub_800A506 sub_800AE0C sub_800AF84
+    sub_800B110 sub_800B3A2 sub_800B79A ShuffleByteList_PrimaryRNG zeroFillVRAM sub_8125280 sub_81263D0 sub_812818C
+    sub_812AF3C CutsceneCamera_GetAutoScrollDeltaForCoord CutsceneCmd_run_or_stop_cutscene_camera_script
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_run_or_stop_cutscene_camera_script
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_run_or_stop_cutscene_camera_script --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-042015-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_run_or_stop_cutscene_camera_script
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_run_or_stop_cutscene_camera_script --snapshots SNAPSHOT_DIR'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261009-042015-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_run_or_stop_cutscene_camera_script
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_run_or_stop_cutscene_camera_script --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042015-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, maps, menus2, story2, story3, wander.'
+  reproduce: grep -l '^0803816a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_25.c
+  where: recomp 950fadc
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_25.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story2
+- story3
+- wander
+related:
+- sub_8120AE8
+- sub_8120C94
+- sub_80C4B48
+- sub_80C532E
+- sub_80C6548
+- sub_80EB04C
+- sub_80EBD68
+- sub_80EBF30
+- sub_80EBFF4
+- sub_80F06CE
+- sub_810A080
+- t1_0x5e_pinkRingOnCounter_80C4B18
+- SpawnOWPlayerObject
+- StartBattle
+- anticheat_modCardsInit_8007036
+- encryption_bugfrags_8006fd0
+- encryption_zenny_8006f78
+- modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+- object_freeMemory
+- sub_8005524
+- sub_8007C14
+- sub_8009478
+- sub_800A046
+- sub_800A152
+- sub_800A506
+- sub_800AE0C
+- sub_800AF84
+- sub_800B110
+- sub_800B3A2
+- sub_800B79A
+- ShuffleByteList_PrimaryRNG
+- zeroFillVRAM
+- sub_8125280
+- sub_81263D0
+- sub_812818C
+- sub_812AF3C
+- CutsceneCamera_GetAutoScrollDeltaForCoord
+open_questions:
+- exact meaning of the r10 input (passed by callers but unused here)
+- whether cutsceneCamera_focusCameraOnPlayerMaybe_8036faa is truly "focus on player" (name is tentative)
+sources:
+- tools/wf run convert-20261009-042015

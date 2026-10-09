@@ -1,0 +1,111 @@
+name: sub_812818C
+address: '0x0812818C'
+kind: function
+status: confirmed
+summary: Looks up an event flag from a table entry and returns 0x8000 if the flag is unset, otherwise passes the
+  caller's value through.
+interface: 'u32 npc_checkEntryEventFlagOrHidden(u32 defaultResult /*r2*/, u32 indexAddend /*r3*/, Object* object
+  /*r5*/); // out: r2 = defaultResult if flag set, 0x8000 if clear; r0/r1/r3/r4 preserved via push/pop'
+details: 'Reads the halfword at object+0x24, adds r3 to it, and uses the sum as an index into the 0x20-byte-stride
+  table at dword_2027590 (a global object/NPC table). From the entry''s word at +0x18 it takes the upper halfword,
+  adds 0x1D20 (7456), and passes that as the event flag id to TestEventFlag. If the flag is set, the incoming r2
+  is returned unchanged; if it is clear, r2 is replaced with 0x8000 (a value that in this codebase''s animation/render
+  values typically acts as a ''hidden/invalid'' marker, e.g. in sprite animation parameter slots). So the table
+  entry effectively defines an optional flag-gate: word+0x18>>16 is a flag offset relative to base 0x1D20, and when
+  that content is not unlocked the caller receives 0x8000 instead of its default. All other registers are faithfully
+  preserved; flags are clobbered by the TestEventFlag call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-042015);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_25.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    25' --file leaves_farm_25.c sub_8120AE8 sub_8120C94 sub_80C4B48 sub_80C532E sub_80C6548 sub_80EB04C sub_80EBD68
+    sub_80EBF30 sub_80EBFF4 sub_80F06CE sub_810A080 t1_0x5e_pinkRingOnCounter_80C4B18 SpawnOWPlayerObject StartBattle
+    anticheat_modCardsInit_8007036 encryption_bugfrags_8006fd0 encryption_zenny_8006f78 modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+    object_freeMemory sub_8005524 sub_8007C14 sub_8009478 sub_800A046 sub_800A152 sub_800A506 sub_800AE0C sub_800AF84
+    sub_800B110 sub_800B3A2 sub_800B79A ShuffleByteList_PrimaryRNG zeroFillVRAM sub_8125280 sub_81263D0 sub_812818C
+    sub_812AF3C CutsceneCamera_GetAutoScrollDeltaForCoord CutsceneCmd_run_or_stop_cutscene_camera_script
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_812818C
+
+    .venv/bin/python -m wf verify --function sub_812818C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-042015-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_812818C
+
+    .venv/bin/python -m wf verify --function sub_812818C --snapshots SNAPSHOT_DIR'
+  result: 3 compared, 0 differed, 21 out of domain (verify run convert-20261009-042015-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_812818C
+
+    .venv/bin/python -m wf verify --function sub_812818C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-042015-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: story1, story2.'
+  reproduce: grep -l '^0812818c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_25.c
+  where: recomp 950fadc
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_25.c
+coverage:
+- story1
+- story2
+related:
+- sub_8120AE8
+- sub_8120C94
+- sub_80C4B48
+- sub_80C532E
+- sub_80C6548
+- sub_80EB04C
+- sub_80EBD68
+- sub_80EBF30
+- sub_80EBFF4
+- sub_80F06CE
+- sub_810A080
+- t1_0x5e_pinkRingOnCounter_80C4B18
+- SpawnOWPlayerObject
+- StartBattle
+- anticheat_modCardsInit_8007036
+- encryption_bugfrags_8006fd0
+- encryption_zenny_8006f78
+- modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+- object_freeMemory
+- sub_8005524
+- sub_8007C14
+- sub_8009478
+- sub_800A046
+- sub_800A152
+- sub_800A506
+- sub_800AE0C
+- sub_800AF84
+- sub_800B110
+- sub_800B3A2
+- sub_800B79A
+- ShuffleByteList_PrimaryRNG
+- zeroFillVRAM
+- sub_8125280
+- sub_81263D0
+- sub_812AF3C
+- CutsceneCamera_GetAutoScrollDeltaForCoord
+- CutsceneCmd_run_or_stop_cutscene_camera_script
+open_questions:
+- Exact meaning of 0x8000 in the caller's context (hidden marker vs. some other sentinel).
+- What the object+0x24 halfword counts and what the r3 addend represents (entry/sub-index selection).
+- Which table dword_2027590 actually is (NPC/obj template table assumed from stride 0x20 and flag field layout).
+sources:
+- tools/wf run convert-20261009-042015
