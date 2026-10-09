@@ -1,0 +1,163 @@
+name: sub_8028894
+address: '0x08028894'
+kind: function
+status: hypothesis
+summary: Reads an ID byte from a work area and returns a pair of structure offsets (r0 = id*16+8, r1 = 0x68 or 0x80)
+  plus the address of a small lookup table in r6.
+interface: 'int sub_8028894(void* r5) // in: r5 = struct pointer whose +7 byte is the ID, lr = return; out: r0 =
+  (id % group)*16 + 8, r1 = 0x68 or 0x68+0x18, r6 = &byte_80288B0, NZCV set from the final add'
+details: "Pure selector/mapping helper with no memory writes. It reads an ID byte at [r5+7] and\nsplits it into\
+  \ two groups: IDs 0-4 use the first half of byte_80288B0 with r1 base 0,\nIDs 5+ are decremented by 5 and use\
+  \ the second half with r1 base 0x18. The returned\nvalues are:\n  r0 = groupIndex * 16 + 8   (a 16-byte-stride\
+  \ entry offset, +8 into the entry)\n  r1 = r1Base + 0x68         (so 0x68 for IDs 0-4, 0x80 for IDs 5+)\n  r6\
+  \ = address of byte_80288B0 (32-byte table, left in r6 for the caller to index)\nNZCV are set as a side effect\
+  \ of the final 'add r1, #0x68' ( Thumb 'add' flag variant),\nand the register contract shows callers actually\
+  \ observe them, so callers appear to\nbranch on this result. The table bytes (00/0E/10/30/20/01/0C patterns, arranged\
+  \ in\n4-byte groups) are not referenced by this function itself beyond passing the pointer,\nso their meaning\
+  \ is determined by the callers. Given the ID-split at 5, the 16-byte\nstride and the 0x68/0x80 destination offsets,\
+  \ this most plausibly selects between two\nlayouts/variants of some entity or effect structure (e.g. two visual/state\
+  \ variants\nkeyed by an ID stored at +7), but the owning subsystem is not identifiable from this\nfunction alone.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (10 attempt(s), run convert-20261009-035817);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_24.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    24' --file leaves_farm_24.c RemoveBattleObjectPanelReserves getBattleArmPositionMaybe_8018810 object_createCollisionData
+    object_presentCollisionData object_updateCollisionData sub_800ED90 sub_800F1DC sub_800FAAC sub_800FFAA sub_8010162
+    sub_8010230 sub_8010332 sub_8010D20 sub_8010D58 sub_8012ABC sub_8012C4A sub_8012C7C sub_80133EC sub_8014040
+    sub_8014178 sub_8015B22 sub_8016460 sub_80165C2 sub_801A554 sub_801A6E8 sub_801A720 sub_801CDEC sub_801CE92
+    sub_801DBD4 sub_801E0DC sub_801E1A4 custMenuPressOK_8028D3A sub_8026CCC sub_802806C sub_80280A2 sub_80280E0
+    sub_802812C sub_8028172 sub_802869E sub_8028894 sub_80288D0 sub_8028F48 sub_8028F84 sub_802A394 sub_802A3CC
+    sub_802A4FC sub_802A5A0 sub_802A5DA sub_802BF0C sub_802C4B6 sub_802C54C sub_802C5B0 sub_802C97E sub_802C9B8
+    sub_802C9EA sub_802CA1E sub_802DFC8 sub_802F668 sub_802F7E8 sub_8030158 sub_80310B0 sub_80310EC sub_803172E
+    sub_8113162 sub_8116BC0 sub_8116C40 sub_8116DB4 sub_81179AE sub_8117B94 sub_8117E20 sub_811A268 sub_811CBD0
+    sub_811EC10 sub_811F014 sub_811F050 sub_811F08C sub_811F214
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8028894
+
+    .venv/bin/python -m wf verify --function sub_8028894 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
+    of domain (verify run convert-20261009-035817-verify-10)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8028894
+
+    .venv/bin/python -m wf verify --function sub_8028894 --snapshots SNAPSHOT_DIR'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261009-035817-verify-10)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8028894
+
+    .venv/bin/python -m wf verify --function sub_8028894 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-035817-verify-10)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^08028894 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_24.c
+  where: recomp fa68414
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_24.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- RemoveBattleObjectPanelReserves
+- getBattleArmPositionMaybe_8018810
+- object_createCollisionData
+- object_presentCollisionData
+- object_updateCollisionData
+- sub_800ED90
+- sub_800F1DC
+- sub_800FAAC
+- sub_800FFAA
+- sub_8010162
+- sub_8010230
+- sub_8010332
+- sub_8010D20
+- sub_8010D58
+- sub_8012ABC
+- sub_8012C4A
+- sub_8012C7C
+- sub_80133EC
+- sub_8014040
+- sub_8014178
+- sub_8015B22
+- sub_8016460
+- sub_80165C2
+- sub_801A554
+- sub_801A6E8
+- sub_801A720
+- sub_801CDEC
+- sub_801CE92
+- sub_801DBD4
+- sub_801E0DC
+- sub_801E1A4
+- custMenuPressOK_8028D3A
+- sub_8026CCC
+- sub_802806C
+- sub_80280A2
+- sub_80280E0
+- sub_802812C
+- sub_8028172
+- sub_802869E
+- sub_80288D0
+- sub_8028F48
+- sub_8028F84
+- sub_802A394
+- sub_802A3CC
+- sub_802A4FC
+- sub_802A5A0
+- sub_802A5DA
+- sub_802BF0C
+- sub_802C4B6
+- sub_802C54C
+- sub_802C5B0
+- sub_802C97E
+- sub_802C9B8
+- sub_802C9EA
+- sub_802CA1E
+- sub_802DFC8
+- sub_802F668
+- sub_802F7E8
+- sub_8030158
+- sub_80310B0
+- sub_80310EC
+- sub_803172E
+- sub_8113162
+- sub_8116BC0
+- sub_8116C40
+- sub_8116DB4
+- sub_81179AE
+- sub_8117B94
+- sub_8117E20
+- sub_811A268
+- sub_811CBD0
+- sub_811EC10
+- sub_811F014
+- sub_811F050
+- sub_811F08C
+- sub_811F214
+open_questions:
+- Which structure r5 points to (and which subsystem owns [r5+7]) - the 0x68/0x80 output offsets fit no identified
+  struct yet
+- What distinguishes IDs 0-4 from IDs 5+ in game terms (form variants? types? element IDs?)
+- How callers use byte_80288B0 (r6) and what the table's 4-byte groups (0xE/0x10/0x30/0xC/0x20/0x01 values) encode
+- Whether the NZCV output is intentionally consumed by callers or just an artifact of the Thumb add encoding
+sources:
+- tools/wf run convert-20261009-035817

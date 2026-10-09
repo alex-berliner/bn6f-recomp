@@ -1,0 +1,160 @@
+name: sub_802BF0C
+address: '0x0802BF0C'
+kind: function
+status: confirmed
+summary: Chooses an animation/state index for a battle object — either a scripted state derived from the object's
+  +0xC byte, or a 0/1 alternation driven by bit 3 of the global frame counter — and passes it to sub_802C810.
+interface: battle_pickObjectAnimState_802BF0C(BattleObj *obj /* r5 */, u32 r6, Toolkit *r10); no return value; preserves
+  r5/r6/r10; calls sub_802C810 with r0 = state index and r7 = context pointer
+details: "Part of the battle object/entity animation update path. Reads two 16-bit flag halfwords\nliving next to\
+  \ dword_2036820 (at +4 and +0xC relative to that base, i.e. dword_2036824\nand dword_203682C) and ORs them together.\n\
+  \nIf bit 0 of that combined mask is set, the \"active\" path runs:\n  - takes the object's byte at +0xC as a state\
+  \ selector; values > 1 map to 12 (0xC),\n    values 0/1 map to 4\n  - writes that value (4 or 12) into the object's\
+  \ halfword at +2 (its current\n    animation/state slot)\n  - calls sub_802C810 with r0 = 0 and r7 = flags base\
+  \ + 8 (dword_2036828), so the\n    callee receives the second flag halfword block as its context\n\nOtherwise\
+  \ the \"idle\" path runs:\n  - loads oToolkit_CurFramePtr from the r10 toolkit struct and reads the 16-bit frame\n\
+  \    counter at [r7]\n  - computes (frameCounter & 8) >> 3, i.e. an index that toggles 0/1 every 8 frames\n  -\
+  \ calls sub_802C810 with that index and r7 = current-frame pointer, so the callee\n    presumably compares the\
+  \ animation frame against the frame counter\n\nThe 0/1 toggling pattern on the idle path strongly suggests a looping\
+  \ two-frame\nanimation (e.g. a pulsing/floating object), while the active path selects between\nanimation states\
+  \ 4 and 12 based on the object's per-instance state byte. r6 is an\ninput to this function but is never read in\
+  \ its body (it may only matter via the\ncallee's contract). Only bit 0 of the combined flags is tested here; the\
+  \ rest of\nthose halfwords are presumably consumed elsewhere or by sub_802C810 via r7.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (10 attempt(s), run convert-20261009-035817);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_24.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    24' --file leaves_farm_24.c RemoveBattleObjectPanelReserves getBattleArmPositionMaybe_8018810 object_createCollisionData
+    object_presentCollisionData object_updateCollisionData sub_800ED90 sub_800F1DC sub_800FAAC sub_800FFAA sub_8010162
+    sub_8010230 sub_8010332 sub_8010D20 sub_8010D58 sub_8012ABC sub_8012C4A sub_8012C7C sub_80133EC sub_8014040
+    sub_8014178 sub_8015B22 sub_8016460 sub_80165C2 sub_801A554 sub_801A6E8 sub_801A720 sub_801CDEC sub_801CE92
+    sub_801DBD4 sub_801E0DC sub_801E1A4 custMenuPressOK_8028D3A sub_8026CCC sub_802806C sub_80280A2 sub_80280E0
+    sub_802812C sub_8028172 sub_802869E sub_8028894 sub_80288D0 sub_8028F48 sub_8028F84 sub_802A394 sub_802A3CC
+    sub_802A4FC sub_802A5A0 sub_802A5DA sub_802BF0C sub_802C4B6 sub_802C54C sub_802C5B0 sub_802C97E sub_802C9B8
+    sub_802C9EA sub_802CA1E sub_802DFC8 sub_802F668 sub_802F7E8 sub_8030158 sub_80310B0 sub_80310EC sub_803172E
+    sub_8113162 sub_8116BC0 sub_8116C40 sub_8116DB4 sub_81179AE sub_8117B94 sub_8117E20 sub_811A268 sub_811CBD0
+    sub_811EC10 sub_811F014 sub_811F050 sub_811F08C sub_811F214
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802BF0C
+
+    .venv/bin/python -m wf verify --function sub_802BF0C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 223 out
+    of domain (verify run convert-20261009-035817-verify-10)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802BF0C
+
+    .venv/bin/python -m wf verify --function sub_802BF0C --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-035817-verify-10)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802BF0C
+
+    .venv/bin/python -m wf verify --function sub_802BF0C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-035817-verify-10)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^0802bf0c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_24.c
+  where: recomp fa68414
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_24.c
+coverage:
+- battles1
+- story2
+related:
+- RemoveBattleObjectPanelReserves
+- getBattleArmPositionMaybe_8018810
+- object_createCollisionData
+- object_presentCollisionData
+- object_updateCollisionData
+- sub_800ED90
+- sub_800F1DC
+- sub_800FAAC
+- sub_800FFAA
+- sub_8010162
+- sub_8010230
+- sub_8010332
+- sub_8010D20
+- sub_8010D58
+- sub_8012ABC
+- sub_8012C4A
+- sub_8012C7C
+- sub_80133EC
+- sub_8014040
+- sub_8014178
+- sub_8015B22
+- sub_8016460
+- sub_80165C2
+- sub_801A554
+- sub_801A6E8
+- sub_801A720
+- sub_801CDEC
+- sub_801CE92
+- sub_801DBD4
+- sub_801E0DC
+- sub_801E1A4
+- custMenuPressOK_8028D3A
+- sub_8026CCC
+- sub_802806C
+- sub_80280A2
+- sub_80280E0
+- sub_802812C
+- sub_8028172
+- sub_802869E
+- sub_8028894
+- sub_80288D0
+- sub_8028F48
+- sub_8028F84
+- sub_802A394
+- sub_802A3CC
+- sub_802A4FC
+- sub_802A5A0
+- sub_802A5DA
+- sub_802C4B6
+- sub_802C54C
+- sub_802C5B0
+- sub_802C97E
+- sub_802C9B8
+- sub_802C9EA
+- sub_802CA1E
+- sub_802DFC8
+- sub_802F668
+- sub_802F7E8
+- sub_8030158
+- sub_80310B0
+- sub_80310EC
+- sub_803172E
+- sub_8113162
+- sub_8116BC0
+- sub_8116C40
+- sub_8116DB4
+- sub_81179AE
+- sub_8117B94
+- sub_8117E20
+- sub_811A268
+- sub_811CBD0
+- sub_811EC10
+- sub_811F014
+- sub_811F050
+- sub_811F08C
+- sub_811F214
+open_questions:
+- Exact meaning of sub_802C810's r0 argument (animation index vs. sub-state) needs confirmation from that function's
+  body.
+- What the flag halfwords at dword_2036824/dword_203682C represent globally (per-object? per-battle?) and what sets
+  their bit 0.
+- Why r6 is in the caller contract but unused in the body — possibly read indirectly through sub_802C810's expectations.
+sources:
+- tools/wf run convert-20261009-035817
