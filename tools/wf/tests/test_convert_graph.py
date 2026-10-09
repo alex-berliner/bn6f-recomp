@@ -38,6 +38,7 @@ class World:
     entries: dict[FunctionName, tuple[FunctionName, ...]] = field(default_factory=dict[FunctionName, tuple[FunctionName, ...]])
     prompted: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
     verified: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
+    blocked: set[ModelSpec] = field(default_factory=set[ModelSpec])
 
 
 def test_a_good_first_attempt_stops_for_review_then_commits_and_records(
@@ -75,6 +76,14 @@ def test_farm_candidates_go_first_and_are_credited_to_their_model(
     assert isinstance(paused, Paused) and isinstance(paused.request, ReviewRequest)
     assert [attempt.model for attempt in paused.request.attempts] == [farm_model, STRONG]
     assert world.asked == [STRONG]  # the farm's file was not one of the strong model's attempts
+
+
+def test_a_rate_limited_provider_is_passed_over(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[True], verdicts=[Verdict.PASSED], blocked={STRONG})
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-blocked")
+
+    assert isinstance(paused, Paused)
+    assert world.asked == [STRONGER]
 
 
 def test_a_failed_quick_test_goes_back_to_the_same_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -254,6 +263,9 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         return RecordReport(verdict=RecordVerdict.RECORDED, problems=(), renamed_in_bn6f=None, comments_in_bn6f=None,
                             verification=None, commit=CommitHash("d0c0"))
 
+    def provider_blocked_until(model: ModelSpec) -> float | None:
+        return 1e12 if model in world.blocked else None
+
     def tokens_for(tag: str) -> TokenUse:
         return TokenUse(tokens_in=100, tokens_out=50)
 
@@ -264,7 +276,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         "candidate_from_farm": candidate_from_farm,
         "test_candidate_file": test_candidate_file, "install_file": install_file, "uninstall_file": uninstall_file,
         "run_verify_in_full": run_verify_in_full, "commit_files": commit_files, "write_entries": write_entries,
-        "run_record": run_record, "tokens_for": tokens_for,
+        "run_record": run_record, "tokens_for": tokens_for, "provider_blocked_until": provider_blocked_until,
     }
     for name, fake in fakes.items():
         monkeypatch.setattr(convert, name, fake)

@@ -98,6 +98,13 @@ def other_entries(context: ConversionContext) -> tuple[ConversionContext, ...]:
     return ()
 
 
+def provider_blocked_until(model: ModelSpec) -> float | None:
+    """When the model's provider is rate-limited behind a local pacer, when that lifts (epoch seconds):
+    the pacer would hold a request that long without saying so (tools/llm.py reads its log)."""
+    llm = cast(ModuleType, _farm.llm)  # pyright: ignore[reportAny]
+    return cast(float | None, llm.blocked_until(model))  # pyright: ignore[reportAny]
+
+
 def first_prompt(context: ConversionContext) -> Prompt:
     contract_text = "\n".join(f"  {part}: {' '.join(names) or '-'}" for part, names in context.contract.by_part().items())
     template = cast(str, _farm.TEMPLATE)  # pyright: ignore[reportAny]

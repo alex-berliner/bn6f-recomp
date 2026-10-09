@@ -22,7 +22,7 @@ from wf.tools.drafts import candidate_from_farm
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
 from wf.tools.git import commit_files
 from wf.tools.install import DIFFTEST_CFG, game_file, install_file, uninstall_file
-from wf.tools.models import ConversionContext, conversion_context, other_entries
+from wf.tools.models import ConversionContext, conversion_context, other_entries, provider_blocked_until
 from wf.tools.subsystem import (FileReply, FileTest, TokenUse, ask_model_for_file, candidate_from_file, repair_prompt,
                                 subsystem_prompt, test_candidate_file, tokens_for)
 from wf.types import (BuildFailure, CommitHash, FunctionName, ModelSpec, NotRun, Rename, Result, Route, SnapshotDir,
@@ -198,7 +198,8 @@ class AskOutput(Result):
 
 @workflow.step
 def ask_model_for_file_step(given: AskInput) -> AskOutput:
-    """Ask the next model for the whole file; after a failure or review, show it what went wrong."""
+    """Ask the next model for the whole file (passing over a rate-limited provider); after a failure or
+    review, show it what went wrong."""
     number = len(given.attempts) + 1
     if not given.attempts and given.candidate is not None:
         attempt = Attempt(number=number, model=GIVEN_CANDIDATE, given=True, reply=candidate_from_file(given.candidate))
@@ -207,7 +208,9 @@ def ask_model_for_file_step(given: AskInput) -> AskOutput:
         functions = tuple(context.function for context in given.contexts)
         reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name)
         return AskOutput(attempts=(Attempt(number=number, model=given.farm_model, given=True, reply=reply),))
-    model = given.models[min(_model_attempts(given.attempts) // given.rounds, len(given.models) - 1)]
+    escalation = given.models[min(_model_attempts(given.attempts) // given.rounds, len(given.models) - 1):]
+    # a model whose provider is rate-limited (for hours, at times) is passed over for the next one
+    model = next((model for model in escalation if provider_blocked_until(model) is None), escalation[0])
     prompt = subsystem_prompt(given.subsystem, given.file_name, given.contexts)
     if given.attempts:
         what_failed, report = _what_went_wrong(given.attempts[-1])

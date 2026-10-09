@@ -17,6 +17,31 @@ def _providers():
     return models, auth
 
 
+def blocked_until(spec: str, log_dir: str = "/tmp/bn-pacer"):
+    """When a provider behind a local pacer is rate-limited, when that lifts (epoch seconds), read
+    from the pacer's log (`20:55:21 /v1/chat/completions 429 retry 1 in 12520s`): the pacer holds
+    requests that long without telling the client. None when not limited or there is no pacer log."""
+    path = os.path.join(log_dir, spec.split("/", 1)[0] + ".log")
+    try:
+        lines = open(path, errors="replace").read().splitlines()[-50:]
+    except OSError:
+        return None
+    for line in reversed(lines):
+        m = re.match(r"(\d\d):(\d\d):(\d\d) \S+ (\d+)(?: retry \d+ in (\d+)s)?", line)
+        if not m:
+            continue
+        if m.group(4) != "429" or not m.group(5):
+            return None          # the latest answer got through
+        now = time.time()
+        today = time.localtime(now)
+        at = time.mktime(today[:3] + (int(m.group(1)), int(m.group(2)), int(m.group(3))) + today[6:])
+        if at > now + 60:
+            at -= 86400          # the log line is from yesterday
+        lifts = at + int(m.group(5))
+        return lifts if lifts > now else None
+    return None
+
+
 def _limit_lifts_in(message: str):
     """Seconds until a rate limit lifts, when the provider says ("try again in 1h2m3s"), else None."""
     m = re.search(r"try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s)?)", message)
