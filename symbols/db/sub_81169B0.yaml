@@ -1,0 +1,73 @@
+name: sub_81169B0
+address: '0x081169B0'
+kind: function
+status: confirmed
+summary: 'Per-frame update for a PET menu object: dispatches on the object''s mode byte to one of three state handlers,
+  then refreshes its sprite.'
+interface: void petMenu_updateObject(void* obj /* r5, object with mode byte at +9 */)
+details: 'Called with the PET menu object pointer in r5. Reads the mode byte at (r5+9) and uses it directly as a
+  byte offset into the three-entry handler table off_81169CC (modes 0, 4, 8 -> sub_81169D8, sub_8116A04, sub_8116A28).
+  The handler is invoked with r7 = ePETMenuData (the PET menu global data) and r1 = the mode byte, using the "mov
+  lr, pc; bx r0" idiom so the handler returns to 0x81169BE, i.e. straight into the following bl sprite_update --
+  handlers effectively fall through into the sprite refresh. After sprite_update, pop {r7,pc} returns to the original
+  caller (the lr saved on entry), deliberately discarding the link left by the internal calls. Quirk: the mode byte
+  is used as a table offset, so only values 0/4/8 are valid; anything else would read garbage from the table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-033922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_20.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    20' --file leaves_farm_20.c sub_81169B0
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_81169B0
+
+    .venv/bin/python -m wf verify --function sub_81169B0 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-033922-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_81169B0
+
+    .venv/bin/python -m wf verify --function sub_81169B0 --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 10 out of domain (verify run convert-20261009-033922-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_81169B0
+
+    .venv/bin/python -m wf verify --function sub_81169B0 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-033922-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^081169b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_20.c
+  where: recomp f7926ad
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_20.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related: []
+open_questions:
+- exact semantics of the three mode handlers (sub_81169D8, sub_8116A04, sub_8116A28) and what PET menu states (mode
+  values) they correspond to
+- full layout of the object struct pointed to by r5 (only the +9 mode byte is touched here)
+sources:
+- tools/wf run convert-20261009-033922
