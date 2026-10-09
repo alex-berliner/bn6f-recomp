@@ -1,0 +1,77 @@
+name: sub_802FC70
+address: '0x0802FC70'
+kind: function
+status: confirmed
+summary: Start-screen per-frame helper that, when bit 0x100 of the screen state halfword is set, triggers the sound/effect
+  described by the parameter table byte_802FC88.
+interface: void startScreen_playFlaggedSfx_802FC70(const StartScreen *self /*r5*/) — reads r5; calls into sub_8001158
+  with r0 = &byte_802FC88; returns with r4-r7 preserved (caller must reload them per the contract, the callee preserves
+  them); C is cleared by the mask-setup shift on the early-out path, N/Z reflect (state & 0x100), V untouched.
+details: 'r5 points to the StartScreen state block; the halfword at +0x0A holds screen state flags. Bit 0x100 (0x10
+  << 4 test mask) gates the action: when set, r0 is loaded with the address of byte_802FC88 — a 20-byte table (0x14,
+  0x40, 0x40, 0x80, 0x72, ... and a second 10-byte entry 0x24, 0x40, 0x40, 0x40, 0x8, 0x72, ...) that looks like
+  two packed SFX/EW parameter records — and sub_8001158 is called to execute it (almost certainly a sound/SE player
+  given the parameter shape). When the bit is clear the function returns immediately without doing anything. r0-r3/lr
+  are scratch; r4-r7 are preserved. Quirk: building the mask with "mov r1,#0x10; lsl r1,#4" means the Thumb shifted-move
+  always clears the carry flag, so the early-out return has C=0 regardless of input — callers relying on flags across
+  this call see that.'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-033918);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_18.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    18' --file leaves_farm_18.c dispatch_801FEEE sub_802FBFC sub_802FC70
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FC70
+
+    .venv/bin/python -m wf verify --function sub_802FC70 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 191 out
+    of domain (verify run convert-20261009-033918-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FC70
+
+    .venv/bin/python -m wf verify --function sub_802FC70 --snapshots SNAPSHOT_DIR'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261009-033918-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FC70
+
+    .venv/bin/python -m wf verify --function sub_802FC70 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-033918-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0802fc70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_18.c
+  where: recomp 72fee08
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_18.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- dispatch_801FEEE
+- sub_802FBFC
+open_questions:
+- Exact role of sub_8001158 (sound player vs other effect runner) not confirmed here
+- Which start-screen action sets bit 0x100 in the state halfword
+- Meaning of the two 10-byte records in byte_802FC88 (two alternate SFX? one record plus padding?)
+sources:
+- tools/wf run convert-20261009-033918

@@ -1,0 +1,76 @@
+name: dispatch_801FEEE
+address: '0x0801FEEE'
+kind: function
+status: confirmed
+summary: State-machine dispatcher for eStruct200BC30 that calls one of two handlers selected by the struct's current
+  jump-table slot, passing the original argument through in r0.
+interface: void eStruct200BC30_dispatchStateHandler_801FEEE(void* arg /*r0*/); preserves r4-r7; returns with c/v
+  (and everything else except r0-r3) as left by the invoked handler
+details: "Tail-of-a-dispatcher style routine: saves r4-r7/lr, stashes the caller's r0 in r7, then\nasks eStruct200BC30_getJumpOffset00\
+  \ for the struct's current state slot (return in r0).\nIt loads the base of the 4-entry thumb handler table off_801FF08\
+  \ into r1, reads the\nselected entry into r2, restores the argument into r0, and does a bx r2 call via\n\"mov\
+  \ lr, pc\". The table only contains two distinct targets, arranged A,B,B,A:\n  slot 0 and slot 3 -> sub_801FF18\n\
+  \  slot 1 and slot 2 -> sub_801FFD6\nso the dispatch effectively reduces to a two-way branch on the state. r8-r12\
+  \ and lr\nare not saved by this routine and flow through to the handler untouched (lr is\noverwritten by the mov\
+  \ lr,pc trick for the callee's return, but the original lr value\nis on the stack and restored by pop {r4-r7,pc}).\
+  \ Flags c and v are simply whatever\nthe invoked handler leaves behind; nz are clobbered by the dispatch itself.\n\
+  Touches only the jump-offset/query helper and the static table at 0x0801FF08; the\nhandler argument is opaque\
+  \ and passed through unmodified.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-033918);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_18.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    18' --file leaves_farm_18.c dispatch_801FEEE sub_802FBFC sub_802FC70
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function dispatch_801FEEE
+
+    .venv/bin/python -m wf verify --function dispatch_801FEEE --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261009-033918-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function dispatch_801FEEE
+
+    .venv/bin/python -m wf verify --function dispatch_801FEEE --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-033918-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function dispatch_801FEEE
+
+    .venv/bin/python -m wf verify --function dispatch_801FEEE --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-033918-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0801feee ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_18.c
+  where: recomp 72fee08
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_18.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- sub_802FBFC
+- sub_802FC70
+open_questions:
+- which gameplay object eStruct200BC30 belongs to (name is structural only until the struct's owner is identified)
+- what sub_801FF18 and sub_801FFD6 each do, and why slots alternate A,B,B,A rather than grouping identical handlers
+sources:
+- tools/wf run convert-20261009-033918

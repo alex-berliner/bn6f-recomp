@@ -1,0 +1,80 @@
+name: sub_802FBFC
+address: '0x0802FBFC'
+kind: function
+status: confirmed
+summary: On the title/start screen, if the screen's state field has bit 3 set, hands a two-entry text/sprite descriptor
+  table to the text printer helper sub_8001158.
+interface: void startScreen_printTextIfFlag3_802FBFC(const StartScreen *screen /* r5 */)
+details: 'Reads the halfword at screen+0xA (a state/flags field of the start screen object in r5) and tests bit
+  3 (0x8). If the bit is clear the function returns immediately without doing anything. If the bit is set, it loads
+  the address of byte_802FC14 (a table embedded right after the function) into r0 and tail-calls sub_8001158, a
+  text-printing/drawing helper. The table at byte_802FC14 holds two 8-byte entries followed by zeros: entry 0 =
+  {0x808E4014, 0x00007210}, entry 1 = {0x408E4024, 0x00007218}, then two zero words terminating the list. The 0x808Exxxx
+  values look like pointers/tags into ROM-resident graphics or text data and 0x72xx like parameter words, so this
+  is most likely "print the label/text image associated with the current start-screen state" — e.g. showing a menu
+  caption or version text once the state machine reaches the phase marked by bit 3. r2/r3, the carry and overflow
+  flags (and nominally r5-r7) are whatever sub_8001158 leaves behind when it actually runs; on the early-exit path
+  r2/r3 and flags are simply the caller''s values passing through. The function is effectively a tail call (pop
+  {pc} after the bl only executes on the early-exit path).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-033918);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_18.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    18' --file leaves_farm_18.c dispatch_801FEEE sub_802FBFC sub_802FC70
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FBFC
+
+    .venv/bin/python -m wf verify --function sub_802FBFC --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 191 out
+    of domain (verify run convert-20261009-033918-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FBFC
+
+    .venv/bin/python -m wf verify --function sub_802FBFC --snapshots SNAPSHOT_DIR'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261009-033918-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802FBFC
+
+    .venv/bin/python -m wf verify --function sub_802FBFC --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-033918-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0802fbfc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_18.c
+  where: recomp 72fee08
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_18.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- dispatch_801FEEE
+- sub_802FC70
+open_questions:
+- exact meaning of the state field at StartScreen+0xA and which start-screen phase sets bit 3
+- what sub_8001158 does with the descriptor table (text print vs. sprite blit) and the layout of its 8-byte entries
+- what the data pointed to by 0x808E4014 / 0x408E4024 contains
+sources:
+- tools/wf run convert-20261009-033918
