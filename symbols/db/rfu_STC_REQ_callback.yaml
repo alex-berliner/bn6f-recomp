@@ -1,0 +1,77 @@
+name: rfu_STC_REQ_callback
+address: '0x081494B8'
+kind: function
+status: confirmed
+summary: RFU library callback for incoming REQ packets; logs the request command and dispatches it to the armed
+  handler slot if one is enabled.
+interface: 'void rfu_STC_REQ_callback(u8 srcId /*r0*/, u16 reqCmd /*r1*/); note: r0 exits holding the entry LR (pop
+  {r0}; bx r0 epilogue quirk)'
+details: 'Part of the Nintendo wireless (RFU/STWI) library used by Battle Network 6''s link features. On every REQ
+  packet received over the wireless link, the STWI layer calls this with the requesting device id (r0, byte) and
+  the request command (r1, halfword). It first re-arms the library''s default async callback via STWI_set_Callback_M
+  (rfu_CB_defaultCallback), then stores reqCmd into offset 0x1C of the RFU work-area structure pointed to by dword_2010CC4
+  (this field is the "current request" slot the library later inspects). It then checks bit 3 (0x8) of the work
+  area''s status byte at offset 0: if set (a REQ callback is registered/armed), it calls sub_814DA68 with r0 = srcId,
+  r1 = reqCmd, and r2 = the pointer loaded from the handler slot *dword_2010CC8 (the list/table of registered REQ
+  handlers); it also mirrors reqCmd into r4 and srcId into r5 for that callee. If the bit is clear the request is
+  swallowed (recorded but not dispatched). Quirks: the epilogue pop {r0}; bx r0 leaves r0 = entry LR on both paths;
+  on the skip path r1 retains the whole status byte and flags are those of the bit test, while on the dispatch path
+  flags/registers come from sub_814DA68. r4/r5 are preserved across the call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-044109);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_32.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    32' --file leaves_farm_32.c rfu_STC_REQ_callback
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function rfu_STC_REQ_callback
+
+    .venv/bin/python -m wf verify --function rfu_STC_REQ_callback --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-044109-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function rfu_STC_REQ_callback
+
+    .venv/bin/python -m wf verify --function rfu_STC_REQ_callback --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-044109-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function rfu_STC_REQ_callback
+
+    .venv/bin/python -m wf verify --function rfu_STC_REQ_callback --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-044109-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^081494b8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_32.c
+  where: recomp 7b929f2
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_32.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related: []
+open_questions: []
+sources:
+- tools/wf run convert-20261009-044109
