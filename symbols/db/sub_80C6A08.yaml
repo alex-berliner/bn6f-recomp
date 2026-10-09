@@ -1,0 +1,78 @@
+name: sub_80C6A08
+address: '0x080C6A08'
+kind: function
+status: confirmed
+summary: Moves a battle object one step sideways by its X velocity (in panel space) and destroys it if the panel
+  it lands on is not a valid standing spot.
+interface: void battle_stepObjectXByVelocityAndDestroyIfInvalidPanel(/* r5 */ struct BattleObject* obj)  // r4,
+  r5, r6 in; r4/r6 preserved; returns validity flag of final panel in r0 with nz/c/v set from it
+details: 'Expects r5 = battle object pointer. Reads the object''s XVelocity (oBattleObject_XVelocity) as a full
+  32-bit value and adds it to the byte-sized PanelX (oBattleObject_PanelX), storing the wrapped result back — since
+  PanelX is one byte the add wraps modulo 256, which acts as wraparound within the one tile dimension. Then calls
+  object_setCoordinatesFromPanels to recompute pixel coordinates from the new panel position, object_updateCollisionPanels
+  to refresh the occupied collision tiles, and object_isCurrentPanelValid to test whether the object now stands
+  on a walkable/valid panel. If the panel is invalid (r0 == 0): clears the object''s collision region (object_clearCollisionRegion),
+  clears bit 1 (value 2) of oObjectHeader_Flags (an "active"/collidable-style flag), and writes CUR_STATE_DESTROY
+  (8) into oBattleObject_CurStateActionPhaseAndPhaseInitialized to mark the object for destruction this frame. Returns
+  with r0 = 0 and nz set from the destroy state in the invalid case, or nz/c/v reflecting the panel-validity test
+  in the valid case. Callers pass r4/r5/r6 with the object in r5; r4 and r6 are preserved.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-033920);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_19.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    19' --file leaves_farm_19.c sub_803007C sub_8031388 sub_80C6A08
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C6A08
+
+    .venv/bin/python -m wf verify --function sub_80C6A08 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-033920-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C6A08
+
+    .venv/bin/python -m wf verify --function sub_80C6A08 --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-033920-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_80C6A08
+
+    .venv/bin/python -m wf verify --function sub_80C6A08 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-033920-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, battlesweep, chips, story2.'
+  reproduce: grep -l '^080c6a08 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_19.c
+  where: recomp 2d580b5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_19.c
+coverage:
+- battles1
+- battlesweep
+- chips
+- story2
+related:
+- sub_803007C
+- sub_8031388
+open_questions:
+- Which object types/state machines use this step routine (projectiles, pushed/moving entities) is not visible from
+  this function alone.
+- Whether bit 1 of oObjectHeader_Flags is specifically an "active" or "has collision" flag needs confirmation from
+  other writers.
+- The exact semantics of CUR_STATE_DESTROY vs. an immediate free of the object (destruction likely deferred to the
+  state machine).
+sources:
+- tools/wf run convert-20261009-033920

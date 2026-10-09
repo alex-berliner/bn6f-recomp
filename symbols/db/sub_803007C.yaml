@@ -1,0 +1,82 @@
+name: sub_803007C
+address: '0x0803007C'
+kind: function
+status: confirmed
+summary: Recomputes two derived 16.16 fixed-point values in the camera state (offsets +4/+6) from the pending scroll
+  target nextX/nextY/nextZ, negating the results.
+interface: void camera_updateDerivedOffsets_803007C(Camera* cam /* r5 */); callers read back r1, r2, r4, r6, r7,
+  r8 and the nzcv flags (final flags come from the last `neg r6, r6`, i.e. 0 - shifted)
+details: 'Operates on the camera state struct passed in r5. Loads the pending scroll target from oCamera_nextX_3c
+  (+0x3C), oCamera_nextY_40 (+0x40) and oCamera_nextZ_44 (+0x44), and writes two halfwords into the camera struct:
+  offset +4 becomes -(high16 of ((-nextX) + (-nextY))) = high16 of (nextX+nextY), and offset +6 becomes -(high16
+  of (((-nextY) - (-nextX))>>1 + nextZ)) = -high16 of ((nextX-nextY)/2 + nextZ). The (X-Y)/2 and (X+Y) combinations
+  look like a fixed-point projection of the pending scroll target into two derived axes (the pair of fields at +4/+6
+  is presumably consumed elsewhere as an offset/rotation-like quantity). Arithmetic is all 32-bit with asr #16/#1
+  fixing; nothing else in the struct is touched, and no other state is read or written. Callers rely on leftover
+  registers (r1 = value stored at +4, r2 = nextZ, r4 = 0, r6 = value stored at +6, r7 = -nextY, r8 = -nextX) and
+  on flags from the final negation, so any reimplementation must reproduce them.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-033920);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_19.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    19' --file leaves_farm_19.c sub_803007C sub_8031388 sub_80C6A08
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803007C
+
+    .venv/bin/python -m wf verify --function sub_803007C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-033920-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803007C
+
+    .venv/bin/python -m wf verify --function sub_803007C --snapshots SNAPSHOT_DIR'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261009-033920-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_803007C
+
+    .venv/bin/python -m wf verify --function sub_803007C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-033920-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^0803007c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_19.c
+  where: recomp 2d580b5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_19.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_8031388
+- sub_80C6A08
+open_questions:
+- Exact meaning of the fields at +4/+6 (screen offset, projection, or shadow/parallax quantity) is inferred from
+  the arithmetic only; no consumer was traced.
+- Whether callers use all the leftover register values (r2/r4/r7/r8) or only the flags is unknown from this function
+  alone.
+sources:
+- tools/wf run convert-20261009-033920

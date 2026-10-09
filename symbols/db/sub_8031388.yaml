@@ -1,0 +1,79 @@
+name: sub_8031388
+address: '0x08031388'
+kind: function
+status: hypothesis
+summary: Runs the family's three-step helper sequence (prepare, draw/iterate over an unbounded 0x20-entry extent,
+  finish) and then marks the r12 state flags as active by setting the low bit.
+interface: void sub_8031388(u32 arg0 /*r0*/, u32 arg1 /*r1*/, u32 arg2 /*r2*/, u32 arg5 /*r5*/); returns with r0-r2/r5
+  preserved (restored from stack), r12 |= 1, NZ set from the new r12 value, r3/r4/r6/r7-r9 whatever sub_80310B0
+  left.
+details: "A thin driver that chains three callees and never inspects their results except by threading step 1's\
+  \ r0/r1 into step 2:\n  1. sub_8031136 is called with the caller's r0-r2 unchanged.\n  2. sub_8030E14 is called\
+  \ with r2 = r3 = -1 (the \"unbounded\"/sentinel extent\n     markers), r4 = 0x20 (extent/entry count), r5 = 0,\
+  \ r6 = 1, and r0/r1 carried\n     over from step 1.\n  3. sub_80310B0 is called with r1 = 0 to finalize.\nAfter\
+  \ the sequence, it sets the low bit of r12 (the shared state-flags register used across this family of routines)\
+  \ via ORR, so the NZ flags report the new r12 value; c/v are whatever sub_80310B0 last left. r0, r1, r2 and r5\
+  \ are saved on entry (push {r0-r2,r5,lr}) and restored verbatim, so callers see their arguments untouched. The\
+  \ -1/-1 extent arguments and the fixed 0x20 count suggest a bulk-copy or bulk-iterate operation over at most 32\
+  \ entries with no explicit limit; the r12 bit-set pattern suggests this is one of several \"activate state\" wrappers\
+  \ in the same subsystem.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-033920);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_19.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    19' --file leaves_farm_19.c sub_803007C sub_8031388 sub_80C6A08
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8031388
+
+    .venv/bin/python -m wf verify --function sub_8031388 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-033920-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8031388
+
+    .venv/bin/python -m wf verify --function sub_8031388 --snapshots SNAPSHOT_DIR'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-033920-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8031388
+
+    .venv/bin/python -m wf verify --function sub_8031388 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-033920-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, fuzz, maps, story1, story2, story3, wander.'
+  reproduce: grep -l '^08031388 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_19.c
+  where: recomp 2d580b5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_19.c
+coverage:
+- battles1
+- fuzz
+- maps
+- story1
+- story2
+- story3
+- wander
+related:
+- sub_803007C
+- sub_80C6A08
+open_questions:
+- Which subsystem sub_8031136/sub_8030E14/sub_80310B0 belong to (OAM/sprite batching, text, or effects) is not identifiable
+  from this wrapper alone.
+- Exact meaning of the r12 state-flags bit 0 ("active") and who clears or reads it.
+- What the fixed extent count 0x20 counts (entries, tiles, pixels?) and why r2/r3 are both set to the -1 sentinel.
+- Whether callers rely on r12 being returned, or only on the flag result.
+sources:
+- tools/wf run convert-20261009-033920
