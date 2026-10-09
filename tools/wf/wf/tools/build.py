@@ -16,7 +16,9 @@ from wf.types import BuildFailure, BuiltRom, LogPath, RomPath, ToolMessage
 ROM_BUILD_DIR = "build-wf"
 HOST_BUILD_DIR = "../build-wf-host"  # relative to cport/host
 WORKTREES = REPO / "build-wf-worktrees"
-SUBMODULES = ("bn6f", "gbarecomp")  # the ROM build links ../bn6f/bn6f.gba; tools read the BIOS from gbarecomp
+# not in a worktree (submodules, and built tools git ignores): linked from the main checkout. The ROM
+# build links ../bn6f/bn6f.gba, the tools read the BIOS from gbarecomp and run build-tools/mgba_run.
+SHARED = ("bn6f", "gbarecomp", "build-tools", "toolchain")
 
 
 def lift_and_build(log_dir: Path, tree: Path = REPO) -> BuiltRom | BuildFailure:
@@ -24,6 +26,7 @@ def lift_and_build(log_dir: Path, tree: Path = REPO) -> BuiltRom | BuildFailure:
     log = LogPath(log_dir / "build.log")
     started = time.monotonic()
     jobs = f"-j{os.cpu_count()}"
+    link_shared(tree)
     cport = tree / "cport"
     lift = _lift_command(tree)
     builds = [["make", "-C", str(cport), f"BUILD={ROM_BUILD_DIR}", jobs],
@@ -80,9 +83,9 @@ def _lift_command(tree: Path) -> list[str]:
 def remove_tree(tree: Path) -> None:
     """Take a run's worktree away again (its builds with it)."""
     if tree != REPO and tree.is_relative_to(WORKTREES):
-        for submodule in SUBMODULES:   # the links to the main checkout go first, so nothing follows them
-            if (tree / submodule).is_symlink():
-                (tree / submodule).unlink()
+        for name in SHARED:   # the links to the main checkout go first, so nothing follows them
+            if (tree / name).is_symlink():
+                (tree / name).unlink()
         _ = subprocess.run(["git", "-C", str(REPO), "worktree", "remove", "--force", str(tree)],
                            capture_output=True, check=False)
 
@@ -100,10 +103,17 @@ def committed_tree(name: str) -> Path:
         WORKTREES.mkdir(exist_ok=True)
         _ = subprocess.run(["git", "-C", str(REPO), "worktree", "add", "--quiet", "--detach", str(tree), head],
                            check=True)
-    for submodule in SUBMODULES:   # not checked out in a worktree: the build reads the main checkout's
-        path = tree / submodule
-        if not path.is_symlink():
-            if path.is_dir():
-                path.rmdir()
-            path.symlink_to(REPO / submodule)
+    link_shared(tree)
     return tree
+
+
+def link_shared(tree: Path) -> None:
+    """Link what a worktree lacks (SHARED) to the main checkout's."""
+    if tree == REPO:
+        return
+    for name in SHARED:
+        path = tree / name
+        if not path.is_symlink() and (REPO / name).exists():
+            if path.is_dir():
+                path.rmdir()   # an empty submodule directory
+            path.symlink_to(REPO / name)
