@@ -6,7 +6,7 @@ and Z.ai go through the local pacing proxies).
   tools/llm.py PROVIDER/MODEL < prompt.txt > reply.txt
   import llm; llm.complete("opencode/kimi-k3", prompt, system=...)
 """
-import json, os, re, sys, threading, time, urllib.error, urllib.request
+import http.client, json, os, re, sys, threading, time, urllib.error, urllib.request
 
 PI = os.path.expanduser("~/.pi/agent")
 
@@ -72,6 +72,25 @@ def blocked_until(spec: str, log_dir: str = "/tmp/bn-pacer"):
     return None
 
 
+def _read_events(response, spec: str) -> dict:
+    """A streamed chat completion, put together as the non-streamed reply would be."""
+    text, usage = [], None
+    for raw in response:
+        line = raw.decode(errors="replace").strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if payload == "[DONE]":
+            break
+        event = json.loads(payload)
+        if event.get("error"):
+            raise RuntimeError(f"{spec}: error in the stream: {str(event['error'])[:300]}")
+        usage = event.get("usage") or usage
+        for choice in event.get("choices") or []:
+            text.append((choice.get("delta") or {}).get("content") or "")
+    return {"choices": [{"message": {"content": "".join(text)}}], "usage": usage or {}}
+
+
 def _limit_lifts_in(message: str):
     """Seconds until a rate limit lifts, when the provider says ("try again in 1h2m3s"), else None."""
     m = re.search(r"try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s)?)", message)
@@ -82,12 +101,16 @@ def _limit_lifts_in(message: str):
 
 
 def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, timeout: int = 900,
-             retries: int = 3, tag: str = "", usage_log: str = "", wait_out_limits: bool = True) -> str:
+             retries: int = 3, tag: str = "", usage_log: str = "", wait_out_limits: bool = True,
+             stream: bool = False) -> str:
     """The reply text. With usage_log (or $LLM_USAGE_LOG), appends one JSON line
     per call: model, tag, seconds, input/output tokens as the provider reports
     them (reasoning tokens are part of the output where reported).
     wait_out_limits=False: a rate limit is raised at once (with when it lifts, as
-    "retry after Ns") for a caller that can use another provider instead."""
+    "retry after Ns") for a caller that can use another provider instead.
+    stream=True (chat-completions providers): the reply comes as server-sent events,
+    so a long reasoning call keeps data flowing; Z.ai drops a call that has sent
+    nothing for about 15 minutes."""
     provider, model = spec.split("/", 1)
     t0 = time.time()
     models, auth = _providers()
@@ -103,6 +126,8 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
         url = p["baseUrl"].rstrip("/") + "/chat/completions"
         msgs = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
         body = {"model": model, "max_tokens": max_tokens, "messages": msgs}
+        if stream:
+            body.update(stream=True, stream_options={"include_usage": True})
         headers = {"Authorization": f"Bearer {key}", "content-type": "application/json"}
     data = json.dumps(body).encode()
     _pace(provider)
@@ -113,7 +138,7 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
         try:
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                reply = json.load(r)
+                reply = _read_events(r, spec) if body.get("stream") else json.load(r)
             break
         except urllib.error.HTTPError as e:
             msg = e.read().decode(errors="replace")[:300]
@@ -131,9 +156,10 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
                 continue
             if attempt == retries or e.code not in (429, 500, 502, 503, 504):
                 raise RuntimeError(f"{spec}: HTTP {e.code}: {msg}") from None
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            # (a dropped connection, also part way through a streamed reply)
             if attempt == retries:
-                raise RuntimeError(f"{spec}: {e}") from None
+                raise RuntimeError(f"{spec}: connection failed: {e!r}") from None
         time.sleep(5 * (attempt + 1))
         attempt += 1
     log = usage_log or os.environ.get("LLM_USAGE_LOG", "")

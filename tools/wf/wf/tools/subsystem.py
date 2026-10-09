@@ -204,12 +204,12 @@ def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: P
 
 def _complete(llm: ModuleType, model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool) -> str:
     """The reply, with room for long reasoning (the models spent 35-48k tokens reasoning on a subsystem,
-    so 48k cut replies off): 64k, or 48k for a provider that refuses 64k. Replies are not streamed, so the
-    wait is the whole generation: glm-5.3 took up to 20 minutes at 48k (the local pacers allow 40, this 45)."""
+    so 48k cut replies off): 64k, or 48k for a provider that refuses 64k. Replies are streamed: Z.ai drops a
+    call that has sent nothing for about 15 minutes, and glm-5.3 reasons for longer than that at times."""
     def ask(max_tokens: int) -> str:
         return cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=max_tokens,  # pyright: ignore[reportAny]
                                       timeout=2700, retries=1, tag=tag, usage_log=str(USAGE_LOG),
-                                      wait_out_limits=wait_out_limits))
+                                      wait_out_limits=wait_out_limits, stream=True))
     try:
         return ask(64000)
     except RuntimeError as error:
