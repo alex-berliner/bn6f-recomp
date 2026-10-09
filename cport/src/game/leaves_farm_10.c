@@ -44,13 +44,13 @@ Next copyWords_80014EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── map_8001708 ── */
-/* map_8001708(R0 = map group, R1 = map number):
+/* ── map_lookupMapIdByGroupAndNumber_8001708 ── */
+/* map_lookupMapIdByGroupAndNumber_8001708(R0 = map group, R1 = map number):
  * Selects the real-world group table for groups below INTERNET_MAP_GROUP_START
  * and the internet table for the rest (subtracting the base so the index fits),
  * then loads the byte for (group, number) and hands it to sub_80015FC.
  * Flags and r2/r3 on return are whatever sub_80015FC leaves. */
-Next map_8001708(void) {
+Next map_lookupMapIdByGroupAndNumber_8001708(void) {
     u32 group = R0;
     u32 table;
 
@@ -469,7 +469,7 @@ Next setNPCScript_809F506(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809F612 ── */
+/* ── npc_resetToStandardState_809F612 ── */
 /* Field offsets / constants used here that the shared headers don't define
  * (from the bn6f disassembly of the overworld NPC object). */
 #define oOverworldNPCObject_CurState      8
@@ -478,12 +478,12 @@ Next setNPCScript_809F506(void) {
 #define OW_NPC_UNK_FLAGS_60_0x1000        0x1000
 #define OW_NPC_UNK_FLAGS_60_FACE_PLAYER_WHEN_INTERACTED_sub_809F612 0x0002
 
-/* sub_809F612(r5 = overworld NPC object):
+/* npc_resetToStandardState_809F612(r5 = overworld NPC object):
  * Put an NPC back into its standard state: restore the current action and
  * movement flag stashed in its object, reselect its animation (unless the
  * object's UnkFlags_60 bits say to skip that), and clear the chat-triggered
  * flag. Ends with r0 = 0 and the flags left by `mov r0, #0`. */
-Next sub_809F612(void) {
+Next npc_resetToStandardState_809F612(void) {
     u32 returnAddr = LR;
 
     ST8(R5 + oOverworldNPCObject_CurState, NPC_CUR_STATE_STANDARD);
@@ -847,17 +847,17 @@ Next ReadMapScriptSignedHalfword(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── cutscene_8036EFE ── */
+/* ── cutscene_forceEndCurrent_8036EFE ── */
 /* Names from the disassembly that this translation unit needs. */
 #define CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1 1u /* dummy/end marker script id */
 #define EVENT_1731 0x1731u                            /* event flag cleared when the cutscene ends */
 
-/* cutscene_8036EFE: force-end whatever cutscene is running. Point the
+/* cutscene_forceEndCurrent_8036EFE: force-end whatever cutscene is running. Point the
  * cutscene script interpreter at the dummy script (which immediately
  * finishes the cutscene), drop any "resume after skip" callback, and
  * clear the event flag that gated the cutscene.
  * Preserves r4-r7; leaves the flags as ClearEventFlagFromImmediate left them. */
-Next cutscene_8036EFE(void) {
+Next cutscene_forceEndCurrent_8036EFE(void) {
     u32 cutscene = LD32(R10 + oToolkit_CutsceneStatePtr);
 
     /* Jump the script interpreter onto the dummy end-of-cutscene script. */
@@ -878,8 +878,8 @@ Next cutscene_8036EFE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116A04 ── */
-/* sub_8116A04 (r5 = battle object):
+/* ── battle_reloadObjectSprite_8116A04 ── */
+/* battle_reloadObjectSprite_8116A04 (r5 = battle object):
  * Refresh the object's sprite from its current frame parameters.
  * If the frame parameters report that the animation must be (re)loaded
  * (bits 0xC0 set), restart it: select animation 0, load its data, remove
@@ -887,7 +887,7 @@ Next cutscene_8036EFE(void) {
  * state byte at +9 as 8 (also leaving that value in r0). Flags are left
  * from the last flag-setting instruction (TST r0, 0xC0 on the skip path,
  * MOV r0, #8 otherwise). */
-Next sub_8116A04(void) {
+Next battle_reloadObjectSprite_8116A04(void) {
     GUEST_CALL(sprite_getFrameParameters);
     u32 frameParams = R0;
 
@@ -915,17 +915,17 @@ Next sub_8116A04(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116B9C ── */
-/* sub_8116B9C(r5 = sprite/object pointer):
+/* ── sprite_dispatchVariantUpdate_8116B9C ── */
+/* sprite_dispatchVariantUpdate_8116B9C(r5 = sprite/object pointer):
  * Run the per-variant update routine selected by the byte at [r5+9], then
  * advance the sprite animation. The selector byte indexes a 3-entry word
  * table, so it only ever holds 0, 4 or 8 (byte offsets into the table).
  * All registers except r0/r1 (clobbered by the call) are passed through. */
-Next sub_8116B9C(void) {
+Next sprite_dispatchVariantUpdate_8116B9C(void) {
     switch (LD8(R5 + 9)) {
     case 0: GUEST_CALL(sub_8116BC0); break; /* off_8116BB4[0] */
     case 4: GUEST_CALL(sub_8116BFC); break; /* off_8116BB4[1] */
-    case 8: GUEST_CALL(sub_8116C14); break; /* off_8116BB4[2] */
+    case 8: GUEST_CALL(sprite_scrollStepAndCullOffscreen_8116C14); break; /* off_8116BB4[2] */
     }
 
     GUEST_CALL(sprite_update);
@@ -933,8 +933,8 @@ Next sub_8116B9C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116C14 ── */
-/* sub_8116C14(r7 = sprite):
+/* ── sprite_scrollStepAndCullOffscreen_8116C14 ── */
+/* sprite_scrollStepAndCullOffscreen_8116C14(r7 = sprite):
  * Nudge the sprite along one axis by 8x the signed value stored at
  * sprite+0x10, then look at the resulting coordinate. If it has moved
  * past zero into negative territory, clear the sprite's scale counter
@@ -943,7 +943,7 @@ Next sub_8116B9C(void) {
  * Outputs: r0/r1 hold the coordinates returned by sprite_getCoordinates;
  * flags come from the CMP against that coordinate, or (when the reset
  * call is made) from whatever that callee leaves behind. */
-Next sub_8116C14(void) {
+Next sprite_scrollStepAndCullOffscreen_8116C14(void) {
     s32 offset = LDS16(R7 + 0x10);
 
     R0 = (u32)offset << 3;
@@ -959,18 +959,18 @@ Next sub_8116C14(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116D6C ── */
-/* sub_8116D6C: run one step of the battle object at R5, then refresh its sprite.
+/* ── battle_objectRunBehaviorStep_8116D6C ── */
+/* battle_objectRunBehaviorStep_8116D6C: run one step of the battle object at R5, then refresh its sprite.
  *
  * [R5+9] holds a byte offset into a small table of behavior handlers
- * (off_8116D84: 0 -> sub_8116D90, 4 -> sub_8116DB4, 8 -> battle_stepForwardAnimWait_8116DEC).
+ * (off_8116D84: 0 -> battle_moveSpriteLeftUntilX170_8116D90, 4 -> sub_8116DB4, 8 -> battle_stepForwardAnimWait_8116DEC).
  * The original performs an indirect `mov lr, pc; bx r0` call, so each
  * handler returns straight back here; afterwards the object's sprite
  * animation is advanced by sprite_update before returning to the caller.
  * All other registers (R2..R12) are simply passed through to the handler. */
-Next sub_8116D6C(void) {
+Next battle_objectRunBehaviorStep_8116D6C(void) {
     switch (LD8(R5 + 9)) {
-    case 0: GUEST_CALL(sub_8116D90); break;
+    case 0: GUEST_CALL(battle_moveSpriteLeftUntilX170_8116D90); break;
     case 4: GUEST_CALL(sub_8116DB4); break;
     case 8: GUEST_CALL(battle_stepForwardAnimWait_8116DEC); break;
     }
@@ -980,15 +980,15 @@ Next sub_8116D6C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116D90 ── */
-/* sub_8116D90(r5 = battle object):
+/* ── battle_moveSpriteLeftUntilX170_8116D90 ── */
+/* battle_moveSpriteLeftUntilX170_8116D90(r5 = battle object):
  * Drift the object's sprite 16 px to the left; once its x coordinate has
  * reached 0xAA or below, clamp it to exactly 0xAA and advance the object's
  * state byte to 4. r2 is left holding the 0xAA boundary constant on both
  * paths, matching the original. Flags reflect the last flag-setting
  * instruction (CMP on the early-out path, MOVS #4 plus callee flags
  * otherwise). */
-Next sub_8116D90(void) {
+Next battle_moveSpriteLeftUntilX170_8116D90(void) {
     R0 = -(u32)0x10;                    /* add (-16, 0) to the sprite position */
     R1 = 0;
     GUEST_CALL(sprite_addCoordinates);
@@ -1010,8 +1010,8 @@ Next sub_8116D90(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81178D8 ── */
-/* sub_81178D8: behaviour dispatcher for the object whose pointer is in R5.
+/* ── object_dispatchModeHandler_81178D8 ── */
+/* object_dispatchModeHandler_81178D8: behaviour dispatcher for the object whose pointer is in R5.
  *
  * The byte at [R5+8] is the object's mode, stored already scaled as a byte
  * offset into the handler pointer table at off_81178EC (the game only uses
@@ -1031,7 +1031,7 @@ Next sub_8116D90(void) {
 #define HANDLER_SUB_811794C 0x0811794Du /* = sub_811794C + 1 (Thumb) */
 #define HANDLER_SUB_8117990 0x08117991u /* = sub_8117990 + 1 (Thumb) */
 
-Next sub_81178D8(void) {
+Next object_dispatchModeHandler_81178D8(void) {
     u32 mode = (u8)LD8(R5 + 8);
 
     R7 = A_byte_2011C10;
@@ -1057,8 +1057,8 @@ Next sub_81178D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81190F8 ── */
-/* sub_81190F8(r0 = sprite handle):
+/* ── sprite_testFrameParamsMaskC0_81190F8 ── */
+/* sprite_testFrameParamsMaskC0_81190F8(r0 = sprite handle):
  * Looks up the sprite struct registered for the handle in r0 (via the list at
  * 0x2008450) and reports whether the sprite's current frame carries the status
  * bits 0xC0 in its frame parameters.
@@ -1067,7 +1067,7 @@ Next sub_81178D8(void) {
  * adds r0, r4, #0, which zeroes the carry/overflow flags, and the trailing
  * tst r0, r0 leaves them cleared). r1 ends as 0xC0 on the found path;
  * r4/r5 are preserved. */
-Next sub_81190F8(void) {
+Next sprite_testFrameParamsMaskC0_81190F8(void) {
     u32 savedR4 = R4, savedR5 = R5;
     u32 flagged = 0;
 
@@ -1100,8 +1100,8 @@ Next sub_81190F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811BD64 ── */
-/* sub_811BD64: dispatch the handler for the current submenu mode.
+/* ── submenu_runModeHandler_811BD64 ── */
+/* submenu_runModeHandler_811BD64: dispatch the handler for the current submenu mode.
  *
  * r5 points at the menu work area; the byte at +8 holds the selected mode,
  * stored as a byte offset into the handler table at off_811BD7C (0, 4 or 8
@@ -1112,7 +1112,7 @@ Next sub_81190F8(void) {
  * loaded into r0, so the handler receives its own address in r0 (matching
  * the original's ldr r0,[r0,r1] before bx r0). r0, r1 and the flags are
  * passed straight through from the handler. */
-Next sub_811BD64(void) {
+Next submenu_runModeHandler_811BD64(void) {
     u32 savedR6 = R6;
 
     R6 = LD32(R10 + oToolkit_SubmenuPtr);   /* submenu object -> handler's r6 */
@@ -1132,14 +1132,14 @@ Next sub_811BD64(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8040154 ── */
-/* chatbox_8040154(r5 = chatbox):
+/* ── chatbox_checkAdvanceTextPrint_8040154 ── */
+/* chatbox_checkAdvanceTextPrint_8040154(r5 = chatbox):
  * Called each frame while the chatbox is printing text. If the player is
  * holding B or has just pressed A (or the text has no per-character print
  * delay), reset the chatbox's state-machine step to 0 so it moves on to the
  * next phase; otherwise leave it alone.
  * Returns r2 = 2 if B was held, r2 = 1 otherwise. */
-Next chatbox_8040154(void) {
+Next chatbox_checkAdvanceTextPrint_8040154(void) {
     if (LD16(R5 + oChatbox_JoypadHeld) & 2) {   /* B currently held */
         R2 = 2;
         ST8(R5 + oChatbox_JumpTableOffset_11, 0);
@@ -1154,8 +1154,8 @@ Next chatbox_8040154(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80417A4 ── */
-/* chatbox_80417A4(r4 = pointer to the current chatbox script entry):
+/* ── chatbox_stepScriptEntry_80417A4 ── */
+/* chatbox_stepScriptEntry_80417A4(r4 = pointer to the current chatbox script entry):
  * Peek at the byte at offset 3 of the current script entry.  If it is the
  * 0xFF terminator, the entry is "go to next line": advance the cursor by one
  * entry (r4 += 4).  Otherwise hand the byte to the chatbox script interpreter
@@ -1165,7 +1165,7 @@ Next chatbox_8040154(void) {
  * and r4 is the advanced cursor; on the interpreter path r1/r4 are whatever
  * the callee leaves.  Flags end up as after "mov r0, #1" (nz = 1 != 0),
  * except that on the terminator path c/v still come from the r4 += 4 add. */
-Next chatbox_80417A4(void) {
+Next chatbox_stepScriptEntry_80417A4(void) {
     R0 = 3;                              /* fixed notUsed argument */
     R1 = LD8(R4 + 3);                    /* script ID or end-of-entry marker */
 
@@ -1182,12 +1182,12 @@ Next chatbox_80417A4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8041EE8 ── */
+/* ── chatbox_cmd_playerFixedAnim_8041EE8 ── */
 /* owPlayer_RequestFixedAnimation_809E14C is not declared in the shared headers, so forward-declare it
  * here; it is a normal `Next ... (void)` game function. */
 Next owPlayer_RequestFixedAnimation_809E14C(void);
 
-/* chatbox_8041EE8 — chatbox script command handler.
+/* chatbox_cmd_playerFixedAnim_8041EE8 — chatbox script command handler.
  *
  * Inputs:  r4 = pointer into the chatbox script (the command's operand
  *              byte sits at [r4 + 2]),
@@ -1209,7 +1209,7 @@ Next owPlayer_RequestFixedAnimation_809E14C(void);
  *          from the ADDS on the script pointer. r5, r6 and lr preserved.
  */
 
-Next chatbox_8041EE8(void) {
+Next chatbox_cmd_playerFixedAnim_8041EE8(void) {
     /* mark the flag bit for this command in the chatbox state */
     R0 = 1; /* FLAGS_3E bit 0 */
     GUEST_CALL(chatbox_setflags_3e);
@@ -1239,8 +1239,8 @@ Next chatbox_8041EE8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8041F1C ── */
-/* chatbox_8041F1C: chatbox tick handler.
+/* ── chatbox_scriptWaitPlayerFrameStep_8041F1C ── */
+/* chatbox_scriptWaitPlayerFrameStep_8041F1C: chatbox tick handler.
  *
  * Sets chatbox flag bit 1 (via chatbox_setflags_3e), then looks up the
  * overworld player object through the toolkit's game state and asks for
@@ -1253,7 +1253,7 @@ Next chatbox_8041EE8(void) {
  * NZ is set from r0 on both paths; on the advancing path C/V come from
  * the r4 += 2 addition. r1 is left holding frameParams & 0x80; r5 is
  * preserved. */
-Next chatbox_8041F1C(void) {
+Next chatbox_scriptWaitPlayerFrameStep_8041F1C(void) {
     R0 = 1; /* FLAGS_3E bit 1 */
     GUEST_CALL(chatbox_setflags_3e);
 
@@ -1281,8 +1281,8 @@ Next chatbox_8041F1C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8041F44 ── */
-/* chatbox_8041F44: chatbox script step.
+/* ── chatbox_scriptStepSyncPlayerTextState_8041F44 ── */
+/* chatbox_scriptStepSyncPlayerTextState_8041F44: chatbox script step.
  *
  * Sets chatbox flag bit 0x0001, then reads the counter at [r5+0x3C]
  * (r5 = chatbox state). While that counter is still 7 or less it is copied
@@ -1297,7 +1297,7 @@ Next chatbox_8041F1C(void) {
  *          nz/c/v as described above.
  * Preserved: r5, r6.
  */
-Next chatbox_8041F44(void) {
+Next chatbox_scriptStepSyncPlayerTextState_8041F44(void) {
     R0 = 1; /* FLAGS_3E_UNK_0001 */
     GUEST_CALL(chatbox_setflags_3e);
 
@@ -1323,12 +1323,12 @@ Next chatbox_8041F44(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80422D4 ── */
-/* chatbox_80422D4: play the sound cue at the current chatbox script position.
+/* ── chatbox_PlayScriptSoundCue_80422D4 ── */
+/* chatbox_PlayScriptSoundCue_80422D4: play the sound cue at the current chatbox script position.
  * r4 points at a 4-byte cue record; bytes 2-3 hold the 16-bit sound effect
  * id (little-endian). Plays it, steps r4 past the record and returns r0 = 1.
  * Flags on return: NZ from "r0 = 1", C/V from the r4 += 4 add. */
-Next chatbox_80422D4(void) {
+Next chatbox_PlayScriptSoundCue_80422D4(void) {
     /* The original does push {lr} ... pop {pc}; the saved value is LR itself.
      * Reproduce the push so that SP during the PlaySoundEffect call matches
      * the original (the callee's stack activity must land at the same
@@ -1356,13 +1356,13 @@ Next chatbox_80422D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80422E8 ── */
-/* chatbox_80422E8(r4 = chatbox script pointer):
+/* ── chatbox_cmdPlayMusic_80422E8 ── */
+/* chatbox_cmdPlayMusic_80422E8(r4 = chatbox script pointer):
  * Play the music track given as a little-endian u16 in the current chatbox
  * script command, then advance the script pointer past the command.
  * Leaves r4 pointing at the next command and returns r0 = 1.
  * Flags on exit: n/z from "movs r0, #1", c/v from "adds r4, #4". */
-Next chatbox_80422E8(void) {
+Next chatbox_cmdPlayMusic_80422E8(void) {
     u32 songLow  = LD8(R4 + 2);
     u32 songHigh = LD8(R4 + 3);
 
@@ -1384,14 +1384,14 @@ Next chatbox_80422E8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80422FC ── */
-/* chatbox_80422FC: chatbox script opcode handler.
+/* ── chatbox_scriptOpClearFlag40_80422FC ── */
+/* chatbox_scriptOpClearFlag40_80422FC: chatbox script opcode handler.
  * Clears chatbox status flag 0x40 (via chatbox_clearFlags_3e), advances the
  * script pointer in r4 past this opcode (2 bytes), and returns r0 = 1 so the
  * chatbox keeps running the script.
  * Flags left for the caller: N/Z from the final `mov r0, #1`, C/V from the
  * pointer increment. */
-Next chatbox_80422FC(void) {
+Next chatbox_scriptOpClearFlag40_80422FC(void) {
     /* clear flag FLAGS_3E_UNK_0040 in the chatbox status field */
     R0 = FLAGS_3E_UNK_0040;
     GUEST_CALL(chatbox_clearFlags_3e);
@@ -1407,13 +1407,13 @@ Next chatbox_80422FC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_804230C ── */
-/* chatbox_804230C: step the chatbox forward.
+/* ── chatbox_stateSetFlag40Advance_804230C ── */
+/* chatbox_stateSetFlag40Advance_804230C: step the chatbox forward.
  * Sets chatbox flag 0x40 (via chatbox_setflags_3e), advances the caller's
  * chatbox state pointer (r4) by 2 bytes, and returns 1.
  * Flags on return: N/Z from the result value 1, C/V from the r4 += 2 add.
  * Preserves r1 (chatbox_setflags_3e is a leaf and keeps r1/r4 intact). */
-Next chatbox_804230C(void) {
+Next chatbox_stateSetFlag40Advance_804230C(void) {
     R0 = FLAGS_3E_UNK_0040;
     GUEST_CALL(chatbox_setflags_3e);
 
@@ -1426,8 +1426,8 @@ Next chatbox_804230C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80424BC ── */
-/* chatbox_80424BC: chatbox text-script action used at shop counters.
+/* ── chatbox_textScriptAction_openShop_80424BC ── */
+/* chatbox_textScriptAction_openShop_80424BC: chatbox text-script action used at shop counters.
  * Sets chatbox flag 0x3E bit 1 (the "close chatbox" mask, FLAGS_3E_UNK_0001
  * in the disassembly), and if this script step hasn't fired yet, launches
  * the shop whose id is stored at [r4+2] and marks the step as taken by
@@ -1436,7 +1436,7 @@ Next chatbox_804230C(void) {
  * Flag note: the final `mov r0, #0` only rewrites N and Z; C and V reach
  * the caller from the `cmp r0, #0` (C=1, V=0) on the skip path, or from
  * subsystem_launchShop on the launch path. */
-Next chatbox_80424BC(void) {
+Next chatbox_textScriptAction_openShop_80424BC(void) {
     R0 = 1;                    /* FLAGS_3E_UNK_0001: close-chatbox flag */
     GUEST_CALL(chatbox_setflags_3e);
 
@@ -1597,8 +1597,8 @@ Next sprite_setColorShader(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8002874 ── */
-/* sub_8002874(r5 = object animation state):
+/* ── sprite_loadAnimFrameTiles_8002874 ── */
+/* sprite_loadAnimFrameTiles_8002874(r5 = object animation state):
  * Advances an object's graphics frame. Fields used:
  *   +0x18  index of the current frame within the animation table
  *   +0x1C  pointer to the animation table pointer
@@ -1609,7 +1609,7 @@ Next sprite_setColorShader(void) {
  * (descriptor words, followed by the tiles) into vObjectTiles[slot].
  * Flags: on the "unchanged" path they come from the frame comparison;
  * on the "upload" path they come from QueueEightWordAlignedGFXTransfer. */
-Next sub_8002874(void) {
+Next sprite_loadAnimFrameTiles_8002874(void) {
     u32 loadedFrame = LD32(R5 + 0x24);
     u32 table = LD32(LD32(R5 + 0x1C));
     u32 currentFrame = table + LD32(R5 + 0x18);
@@ -1643,12 +1643,12 @@ Next startScreen_TstZero(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803CD74 ── */
-/* sub_803CD74: wipe the key-item inventory block (0x190 bytes) and re-grant the
+/* ── keyItems_ResetInventoryAndGrantScenarioItems_803CD74 ── */
+/* keyItems_ResetInventoryAndGrantScenarioItems_803CD74: wipe the key-item inventory block (0x190 bytes) and re-grant the
  * starting key items: four copies of item 0x75 and one of item 0.
  * R10 is the toolkit pointer. R0-R2 and flags are clobbered; R4-R7 and up are
  * left untouched, matching the original (it saves/restores R4-R7 itself). */
-Next sub_803CD74(void) {
+Next keyItems_ResetInventoryAndGrantScenarioItems_803CD74(void) {
     u32 keyItems = LD32(R10 + oToolkit_KeyItemsPtr);
 
     R0 = keyItems;
@@ -1666,8 +1666,8 @@ Next sub_803CD74(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803CED4 ── */
-/* sub_803CED4:
+/* ── petnavi_setStat42ToStat3EPlusCounter_803CED4 ── */
+/* petnavi_setStat42ToStat3EPlusCounter_803CED4:
  * Reads the current PET navi's stat 0x3E, adds the 16-bit value stored at
  * (*R10->oToolkit_Unk2004334_Ptr), and writes the sum into stat 0x42 of the
  * same navi.
@@ -1678,7 +1678,7 @@ Next sub_803CD74(void) {
  *   preserved: r4 r6 r7 (saved/restored around the helper calls)
  *   clobbers:  r0 r1 and flags
  */
-Next sub_803CED4(void) {
+Next petnavi_setStat42ToStat3EPlusCounter_803CED4(void) {
     /* Original pushes r4/r6/r7 and pops them after the helper calls,
      * so their incoming values must survive everything below. */
     u32 savedR4 = R4;
@@ -1713,14 +1713,14 @@ Next sub_803CED4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803DE88 ── */
-/* sub_803DE88(r0 = state pointer):
+/* ── eLinkState_ResetForNewUse_803DE88 ── */
+/* eLinkState_ResetForNewUse_803DE88(r0 = state pointer):
  * Reset the link/camera state block for a new use: clear the eLinkState
  * struct, its 0x10-byte auxiliary buffer and a 0x40-byte work area, then
  * store the given pointer at eLinkState+0x58 (dword_2009A28).
  * Flags and R1 are whatever the final ZeroFillByHalfword call leaves;
  * r2-r7 are untouched. */
-Next sub_803DE88(void) {
+Next eLinkState_ResetForNewUse_803DE88(void) {
     u32 statePtr = R0;
 
     R0 = A_eCameraEnd;
@@ -1740,12 +1740,12 @@ Next sub_803DE88(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803FB04 ── */
-/* sub_803FB04(r0 = save work buffer value):
+/* ── save_CommitWorkBufferToGamePak_803FB04 ── */
+/* save_CommitWorkBufferToGamePak_803FB04(r0 = save work buffer value):
  * Store r0 into the save work buffer at dword_20067C0, then copy 0x80 bytes
  * from that buffer to the Game Pak save area at 0xE007F80.
  * The original pushes/pops r0-r7, so every register is preserved. */
-Next sub_803FB04(void) {
+Next save_CommitWorkBufferToGamePak_803FB04(void) {
     u32 inR0 = R0, inR1 = R1, inR2 = R2, inR3 = R3;
     u32 inR4 = R4, inR5 = R5, inR6 = R6, inR7 = R7;
 
@@ -1900,12 +1900,12 @@ Next selectVirusOrNaviNamesAndWhich_800EC56(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800D5F0 ── */
-/* sub_800D5F0(r0 = panel position, r1 = alliance id):
+/* ── battle_countAdjacentPanelsOfOtherAlliance_800D5F0 ── */
+/* battle_countAdjacentPanelsOfOtherAlliance_800D5F0(r0 = panel position, r1 = alliance id):
  * Counts the three neighbouring panels (slots 1..3) that hold an object
  * belonging to a *different* alliance; r0 = how many such panels were found.
  * (r1 ends holding the last panel's alliance byte, as in the original.) */
-Next sub_800D5F0(void) {
+Next battle_countAdjacentPanelsOfOtherAlliance_800D5F0(void) {
     u32 position = R0;
     u32 alliance = R1;
     s32 count = 0;
@@ -1930,12 +1930,12 @@ Next sub_800D5F0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800E498 ── */
-/* sub_800E498(r0 = handler index, r5 = battle object, r2/r3 = passed through):
+/* ── battle_dispatchObjectContactHandler_800E498 ── */
+/* battle_dispatchObjectContactHandler_800E498(r0 = handler index, r5 = battle object, r2/r3 = passed through):
  * Dispatches to one of the battle object's contact handlers selected by r0,
  * passing the object's collision direction in r0. The handler's results (and
  * every register it leaves behind) are handed straight back to our caller. */
-Next sub_800E498(void) {
+Next battle_dispatchObjectContactHandler_800E498(void) {
     u32 index = R0;
 
     /* The handlers receive the direction field of the object's collision data. */
@@ -1953,14 +1953,14 @@ Next sub_800E498(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800EB26 ── */
-/* sub_800EB26(r5 = battle object):
+/* ── battle_applyFlattenHitStatus_800EB26 ── */
+/* battle_applyFlattenHitStatus_800EB26(r5 = battle object):
  * Called after collision processing. If the object took a "flattening" hit
  * (flag 0x40 in its collision flags), check its final status effect:
  * statuses 0x60..0x65 are left untouched, anything else is reset to 0x12
  * and the object gets flag 0x4000 set / flag 0x6 cleared on its flag2 word.
  * Leaves r3 = collision data pointer. */
-Next sub_800EB26(void) {
+Next battle_applyFlattenHitStatus_800EB26(void) {
     u32 collision = LD32(R5 + oBattleObject_CollisionDataPtr);
     R3 = collision;
 
@@ -2023,22 +2023,22 @@ Next SWI_CpuSet(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── noop_8033A7C ── */
-/* noop_8033A7C: does nothing; exists only as a callable placeholder
+/* ── callback_noop_8033A7C ── */
+/* callback_noop_8033A7C: does nothing; exists only as a callable placeholder
  * (its callers treat it as an empty callback). */
-Next noop_8033A7C(void) {
+Next callback_noop_8033A7C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8033AC4 ── */
-/* sub_8033AC4: reset/initialize the battle object state (self in r5 = *S2011E30).
+/* ── battle_resetState_8033AC4 ── */
+/* battle_resetState_8033AC4: reset/initialize the battle object state (self in r5 = *S2011E30).
  * Runs the four initialization steps in order:
  *   1. sub_8033B80 with r0 = 0
  *   2. sub_8033F80 with r0 = 0
  *   3. sub_8033C68
  *   4. sub_8033BE8
  * Register state (r0-r3, flags) after the call is whatever sub_8033BE8 leaves. */
-Next sub_8033AC4(void) {
+Next battle_resetState_8033AC4(void) {
     R0 = 0;
     GUEST_CALL(sub_8033B80);
 
@@ -2051,14 +2051,14 @@ Next sub_8033AC4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80342EC ── */
-/* sub_80342EC: begin the "enter map" flow (main jumptable step 4).
+/* ── map_beginEnterMapOnWarpStep4_80342EC ── */
+/* map_beginEnterMapOnWarpStep4_80342EC: begin the "enter map" flow (main jumptable step 4).
  * Marks the new jumptable index, wipes VRAM and the tile GFX pool,
  * programs the fade-in parameters for arriving on the new map, then
  * runs the warp-entry logic and the navi update step.
  * On entry r10 holds the toolkit pointer; it is copied to r7, which
  * the callees (map_triggerEnterMapOnWarp, navi_80340F6) read. */
-Next sub_80342EC(void) {
+Next map_beginEnterMapOnWarpStep4_80342EC(void) {
     R7 = R10;
 
     /* Main flow resumes at jumptable step 4. */
@@ -2087,11 +2087,11 @@ Next sub_80342EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8035084 ── */
-/* sub_8035084: show the "notification" cutscene.
+/* ── cutscene_TryStartNotification_8035084 ── */
+/* cutscene_TryStartNotification_8035084: show the "notification" cutscene.
  * Returns 1 if the cutscene was *not* started (Slip is running, a cutscene is
  * already active, or there is nothing to notify), 0 if it was started. */
-Next sub_8035084(void) {
+Next cutscene_TryStartNotification_8035084(void) {
     u32 result;
 
     /* Bail out if the Slip effect is running or a cutscene is already active. */
@@ -2116,11 +2116,11 @@ Next sub_8035084(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812AF18 ── */
-/* sub_812AF18: set up a scene — run its init routine, decompress and copy its
+/* ── scene_loadAndStartCutscene_812AF18 ── */
+/* scene_loadAndStartCutscene_812AF18: set up a scene — run its init routine, decompress and copy its
  * asset reference table, then load its graphics/text/sprite resources and start
  * its chatbox script. All registers the callers rely on are preserved. */
-Next sub_812AF18(void) {
+Next scene_loadAndStartCutscene_812AF18(void) {
     /* Initialize the scene state. */
     GUEST_CALL(sub_812AF3C);
 
@@ -2146,13 +2146,13 @@ Next sub_812AF18(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804657C ── */
-/* sub_804657C: initialise eStructArr2008450.
+/* ── battle_initEStructArr_804657C ── */
+/* battle_initEStructArr_804657C: initialise eStructArr2008450.
  * Zero-fills the whole 0x528-byte array (15 entries of 0x58 bytes each),
  * then sets every entry's byte at +2 to 0x20 and its byte at +3 to the
  * 0-based entry index.
  * Preserves r2-r7; leaves r1 as ZeroFillByWord left it. */
-Next sub_804657C(void) {
+Next battle_initEStructArr_804657C(void) {
     R0 = A_eStructArr2008450;
     R1 = 0x528;
     GUEST_CALL(ZeroFillByWord);
@@ -2169,11 +2169,11 @@ Next sub_804657C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80467D8 ── */
-/* sub_80467D8: clear the 0x1B8-byte work block at byte_2011860, then set up
+/* ── initWorkArea5Entries_80467D8 ── */
+/* initWorkArea5Entries_80467D8: clear the 0x1B8-byte work block at byte_2011860, then set up
  * its five 0x58-byte entries: byte 2 = 0x20 (entry "alive"/default value),
  * byte 3 = entry index. r0 = 0x20, r1 = 0x1B8 afterwards; r2-r7 preserved. */
-Next sub_80467D8(void) {
+Next initWorkArea5Entries_80467D8(void) {
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
 
     R0 = A_byte_2011860;
@@ -2198,8 +2198,8 @@ Next sub_80467D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8047028 ── */
-/* sub_8047028: run the chatbox script attached to the dialogue context in R5.
+/* ── chatbox_stepContextScript_8047028 ── */
+/* chatbox_stepContextScript_8047028: run the chatbox script attached to the dialogue context in R5.
  *
  * First updates some inter-frame state (sub_8047134), then, while the
  * 0x8 event flag is set, stores the text scroll speed into the context's
@@ -2211,7 +2211,7 @@ Next sub_80467D8(void) {
  * Always returns R0 = 0 (Z set), with R1/R2 left as the callees left them.
  * Preserves R4-R7 and everything from R8 up.
  */
-Next sub_8047028(void) {
+Next chatbox_stepContextScript_8047028(void) {
     GUEST_CALL(sub_8047134);
 
     /* Proceed only while event flag 0x8 is set. */
@@ -2239,12 +2239,12 @@ Next sub_8047028(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A4AB8 ── */
-/* sub_80A4AB8 (r5 = battle object):
+/* ── battle_objectEnterState4LatchTilePos_80A4AB8 ── */
+/* battle_objectEnterState4LatchTilePos_80A4AB8 (r5 = battle object):
  * Put the object into state 4 and latch its current tile coordinates
  * (bytes at +5/+6) into its position fields (+0x24/+0x28),
  * then run the follow-up update in sub_80A4ACC. */
-Next sub_80A4AB8(void) {
+Next battle_objectEnterState4LatchTilePos_80A4AB8(void) {
     ST8(R5 + 8, 4);                      /* state = 4 */
 
     /* copy tile coords into the position fields */
@@ -2259,8 +2259,8 @@ Next sub_80A4AB8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A4BDC ── */
-/* sub_80A4BDC: tail-call dispatcher for the menu object in r5.
+/* ── menu_stateDispatch_80A4BDC ── */
+/* menu_stateDispatch_80A4BDC: tail-call dispatcher for the menu object in r5.
  *
  * The phase byte at [r5+8] is stored pre-multiplied by 4 (0, 4 or 8), so it
  * serves directly as the byte offset into the handler table at off_80A4BF0.
@@ -2268,7 +2268,7 @@ Next sub_80A4AB8(void) {
  * thumb bit) and R1 = the raw phase byte; because the original tail-calls it
  * (mov lr, pc / bx r0), the handler's results pass straight through to this
  * function's caller. */
-Next sub_80A4BDC(void) {
+Next menu_stateDispatch_80A4BDC(void) {
     u32 sel = LD8(R5 + 8);
 
     R1 = sel;
@@ -2276,7 +2276,7 @@ Next sub_80A4BDC(void) {
 
     switch (sel) {
     case 0: GUEST_CALL(sub_80A4BFC); break;
-    case 4: GUEST_CALL(sub_80A4C46); break;
+    case 4: GUEST_CALL(sprite_tickWithFlagReset_80A4C46); break;
     case 8: GUEST_CALL(sub_80A4C5C); break;
     /* other byte values would index past the table and never occur */
     }
@@ -2284,13 +2284,13 @@ Next sub_80A4BDC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A4C46 ── */
-/* sub_80A4C46(r4 = unused context, r5 = sprite object):
+/* ── sprite_tickWithFlagReset_80A4C46 ── */
+/* sprite_tickWithFlagReset_80A4C46(r4 = unused context, r5 = sprite object):
  * Sprite animation tick: fetch the current frame's parameters, and if the
  * frame carries the 0x80 flag, reset the object's byte at +8 to 8 (probably
  * a sub-action/animation counter), then advance the sprite animation.
  * Flags and r0-r3 on return are whatever sprite_update leaves. */
-Next sub_80A4C46(void) {
+Next sprite_tickWithFlagReset_80A4C46(void) {
     GUEST_CALL(sprite_getFrameParameters);
 
     if (R0 & 0x80)
@@ -2402,12 +2402,12 @@ Next reqBBS_setFlags_8140A24(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801FE00 ── */
-/* sub_801FE00: reset/clear the text-printer state used by message boxes.
+/* ── chatbox_resetPrinterState_801FE00 ── */
+/* chatbox_resetPrinterState_801FE00: reset/clear the text-printer state used by message boxes.
  * Zeroes the printer's word-sized state, its halfword flags, marks its
  * current character slot as unused (0xFF), and clears its two buffers.
  * Leaves r2 untouched; r3 ends pointing at the printer state struct. */
-Next sub_801FE00(void) {
+Next chatbox_resetPrinterState_801FE00(void) {
     /* clear the pending-word/state field */
     ST32(A_eStruct203F7D8, 0);
 

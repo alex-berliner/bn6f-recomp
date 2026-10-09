@@ -1,0 +1,177 @@
+name: sound_pushRequest_802CA5C
+address: '0x0802CA5C'
+kind: function
+status: confirmed
+summary: Packs a sound ID from a request struct into a FIFO record and sends it to the ARM7 sound handler.
+interface: void sound_pushRequest_802CA5C(/* r5 */ struct SoundRequest *req); // no meaningful return; flags/regs
+  out are just fifo_pushRecord16's leftovers
+details: 'Reads a signed 8-bit sound id at offset +6 of the struct pointed to by r5 and pushes a single 16-bit-format
+  FIFO record via fifo_pushRecord16_8009FF8 with tag 0xB200 and data words 0, 0. The record value is "0x40000000
+  | (((id << 3) + 13) & 0x1FF) << 16 | 0x15": bit 30 marks the record as a sound request, bits 16..24 carry the
+  9-bit packed id (id*8+13, the same packing the ARM7 side decodes), and the low byte 0x15 is the sound command
+  selector. r5 is only read; r4/r6/r7 are preserved. Presumably called when gameplay or scripts want a sound/SFX
+  played, with the actual mixing handled on the ARM7 side of the FIFO.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261009-010742);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_9.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    9' --file leaves_farm_9.c AddRandomVarianceToTwoCoords GetBattleNaviStatsAddr getBattleObjectPalette_800F334
+    object_removePanelReserve returnBoolIfAIDataFlagsAreSet_8012F3E setChipsForPlayerObject_800FDEA sub_8013FD0
+    sub_8014150 sub_80143FC sub_8014498 sub_80159A2 sub_8015BEC sub_80165B8 sub_80168C8 sub_8016E3C sub_801986C
+    sub_801A648 sub_801C9A4 sub_801CE6C sub_801CED2 sub_801DA24 sub_8027320 sub_80273EC sub_8028284 sub_802A0F8
+    sub_802A2E8 sub_802BED4 sub_802C1F0 sub_802CA5C sub_802CA82 sub_802D064 sub_802D6A0 sub_802DCEC sub_802FB90
+    sub_802FBB4 sub_802FBD8 sub_802FC28 sub_802FC4C sub_802FC9C sub_8030054 sub_8031122 sub_80313B0 sub_80313D4
+    sub_80313FC sub_8031C2A sub_8031C7C sub_8031C94 SpawnCounterPinkRingMaybe_80C4C12 chargeShotChargeObject_init_80E0E10
+    sub_80C44A8 sub_80C6AAC sub_80C9CA2 sub_80CAC44 sub_80CAD14 sub_80EC90E sub_80ECA0C sub_80FDF4C sub_80FDF84
+    sub_80FDF98 sub_80FE1FE sub_80FE452 sub_8109FA2 t3_0x16_80C6B40 t3_0xd3_80DFE40 InitializeT1BattleObjectStructs
+    clearBattleObjectLinkedLists_800318C clearBattleStateUnk11Flag_800A9D6 clear_flags32_20093A4 reset_flags32_20093A4
+    setBattleStateUnk11Flag_800A9CA set_flags32_20093A4 sub_800596C sub_800768C sub_8007978 sub_80079A8 sub_8007BF0
+    sub_800927C sub_800A2F8 sub_800A4E0 sub_800A7EA sub_800AA1A sub_800AAFC warp_setSubsystemIndexTo0x14AndOthers_8005f14
+    GetCurPETNavi GetRNG GetRNGSecondary GetRenderInfoLCDControl SeedRNG SetRenderInfoLCDControl ZeroFillByByte
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802CA5C
+
+    .venv/bin/python -m wf verify --function sub_802CA5C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261009-010742-verify-7)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802CA5C
+
+    .venv/bin/python -m wf verify --function sub_802CA5C --snapshots SNAPSHOT_DIR'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261009-010742-verify-7)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_802CA5C
+
+    .venv/bin/python -m wf verify --function sub_802CA5C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-010742-verify-7)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^0802ca5c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_9.c
+  where: recomp de7782d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_802CA5C -> sound_pushRequest_802CA5C
+  where: bn6f 515d103c
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 220cf4fd
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_9.c
+coverage:
+- battles1
+- story2
+related:
+- AddRandomVarianceToTwoCoords
+- GetBattleNaviStatsAddr
+- getBattleObjectPalette_800F334
+- object_removePanelReserve
+- returnBoolIfAIDataFlagsAreSet_8012F3E
+- setChipsForPlayerObject_800FDEA
+- sub_8013FD0
+- sub_8014150
+- sub_80143FC
+- sub_8014498
+- sub_80159A2
+- sub_8015BEC
+- sub_80165B8
+- sub_80168C8
+- sub_8016E3C
+- sub_801986C
+- sub_801A648
+- sub_801C9A4
+- sub_801CE6C
+- sub_801CED2
+- sub_801DA24
+- sub_8027320
+- sub_80273EC
+- sub_8028284
+- sub_802A0F8
+- sub_802A2E8
+- sub_802BED4
+- sub_802C1F0
+- sub_802CA82
+- sub_802D064
+- sub_802D6A0
+- sub_802DCEC
+- sub_802FB90
+- sub_802FBB4
+- sub_802FBD8
+- sub_802FC28
+- sub_802FC4C
+- sub_802FC9C
+- sub_8030054
+- sub_8031122
+- sub_80313B0
+- sub_80313D4
+- sub_80313FC
+- sub_8031C2A
+- sub_8031C7C
+- sub_8031C94
+- SpawnCounterPinkRingMaybe_80C4C12
+- chargeShotChargeObject_init_80E0E10
+- sub_80C44A8
+- sub_80C6AAC
+- sub_80C9CA2
+- sub_80CAC44
+- sub_80CAD14
+- sub_80EC90E
+- sub_80ECA0C
+- sub_80FDF4C
+- sub_80FDF84
+- sub_80FDF98
+- sub_80FE1FE
+- sub_80FE452
+- sub_8109FA2
+- t3_0x16_80C6B40
+- t3_0xd3_80DFE40
+- InitializeT1BattleObjectStructs
+- clearBattleObjectLinkedLists_800318C
+- clearBattleStateUnk11Flag_800A9D6
+- clear_flags32_20093A4
+- reset_flags32_20093A4
+- setBattleStateUnk11Flag_800A9CA
+- set_flags32_20093A4
+- sub_800596C
+- sub_800768C
+- sub_8007978
+- sub_80079A8
+- sub_8007BF0
+- sub_800927C
+- sub_800A2F8
+- sub_800A4E0
+- sub_800A7EA
+- sub_800AA1A
+- sub_800AAFC
+- warp_setSubsystemIndexTo0x14AndOthers_8005f14
+- GetCurPETNavi
+- GetRNG
+- GetRNGSecondary
+- GetRenderInfoLCDControl
+- SeedRNG
+- SetRenderInfoLCDControl
+- ZeroFillByByte
+open_questions:
+- layout of the request struct beyond the id at +6 (offsets 0..5 unread here)
+- meaning of the +13 bias and <<3 packing on the ARM7 decode side
+- whether command byte 0x15 distinguishes SFX vs jingle vs BGM requests
+sources:
+- tools/wf run convert-20261009-010742
+previous_names:
+- sub_802CA5C

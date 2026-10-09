@@ -539,7 +539,7 @@ Next object_applyTintIfFlag16_80168F0(void) {
  *
  *   off_8016CFC + 0 -> sub_8016D08
  *   off_8016CFC + 4 -> sub_8016D8C
- *   off_8016CFC + 8 -> sub_8016E3C
+ *   off_8016CFC + 8 -> battle_objectCountdownPhaseOrReset_8016E3C
  *
  * The handler is invoked with R0 = the state byte and R1 = the handler
  * address left over from the table load; every other register passes through
@@ -560,7 +560,7 @@ Next battleObjectStateDispatcher_8016CE8(void) {
         GUEST_CALL(sub_8016D8C);
         break;
     case 8:
-        GUEST_CALL(sub_8016E3C);
+        GUEST_CALL(battle_objectCountdownPhaseOrReset_8016E3C);
         break;
     }
 
@@ -2420,7 +2420,7 @@ Next battle_aiAttackStateDispatch_80EC884(void) {
     if (mode == 0)
         GUEST_CALL(sub_80EC8A0);
     else
-        GUEST_CALL(sub_80EC90E);
+        GUEST_CALL(ai_attackTickDelayTimer_80EC90E);
 
     RETURN_TO_CALLER();
 }
@@ -2457,13 +2457,13 @@ Next ai_attackTickDown_timerEndExit_8109DBA(void) {
  * Per-frame update for a battle object. While the object is still in its
  * first phase (CurPhase == 0), initialize its ExtraVars word (offset 0x64)
  * to Alliance ^ DirectionFlip (alignment adjusted by facing flip), run
- * sub_800AA1A with that value, and clear the byte at offset 0x07;
+ * list_tryAddUniqueEntry_800AA1A with that value, and clear the byte at offset 0x07;
  * this setup runs only once. Afterwards, run the object's common update
- * routine sub_80165B8 in both cases.
+ * routine battle_ResetObjectActionState_80165B8 in both cases.
  *
- * Flag contract: sub_80165B8 only updates the NZ flags, so C/V at return
+ * Flag contract: battle_ResetObjectActionState_80165B8 only updates the NZ flags, so C/V at return
  * are whatever the `cmp r0, #0` on CurPhase left (C=1, V=0), except on the
- * taken path where sub_800AA1A's C/V win. The cmp is therefore reproduced
+ * taken path where list_tryAddUniqueEntry_800AA1A's C/V win. The cmp is therefore reproduced
  * explicitly before the branch. */
 Next battle_objFirstPhaseInitAndCommonUpdate_8109F4C(void) {
     u32 phase = LD8(R5 + oBattleObject_CurPhase);
@@ -2476,15 +2476,15 @@ Next battle_objFirstPhaseInitAndCommonUpdate_8109F4C(void) {
 
         ST32(R5 + oBattleObject_ExtraVars + 4, side);
 
-        /* sub_800AA1A(r0 = alliance ^ facing flip, r1 = facing flip) */
+        /* list_tryAddUniqueEntry_800AA1A(r0 = alliance ^ facing flip, r1 = facing flip) */
         R0 = side;
         R1 = LD8(R5 + oBattleObject_DirectionFlip);
-        GUEST_CALL(sub_800AA1A);
+        GUEST_CALL(list_tryAddUniqueEntry_800AA1A);
 
         ST8(R5 + 0x07, 0);
     }
 
-    GUEST_CALL(sub_80165B8);
+    GUEST_CALL(battle_ResetObjectActionState_80165B8);
     RETURN_TO_CALLER();
 }
 
@@ -2589,8 +2589,8 @@ Next sub_8026A50(void) {
  * Run this object's standard per-frame update sequence: refresh its
  * animation/timer state, then pass its +0x0E attribute through the shared
  * flags_clearFlagWordBit_802FE6A/sub_80062EC helpers, run the object-wide update passes
- * (sub_802A3CC, sub_802A0F8), and finally report the object's state byte
- * stored at +0x04. Flags are left as sub_802A0F8 returned them; r6/r7 are
+ * (sub_802A3CC, battle_DispatchPendingEvent_802A0F8), and finally report the object's state byte
+ * stored at +0x04. Flags are left as battle_DispatchPendingEvent_802A0F8 returned them; r6/r7 are
  * preserved for the caller. */
 Next object_runFrameUpdate_8026A6C(void) {
     u32 self = R5;
@@ -2602,7 +2602,7 @@ Next object_runFrameUpdate_8026A6C(void) {
     GUEST_CALL(sub_80062EC);
 
     GUEST_CALL(sub_802A3CC);
-    GUEST_CALL(sub_802A0F8);
+    GUEST_CALL(battle_DispatchPendingEvent_802A0F8);
 
     R0 = LD8(self + 0x04);
     RETURN_TO_CALLER();
@@ -2792,7 +2792,7 @@ Next runObjectStateHandler_802C1D4(void) {
     R0 = selector;
     R1 = handler;
     if (selector < 4)
-        GUEST_CALL(sub_802C1F0);
+        GUEST_CALL(initShuffledOrderTable42_802C1F0);
     else
         GUEST_CALL(sub_802C218);
 

@@ -908,13 +908,13 @@ Next getTable2036720EntryFields_802CE78(void) {
 }
 
 /* ── initStateCounters100_802D08C ── */
-/* initStateCounters100_802D08C(r0 = selector flag passed through to sub_802D064):
+/* initStateCounters100_802D08C(r0 = selector flag passed through to getTableEntryPtr32_802D064):
  * Initialise a state struct: clear the byte at +0x10 and set the two
  * bytes at +0xD and +0xF to 100. Returns the struct pointer in r0 and
  * r1 = 100 (flags reflect r1). */
 Next initStateCounters100_802D08C(void) {
-    /* sub_802D064 resolves the struct to initialise and returns it in r0. */
-    GUEST_CALL(sub_802D064);
+    /* getTableEntryPtr32_802D064 resolves the struct to initialise and returns it in r0. */
+    GUEST_CALL(getTableEntryPtr32_802D064);
     u32 state = R0;
 
     ST8(state + 0x10, 0);
@@ -2302,10 +2302,10 @@ Next battle_objectTickWithExtraHandler_8109F6A(void) {
 
 /* ── sub_8109F7E ── */
 /* sub_8109F7E: call the two init steps in sequence (sub_8016B02, then
- * sub_8109FA2) and return; results are whatever the callees leave behind. */
+ * battle_object_onAction8EndClearExtraVars_8109FA2) and return; results are whatever the callees leave behind. */
 Next sub_8109F7E(void) {
     GUEST_CALL(sub_8016B02);
-    GUEST_CALL(sub_8109FA2);
+    GUEST_CALL(battle_object_onAction8EndClearExtraVars_8109FA2);
     RETURN_TO_CALLER();
 }
 

@@ -546,7 +546,7 @@ Next camera_resetToOrigin_8007338(void) {
  * (sub_800B460), all battle structs including the battle statistics are
  * copied back (battle_copyStructsIncludingBattleStats_800b2d8), and the
  * battle state's phase byte at offset 0x02 is set to 0x0C to trigger the
- * follow-up handler via sub_8007978.
+ * follow-up handler via battle_dispatchPhase_8007978.
  *
  * r5 = battle state struct. r4, r6, r7, r10 are passed through untouched.
  * Flags on return: N/Z always reflect R0 (0 on the early-exit path, 0x0C on
@@ -940,13 +940,13 @@ Next sub_812365C(void) {
 
 /* ── sub_8123678 ── */
 /* sub_8123678(r5 = object pointer):
- * Runs a check by calling sub_81190F8 with argument 0. If it reports
+ * Runs a check by calling sprite_testFrameParamsMaskC0_81190F8 with argument 0. If it reports
  * success, writes state 4 to the object's byte at offset 3 and calls
  * sub_8123D70 to advance it; otherwise returns immediately.
  * Flags on return are those left by whichever callee ran last. */
 Next sub_8123678(void) {
     R0 = 0;
-    GUEST_CALL(sub_81190F8);
+    GUEST_CALL(sprite_testFrameParamsMaskC0_81190F8);
     if (R0 != 0) {
         R0 = 4;
         ST8(R5 + 3, R0);

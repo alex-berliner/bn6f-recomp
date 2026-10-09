@@ -2113,11 +2113,11 @@ Next getNextEntryAddress_800AAAE(void) {
 
 /* ── sub_800AAF2 ── */
 /* sub_800AAF2:
- * Passes 0 in r0 to sub_800AAFC and tail-returns its results
+ * Passes 0 in r0 to clearIndexEntryPair_800AAFC and tail-returns its results
  * (r2/r3/r4 flow straight out of the callee). */
 Next sub_800AAF2(void) {
     R0 = 0;
-    GUEST_CALL(sub_800AAFC);
+    GUEST_CALL(clearIndexEntryPair_800AAFC);
     RETURN_TO_CALLER();
 }
 

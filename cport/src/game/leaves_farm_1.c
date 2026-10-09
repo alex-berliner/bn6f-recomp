@@ -811,11 +811,11 @@ Next getStructFrom2008450(void) {
 
 /* ── sub_8046664 ── */
 /* sub_8046664: run both halves of the (unspecified) update routine:
- * first sub_80466AA, then sub_804657C. All registers other than the
+ * first sub_80466AA, then battle_initEStructArr_804657C. All registers other than the
  * flags are preserved; r4-r7 are untouched here and by both callees. */
 Next sub_8046664(void) {
     GUEST_CALL(sub_80466AA);
-    GUEST_CALL(sub_804657C);
+    GUEST_CALL(battle_initEStructArr_804657C);
     RETURN_TO_CALLER();
 }
 
