@@ -110,7 +110,8 @@ def batch(args):
         try:   # calls without an exit snapshot (no return, or cut off here) are not counted
             subprocess.run([os.path.join(ROOT, "build-tools/mgba_run"), os.path.join(ROOT, "bn6f/bn6f.gba"), "--quiet",
                             "--frames", "1", "--bios", os.path.join(ROOT, "gbarecomp/bios/gba_bios.bin"),
-                            "--call-snaps", d, "200000"], capture_output=True, text=True, timeout=1800)
+                            "--call-snaps", d, "200000"], capture_output=True, text=True,
+                           timeout=300)   # seconds normally; a call stuck inside one emulator step never ends
         except subprocess.TimeoutExpired:
             pass
         env = dict(os.environ, BN6F_ROM=os.path.join(ROOT, "bn6f/bn6f.gba"), ORACLE_CONTRACT=CONTRACT)
