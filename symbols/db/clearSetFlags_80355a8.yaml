@@ -1,0 +1,73 @@
+name: clearSetFlags_80355a8
+address: '0x080355A8'
+kind: function
+status: confirmed
+summary: Resets a fixed set of five story event flags and sets one other flag (EVENT_120), then returns 0 — likely
+  a scenario-state reset/reinit helper.
+interface: void clearSetFlags_80355a8(void); /* returns r0 = 0; r4-r7 and r10 are preserved; flags clobbered */
+details: 'Takes no meaningful input (the listed r4-r7/r10/lr inputs are just caller context; the function never
+  reads them and preserves r4-r7 via push/pop). Unconditionally clears five event flags via ClearEventFlagFromImmediate
+  — EVENT_682 (word 6, bit 0x82), EVENT_85F (word 8, bit 0x5F), EVENT_ABA (word 10, bit 0xBA), EVENT_CDC (word 12,
+  bit 0xDC) and EVENT_CE0 (word 12, bit 0xE0) — then sets EVENT_120 (word 1, bit 0x20) via SetEventFlagFromImmediate.
+  Always returns 0 in r0. All operations are hard-coded immediates; there is no parameterization. The exact story
+  meaning of each flag is not identifiable from this function alone; the grouping (four later-word flags cleared,
+  one early flag set) suggests it marks some scenario/task as re-armed or completed.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-044111);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_33.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    33' --file leaves_farm_33.c clearSetFlags_80355a8
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function clearSetFlags_80355a8
+
+    .venv/bin/python -m wf verify --function clearSetFlags_80355a8 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-044111-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function clearSetFlags_80355a8
+
+    .venv/bin/python -m wf verify --function clearSetFlags_80355a8 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-044111-verify-1)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function clearSetFlags_80355a8
+
+    .venv/bin/python -m wf verify --function clearSetFlags_80355a8 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-044111-verify-1)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^080355a8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_33.c
+  where: recomp 9dfd1ad
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_33.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related: []
+open_questions:
+- which scenario or job each of the six flags corresponds to (needs cross-reference of callers and flag usage sites)
+- why EVENT_120 is set rather than cleared, and what state that flag gates
+sources:
+- tools/wf run convert-20261009-044111
