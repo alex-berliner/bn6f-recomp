@@ -1,0 +1,107 @@
+name: battle_objectAdvanceCounterToState8_8046DDC
+address: '0x08046DDC'
+kind: function
+status: confirmed
+summary: Steps an object's counter at (+8) forward by 2 each call, and once it reaches 21 clamps it and switches
+  the object's state byte (+0) to 8, then calls a per-object update helper.
+interface: int sub_8046DDC(void *obj /* r5 */)  // always returns 0; clobbers r0-r3, r12, flags; preserves r4-r7
+details: 'Treats r5 as a pointer to a small object/state record. It reads the byte at offset 0x08 (a frame/charge
+  counter), adds 2, and stores it back. If the new value has reached 0x15 (21), it clamps the counter at 0x15 and
+  writes 8 into the byte at offset 0x00, which appears to be the object''s state/mode field (writing 8 here moves
+  the object into state 8, presumably its next phase). It then calls sub_8047134 with r5 still holding the object
+  pointer (that helper likely updates/renders the object for its current state) and finally returns 0 in r0 with
+  flags set from 0. The +2 step and the 0x15 cap suggest a timed transition: the object spends a fixed number of
+  ticks in its current state before switching to state 8. Note the counter is stored before the comparison, so the
+  stored value is the unclamped sum; the clamp rewrite only happens when the threshold is crossed. Only r4-r7 (r5
+  included) are preserved per the caller contract; the callee-saved r8-r12 listed as outputs are effectively whatever
+  the helper leaves behind.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8046DDC
+
+    .venv/bin/python -m wf verify --function sub_8046DDC --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8046DDC
+
+    .venv/bin/python -m wf verify --function sub_8046DDC --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_8046DDC
+
+    .venv/bin/python -m wf verify --function sub_8046DDC --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, story2.'
+  reproduce: grep -l '^08046ddc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_8046DDC -> battle_objectAdvanceCounterToState8_8046DDC
+  where: bn6f 6b4fd76d
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0dbd5ac5
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- battles1
+- story2
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_canMove
+- object_checkPanelParameters
+- object_setPanelAlliance
+- sub_800D618
+- sub_814E09C
+- sub_814E21C
+- sub_813B768
+- sub_813C490
+- zeroFill_813B934
+- zeroFill_813D960
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- chatbox_80419B4
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+open_questions: []
+sources:
+- tools/wf run convert-20261009-005437
+previous_names:
+- sub_8046DDC

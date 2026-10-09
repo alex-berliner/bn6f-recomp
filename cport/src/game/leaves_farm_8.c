@@ -55,12 +55,12 @@ Next sub_81345D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81345E8 ── */
-/* sub_81345E8: spawn/queue helper that forwards a fixed argument set to
+/* ── battle_spawnFixedArgEffect_wrapper_81345E8 ── */
+/* battle_spawnFixedArgEffect_wrapper_81345E8: spawn/queue helper that forwards a fixed argument set to
  * sub_813468C. The original pushes r4-r7 and pops them afterwards, so this
  * wrapper preserves r4-r7 even though the callee may clobber them; only
  * r1-r3 (the callee's results) escape to the caller. */
-Next sub_81345E8(void) {
+Next battle_spawnFixedArgEffect_wrapper_81345E8(void) {
     u32 in_r4 = R4, in_r5 = R5, in_r6 = R6, in_r7 = R7;
 
     R0 = 0xF0;                       /* x position: 240 */
@@ -154,8 +154,8 @@ Next owPlayer_unlockPlayerAfterNonNPCDialogue_809E122(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809E14C ── */
-/* sub_809E14C(r0 = fixed-animation id):
+/* ── owPlayer_RequestFixedAnimation_809E14C ── */
+/* owPlayer_RequestFixedAnimation_809E14C(r0 = fixed-animation id):
  * Called when the overworld player is told to play a fixed animation.
  * sub_809E462 decides whether that animation can take effect immediately:
  *   - if it returns 0 (Z set), the id is written to the fixed-animation
@@ -165,7 +165,7 @@ Next owPlayer_unlockPlayerAfterNonNPCDialogue_809E122(void) {
  *     eStruct200ace0+0x1c (byte_200ACFC).
  * r4-r7 are preserved (the id is passed to sub_809E462 in r4/r7's struct
  * pointer, but both are restored before returning). */
-Next sub_809E14C(void) {
+Next owPlayer_RequestFixedAnimation_809E14C(void) {
     u32 anim = R0;
     u32 saved_r4 = R4;
     u32 saved_r7 = R7;
@@ -240,11 +240,11 @@ Next init_eStartScreenAnimationControl200B1A0_2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803EBC8 ── */
-/* sub_803EBC8: reset the state used by sub_803EF60's subsystem.
+/* ── resetAndInitStruct200BC30_803EBC8 ── */
+/* resetAndInitStruct200BC30_803EBC8: reset the state used by sub_803EF60's subsystem.
  * Resets the list head at dword_200B1B0 (via sub_803EF84), zeroes the
  * 0x20-byte struct at eStruct200BC30, and then (re)initializes it. */
-Next sub_803EBC8(void) {
+Next resetAndInitStruct200BC30_803EBC8(void) {
     R0 = A_dword_200B1B0;
     GUEST_CALL(sub_803EF84);
 
@@ -387,15 +387,15 @@ Next object_setPanelAlliance(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800D618 ── */
-/* sub_800D618(r0 = object, r1 = passed through to object_getPanelDataOffset,
+/* ── object_checkPanelTypeMatchesValue_800D618 ── */
+/* object_checkPanelTypeMatchesValue_800D618(r0 = object, r1 = passed through to object_getPanelDataOffset,
  *             r2 = value the panel must match, r4 = passed through):
  * Looks up the panel data of the panel the object stands on and returns 1
  * in r0 only when the panel's byte at offset 4 differs from the panel's
  * alliance byte (offset 3) and equals r2. Returns 0 when there is no panel
  * data or when either check fails. Flags (c/v) on the "no panel data" exit
  * are whatever object_getPanelDataOffset left behind, as in the original. */
-Next sub_800D618(void) {
+Next object_checkPanelTypeMatchesValue_800D618(void) {
     u32 savedR4 = R4;                 /* r4 is preserved for the caller */
     u32 expected = R2;
 
@@ -479,12 +479,12 @@ Next sub_814E21C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813B768 ── */
-/* sub_813B768:
+/* ── toolkit_resetToolState_813B768 ── */
+/* toolkit_resetToolState_813B768:
  * Reset the tool's state: clear the halfword behind the toolkit's
  * Unk2004334 pointer and zero 0x10 bytes behind its Unk200431c pointer.
  * r2 is passed through unchanged. */
-Next sub_813B768(void) {
+Next toolkit_resetToolState_813B768(void) {
     u32 *toolkit = (u32 *)R10;
 
     ST16(LD32((u32)toolkit + oToolkit_Unk2004334_Ptr), 0);
@@ -496,11 +496,11 @@ Next sub_813B768(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813C490 ── */
-/* sub_813C490: read stat byte 0x1F of the PET's current navi and report
+/* ── checkCurPETNaviStats1FIsOne_813C490 ── */
+/* checkCurPETNaviStats1FIsOne_813C490: read stat byte 0x1F of the PET's current navi and report
  * whether it equals 1 (some cross-menu "navi is set" check).
  * Returns the check result (0 or 1) in r0; r4 is preserved. */
-Next sub_813C490(void) {
+Next checkCurPETNaviStats1FIsOne_813C490(void) {
     u32 result = 0;
 
     R0 = 0;     /* a1 = stats offset base (unused by the callee) */
@@ -594,12 +594,12 @@ Next onUpdateInRealWorld_8033A96(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80341F8 ── */
-/* sub_80341F8: prepare the transmission screen.
+/* ── transmission_BeginTransmissionScene_80341F8 ── */
+/* transmission_BeginTransmissionScene_80341F8: prepare the transmission screen.
  * r5 = pointer to a state byte that is set to 4; also switches the LCD into a
  * fixed render mode, refreshes render info, and starts the transmission song.
  * Flag outputs are whatever the final PlayMusic call leaves behind. */
-Next sub_80341F8(void) {
+Next transmission_BeginTransmissionScene_80341F8(void) {
     ST8(R5, 4);
 
     R0 = 0x40; /* LCD control render info */
@@ -614,15 +614,15 @@ Next sub_80341F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80419B4 ── */
-/* chatbox_80419B4(r4 = chatbox work area, r2/r5/r10 = caller context):
+/* ── chatbox_startCurNaviScript_80419B4 ── */
+/* chatbox_startCurNaviScript_80419B4(r4 = chatbox work area, r2/r5/r10 = caller context):
  * Start the chatbox script belonging to the currently equipped PET navi.
  * Reads the navi's script ID from r4[navi + 2]; 0xFF means "no script for
  * this navi", in which case r4 is just advanced past the table by 0xE.
  * Otherwise hands the script ID to the chatbox config loader (which ignores
  * its first argument; r0 still holds the navi number from GetCurPETNavi).
  * Always returns r0 = 1. */
-Next chatbox_80419B4(void) {
+Next chatbox_startCurNaviScript_80419B4(void) {
     GUEST_CALL(GetCurPETNavi);      /* R0 = current PET navi number */
 
     R1 = LD8(R4 + R0 + 2);          /* script ID slot for this navi */
@@ -685,11 +685,11 @@ Next reqBBS_initMemory_813F9DA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8046DDC ── */
-/* sub_8046DDC: advance the counter at (R5+8) by 2. Once it reaches 0x15,
+/* ── battle_objectAdvanceCounterToState8_8046DDC ── */
+/* battle_objectAdvanceCounterToState8_8046DDC: advance the counter at (R5+8) by 2. Once it reaches 0x15,
  * clamp it there and move the object at R5 into state 8 (byte at R5+0).
  * Then runs sub_8047134 (which reads R5) and returns 0. */
-Next sub_8046DDC(void) {
+Next battle_objectAdvanceCounterToState8_8046DDC(void) {
     u32 counter = (u32)LD8(R5 + 8) + 2;
 
     ST8(R5 + 8, counter);

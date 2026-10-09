@@ -147,10 +147,10 @@ Next musicGameState_8000784(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80015B4 ── */
-/* sub_80015B4: clear the BG tile VRAM area (0x600E000..0x600FFFF) and rebuild it.
+/* ── bg_ClearTilesAndReloadGraphics_80015B4 ── */
+/* bg_ClearTilesAndReloadGraphics_80015B4: clear the BG tile VRAM area (0x600E000..0x600FFFF) and rebuild it.
  * Takes no real arguments; r2/r3/r10 are untouched pass-through state. */
-Next sub_80015B4(void) {
+Next bg_ClearTilesAndReloadGraphics_80015B4(void) {
     /* Fill the BG tile IDs region in VRAM with zeros, 8 words at a time. */
     R0 = A_vBGTileIds;
     R1 = 0x2000;
@@ -165,15 +165,15 @@ Next sub_80015B4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8002310 ── */
-/* sub_8002310(r0 = &GFXAnimData.ParamNext, r4/r5/r6 = scratch passed through,
+/* ── sprite_gfxAnimState_GotoNext_8002310 ── */
+/* sprite_gfxAnimState_GotoNext_8002310(r0 = &GFXAnimData.ParamNext, r4/r5/r6 = scratch passed through,
  * r7 = GFXAnimState):
  * Advance an animation state to its "next" animation: read the linked
  * GFXAnimData slot (top bit cleared as a flag/mask), gather the state's
  * parameters, and hand everything to sub_8002378 to install the new
  * animation. All argument registers are consumed by the callee; r4-r7 are
  * preserved for our caller (the original saves/restores r4 and r7). */
-Next sub_8002310(void) {
+Next sprite_gfxAnimState_GotoNext_8002310(void) {
     u32 animDataPtr = R0;
     u32 savedR4 = R4;
     u32 state = R7;

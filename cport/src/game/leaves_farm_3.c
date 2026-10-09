@@ -457,8 +457,8 @@ Next getIndexed80hRecordPtr_8028164(void) {
 }
 
 /* ── gfx_QueueNextChunkedGfxTransfer_80281C4 ── */
-/* gfx_QueueNextChunkedGfxTransfer_80281C4(r0 = source, r1 = destination, r3 = context for sub_80281A8):
- * Let sub_80281A8 set up the next graphics chunk (it adjusts r0 = source and
+/* gfx_QueueNextChunkedGfxTransfer_80281C4(r0 = source, r1 = destination, r3 = context for battle_getChipElementData_80281A8):
+ * Let battle_getChipElementData_80281A8 set up the next graphics chunk (it adjusts r0 = source and
  * r1 = destination), queue it as an 0x80-sized eight-word-aligned GFX
  * transfer, then advance the destination pointer past the chunk just queued.
  * Returns r1 = destination + 0x80; r2 and r3 are preserved (the original
@@ -468,7 +468,7 @@ Next gfx_QueueNextChunkedGfxTransfer_80281C4(void) {
     u32 saved_r3 = R3;
 
     /* Set up source/destination for this chunk. */
-    GUEST_CALL(sub_80281A8);
+    GUEST_CALL(battle_getChipElementData_80281A8);
 
     /* Queue the chunk transfer: QueueEightWordAlignedGFXTransfer(src, dest, 0x80). */
     R2 = 0x80;
@@ -2313,12 +2313,12 @@ Next sub_8109F7E(void) {
 /* battle_object_updatePhaseTick_8109FC4: advance a battle object's phase bookkeeping.
  * If the object (r5) is still in phase 0, initialize its Param4 byte
  * (struct offset 7) to 0 as well; then run the shared per-object
- * update sub_8016CE8, which also produces the final flags. */
+ * update battleObjectStateDispatcher_8016CE8, which also produces the final flags. */
 Next battle_object_updatePhaseTick_8109FC4(void) {
     if (LD8(R5 + oBattleObject_CurPhase) == 0)
         ST8(R5 + 7 /* oBattleObject_Param4 */, 0);
 
-    GUEST_CALL(sub_8016CE8);
+    GUEST_CALL(battleObjectStateDispatcher_8016CE8);
 
     RETURN_TO_CALLER();
 }

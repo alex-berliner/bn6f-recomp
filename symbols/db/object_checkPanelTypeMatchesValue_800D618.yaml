@@ -1,0 +1,112 @@
+name: object_checkPanelTypeMatchesValue_800D618
+address: '0x0800D618'
+kind: function
+status: confirmed
+summary: Returns 1 only when the panel the object stands on has its type/status byte equal to a requested value
+  and that byte differs from the panel's alliance byte.
+interface: bool object_checkPanelTypeMatchesValue(object* obj /*r0*/, u32 panelArg /*r1*/, u8 expected /*r2*/);
+  r4 must hold caller's value and is preserved (passed through as context); returns 0/1 in r0; clobbers nz, c/v
+  state as left by object_getPanelDataOffset on the no-panel exit
+details: 'Saves r2 into r4 (also preserving it for the caller) and calls object_getPanelDataOffset to fetch the
+  panel data for the panel the object (r0, with r1 as an argument) currently occupies. If there is no panel data
+  (r0 == 0) it returns 0 immediately, leaving r1/r2 and the flags exactly as the callee left them. Otherwise it
+  loads the panel''s byte at oPanelData_Unk_04 and its oPanelData_Alliance byte and returns 1 only if both hold:
+  Unk_04 != Alliance, and Unk_04 == the requested value (r2). This reads like a "is this panel of type X, but not
+  one claimed by the panel''s alliance" test, likely used for panel-type-dependent battle effects (grass/ice/poison/cube-style
+  checks that shouldn''t count on panels already owned/aligned). The alliance-vs-type comparison is odd enough that
+  the semantic of oPanelData_Unk_04 is not settled.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_8.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    8' --file leaves_farm_8.c sub_8134548 sub_81345D4 sub_81345E8 sub_81353DC sub_81353F0 owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+    sub_809E14C SetCurNaviHPToFull init_eStartScreenAnimationControl200B1A0_2 sub_803EBC8 object_canMove object_checkPanelParameters
+    object_setPanelAlliance sub_800D618 sub_814E09C sub_814E21C sub_813B768 sub_813C490 zeroFill_813B934 zeroFill_813D960
+    doPETEffect_8033fc0 onUpdateInRealWorld_8033A96 sub_80341F8 chatbox_80419B4 reqBBS_813E616 reqBBS_initMemory_813F9DA
+    sub_8046DDC
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800D618
+
+    .venv/bin/python -m wf verify --function sub_800D618 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-005437-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800D618
+
+    .venv/bin/python -m wf verify --function sub_800D618 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-005437-verify-2)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800D618
+
+    .venv/bin/python -m wf verify --function sub_800D618 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: menus2, story2.'
+  reproduce: grep -l '^0800d618 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_8.c
+  where: recomp 92f325c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-09'
+  what: rename sub_800D618 -> object_checkPanelTypeMatchesValue_800D618
+  where: bn6f 6b4fd76d
+  tool: tools/rename_symbol.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0dbd5ac5
+  tool: tools/symdoc.py
+readable_c: cport/src/game/leaves_farm_8.c
+coverage:
+- menus2
+- story2
+related:
+- sub_8134548
+- sub_81345D4
+- sub_81345E8
+- sub_81353DC
+- sub_81353F0
+- owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+- sub_809E14C
+- SetCurNaviHPToFull
+- init_eStartScreenAnimationControl200B1A0_2
+- sub_803EBC8
+- object_canMove
+- object_checkPanelParameters
+- object_setPanelAlliance
+- sub_814E09C
+- sub_814E21C
+- sub_813B768
+- sub_813C490
+- zeroFill_813B934
+- zeroFill_813D960
+- doPETEffect_8033fc0
+- onUpdateInRealWorld_8033A96
+- sub_80341F8
+- chatbox_80419B4
+- reqBBS_813E616
+- reqBBS_initMemory_813F9DA
+- sub_8046DDC
+open_questions:
+- Exact meaning of oPanelData_Unk_04 (panel type/element/status?) and why the original compares it against oPanelData_Alliance
+  rather than a separate owner field
+- What r1 represents to object_getPanelDataOffset (sub-object index? side?) and what r4 is used for by callers of
+  this routine
+- No known caller sites were cross-checked, so the intended in-game trigger for this check is unconfirmed
+sources:
+- tools/wf run convert-20261009-005437
+previous_names:
+- sub_800D618

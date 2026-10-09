@@ -7,14 +7,14 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_8031BB2 ── */
-/* sub_8031BB2 (r0, r5 = arguments passed through to the first helper):
+/* ── text_setupTextboxAndStartPrint_8031BB2 ── */
+/* text_setupTextboxAndStartPrint_8031BB2 (r0, r5 = arguments passed through to the first helper):
  * text-engine routine that runs the standard three-step textbox setup:
  * initialise the textbox state, open its window box, then kick off the
  * text print. All further register results are simply whatever the last
  * called helper leaves behind (r2 is set to 8, r3 to 8, r4 to 0 and
  * r5 to 0x10 before the window call). */
-Next sub_8031BB2(void) {
+Next text_setupTextboxAndStartPrint_8031BB2(void) {
     GUEST_CALL(sub_803172E); /* initialise textbox state (uses r0, r5) */
 
     R2 = 8;
@@ -28,12 +28,12 @@ Next sub_8031BB2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031BCA ── */
-/* sub_8031BCA: text-box helper. Runs one step of the text engine, then
+/* ── textbox_StepAndRefreshWindow_8031BCA ── */
+/* textbox_StepAndRefreshWindow_8031BCA: text-box helper. Runs one step of the text engine, then
  * blits a window region (x=0/16, y=8 wide) and refreshes the box.
  * Inputs arrive in r0/r5 for the first callee; everything else is set up
  * here. All final register/flag state comes out of the last callee. */
-Next sub_8031BCA(void) {
+Next textbox_StepAndRefreshWindow_8031BCA(void) {
     /* Advance the text engine state (reads r0/r5, returns updated r0). */
     GUEST_CALL(sub_803172E);
 
@@ -444,8 +444,8 @@ Next object_spawnType4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80059B4 ── */
-/* sub_80059B4 (self: * GameState in r5): on-map warp handler.
+/* ── map_onMapWarpCutscene_80059B4 ── */
+/* map_onMapWarpCutscene_80059B4 (self: * GameState in r5): on-map warp handler.
  *
  * Clears EVENT_1703, sets EVENT_1738, then plays the on-map warp cutscene
  * (CutsceneScriptOnMapWarp_8098a02) with parameter 0. Disabling the cutscene
@@ -454,7 +454,7 @@ Next object_spawnType4(void) {
 enum { EVENT_1703 = 0x1703 };
 enum { EVENT_1738 = 0x1738 };
 
-Next sub_80059B4(void) {
+Next map_onMapWarpCutscene_80059B4(void) {
     /* ClearEventFlagFromImmediate/SetEventFlagFromImmediate take the event id
      * split as (bank in r0, index in r1). */
     R0 = EVENT_1703 >> 8;
@@ -472,11 +472,11 @@ Next sub_80059B4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80059D0 ── */
-/* sub_80059D0: in-map warp handler. Raises the two story event flags that
+/* ── startInMapWarpCutscene_80059D0 ── */
+/* startInMapWarpCutscene_80059D0: in-map warp handler. Raises the two story event flags that
  * mark the warp event as started, then kicks off the "on in-map warp"
  * cutscene. Event flags live in word 0x17; this sets bits 3 and 0x38. */
-Next sub_80059D0(void) {
+Next startInMapWarpCutscene_80059D0(void) {
     R0 = 0x17;
     R1 = 3;
     GUEST_CALL(SetEventFlagFromImmediate);   /* set EVENT_1703 */
@@ -492,10 +492,10 @@ Next sub_80059D0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8006330 ── */
-/* sub_8006330(r0 = fade slot index): stop the screen fade, then free the two
+/* ── screenFade_StopAndFreePalettes_8006330 ── */
+/* screenFade_StopAndFreePalettes_8006330(r0 = fade slot index): stop the screen fade, then free the two
  * palettes (0x12, 0x13) used by the fade effect. r5 is preserved for callers. */
-Next sub_8006330(void) {
+Next screenFade_StopAndFreePalettes_8006330(void) {
     u32 savedR5 = R5;
 
     /* r5 = eScreenFade + index: point at this fade's control block */
@@ -513,11 +513,11 @@ Next sub_8006330(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8007338 ── */
-/* sub_8007338: reinitialize the camera.
+/* ── camera_resetToOrigin_8007338 ── */
+/* camera_resetToOrigin_8007338: reinitialize the camera.
  * Runs the camera's reset routine, then re-inits the camera at the origin
  * of map group 0xF0, map 0, and clears camera field unk03/14. */
-Next sub_8007338(void) {
+Next camera_resetToOrigin_8007338(void) {
     /* Reset camera state. */
     GUEST_CALL(mapTiles_ResetDimensionsToDefault_80303E8);
 
@@ -537,8 +537,8 @@ Next sub_8007338(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80079D0 ── */
-/* sub_80079D0: battle-end phase hook.
+/* ── battle_state_finishBattlePhase_80079d0 ── */
+/* battle_state_finishBattlePhase_80079d0: battle-end phase hook.
  *
  * Asks the battle-state manager (battle_doBothTrackedIdsMatch_800B46C) whether the battle is finished,
  * using the magic key 0x12345678 as the query token. If it reports "not done",
@@ -551,7 +551,7 @@ Next sub_8007338(void) {
  * r5 = battle state struct. r4, r6, r7, r10 are passed through untouched.
  * Flags on return: N/Z always reflect R0 (0 on the early-exit path, 0x0C on
  * the success path); C/V are whatever the last called helper left. */
-Next sub_80079D0(void) {
+Next battle_state_finishBattlePhase_80079d0(void) {
     R0 = 0x12345678;
     GUEST_CALL(battle_doBothTrackedIdsMatch_800B46C);
 
@@ -571,12 +571,12 @@ Next sub_80079D0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80079F0 ── */
-/* sub_80079F0: run one step of the "battle field reveal" sequence.
+/* ── battle_RevealFieldColumnsStep_80079F0 ── */
+/* battle_RevealFieldColumnsStep_80079F0: run one step of the "battle field reveal" sequence.
  * Draws the column pattern for the current battle field (r5 = battle state),
  * then advances the battle state script to state 8 with a cleared timer.
  * Returns with Z set (callers branch on it). */
-Next sub_80079F0(void) {
+Next battle_RevealFieldColumnsStep_80079F0(void) {
     /* Ask which columns of the panel the effect should cover... */
     GUEST_CALL(GetBattlePanelColumnPattern);
     /* ...and apply that pattern to this battle field's layout (offset 6). */
@@ -597,8 +597,8 @@ Next sub_80079F0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80092A0 ── */
-/* sub_80092A0: battle-state phase dispatcher.
+/* ── battle_dispatchStatePhase_80092A0 ── */
+/* battle_dispatchStatePhase_80092A0: battle-state phase dispatcher.
  *
  * r5 points to the battle state; the byte at offset 2 selects an entry in
  * the handler table at off_80092B4 (entries at byte offsets 0, 4 and 8):
@@ -608,7 +608,7 @@ Next sub_80079F0(void) {
  * handler is entered with r0 = the phase byte and r1 = its own (Thumb)
  * entry address; r2-r12 pass through untouched. The handler's results
  * (registers and flags) flow straight back to our caller. */
-Next sub_80092A0(void) {
+Next battle_dispatchStatePhase_80092A0(void) {
     u32 phase = LD8(R5 + 2); /* oBattleState_Unk_02 */
     u32 handler = LD32(A_off_80092B4 + phase);
 
@@ -634,8 +634,8 @@ Next sub_80092A0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800945C ── */
-/* sub_800945C: battle-state phase dispatcher.
+/* ── battle_DispatchStatePhase_800945C ── */
+/* battle_DispatchStatePhase_800945C: battle-state phase dispatcher.
  *
  * R5 points to the battle state; the phase byte at offset 2 selects one of
  * two handlers from the jump table at off_8009470. The phase byte is passed
@@ -647,7 +647,7 @@ Next sub_80092A0(void) {
  * bytes lower than on entry; that slot has to exist here too. r2-r12 and
  * the incoming flags pass through to the handler untouched, and whatever
  * the handler leaves in the registers and flags is returned to our caller. */
-Next sub_800945C(void) {
+Next battle_DispatchStatePhase_800945C(void) {
     u32 phase = LD8(R5 + 2);                /* ldrb r0, [r5,#2] */
 
     /* push {lr}: the handler observes the lowered SP */
@@ -665,12 +665,12 @@ Next sub_800945C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800A892 ── */
-/* sub_800A892:
+/* ── battle_tickCustomScreenEffect_800A892 ── */
+/* battle_tickCustomScreenEffect_800A892:
  * Custom battle effect tick: if the active battle effects include the "custom
  * style" effect (0x100) but not the one at bit 3, and battle_getStateByteNibbles_800A832 reports
  * state 2, run the effect's main handler sub_8005DBE. */
-Next sub_800A892(void) {
+Next battle_tickCustomScreenEffect_800A892(void) {
     u32 effects = 0;
 
     GUEST_CALL(GetBattleEffects);
@@ -686,12 +686,12 @@ Next sub_800A892(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800A97A ── */
-/* sub_800A97A: check whether the battle is ending.
+/* ── battle_IsBattleEnding_800A97A ── */
+/* battle_IsBattleEnding_800A97A: check whether the battle is ending.
  * Returns 1 when GetBattleEffects reports the bit-3 effect *and* the battle
  * state's phase counter (byte 7) has reached 15; otherwise returns 0.
  * Flags on exit match the original's last comparison on each path. */
-Next sub_800A97A(void) {
+Next battle_IsBattleEnding_800A97A(void) {
     GUEST_CALL(GetBattleEffects);
     u32 effects = R0;
 
@@ -741,12 +741,12 @@ Next sub_800AA92(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800AABC ── */
-/* sub_800AABC: advance the battle state into phase 0x14.
+/* ── battle_stateGotoPhase14_800AABC ── */
+/* battle_stateGotoPhase14_800AABC: advance the battle state into phase 0x14.
  * Runs setTwoStructs_800A840(4), then sets the battle state's phase index
  * to 0x14 and zeroes its halfword at offset 2. r5 is preserved (the original
  * pushes/pops it); r0 = battle state pointer, r1 = 0, flags as by `mov r1, #0`. */
-Next sub_800AABC(void) {
+Next battle_stateGotoPhase14_800AABC(void) {
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
 
     R0 = 4;
@@ -1045,15 +1045,15 @@ Next sub_8123D54(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81245BC ── */
-/* sub_81245BC: copy a 6x8 block of background tiles.
+/* ── bg_CopyTileBlock2At2_6_8x12_81245BC ── */
+/* bg_CopyTileBlock2At2_6_8x12_81245BC: copy a 6x8 block of background tiles.
  *
  * Prepares the arguments for CopyBackgroundTiles (a leaf routine that takes
  * six arguments and may clobber the low registers, including r4/r5) and calls
  * it, preserving the caller's r4-r7 across the call. r1 and r2 are left as
  * CopyBackgroundTiles leaves them; the condition flags are likewise whatever
  * the callee's last flag-setting instruction produced. */
-Next sub_81245BC(void) {
+Next bg_CopyTileBlock2At2_6_8x12_81245BC(void) {
     u32 saved_r4 = R4;
     u32 saved_r5 = R5;
     u32 saved_r6 = R6;
@@ -1076,11 +1076,11 @@ Next sub_81245BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812474C ── */
-/* sub_812474C(r0 = script index):
+/* ── chatbox_runScript201C100_812474C ── */
+/* chatbox_runScript201C100_812474C(r0 = script index):
  * Run one text script from the chatbox text archive (eTextScript201C100).
  * All register and flag outputs are just whatever chatbox_runScript leaves. */
-Next sub_812474C(void) {
+Next chatbox_runScript201C100_812474C(void) {
     u32 scriptIdx = R0;
 
     R1 = scriptIdx;                 /* archive in r0, script index in r1 */
@@ -1124,13 +1124,13 @@ Next sub_81264F4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812650C ── */
-/* sub_812650C: parameter-filling wrapper around sub_8126570.
+/* ── wrapper_sub8126570_fixedArgs_812650C ── */
+/* wrapper_sub8126570_fixedArgs_812650C: parameter-filling wrapper around sub_8126570.
  * Sets up the four size arguments and the pointers to the byte_8124A84 /
  * dword_8124A94 data, invokes the worker, and restores its own saved
  * r4-r7 on the way out. r2/r3 (and the flags) come straight from the
  * callee; r0/r1 are scratch. */
-Next sub_812650C(void) {
+Next wrapper_sub8126570_fixedArgs_812650C(void) {
     /* The original push {r4-r7,lr} / pop {r4-r7,pc} preserves the
      * caller's r4-r7 across the call. */
     u32 savedR4 = R4;
@@ -1214,14 +1214,14 @@ Next sub_8126554(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81275A8 ── */
-/* sub_81275A8(r5 = background/scene state ptr):
+/* ── background_drawSceneSection_81275A8 ── */
+/* background_drawSceneSection_81275A8(r5 = background/scene state ptr):
  * Redraws a background section: reads the page/screen index stored at +0xD of
  * the state struct, offsets it by 0x11 (its row in the tile map), and copies an
  * 11x8 block of 32x32-pixel tile blocks (block #3) from the tile-id table
  * byte_8126930 into the background.
  * r4-r7 are work registers of the caller and must be preserved. */
-Next sub_81275A8(void) {
+Next background_drawSceneSection_81275A8(void) {
     u32 saved_r4 = R4;
     u32 saved_r5 = R5;
     u32 saved_r6 = R6;
@@ -1245,12 +1245,12 @@ Next sub_81275A8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8127618 ── */
-/* sub_8127618(r5 = source struct): redraw a 3x3 block of background tiles.
+/* ── bg_copyTileBlockFromStructOffset_8127618 ── */
+/* bg_copyTileBlockFromStructOffset_8127618(r5 = source struct): redraw a 3x3 block of background tiles.
  * The tile column offset is taken from the signed byte at [r5+0xD] and
  * biased by the base tile 0x23; the tile ids come from byte_81269E0.
  * r2/r3 are whatever CopyBackgroundTiles leaves behind; r4-r7 are restored. */
-Next sub_8127618(void) {
+Next bg_copyTileBlockFromStructOffset_8127618(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
 
     /* first tile index: header byte + base tile 0x23 */
@@ -1273,8 +1273,8 @@ Next sub_8127618(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81277E0 ── */
-/* sub_81277E0: redraw an 8x8 block of background tiles.
+/* ── bg_Draw8x8TileBlock3FromTable_81277E0 ── */
+/* bg_Draw8x8TileBlock3FromTable_81277E0: redraw an 8x8 block of background tiles.
  *
  * r5 points to an object whose signed byte at offset 0x0D holds a tile index;
  * adding 0x31 turns it into the index of the first entry in the tile-id table
@@ -1285,7 +1285,7 @@ Next sub_8127618(void) {
  * around the call (the original pushes/pops them). CopyBackgroundTiles
  * receives the block coordinates in r0-r5 and leaves r2 = 3 as observed by
  * callers. */
-Next sub_81277E0(void) {
+Next bg_Draw8x8TileBlock3FromTable_81277E0(void) {
     u32 savedR4 = R4;
     u32 savedR5 = R5;
     u32 savedR6 = R6;
@@ -1310,13 +1310,13 @@ Next sub_81277E0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8127ED4 ── */
-/* sub_8127ED4(r0 = text index, [r5+0xD] = variant flag byte):
+/* ── chatbox_runVariantScript_8127ED4 ── */
+/* chatbox_runVariantScript_8127ED4(r0 = text index, [r5+0xD] = variant flag byte):
  * Run one chatbox script from the fixed text archive eTextScript201BA00.
  * If bit 0 of the flag byte at [r5+0xD] is set, the script index is
  * advanced by 10, selecting the alternate variant of the text.
  * Returns with whatever r0-r3 the chatbox script runner leaves behind. */
-Next sub_8127ED4(void) {
+Next chatbox_runVariantScript_8127ED4(void) {
     u32 scriptIdx = R0;
     u32 variantFlags = LD8(R5 + 0xD);
 
@@ -1335,8 +1335,8 @@ Next sub_8127ED4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81281C0 ── */
-/* sub_81281C0(r4..r7, r10 = context):
+/* ── bg_ReloadBackgroundRegion_5_3_81281C0 ── */
+/* bg_ReloadBackgroundRegion_5_3_81281C0(r4..r7, r10 = context):
  * If the halfword at [r5+0x1E] is nonzero, redraw one background region:
  * copy the 0x17x8 tile block of map layer j=5, i=3 from tile block 2,
  * using the tile id table at unk_2026700. Otherwise do nothing.
@@ -1344,7 +1344,7 @@ Next sub_8127ED4(void) {
  * leaves them (r4-r7 preserved across the call, r0-r3 come back from
  * CopyBackgroundTiles on the call path, r0 keeps the tested halfword on the
  * skip path). */
-Next sub_81281C0(void) {
+Next bg_ReloadBackgroundRegion_5_3_81281C0(void) {
     u32 saved_r4 = R4;
     u32 saved_r5 = R5;
 
@@ -1368,11 +1368,11 @@ Next sub_81281C0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8128260 ── */
-/* sub_8128260: fill the 0x100-halfword buffer at unk_2026870 with the byte
+/* ── palette_fillBufferWithFadeByte_8128260 ── */
+/* palette_fillBufferWithFadeByte_8128260: fill the 0x100-halfword buffer at unk_2026870 with the byte
  * stored at byte_812798A, promoted to a halfword pattern (byte << 8).
  * r3 is preserved; r2 still holds the fill value on return. */
-Next sub_8128260(void) {
+Next palette_fillBufferWithFadeByte_8128260(void) {
     R0 = A_unk_2026870;              /* destination buffer */
     R1 = 0x100;                      /* halfword count */
     R2 = (u32)LD8(A_byte_812798A) << 8; /* value byte, spread across the halfword */
@@ -1380,13 +1380,13 @@ Next sub_8128260(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812AFB0 ── */
-/* sub_812AFB0:
+/* ── bg_LoadFullScreenTilesAndSetup_812AFB0 ── */
+/* bg_LoadFullScreenTilesAndSetup_812AFB0:
  * Fill a 30x20-tile screen area with tile IDs taken from the table at
  * unk_201FDA0, using tile block 1, then run the follow-up setup in
  * sub_812B4AC. The results sub_812B4AC leaves in r1-r3 (and the flags it
  * leaves behind) are passed on to the caller; r4-r7 are preserved. */
-Next sub_812AFB0(void) {
+Next bg_LoadFullScreenTilesAndSetup_812AFB0(void) {
     /* CopyBackgroundTiles may clobber r4/r5 (it receives 0x1E and 0x14 there),
      * and sub_812B4AC sees whatever it left behind — but this function's
      * callers expect the original r4-r7 back, so keep them aside. */

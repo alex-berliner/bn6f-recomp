@@ -3071,12 +3071,12 @@ Next battle_IsNoCustomPlusActive_80107C0(void) {
 
 /* ── battle_objectNameIdToPopupHandler_8010DD0 ── */
 /* battle_objectNameIdToPopupHandler_8010DD0(r5 = battle object):
- * Fetches the battle object's name ID and tail-calls sub_8010DDA, which
- * continues the name-popup handling with it. Returns sub_8010DDA's result
- * in r0 (r1 is scratch); flags are whatever sub_8010DDA leaves. */
+ * Fetches the battle object's name ID and tail-calls battle_DispatchEnemyAiRoutine_8010DDA, which
+ * continues the name-popup handling with it. Returns battle_DispatchEnemyAiRoutine_8010DDA's result
+ * in r0 (r1 is scratch); flags are whatever battle_DispatchEnemyAiRoutine_8010DDA leaves. */
 Next battle_objectNameIdToPopupHandler_8010DD0(void) {
     R0 = LD16(R5 + oBattleObject_NameID);
-    GUEST_CALL(sub_8010DDA);
+    GUEST_CALL(battle_DispatchEnemyAiRoutine_8010DDA);
     RETURN_TO_CALLER();
 }
 
@@ -3206,7 +3206,7 @@ Next battle_beginTurnOpenProcess_80144C0(void) {
 
     GUEST_CALL(sub_8014536);
     GUEST_CALL(sub_801086C);
-    GUEST_CALL(sub_80142C2);
+    GUEST_CALL(battle_applySelfDamageFromBattleEffect_80142C2);
 
     /* restore the callee-saved registers the original pops back */
     R4 = savedR4;

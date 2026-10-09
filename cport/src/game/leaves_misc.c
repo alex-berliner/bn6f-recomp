@@ -182,7 +182,7 @@ Next sub_800647C(void) {
  * battle state's unk11 flag set, mark the sequence as started and run the
  * one-time setup in sub_8026840. Every frame then polls sub_8026A28:
  *   0 -> sequence still running, nothing to do this frame;
- *   2 -> run sub_800AABC (one final step) and return;
+ *   2 -> run battle_stateGotoPhase14_800AABC (one final step) and return;
  *   otherwise the sequence is over: flag both fighters' AI data and switch
  *   the battle state machine to index 0xC with the halfword at +2 cleared. */
 Next sub_8009338(void) {
@@ -203,7 +203,7 @@ Next sub_8009338(void) {
     }
 
     if (phase == 2) {
-        GUEST_CALL(sub_800AABC);
+        GUEST_CALL(battle_stateGotoPhase14_800AABC);
         RETURN_TO_CALLER();
     }
 
