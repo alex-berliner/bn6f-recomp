@@ -11,10 +11,12 @@ from typing import cast
 
 import yaml
 
+from wf.repo import REPO
 from wf.tools.models import ACCEPTED_DIR, FARM, USAGE_LOG, ConversionContext, Prompt, conversion_context
 from wf.tools.subsystem import CandidateFile, FileReply, SymbolDraft, parse_drafts, yaml_blocks
 from wf.types import FunctionName, ModelSpec, Result, ToolMessage
 
+DATABASE = REPO / "symbols/db"
 DRAFT_SYSTEM = "You document functions of a GBA game's disassembly for its symbol database. Reply exactly in the format asked."
 
 # The fixed instructions come first and the function last, so every request shares a long prefix
@@ -121,7 +123,9 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
     header = (f"/*\n * {file_name}: {subsystem}.\n *\n * Small functions converted one at a time by the "
               f"model farm, each checked against\n * the lifted original before it was kept.\n */\n"
               '#include "game.h"\n#include "runtime.h"\n')
-    sections = [f"{SECTION.format(function=function)}\n{body}" for function, body in _names_kept_apart(bodies)]
+    renamed = _renamed_since()
+    sections = [f"{SECTION.format(function=function)}\n{_with_current_names(body, renamed)}"
+                for function, body in _names_kept_apart(bodies)]
     code = header + "\n" + "\n\n".join(sections) + "\n" if sections else None
     return FileReply(file=CandidateFile(code) if code else None, cfg_lines=(), drafts=tuple(drafts),
                      problems=tuple(problems), seconds=0.0)
@@ -169,6 +173,28 @@ def _names_kept_apart(bodies: list[tuple[FunctionName, str]]) -> list[tuple[Func
         seen |= names
         kept.append((function, body))
     return kept
+
+
+def _renamed_since() -> dict[str, str]:
+    """Every earlier name of a symbol (symbols/db previous_names) and the name it has now: a candidate
+    accepted before a record run renamed one of its callees still calls it by the old name."""
+    renamed: dict[str, str] = {}
+    for entry in DATABASE.glob("*.yaml"):
+        data = cast(object, yaml.safe_load(entry.read_text()))
+        if not isinstance(data, dict):
+            continue
+        fields = cast(dict[str, object], data)
+        name, previous = fields.get("name"), fields.get("previous_names")
+        if isinstance(name, str) and isinstance(previous, list):
+            renamed |= {old: name for old in cast(list[object], previous) if isinstance(old, str) and old != name}
+    return renamed
+
+
+def _with_current_names(body: str, renamed: dict[str, str]) -> str:
+    if not renamed:
+        return body
+    pattern = re.compile(r"\b(" + "|".join(map(re.escape, sorted(renamed, key=len, reverse=True))) + r")\b")
+    return pattern.sub(lambda match: renamed[match[1]], body)
 
 
 def _defined_names(body: str) -> set[str]:

@@ -563,13 +563,29 @@ def _failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
             owner = function_at_line(code, int(where[1])) if where else None
             if owner is not None:
                 failing[owner] = f"does not compile with the others: {line.strip()}"[:300]
+            # a definition twice, or of a function outside the group: the candidate whose part holds the
+            # stray definition goes (not the function it defines, whose own part may be fine)
             named = re.match(r"`Next (\w+)\(void\)` must be defined exactly once", line)
-            if named:
-                failing[FunctionName(named[1])] = line.strip()
+            outside = re.match(r"defines functions outside the subsystem: (.*)", line)
+            for defined in ([named[1]] if named else []) + (outside[1].split(", ") if outside else []):
+                for owner in _parts_defining(code, defined):
+                    if owner != defined:
+                        failing[owner] = f"its part also defines `Next {defined}(void)`"
             undrafted = re.match(r"no ```yaml entry for: (.*)", line)
             for function in undrafted[1].split(", ") if undrafted else ():
                 failing[FunctionName(function)] = "no drafted symbols/db entry yet"
     return failing
+
+
+def _parts_defining(code: str, name: str) -> list[FunctionName]:
+    """Whose parts of an assembled farm file define `Next NAME(void)`."""
+    owners: list[FunctionName] = []
+    for number, line in enumerate(code.splitlines(), start=1):
+        if re.match(rf"^\s*Next\s+{re.escape(name)}\s*\(\s*void\s*\)\s*\{{", line):
+            owner = function_at_line(code, number)
+            if owner is not None:
+                owners.append(owner)
+    return owners
 
 
 def _contexts(state: ConvertState) -> tuple[ConversionContext, ...]:
