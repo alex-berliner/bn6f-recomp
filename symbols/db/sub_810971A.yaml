@@ -1,0 +1,93 @@
+name: sub_810971A
+address: '0x0810971A'
+kind: function
+status: confirmed
+summary: Picks one object at random from a battle row chosen by alliance-dependent panel parameters and returns
+  its entry byte split into an id (low 3 bits) and a 4-bit attribute field.
+interface: int battle_pickRandomRowObjectFields(int r0, int r4, int r5, int r6, int r7 /* args forwarded to the
+  panel-param helper; r4-r6 read by the callee */) // returns r0 = entry byte & 7 (object id/kind), r1 = entry byte
+  >> 4 (attribute field, bit 3 discarded); // r0 = 0 and nz from cmp when the row is empty; nz set from the final
+  r0
+details: 'Battle helper. It first calls GetAllianceDependentPanelParamArgs (with A_off_8109784 as
+
+  its parameter block in r3 and the caller''s r0/r4-r7 context) to work out which row/side''s
+
+  panel parameters apply to the current attacker''s alliance. It then reserves 8 bytes of
+
+  stack (buffer pointer saved in r7) and calls object_getPanelsInRowFiltered, which fills
+
+  the stack buffer with every object standing in that row and returns the count in r0.
+
+  If the count is zero, the function returns immediately with r0 = 0 and flags from the
+
+  count comparison (Z set). Otherwise it rolls a random number with GetPositiveSignedRNG
+
+  and takes it modulo the count via BIOS swi 6 (Div, remainder in r1), indexes the buffer
+
+  at that random slot, loads the one-byte entry, and splits it: r0 = low 3 bits of the
+
+  byte (the shifts lsl #0x1d / lsr #0x1d mask off bit 3 as well, so the byte effectively
+
+  holds a 3-bit field and a 4-bit field with bit 3 unused), r1 = upper 4 bits. Flags nz
+
+  come from the returned r0. r4-r7 are preserved (r7 saved/restored around the buffer
+
+  pointer); r2/r3 are whatever the helpers left behind. The 8-byte stack scratch is only
+
+  sized for one entry per slot in the fill helper''s layout.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261009-032910);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_17.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    17' --file leaves_farm_17.c sub_810971A
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_810971A
+
+    .venv/bin/python -m wf verify --function sub_810971A --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261009-032910-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_810971A
+
+    .venv/bin/python -m wf verify --function sub_810971A --snapshots SNAPSHOT_DIR'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261009-032910-verify-4)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_810971A
+
+    .venv/bin/python -m wf verify --function sub_810971A --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-032910-verify-4)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battlesweep, fuzz, story2.'
+  reproduce: grep -l '^0810971a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_17.c
+  where: recomp d5c485e
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_17.c
+coverage:
+- battlesweep
+- fuzz
+- story2
+related: []
+open_questions:
+- Exact meaning of the low-3-bit and upper-4-bit fields of the entry byte (likely object kind/id and an attribute
+  such as alignment or panel state); more call sites needed.
+- Which battle feature uses this - the alliance-dependent panel parameter block and the row-filtered object collection
+  suggest a targeting pick for a specific attack or program advance, but the consumer is not identified.
+- What A_off_8109784 encodes (the alliance-dependent panel parameter table selected by GetAllianceDependentPanelParamArgs).
+sources:
+- tools/wf run convert-20261009-032910
