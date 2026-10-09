@@ -780,7 +780,8 @@ def main():
 
     if args.export_abi:
         summary = abi_export.write(args.export_abi, abi_export.Analysis(
-            p=p, info=info, names=names, effects=effects, flags_in=flags_in, callers_live=callers_live,
+            p=p, info=info, names=names, effects=effects, reads_writes=reads_writes, flags_in=flags_in,
+            callers_live=callers_live,
             indirect_ret=indirect_ret, indirect_targets=indirect_targets, tail_targets=tail_targets,
             inputs=inputs, may_write=may_write, preserved=preserved, must_write=must_write,
             may_unwind=may_unwind, needs_ret=needs_ret, unit_liveness=unit_liveness, local_w=local_w,
