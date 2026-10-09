@@ -1,0 +1,70 @@
+name: sub_800C100
+address: '0x0800C100'
+kind: function
+status: confirmed
+summary: draws the one-tile-high strip just below a panel (5x1 tiles)
+interface: 'static void draw_panel_strip(u32 column, u32 row, u32 side); adapter: in r0=column, r1=row (already
+  +1 from the panel row), r2=side, r10=toolkit; out r1-r3, r6, r7 (r4-r7 preserved, r1-r3 as CopyBackgroundTiles
+  leaves them)'
+details: Placement uses its own column mirror table byte_800C182 (row of 8 selected by the flipped-field flag);
+  the tile ids are one 0x20-byte set from byte_86E0498 selected by side ^ flip. Drawn 5 wide, 1 tall into tile block
+  2. Called with the panel's row + 1 when ePanelData +0xC is set, and after a slot is blanked (via sub_800C138).
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by zai/glm-5.3 through the convert workflow (5 attempt(s), run convert-20261009-062918); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/battle_panels.c
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf convert --subsystem ''battle field panels: panel data lookups
+    and checks (ePanelData)'' --file battle_panels.c sub_800C01C sub_800C0BA sub_800C100 sub_800C192 sub_800C5E0'
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C100
+
+    .venv/bin/python -m wf verify --function sub_800C100 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-062918-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C100
+
+    .venv/bin/python -m wf verify --function sub_800C100 --snapshots SNAPSHOT_DIR'
+  result: 19 compared, 0 differed, 5 out of domain (verify run convert-20261009-062918-verify-5)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C100
+
+    .venv/bin/python -m wf verify --function sub_800C100 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-062918-verify-5)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0800c100 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/battle_panels.c
+  where: recomp 5a8d65b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/battle_panels.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- sub_800C01C
+- sub_800C0BA
+- sub_800C192
+- sub_800C5E0
+open_questions:
+- what the strip is visually (shadow / front edge of the platform?)
+sources:
+- tools/wf run convert-20261009-062918

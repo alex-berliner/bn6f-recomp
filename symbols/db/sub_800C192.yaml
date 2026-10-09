@@ -1,0 +1,73 @@
+name: sub_800C192
+address: '0x0800C192'
+kind: function
+status: confirmed
+summary: steps the animated panel tile sets, copying each due frame into IWRAM
+interface: 'static void advance_panel_animations(void); adapter: no inputs, out r2 and r3 only'
+details: Walks the NULL-terminated pointer list off_800C1DC (six animation records). Each keeps its current frame
+  and its frames-to-go in counter slots of byte_2036740 (slot ids at +0 and +2), an IWRAM buffer at +4, and its
+  frames (tile data pointer + u8 delay, stride 8) at +8. Each step decrements the delay slot; when it hits zero
+  or below the frame slot advances (wrapping past the count at +1), the new frame's delay is loaded into the delay
+  slot, and the frame's 0x20 bytes are copied into the buffer with CopyByEightWords. r2/r3 are left exactly as the
+  loop's last pass leaves them (last delay, last frame count, or the copy call's leftovers) since they are its only
+  outputs.
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by zai/glm-5.3 through the convert workflow (5 attempt(s), run convert-20261009-062918); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/battle_panels.c
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf convert --subsystem ''battle field panels: panel data lookups
+    and checks (ePanelData)'' --file battle_panels.c sub_800C01C sub_800C0BA sub_800C100 sub_800C192 sub_800C5E0'
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C192
+
+    .venv/bin/python -m wf verify --function sub_800C192 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261009-062918-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C192
+
+    .venv/bin/python -m wf verify --function sub_800C192 --snapshots SNAPSHOT_DIR'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-062918-verify-5)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C192
+
+    .venv/bin/python -m wf verify --function sub_800C192 --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-062918-verify-5)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0800c192 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/battle_panels.c
+  where: recomp 5a8d65b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/battle_panels.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- sub_800C01C
+- sub_800C0BA
+- sub_800C100
+- sub_800C5E0
+open_questions:
+- whether the byte_2036740 counter slots are shared with any other system
+- which panels the six animations belong to (lava / grass / water?)
+sources:
+- tools/wf run convert-20261009-062918

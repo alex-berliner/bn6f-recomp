@@ -1,0 +1,73 @@
+name: sub_800C01C
+address: '0x0800C01C'
+kind: function
+status: confirmed
+summary: draws one battle field panel's 5x3 block of BG tiles from its tile-set family
+interface: 'static void draw_panel(u32 column, u32 row, u32 art, u32 side); adapter: in r0=column, r1=row, r2=art,
+  r3=side, r10=toolkit; out r1-r7 (r4-r7 preserved, r1-r3 as iCopyBackgroundTiles leaves them)'
+details: Looks up the panel's first BG tile column through the byte_800C0AA mirror table (row of 8 entries selected
+  by BattleState+0xD, the flipped-field flag) and its first tile row as row*3+6. The tile-id set comes from byte_86DFA98
+  + (art*6 + side*3 + row - 1)*0x20 — one 0x20-byte set per side and field row. On the flipped field families >=
+  0xB are remapped (0xC becomes 0xB, anything else becomes 0xC, so an ART_BLANK 0xFF turns into family 0xC there)
+  and the side inverts; family 0xFF on the normal field blanks the block with the all-zero ids at byte_800C08C.
+  Copies the block into tile block 2 via iCopyBackgroundTiles (reached through its thumb stub).
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by zai/glm-5.3 through the convert workflow (5 attempt(s), run convert-20261009-062918); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/battle_panels.c
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf convert --subsystem ''battle field panels: panel data lookups
+    and checks (ePanelData)'' --file battle_panels.c sub_800C01C sub_800C0BA sub_800C100 sub_800C192 sub_800C5E0'
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C01C
+
+    .venv/bin/python -m wf verify --function sub_800C01C --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-062918-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C01C
+
+    .venv/bin/python -m wf verify --function sub_800C01C --snapshots SNAPSHOT_DIR'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261009-062918-verify-5)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_800C01C
+
+    .venv/bin/python -m wf verify --function sub_800C01C --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-062918-verify-5)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
+  reproduce: grep -l '^0800c01c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/battle_panels.c
+  where: recomp 5a8d65b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/battle_panels.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story2
+related:
+- sub_800C0BA
+- sub_800C100
+- sub_800C192
+- sub_800C5E0
+open_questions:
+- what tile-set families 0xB and 0xC are (cracked / holy / stolen panels?)
+- whether the flipped-field family swap is a mirror or a state change
+sources:
+- tools/wf run convert-20261009-062918
