@@ -105,6 +105,9 @@ h1 { margin: 2px 0 4px; font: 600 clamp(26px, 3.2vw, 34px)/1.1 var(--font-displa
 #map .node:focus-visible > path { stroke: var(--accent); stroke-width: 3px; }
 #map .node, #map .edge { transition: opacity .12s ease; }
 #map.focusing .node:not(.lit), #map.focusing .edge:not(.lit) { opacity: .18; }
+#map { touch-action: manipulation; }
+#map.isolating .node:not(.kept), #map.isolating .edge:not(.kept),
+#map.isolating .cluster.workflow:not(.kept) { opacity: 0; pointer-events: none; }
 #map .node.lit > path { stroke-width: 2.5px; }
 #map .edge.lit > path:not(.hit) { stroke-width: 2.6px; }
 
@@ -147,7 +150,7 @@ h1 { margin: 2px 0 4px; font: 600 clamp(26px, 3.2vw, 34px)/1.1 var(--font-displa
     <div class="titles">
       <p class="eyebrow">BN6 Falzar recomp · tools/wf</p>
       <h1>Workflow map</h1>
-      <p class="sub">What the orchestrator (Claude) does, and what each Burr workflow does on its own. Point at a box, an arrow or a workflow's name for what it means, what it reads and what it produces. Click to pin the card; <kbd>Esc</kbd> closes it.</p>
+      <p class="sub">What the orchestrator (Claude) does, and what each Burr workflow does on its own. Point at a box, an arrow or a workflow's name for what it means, what it reads and what it produces. Click to pin the card; <kbd>Esc</kbd> closes it. Double-click a box to show only what it connects to; double-click again to show everything.</p>
     </div>
     <ul class="legend" aria-label="Legend">
       <li><svg width="34" height="10" aria-hidden="true"><line x1="1" y1="5" x2="26" y2="5" stroke="var(--e-start)" stroke-width="2"/><path d="M25 1 L33 5 L25 9 Z" fill="var(--e-start)"/></svg>orchestrator starts a run</li>
@@ -169,7 +172,7 @@ h1 { margin: 2px 0 4px; font: 600 clamp(26px, 3.2vw, 34px)/1.1 var(--font-displa
     <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
     <span id="zoom-label" aria-live="polite">100%</span>
     <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
-    <span class="stamp">Generated 2026-10-09 05:13 from 8dbe200 docs: efficiency notes on bisecting lockstep differences and the hung oracle run</span>
+    <span class="stamp">Generated 2026-10-09 05:59 from 31ac66d llm.blocked_until: three upstream errors in a row count a provider unavailable for half an hour (with uncommitted changes in tools/wf)</span>
   </div>
 
   <main class="canvas" id="canvas">
@@ -1150,7 +1153,8 @@ h1 { margin: 2px 0 4px; font: 600 clamp(26px, 3.2vw, 34px)/1.1 var(--font-displa
       });
       body.appendChild(box);
     });
-    if (!touch) body.appendChild(el("p", "hint", "Click to pin this card."));
+    if (!touch) body.appendChild(el("p", "hint", isolated ? "Click to pin this card. Double-click to show everything again."
+                                                         : "Click to pin this card. Double-click to show only what it connects to."));
   }
 
   function place(x, y) {
@@ -1194,6 +1198,28 @@ h1 { margin: 2px 0 4px; font: 600 clamp(26px, 3.2vw, 34px)/1.1 var(--font-displa
     var out = [id];
     (edgesOf[id] || []).forEach(function (edge) { out.push(edge); out = out.concat(tips[edge].joins); });
     return out;
+  }
+
+  /* isolating: a double-click shows only what a box connects to (the workflow boxes holding it stay);
+     another double-click shows everything again */
+  var isolated = null;
+
+  function isolate(id) {
+    var keep = related(id);
+    if (!keep) return;
+    keep.forEach(function (key) { var node = document.getElementById(key); if (node) node.classList.add("kept"); });
+    svg.querySelectorAll("g.cluster.workflow").forEach(function (cluster) {
+      var prefix = cluster.id.slice("cluster_wf_".length) + "__";
+      if (cluster.id === id || keep.some(function (key) { return key.indexOf(prefix) === 0; })) cluster.classList.add("kept");
+    });
+    svg.classList.add("isolating");
+    isolated = id;
+  }
+
+  function reveal() {
+    svg.querySelectorAll(".kept").forEach(function (node) { node.classList.remove("kept"); });
+    svg.classList.remove("isolating");
+    isolated = null;
   }
 
   function show(id, x, y) {
@@ -1294,6 +1320,16 @@ h1 { margin: 2px 0 4px; font: 600 clamp(26px, 3.2vw, 34px)/1.1 var(--font-displa
     pin(node.dataset.tip, event.clientX, event.clientY);
   });
 
+  svg.addEventListener("dblclick", function (event) {
+    var node = target(event);
+    if (isolated) { reveal(); }
+    else if (node) { isolate(node.dataset.tip); }
+    else { return; }
+    event.preventDefault();
+    showing = null;   /* the card's hint changes with the view */
+    if (pinned) { var at = [event.clientX, event.clientY]; var id = pinned; pinned = null; pin(id, at[0], at[1]); }
+  });
+
   svg.addEventListener("focusin", function (event) {
     var node = target(event);
     if (!node || pinned) return;
@@ -1311,7 +1347,10 @@ h1 { margin: 2px 0 4px; font: 600 clamp(26px, 3.2vw, 34px)/1.1 var(--font-displa
   });
 
   card.querySelector(".close").addEventListener("click", unpin);
-  document.addEventListener("keydown", function (event) { if (event.key === "Escape") unpin(); });
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") return;
+    if (pinned) unpin(); else if (isolated) reveal();
+  });
   document.addEventListener("click", function (event) {
     if (pinned && !card.contains(event.target) && !svg.contains(event.target)) unpin();
   });
