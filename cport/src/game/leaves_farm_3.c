@@ -1897,11 +1897,12 @@ Next isEventFlag212Set_80AA764(void) {
     u32 result = 0;
 
     /* TestEventFlagFromImmediate(flag): flag id 0x212 passed as
-     * group in r0, number in r1. */
+     * group in r0, number in r1. The answer is the Z flag (r0 is the
+     * flag's whole byte). */
     R0 = 2;
     R1 = 0x12;
     GUEST_CALL(TestEventFlagFromImmediate);
-    if (R0 != 0)
+    if (cpu.nz != 0)
         result = 1;
 
     R0 = result;

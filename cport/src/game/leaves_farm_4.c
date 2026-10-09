@@ -1489,9 +1489,10 @@ Next event_TestPlayerAdvanceForward_809DB50(void) {
 
     GUEST_CALL(TestEventFlagFromImmediate);
 
-    /* bne locret: with the request still pending, keep the helper's result
-     * as-is; otherwise fall through and clear R0. */
-    if (R0 == 0) {
+    /* bne locret: with the request still pending (Z clear), keep the
+     * helper's result as-is; otherwise clear R0, which holds the flag's
+     * whole byte and can be nonzero with this flag clear. */
+    if (cpu.nz == 0) {
         R0 = 0;
         SET_FLAGS_NZ(R0);
     }

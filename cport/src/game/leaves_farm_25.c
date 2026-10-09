@@ -1475,8 +1475,8 @@ Next npc_checkEntryEventFlagOrHidden_812818C(void) {
     u32 result = R2;
 
     R0 = flagId;
-    GUEST_CALL(TestEventFlag); /* result: R0 = 0 if the flag is clear, nonzero if set */
-    if (R0 == 0)
+    GUEST_CALL(TestEventFlag); /* result: Z set if the flag is clear (r0 is the flag's whole byte) */
+    if (cpu.nz == 0)
         result = 0x8000;
 
     R0 = inR0;

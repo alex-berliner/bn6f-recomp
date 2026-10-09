@@ -178,12 +178,14 @@ Next tryStartNotificationCutscene_8035054(void) {
 
         /* oGameState_Unk_12 being 0xFF blocks the notification. */
         if (LD8(gameState + oGameState_Unk_12) != 0xFF) {
-            /* The notification plays only once: it is guarded by event
-             * flag 0x171A, passed here as the (high, low) immediate pair. */
+            /* Event flag 0x171A requests the notification (text scripts set
+             * it), passed here as the (high, low) immediate pair. The answer
+             * is the Z flag: r0 is the flag's whole byte, nonzero whenever any
+             * of its 8 flags is set. */
             R0 = 0x17;
             R1 = 0x1A; /* EVENT_171A */
             GUEST_CALL(TestEventFlagFromImmediate);
-            if (R0 != 0) {
+            if (cpu.nz != 0) {
                 R0 = A_CutsceneScriptNotification_809AE68;
                 /* r1 still holds what TestEventFlagFromImmediate left there;
                  * the original passes that value on as the cutscene parameter. */
