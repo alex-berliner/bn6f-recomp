@@ -186,7 +186,8 @@ def start_convert(command: ConvertCommand) -> None:
     run_id, run_dir = new_run("convert")
     start = ConvertState(run_dir=run_dir, subsystem=command.subsystem, file_name=command.file,
                          functions=command.functions,
-                         models=tuple(model for spec in command.models for model in models_for(spec)) or DEFAULT_MODELS,
+                         models=tuple(dict.fromkeys(model for spec in command.models for model in models_for(spec)))
+                         or DEFAULT_MODELS,
                          rounds=command.rounds,
                          snapshots=command.snapshots, candidate=command.candidate, farm_model=command.farm_model,
                          defer_record=command.defer_record, battle_code=command.battle_code)
