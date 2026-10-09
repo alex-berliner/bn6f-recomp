@@ -1,0 +1,104 @@
+name: CutsceneCmd_wait_cutscene_process
+address: '0x08037826'
+kind: function
+status: confirmed
+summary: Polls the running map script each frame and reports whether it has reached its end-of-script opcode, letting
+  the cutscene player wait for the script to finish.
+interface: 'Next CutsceneCmd_wait_cutscene_process(void); // in: r5 = script context base, r4 = script read-offset
+  register pair, r7 = current cutscene command pointer; out: r0 = 1 if script finished else 0, r7 advanced by 2
+  on completion, NZC/V reflect the opcode compare and r0'
+details: 'Per-frame poll for the "wait for map script to end" cutscene command. Calls ReadMapScriptByte with r6
+  = 1, which fetches the byte at the script''s current data pointer ([r5 + r4] -> byte) and advances the script
+  read position in r4. If the fetched opcode is 0x11 (end-of-script), the cutscene command pointer in r7 is advanced
+  by 2 to skip past this command and r0 = 1 is returned ("done"); otherwise r0 = 0 ("still running") so the cutscene
+  engine keeps waiting. Flags on exit come from the CMP against 0x11 and then the NZ set on r0.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-004629);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_7.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    7' --file leaves_farm_7.c ZeroFillByEightWords ZeroFillByWord main_zeroFill_80017EC musicGameState_8000784 sub_80015B4
+    sub_8002310 CutsceneCmd_decomp_text_archive CutsceneCmd_wait_cutscene_process CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+    CutsceneCmd_wait_var_equal DecompressTextArchiveForCutscene MapScriptCutsceneCmd_do_pet_effect MapScriptCutsceneCmd_play_music
+    MapScriptCutsceneCmd_set_enter_map_screen_fade MapScriptCutsceneCmd_set_event_flag MapScriptCutsceneCmd_set_event_flag_range
+    MapScriptCutsceneCmd_write_eStruct2001c04_byte MapScriptCutsceneCmd_write_gamestate_byte MapScriptSubCmd_free_ow_map_object
+    NPCCommand_give_attached_shadow NPCCommand_jump_if_progress_in_range NPCCommand_wait_cutscene_var NPCCommand_wait_mystery_data_taken
+    HandleSaveMenu8132B88 SaveMenuUpdate8132C34 sub_813399C sub_8134538
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_wait_cutscene_process
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_wait_cutscene_process --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261009-004629-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_wait_cutscene_process
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_wait_cutscene_process --snapshots SNAPSHOT_DIR'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261009-004629-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_wait_cutscene_process
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_wait_cutscene_process --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-004629-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battles1, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08037826 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_7.c
+  where: recomp 753632d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_7.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+related:
+- ZeroFillByEightWords
+- ZeroFillByWord
+- main_zeroFill_80017EC
+- musicGameState_8000784
+- sub_80015B4
+- sub_8002310
+- CutsceneCmd_decomp_text_archive
+- CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+- CutsceneCmd_wait_var_equal
+- DecompressTextArchiveForCutscene
+- MapScriptCutsceneCmd_do_pet_effect
+- MapScriptCutsceneCmd_play_music
+- MapScriptCutsceneCmd_set_enter_map_screen_fade
+- MapScriptCutsceneCmd_set_event_flag
+- MapScriptCutsceneCmd_set_event_flag_range
+- MapScriptCutsceneCmd_write_eStruct2001c04_byte
+- MapScriptCutsceneCmd_write_gamestate_byte
+- MapScriptSubCmd_free_ow_map_object
+- NPCCommand_give_attached_shadow
+- NPCCommand_jump_if_progress_in_range
+- NPCCommand_wait_cutscene_var
+- NPCCommand_wait_mystery_data_taken
+- HandleSaveMenu8132B88
+- SaveMenuUpdate8132C34
+- sub_813399C
+- sub_8134538
+open_questions:
+- exact meaning of r6 = 1 argument to ReadMapScriptByte (mode/advance flag?) not confirmed
+- which structures r5/r4 index exactly (script interpreter state layout) not independently verified
+- whether 0x11 is used as end opcode across all map scripts or only some contexts
+sources:
+- tools/wf run convert-20261009-004629

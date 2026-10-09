@@ -1,0 +1,108 @@
+name: CutsceneCmd_wait_var_equal
+address: '0x08037808'
+kind: function
+status: confirmed
+summary: Cutscene script command "wait until script variable equals a value" — polls a script variable each update
+  and only advances the script once it matches the given target.
+interface: 'u32 CutsceneCmd_wait_var_equal(void) — in: r5 = script-context pointer, r7 = script-stream pointer,
+  lr = return address; out: r0 = 1 when the wait finished (command consumed) or 0 while still waiting, r4 = expected
+  value left over from the second read, r6 = last read mode (2), r7 advanced past the 3-byte command on success,
+  flags set (N/Z from movs, C/V from the compare or the r7 += 3 add)'
+details: 'Implements one of the map/cutscene script opcodes. The command is 3 bytes: an opcode byte, a variable
+  index, and a comparison value. Both operand bytes are fetched through ReadMapScriptByte, which is steered by r6
+  — mode 1 fetches a byte to compare against, mode 2 consumes the byte that the caller peeked at [r5 + r4] (the
+  first read apparently returns the variable slot/index, which the code then uses to peek the current variable value
+  before the "read" that actually consumes it). The final cmp r0, r4 compares the variable''s current value against
+  the expected value. On match, the script pointer r7 is bumped by 3 so the whole command is skipped and r0 = 1
+  signals the wait is over; on mismatch the pointer is left on the command and r0 = 0, so the caller will retry
+  the same command next script update — i.e. the cutscene pauses here until the variable changes. Flags are a side
+  effect only (N/Z always come from the final movs of 1 or 0 into r0; C/V come from the compare on the not-taken
+  path or from the r7 += 3 addition on the taken path).'
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-004629);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_7.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    7' --file leaves_farm_7.c ZeroFillByEightWords ZeroFillByWord main_zeroFill_80017EC musicGameState_8000784 sub_80015B4
+    sub_8002310 CutsceneCmd_decomp_text_archive CutsceneCmd_wait_cutscene_process CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+    CutsceneCmd_wait_var_equal DecompressTextArchiveForCutscene MapScriptCutsceneCmd_do_pet_effect MapScriptCutsceneCmd_play_music
+    MapScriptCutsceneCmd_set_enter_map_screen_fade MapScriptCutsceneCmd_set_event_flag MapScriptCutsceneCmd_set_event_flag_range
+    MapScriptCutsceneCmd_write_eStruct2001c04_byte MapScriptCutsceneCmd_write_gamestate_byte MapScriptSubCmd_free_ow_map_object
+    NPCCommand_give_attached_shadow NPCCommand_jump_if_progress_in_range NPCCommand_wait_cutscene_var NPCCommand_wait_mystery_data_taken
+    HandleSaveMenu8132B88 SaveMenuUpdate8132C34 sub_813399C sub_8134538
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_wait_var_equal
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_wait_var_equal --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 245 out
+    of domain (verify run convert-20261009-004629-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_wait_var_equal
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_wait_var_equal --snapshots SNAPSHOT_DIR'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261009-004629-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function CutsceneCmd_wait_var_equal
+
+    .venv/bin/python -m wf verify --function CutsceneCmd_wait_var_equal --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-004629-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battlesweep, menus2, story2, story3, wander.'
+  reproduce: grep -l '^08037808 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_7.c
+  where: recomp 753632d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_7.c
+coverage:
+- battle
+- battlesweep
+- menus2
+- story2
+- story3
+- wander
+related:
+- ZeroFillByEightWords
+- ZeroFillByWord
+- main_zeroFill_80017EC
+- musicGameState_8000784
+- sub_80015B4
+- sub_8002310
+- CutsceneCmd_decomp_text_archive
+- CutsceneCmd_wait_cutscene_process
+- CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+- DecompressTextArchiveForCutscene
+- MapScriptCutsceneCmd_do_pet_effect
+- MapScriptCutsceneCmd_play_music
+- MapScriptCutsceneCmd_set_enter_map_screen_fade
+- MapScriptCutsceneCmd_set_event_flag
+- MapScriptCutsceneCmd_set_event_flag_range
+- MapScriptCutsceneCmd_write_eStruct2001c04_byte
+- MapScriptCutsceneCmd_write_gamestate_byte
+- MapScriptSubCmd_free_ow_map_object
+- NPCCommand_give_attached_shadow
+- NPCCommand_jump_if_progress_in_range
+- NPCCommand_wait_cutscene_var
+- NPCCommand_wait_mystery_data_taken
+- HandleSaveMenu8132B88
+- SaveMenuUpdate8132C34
+- sub_813399C
+- sub_8134538
+open_questions:
+- Exact meaning of r5/r4 in ReadMapScriptByte (r4 doubles as both a peek offset and the comparison target after
+  the second read) and what the two r6 read modes are named in the real engine.
+- Which script variables are readable via this command (what index range the variable slot byte accepts) is not
+  shown here.
+sources:
+- tools/wf run convert-20261009-004629

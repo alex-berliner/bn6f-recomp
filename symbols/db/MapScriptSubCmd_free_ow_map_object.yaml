@@ -1,0 +1,103 @@
+name: MapScriptSubCmd_free_ow_map_object
+address: '0x08037F6E'
+kind: function
+status: confirmed
+summary: Map-script sub-command that frees one overworld map object from a cutscene-state slot, advancing the script
+  cursor and reporting success.
+interface: void MapScriptSubCmd_free_ow_map_object(u32 commandWord /*r4 low nibble = slot index*/, CutsceneState*
+  cutsceneState /*r5, preserved*/, u8** scriptCursor /*r7, advanced by 2*/); // returns r0 = 1
+details: 'Handles a map-script sub-command that releases an overworld map object. The command word (r4) carries
+  the target slot in its low nibble (masked with 0xF); the slot index is shifted left by 2 to form a byte offset
+  into the cutscene state''s owMapObjectPtrs pointer array (base oCutsceneState_owMapObjectPtrs_44, i.e. 16 slots
+  of 4 bytes). If the slot holds a non-NULL object pointer, the pointer field is cleared to NULL first and the object
+  is passed to FreeOverworldMapObject for deallocation; an empty slot skips the call. The script cursor (r7) is
+  advanced by 2 bytes to step past this command, and the function always returns 1 (success). r5 (cutscene state
+  pointer) is preserved across the callee; the slot index and cutscene-state pointer come from registers set up
+  by the map-script dispatcher.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-004629);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_7.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    7' --file leaves_farm_7.c ZeroFillByEightWords ZeroFillByWord main_zeroFill_80017EC musicGameState_8000784 sub_80015B4
+    sub_8002310 CutsceneCmd_decomp_text_archive CutsceneCmd_wait_cutscene_process CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+    CutsceneCmd_wait_var_equal DecompressTextArchiveForCutscene MapScriptCutsceneCmd_do_pet_effect MapScriptCutsceneCmd_play_music
+    MapScriptCutsceneCmd_set_enter_map_screen_fade MapScriptCutsceneCmd_set_event_flag MapScriptCutsceneCmd_set_event_flag_range
+    MapScriptCutsceneCmd_write_eStruct2001c04_byte MapScriptCutsceneCmd_write_gamestate_byte MapScriptSubCmd_free_ow_map_object
+    NPCCommand_give_attached_shadow NPCCommand_jump_if_progress_in_range NPCCommand_wait_cutscene_var NPCCommand_wait_mystery_data_taken
+    HandleSaveMenu8132B88 SaveMenuUpdate8132C34 sub_813399C sub_8134538
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptSubCmd_free_ow_map_object
+
+    .venv/bin/python -m wf verify --function MapScriptSubCmd_free_ow_map_object --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261009-004629-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptSubCmd_free_ow_map_object
+
+    .venv/bin/python -m wf verify --function MapScriptSubCmd_free_ow_map_object --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261009-004629-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptSubCmd_free_ow_map_object
+
+    .venv/bin/python -m wf verify --function MapScriptSubCmd_free_ow_map_object --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-004629-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: maps, menus2, story1, story2.'
+  reproduce: grep -l '^08037f6e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_7.c
+  where: recomp 753632d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_7.c
+coverage:
+- maps
+- menus2
+- story1
+- story2
+related:
+- ZeroFillByEightWords
+- ZeroFillByWord
+- main_zeroFill_80017EC
+- musicGameState_8000784
+- sub_80015B4
+- sub_8002310
+- CutsceneCmd_decomp_text_archive
+- CutsceneCmd_wait_cutscene_process
+- CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+- CutsceneCmd_wait_var_equal
+- DecompressTextArchiveForCutscene
+- MapScriptCutsceneCmd_do_pet_effect
+- MapScriptCutsceneCmd_play_music
+- MapScriptCutsceneCmd_set_enter_map_screen_fade
+- MapScriptCutsceneCmd_set_event_flag
+- MapScriptCutsceneCmd_set_event_flag_range
+- MapScriptCutsceneCmd_write_eStruct2001c04_byte
+- MapScriptCutsceneCmd_write_gamestate_byte
+- NPCCommand_give_attached_shadow
+- NPCCommand_jump_if_progress_in_range
+- NPCCommand_wait_cutscene_var
+- NPCCommand_wait_mystery_data_taken
+- HandleSaveMenu8132B88
+- SaveMenuUpdate8132C34
+- sub_813399C
+- sub_8134538
+open_questions:
+- exact layout/role of the owMapObjectPtrs array entries (object type/size) is defined in FreeOverworldMapObject's
+  side
+- whether the low-nibble mask implies other bits of the command word carry flags that are currently ignored
+sources:
+- tools/wf run convert-20261009-004629

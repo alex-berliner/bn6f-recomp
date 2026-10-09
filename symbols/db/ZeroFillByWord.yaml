@@ -1,0 +1,123 @@
+name: ZeroFillByWord
+address: '0x080008E0'
+kind: function
+status: confirmed
+summary: Zero-fills a buffer a word at a time by calling BIOS CpuSet with a fixed-source zero word, leaving all
+  argument registers intact.
+interface: void ZeroFillByWord(void* dest /*r0*/, u32 sizeBytes /*r1*/); // preserves r0-r3; returns flags N=0,
+  Z=1, C=0, V=0
+details: 'Utility wrapper around SWI_CpuSet that clears `sizeBytes` bytes at `dest` to zero,
+
+  32 bits at a time. It pushes r0-r3/lr, reserves one stack slot holding the value 0
+
+  as the (fixed) fill source, converts the byte count to a word count (r1 >>= 2), and
+
+  calls CpuSet with control word 0x5000000 | wordCount — the 0x5000000 bits select
+
+  32-bit transfer with a non-incrementing source, so only the destination advances
+
+  through the buffer. No alignment or zero-length checks are made; the caller must
+
+  pass a word-aligned size (and dest should be word-aligned). r0-r3 are restored via
+
+  pop {r0-r3,pc}, so the call is side-effect-free from the caller''s register view.
+
+  The `mov r1, r0` is encoded as `adds r1, r0, #0`, so the outgoing flag state is
+
+  N=0, Z=1, C=0 (dest + 0 never carries), V=0. A generic memory helper rather than a
+
+  game-logic routine; usable as a prefix-less library name, hence the name is kept.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-004629);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_7.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    7' --file leaves_farm_7.c ZeroFillByEightWords ZeroFillByWord main_zeroFill_80017EC musicGameState_8000784 sub_80015B4
+    sub_8002310 CutsceneCmd_decomp_text_archive CutsceneCmd_wait_cutscene_process CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+    CutsceneCmd_wait_var_equal DecompressTextArchiveForCutscene MapScriptCutsceneCmd_do_pet_effect MapScriptCutsceneCmd_play_music
+    MapScriptCutsceneCmd_set_enter_map_screen_fade MapScriptCutsceneCmd_set_event_flag MapScriptCutsceneCmd_set_event_flag_range
+    MapScriptCutsceneCmd_write_eStruct2001c04_byte MapScriptCutsceneCmd_write_gamestate_byte MapScriptSubCmd_free_ow_map_object
+    NPCCommand_give_attached_shadow NPCCommand_jump_if_progress_in_range NPCCommand_wait_cutscene_var NPCCommand_wait_mystery_data_taken
+    HandleSaveMenu8132B88 SaveMenuUpdate8132C34 sub_813399C sub_8134538
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function ZeroFillByWord
+
+    .venv/bin/python -m wf verify --function ZeroFillByWord --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 243 out
+    of domain (verify run convert-20261009-004629-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function ZeroFillByWord
+
+    .venv/bin/python -m wf verify --function ZeroFillByWord --snapshots SNAPSHOT_DIR'
+  result: 9 compared, 0 differed, 7 out of domain (verify run convert-20261009-004629-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function ZeroFillByWord
+
+    .venv/bin/python -m wf verify --function ZeroFillByWord --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-004629-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^080008e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_7.c
+  where: recomp 753632d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_7.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- ZeroFillByEightWords
+- main_zeroFill_80017EC
+- musicGameState_8000784
+- sub_80015B4
+- sub_8002310
+- CutsceneCmd_decomp_text_archive
+- CutsceneCmd_wait_cutscene_process
+- CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+- CutsceneCmd_wait_var_equal
+- DecompressTextArchiveForCutscene
+- MapScriptCutsceneCmd_do_pet_effect
+- MapScriptCutsceneCmd_play_music
+- MapScriptCutsceneCmd_set_enter_map_screen_fade
+- MapScriptCutsceneCmd_set_event_flag
+- MapScriptCutsceneCmd_set_event_flag_range
+- MapScriptCutsceneCmd_write_eStruct2001c04_byte
+- MapScriptCutsceneCmd_write_gamestate_byte
+- MapScriptSubCmd_free_ow_map_object
+- NPCCommand_give_attached_shadow
+- NPCCommand_jump_if_progress_in_range
+- NPCCommand_wait_cutscene_var
+- NPCCommand_wait_mystery_data_taken
+- HandleSaveMenu8132B88
+- SaveMenuUpdate8132C34
+- sub_813399C
+- sub_8134538
+open_questions:
+- Whether callers always pass a byte count divisible by 4 (trailing bytes would be silently dropped by the >>2 word
+  count).
+- Whether any call sites rely on the returned flag state (Z set / C clear) rather than treating it as scratch.
+sources:
+- tools/wf run convert-20261009-004629

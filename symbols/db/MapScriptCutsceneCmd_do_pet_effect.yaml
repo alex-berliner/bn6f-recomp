@@ -1,0 +1,111 @@
+name: MapScriptCutsceneCmd_do_pet_effect
+address: '0x08035F98'
+kind: function
+status: confirmed
+summary: Map script cutscene command that triggers a PET (player terminal) effect, taking the effect id either from
+  a lookup table or inline from the script.
+interface: 'Next MapScriptCutsceneCmd_doPetEffect(u8 *scriptCtx /*r5*/, u8 *scriptPtr /*r7*/); // in: r5=script/context
+  struct holding the effect-id table, r7=script read pointer; out: r0=1 (success), r7+=3, N/Z from ''mov r0,#1'',
+  C/V from the ''add r7,#3''; preserves r2,r3,r5,r10'
+details: 'Map script interpreter command handler for a PET effect during cutscenes. It reads one script byte via
+  ReadMapScriptByte (r6=1 selects the indirect operand mode). If that byte is 0xFF, it is a marker meaning the effect
+  id follows directly in the script: r6 is set to 2 and a second byte is read, and that raw value is used as the
+  effect id. Otherwise the byte is used as an index into a byte table at r5 (the script context struct) and the
+  table entry is the effect id. The id is passed in r0 to doPETEffect_8033fc0, which performs the actual PET-side
+  effect (animation/sound on the PET screen). The handler always advances the script pointer r7 by 3 and returns
+  1 in r0 to signal the command completed. Quirk: the indirect form consumes only one operand byte but the pointer
+  is still advanced by 3 regardless, so indirect uses must account for a skipped byte (or the second byte is reserved/padding).
+  The flags left behind are deliberate: C/V come from the r7+3 ADDS (which the interpreter branches on) and N/Z
+  from the final ''mov r0,#1'', matching the interpreter''s command-return convention.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-09'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261009-004629);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/leaves_farm_7.c
+  reproduce: cd tools/wf && .venv/bin/python -m wf convert --subsystem 'small functions from the model farm, set
+    7' --file leaves_farm_7.c ZeroFillByEightWords ZeroFillByWord main_zeroFill_80017EC musicGameState_8000784 sub_80015B4
+    sub_8002310 CutsceneCmd_decomp_text_archive CutsceneCmd_wait_cutscene_process CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+    CutsceneCmd_wait_var_equal DecompressTextArchiveForCutscene MapScriptCutsceneCmd_do_pet_effect MapScriptCutsceneCmd_play_music
+    MapScriptCutsceneCmd_set_enter_map_screen_fade MapScriptCutsceneCmd_set_event_flag MapScriptCutsceneCmd_set_event_flag_range
+    MapScriptCutsceneCmd_write_eStruct2001c04_byte MapScriptCutsceneCmd_write_gamestate_byte MapScriptSubCmd_free_ow_map_object
+    NPCCommand_give_attached_shadow NPCCommand_jump_if_progress_in_range NPCCommand_wait_cutscene_var NPCCommand_wait_mystery_data_taken
+    HandleSaveMenu8132B88 SaveMenuUpdate8132C34 sub_813399C sub_8134538
+- method: difftest
+  date: '2026-10-09'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_do_pet_effect
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_do_pet_effect --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 245 out of
+    domain (verify run convert-20261009-004629-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-09'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_do_pet_effect
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_do_pet_effect --snapshots SNAPSHOT_DIR'
+  result: 3 compared, 0 differed, 21 out of domain (verify run convert-20261009-004629-verify-3)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function MapScriptCutsceneCmd_do_pet_effect
+
+    .venv/bin/python -m wf verify --function MapScriptCutsceneCmd_do_pet_effect --snapshots SNAPSHOT_DIR'
+  result: 8/8 routes identical (verify run convert-20261009-004629-verify-3)
+- method: coverage
+  date: '2026-10-09'
+  detail: 'Executed by: battle, battlesweep, fuzz, menus2, story1, story2, story3, wander.'
+  reproduce: grep -l '^08035f98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-09'
+  what: readable C replacement in cport/src/game/leaves_farm_7.c
+  where: recomp 753632d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/leaves_farm_7.c
+coverage:
+- battle
+- battlesweep
+- fuzz
+- menus2
+- story1
+- story2
+- story3
+- wander
+related:
+- ZeroFillByEightWords
+- ZeroFillByWord
+- main_zeroFill_80017EC
+- musicGameState_8000784
+- sub_80015B4
+- sub_8002310
+- CutsceneCmd_decomp_text_archive
+- CutsceneCmd_wait_cutscene_process
+- CutsceneCmd_wait_if_player_sprite_cur_frame_not_equal_maybe
+- CutsceneCmd_wait_var_equal
+- DecompressTextArchiveForCutscene
+- MapScriptCutsceneCmd_play_music
+- MapScriptCutsceneCmd_set_enter_map_screen_fade
+- MapScriptCutsceneCmd_set_event_flag
+- MapScriptCutsceneCmd_set_event_flag_range
+- MapScriptCutsceneCmd_write_eStruct2001c04_byte
+- MapScriptCutsceneCmd_write_gamestate_byte
+- MapScriptSubCmd_free_ow_map_object
+- NPCCommand_give_attached_shadow
+- NPCCommand_jump_if_progress_in_range
+- NPCCommand_wait_cutscene_var
+- NPCCommand_wait_mystery_data_taken
+- HandleSaveMenu8132B88
+- SaveMenuUpdate8132C34
+- sub_813399C
+- sub_8134538
+open_questions:
+- What exactly doPETEffect_8033fc0 does (which PET animation/sound ids map to which visuals).
+- What structure r5 points to and which offset/field serves as the effect-id lookup table.
+- Whether the always-3-byte advance for the indirect form is intentional padding or a bug in the original script
+  compiler/interpreter.
+sources:
+- tools/wf run convert-20261009-004629
