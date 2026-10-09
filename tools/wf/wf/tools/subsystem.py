@@ -200,12 +200,18 @@ def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: P
                                      "prompt_file": prompt_file, "reply_file": reply_file})
 
 
+PACER_LOGS = Path("/tmp/bn-pacer")   # a provider with a log here goes through the user's local pacer
+
+
 def _complete(llm: ModuleType, model: ModelSpec, prompt: Prompt, tag: str) -> str:
-    """The reply, with room for long reasoning: the models spent 35-48k tokens reasoning on a subsystem,
-    so 48k cut replies off; a provider refusing 64k is asked again with 48k."""
+    """The reply, with room for long reasoning (the models spent 35-48k tokens reasoning on a subsystem).
+    A local pacer gives up on an upstream call after 600 s without data, so behind one the budget is 44k,
+    which glm-5.3 and deepseek finish inside that; elsewhere 64k (48k if a provider refuses 64k)."""
     def ask(max_tokens: int) -> str:
         return cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=max_tokens,  # pyright: ignore[reportAny]
                                       timeout=900, retries=1, tag=tag, usage_log=str(USAGE_LOG)))
+    if (PACER_LOGS / f"{model.split('/', 1)[0]}.log").exists():
+        return ask(44000)
     try:
         return ask(64000)
     except RuntimeError as error:
