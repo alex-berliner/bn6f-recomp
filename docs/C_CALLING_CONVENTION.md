@@ -112,11 +112,19 @@ functions, normalised to C types).
   observed gets the liveness at its edges' return points (for a jump, the LR when it is
   the return point of a call to the jumping unit, e.g. a `bx r3` veneer); an observed
   site reads and writes what its targets do. Evidence from the routes, not proof.
-- **3.3, mechanical part** `python3 tools/abi/report.py build/abi/graph.json NAME... | --summary`:
-  contract, proposed `args`/`ret`/`globals`/`keep`, blockers (`unwinds`, `flags_in`,
-  `flags_out`: a flag result needs a z/!z/c choice, `keep`, `callers_unknown`) and every
-  known call site with what it reads after. Not yet: bn6f comments and db `interface:`,
-  stack arguments, hand-listed RAM pointer sites.
+- **3.3, mechanical part** `python3 tools/abi/report.py build/abi/graph.json NAME... | --summary
+  [--captures build/abi/captures.json]`: contract, proposed `args`/`ret`/`globals`/`keep`,
+  blockers (`unwinds`, `flags_in`, `flags_out`, `keep`, `callers_unknown`, `ret_and_flag`)
+  and every known call site with what it reads after. The export re-runs the lifter's
+  analysis with refinements switched on one at a time (`tools/lifter/abi_export.py`:
+  edges; BIOS calls with the registers `swi.c` shows they use; per-call-site liveness, a
+  call reading the callee's own inputs plus what passes through it; saves are not uses and
+  restored registers pass through calls; flag results, where every known caller tests one
+  condition and the function sets it on every path, become `ret: flag:z` etc.).
+  `python3 tools/abi/captures.py build/abi/graph.json [--blockers keep,flags_out]` checks
+  claimed leftovers against the capture workflow's snapshots of the original: unchanged in
+  every captured call means the adapter (which preserves them) is exact. Not yet: bn6f
+  comments and db `interface:`, stack arguments, hand-listed RAM pointer sites.
 - **3.4** `python3 tools/abi/gen.py [--out DIR] [SPEC...]` (default `symbols/db`, output
   `cport/build-abi/gen`); `gen.py --test` compiles the fixtures in `tools/abi/tests/`
   (the pilot, `TestEventFlag`/`TestEventFlagFromImmediate` as `convention: registers`
@@ -131,31 +139,41 @@ functions, normalised to C types).
   (never assembled).
 - **3.8** `python3 tools/abi/lint.py [--check]`: register-level code per function (typed,
   `Next` body, thin adapter, `register form:` exception) as JSON; `--check` fails only on
-  hits beyond `tools/abi/lint_baseline.json` (1,456 functions today). Not in `make` or the
-  workflows yet.
+  hits beyond `tools/abi/lint_baseline.json` (1,456 functions today). The convert
+  workflow runs it on each candidate file (`check_registers`); not in `make`.
 
 What the export says today (1,435 readable entries in 1,434 units; 13 routes, 1,314
-distinct edges from 340 of 1,862 computed call/jump sites):
+distinct edges from 340 of 1,862 computed call/jump sites). Readable units whose callers
+may read all of r0-r12: 124 with the lifter's contracts, 7 with the edges. Auto-acceptable
+signatures and blockers after each step (each includes the ones above it):
 
-| | static (lifter) | with observed edges | ceiling |
-|---|---|---|---|
-| readable units whose callers may read all of r0-r12 | 124 | 7 | |
-| proposals auto-acceptable | 238 | 329 (23%) | 383 |
+| step | auto | keep | flags_out | unwinds | callers_unknown | ret_and_flag | flags_in |
+|---|---|---|---|---|---|---|---|
+| lifter contracts | 238 | 1027 | 863 | 55 | 477 | | 74 |
+| + observed call edges | 329 | 984 | 573 | 55 | 55 | | 6 |
+| + BIOS calls' real registers | 332 | 981 | 573 | 55 | 55 | | 6 |
+| + per-call-site liveness | 463 | 871 | 366 | 55 | 55 | | 6 |
+| + saves pass through | 545 | 786 | 366 | 55 | 55 | | 6 |
+| + flag results | 569 (40%) | 786 | 289 | 55 | 55 | 9 | 6 |
+| + captured calls (keep) | 644 | 711 | 289 | 55 | 55 | 9 | 6 |
+| + captured calls (keep, flags) | 664 (46%) | 704 | 269 | 55 | 55 | 9 | 6 |
+| ceiling: nothing unseen is touched | 795 | 597 | 25 | 55 | | 21 | 5 |
 
-The ceiling assumes indirect calls no route reached read nothing. The 7 left: `MPlayMain`,
+Flag results: of 366 flag blocks, 77 clear: 68 become `ret: flag:z` (callers test only
+eq/ne), 9 need r0 and Z together (`ret_and_flag`). In the rest the flags flow on to
+callers the routes never showed (278 functions), into a callee that reads flags (57),
+reach an unobserved indirect call (34), or use them as data (12); lt/ge/gt occur only
+mixed with others. Leftovers: 261 functions lose registers that a later callee only
+saved (r3, r6, r4, r2 most). Of 512 blocked by `keep` alone, 75 leave the kept registers
+unchanged in every captured call (median 40 calls), 401 change them in some call (a
+caller may really read the leftover: keep it in the adapter or convert the caller), 36
+have no captures. The ceiling shows what more route coverage could still buy (+131).
+
+The 7 still read in full: `MPlayMain`,
 `custMenuPressOK_8028D3A`, `keyItems_RemoveFromInventoryAndGive_803CDF8` (several callers
 each read some), `battle_objectUpdateDispatchPhase_80165C2`, `sub_803F798` (a caller
 reads everything), `chatbox_processScriptEntry_8042678` (an observed return point reads
-everything), `SoundMainRAM_iwram_03005700` (callers unknown). Blockers with edges: `keep`
-984 (r2 625, r3 611, then r1 279), `flags_out` 573, `unwinds` 55, `callers_unknown` 55,
-`flags_in` 6. A rough trace of the 950 `keep` blocks left at the ceiling: 55 end at an
-instruction that reads the leftover (some are SWIs, which count as reading r0-r3), 225 at
-a later callee whose inputs claim the register, about 450 come through indirect callers
-(not traced further), the rest through a caller's own return (callers_live is one set per
-function, not per call site). How many are real leftover use is open: few are a direct
-read, and many may be imprecision. Next: per-SWI inputs, per-call-site liveness, and
-checking in captured calls whether a "kept" register is in fact unchanged (then the
-adapter, which preserves it, is exact).
+everything), `SoundMainRAM_iwram_03005700` (callers unknown).
 
 ## 4. Per-function workflow (callees before callers)
 
