@@ -13,12 +13,13 @@ import re
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType
 from typing import Annotated, NewType, cast
 
 import yaml
-from pydantic import BeforeValidator, Field, TypeAdapter, ValidationError
+from pydantic import BeforeValidator, Field, TypeAdapter, ValidationError, model_validator
 
 from wf.repo import CPORT, ORIGINAL_ROM
 from wf.tools.models import FARM as _farm
@@ -64,7 +65,8 @@ REPLY_FORMAT = """
    (empty block if none).
 3. One ```yaml block: a list with one entry per function:
    - function: its current name
-     proposed_name: a name in game terms, keeping the _ADDRESS suffix (or the current name)
+     proposed_name: a name in game terms that keeps the current name's address suffix
+       (sub_80342DC -> setStatePhase4_80342DC), or the current name
      status: probable or hypothesis (how sure the meaning is from the code)
      summary: one line in game terms
      interface: the typed function's C signature, and the adapter's registers in and out
@@ -90,6 +92,23 @@ class SymbolDraft(Result):
     """A model's draft of a function's symbols/db entry (the workflow adds the evidence)."""
     function: FunctionName
     proposed_name: SymbolName
+
+    @model_validator(mode="before")
+    @classmethod
+    def _address_suffix_kept(cls, data: object) -> object:
+        """A proposed name keeps the current name's address suffix (README: the meaning is partly
+        inferred), and a literal `_ADDRESS` (models copied the instruction) becomes the address."""
+        fields = cast(dict[str, object], data) if isinstance(data, dict) else None
+        if fields is None:
+            return cast(object, data)
+        function, proposed = fields.get("function"), fields.get("proposed_name")
+        if not isinstance(function, str) or not isinstance(proposed, str):
+            return cast(object, data)
+        suffix = re.search(r"_([0-9A-Fa-f]{7,8})$", function)
+        name = re.sub(r"_?ADDRESS$", f"_{suffix[1]}" if suffix else "", proposed.strip()) or function
+        if suffix and not re.search(r"_[0-9A-Fa-f]{7,8}$", name):
+            name = f"{name}_{suffix[1]}"
+        return {**fields, "proposed_name": name}
     status: SymbolStatus
     summary: Text
     interface: Text
@@ -277,8 +296,12 @@ def test_candidate_file(contexts: tuple[ConversionContext, ...], reply: FileRepl
         if library is None:
             return _failed([ToolMessage("compile errors:\n" + compile_errors)])
         promises = _promises(reply.cfg_lines)
-        tests = tuple(_test_function(context, library, snapshots, difftest, promises.get(context.function))
-                      for context in contexts)
+
+        def test_one(context: ConversionContext) -> FunctionTest:
+            return _test_function(context, library, snapshots, difftest, promises.get(context.function))
+
+        with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:   # one difftest process per function
+            tests = tuple(pool.map(test_one, contexts))
     code_passed = all(test.passed for test in tests)
     report = "\n".join(f"{test.function}: {'ok' if test.passed else 'FAIL'}\n  captured calls: {test.captured}\n"
                        f"  random inputs: {test.random}" for test in tests)

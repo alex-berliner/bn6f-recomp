@@ -27,8 +27,8 @@ original game. Say what the function does in game terms, for the project's symbo
 Reply with one ```yaml block holding a list with exactly one entry:
 - function: the function's current name, exactly as given
   proposed_name: a name in game terms in the disassembly's style (camelCase, a subsystem prefix such
-    as sprite_, npc_, chatbox_ or battle_ where one fits), keeping the _ADDRESS suffix when the
-    current name has one; or the current name when nothing better is known
+    as sprite_, npc_, chatbox_ or battle_ where one fits) that keeps the current name's address
+    suffix (sub_80342DC -> setStatePhase4_80342DC); or the current name when nothing better is known
   status: probable or hypothesis
   summary: one line in game terms
   interface: its registers in and out (and flags), as a C-like signature where you can
