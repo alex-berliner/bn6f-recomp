@@ -51,6 +51,7 @@ class ConversionContext(Result):
     assembly: AssemblyText
     lifted: LiftedC
     contract: Contract
+    entry_of: FunctionName | None = None  # a label callers enter in the middle of this function's code
 
 
 class ModelReply(Result):
@@ -74,6 +75,27 @@ def conversion_context(function: FunctionName) -> ConversionContext | None:
         function=function, address=GuestAddress(address), assembly=AssemblyText(assembly), lifted=LiftedC(lifted),
         contract=Contract(**{part: tuple(Register(name) for name in names) for part, names in contract.items()}),
     )
+
+
+# `Next sub_X(void) { return U_0800XXXX(0x800XXXX); }`: one entry of lifted code with several
+# (an override of the code defines all of them as L_ names in DIFFTEST builds)
+_ENTRY_WRAPPER = re.compile(r"^Next (?:L_)?(\w+)\(void\) \{ return (U_[0-9A-F]{8})\(0x([0-9A-Fa-f]+)\); \}$", re.M)
+
+
+def other_entries(context: ConversionContext) -> tuple[ConversionContext, ...]:
+    """The labels callers enter in the middle of the function's code. A file replacing the code must
+    define them all (the lifter refuses otherwise), so they belong to its conversion; each shares the
+    function's code and register contract."""
+    for path in sorted((REPO / "cport/src/lifted").glob("*.c")):
+        text = path.read_text()
+        if f"{context.function}(void) {{ return U_" not in text:
+            continue
+        wrappers = [(FunctionName(match[1]), match[2], GuestAddress(int(match[3], 16)))
+                    for match in _ENTRY_WRAPPER.finditer(text)]
+        unit = next((unit for name, unit, _ in wrappers if name == context.function), None)
+        return tuple(context.model_copy(update={"function": name, "address": address, "entry_of": context.function})
+                     for name, entry_unit, address in wrappers if entry_unit == unit and name != context.function)
+    return ()
 
 
 def first_prompt(context: ConversionContext) -> Prompt:

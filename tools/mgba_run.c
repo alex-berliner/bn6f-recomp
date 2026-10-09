@@ -104,7 +104,7 @@ static void save_snapshot_named(struct mCore *core, const char *dir, const char 
 }
 
 static uint8_t snapf_bits[0x02000000 / 16];
-static uint8_t snapf_count[0x400000];
+static uint16_t snapf_count[0x400000];   /* calls captured per halfword address */
 
 #define NHIT 4096
 static struct { uint32_t r0, lr, n; } hits[NHIT];
@@ -716,9 +716,14 @@ int main(int argc, char **argv) {
                                 break;
                             }
                         }
+                    /* the count stops at the limit: a byte counter that kept
+                     * counting would wrap after 256 calls and capture again,
+                     * overwriting earlier entries (and pairing them with
+                     * older exits) */
                     if (u >= 0x08000000u && u < 0x0A000000u &&
                         (snapf_bits[(u - 0x08000000u) >> 4] >> ((u >> 1) & 7) & 1) &&
-                        snapf_count[(u - 0x08000000u) >> 1 & 0x3FFFFF]++ < snapf_max && npend < 256) {
+                        snapf_count[(u - 0x08000000u) >> 1 & 0x3FFFFF] < snapf_max && npend < 256) {
+                        snapf_count[(u - 0x08000000u) >> 1 & 0x3FFFFF]++;
                         int32_t lr = 0, sp = 0;
                         core->readRegister(core, "lr", &lr);
                         core->readRegister(core, "sp", &sp);

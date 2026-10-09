@@ -5,10 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from wf.tools import install
+from wf.tools import install, subsystem
 from wf.tools.install import uninstall_file
-from wf.tools.subsystem import CandidateFile, CfgLine, parse_reply, register_form_notes, register_use_outside_adapters
-from wf.types import FunctionName, SymbolStatus
+from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC
+from wf.tools.subsystem import (CandidateFile, CfgLine, FunctionTest, parse_reply, register_form_notes,
+                                register_use_outside_adapters)
+from wf.types import FunctionName, GuestAddress, SnapshotDir, SymbolStatus, ToolMessage
 
 REPLY = '''Here is the file.
 ```c
@@ -56,6 +58,38 @@ def test_a_structured_interface_is_kept_as_text() -> None:
 
     assert reply.problems == ()
     assert reply.drafts[0].interface == "typed: void f(int); adapter: r0 = arg"
+
+
+def test_yaml_values_with_colons_are_read_as_text() -> None:
+    reply = parse_reply("```c\nint x;\n```\n```yaml\n- function: f\n  proposed_name: g\n  status: probable\n"
+                        "  summary: the redraw callback (table +0x20): redraws the window\n  interface: void f(void)\n```")
+
+    assert reply.problems == ()
+    assert reply.drafts[0].summary == "the redraw callback (table +0x20): redraws the window"
+
+
+def test_code_that_passes_with_a_bad_yaml_block_is_kept(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def compiles(code: str, names: tuple[FunctionName, ...], workdir: Path) -> tuple[Path | None, str]:
+        return tmp_path / "cand.so", ""
+
+    def passes(context: ConversionContext, library: Path, snapshots: SnapshotDir, difftest: Path,
+               promise: tuple[list[str], list[str]] | None) -> FunctionTest:
+        return FunctionTest(function=context.function, captured=ToolMessage("ok"), random=ToolMessage("ok"), passed=True)
+
+    monkeypatch.setattr(subsystem, "_compile", compiles)
+    monkeypatch.setattr(subsystem, "_test_function", passes)
+    reply = parse_reply("```c\nNext sub_1(void) { RETURN_TO_CALLER(); }\n```")
+
+    test = subsystem.test_candidate_file((context("sub_1"),), reply, SnapshotDir(tmp_path), tmp_path / "difftest")
+
+    assert not test.passed and test.functions[0].passed
+    assert test.report.startswith("The code passed every test; keep it as it is")
+
+
+def context(name: str) -> ConversionContext:
+    return ConversionContext(function=FunctionName(name), address=GuestAddress(0x08000000),
+                             assembly=AssemblyText(""), lifted=LiftedC(""),
+                             contract=Contract(inputs=(), outputs=(), clobbers=(), preserved=()))
 
 
 def test_register_use_counts_only_outside_the_adapters() -> None:

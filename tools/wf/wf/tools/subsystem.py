@@ -114,6 +114,7 @@ class FunctionTest(Result):
     captured: ToolMessage
     random: ToolMessage
     passed: bool
+    compared: bool = True  # False: no captured calls and every random input out of domain (review sees it)
 
 
 class FileTest(Result):
@@ -145,7 +146,9 @@ def repair_prompt(base: Prompt, what_failed: str, report: str, previous: FileRep
         parts.append(f"\n## Your previous file\n```c\n{previous.file}```")
         if previous.cfg_lines:
             parts.append("```cfg\n" + "\n".join(previous.cfg_lines) + "\n```")
-    parts.append("\nFix it and reply again in the same format, with the complete file.")
+    parts.append("\nFix it and reply again with all three blocks of the reply format: the ```c block with the "
+                 "complete file, the ```cfg block (empty if none) and the ```yaml block with an entry for every "
+                 "function.")
     return Prompt("\n".join(parts))
 
 
@@ -157,8 +160,7 @@ def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: P
     prompt_file.write_text(prompt)
     started = time.monotonic()
     try:
-        reply = cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=48000,  # pyright: ignore[reportAny]
-                                       tag=tag, usage_log=str(USAGE_LOG)))
+        reply = _complete(llm, model, prompt, tag)
     except Exception as error:  # the provider's own errors: HTTP, timeouts, bad JSON
         return FileReply(file=None, cfg_lines=(), drafts=(), problems=(), seconds=round(time.monotonic() - started, 1),
                          error=ToolMessage(f"model error: {error}"[:500]), prompt_file=prompt_file)
@@ -170,6 +172,20 @@ def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: P
     parsed = parse_reply(reply)
     return parsed.model_copy(update={"seconds": round(time.monotonic() - started, 1),
                                      "prompt_file": prompt_file, "reply_file": reply_file})
+
+
+def _complete(llm: ModuleType, model: ModelSpec, prompt: Prompt, tag: str) -> str:
+    """The reply, with room for long reasoning: the models spent 35-48k tokens reasoning on a subsystem,
+    so 48k cut replies off; a provider refusing 64k is asked again with 48k."""
+    def ask(max_tokens: int) -> str:
+        return cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=max_tokens,  # pyright: ignore[reportAny]
+                                      timeout=900, retries=1, tag=tag, usage_log=str(USAGE_LOG)))
+    try:
+        return ask(64000)
+    except RuntimeError as error:
+        if "HTTP 400" not in str(error):
+            raise
+        return ask(48000)
 
 
 def candidate_from_file(path: Path) -> FileReply:
@@ -188,11 +204,25 @@ def parse_reply(reply: str) -> FileReply:
     drafts: tuple[SymbolDraft, ...] = ()
     if blocks["yaml"]:
         try:
-            drafts = TypeAdapter(tuple[SymbolDraft, ...]).validate_python(yaml.safe_load(blocks["yaml"][0]) or [])
+            drafts = TypeAdapter(tuple[SymbolDraft, ...]).validate_python(_load_yaml(blocks["yaml"][0]) or [])
         except (yaml.YAMLError, ValidationError) as error:
             problems.append(ToolMessage(f"the ```yaml block is not a valid list of entries: {str(error)[:400]}"))
     return FileReply(file=CandidateFile(code) if code else None, cfg_lines=cfg, drafts=drafts,
                      problems=tuple(problems), seconds=0.0)
+
+
+_PLAIN_VALUE = re.compile(r"^(\s*(?:-\s+)?\w+:\s+)([^'\"\[{|>&*!#\s].*(?::\s|\s#).*)$", re.M)
+
+
+def _load_yaml(text: str) -> object:
+    """The yaml block; when it does not parse, again with plain values that contain `: ` or ` #`
+    quoted (models write `summary: redraws: the window`, which yaml reads as a mapping)."""
+    try:
+        return cast(object, yaml.safe_load(text))
+    except yaml.YAMLError:
+        quoted = _PLAIN_VALUE.sub(lambda match: match[1] + '"' + match[2].replace("\\", "\\\\").replace('"', '\\"') + '"',
+                                  text)
+        return cast(object, yaml.safe_load(quoted))
 
 
 def _blocks(reply: str, kind: str) -> list[str]:
@@ -200,6 +230,11 @@ def _blocks(reply: str, kind: str) -> list[str]:
 
 
 def _function_section(context: ConversionContext) -> str:
+    if context.entry_of is not None:
+        return (f"### {context.function} (at {context.address:#010x}): a second entry into {context.entry_of}\n"
+                f"Callers enter {context.entry_of}'s code at {context.address:#010x} (see its assembly above), with "
+                f"the same register contract. The lifted build requires a file replacing {context.entry_of} to "
+                f"define `Next {context.function}(void)` too.")
     contract = "\n".join(f"  {part}: {' '.join(names) or '-'}" for part, names in context.contract.by_part().items())
     return (f"### {context.function} (at {context.address:#010x})\n"
             f"Register contract (the lifter's analysis of every caller):\n{contract}\n"
@@ -211,19 +246,16 @@ def _function_section(context: ConversionContext) -> str:
 def test_candidate_file(contexts: tuple[ConversionContext, ...], reply: FileReply, snapshots: SnapshotDir,
                         difftest: Path) -> FileTest:
     names = tuple(context.function for context in contexts)
-    problems = list(reply.problems)
-    if reply.error is not None:
-        problems.append(reply.error)
-    if reply.file is None:
-        return _failed(problems or [ToolMessage("no file")])
+    if reply.error is not None or reply.file is None:
+        return _failed([*reply.problems, reply.error or ToolMessage("no file")])
     code = reply.file
-    problems += _shape_problems(code, names)
-    drafted = {draft.function for draft in reply.drafts}
-    missing_drafts = [name for name in names if name not in drafted]
-    if missing_drafts:
-        problems.append(ToolMessage(f"no ```yaml entry for: {', '.join(missing_drafts)}"))
+    problems = _shape_problems(code, names)
     if problems:
         return _failed(problems)
+    drafted = {draft.function for draft in reply.drafts}
+    missing_drafts = [name for name in names if name not in drafted]
+    block_problems = [*reply.problems] + ([ToolMessage(f"no ```yaml entry for: {', '.join(missing_drafts)}")]
+                                          if missing_drafts else [])
 
     with tempfile.TemporaryDirectory() as workdir:
         library, compile_errors = _compile(code, names, Path(workdir))
@@ -232,10 +264,15 @@ def test_candidate_file(contexts: tuple[ConversionContext, ...], reply: FileRepl
         promises = _promises(reply.cfg_lines)
         tests = tuple(_test_function(context, library, snapshots, difftest, promises.get(context.function))
                       for context in contexts)
-    passed = all(test.passed for test in tests)
+    code_passed = all(test.passed for test in tests)
     report = "\n".join(f"{test.function}: {'ok' if test.passed else 'FAIL'}\n  captured calls: {test.captured}\n"
                        f"  random inputs: {test.random}" for test in tests)
-    return FileTest(passed=passed, report=ToolMessage(report), functions=tests,
+    if code_passed and block_problems:
+        report = ("The code passed every test; keep it as it is and fix only the other blocks:\n"
+                  + "\n".join(block_problems) + "\n\n" + report)
+    elif block_problems:
+        report += "\n\nAlso wrong in the reply:\n" + "\n".join(block_problems)
+    return FileTest(passed=code_passed and not block_problems, report=ToolMessage(report), functions=tests,
                     register_use_outside_adapters=register_use_outside_adapters(code, names),
                     register_form_notes=register_form_notes(code))
 
@@ -295,7 +332,10 @@ def _test_function(context: ConversionContext, library: Path, snapshots: Snapsho
     env = {**os.environ, "BN6F_ROM": str(ORIGINAL_ROM)}
     results: list[ToolMessage] = []
     passed = True
-    for extra in (["-S", str(snapshots / context.function)], ["-n", "300"]):
+    captured = snapshots / context.function
+    if not captured.is_dir():   # an extra entry nothing was seen calling
+        results.append(ToolMessage("no captured calls (random inputs only)"))
+    for extra in ([["-S", str(captured)]] if captured.is_dir() else []) + [["-n", "300"]]:
         try:
             done = subprocess.run([*base, *extra, context.function], capture_output=True, text=True, cwd=CPORT,
                                   env=env, timeout=900, check=False)
@@ -312,8 +352,11 @@ def _test_function(context: ConversionContext, library: Path, snapshots: Snapsho
         if nothing and int(nothing[2]) == int(nothing[3]):
             results[-1] = ToolMessage(results[-1] + "\nevery captured call was out of domain: nothing was compared")
             passed = False
-    return FunctionTest(function=context.function, captured=results[0], random=results[1] if len(results) > 1 else
-                        ToolMessage("not run"), passed=passed)
+    random = results[1] if len(results) > 1 else ToolMessage("not run")
+    trials = re.search(r"\((\d+) trials, \d+ failures, (\d+) out-of-domain\)", random)
+    compared = captured.is_dir() or not (trials and trials[1] == trials[2])
+    return FunctionTest(function=context.function, captured=results[0], random=random, passed=passed,
+                        compared=compared)
 
 
 # ── what review looks at ───────────────────────────────────────────────

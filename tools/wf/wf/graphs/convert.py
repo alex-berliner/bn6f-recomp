@@ -21,7 +21,7 @@ from wf.tools.build import build_host_difftest
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
 from wf.tools.git import commit_files
 from wf.tools.install import DIFFTEST_CFG, game_file, install_file, uninstall_file
-from wf.tools.models import ConversionContext, conversion_context
+from wf.tools.models import ConversionContext, conversion_context, other_entries
 from wf.tools.subsystem import (FileReply, FileTest, TokenUse, ask_model_for_file, candidate_from_file, repair_prompt,
                                 subsystem_prompt, test_candidate_file, tokens_for)
 from wf.types import (BuildFailure, CommitHash, FunctionName, ModelSpec, NotRun, Rename, Result, Route, SnapshotDir,
@@ -160,7 +160,8 @@ class GatherOutput(Result):
 @workflow.step
 def gather_context(given: GatherInput) -> GatherOutput:
     """Each function's assembly, lifted C and register contract, and that it has captured calls (no model is
-    asked to write what nothing could check); build the host difftest for quick tests."""
+    asked to write what nothing could check); labels callers enter in the middle of a function join the
+    subsystem (a replacement must define them); build the host difftest for quick tests."""
     difftest = build_host_difftest(given.run_dir)
     without_calls = tuple(function for function in given.functions if not _has_calls(given.snapshots, function))
     if game_file(given.file_name).exists():
@@ -171,8 +172,9 @@ def gather_context(given: GatherInput) -> GatherOutput:
     if missing:
         return GatherOutput(contexts=NotRun(reason=ToolMessage(f"no lifted code or assembly: {', '.join(missing)}")),
                             difftest=difftest, without_calls=without_calls)
-    return GatherOutput(contexts=tuple(context for context in found.values() if context is not None),
-                        difftest=difftest, without_calls=without_calls)
+    contexts = tuple(context for context in found.values() if context is not None)
+    with_entries = tuple(each for context in contexts for each in (context, *other_entries(context)))
+    return GatherOutput(contexts=with_entries, difftest=difftest, without_calls=without_calls)
 
 
 class AskInput(Result):
@@ -250,7 +252,7 @@ def install_and_verify(given: VerifyInput) -> VerifyOutput:
     run_id = f"{current_run_id()}-verify-{latest.number}"
     run_dir = given.run_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    functions = tuple(context.function for context in given.contexts)
+    functions = tuple(context.function for context in given.contexts if context.entry_of is None)
     state = run_verify_in_full(VerifyState(run_dir=run_dir, functions=functions, snapshots=given.snapshots,
                                            routes=given.routes, battle_code=given.battle_code), run_id)
     assert state.report is not None
@@ -495,6 +497,10 @@ def review_sheet(request: ReviewRequest) -> str:
                   f"never compared: {', '.join(report.never_compared) or 'none'}; "
                   f"routes identical: {len(report.routes_checked) - len(report.failed_routes)}/{len(report.routes_checked)}"]
     if latest.test is not None:
+        lines += ["", "## Quick test", *(f"{test.function}: {'ok' if test.passed else 'FAIL'}"
+                                         f"{'' if test.compared else ' (NOT COMPARED)'}; captured: "
+                                         f"{test.captured.splitlines()[0]}; random: {test.random.splitlines()[0]}"
+                                         for test in latest.test.functions)]
         lines += ["", "## Register-world code outside the adapters",
                   *(latest.test.register_use_outside_adapters or ("none",)),
                   "", "## Register form kept (with the model's reason)", *(latest.test.register_form_notes or ("none",))]

@@ -12,6 +12,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT=$(realpath -m "$1"); TRACE=$(realpath "$2"); G0=$3; G1=$4; N=$5; shift 5
 ORIG="$ROOT/bn6f/bn6f.gba"
 RAW=$(mktemp -d)
+trap 'rm -rf "$RAW"' EXIT   # snapshots are large: never leave them behind
 declare -A NAME
 arm-none-eabi-nm "$ROOT/bn6f/bn6f.elf" > "$RAW/syms.txt"
 for f in "$@"; do
@@ -38,7 +39,6 @@ for f in "$RAW"/snaps/snap_*.bin; do
   mv "$f" "$OUT/$fn/snap_${tag}_$n.bin"
   if [ -e "$RAW/snaps/$b.exit.bin" ]; then mv "$RAW/snaps/$b.exit.bin" "$OUT/$fn/snap_${tag}_$n.exit.bin"; fi
 done
-rm -rf "$RAW"
 for f in "$@"; do
   calls=$(ls "$OUT/$f"/snap_*.bin 2>/dev/null | grep -vc '\.exit\.bin$' || true)
   echo "$f: $calls calls"

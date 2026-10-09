@@ -35,6 +35,9 @@ class World:
     commits: list[str] = field(default_factory=list[str])
     recorded: list[RecordState] = field(default_factory=list[RecordState])
     file_exists: bool = False
+    entries: dict[FunctionName, tuple[FunctionName, ...]] = field(default_factory=dict[FunctionName, tuple[FunctionName, ...]])
+    prompted: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
+    verified: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
 
 
 def test_a_good_first_attempt_stops_for_review_then_commits_and_records(
@@ -50,6 +53,17 @@ def test_a_good_first_attempt_stops_for_review_then_commits_and_records(
     assert world.asked == [STRONG]
     assert world.commits and "Reviewed-by: test" in world.commits[0]
     assert world.recorded[0].renames[0].new == SymbolName("redrawBGTileMap_8030808")
+
+
+def test_labels_entered_mid_function_are_written_but_only_the_functions_verified(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    label = FunctionName("loc_803083E")
+    world = World(quick_tests=[True], verdicts=[Verdict.PASSED], entries={FUNCTION: (label,)})
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-entries")
+
+    assert isinstance(paused, Paused)
+    assert world.prompted == [(FUNCTION, label)]
+    assert world.verified == [(FUNCTION,)]
 
 
 def test_a_failed_quick_test_goes_back_to_the_same_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -172,7 +186,12 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
                                  lifted=LiftedC("..."), contract=Contract(inputs=(), outputs=(), clobbers=(),
                                                                           preserved=()))
 
+    def other_entries(context: ConversionContext) -> tuple[ConversionContext, ...]:
+        return tuple(context.model_copy(update={"function": label, "entry_of": context.function})
+                     for label in world.entries.get(context.function, ()))
+
     def subsystem_prompt(subsystem: str, file_name: str, contexts: tuple[ConversionContext, ...]) -> Prompt:
+        world.prompted.append(tuple(context.function for context in contexts))
         return Prompt("convert these")
 
     def ask_model_for_file(model: ModelSpec, prompt: Prompt, tag: str, record_dir: Path) -> FileReply:
@@ -198,6 +217,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         world.installed.append(False)
 
     def run_verify_in_full(start: VerifyState, run_id: str, tracked: bool = True) -> VerifyState:
+        world.verified.append(start.functions)
         report = VerifyReport(sources=SourceVersion(commit=CommitHash("abc"), has_uncommitted_changes=True),
                               verdict=world.verdicts.pop(0), build_failure=None, failed_functions=(),
                               oracle_differences=(), never_compared=(), routes_checked=(), failed_routes=(),
@@ -222,7 +242,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
 
     fakes: dict[str, object] = {
         "run_capture": run_capture, "build_host_difftest": build_host_difftest, "game_file": game_file,
-        "conversion_context": conversion_context, "subsystem_prompt": subsystem_prompt,
+        "conversion_context": conversion_context, "other_entries": other_entries, "subsystem_prompt": subsystem_prompt,
         "ask_model_for_file": ask_model_for_file, "candidate_from_file": candidate_from_file,
         "test_candidate_file": test_candidate_file, "install_file": install_file, "uninstall_file": uninstall_file,
         "run_verify_in_full": run_verify_in_full, "commit_files": commit_files, "write_entries": write_entries,
