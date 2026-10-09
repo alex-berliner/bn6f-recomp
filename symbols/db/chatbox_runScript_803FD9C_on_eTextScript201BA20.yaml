@@ -1,17 +1,15 @@
-name: cutscene_clearScriptPosIfDummyValue_8036F24
-address: '0x08036F24'
+name: chatbox_runScript_803FD9C_on_eTextScript201BA20
+address: '0x08132280'
 kind: function
 status: confirmed
-summary: If the cutscene script position holds the magic dummy value 1, clears both the current and saved script
-  positions to NULL.
-interface: void cutscene_clearScriptPosIfDummyValue(Toolkit *toolkit @ r10); returns cutscene state ptr in r1; flags
-  C,V set from cmp(scriptPos, 1), NZ reflect comparison; clobbers r0
-details: 'Reads the cutscene state pointer from toolkit (r10 + oToolkit_CutsceneStatePtr), then loads the current
-  script position (oCutsceneState_CutsceneScriptPos, s_02011C50.ptr_1C). Compares it against the magic value CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1
-  (== 1); if it matches, stores NULL into both the current script position (offset 0x1C) and the saved/original
-  position (oCutsceneState_originalCutsceneScriptPos_40, offset 0x40). The comparison flags and r1 = cutscene state
-  pointer are live on return, so callers can branch on whether the reset happened or reuse the state pointer. Effectively
-  discards a "dummy"/no-op script entry in the cutscene engine.
+summary: Chatbox wrapper that runs text script archive eTextScript201BA20 starting at a caller-supplied script index.
+interface: void chatbox_runScript_eTextScript201BA20(u32 scriptIdx /* r0 */)
+details: 'Thin thunk around chatbox_runScript_803FD9C. It moves the caller''s r0 (a script/entry index into the
+  archive) to r1 and loads the fixed archive pointer eTextScript201BA20 (word literal at off_813228C) into r0, then
+  tail-calls chatbox_runScript_803FD9C(TextScriptArchive *archive, u8 scriptIdx), returning straight to its own
+  caller via pop {pc}. No state of its own is touched beyond the two argument registers; r6/r7 preservation matches
+  the callee''s contract. The archive eTextScript201BA20 is a specific text script bundle; which in-game message
+  it holds depends on where this wrapper is referenced from.
 
   '
 evidence:
@@ -39,55 +37,54 @@ evidence:
 - method: difftest
   date: '2026-10-08'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function clearCutsceneScriptPosIfMagicValue0x1_8036F24
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_runScript_803FD9C_on_eTextScript201BA20
 
-    .venv/bin/python -m wf verify --function clearCutsceneScriptPosIfMagicValue0x1_8036F24 --snapshots SNAPSHOT_DIR'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
-    of domain (verify run convert-20261008-220911-verify-6)'
+    .venv/bin/python -m wf verify --function chatbox_runScript_803FD9C_on_eTextScript201BA20 --snapshots SNAPSHOT_DIR'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261008-220911-verify-6)'
 - method: cpu-oracle
   date: '2026-10-08'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function clearCutsceneScriptPosIfMagicValue0x1_8036F24
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_runScript_803FD9C_on_eTextScript201BA20
 
-    .venv/bin/python -m wf verify --function clearCutsceneScriptPosIfMagicValue0x1_8036F24 --snapshots SNAPSHOT_DIR'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261008-220911-verify-6)
+    .venv/bin/python -m wf verify --function chatbox_runScript_803FD9C_on_eTextScript201BA20 --snapshots SNAPSHOT_DIR'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261008-220911-verify-6)
 - method: lockstep
   date: '2026-10-08'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function clearCutsceneScriptPosIfMagicValue0x1_8036F24
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function chatbox_runScript_803FD9C_on_eTextScript201BA20
 
-    .venv/bin/python -m wf verify --function clearCutsceneScriptPosIfMagicValue0x1_8036F24 --snapshots SNAPSHOT_DIR'
+    .venv/bin/python -m wf verify --function chatbox_runScript_803FD9C_on_eTextScript201BA20 --snapshots SNAPSHOT_DIR'
   result: 8/8 routes identical (verify run convert-20261008-220911-verify-6)
 - method: coverage
   date: '2026-10-08'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
-  reproduce: grep -l '^08036f24 ' tools/traces/coverage/*.prof
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08132280 ' tools/traces/coverage/*.prof
 changes:
 - date: '2026-10-08'
   what: readable C replacement in cport/src/game/leaves_farm_1.c
   where: recomp dedad43
   tool: tools/wf convert (hyper/glm-5.3-flash)
 - date: '2026-10-08'
-  what: rename clearCutsceneScriptPosIfMagicValue0x1_8036F24 -> cutscene_clearScriptPosIfDummyValue_8036F24
+  what: rename chatbox_runScript_803FD9C_on_eTextScript201BA20 -> chatbox_runScript_eTextScript201BA20
   where: bn6f b3ef1f73
   tool: tools/rename_symbol.py
 - date: '2026-10-08'
   what: doc comment (symdb block) at the definition
   where: bn6f 93f7a6ff
   tool: tools/symdoc.py
+- date: '2026-10-08'
+  what: rename chatbox_runScript_eTextScript201BA20 -> chatbox_runScript_803FD9C_on_eTextScript201BA20
+  where: bn6f 9b67a5c3
+  tool: tools/rename_symbol.py
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 1d01cd95
+  tool: tools/symdoc.py
 readable_c: cport/src/game/leaves_farm_1.c
 coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
 - maps
-- menus2
-- story1
 - story2
-- story3
-- wander
 related:
 - sub_8080D90
 - sub_80AA6E8
@@ -155,7 +152,6 @@ related:
 - sub_8047CB6
 - sub_8047CDC
 - sub_8047CEC
-- chatbox_runScript_803FD9C_on_eTextScript201BA20
 - isFolderSlotInUse_81377EC
 - setUnkFieldOfChipCodeInChipPack_81376b8
 - sub_8132FB8
@@ -181,9 +177,12 @@ related:
 - SetCutsceneCameraScript
 - SetCutsceneFlag
 - TestCutsceneFlag
+- clearCutsceneScriptPosIfMagicValue0x1_8036F24
 open_questions:
-- Exact meaning of the magic script value 1 (dummy/no-op script marker?) and why callers need the flags back
+- Which in-game dialogue eTextScript201BA20 contains, and which scene(s) call this wrapper
+- Whether the r0 index is a raw byte offset or an entry index into the archive
 sources:
 - tools/wf run convert-20261008-220911
 previous_names:
-- clearCutsceneScriptPosIfMagicValue0x1_8036F24
+- chatbox_runScript_803FD9C_on_eTextScript201BA20
+- chatbox_runScript_eTextScript201BA20

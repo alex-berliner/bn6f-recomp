@@ -116,13 +116,13 @@ Next sub_801FE5E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chipPack_addChipsToSlotCount_8021b5a ── */
-/* chipPack_addChipsToSlotCount_8021b5a(r0 = pointer to the chip pack slot's count byte,
+/* ── addChipsToChipPackOffset_8021b5a ── */
+/* addChipsToChipPackOffset_8021b5a(r0 = pointer to the chip pack slot's count byte,
  * r2 = number of chips to add):
  * Adds r2 chips to the slot's count, capped at 99. Returns r1 = the new count and
  * r3 = the outcome: 1 if the slot was already full, 0 if the chips fit exactly,
  * 2 if the count had to be clamped to 99. */
-Next chipPack_addChipsToSlotCount_8021b5a(void) {
+Next addChipsToChipPackOffset_8021b5a(void) {
     u32 *countPtr = (u32 *)R0; /* byte-sized field addressed via r0 */
     u32 count = LD8((u32)countPtr);
     u32 status;
@@ -263,14 +263,14 @@ Next goldMysteryData_GetEntryDataIfIdMatches_809FE44(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── gameProgress_resetBuffer_803532c ── */
-/* gameProgress_resetBuffer_803532c:
+/* ── initGameProgressBuffer_803532c ── */
+/* initGameProgressBuffer_803532c:
  * Reset the player's game-progress flags. Copies the default values from the
  * progress-flag table at byte_8037694 (two-byte entries; only the low byte of
  * each entry is copied) into the working buffer at gameProgressBuffer_20010f0,
  * then clears the current game-progress state in the game state struct.
  * Returns r3 = 0x19 (number of entries copied); r4-r7 are preserved. */
-Next gameProgress_resetBuffer_803532c(void) {
+Next initGameProgressBuffer_803532c(void) {
     u32 src = A_byte_8037694;
     u32 dst = A_gameProgressBuffer_20010f0;
     u32 i;
@@ -289,9 +289,9 @@ Next gameProgress_resetBuffer_803532c(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── clearWorkBuffer_2011A40 ── */
-/* clearWorkBuffer_2011A40: clear the 12-byte work buffer at byte_2011A40 (0x2011A40). */
-Next clearWorkBuffer_2011A40(void) {
+/* ── clearWorkBuffer_2011A40_80341AA ── */
+/* clearWorkBuffer_2011A40_80341AA: clear the 12-byte work buffer at byte_2011A40 (0x2011A40). */
+Next clearWorkBuffer_2011A40_80341AA(void) {
     R0 = A_byte_2011A40;
     R1 = 0xC;
     GUEST_CALL(ZeroFillByWord); /* ZeroFillByWord(ptr, num_bytes) */
@@ -332,9 +332,9 @@ Next getIndexed20ByteTableEntry_80355DE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── clearWorkBuffer_2000DC0 ── */
-/* clearWorkBuffer_2000DC0: zero-fill the 0x100-byte work buffer at dword_2000DC0 (word-wise). */
-Next clearWorkBuffer_2000DC0(void) {
+/* ── clearWorkBuffer_2000DC0_80356EC ── */
+/* clearWorkBuffer_2000DC0_80356EC: zero-fill the 0x100-byte work buffer at dword_2000DC0 (word-wise). */
+Next clearWorkBuffer_2000DC0_80356EC(void) {
     R0 = A_dword_2000DC0; /* buffer address */
     R1 = 0x100;           /* size in bytes */
     GUEST_CALL(ZeroFillByWord);
@@ -479,11 +479,11 @@ Next chatbox_GetState_8045F4C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_clearEventFlags2009F38 ── */
-/* chatbox_clearEventFlags2009F38(r0 = bit mask): clear the given bits in the
+/* ── chatbox_clear_eFlags2009F38 ── */
+/* chatbox_clear_eFlags2009F38(r0 = bit mask): clear the given bits in the
  * chatbox event flags at 0x2009F38. r0 = mask of bits to clear.
  * Leaves r1 and r2 untouched; flags reflect the new flag word. */
-Next chatbox_clearEventFlags2009F38(void) {
+Next chatbox_clear_eFlags2009F38(void) {
     u32 mask = R0;
     u32 flags = LD32(A_eFlags2009F38) & ~mask;
 
@@ -517,11 +517,11 @@ Next chatbox_runTrainScript(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_setEventFlags2009F38 ── */
-/* chatbox_setEventFlags2009F38(r0 = bits to set): set the given bits in the
+/* ── chatbox_set_eFlags2009F38 ── */
+/* chatbox_set_eFlags2009F38(r0 = bits to set): set the given bits in the
  * eFlags2009F38 event-flag word. r1 and r2 are preserved; the nz flags
  * reflect the new flag value. */
-Next chatbox_setEventFlags2009F38(void) {
+Next chatbox_set_eFlags2009F38(void) {
     u32 newFlags = LD32(A_eFlags2009F38) | R0;
     ST32(A_eFlags2009F38, newFlags);
     SET_FLAGS_NZ(newFlags);
@@ -692,10 +692,10 @@ Next toolkit_getUnk2004190EntryPtr_813B9FC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── getWorkAreaPtr_2006CF8 ── */
-/* getWorkAreaPtr_2006CF8: trivial getter -- loads the address of the work buffer
+/* ── getWorkAreaPtr_2006CF8_813BD0C ── */
+/* getWorkAreaPtr_2006CF8_813BD0C: trivial getter -- loads the address of the work buffer
  * unk_2006CF8 into r7 and returns. */
-Next getWorkAreaPtr_2006CF8(void) {
+Next getWorkAreaPtr_2006CF8_813BD0C(void) {
     R7 = A_unk_2006CF8;
     RETURN_TO_CALLER();
 }
@@ -708,9 +708,9 @@ Next sub_813BD10(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── getWorkAreaPtr_2006CC0 ── */
-/* getWorkAreaPtr_2006CC0: return the base address of the unk_2006CC0 data block in R7. */
-Next getWorkAreaPtr_2006CC0(void) {
+/* ── getWorkAreaPtr_2006CC0_813BD14 ── */
+/* getWorkAreaPtr_2006CC0_813BD14: return the base address of the unk_2006CC0 data block in R7. */
+Next getWorkAreaPtr_2006CC0_813BD14(void) {
     R7 = A_unk_2006CC0;
     RETURN_TO_CALLER();
 }
@@ -786,8 +786,8 @@ Next test0x200bc50_0x5_813D60C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── getStructEntryFlag2008450 ── */
-/* getStructEntryFlag2008450(r0 = struct index): address one of the fixed 0x58-byte
+/* ── getStructFrom2008450 ── */
+/* getStructFrom2008450(r0 = struct index): address one of the fixed 0x58-byte
  * entries of eStructArr2008450 and load the byte at its start (its "in use"
  * flag). Returns that byte in r0 with NZ flags set from it; r1 ends holding
  * the entry's address and r2 the byte offset 0x58*index, as callers expect.
@@ -795,7 +795,7 @@ Next test0x200bc50_0x5_813D60C(void) {
  * Note: the original's ADDS (base + 0x58*index) is the last instruction that
  * sets C and V — the trailing TST only updates NZ — so the add's carry and
  * overflow must be reproduced for callers that branch on them. */
-Next getStructEntryFlag2008450(void) {
+Next getStructFrom2008450(void) {
     u32 entryOffset = 0x58 * R0;
     u32 entryAddr = A_eStructArr2008450 + entryOffset;
 
@@ -986,10 +986,10 @@ Next sub_8047CDC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── copy_table_80469F0_to_202F800 ── */
-/* copy_table_80469F0_to_202F800: copy the 0x168-word table at byte_80469F0 (ROM) into
+/* ── copy_table_80469F0_to_202F800_8047CEC ── */
+/* copy_table_80469F0_to_202F800_8047CEC: copy the 0x168-word table at byte_80469F0 (ROM) into
  * the working buffer at byte_202F800 (RAM). */
-Next copy_table_80469F0_to_202F800(void) {
+Next copy_table_80469F0_to_202F800_8047CEC(void) {
     R0 = A_byte_80469F0;   /* source: word table in ROM */
     R1 = A_byte_202F800;   /* destination: EWRAM buffer */
     R2 = 0x168;            /* word count */
@@ -997,12 +997,12 @@ Next copy_table_80469F0_to_202F800(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_runScript_eTextScript201BA20 ── */
-/* chatbox_runScript_eTextScript201BA20(r0 = script index):
+/* ── chatbox_runScript_803FD9C_on_eTextScript201BA20 ── */
+/* chatbox_runScript_803FD9C_on_eTextScript201BA20(r0 = script index):
  * run the fixed text script eTextScript201BA20 in the chatbox, starting at
  * the given index. A thin wrapper around chatbox_runScript_803FD9C that just
  * supplies the archive pointer. */
-Next chatbox_runScript_eTextScript201BA20(void) {
+Next chatbox_runScript_803FD9C_on_eTextScript201BA20(void) {
     u32 scriptIdx = R0;
 
     R0 = A_eTextScript201BA20; /* TextScriptArchive *archive */
@@ -1013,14 +1013,14 @@ Next chatbox_runScript_eTextScript201BA20(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── folder_findSlotInUseIndex_81377EC ── */
-/* folder_findSlotInUseIndex_81377EC(r0 = packed chip data): the high nibble of r0 is a
+/* ── isFolderSlotInUse_81377EC ── */
+/* isFolderSlotInUse_81377EC(r0 = packed chip data): the high nibble of r0 is a
  * folder slot number. Scan the 3-byte in-use table at unk_20018EC (each entry
  * stores a slot number in its high nibble) and return the index of the entry
  * matching that slot, or 3 if no entry is using it.
  * Outputs: r0 = r1 = entry index (3 = not in use), r2 = last entry's slot
  * nibble, r3 = table address. */
-Next folder_findSlotInUseIndex_81377EC(void) {
+Next isFolderSlotInUse_81377EC(void) {
     u32 slotNum = R0 >> 4;
     u32 table = A_unk_20018EC;
 
@@ -1040,12 +1040,12 @@ Next folder_findSlotInUseIndex_81377EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chipPack_stampEntryWithTrayCountAndDecrement_81376b8 ── */
-/* chipPack_stampEntryWithTrayCountAndDecrement_81376b8(r0 = chip pack entry base, r1 = chip index):
+/* ── setUnkFieldOfChipCodeInChipPack_81376b8 ── */
+/* setUnkFieldOfChipCodeInChipPack_81376b8(r0 = chip pack entry base, r1 = chip index):
  * Copies the current count kept at byte_20065B4 into the halfword field at
  * entry_base + 2*chip_index + 4, then decrements that count.
  * Leaves r1 = chip index * 2 and r2 = pointer to the count for the caller. */
-Next chipPack_stampEntryWithTrayCountAndDecrement_81376b8(void) {
+Next setUnkFieldOfChipCodeInChipPack_81376b8(void) {
     u16 count = LD16(A_byte_20065B4);
 
     /* entry address: r0 - r1 + 2*r1 == r0 + r1 (byte offset of the entry) */
@@ -1242,11 +1242,11 @@ Next CutsceneCameraCmd_end(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── CutsceneCmd_chatbox_show_8037a70 ── */
-/* CutsceneCmd_chatbox_show_8037a70: chatbox cutscene command.
+/* ── CutsceneCmd_chatbox_cmd_8037a70 ── */
+/* CutsceneCmd_chatbox_cmd_8037a70: chatbox cutscene command.
  * Opens/shows the chatbox, advances the cutscene script cursor (r7) by one
  * entry, and returns 1 to signal that the command was handled. */
-Next CutsceneCmd_chatbox_show_8037a70(void) {
+Next CutsceneCmd_chatbox_cmd_8037a70(void) {
     GUEST_CALL(chatbox_8040818);
 
     R7 = R7 + 1;
@@ -1385,14 +1385,14 @@ Next ReadCutsceneCameraScriptSignedHalfword(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── cutscene_setCameraScript ── */
-/* cutscene_setCameraScript(r0 = script pointer):
+/* ── SetCutsceneCameraScript ── */
+/* SetCutsceneCameraScript(r0 = script pointer):
  * Points the cutscene camera at a new script and clears its command timer
  * (offsets 0 and 4 of eCutsceneCameraInfo, the struct at 0x2011BD0 that the
  * literal pool references via A_eWarp2011bb0End), so the script starts fresh.
  * Then calls camera_writeUnk03_14_80301b2(0) to reset the camera's pending
  * write state; the final r1/r2 values are whatever that callee leaves. */
-Next cutscene_setCameraScript(void) {
+Next SetCutsceneCameraScript(void) {
     /* ldr r1, =eCutsceneCameraInfo */
     u32 cameraInfo = A_eWarp2011bb0End;
 
@@ -1425,12 +1425,12 @@ Next SetCutsceneFlag(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── cutscene_TestFlag ── */
-/* cutscene_TestFlag(r0 = cutscene flag number, r5 = cutscene state pointer):
+/* ── TestCutsceneFlag ── */
+/* TestCutsceneFlag(r0 = cutscene flag number, r5 = cutscene state pointer):
  * tests whether the flag numbered r0 is set in the state's cutscene flag
  * word. Leaves r0 = the whole flag word; the Z flag is clear iff the flag
  * is set, so callers branch EQ/NE on the result. r1 is preserved. */
-Next cutscene_TestFlag(void) {
+Next TestCutsceneFlag(void) {
     /* Build the flag's bit mask: r1 = 1 << flagNumber, reproducing the
      * barrel shifter's carry output (TST afterwards only touches N/Z). */
     u32 flagNumber = R0 & 0xFF;
@@ -1453,14 +1453,14 @@ Next cutscene_TestFlag(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── cutscene_clearScriptPosIfDummyValue_8036F24 ── */
-/* cutscene_clearScriptPosIfDummyValue_8036F24:
+/* ── clearCutsceneScriptPosIfMagicValue0x1_8036F24 ── */
+/* clearCutsceneScriptPosIfMagicValue0x1_8036F24:
  * If the cutscene's script position holds the magic "dummy" script value,
  * reset both the current and saved script positions to NULL.
  * Leaves r1 = cutscene state pointer; flags reflect the comparison. */
 #define CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1 1
 
-Next cutscene_clearScriptPosIfDummyValue_8036F24(void) {
+Next clearCutsceneScriptPosIfMagicValue0x1_8036F24(void) {
     u32 cutsceneState = LD32(R10 + oToolkit_CutsceneStatePtr);
     u32 scriptPos = LD32(cutsceneState + oCutsceneState_CutsceneScriptPos);
 

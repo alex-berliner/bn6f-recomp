@@ -1,17 +1,14 @@
-name: getWorkAreaPtr_2006CC0
-address: '0x0813BD14'
+name: getWorkAreaPtr_2006CF8_813BD0C
+address: '0x0813BD0C'
 kind: function
 status: confirmed
-summary: Tiny helper that loads the base address of the IWRAM data block at 0x2006CC0 into r7 (a work-area/global-struct
-  pointer getter).
-interface: 'void getWorkAreaPtr_2006CC0(void); // out: r7 = &unk_2006CC0'
-details: 'Two-instruction thunk: ldr r7, =unk_2006CC0 then mov pc, lr, returning directly to the original caller
-  (uses lr as return target, so it is meant to be called from code that will continue from lr, e.g. after a literal-load-style
-  call). It hands back the address of the 0x2006CC0 work area in IWRAM so callers can access that structure; the
-  neighboring literal pool also holds pointers to unk_2006CF8 and unk_2006C88, suggesting this tiny function sits
-  among similar accessors for adjacent related blocks (possibly one struct split across the three addresses). No
-  registers or flags other than r7 are touched. The actual meaning of the 0x2006CC0 block is not determined from
-  this function alone.'
+summary: Trivial getter that returns the address of a work buffer at 0x2006CF8 in r7 for its caller.
+interface: 'void getWorkAreaPtr_2006CF8(void) /* out: r7 = &unk_2006CF8; only lr is read, nothing else touched */'
+details: Loads the literal address unk_2006CF8 (an IWRAM work-area pointer stored at off_813BD18) into r7 and returns
+  immediately via mov pc, lr. No flags, memory, or other registers are touched. Because the callee returns through
+  r7 rather than the usual r0, it is presumably a helper inlined before a call sequence whose target convention
+  expects the buffer pointer in r7; the actual gameplay role of the 0x2006CF8 buffer is not visible from this function
+  alone.
 evidence:
 - method: readable-c
   date: '2026-10-08'
@@ -37,41 +34,49 @@ evidence:
 - method: difftest
   date: '2026-10-08'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813BD14
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813BD0C
 
-    .venv/bin/python -m wf verify --function sub_813BD14 --snapshots SNAPSHOT_DIR'
+    .venv/bin/python -m wf verify --function sub_813BD0C --snapshots SNAPSHOT_DIR'
   result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
     domain (verify run convert-20261008-220911-verify-6)'
 - method: cpu-oracle
   date: '2026-10-08'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813BD14
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813BD0C
 
-    .venv/bin/python -m wf verify --function sub_813BD14 --snapshots SNAPSHOT_DIR'
+    .venv/bin/python -m wf verify --function sub_813BD0C --snapshots SNAPSHOT_DIR'
   result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261008-220911-verify-6)
 - method: lockstep
   date: '2026-10-08'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813BD14
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf capture --function sub_813BD0C
 
-    .venv/bin/python -m wf verify --function sub_813BD14 --snapshots SNAPSHOT_DIR'
+    .venv/bin/python -m wf verify --function sub_813BD0C --snapshots SNAPSHOT_DIR'
   result: 8/8 routes identical (verify run convert-20261008-220911-verify-6)
 - method: coverage
   date: '2026-10-08'
   detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
-  reproduce: grep -l '^0813bd14 ' tools/traces/coverage/*.prof
+  reproduce: grep -l '^0813bd0c ' tools/traces/coverage/*.prof
 changes:
 - date: '2026-10-08'
   what: readable C replacement in cport/src/game/leaves_farm_1.c
   where: recomp dedad43
   tool: tools/wf convert (hyper/glm-5.3-flash)
 - date: '2026-10-08'
-  what: rename sub_813BD14 -> getWorkAreaPtr_2006CC0
+  what: rename sub_813BD0C -> getWorkAreaPtr_2006CF8
   where: bn6f b3ef1f73
   tool: tools/rename_symbol.py
 - date: '2026-10-08'
   what: doc comment (symdb block) at the definition
   where: bn6f 93f7a6ff
+  tool: tools/symdoc.py
+- date: '2026-10-08'
+  what: rename getWorkAreaPtr_2006CF8 -> getWorkAreaPtr_2006CF8_813BD0C
+  where: bn6f 9b67a5c3
+  tool: tools/rename_symbol.py
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 1d01cd95
   tool: tools/symdoc.py
 readable_c: cport/src/game/leaves_farm_1.c
 coverage:
@@ -131,8 +136,8 @@ related:
 - sub_812AFA4
 - sub_813B9E0
 - sub_813B9FC
-- sub_813BD0C
 - sub_813BD10
+- sub_813BD14
 - sub_813BF0C
 - sub_813C324
 - sub_813C678
@@ -180,9 +185,13 @@ related:
 - TestCutsceneFlag
 - clearCutsceneScriptPosIfMagicValue0x1_8036F24
 open_questions:
-- What structure lives at unk_2006CC0 (and how unk_2006CF8/unk_2006C88 in the same pool relate to it)
-- Which subsystem owns this work area, to pick a proper prefix for the name
+- What gameplay subsystem owns the work buffer at 0x2006CF8 (battle, NPC, menu, etc.)?
+- Why the pointer is returned in r7 rather than r0 - likely a caller-side calling convention for a specific helper
+  chain.
+- Whether other getters in this area follow the same r7-return pattern, which would suggest a shared idiom worth
+  naming consistently.
 sources:
 - tools/wf run convert-20261008-220911
 previous_names:
-- sub_813BD14
+- sub_813BD0C
+- getWorkAreaPtr_2006CF8
