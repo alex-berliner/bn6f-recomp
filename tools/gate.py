@@ -9,9 +9,10 @@ Checks, each only when the commit touches what it checks:
            baseline, and the baseline (tools/abi/lint_baseline.json) may only go down: its total
            hits and its number of functions (a fix may move hits between categories; a deliberate
            increase needs GATE_ALLOW_LINT_UP='why')
-  symdb    tools/symdb.py check (about a second): entries valid against bn6f.elf; reproduce paths
-           and the stamp report (tools/stamps.py: what changed since each function was stamped,
-           and the action) are shown, not enforced
+  symdb    tools/symdb.py check (about a second): entries valid against bn6f.elf, and the paths
+           their reproduce lines name exist in the entries the commit touches; the stamp report
+           (tools/stamps.py: what changed since each function was stamped, and the action) is
+           shown, not enforced
   leftovers tools/abi/leftovers.py --check (a few seconds): no readable code reads a register or
            flag a callee leaves behind but does not return (R1-A21), unless the site carries a note
   golden   tools/lifter/golden.py check (about 40 s), when tools/lifter changes: the lifter still

@@ -10,11 +10,12 @@
 
 check: required fields; the name exists in bn6f/bn6f.elf at `address`; previous names no longer
 exist in the disassembly; readable_c files exist; status/kind/method values are known; a stamp
-has its fields. Problems go to stdout ("FILE: problem", then "N entries, M problems") and fail
-the check. Warnings go to stderr and do not: paths in `reproduce:` lines that do not exist, and
-the stamp report (tools/stamps.py: what changed since each readable function was stamped and
-what to do about it). --staged checks the index (what a commit would contain) instead of the
-working tree.
+has its fields; in the entries a commit touches (changed from HEAD), every path a `reproduce:` line
+names exists and none is under /tmp. Problems go to stdout ("FILE: problem", then "N entries, M
+problems") and fail the check. Warnings go to stderr and do not: such paths in entries the commit
+leaves alone, and the stamp report (tools/stamps.py: what changed since each readable function was
+stamped and what to do about it). --staged checks the index (what a commit would contain, against
+HEAD) instead of the working tree.
 
 Parsed entries, the ELF's symbols and the stamp inputs are cached in build/symdb/ by content
 (git blob ids) or file stamp, so a check takes about a second.
@@ -182,7 +183,8 @@ def reproduce_paths(e: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 def missing_paths(es: list[dict[str, Any]]) -> dict[str, list[str]]:
-    """Per entry file, the reproduce paths that exist nowhere (generated build output is not counted)."""
+    """Per entry file, the reproduce paths that exist nowhere, or only under /tmp (gone after a reboot);
+    generated build output is not counted: the commands make it."""
     import glob as globmod
     missing: dict[tuple[str, str], bool] = {}
     out: dict[str, list[str]] = {}
@@ -199,7 +201,9 @@ def _exists(cwd: str, p: str, glob: Any) -> bool:
     """Whether a reproduce path exists; generated build output and words that are not paths here
     (a model id such as hyper/glm-5.3-flash) count as existing."""
     full = p if p.startswith("/") else os.path.normpath(os.path.join(ROOT, cwd, p))
-    if not full.startswith("/tmp/") and GENERATED.search(full[len(ROOT):] if full.startswith(ROOT) else full):
+    if full.startswith("/tmp/"):
+        return False
+    if GENERATED.search(full[len(ROOT):] if full.startswith(ROOT) else full):
         return True
     first = p.split("/")[0]
     if first not in ("", ".", "..") and not os.path.isdir(os.path.join(ROOT, cwd, first)):
@@ -280,6 +284,31 @@ def problems(es: list[dict[str, Any]], syms: dict[str, int], tree: Tree) -> list
     return out
 
 
+def touched(tree: Tree) -> set[str]:
+    """The entry files a commit would change: those that differ from HEAD (in the index with --staged,
+    else in the working tree, new files included)."""
+    try:
+        if tree.staged:
+            out = stamps.git("diff", "--cached", "--name-only", "--no-renames", "HEAD", "--", DB_DIR)
+        else:
+            out = stamps.git("diff", "--name-only", "--no-renames", "HEAD", "--", DB_DIR) + \
+                stamps.git("ls-files", "--others", "--exclude-standard", "--", DB_DIR)
+    except RuntimeError:            # no HEAD yet: nothing to compare with
+        return set()
+    return {p for p in out.splitlines() if p.endswith(".yaml")}
+
+
+def path_problems(missing: dict[str, list[str]], files: set[str]) -> list[Problem]:
+    """Bad reproduce paths in the entries FILES are problems (README: a commit leaves the entries it
+    touches with paths that exist)."""
+    out: list[Problem] = []
+    for f in sorted(files & missing.keys()):
+        for p in sorted(set(missing[f])):
+            why = "is under /tmp, gone after a reboot (use build/repro/)" if p.startswith("/tmp/") else "does not exist"
+            out.append(Problem(f, f"reproduce path {p} {why}"))
+    return out
+
+
 @dataclass
 class Report:
     entries: int
@@ -299,6 +328,9 @@ def run_check(tree: Tree | None = None, with_stamps: bool = True) -> Report:
                                if isinstance(n, str)})
     found = problems(es, syms, tree)
     missing = missing_paths(es)
+    mine = touched(tree)
+    found += path_problems(missing, mine)
+    missing = {f: v for f, v in missing.items() if f not in mine}
     findings: list[stamps.Finding] = []
     counts = {"readable": 0, "stamped": 0}
     notes: list[str] = []
@@ -326,8 +358,8 @@ def print_warnings(rep: Report, verbose: bool) -> None:
     if rep.missing_paths:
         n = sum(len(v) for v in rep.missing_paths.values())
         tmp = sum(1 for v in rep.missing_paths.values() for p in v if p.startswith("/tmp/"))
-        print(f"warning: {len(rep.missing_paths)} entries have reproduce lines naming {n} paths that do not exist "
-              f"({tmp} under /tmp); tools/symdb.py check -v lists them", file=sys.stderr)
+        print(f"warning: {len(rep.missing_paths)} entries this commit leaves alone have reproduce lines naming {n} "
+              f"paths that do not exist ({tmp} under /tmp); tools/symdb.py check -v lists them", file=sys.stderr)
         if verbose:
             for f, paths in sorted(rep.missing_paths.items()):
                 print(f"  {f}: {' '.join(sorted(set(paths)))}", file=sys.stderr)
