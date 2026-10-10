@@ -2,11 +2,18 @@
 """Lift the bn6f disassembly (via its byte-matching ELF) to C.
 
     python3 -m lifter.lift --bn6f bn6f --out cport/src/lifted
+
+Each lifted function's header carries its register contract (inputs, outputs, clobbers,
+preserved): the analysis below refined by the call edges the routes showed
+(tools/traces/coverage/*.edges; abi_export.REFINED), never wider than the analysis's own.
+The code itself follows the unrefined analysis.
 """
 from __future__ import annotations
 
 import argparse
 import bisect
+import glob
+import hashlib
 import re
 import os
 import sys
@@ -187,6 +194,27 @@ def reg_locals(body: list[str]):
 
 
 GENERATED: set[str] = set()
+def difftest_pair(name: str, clobbers: int, outputs: int) -> str:
+    """NAME's difftest_pairs.h line: the registers its contract does not leave free, the flags it returns."""
+    regs = sum(1 << n for n in range(13) if not clobbers & RB(n))
+    flags = outputs & ALLF            # NZ, C, V are 1, 2, 4, as in difftest.c
+    free = mask_names(clobbers & (ALLF | sum(RB(n) for n in range(13)))) if clobbers else "-"
+    return f"PAIR({name}, 0x{regs:04X}, {flags})  /* free: {free}; flags: {mask_names(flags) if flags else '-'} */"
+
+
+# the call edges the routes showed (tools/abi/call_edges.py), committed next to the coverage profiles
+DEFAULT_EDGES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "traces", "coverage", "*.edges")
+
+
+def original_rom_sha1(bn6f: str) -> str | None:
+    """SHA-1 of the original ROM the bn6f build makes (call edges hold addresses of that build)."""
+    path = os.path.join(bn6f, "bn6f.gba")
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as fh:
+        return hashlib.sha1(fh.read()).hexdigest()
+
+
 # hand-written C in --overrides replacing a lifted function: `Next NAME(void) {`
 OVERRIDE_RE = re.compile(r"^(?:IWRAM_\w+\s+|ARM_CODE\s+)*Next\s+(\w+)\s*\(\s*void\s*\)\s*\{", re.M)
 
@@ -257,7 +285,9 @@ def main():
                     help="write register contracts and call sites as JSON (docs/C_CALLING_CONVENTION.md 3.1) "
                          "and stop without writing C")
     ap.add_argument("--call-edges", nargs="+", metavar="EDGES",
-                    help="with --export-abi: call edges observed by mgba_run --call-edges (tools/abi/call_edges.py)")
+                    help="call edges observed by mgba_run --call-edges (tools/abi/call_edges.py); default: the "
+                         "committed tools/traces/coverage/*.edges. They refine the register contracts in the lifted "
+                         "headers and the export")
     # Switches for experiments and debugging; the defaults are what the port is built with.
     sw = ap.add_argument_group("analysis switches (each was an environment variable until 2026-10-10: LIFT_...)")
     sw.add_argument("--indirect-calls-may-unwind", action="store_true",
@@ -277,6 +307,10 @@ def main():
     sw.add_argument("--no-dirty", action="store_true",
                     help="store every written register at each call, not just those changed since the last sync "
                          "(was LIFT_NO_DIRTY=1)")
+    sw.add_argument("--static-contracts", action="store_true",
+                    help="write the lifter's own conservative register contracts in the lifted headers instead of "
+                         "the refined ones (tools/lifter/abi_export.py REFINED, review R1-A7). The code is the same "
+                         "either way: it always follows the conservative analysis")
     sw.add_argument("--why", metavar="NAME",
                     help="print what each caller of NAME needs live after it returns (was LIFT_WHY=NAME)")
     sw.add_argument("--debug-unwind", metavar="NAME",
@@ -829,24 +863,48 @@ def main():
             print(f"  own unwind: {names.get(st, hex(st))}")
     unit_preserved_mask = {u.start: min((preserved[e] for e in u.entries), key=lambda m: bin(m).count("1"))
                            for u in p.units}
-    outputs = {u.start: callers_live[u.start] & may_write[u.start] for u in p.units}
     use_preserved = not args.no_preserved
     def pres(t):
         return preserved[t] if use_preserved else 0
 
     use_live_sync = not args.no_live_sync
 
+    analysis = abi_export.Analysis(
+        p=p, info=info, names=names, effects=effects, reads_writes=reads_writes, flags_in=flags_in,
+        callers_live=callers_live,
+        indirect_ret=indirect_ret, indirect_targets=indirect_targets, tail_targets=tail_targets,
+        inputs=inputs, may_write=may_write, preserved=preserved, must_write=must_write,
+        may_unwind=may_unwind, needs_ret=needs_ret, unit_liveness=unit_liveness, local_w=local_w,
+        overridden=overridden_names(args.overrides))
+    edge_files = args.call_edges or sorted(glob.glob(DEFAULT_EDGES))
+    rom_sha1 = original_rom_sha1(args.bn6f)
     if args.export_abi:
-        summary = abi_export.write(args.export_abi, abi_export.Analysis(
-            p=p, info=info, names=names, effects=effects, reads_writes=reads_writes, flags_in=flags_in,
-            callers_live=callers_live,
-            indirect_ret=indirect_ret, indirect_targets=indirect_targets, tail_targets=tail_targets,
-            inputs=inputs, may_write=may_write, preserved=preserved, must_write=must_write,
-            may_unwind=may_unwind, needs_ret=needs_ret, unit_liveness=unit_liveness, local_w=local_w,
-            overridden=overridden_names(args.overrides)), args.call_edges)
+        summary = abi_export.write(args.export_abi, analysis, edge_files, rom_sha1)
         print(f"[lift] wrote {args.export_abi}: " + ", ".join(
             f"{k} {len(v) if isinstance(v, list) else v}" for k, v in summary.items()))
         return
+
+    # The register contract in each lifted header: what models are shown, what the difftest compares
+    # (difftest_pairs.h), what stamps record and the leftover-read lint checks. Refined, unless
+    # --static-contracts: inputs and callers' reads under abi_export.REFINED; may-write and preserved
+    # are the lifter's, so outputs and clobbers split the same written registers by what callers read.
+    # Never wider than the lifter's own: where the routes show callers the lifter does not see (code
+    # reached through pointers it misses), reading more, the header keeps the lifter's contract, and
+    # the units are listed (a wider contract would send readable code back to a model).
+    contract_inputs, contract_live = inputs, callers_live
+    if not args.static_contracts:
+        if not edge_files:
+            raise SystemExit(f"no call edges ({DEFAULT_EDGES}): give --call-edges, or --static-contracts")
+        t2 = time.time()
+        refined_inputs, refined_live = abi_export.refined_contracts(analysis, abi_export.read_edges(edge_files, rom_sha1))
+        contract_inputs = {e: refined_inputs[e] & inputs[e] for e in inputs}
+        contract_live = {s_: refined_live[s_] & callers_live[s_] for s_ in callers_live}
+        wider = sorted(u.name for u in p.units if refined_live[u.start] & may_write[u.start] & ~callers_live[u.start]
+                       or any(refined_inputs[e] & ~inputs[e] & ALL for e in u.entries))
+        print(f"[lift] refined contracts from {len(edge_files)} call-edge files ({time.time() - t2:.1f}s)"
+              + (f"; {len(wider)} units kept at the lifter's narrower contract, where the routes show callers "
+                 f"reading more: {' '.join(wider[:12])}{' ...' if len(wider) > 12 else ''}" if wider else ""))
+    contract_outputs = {u.start: contract_live[u.start] & may_write[u.start] for u in p.units}
 
     def call_masks(t, call_addr, unit_start):
         """(save, load, may_write, clobbers) for a call site: registers/flags
@@ -939,17 +997,18 @@ def main():
     t1 = time.time()
     stats = defaultdict(int)
     n_over = 0
-    over_pairs: list[str] = []
+    over_pairs: list[str] = []    # difftest_pairs.h lines
     for u in sorted(p.units, key=lambda x: x.start):
         ent_names = {names[e] for e in u.entries}
         is_over = bool(ent_names & overridden)
+        clobbers = may_write[u.start] & ~contract_outputs[u.start] & ~preserved[u.start]
         if is_over:
             missing = ent_names - overridden
             if missing:
                 raise SystemExit(f"override of {u.name} must define all its entries: missing {sorted(missing)}")
             for e in sorted(u.entries):
                 originals.append(f"Next L_{names[e]}(void); /* {e:08X}; {names[e]} is in cport/src/game */")
-                over_pairs.append(names[e])
+                over_pairs.append(difftest_pair(names[e], clobbers, contract_outputs[u.start]))
             n_over += 1
         em = UnitEmitter(ctx, u, live_out_all[u.start])
         loc = info.lines.get(u.start)
@@ -965,9 +1024,9 @@ def main():
         if loc:
             hdr += f", bn6f {loc[0]}:{loc[1]}"
         hdr += " */"
-        hdr += (f"\n/*   inputs:  {mask_names(inputs[u.start])}"
-                f"\n *   outputs: {mask_names(outputs[u.start])}"
-                f"\n *   clobbers (unused by callers): {mask_names(may_write[u.start] & ~outputs[u.start] & ~preserved[u.start])}"
+        hdr += (f"\n/*   inputs:  {mask_names(contract_inputs[u.start])}"
+                f"\n *   outputs: {mask_names(contract_outputs[u.start])}"
+                f"\n *   clobbers (unused by callers): {mask_names(clobbers)}"
                 f"\n *   preserved: {mask_names(preserved[u.start] & may_write[u.start])} */")
         out: list[str] = []
         files["difftest_lifted" if is_over else fname].append((u.start, out))
@@ -1008,9 +1067,10 @@ def main():
     os.makedirs(args.inc, exist_ok=True)
     written: set[str] = set()
     _buf = []
-    _buf.append("/* Generated by tools/lifter: hand-written functions and their lifted originals. */\n")
-    for nm in over_pairs:
-        _buf.append(f"PAIR({nm})\n")
+    _buf.append("/* Generated by tools/lifter: hand-written functions and their lifted originals, with what the\n"
+                " * difftest compares after a call unless difftest.cfg gives a compare= line: every r0-r12 its\n"
+                " * contract does not leave free (bit n = rn) and the flags callers read (1 N/Z, 2 C, 4 V). */\n")
+    _buf.extend(f"{line}\n" for line in over_pairs)
     write_if_changed(os.path.join(args.inc, "difftest_pairs.h"), "".join(_buf))
     # Large modules are split into parts at fixed addresses (splits.txt), so the
     # build parallelises, no single translation unit dominates, and an install

@@ -7,8 +7,9 @@
   leftovers.reads_after_calls(FUNCTION)              the same from Python (tools/stamps.py)
 
 After `GUEST_CALL(F)` a readable function may read only what F returns. The lifter works
-out each function's contract from the original assembly (the header of every lifted
-function, cport/src/lifted/*.c: outputs, "clobbers (unused by callers)", preserved). A
+out each function's contract from the original assembly, refined by the call edges the
+routes showed (the header of every lifted function, cport/src/lifted/*.c: outputs,
+"clobbers (unused by callers)", preserved; tools/lifter/abi_export.py REFINED). A
 register F writes but no original caller reads is a leftover: F's value there is an
 accident of its code, and a readable or typed F need not reproduce it (the difftest
 compares only what F returns). Reading it is the bug class of commit 67673ff

@@ -141,6 +141,17 @@ functions, normalised to C types).
   `Next` body, thin adapter, `register form:` exception) as JSON; `--check` fails only on
   hits beyond `tools/abi/lint_baseline.json` (1,456 functions today). The convert
   workflow runs it on each candidate file (`check_registers`); not in `make`.
+- **Refined contracts in the lifted headers** (review item R1-A7, 2026-10-10): every lift runs the
+  export's final model (`abi_export.REFINED`: edges from the committed
+  `tools/traces/coverage/*.edges`, BIOS calls, per-site liveness, saves pass through) and writes
+  its inputs and its callers' reads into each header; may-write and preserved stay the lifter's, and
+  a contract is never wider than the lifter's own (9 units where the routes show more callers than
+  the lifter sees, SoundMain and the rfu IWRAM copies, keep the lifter's; the lift lists them).
+  The code is unchanged: it follows the conservative analysis. So models are shown, the difftest
+  compares (`difftest_pairs.h`: every r0-r12 not free plus the flags callers read, unless
+  `difftest.cfg` has a `compare=` line), stamps record and the leftover lint checks the same
+  contract. Against the lifter's own, for the 1,434 readable units: outputs narrower in 888,
+  compared registers fewer in 777, inputs narrower in 820, none wider.
 - **Leftover reads** `python3 tools/abi/leftovers.py [--check]` (review item R1-A21): readable
   code that reads, after `GUEST_CALL(F)`, a register or flag F does not return (its lifted
   contract), or one the original of that caller never reads after F (per-site liveness in

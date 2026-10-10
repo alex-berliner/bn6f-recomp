@@ -6,8 +6,11 @@
  *                                                  N varied copies of each)
  *
  * For each trial both versions run (in forked children, 0.2 s timeout) from
- * the same randomised guest RAM and registers; all guest memory, cpu.ret and
- * the registers listed for the function in difftest.cfg must match.
+ * the same randomised guest RAM and registers; all guest memory, cpu.ret, SP
+ * and what the function's register contract compares must match: every r0-r12
+ * it does not leave free and the flags callers read (the lifter's refined
+ * contract, in difftest_pairs.h), or the function's compare= line in
+ * difftest.cfg when it has one.
  *
  * With -S, the inputs are real machine states captured at the function's
  * entry in the original game (tools/mgba_run --snap), for functions whose
@@ -17,7 +20,8 @@
  *
  * Candidate mode (tools/convert): cand_NAME from the shared library CAND.so
  * against the lifted NAME, comparing guest memory, SP, the return target,
- * the registers given with -R and the flags given with -F (nz = N and Z).
+ * the registers given with -R and the flags given with -F (nz = N and Z),
+ * unless difftest.cfg has a compare= line for NAME.
  */
 #include <dlfcn.h>
 #include <dirent.h>
@@ -38,12 +42,14 @@
 #include "dispatch.h"
 #include "hostmem.h"
 
-typedef struct { const char *name; GuestFn hand, lifted; } Pair;
+/* compare_regs/compare_flags: the lifter's contract for the function (difftest_pairs.h), what is
+ * compared after a call unless difftest.cfg gives the function a compare= line */
+typedef struct { const char *name; GuestFn hand, lifted; u32 compare_regs; int compare_flags; } Pair;
 /* Optional structured input generator: fills guest RAM/registers in place. */
 typedef void (*GenFn)(Cpu *in, u32 (*rnd)(void));
 GenFn difftest_generator(const char *name);
 GenFn difftest_snap_mutator(const char *name);
-#define PAIR(n) { #n, n, L_##n },
+#define PAIR(n, regs, flags) { #n, n, L_##n, regs, flags },
 static const Pair kPairs[] = {
 #include "difftest_pairs.h"
 };
@@ -60,6 +66,7 @@ typedef struct {
     int nignore;
     int hwtick;                          /* simulate a running VCOUNT/DISPSTAT */
     int compare_flags;                   /* compare flags too: 1 N/Z, 2 C, 4 V */
+    int has_compare;                     /* a compare= line (else the pair's contract) */
 } Cfg;
 /* One entry per configured function; grows (the generated cfg lines of
  * tools/abi/gen.py can number in the thousands). */
@@ -111,6 +118,7 @@ static void load_cfg(const char *path) {
         Cfg *c = new_cfg(tok);
         while ((tok = strtok(NULL, " \t\n"))) {
             if (!strncmp(tok, "compare=", 8)) {
+                c->has_compare = 1;
                 for (char *r = strtok(tok + 8, ","); r; r = strtok(NULL, ",")) {
                     int reg = cfg_reg(r);
                     if (reg >= 0) c->compare_mask |= 1u << reg;
@@ -339,8 +347,16 @@ static int load_snapshot(const char *path, Cpu *in, u8 *mem) {
 }
 
 static int test_pair(const Pair *p, int trials) {
-    const Cfg *c = cfg_for(p->name);
-    g_hwtick = c && c->hwtick;
+    const Cfg *given = cfg_for(p->name);
+    Cfg cfg;    /* the function's difftest.cfg line, comparing what its contract says unless it has compare= */
+    if (given) cfg = *given;
+    else memset(&cfg, 0, sizeof cfg);
+    if (!cfg.has_compare) {
+        cfg.compare_mask = p->compare_regs;
+        cfg.compare_flags = p->compare_flags;
+    }
+    const Cfg *c = &cfg;
+    g_hwtick = c->hwtick;
     size_t n = snapshot_size();
     u8 *mem_in = malloc(n);
     u8 *out_a = mmap(NULL, n, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -378,7 +394,7 @@ static int test_pair(const Pair *p, int trials) {
         Cpu in;
         memset(&in, 0, sizeof in);
         for (int r = 0; r < 13; r++) {
-            if (c && c->has_choice[r])
+            if (c->has_choice[r])
                 in.r[r] = c->choices[r][rnd() % c->nchoices[r]];
             else
                 in.r[r] = random_value();
@@ -424,7 +440,7 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
             size_t io = g_regions[0].size + g_regions[1].size;
             memcpy(out_b + io, out_a + io, 8);
         }
-        for (int k = 0; c && k < c->nignore; k++) {
+        for (int k = 0; k < c->nignore; k++) {
             size_t off = 0;
             for (unsigned r = 0; r < g_region_count; r++) {
                 if (c->ignore_addr[k] - g_regions[r].base < g_regions[r].size) {
@@ -439,7 +455,7 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
         else if (memcmp(out_a, out_b, n)) why = "guest memory differs";
         else if (ra->cpu.ret != rb->cpu.ret) why = "return target differs";
         else if (ra->cpu.r[13] != rb->cpu.r[13]) why = "SP differs";
-        else if (c) {
+        else {
             for (int r = 0; r < 13; r++)
                 if ((c->compare_mask >> r & 1) && ra->cpu.r[r] != rb->cpu.r[r]) why = "register differs";
             if (!why && (c->compare_flags & 1) &&
@@ -612,16 +628,15 @@ int main(int argc, char **argv) {
         if (!lifted)
             lifted = (GuestFn)dlsym(RTLD_DEFAULT, name);
         if (!hand || !lifted) { printf("%s: missing %s\n", name, hand ? name : sym); return 2; }
-        Cfg *c = new_cfg(name);
+        /* -R/-F take the place of the contract: a compare= line in difftest.cfg still wins */
+        Pair pr = { name, hand, lifted, 0, cand_flags };
         char regs[256];
         snprintf(regs, sizeof regs, "%s", cand_regs);
         for (char *r = strtok(regs, ","); r; r = strtok(NULL, ",")) {
             int reg = cfg_reg(r);
-            if (reg >= 0) c->compare_mask |= 1u << reg;
+            if (reg >= 0) pr.compare_regs |= 1u << reg;
             else fprintf(stderr, "-R takes r0..r12, ignored: %s\n", r);
         }
-        c->compare_flags = cand_flags;
-        Pair pr = { name, hand, lifted };
         return test_pair(&pr, trials) != 0;
     }
     int fails = 0, ran = 0;

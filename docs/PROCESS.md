@@ -124,7 +124,11 @@ or comments (check exits 2 then).
   same calls in the same order, set exactly the registers each callee's
   contract lists as inputs the way the original sets them, touch nothing else
   in between, and restore what the original restores. Mark such lines "as the
-  original". Contracts are in the lifted header comments.
+  original". Contracts are in the lifted header comments: the lifter's
+  analysis refined by the call edges the routes showed (`abi_export.REFINED`;
+  never wider than the lifter's own, `lift.py --static-contracts` for that).
+  Models are shown them, the difftest compares them (`difftest_pairs.h`), stamps
+  record them, and `tools/abi/leftovers.py` checks readable callers against them.
 - Struct offsets the generated header does not export: local `enum`s taken
   from `bn6f/include/structs/*.inc` (not `#ifndef` fallbacks).
 - A hand-written function may promise less than its lifted contract only with
@@ -152,7 +156,7 @@ functions were never compared"). What each proves, and what it cannot see:
 
 | Check | What it proves | Limits |
 |---|---|---|
-| Host difftest, random | Readable vs lifted original (`L_NAME`) on random inputs: memory, return target, SP, contract registers/flags | Random RAM makes functions that follow pointers through game structures **out of domain**: then it compares nothing (`difftest_gen.c` has structured inputs for some). Host builds publish every return target (`RETURN_NR` is `RETURN` under `DIFFTEST`), or a wrong return target would go unseen. |
+| Host difftest, random | Readable vs lifted original (`L_NAME`) on random inputs: memory, return target, SP, contract registers/flags (every r0-r12 the contract does not leave free and the flags callers read, or the function's `compare=` line; before 2026-10-10 only functions with a `compare=` line had registers compared) | Random RAM makes functions that follow pointers through game structures **out of domain**: then it compares nothing (`difftest_gen.c` has structured inputs for some). Host builds publish every return target (`RETURN_NR` is `RETURN` under `DIFFTEST`), or a wrong return target would go unseen. |
 | Host difftest, captured calls | Same, on the original's own calls ([capture](workflows/capture.md)) | The best per-function check for pointer-heavy code, but only for the paths the captured calls take; a snapshot mutator in `difftest_gen.c` (`-m N`) reaches the others (e.g. `mut_npc_secondary`). |
 | CPU oracle | The **original** (mGBA, real BIOS) vs the port from the same entry states built from real game memory | Holds hand-written functions to their `difftest.cfg` contract. Known artifact classes: `tools/oracle_triage.md` (differences give the verdict "needs triage"). `--lifted` runs the lifted originals instead: a difference there too comes from a callee. |
 | Lockstep | The whole game replayed by the game's frame counter on every route (`wf/routes.py`): palette, VRAM, OAM identical at every checkpoint, save memory at the end | Accepts one-game-frame VBlank timing skew. **Does not compare sound state or EWRAM**, and cannot see a wrong return target on functions only called directly. |

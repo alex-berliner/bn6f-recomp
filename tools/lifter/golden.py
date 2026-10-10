@@ -10,12 +10,15 @@ generated file (the C itself is about 40 MB, so it is not stored; `diff` regener
 old side with the lifter from git). Its inputs are pinned, so only a lifter change
 (tools/lifter, including iwram.txt and not_entries.txt) can change the result:
 - the bn6f build it was recorded from (commit and bn6f.elf hash);
+- the call edges the routes showed (tools/traces/coverage/*.edges, hashed), which refine
+  the register contracts in the lifted headers;
 - the readable functions in place at the time (golden/overrides.txt), so installs into
   cport/src/game don't move it.
 
 check exits 0 when every file matches; 1 when the output changed (run `diff` to see
-how, `update` if it was intended); 2 when bn6f moved since the recording (a rename or
-new comments; `update` re-records, after a `diff` if the lifter changed too).
+how, `update` if it was intended); 2 when bn6f or the call edges moved since the
+recording (a rename, new comments, routes observed again; `update` re-records, after a
+`diff` if the lifter changed too).
 `update` takes the readable functions from cport/src/game anew.
 """
 from __future__ import annotations
@@ -45,6 +48,7 @@ BN6F = ROOT / "bn6f"
 GAME = ROOT / "cport" / "src" / "game"
 BN6F_LOCK = ROOT / "build-wf-state" / "bn6f.lock"   # the workflows' lock: renames rewrite bn6f
 DIFF_OUT = ROOT / "build" / "lifter-golden.diff"
+EDGES = ROOT / "tools" / "traces" / "coverage"     # *.edges: tools/abi/call_edges.py
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ class Bn6f:
 @dataclass(frozen=True)
 class Manifest:
     bn6f: Bn6f
+    edges: str                          # edges_state()
     files: dict[str, tuple[str, int]]   # path under the output root -> (SHA-1, lines)
 
 
@@ -83,6 +88,11 @@ def check() -> int:
     if now_bn6f != recorded.bn6f:
         print(f"bn6f moved since the recording: {recorded.bn6f.commit} (elf {recorded.bn6f.elf[:12]}) -> "
               f"{now_bn6f.commit} (elf {now_bn6f.elf[:12]}).\n"
+              "Re-record with `golden.py update` (if the lifter changed too, `golden.py diff` first).")
+        return 2
+    if edges_state() != recorded.edges:
+        print(f"the call edges ({EDGES.relative_to(ROOT)}/*.edges) changed since the recording: "
+              f"{recorded.edges} -> {edges_state()}.\n"
               "Re-record with `golden.py update` (if the lifter changed too, `golden.py diff` first).")
         return 2
     with tempfile.TemporaryDirectory(prefix="lifter-golden-") as tmp:
@@ -148,6 +158,7 @@ def update() -> int:
     lines = [f"# what tools/lifter writes for these inputs (tools/lifter/golden.py update, "
              f"{datetime.date.today().isoformat()})\n",
              f"# bn6f\t{state.commit}\t{state.elf}\n",
+             f"# edges\t{edges_state()}\n",
              f"# overrides\t{len(names)}\tgolden/overrides.txt\n",
              "# sha1\tlines\tpath\n"]
     lines += [f"{sha}\t{count}\t{path}\n" for path, (sha, count) in sorted(files.items())]
@@ -162,7 +173,7 @@ def lift(lifter: Path, out: Path, overrides: Path) -> None:
     """Run the lifter in LIFTER with its output (C and headers) under OUT."""
     (out / "include").mkdir(parents=True)
     command = [sys.executable, str(lifter / "lift.py"), "--bn6f", str(BN6F), "--out", str(out / "src" / "lifted"),
-               "--inc", str(out / "include"), "--overrides", str(overrides)]
+               "--inc", str(out / "include"), "--overrides", str(overrides), "--call-edges", *map(str, edge_files())]
     with bn6f_read_lock():
         done = subprocess.run(command, capture_output=True, text=True)
     if done.returncode != 0:
@@ -203,6 +214,19 @@ def output_hashes(out: Path) -> dict[str, tuple[str, int]]:
     return hashes
 
 
+def edge_files() -> list[Path]:
+    return sorted(EDGES.glob("*.edges"))
+
+
+def edges_state() -> str:
+    """The call edges the lifter reads: how many files and a SHA-1 over their names and contents."""
+    digest = hashlib.sha1()
+    files = edge_files()
+    for path in files:
+        digest.update(path.name.encode() + b"\0" + path.read_bytes())
+    return f"{len(files)} files {digest.hexdigest()[:16]}"
+
+
 def bn6f_state() -> Bn6f:
     commit = subprocess.run(["git", "-C", str(BN6F), "describe", "--always", "--dirty", "--abbrev=12"],
                             capture_output=True, text=True, check=True).stdout.strip()
@@ -213,14 +237,17 @@ def read_manifest() -> Manifest:
     if not MANIFEST.exists():
         sys.exit(f"no {MANIFEST.relative_to(ROOT)}: record one with `golden.py update`")
     bn6f = Bn6f(commit="?", elf="?")
+    edges = "?"
     files: dict[str, tuple[str, int]] = {}
     for line in MANIFEST.read_text().splitlines():
         fields = line.split("\t")
         if line.startswith("# bn6f\t"):
             bn6f = Bn6f(commit=fields[1], elf=fields[2])
+        elif line.startswith("# edges\t"):
+            edges = fields[1]
         elif line and not line.startswith("#"):
             files[fields[2]] = (fields[0], int(fields[1]))
-    return Manifest(bn6f=bn6f, files=files)
+    return Manifest(bn6f=bn6f, edges=edges, files=files)
 
 
 if __name__ == "__main__":

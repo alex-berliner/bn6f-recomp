@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable
@@ -133,11 +134,16 @@ def h(a: int | None) -> str | None:
     return None if a is None else f"0x{a:08X}"
 
 
-def read_edges(paths: list[str]) -> list[Edge]:
-    """Merge mgba_run --call-edges files (counts add up)."""
+def read_edges(paths: list[str], rom_sha1: str | None = None) -> list[Edge]:
+    """Merge mgba_run --call-edges files (counts add up). With ROM_SHA1 (the original ROM's SHA-1),
+    a file observed on another ROM is refused: its addresses would be stale."""
     merged: dict[tuple[int, int, int], int] = defaultdict(int)
     for path in paths:
         for line in open(path):
+            seen_on = re.search(r"original ROM ([0-9a-f]+)", line) if line.startswith("# observed on:") else None
+            if seen_on and rom_sha1 and not rom_sha1.startswith(seen_on[1]):
+                raise SystemExit(f"{path}: observed on original ROM {seen_on[1]}, not on this one ({rom_sha1[:16]}); "
+                                 "observe the routes again (tools/abi/call_edges.py)")
             if line.startswith("#") or not line.strip():
                 continue
             site, target, lr, n = line.split()
@@ -738,17 +744,28 @@ def propose(eng: Engine, e: int, unobserved_indirect: bool, callers_live: int | 
 
 
 # ── the export ──────────────────────────────────────────────────────────
+# The contracts the lifted headers carry, so what models are shown, what the difftest compares and
+# what stamps record (review R1-A7): the lifter's analysis with every refinement above. lift.py
+# writes the inputs and what callers read from it; may-write and preserved stay the lifter's.
+REFINED = Model(edges=True, swi=True, per_site=True, pass_through=True)
+
 STEPS = [("edges", Model(edges=True)),
          ("swi", Model(edges=True, swi=True)),
          ("per_site", Model(edges=True, swi=True, per_site=True)),
-         ("pass_through", Model(edges=True, swi=True, per_site=True, pass_through=True))]
+         ("pass_through", REFINED)]
 
 
-def write(path: str, a: Analysis, edge_files: list[str] | None = None) -> dict:
+def refined_contracts(a: Analysis, edges: list[Edge]) -> tuple[dict[int, int], dict[int, int]]:
+    """(inputs of each entry, what callers may read after each unit returns) under REFINED."""
+    eng = Engine(a, REFINED, edges)
+    return eng.inputs, eng.callers
+
+
+def write(path: str, a: Analysis, edge_files: list[str] | None = None, rom_sha1: str | None = None) -> dict:
     """Write the export to `path` and return its summary."""
     p, names = a.p, a.names
     unit_of = p.unit_at
-    edges = read_edges(edge_files) if edge_files else None
+    edges = read_edges(edge_files, rom_sha1) if edge_files else None
     static = Engine(a, Model(), None)
     if (static.callers != a.callers_live or static.indirect_ret != a.indirect_ret or static.inputs != a.inputs
             or static.may_write != a.may_write or static.must_write != a.must_write):
