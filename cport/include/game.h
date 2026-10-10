@@ -11,6 +11,7 @@
 #pragma once
 #include "cpu.h"
 #include "lifted.h"
+#include <stdbool.h>   /* typed functions return bool (docs/C_CALLING_CONVENTION.md) */
 
 #if defined(TARGET_GBA)
 /* Hot code: ARM state, run from IWRAM like the routines the game copied there. */
