@@ -60,8 +60,8 @@ Every readable function is compared with its lifted original on real recorded ga
 states and random inputs (`cport/host` difftest). The whole port is then replayed beside
 the original on every recorded route, comparing palette, VRAM and OAM at each checkpoint
 (lockstep), and a CPU oracle compares functions directly. The test tools need your own
-GBA BIOS dump (`gbarecomp/bios/gba_bios.bin` for now) and the `mgba_run` harness; their
-setup is still being consolidated.
+GBA BIOS dump at `roms/gba_bios.bin` (git ignores `roms/`) and the `mgba_run` harness,
+built with `make -C tools` (needs `libmgba-dev`). Their paths are in `tools/paths.env`.
 
 ## Legal
 

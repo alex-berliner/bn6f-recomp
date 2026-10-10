@@ -79,7 +79,7 @@ tools that rewrite an entry (`rename_symbol.py`, `symdoc.py`) keep the order.
 | `changes` | no | A list of `{date, what, where, tool}`: what the project changed because of this entry (renames, comments, readable C). `where` names commits (`bn6f <hash>`, `recomp <hash>`). |
 | `readable_c` | if readable | The `cport/src/game` file with its readable version. Must exist (**checked**). |
 | `coverage` | no | Recorded routes (`tools/traces`) that execute it; lockstep checks it there. |
-| `related` | no | Other symbols. Agreed for the db rewrite (review 2 Area 6): only direct callers and callees (from `build/abi/graph.json`), empty for farm groups. |
+| `related` | no | Other symbols. Agreed for the db rewrite (review 2 Area 6): only direct callers and callees (from `build-abi/graph.json`), empty for farm groups. |
 | `open_questions` | no | What is still unknown. |
 | `sources` | no | Where the work happened: a Claude Code session, a workflow run id (`convert-20261009-035817`), a commit. |
 | `abi` | not yet | The typed C interface: the single source for the adapter, typed wrapper, difftest contract and bn6f signature comment. Format: `docs/C_CALLING_CONVENTION.md` §2 (`c`, `args`, `ret`, `globals`, `keep`, `convention`, `evidence`). No entry has one yet, and `symdb check` does not validate it yet. |

@@ -90,7 +90,7 @@ functions, normalised to C types).
 
 | # | Tool | What it does | Builds on |
 |---|---|---|---|
-| 3.1 | `lift.py --export-abi build/abi/graph.json` | Per entry: inputs, outputs, may_write, preserved, needs_ret/may_unwind, indirect-target flag; per call site: caller, kind (call/tail/indirect), registers and flags live after. | Data already computed in memory: `effects`, `live_out_all`, `callers_live`, `inputs`, `may_write`, `preserved` (`tools/lifter/lift.py:296-760`); `lift.py --why NAME` (was `LIFT_WHY`) is a one-function version |
+| 3.1 | `lift.py --export-abi build-abi/graph.json` | Per entry: inputs, outputs, may_write, preserved, needs_ret/may_unwind, indirect-target flag; per call site: caller, kind (call/tail/indirect), registers and flags live after. | Data already computed in memory: `effects`, `live_out_all`, `callers_live`, `inputs`, `may_write`, `preserved` (`tools/lifter/lift.py:296-760`); `lift.py --why NAME` (was `LIFT_WHY`) is a one-function version |
 | 3.2 | `mgba_run --call-edges` | Records observed (indirect call site → target) pairs while replaying routes and sweeps, so indirect callees get per-site liveness instead of the global `indirect_ret`. Output next to `tools/traces/coverage/*.prof`. | `tools/mgba_run.c`, the coverage runs |
 | 3.3 | `tools/abi/report.py NAME` | The evidence an agent or person needs to choose a signature: every caller site (direct, tail, observed indirect, plus hand-listed sites for RAM-held pointers such as `UnkCallback_18`), what each reads after the call, which callers are readable vs lifted, unwinding, stack frame use, r10 use, the existing bn6f signature comment and db `interface:`. Proposes `args`/`ret`/`keep`. | 3.1, 3.2, `symbols/db`, bn6f comments |
 | 3.4 | `tools/abi/gen.py` | From all `abi:` blocks: `cport/src/game/abi_thunks.c` (adapters, with IWRAM attributes from `tools/lifter/iwram.txt`), `cport/include/abi.h` (C prototypes), `cport/include/lifted_calls.h` (typed wrappers for lifted callees: set args and r10, `GUEST_CALL`, return R0/flag), generated `difftest.cfg` lines (compare = ret registers + flags + keep; `r10=0x020093B0`). | `game.h` macros, `cport/host/difftest.cfg` syntax |
@@ -102,18 +102,18 @@ functions, normalised to C types).
 
 ### Built so far (2026-10-09)
 
-- **3.1** `python3 tools/lifter/lift.py --export-abi build/abi/graph.json [--call-edges EDGES...]`
+- **3.1** `python3 tools/lifter/lift.py --export-abi build-abi/graph.json [--call-edges EDGES...]`
   (`tools/lifter/abi_export.py`): stops before writing C; a lift without the option is
   byte-identical. Masks are name lists (`r0`..`r12`, `lr`, `nz`, `c`, `v`).
-- **3.2** `python3 tools/abi/call_edges.py build/abi/graph.json [ROUTE...]` runs
+- **3.2** `python3 tools/abi/call_edges.py build-abi/graph.json [ROUTE...]` runs
   `mgba_run --call-edges SITES OUT` (steps like a coverage run, ~4 min for all routes in
   parallel) and writes `tools/traces/coverage/ROUTE.edges` ("SITE TARGET LR COUNT").
   Merged by the export (`*_observed` fields): an indirect target whose entries were all
   observed gets the liveness at its edges' return points (for a jump, the LR when it is
   the return point of a call to the jumping unit, e.g. a `bx r3` veneer); an observed
   site reads and writes what its targets do. Evidence from the routes, not proof.
-- **3.3, mechanical part** `python3 tools/abi/report.py build/abi/graph.json NAME... | --summary
-  [--captures build/abi/captures.json]`: contract, proposed `args`/`ret`/`globals`/`keep`,
+- **3.3, mechanical part** `python3 tools/abi/report.py build-abi/graph.json NAME... | --summary
+  [--captures build-abi/captures.json]`: contract, proposed `args`/`ret`/`globals`/`keep`,
   blockers (`unwinds`, `flags_in`, `flags_out`, `keep`, `callers_unknown`, `ret_and_flag`)
   and every known call site with what it reads after. The export re-runs the lifter's
   analysis with refinements switched on one at a time (`tools/lifter/abi_export.py`:
@@ -121,7 +121,7 @@ functions, normalised to C types).
   call reading the callee's own inputs plus what passes through it; saves are not uses and
   restored registers pass through calls; flag results, where every known caller tests one
   condition and the function sets it on every path, become `ret: flag:z` etc.).
-  `python3 tools/abi/captures.py build/abi/graph.json [--blockers keep,flags_out]` checks
+  `python3 tools/abi/captures.py build-abi/graph.json [--blockers keep,flags_out]` checks
   claimed leftovers against the capture workflow's snapshots of the original: unchanged in
   every captured call means the adapter (which preserves them) is exact. Not yet: bn6f
   comments and db `interface:`, stack arguments, hand-listed RAM pointer sites.

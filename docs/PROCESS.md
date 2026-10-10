@@ -34,7 +34,7 @@ Two ports share this repository:
 |---|---|
 | Goal | Readable C. Prioritise conversion work over side quests. |
 | Git | Local only. Never push (GitHub "not yet"). Commit on branches. |
-| BIOS | Use the real GBA BIOS (`gbarecomp/bios/gba_bios.bin`) for both ports and all tests. |
+| BIOS | Use the real GBA BIOS (`roms/gba_bios.bin`, `GBA_BIOS` in `tools/paths.env`) for both ports and all tests. |
 | Disassembly | Fix bn6f defects on its local branch `recomp-fixes`; the built ROM must stay byte-identical (bn6f's `make` checks `bn6f.sha1`). |
 | Evidence | Wants a reliable test method, not "does the title screen boot" (the verify workflow). |
 | Tools | Results over originality: reuse existing tools before writing new ones. |
