@@ -834,7 +834,7 @@ def compare(world: World, entry: str, stamp: dict[str, Any]) -> list[Finding]:
         if dropped:
             who = world.names.current.get(Root(r), callee)
             if reads_any(readable.body_items, dropped):
-                add(Action.REVERIFY, f"callee {who} no longer returns {' '.join(sorted(dropped))}, which this code reads")
+                add(Action.REVERIFY, f"callee {who} no longer returns {' '.join(sorted(dropped))}, which this code mentions")
             else:
                 add(Action.INFO, f"callee {who} no longer returns {' '.join(sorted(dropped))} (not read here)")
     if stamp.get("body") != now.body:       # (a new body uses other header definitions: one finding)
