@@ -212,6 +212,25 @@ def write_if_changed(path: str, text: str):
     return True
 
 
+# The switches' old environment variables still work (they set the flag's default).
+OLD_SWITCHES = {"LIFT_IND_UNWIND": "indirect_calls_may_unwind", "LIFT_NO_BYTESCAN": "no_bytescan",
+                "LIFT_NO_PRESERVED": "no_preserved", "LIFT_NO_LIVE_SYNC": "no_live_sync", "LIFT_NO_DIRTY": "no_dirty"}
+OLD_NAMED = {"LIFT_WHY": "why", "LIFT_DEBUG_UNWIND": "debug_unwind"}
+
+
+def _old_environment_switches() -> argparse.Namespace:
+    ns = argparse.Namespace()
+    for var, dest in OLD_SWITCHES.items():
+        if os.environ.get(var) == "1":
+            setattr(ns, dest, True)
+            print(f"[lift] {var}=1 is the flag --{dest.replace('_', '-')} now", file=sys.stderr)
+    for var, dest in OLD_NAMED.items():
+        if os.environ.get(var):
+            setattr(ns, dest, os.environ[var])
+            print(f"[lift] {var}=NAME is the flag --{dest.replace('_', '-')} NAME now", file=sys.stderr)
+    return ns
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bn6f", default="bn6f")
@@ -224,7 +243,31 @@ def main():
                          "and stop without writing C")
     ap.add_argument("--call-edges", nargs="+", metavar="EDGES",
                     help="with --export-abi: call edges observed by mgba_run --call-edges (tools/abi/call_edges.py)")
-    args = ap.parse_args()
+    # Switches for experiments and debugging; the defaults are what the port is built with.
+    sw = ap.add_argument_group("analysis switches (each was an environment variable until 2026-10-10: LIFT_...)")
+    sw.add_argument("--indirect-calls-may-unwind", action="store_true",
+                    help="assume a call through a pointer may unwind past its caller (return somewhere other "
+                         "than its return address), as the analysis does for direct calls it can't prove. By "
+                         "default the lifter assumes no indirect call does: unproven, but true on every recorded "
+                         "route, and LIFT_TRACE builds log any return-address mismatch. This restores the fully "
+                         "conservative analysis, with more register syncing at calls (was LIFT_IND_UNWIND=1)")
+    sw.add_argument("--no-bytescan", action="store_true",
+                    help="don't treat entry addresses found in unaligned ROM data as indirect call targets "
+                         "(was LIFT_NO_BYTESCAN=1)")
+    sw.add_argument("--no-preserved", action="store_true",
+                    help="ignore what callees save and restore when syncing registers at calls (was LIFT_NO_PRESERVED=1)")
+    sw.add_argument("--no-live-sync", action="store_true",
+                    help="sync every register a callee may change, not just those live after the call "
+                         "(was LIFT_NO_LIVE_SYNC=1)")
+    sw.add_argument("--no-dirty", action="store_true",
+                    help="store every written register at each call, not just those changed since the last sync "
+                         "(was LIFT_NO_DIRTY=1)")
+    sw.add_argument("--why", metavar="NAME",
+                    help="print what each caller of NAME needs live after it returns (was LIFT_WHY=NAME)")
+    sw.add_argument("--debug-unwind", metavar="NAME",
+                    help="print why NAME may unwind past its caller, and the units that unwind through their "
+                         "own returns (was LIFT_DEBUG_UNWIND=NAME)")
+    args = ap.parse_args(namespace=_old_environment_switches())
     t0 = time.time()
     info = elfinfo.load(args.bn6f)
     p = build(info, COPIES, COPY_SEEDS)
@@ -324,7 +367,7 @@ def main():
     for a in names:
         if a >= 0x08000000:
             want[(a | 1) if p.entries.get(a, True) else a] = a
-    rom = p.info.rom if os.environ.get("LIFT_NO_BYTESCAN") != "1" else b""
+    rom = b"" if args.no_bytescan else p.info.rom
     found = 0
     for off in range(0, len(rom) - 3):
         v = rom[off] | rom[off + 1] << 8 | rom[off + 2] << 16 | rom[off + 3] << 24 if rom[off + 3] == 0x08 else 0
@@ -486,7 +529,7 @@ def main():
         if not changed:
             break
     print(f"[lift] liveness converged after {it} iterations")
-    why = os.environ.get("LIFT_WHY")
+    why = args.why
     if why:
         tgt_addr = next((a for a, n in names.items() if n == why), None)
         for u in p.units:
@@ -673,7 +716,7 @@ def main():
                     if rt != 14:
                         nonlocal_unwind[0] = True
                         own_unwind.add(u.start)
-                        if os.environ.get("LIFT_DEBUG_UNWIND") == names.get(u.start):
+                        if args.debug_unwind and args.debug_unwind == names.get(u.start):
                             print(f"    {a:#x} {ins.kind} rt={rt} spo={spo0} stack={stack0} regs={regs0}")
                 elif kx == "tail":
                     result &= kept(regs) & preserved.get(x[1], 0)
@@ -700,9 +743,9 @@ def main():
     nonlocal_unwind = [False]
     own_unwind = set()
     # Indirect calls are assumed not to unwind (none does on the test routes;
-    # LIFT_TRACE builds log any return-address mismatch). LIFT_IND_UNWIND=1
+    # LIFT_TRACE builds log any return-address mismatch). --indirect-calls-may-unwind
     # restores the fully conservative assumption.
-    IND_NO_UNWIND = os.environ.get("LIFT_IND_UNWIND") != "1"
+    IND_NO_UNWIND = not args.indirect_calls_may_unwind
 
     def return_target(ins, regs0, spo0, stack0):
         """Symbol (14 = entry LR) of the address a returning instruction goes to."""
@@ -766,17 +809,17 @@ def main():
         return any(may_unwind.get(e, True) or e in indirect_targets or e in tail_targets for e in u.entries)
     print(f"[lift] {sum(not needs_ret(u) for u in p.units)} of {len(p.units)} units return without "
           f"publishing their return address")
-    if os.environ.get("LIFT_DEBUG_UNWIND"):
+    if args.debug_unwind:
         for st in sorted(own_unwind)[:40]:
             print(f"  own unwind: {names.get(st, hex(st))}")
     unit_preserved_mask = {u.start: min((preserved[e] for e in u.entries), key=lambda m: bin(m).count("1"))
                            for u in p.units}
     outputs = {u.start: callers_live[u.start] & may_write[u.start] for u in p.units}
-    use_preserved = os.environ.get("LIFT_NO_PRESERVED") != "1"
+    use_preserved = not args.no_preserved
     def pres(t):
         return preserved[t] if use_preserved else 0
 
-    use_live_sync = os.environ.get("LIFT_NO_LIVE_SYNC") != "1"
+    use_live_sync = not args.no_live_sync
 
     if args.export_abi:
         summary = abi_export.write(args.export_abi, abi_export.Analysis(
@@ -814,8 +857,8 @@ def main():
     # Dirty registers: those whose local copy may differ from `cpu` at each
     # call site (forward may-analysis per unit). Locals are loaded from
     # `cpu` on entry, so a call site need not store an input that has not
-    # changed since the last sync. LIFT_NO_DIRTY=1 stores every written one.
-    use_dirty = os.environ.get("LIFT_NO_DIRTY") != "1"
+    # changed since the last sync. --no-dirty stores every written one.
+    use_dirty = not args.no_dirty
     dirty_cache: dict[int, dict[int, int]] = {}
 
     def unit_dirty(u: Unit) -> dict[int, int]:

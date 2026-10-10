@@ -67,6 +67,20 @@ Variants: `make BUILD=dir`, `OPT=` (hand-written/runtime code, default `-Os`),
 cart timings because executed instructions dominate), `-DBOOT_DIAG` (coloured
 boot stages for hardware debugging), `LTO=0`.
 
+The lifter's analysis switches are flags (`python3 tools/lifter/lift.py --help`;
+the old `LIFT_*` environment variables still work). One default rests on an
+unproven assumption: no call through a pointer unwinds past its caller (true on
+every recorded route; `LIFT_TRACE` builds log any return-address mismatch).
+`--indirect-calls-may-unwind` drops it.
+
+**Golden test.** `python3 tools/lifter/golden.py check` lifts into a temporary
+directory and compares every generated file with `tools/lifter/golden/manifest.tsv`
+(hashes; the inputs are pinned: the bn6f build, and the readable functions listed
+in `golden/overrides.txt`, so installs don't move it). `golden.py diff` shows what
+a lifter change changes, against the committed lifter on the same inputs;
+`golden.py update` records an intended change, and re-records after a bn6f rename
+or comments (check exits 2 then).
+
 ### Layout
 
 | Path | What |

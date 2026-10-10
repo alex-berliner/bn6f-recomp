@@ -6,8 +6,9 @@
 Takes the indirect sites (calls through a register and computed jumps) from an export
 of `lift.py --export-abi`, replays every route of tools/wf/wf/routes.py (or the ones
 named) on the original ROM with `mgba_run --call-edges`, and writes
-tools/traces/coverage/ROUTE.edges ("SITE TARGET LR COUNT", hex) next to the coverage
-profiles. Then merge them into the export:
+tools/traces/coverage/ROUTE.edges ("SITE TARGET LR COUNT", hex, sorted; committed) next
+to the coverage profiles, stamped with what they were observed on (hashes of the trace, its
+save and pokes, and the original ROM; the number of sites). Then merge them into the export:
 
     python3 tools/lifter/lift.py --export-abi build/abi/graph.json --call-edges tools/traces/coverage/*.edges
 
@@ -16,6 +17,7 @@ Prints a JSON summary: per route the distinct edges and seconds taken.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -60,7 +62,27 @@ def write_sites(graph: str, path: str) -> int:
     return len(sites)
 
 
-def run_route(mgba: str, sites: str, name: str, frames: int, out_dir: str) -> dict:
+def stamp(trace: str, n_sites: int) -> str:
+    """The header line saying what a route's edges were observed on."""
+    def sha1(path: str) -> str:
+        return hashlib.sha1(open(path, "rb").read()).hexdigest()[:16]
+    base = trace.removesuffix(".trace")
+    parts = [f"trace {sha1(trace)}"] + [f"{ext} {sha1(f'{base}.{ext}')}" for ext in ("sav", "poke")
+                                        if os.path.exists(f"{base}.{ext}")]
+    return "# observed on: " + ", ".join(parts + [f"original ROM {sha1(ORIG)}", f"{n_sites} sites"]) + "\n"
+
+
+def finish(part: str, out: str, trace: str, n_sites: int) -> None:
+    """mgba_run's output, stamped and with the edges sorted (its order is a hash table's), as OUT."""
+    lines = open(part).read().splitlines(keepends=True)
+    head = [line for line in lines if line.startswith("#")]
+    edges = sorted(line for line in lines if line.strip() and not line.startswith("#"))
+    with open(part, "w") as fh:
+        fh.writelines(head + [stamp(trace, n_sites)] + edges)
+    os.replace(part, out)
+
+
+def run_route(mgba: str, sites: str, n_sites: int, name: str, frames: int, out_dir: str) -> dict:
     trace = os.path.join(TRACES, name + ".trace")
     out = os.path.join(out_dir, name + ".edges")
     started = time.monotonic()
@@ -70,7 +92,7 @@ def run_route(mgba: str, sites: str, name: str, frames: int, out_dir: str) -> di
     done = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if done.returncode != 0 or not os.path.exists(out + ".part"):
         return {"route": name, "error": (done.stdout + done.stderr)[-400:]}
-    os.replace(out + ".part", out)
+    finish(out + ".part", out, trace, n_sites)
     last = [line for line in done.stdout.splitlines() if line.startswith(("reached", "stalled", "call-edges"))]
     return {"route": name, "edges": sum(1 for line in open(out) if not line.startswith("#")),
             "seconds": round(time.monotonic() - started), "mgba": last}
@@ -94,7 +116,7 @@ def main() -> None:
         sites = os.path.join(tmp, "sites.txt")
         n_sites = write_sites(args.graph, sites)
         with ThreadPoolExecutor(args.jobs) as pool:
-            results = list(pool.map(lambda n: run_route(args.mgba, sites, n, known[n], args.out_dir), names))
+            results = list(pool.map(lambda n: run_route(args.mgba, sites, n_sites, n, known[n], args.out_dir), names))
     json.dump({"sites": n_sites, "routes": results}, sys.stdout, indent=1)
     print()
     if any("error" in r for r in results):
