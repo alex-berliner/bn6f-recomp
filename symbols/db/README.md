@@ -79,9 +79,9 @@ tools that rewrite an entry (`rename_symbol.py`, `symdoc.py`) keep the order.
 | `changes` | no | A list of `{date, what, where, tool}`: what the project changed because of this entry (renames, comments, readable C). `where` names commits (`bn6f <hash>`, `recomp <hash>`). |
 | `readable_c` | if readable | The `cport/src/game` file with its readable version. Must exist (**checked**). |
 | `coverage` | no | Recorded routes (`tools/traces`) that execute it; lockstep checks it there. |
-| `related` | no | Other symbols. Agreed for the db rewrite (review 2 Area 6): only direct callers and callees (from `build-abi/graph.json`), empty for farm groups. |
+| `related` | no | Other symbols worth reading with this one: chosen by hand, or the other functions of a subsystem converted together. Never a whole farm group (unrelated small functions converted in one run): of its members only those that call this function or that it calls (direct call sites in `build-abi/graph.json`, `tools/funcindex.py`) are listed, so usually none and the key is left out. The rest of the group is the run, in the evidence and `sources`. |
 | `open_questions` | no | What is still unknown. |
-| `sources` | no | Where the work happened: a Claude Code session, a workflow run id (`convert-20261009-035817`), a commit. |
+| `sources` | no | Where the work happened: a Claude Code session, a workflow run id (`tools/wf run convert-20261009-035817`), a commit (`recomp 1a2b3c4`, the one the run produced). A run's text logs stay in `build-wf-archive/RUN` after its folder in `build-wf-runs` is pruned (`./wf archive`). |
 | `abi` | not yet | The typed C interface: the single source for the adapter, typed wrapper, difftest contract and bn6f signature comment. Format: `docs/C_CALLING_CONVENTION.md` §2 (`c`, `args`, `ret`, `globals`, `keep`, `convention`, `evidence`). No entry has one yet, and `symdb check` does not validate it yet. |
 | `stamp` | readable functions | See "The stamp" below. |
 
@@ -93,8 +93,26 @@ tools that rewrite an entry (`rename_symbol.py`, `symdoc.py`) keep the order.
 | `date` | When it was done. |
 | `detail` | What was found, concretely (**checked**: not empty). |
 | `refs` | Files and lines, other symbols, commits. |
-| `reproduce` | Exact commands, runnable from the recomp repo root (a `cd` inside the command is followed). Every path they name must exist and none may be under `/tmp` (**checked** in the entries a commit touches, **warned** in the others; generated build output such as `cport/build-host/difftest` is not counted, since the commands build it). No `/tmp` paths: those folders are gone after a reboot. For readable functions the self-contained pair is `./wf capture --function NAME`, then `./wf verify --function NAME --snapshots build-snapshots` (`./wf` is the workflows' launcher at the repo root; older entries spell it `cd tools/wf && .venv/bin/python -m wf`). 81 older entries still cite `/tmp`; the db rewrite (review 2 Area 6) replaces them. |
+| `reproduce` | Exact commands, runnable today from the recomp repo root (a `cd` inside the command is followed), with symbols under their current names. Every path they name must exist (**checked** in the entries a commit touches, **warned** in the others; generated build output under `build*/`, such as `cport/build-host/difftest`, is not counted, since the commands make it). Never a `/tmp` path (**checked** the same way): those folders are gone after a reboot; a command's scratch output goes under `build/repro/`. The forms in use are below the table. |
 | `result` | What the command showed: numbers, verdicts, the run id or commit it was run at. |
+
+The `reproduce:` forms (`./wf` is the workflows' launcher at the repo root; `build-snapshots` is the
+store of the original game's captured calls, `build-snapshots/FUNCTION`, which `./wf capture` fills):
+
+| Evidence | `reproduce:` |
+|---|---|
+| difftest, cpu-oracle, lockstep of a converted function | `./wf capture --function NAME`, then `./wf verify --function NAME --snapshots build-snapshots` |
+| readable-c, a farm group | `./wf convert --subsystem 'small functions from the model farm, set N' --file leaves_farm_N.c NAME`: this function alone, though the run converted the group together. The group is the entries whose readable-c evidence cites the same run in its `detail`. |
+| readable-c, a subsystem | the whole convert command: `./wf convert --subsystem WHAT --file FILE.c F1 F2 ...` |
+| readable-c, one function from the farm | `./wf farm --model PROVIDER/MODEL --snapshots build-snapshots NAME` |
+| coverage | `grep -l '^ADDRESS ' tools/traces/coverage/*.prof` |
+| captured calls of a hand-made check | the capture command itself, into `build/repro/` (a replay of a recorded route is deterministic, so it makes the same calls again): `tools/convert/capture.sh build/repro/snaps tools/traces/ROUTE.trace G0 G1 N NAME`, then e.g. `python3 tools/oracle.py --base build/repro/snaps ... --out build/repro/oracle NAME` |
+
+`tools/symdb_rewrite.py` (review 2 Area 6, joint plan S1) brought the older entries to these forms
+on 2026-10-10: the `cd tools/wf && .venv/bin/python -m wf` spelling became `./wf`, the farm-group
+commands and `related:` lists that repeated a whole group (half the database) became the forms
+above, and the `/tmp` folders became `build/repro/`. It changes nothing else in an entry, a second
+run changes nothing, and `--verify REV` shows that every other field is as it was at REV.
 
 Methods: **assembly-reading**; **caller-analysis**; **cpu-oracle** = the original (mGBA, real BIOS) and the port run
 from the same real-memory entry states (tools/oracle.py); **difftest** =
