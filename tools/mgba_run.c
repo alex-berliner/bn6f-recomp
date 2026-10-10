@@ -15,6 +15,7 @@
 #include <mgba/core/log.h>
 #include <mgba/core/timing.h>
 #include <mgba/gba/interface.h>
+#include <mgba/internal/arm/arm.h>
 #include <mgba-util/vfs.h>
 
 #include <dirent.h>
@@ -29,10 +30,68 @@ static struct mCore *g_core;
 static unsigned long g_illegal;   /* illegal opcodes executed; the first few are logged with registers */
 static int g_quiet_calls;         /* --call-snaps: random inputs run into garbage; do not log every step */
 
+/* --call-snaps: the loads of a call that a port is not held to, written to
+ * DIR/snap_NAME.bus for the CPU oracle (tools/oracle.py): misaligned halfword
+ * and word loads (the ARM7 rotates them; typed C reads what its type says)
+ * and open-bus reads (mGBA's bad-load messages; the host maps those
+ * addresses as plain memory). Only the call's own instructions are watched. */
+static int g_watch_bus;
+static unsigned g_nbus;
+static char g_bus[4][96];
+static void bus_note(const char *fmt, ...) {
+    if (g_nbus < sizeof g_bus / sizeof g_bus[0]) {
+        va_list a;
+        va_start(a, fmt);
+        vsnprintf(g_bus[g_nbus], sizeof g_bus[0], fmt, a);
+        va_end(a);
+    }
+    g_nbus++;
+}
+/* mGBA's messages for a load that returns open bus. Twelve unused I/O
+ * halfwords (upper halves of 32-bit registers) read as 0 instead, the same on
+ * the host: not open bus (checked against libmgba 0.10.2 by reading every
+ * unused register at several points of the instruction stream). */
+static int open_bus_message(const char *msg) {
+    static const char *const bad[] = { "Bad memory Load", "Out of bounds ROM Load", "Bad BIOS Load",
+                                       "Read from write-only I/O register" };
+    for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; i++)
+        if (!strncmp(msg, bad[i], strlen(bad[i]))) return 1;
+    static const char unused[] = "Read from unused I/O register: ";
+    if (strncmp(msg, unused, sizeof unused - 1)) return 0;
+    static const unsigned zero[] = { 0x066, 0x06A, 0x06E, 0x076, 0x07A, 0x07E, 0x086, 0x08A, 0x136, 0x142, 0x15A, 0x206 };
+    unsigned reg = (unsigned)strtoul(msg + sizeof unused - 1, 0, 16);
+    for (unsigned i = 0; i < sizeof zero / sizeof zero[0]; i++)
+        if (reg == zero[i]) return 0;
+    return 1;
+}
+static uint32_t (*g_load32)(struct ARMCore *, uint32_t, int *);
+static uint32_t (*g_load16)(struct ARMCore *, uint32_t, int *);
+static uint32_t watched_load32(struct ARMCore *cpu, uint32_t a, int *cycles) {
+    if (g_watch_bus && (a & 3)) bus_note("misaligned word load at %08x", a);
+    return g_load32(cpu, a, cycles);
+}
+static uint32_t watched_load16(struct ARMCore *cpu, uint32_t a, int *cycles) {
+    if (g_watch_bus && (a & 1)) bus_note("misaligned halfword load at %08x", a);
+    return g_load16(cpu, a, cycles);
+}
+static void watch_loads(struct mCore *core) {
+    struct ARMCore *cpu = core->cpu;
+    if (cpu->memory.load32 != watched_load32) { g_load32 = cpu->memory.load32; cpu->memory.load32 = watched_load32; }
+    if (cpu->memory.load16 != watched_load16) { g_load16 = cpu->memory.load16; cpu->memory.load16 = watched_load16; }
+}
+
 static void log_cb(struct mLogger *logger, int category, enum mLogLevel level,
                    const char *format, va_list args) {
     (void)logger;
     const char *cat = mLogCategoryName(category);
+    if (g_watch_bus && (level & mLOG_GAME_ERROR)) {
+        char msg[96];
+        va_list a;
+        va_copy(a, args);
+        vsnprintf(msg, sizeof msg, format, a);
+        va_end(a);
+        if (open_bus_message(msg)) bus_note("open bus: %s", msg);
+    }
     if (g_quiet_calls && !(level & mLOG_FATAL))
         return;
     if (g_core && !strncmp(format, "Illegal opcode", 14)) {
@@ -398,6 +457,8 @@ int main(int argc, char **argv) {
             /* A previous call may have run into garbage and left the CPU
              * halted or stopped, which memory and registers do not undo. */
             core->reset(core);
+            watch_loads(core);
+            g_nbus = 0;
             FILE *f = fopen(path, "rb");
             uint32_t hdr[19];
             if (!f || fread(hdr, sizeof hdr, 1, f) != 1 || hdr[0] != 0x53364E42u) { if (f) fclose(f); continue; }
@@ -498,7 +559,9 @@ int main(int argc, char **argv) {
                     n = call_steps;
                     break;
                 }
+                g_watch_bus = 1;
                 core->step(core);
+                g_watch_bus = 0;
             }
             if (n < call_steps) {
                 int32_t c2 = 0;
@@ -511,6 +574,14 @@ int main(int argc, char **argv) {
                     FILE *o = fopen(sp, "w");
                     for (unsigned k = 0; o && k < nswis; k++) fprintf(o, "%02x ", swis[k]);
                     if (o) { fputc('\n', o); fclose(o); }
+                }
+                if (g_nbus) {   /* DIR/snap_NAME.bus: loads the port is not held to (see g_watch_bus) */
+                    char bp[700];
+                    snprintf(bp, sizeof bp, "%s/snap_%.*s.bus", call_dir, (int)(ln - 9), de->d_name + 5);
+                    FILE *o = fopen(bp, "w");
+                    for (unsigned k = 0; o && k < g_nbus && k < sizeof g_bus / sizeof g_bus[0]; k++)
+                        fprintf(o, "%s\n", g_bus[k]);
+                    if (o) { fprintf(o, "%u in all\n", g_nbus); fclose(o); }
                 }
             } else {
                 timeouts++;

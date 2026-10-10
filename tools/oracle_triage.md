@@ -24,8 +24,8 @@ the I/O that mGBA reads back after running a `bx lr` function (0x58 up),
 and write-only display registers as 0.
 
 Harness improvements that would remove most of the rest: call-boundary
-tracing on the host (to place the ho_8034218 group); hand-written files' U16/S16/U32 modelling
-misaligned loads on the host (random pointers only).
+tracing on the host (to place the ho_8034218 group). The misaligned-load cases
+(random odd pointers) are now recognised as a class: see the 2026-10-10 section.
 
 ## Oracle drops from farm groups (convert runs, 2026-10-08/09)
 
@@ -39,3 +39,40 @@ r2 = 0x500, r3 = -1; the two LZ77 wrappers) and 1 caller of the hand-written one
 16 in flags only, 5 only in a register's upper bits (the readable code returns a
 narrower value than the register the original left), and 1 has a callee that differed
 in the same run. 88 of the 89 are still not installed.
+
+## Full verify 2026-10-10: three classes of random state the port is not held to
+
+verify-20261010-191155 (all 1,434 readable functions, 24 states each, `--snapshots build-snapshots`):
+1,296 compared, 9 differed, each in one or two states. None is a port bug. In every one the random
+input leaves what real calls pass (aligned pointers into mapped memory, data above SP), and the
+difference comes from how the ARM7 or the original's own stack treats that input. Six differ the same
+way under `--lifted`, but that flag swaps only the function under test; its callees stay the port's. So
+the trace below is what places each one, not the flag.
+
+**Handled in the oracle by class.** `mgba_run --call-snaps` now notes, for the original's call,
+every misaligned halfword or word load and every open-bus read (mGBA's own messages: unused or
+write-only I/O register, unmapped memory, BIOS) in `snap_*.bus`. With the notes on, the exit
+snapshots of these 10 states are byte-identical to before. `oracle.py` counts a differing state as
+out of domain when the original made such a load, or when an entry register points into the free
+stack (0x03007500 up to SP). It lists those states in `DIR/explained.txt`, with their snapshots in
+`DIR/explained/`.
+
+| Class | Function (state) | What happens |
+|---|---|---|
+| misaligned load | sprite_projectAndCull | r0, the position pointer, is 0x0810962B (odd). The original's `ldrsh` at an odd address loads the sign-extended byte; the hand-written `S16()` reads two bytes on the host. Real calls pass obj + 0x24. |
+| misaligned load | battle_tickCollisionTimer_8010162 | The collision pointer at [r5 + 0x54] is 0x060000A3, so `ldrh` of 0x060000C9 returns 0xFF0000FF. The original's `sub r1, #1; blt` takes that as expired and stores nothing. The readable u16 counter is neither 0xFFFF nor 0, so it stores 0x00FE (VRAM 0x060000C8 differs). With an aligned pointer the two agree: ldrh gives 0-0xFFFF, and `blt` after `sub #1` means "was 0". |
+| misaligned load | sub_80313FC | r0 = 0x080005AD (odd, ROM). sub_8031176's word loads from it rotate. The readable callee sprite_worldToScreenPos_80310EC reads through a plain `u32 *`: the same `ldr` on the GBA, but an unrotated unaligned read on the host. So dword_200F3E0 and the camera byte 0x02009F63 differ. |
+| open bus | battle_getSpecialActorSlotIfAiMatches_80EBB78 (2 states), battle_updateAngerTint_80143E4 | r5 = 0x02008470 is not a battle object: its AI-data pointer [r5 + 0x58] is 0x04000600, past the I/O registers. The version byte (0x04000616) and the anger halfword (0x04000634) are open bus on the GBA (r2 = 5; the tint is applied) and 0 in the host's I/O page. |
+| open bus | battle_updateObjectByKind_8026E98 | r5 = 0x04000208 (IME). sub_8029C08 ORs the "object's" byte at +0xE (0x04000216, unused I/O) into the record that fifo_pushRecord16_8009FF8 stores at 0x03002180. |
+| open bus | sub_8031C7C | r0 = 0x04000208. battle_calcRelPosToTarget_803172E reads the words at 0x0400020C-0x04000218 (unused I/O) into dword_200F3E0. |
+| free stack | CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac | r7, the script pointer, is 0x03007DA8 = SP - 4. The original's `push {lr}` and ReadMapScriptByte's `push {r7, lr}` write the script bytes before it reads them (it reads the pushed LR's 0); the port's frames are not the original's (r4 = 0x11, and 0x0200ACE2 differs). |
+| free stack | battle_spawnAndInitObject0x33_80CA686 | r5 = 0x03007D10, SP = 0x03007D7C. BasicBattleObjectInitialize copies the alliance halfword from r5 + 0x16, where object_spawnType3's frame had just left 0x0203 (the high half of the new object's pointer). The port leaves 0 there. |
+
+mGBA reads 12 unused I/O halfwords as 0, not open bus (0x066, 0x06A, 0x06E, 0x076, 0x07A, 0x07E, 0x086,
+0x08A, 0x136, 0x142, 0x15A, 0x206; checked by reading every unused register at several points of
+the instruction stream). The host reads them as 0 too, so they are not counted. Write-only registers
+are open bus in mGBA 0.10.2.
+
+Limits: only differing states are reclassified, so a state that differs for some other reason and
+also makes such a load would be hidden; the function's other states still count. The free-stack
+check sees entry registers only, not pointers loaded from memory.

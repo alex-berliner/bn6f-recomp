@@ -12,10 +12,14 @@ original function from each state to its return (build-tools/mgba_run
 state on the host (cport difftest -G) and must leave the same memory and the
 same registers and flags that its callers rely on (the lifter's contract).
 States the function does not return from, or where the host faults on an
-address the GBA would treat as open bus, are not counted.
+address the GBA would treat as open bus, are not counted. Nor are states
+that differ only because the random input left the domain a port is held to
+(`explained`): the original made a misaligned load or read open bus, or an
+input register points into the free stack below SP.
 
 Writes DIR/report.txt (one line per function) and keeps the snapshots of
-every failing call in DIR/fail/.
+every failing call in DIR/fail/; the explained states are listed in
+DIR/explained.txt, their snapshots in DIR/explained/.
 """
 import argparse, glob, os, random, re, shutil, struct, subprocess, sys, tempfile
 from concurrent.futures import ProcessPoolExecutor
@@ -26,6 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = os.path.join(ROOT, "cport")
 MAGIC_LR = 0x080000C1           # ROM header: never executed by the game
 IO = 0x40000 + 0x8000           # offset of the I/O registers in a snapshot's memory (after EWRAM, IWRAM)
+FREE_STACK = 0x03007500         # lowest stack address, as cport/host/difftest.c's dead stack (0x03007900 - 0x400)
 
 
 def units():
@@ -68,6 +73,34 @@ def io_template(base):
                         "--call-snaps", d, "1000"], capture_output=True, check=True)
         _, ex = load_snap(os.path.join(d, "snap_io_0.exit.bin"))
         return ex[IO + 0x58:IO + 0x400]
+
+
+def explained(d, name, k):
+    """Why a differing state is out of the port's domain, or None. Readable code
+    is typed C, held to what the game's real calls do; three kinds of random
+    state leave that, and the difference they make is the harness's:
+      misaligned load: the original loaded a halfword or word from an odd
+        address (a random pointer; real ones are aligned). The ARM7 rotates
+        it; the port's C reads what its type says (on the host a plain read).
+      open bus: the original read an unused or write-only I/O register or
+        unmapped memory (mGBA's bad-load messages), which the GBA answers
+        with the last prefetched opcode; the host maps those addresses as
+        plain memory.
+      free stack: an input register points below SP, into memory the
+        original's own pushes overwrite before it reads it there; the port's
+        stack frames are not the original's.
+    The first two come from mgba_run (snap_*.bus, written for the original's
+    run), the last from the entry registers."""
+    bus = os.path.join(d, f"snap_{name}_{k}.bus")
+    if os.path.exists(bus):
+        note = open(bus).readline().strip()
+        return ("misaligned load" if note.startswith("misaligned") else "open bus") + f" ({note})"
+    hdr, _ = load_snap(os.path.join(d, f"snap_{name}_{k}.bin"))
+    sp = hdr[2 + 13]
+    for r in range(13):
+        if FREE_STACK <= hdr[2 + r] < sp:
+            return f"free stack (r{r} = {hdr[2 + r]:#x}, SP = {sp:#x})"
+    return None
 
 
 def batch(args):
@@ -130,23 +163,28 @@ def batch(args):
             if not m:
                 continue
             name, k, verdict = m.group(1), m.group(2), m.group(3)
-            res = results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": []})
+            res = results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": [], "explained": []})
+            why = explained(d, name, k) if verdict in ("MEM", "REG") else None
             if verdict == "ok":
                 res["ok"] += 1
-            elif verdict == "out of domain":
+            elif verdict == "out of domain" or why:
                 res["ood"] += 1
             else:
                 res["fail"] += 1
                 if len(res["why"]) < 3:
                     res["why"].append(f"{verdict}: " + "; ".join(detail.get(name, [])[:3]))
-                os.makedirs(keep_dir, exist_ok=True)
-                for suffix in (".bin", ".exit.bin"):
+            if why:
+                res["explained"].append(f"{name} {k} {why}: {verdict}: " + "; ".join(detail.get(name, [])[:3]))
+            if verdict in ("MEM", "REG"):
+                keep = os.path.join(os.path.dirname(keep_dir), "explained") if why else keep_dir
+                os.makedirs(keep, exist_ok=True)
+                for suffix in (".bin", ".exit.bin", ".bus"):
                     src = os.path.join(d, f"snap_{name}_{k}{suffix}")
                     if os.path.exists(src):
-                        shutil.copy(src, os.path.join(keep_dir, f"snap_{name}_{k}{suffix}"))
+                        shutil.copy(src, os.path.join(keep, f"snap_{name}_{k}{suffix}"))
             detail.pop(name, None)
         for name, *_ in work:
-            results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": []})
+            results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": [], "explained": []})
     return results
 
 
@@ -213,8 +251,13 @@ def main():
         for name, addr, *_ in us:
             r = totals.get(name, {"ok": 0, "fail": 0, "ood": 0, "why": []})
             f.write(f"{name} {addr:08x} ok={r['ok']} fail={r['fail']} ood={r['ood']} {' | '.join(r['why'])}\n")
+    notes = [line for r in totals.values() for line in r.get("explained", [])]
+    with open(os.path.join(args.out, "explained.txt"), "w") as f:
+        f.write("".join(line + "\n" for line in sorted(notes)))
     tested = [n for n, r in totals.items() if r["ok"] + r["fail"]]
     failing = [n for n, r in totals.items() if r["fail"]]
+    print(f"{len(notes)} differing states out of the port's domain (misaligned load, open bus, free stack): "
+          f"see {args.out}/explained.txt")
     print(f"{len(tested)} of {len(us)} functions compared on at least one state; {len(failing)} differ: see {args.out}/report.txt")
 
 
