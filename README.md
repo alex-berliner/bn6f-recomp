@@ -1,91 +1,70 @@
-# BN6FalzarRecomp
+# BN6 Falzar Recomp
 
-Static recompilation of **Mega Man Battle Network 6: Cybeast Falzar** (GBA, USA)
-to a native PC executable, built on the [gbarecomp](https://github.com/mstan/gbarecomp)
-framework.
+**Mega Man Battle Network 6: Cybeast Falzar** (GBA, USA) rebuilt as C, then as readable C.
 
-The game's ARM7TDMI ARM/Thumb code is translated ahead of time into C++ and
-linked against gbarecomp's GBA hardware runtime (PPU, APU, DMA, timers, IRQs,
-SRAM, input). Function boundaries, names, the code/data split and the
-ROM→IWRAM code copies come from the byte-matching
-[bn6f disassembly](https://github.com/dism-exe/bn6f) (submodule `bn6f/`).
+1. **Lift.** Every function of the original ARM/Thumb code, taken from the byte-matching
+   [bn6f disassembly](https://github.com/dism-exe/bn6f), is translated into exact C and
+   compiled back into a GBA ROM that plays the same game.
+2. **Rewrite.** The lifted functions are replaced one by one with readable, typed C. Each
+   replacement is tested against the original and kept only if it behaves identically.
+   Most are written by language models in volume and checked automatically.
+3. **Record.** Everything learned along the way goes back into the disassembly (names,
+   comments) and into a symbol database with the evidence behind each finding.
 
-No ROM, BIOS, or ROM-derived generated code is included in this repository.
+The goals: a version of the game that is readable C rather than assembly, that stays
+faithful to the original frame by frame, could eventually run faster than it, and whose
+method could be reused for other GBA games with a disassembly.
 
-This repository also holds a **GBA C port** (`cport/`): the game as lifted C,
-progressively replaced by readable C verified against the original, and the
-symbol database that brings what it learns back into the disassembly
-(`symbols/db/`). How that work is run, its tools and decisions:
-[`docs/PROCESS.md`](docs/PROCESS.md).
+**Status (October 2026):** the C ROM plays identically to the original on all 16 recorded
+gameplay routes (43% of the game's code exercised). About 1,435 of 14,000 functions are
+readable C, most of them still being moved from register-level C to typed C. On an
+emulator the port runs at about 90-99% of the original's speed.
 
-## Requirements
+## Build the ROM
 
-- Linux (tested), CMake ≥ 3.20, GCC/Clang with C++20, SDL2 dev headers, Python 3, libpng (for gbagfx)
-- A GBA BIOS dump: `gbarecomp/bios/gba_bios.bin`
-  (SHA-1 `300c20df6731a33952ded8c436f7f186d25d3492`)
-- The Falzar ROM: `roms/bn6f.gba`
-  (SHA-1 `0676ecd4d58a976af3346caebb44b9b6489ad099`).
-  `tools/import_symbols.sh` builds this exact ROM from the disassembly at `bn6f/bn6f.gba`.
+No ROM or BIOS is needed: the disassembly assembles the original game from source, and
+the build checks it against the original's SHA-1 before lifting it.
 
-## Build
-
-```sh
-git submodule update --init --recursive
-cp /path/to/gba_bios.bin gbarecomp/bios/gba_bios.bin
-
-tools/build_toolchain.sh      # agbasm binutils fork needed by bn6f (once)
-tools/import_symbols.sh       # build bn6f + regenerate symbols/ from its ELF
-cp bn6f/bn6f.gba roms/bn6f.gba  # or supply your own dump
-tools/regen.sh                # recompile BIOS + ROM into generated*/
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-./build/BN6FalzarRecomp game.toml
-```
-
-Run from the repository root so `game.toml` paths resolve.
-
-Headless smoke test:
+**Linux or WSL:** install git, make, a C compiler, python3, libpng
+(dev headers), bison, flex, texinfo and `arm-none-eabi-gcc` (Debian/Ubuntu:
+`sudo apt install build-essential python3 libpng-dev bison flex texinfo gcc-arm-none-eabi`), then
 
 ```sh
-./build/BN6FalzarRecomp --no-window --frames 600 --dump-png title.png game.toml
+git clone https://github.com/alex-berliner/bn6f-recomp && cd bn6f-recomp
+./build.sh             # -> cport/build/bn6f_lifted.gba
+./build.sh supercard   # also a copy for SuperCard-style flash carts, in roms/out/
 ```
 
-The exit banner reports static coverage: `self_heal_coverage=FULLY_STATIC`
-means every executed guest instruction ran as recompiled native code. Misses
-are bridged through gbarecomp's interpreter, logged to
-`recomp_master_misses_BR6E.toml.frag`, and should be reviewed and merged into
-`game.toml`.
+**Windows:** run `build.bat`. It runs `build.sh` under WSL (install it with `wsl --install`),
+or under another bash (MSYS2, Git Bash) that has the tools above.
 
-## Controls (gbarecomp defaults)
+The first build also compiles the binutils fork the disassembly needs (a few minutes).
 
-| GBA | Keyboard |
+## What's where
+
+| Path | What |
 |---|---|
-| D-Pad | Arrow keys |
-| A / B | Z / X |
-| L / R | A / S |
-| Start / Select | Enter / Right Shift |
-| Fast-forward | Hold Tab |
+| `bn6f/` | the disassembly (submodule; a fork with this project's names and comments) |
+| `tools/lifter/` | the ARM/Thumb-to-C lifter |
+| `cport/` | the port: generated lifted C, readable functions in `src/game/`, the test harness in `host/` |
+| `tools/wf/` | the workflows that capture test inputs, convert functions, verify and record ([map](docs/orchestration.html)) |
+| `tools/convert/` | the model farm that converts small functions |
+| `tools/abi/` | calling-convention tools ([target convention](docs/C_CALLING_CONVENTION.md)) |
+| `symbols/db/` | one record per discovered symbol: meaning, evidence, how to reproduce it |
+| `tools/traces/` | recorded gameplay routes, keyed to the game's own frame counter |
+| `docs/` | [process and decisions](docs/PROCESS.md), [workflows](docs/workflows/), [plans and reviews](docs/reviews/) |
 
-Save states: Shift+F1–F9 save, F1–F9 load. SRAM saves go to `saves/bn6f.sav`.
+## How changes are checked
 
-## Layout
+Every readable function is compared with its lifted original on real recorded game
+states and random inputs (`cport/host` difftest). The whole port is then replayed beside
+the original on every recorded route, comparing palette, VRAM and OAM at each checkpoint
+(lockstep), and a CPU oracle compares functions directly. The test tools need your own
+GBA BIOS dump (`gbarecomp/bios/gba_bios.bin` for now) and the `mgba_run` harness; their
+setup is still being consolidated.
 
-| Path | Purpose |
-|---|---|
-| `game.toml` | Hand-reviewed recompiler + runtime config (wins over the overlay) |
-| `symbols/` | Overlay generated from the bn6f ELF by `tools/import_symbols.sh` |
-| `patches/` | Local fixes to gbarecomp, applied by `tools/regen.sh` |
-| `generated/`, `generated_bios/` | Recompiled C++ (local only, not committed) |
+## Legal
 
-## Local gbarecomp patches
-
-- `gbarecomp-0001`: the function finder treated the even return address left
-  by Thumb `mov lr, pc; bx rN` as an ARM resume point (and word-aligned the
-  PC read), seeding bogus ARM functions inside Thumb code. BN6 uses this call
-  idiom everywhere.
-
-## Status
-
-- Boots through the recompiled real BIOS (intro skipped) to the title screen.
-- New game → opening cutscene in ACDC Town runs **fully static** (7,000 frames,
-  zero interpreted instructions).
+This repository contains no ROM, BIOS or game assets beyond what the bn6f disassembly
+already publishes. Mega Man Battle Network is a trademark of Capcom; this is an
+unofficial fan project.
