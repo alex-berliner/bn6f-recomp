@@ -2,6 +2,7 @@
 pieces (tools/convert/farm.py: prompt, code extraction, candidate test) and
 tools/llm.py (providers, pacers, token log). Runs keep farm.py's log and
 accepted-file formats, so tools/convert/scorecard.py keeps counting them."""
+import hashlib
 import json
 import re
 import subprocess
@@ -9,6 +10,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from datetime import datetime
+from enum import Enum
 from types import ModuleType
 from typing import NewType, cast
 
@@ -30,6 +33,40 @@ Register = NewType("Register", str)           # "r0".."r12", "lr", or a flag ("n
 LOG_DIR = REPO / "tools/convert/log"
 ACCEPTED_DIR = REPO / "tools/convert/accepted"
 USAGE_LOG = REPO / "tools/convert/usage.jsonl"
+MAX_TOKENS = 40000   # output cap per call (tools/convert/experiments/max_tokens-20261010.md)
+HEADERS = tuple(REPO / "cport/include" / name for name in
+                ("game.h", "cpu.h", "runtime.h", "bn6f_syms.h", "bn6f_equates.h"))
+
+
+class Outcome(Enum):
+    """How one round ended, in the log (the farm's resume rule reads RUNAWAY)."""
+    PASSED = "passed"
+    FAILED = "failed"            # the candidate failed a check
+    RUNAWAY = "runaway"          # no code: the reply spent its output on reasoning; not asked again
+    MODEL_ERROR = "model error"  # the provider failed (HTTP error, timeout)
+
+
+def prompt_hash() -> str:
+    """Which prompt text a round used (farm.py's system prompt, conventions, template and repair text)."""
+    texts = (cast(str, _farm.SYSTEM), cast(str, _farm.CONVENTIONS), cast(str, _farm.TEMPLATE),  # pyright: ignore[reportAny]
+             cast(str, _farm.REPAIR))  # pyright: ignore[reportAny]
+    return hashlib.sha1("\0".join(texts).encode()).hexdigest()[:12]
+
+
+_env_hashes: dict[tuple[str, float], str] = {}
+
+
+def environment_hash(difftest: Path | None) -> str:
+    """What a candidate was tested against: the headers it compiles with and the difftest binary."""
+    digest = hashlib.sha1()
+    for path in (*HEADERS, *((difftest,) if difftest is not None else ())):
+        if not path.exists():
+            continue
+        key = (str(path), path.stat().st_mtime)
+        if key not in _env_hashes:
+            _env_hashes[key] = hashlib.sha1(path.read_bytes()).hexdigest()
+        digest.update(_env_hashes[key].encode())
+    return digest.hexdigest()[:12]
 
 
 class Contract(Result):
@@ -124,7 +161,7 @@ def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool 
     llm = cast(ModuleType, _farm.llm)  # pyright: ignore[reportAny]
     started = time.monotonic()
     try:
-        reply = cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=40000,  # pyright: ignore[reportAny]
+        reply = cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=MAX_TOKENS,  # pyright: ignore[reportAny]
                                        tag=tag, usage_log=str(USAGE_LOG), wait_out_limits=wait_out_limits))
     except Exception as error:  # the provider's own errors: HTTP, timeouts, bad JSON
         return ModelReply(candidate=None, seconds=round(time.monotonic() - started, 1),
@@ -149,13 +186,27 @@ def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots:
     return CandidateTest(passed=passed, report=ToolMessage(report))
 
 
+def round_outcome(reply: ModelReply, test: CandidateTest | None) -> Outcome:
+    if reply.error is not None:
+        return Outcome.MODEL_ERROR
+    if test is None:
+        return Outcome.RUNAWAY
+    return Outcome.PASSED if test.passed else Outcome.FAILED
+
+
 def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply: ModelReply,
-              test: CandidateTest | None) -> None:
-    """One row in tools/convert/log/FUNC.MODEL.jsonl, as farm.py writes them."""
+              test: CandidateTest | None, difftest: Path | None = None) -> None:
+    """One row in tools/convert/log/FUNC.MODEL.jsonl: farm.py's fields (round, ok, seconds, report,
+    code) and where it came from (review 3 Area 6: time, prompt and test-environment hashes, cap, the
+    function's input key, outcome), failed provider calls included."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     report = reply.error or (test.report if test else "the reply had no ```c code block")
     row = {"round": round_number, "ok": bool(test and test.passed), "seconds": round(reply.seconds),
-           "report": report, "code": reply.candidate}
+           "report": report, "code": reply.candidate,
+           "time": datetime.now().isoformat(timespec="seconds"), "model": reply.model or model, "kind": "farm",
+           "outcome": round_outcome(reply, test).value, "prompt_hash": prompt_hash(),
+           "environment_hash": environment_hash(difftest), "max_tokens": MAX_TOKENS,
+           "input_key": cast(str | None, _farm.input_key(function))}  # pyright: ignore[reportAny]
     with open(LOG_DIR / f"{function}.{_tag(model)}.jsonl", "a") as log:
         log.write(json.dumps(row) + "\n")
 
@@ -183,15 +234,17 @@ def logged_rounds(function: FunctionName, model: ModelSpec) -> int:
 
 
 def out_of_rounds_before(function: FunctionName, model: ModelSpec, rounds: int) -> bool:
-    """farm.py's resume rule: a pair whose log reached the last round is finished."""
+    """farm.py's resume rule: a pair whose log reached the last round is finished; so is one whose
+    reply was a runaway (asking the same model the same thing again wastes its cap: review 3, B3)."""
     log = LOG_DIR / f"{function}.{_tag(model)}.jsonl"
     if not log.exists():
         return False
     rows = [FarmLogRow.model_validate_json(line) for line in log.read_text().splitlines() if line.strip()]
-    return any(row.round >= rounds for row in rows)
+    return any(row.round >= rounds or row.outcome == Outcome.RUNAWAY.value for row in rows)
 
 
 class FarmLogRow(Result):
     """The fields of a tools/convert/log row the resume rule reads."""
     round: int
     ok: bool
+    outcome: str | None = None   # rows before 2026-10-10 have none

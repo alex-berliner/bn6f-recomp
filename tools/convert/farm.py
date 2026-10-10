@@ -175,10 +175,14 @@ def compare_args(contract):
 
 
 def extract_code(reply):
-    blocks = re.findall(r"```(?:c|C)?\s*\n(.*?)```", reply, re.S)
-    if not blocks:
+    """The reply's C: every ```c / ```cpp / ``` block, in order (models sometimes split helpers
+    and the entry point), each once; #include lines dropped."""
+    blocks = re.findall(r"```(?:c|C|cpp|c\+\+|h)?[ \t]*\n(.*?)```", reply, re.S)
+    blocks = [b for i, b in enumerate(blocks) if b.strip() and not any(b in other for j, other in enumerate(blocks) if j != i and len(other) > len(b))]
+    unique = list(dict.fromkeys(blocks))
+    if not unique:
         return None
-    code = max(blocks, key=len)
+    code = "\n".join(unique)
     return "\n".join(l for l in code.splitlines() if not l.strip().startswith("#include"))
 
 
@@ -191,6 +195,28 @@ REVIEW_RULES = (
     (re.compile(r"(\()\s*s16\s*\)\s*LD16\b"),
      "use LDS16 for the original's ldrsh ((s16)LD16 differs at a misaligned address)"),
 )
+
+
+def blank_comments(code):
+    """Comments replaced by spaces, newlines kept, so line numbers still match the candidate."""
+    return re.sub(r"/\*.*?\*/|//[^\n]*", lambda m: re.sub(r"[^\n]", " ", m.group(0)), code, flags=re.S)
+
+
+def input_key(name):
+    """What the function was made from: a hash of its original bytes in bn6f.gba (the
+    lifted header's address range), or of its assembly when they are not in ROM.
+    Renames and lifter changes leave it alone; a change to the original code does not."""
+    import hashlib
+    lifted, start = find_lifted(name)
+    if lifted is not None:
+        m = re.match(r"/\* \w+: ([0-9A-F]{8})-([0-9A-F]{8})", lifted)
+        lo, hi = (int(m.group(1), 16), int(m.group(2), 16)) if m else (0, 0)
+        if 0x08000000 <= lo < hi <= 0x0A000000 and hi - lo < 0x10000:
+            with open(os.path.join(ROOT, "bn6f", "bn6f.gba"), "rb") as rom:
+                rom.seek(lo - 0x08000000)
+                return "rom:" + hashlib.sha1(rom.read(hi - lo)).hexdigest()[:16]
+    asm = find_asm(name)
+    return "asm:" + hashlib.sha1(asm.encode()).hexdigest()[:16] if asm else None
 
 
 def review_rule_problems(code):
@@ -220,30 +246,40 @@ def register_problems(name, code, workdir):
     return "\n".join(lines)
 
 
-def test(name, code, snaps, contract, workdir):
-    """(ok, report): compile the candidate and run the comparisons."""
+def test(name, code, snaps, contract, workdir, check_registers=True):
+    """(ok, report): compile the candidate and run the comparisons. check_registers=False
+    skips the register check (re-testing candidates written before it existed)."""
     if not re.search(rf"\bNext\s+{re.escape(name)}\s*\(\s*void\s*\)", code):
         return False, f"the code must define `Next {name}(void)`"
     # comments may mention the flags ("sets nz"); only code counts
-    bare = re.sub(r"/\*.*?\*/|//[^\n]*", " ", code, flags=re.S)
+    bare = blank_comments(code)
+    lines = code.splitlines()
     style = {m.group(0) for m in LIFTED_STYLE.finditer(bare)}
     if style:
         return False, "the code still uses machine-translated style: " + ", ".join(sorted(style))[:200]
     rules = review_rule_problems(bare)
     if rules:
-        return False, "\n".join(f"line {line}: {rule}" for line, rule in rules)
-    registers = register_problems(name, code, workdir)
+        return False, "\n".join(f"line {line}: {rule}\n    {lines[line - 1].strip() if line <= len(lines) else ''}"
+                                 for line, rule in rules)
+    registers = register_problems(name, code, workdir) if check_registers else ""
     if registers:
         return False, registers
     src = os.path.join(workdir, "cand.c")
     so = os.path.join(workdir, "cand.so")
     renamed = re.sub(rf"\bNext\s+{re.escape(name)}\s*\(\s*void\s*\)", f"Next cand_{name}(void)", code)
     with open(src, "w") as f:
-        f.write('#include "game.h"\n#include "runtime.h"\n' + renamed + "\n")
+        f.write('#include "game.h"\n#include "runtime.h"\n#line 1\n' + renamed + "\n")   # errors give the candidate's lines
     cc = subprocess.run(["gcc", *CFLAGS, "-o", so, src], capture_output=True, text=True)
     if cc.returncode:
-        errs = [l for l in cc.stderr.splitlines() if "error" in l][:8]
-        return False, "compile errors:\n" + "\n".join(e.replace(src + ":", "line ") for e in errs)
+        errs = []
+        for l in cc.stderr.splitlines():
+            m = re.match(re.escape(src) + r":(\d+):\d+: (?:fatal )?error: (.*)", l)
+            if m and len(errs) < 8:
+                n = int(m.group(1))
+                errs.append(f"line {n}: error: {m.group(2)}" + (f"\n    {lines[n - 1].strip()}" if 0 < n <= len(lines) else ""))
+            elif "error" in l and src not in l and len(errs) < 8:
+                errs.append(l)
+        return False, "compile errors:\n" + "\n".join(errs)
     regs, flags = compare_args(contract)
     base = [DIFFTEST, "-L", so, "-R", ",".join(regs)] + (["-F", ",".join(flags)] if flags else [])
     env = dict(os.environ, BN6F_ROM=os.path.join(ROOT, "bn6f", "bn6f.gba"))

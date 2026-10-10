@@ -204,8 +204,8 @@ STARTS: tuple[Start, ...] = (
           "Claude starts a farm batch over the chosen leaf functions and their captured calls: one farm run per "
           "function and model."),
     Start("pick_leaves", "drafts", "wf drafts",
-          "Claude starts a drafts run when accepted farm candidates have no symbols/db entry yet (farm runs draft "
-          "one for each function they accept)."),
+          "Claude starts a drafts run for accepted farm candidates without a symbols/db entry; `--drafter` "
+          "picks the model that writes them (MiniMax-M3, on its own plan, rather than the farm model's credit)."),
     Start("integrate_farm", "convert", "wf convert --farm-model",
           "Claude sends a group of accepted farm candidates through a convert run as its first candidate file, "
           "reusing their captured calls. The group then gets the same verify, review, commit and symbol recording "
@@ -219,7 +219,8 @@ HANDBACKS: tuple[Handback, ...] = (
              "A finished capture run hands back a CaptureReport: the snapshot directory with the original game's "
              "calls, and which functions no route called. `wf farm --snapshots` takes that directory."),
     Handback("farm", "integrate_farm", "accepted\ncandidates",
-             "A farm run whose candidate passed leaves it, with its drafted entry, in tools/convert/accepted/."),
+             "A farm run whose candidate passed leaves it in tools/convert/accepted/ (its entry comes from a "
+             "drafts run)."),
     Handback("drafts", "integrate_farm", "entries",
              "A drafts run hands back how many entries it wrote, and the candidates that got none."),
     Handback("farm-batch", "cost", "tallies\nper model",
@@ -376,12 +377,10 @@ STEP_SUMMARIES: dict[tuple[str, str], str] = {
     ("farm", "accept_candidate"):
         "When the model's C passes, the farm run saves it in tools/convert/accepted/ for Claude's review. "
         "Nothing is installed or committed.",
-    ("farm", "draft_symbol_entry"):
-        "After saving a passing version, the farm run asks the same model to draft the function's symbols/db "
-        "entry (name in game terms, status, summary, interface, details) and saves it beside the candidate.",
     ("farm", "give_up"):
         "A farm run that produced no passing version records why: there was nothing to convert, the model's "
-        "provider failed, or every round failed its test.",
+        "provider failed, every round failed its test, or the reply had no code (a runaway: the same prompt is "
+        "not sent again; another model gets the function later).",
     ("farm-batch", "build_difftest"):
         "A farm batch (started by `wf farm`) builds the host difftest once from the current sources; every farm "
         "run in the batch uses it. Building it fresh matters: a stale difftest once accepted candidates that "

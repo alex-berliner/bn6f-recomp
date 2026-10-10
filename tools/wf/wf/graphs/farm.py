@@ -2,7 +2,8 @@
 §4). One `farm` run is one function and one model: the model
 writes readable C, the farm's acceptance test checks it against the lifted
 original on the captured calls and random inputs, failures go back to the
-model for repair, and an accepted function gets its symbols/db entry drafted
+model for repair. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
+plan's quota rather than the farm model's.) Earlier: an accepted function got its symbols/db entry drafted
 by the same model. A `farm batch` run builds the host difftest once, skips
 pairs that are already finished, and runs the rest as its child runs."""
 import contextvars
@@ -14,7 +15,6 @@ from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.tools.build import build_host_difftest, committed_tree
-from wf.tools.drafts import Draft, draft_entry
 from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, accept, already_accepted,
                              ask_model, conversion_context, first_prompt, log_round, logged_rounds,
                              out_of_rounds_before, repair_prompt, test_candidate)
@@ -27,16 +27,16 @@ PROJECT = "recomp-farm"
 def farm_graph() -> Graph["FarmState"]:
     return farm.graph(
         first=gather_context,
-        ends=[draft_symbol_entry, give_up],
+        ends=[accept_candidate, give_up],
         transitions=[
             Transition(after=gather_context, go_to=ask_model_for_c, when=there_is_something_to_convert),
             Transition(after=gather_context, go_to=give_up, when=there_is_nothing_to_convert),
             Transition(after=ask_model_for_c, go_to=test_reply, when=the_model_answered),
             Transition(after=ask_model_for_c, go_to=give_up, when=the_model_failed),
             Transition(after=test_reply, go_to=accept_candidate, when=the_candidate_passed),
+            Transition(after=test_reply, go_to=give_up, when=the_reply_had_no_code),
             Transition(after=test_reply, go_to=ask_model_for_c, when=it_failed_with_rounds_left),
             Transition(after=test_reply, go_to=give_up, when=it_failed_with_no_rounds_left),
-            Transition(after=accept_candidate, go_to=draft_symbol_entry),
         ],
     )
 
@@ -59,6 +59,7 @@ class FarmOutcome(Enum):
     ACCEPTED = "accepted"
     OUT_OF_ROUNDS = "failed every round"
     MODEL_ERROR = "the model's provider failed"
+    RUNAWAY = "the reply had no code (all reasoning): left for another model"
     SOURCES_OUT = "every source was out of quota (left for a later batch)"
     NOTHING_TO_CONVERT = "no lifted code, assembly or captured calls"
 
@@ -80,7 +81,6 @@ class FarmState(BaseModel):
     attempts: tuple[Attempt, ...] = ()
     accepted: Path | None = None
     outcome: FarmOutcome | None = None
-    draft: Draft | None = None
 
 
 farm = Workflow[FarmState](FarmState, project=PROJECT)
@@ -153,7 +153,8 @@ def test_reply(given: TestInput) -> TestOutput:
     latest = given.attempts[-1]
     test = (test_candidate(given.context, latest.reply.candidate, given.snapshots, given.difftest)
             if latest.reply.candidate is not None else None)
-    log_round(given.context.function, latest.reply.model or given.model, latest.round_number, latest.reply, test)
+    log_round(given.context.function, latest.reply.model or given.model, latest.round_number, latest.reply, test,
+              given.difftest)
     return TestOutput(attempts=(*given.attempts[:-1], latest.model_copy(update={"test": test})))
 
 
@@ -177,22 +178,11 @@ def accept_candidate(given: AcceptInput) -> AcceptOutput:
                         outcome=FarmOutcome.ACCEPTED)
 
 
-class DraftInput(Result):
-    model: ModelSpec
-    accepted: Path
-
-
-class DraftOutput(Result):
-    draft: Draft
-
-
-@farm.step
-def draft_symbol_entry(given: DraftInput) -> DraftOutput:
-    """Have the same model draft the function's symbols/db entry, beside the candidate."""
-    return DraftOutput(draft=draft_entry(given.model, given.accepted, current_run_id()))
 
 
 class GiveUpInput(Result):
+    function: FunctionName
+    model: ModelSpec
     context: ConversionContext | NotRun
     attempts: tuple[Attempt, ...]
 
@@ -207,7 +197,11 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
     if isinstance(given.context, NotRun):
         return GiveUpOutput(outcome=FarmOutcome.NOTHING_TO_CONVERT)
     if given.attempts and given.attempts[-1].reply.error is not None:
+        last = given.attempts[-1]
+        log_round(given.function, last.reply.model or given.model, last.round_number, last.reply, None)
         return GiveUpOutput(outcome=FarmOutcome.MODEL_ERROR)
+    if given.attempts and given.attempts[-1].reply.candidate is None:
+        return GiveUpOutput(outcome=FarmOutcome.RUNAWAY)
     return GiveUpOutput(outcome=FarmOutcome.OUT_OF_ROUNDS)
 
 
@@ -232,12 +226,19 @@ def the_candidate_passed(state: FarmState) -> bool:
     return test is not None and test.passed
 
 
+def the_reply_had_no_code(state: FarmState) -> bool:
+    """A runaway: never sent the same prompt again (review 3, B3); another model gets the function later."""
+    return state.attempts[-1].reply.candidate is None and state.attempts[-1].reply.error is None
+
+
 def it_failed_with_rounds_left(state: FarmState) -> bool:
-    return not the_candidate_passed(state) and len(state.attempts) <= state.rounds
+    return (not the_candidate_passed(state) and not the_reply_had_no_code(state)
+            and len(state.attempts) <= state.rounds)
 
 
 def it_failed_with_no_rounds_left(state: FarmState) -> bool:
-    return not the_candidate_passed(state) and len(state.attempts) > state.rounds
+    return (not the_candidate_passed(state) and not the_reply_had_no_code(state)
+            and len(state.attempts) > state.rounds)
 
 
 # ── a batch: many functions, many models ───────────────────────────────

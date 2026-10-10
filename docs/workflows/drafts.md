@@ -23,7 +23,7 @@ The model's accepted candidates without a drafted entry.
 
 Ask the model for each candidate's entry, several at a time.
 
-- reads: `model: ModelSpec`, `candidates: tuple[Path, ...]`, `jobs: int`
+- reads: `model: ModelSpec`, `drafter: typing.Optional[ModelSpec]`, `candidates: tuple[Path, ...]`, `jobs: int`
 - produces: `drafts: tuple[Draft, ...]`
 - then: `summarise_drafts`
 

@@ -42,7 +42,8 @@ class DraftsReport(Result):
 
 
 class DraftsState(BaseModel):
-    model: ModelSpec
+    model: ModelSpec                                     # whose accepted candidates
+    drafter: ModelSpec | None = None                     # who writes the entries (None: the same model)
     functions: tuple[FunctionName, ...] | None = None   # None: every accepted candidate of the model
     jobs: int = 16
     candidates: tuple[Path, ...] = ()
@@ -72,6 +73,7 @@ def find_undrafted_candidates(given: FindInput) -> FindOutput:
 
 class DraftInput(Result):
     model: ModelSpec
+    drafter: ModelSpec | None
     candidates: tuple[Path, ...]
     jobs: int
 
@@ -85,7 +87,7 @@ def draft_each_candidate(given: DraftInput) -> DraftOutput:
     """Ask the model for each candidate's entry, several at a time."""
     tag = current_run_id()
     with ThreadPoolExecutor(max_workers=given.jobs) as pool:
-        runs = [pool.submit(contextvars.copy_context().run, draft_entry, given.model, candidate, tag)
+        runs = [pool.submit(contextvars.copy_context().run, draft_entry, given.drafter or given.model, candidate, tag)
                 for candidate in given.candidates]
         return DraftOutput(drafts=tuple(run.result() for run in runs))
 

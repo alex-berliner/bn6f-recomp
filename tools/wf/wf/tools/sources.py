@@ -8,6 +8,7 @@ import json
 import re
 import time
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from enum import Enum
 from time import sleep
 from types import ModuleType
@@ -30,7 +31,7 @@ class Tier(Enum):
 TIERS: dict[Tier, tuple[ModelSpec, ...]] = {
     Tier.STRONG: tuple(ModelSpec(model) for model in (
         "opencode/deepseek-v4-pro", "opencode/kimi-k3", "zai/glm-5.3",
-        "minimax/MiniMax-M3", "hyper/minimax-m3", "opencode/qwen3.7-plus")),
+        "minimax/MiniMax-M3", "opencode/qwen3.7-plus")),   # not hyper/minimax-m3: the MiniMax plan has M3 already
     Tier.CHEAP: tuple(ModelSpec(model) for model in (
         "hyper/glm-5.3-flash", "hyper/deepseek-v4.1-flash", "hyper/qwen3.8-flash",   # Hyper's quota lapses daily
         "zai/glm-5.3-flash", "minimax/MiniMax-M2.7-highspeed",
@@ -100,7 +101,7 @@ def is_source_failure(error: str) -> bool:
 
 def report_failure(model: ModelSpec, error: str) -> None:
     """Record that the model's quota pool is down (for every run), for as long as the error says, or a while."""
-    until = time.time() + _lasts(error)
+    until = time.time() + _lasts(error, provider(model))
     with held(_LOCK):
         state = _read()
         known = state.get(quota_pool(model))
@@ -134,8 +135,9 @@ def first_up[ReplyT](models: tuple[ModelSpec, ...], ask: Callable[[ModelSpec], R
         sleep(min(max(min(backs) - time.time(), 1.0) + 5, 600))
 
 
-def _lasts(error: str) -> float:
-    """How long a failure keeps its provider down: what the provider said, or a guess by the kind of failure."""
+def _lasts(error: str, provider_name: str = "") -> float:
+    """How long a failure keeps its provider down: what the provider said, or a guess by the kind of failure.
+    Hyper's "out of credits" (HTTP 402) lasts until its daily reset."""
     said = re.search(r"retry after (\d+)s", error)
     if said:
         return float(said[1])
@@ -143,6 +145,8 @@ def _lasts(error: str) -> float:
     lifts = cast(int | None, llm._limit_lifts_in(error))  # pyright: ignore[reportAny, reportPrivateUsage]
     if lifts:
         return float(lifts)
+    if provider_name == "hyper" and "HTTP 402" in error:
+        return _until_hyper_reset()
     if re.search(r"HTTP 402|quota|insufficient|balance", error, re.I):
         return 3600.0
     if "HTTP 429" in error:
@@ -155,3 +159,15 @@ def _read() -> dict[str, Outage]:
         return TypeAdapter(dict[str, Outage]).validate_json(STATE.read_text())
     except (OSError, ValueError):
         return {}
+
+
+HYPER_RESET = (10, 13)   # local time Hyper's daily credit comes back (the user, 2026-10-09)
+
+
+def _until_hyper_reset(now: datetime | None = None) -> float:
+    """Seconds until Hyper's next daily reset (a minute after it, to be safe)."""
+    now = now or datetime.now()
+    reset = now.replace(hour=HYPER_RESET[0], minute=HYPER_RESET[1] + 1, second=0, microsecond=0)
+    if reset <= now:
+        reset += timedelta(days=1)
+    return (reset - now).total_seconds()

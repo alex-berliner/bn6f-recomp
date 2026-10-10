@@ -4,7 +4,7 @@ run is, and regenerate the docs.
   python -m wf verify  [--function NAME]... [--snapshots DIR] [--route NAME]... [--battle-code] [--trials N]
   python -m wf capture --function NAME... [--route NAME]... [--calls N]
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] FUNCTION...
-  python -m wf drafts  --model PROVIDER/MODEL [--jobs N] [FUNCTION...]   # entries for accepted candidates
+  python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--jobs N] [FUNCTION...]   # entries for accepted candidates
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
                        [--candidate FILE | --farm-model P/M] [--defer-record] [--battle-code] FUNCTION...
@@ -70,6 +70,7 @@ class FarmCommand(BaseModel):
 class DraftsCommand(BaseModel):
     command: Literal["drafts"]
     model: ModelSpec
+    drafter: ModelSpec | None = None
     functions: tuple[FunctionName, ...]
     jobs: int
 
@@ -178,7 +179,8 @@ def start_farm(command: FarmCommand) -> None:
 
 def start_drafts(command: DraftsCommand) -> None:
     run_id, _ = new_run("drafts")
-    start = DraftsState(model=command.model, functions=command.functions or None, jobs=command.jobs)
+    start = DraftsState(model=command.model, drafter=command.drafter, functions=command.functions or None,
+                        jobs=command.jobs)
     print_json(run_drafts(start, run_id))
 
 
@@ -319,7 +321,8 @@ def parse_command() -> Command:
 
     drafts = commands.add_parser("drafts", help="a farm model drafts symbol entries for its accepted candidates")
     drafts.add_argument("functions", nargs="*")
-    drafts.add_argument("--model", required=True)
+    drafts.add_argument("--model", required=True, help="whose accepted candidates")
+    drafts.add_argument("--drafter", help="who writes the entries (default: --model; e.g. minimax/MiniMax-M3)")
     drafts.add_argument("--jobs", type=int, default=16)
 
     convert = commands.add_parser("convert", help="a strong model converts a subsystem; stops for review")

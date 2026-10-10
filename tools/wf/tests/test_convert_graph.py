@@ -17,6 +17,7 @@ from wf.graphs.verify import Verdict, VerifyReport, VerifyState
 from wf.tools import sources
 from wf.tools.evidence import FunctionChecks, Provenance
 from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Prompt
+from wf.tools.registers import RegisterCheck
 from wf.tools.subsystem import CandidateFile, FileReply, FileTest, FunctionTest, SymbolDraft, TokenUse
 from wf.types import (BuildFailure, CommitHash, FunctionName, GuestAddress, ModelSpec, SnapshotDir,
                       SourceVersion, SymbolName, SymbolStatus, ToolMessage)
@@ -353,3 +354,8 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         monkeypatch.setattr(convert, name, fake)
     monkeypatch.setattr(sources, "down_until", down_until)
     monkeypatch.setattr(sources, "report_failure", report_failure)
+    def registers_clean(code: str, file_name: str) -> RegisterCheck:   # the fixtures are in register form
+        return RegisterCheck(violations=(), exceptions=(), report="")
+
+    if "check_register_use" not in fakes:   # tests of the register check itself set their own
+        monkeypatch.setattr(convert, "check_register_use", registers_clean)
