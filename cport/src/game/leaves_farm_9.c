@@ -413,7 +413,6 @@ Next battle_setPlayerNaviStatsField0E_8015BEC(void) {
 /* ── battle_ResetObjectActionState_80165B8 ── */
 /* The disassembly names this field offset oBattleObject_CurAction; the game.h
  * headers only provide neighbouring fields, so define it here (offset 9). */
-enum { oBattleObject_CurAction = 9 };
 
 /* battle_ResetObjectActionState_80165B8(r5 = battle object):
  * Reset the object's action state: set its current action to 8 and clear the
@@ -1351,7 +1350,6 @@ Next sub_8031C94(void) {
 /* ── SpawnCounterPinkRingMaybe_80C4C12 ── */
 /* OBJECT_FLAG_PAUSE_UPDATE: bit in oObjectHeader_Flags that suspends an
  * object's normal update until something clears it. */
-enum { OBJECT_FLAG_PAUSE_UPDATE = 4 };
 
 /* SpawnCounterPinkRingMaybe_80C4C12
  *   r1 = x, r2 = y, r3 = z, r4 = spawn params,
@@ -1399,7 +1397,6 @@ Next SpawnCounterPinkRingMaybe_80C4C12(void) {
  * active, advance it to the UPDATE phase, then immediately run its update step
  * (the update's final flag-setting instruction provides our nz/c/v outputs). */
 
-enum { CUR_STATE_UPDATE = 4 };
 
 Next chargeShotChargeObject_init_80E0E10(void) {
     ST32(R5 + oBattleObject_ExtraVars + 4, 1);
@@ -1426,7 +1423,6 @@ Next chargeShotChargeObject_init_80E0E10(void) {
 
 /* The flags byte sits at offset 0 of the object header; provide the offset
  * locally in case the shared header does not define the symbolic name. */
-enum { oObjectHeader_Flags = 0 };
 
 Next battle_spawnObject56LinkedToOwner_80C44A8(void) {
     u32 owner = R5;
@@ -1469,7 +1465,6 @@ Next battle_spawnObject56LinkedToOwner_80C44A8(void) {
  * the "destroyed" state (CUR_STATE_DESTROY, stored into the packed
  * state/action/phase field at offset 8). Leaves NZ set as the MOV of the
  * state constant does, since callers branch on the state value. */
-enum { CUR_STATE_DESTROY = 8 };
 
 Next battle_object_destroy_80C6AAC(void) {
     GUEST_CALL(object_clearCollisionRegion);
@@ -1847,8 +1842,6 @@ Next t3_0xd3_80DFE40(void) {
 }
 
 /* ── InitializeT1BattleObjectStructs ── */
-/* T1_BATTLE_OBJECT: object type ID passed to InitializeStructsOfObjectType. */
-enum { T1_BATTLE_OBJECT = 1 };
 
 /* InitializeT1BattleObjectStructs(r2, r3, r4, r7 = args passed through):
  * reset all battle object structs of type T1_BATTLE_OBJECT. */
@@ -2345,7 +2338,6 @@ Next clearIndexEntryPair_800AAFC(void) {
 /* GameState+0x00 holds the index of the subsystem the main loop should run
  * next. The disassembly names this field oGameState_SubsystemIndex; define
  * it locally if the shared header does not already provide it. */
-enum { oGameState_SubsystemIndex = 0x00 };
 
 Next warp_setSubsystemIndexTo0x14AndOthers_8005f14(void) {
     u32 savedR4 = R4;

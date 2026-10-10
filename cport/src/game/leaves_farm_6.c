@@ -117,9 +117,6 @@ Next sub_8031C42(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── FreeOWPlayerObject ── */
-enum { oObjectHeader_ListIndex = 3 };
-enum { oObjectHeader_Flags = 0 };
 
 /* FreeOWPlayerObject(r5 = player object header):
  * Releases the overworld player object. Clears its slot bit
@@ -451,8 +448,6 @@ Next object_spawnType4(void) {
  * (CutsceneScriptOnMapWarp_8098a02) with parameter 0. Disabling the cutscene
  * call makes warps like the one in Lan's HP stop reacting, though they still
  * animate. */
-enum { EVENT_1703 = 0x1703 };
-enum { EVENT_1738 = 0x1738 };
 
 Next map_onMapWarpCutscene_80059B4(void) {
     /* ClearEventFlagFromImmediate/SetEventFlagFromImmediate take the event id

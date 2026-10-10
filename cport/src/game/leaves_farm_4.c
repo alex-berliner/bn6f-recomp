@@ -260,9 +260,6 @@ Next NPCCommand_set_active_and_invisible(void) {
  * flags byte, then advance the script pointer by one. The r6 increment is the
  * original's last flag-setting instruction, so nz/c/v come from it. */
 Next NPCCommand_set_active_and_visible(void) {
-    /* object header flag bits written to oObjectHeader_Flags (offset 0) */
-    enum { OBJECT_FLAG_ACTIVE = 0x1, OBJECT_FLAG_VISIBLE = 0x2 };
-
     R0 = OBJECT_FLAG_ACTIVE | OBJECT_FLAG_VISIBLE;
     ST8(R5, R0);
 

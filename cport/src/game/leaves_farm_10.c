@@ -146,7 +146,6 @@ Next sound_8000808(void) {
  * then advances the NPC script program counter (r6).
  * r0 = flag value, r1 = new flags word; nz/c/v come from the final "adds r6, #1". */
 
-enum { OW_NPC_UNK_FLAGS_60_DISABLE_COLLISION = 0x4 };
 
 Next NPCCommand_disable_collision(void) {
     u32 flags = LD32(R5 + oOverworldNPCObject_UnkFlags_60);
@@ -164,7 +163,6 @@ Next NPCCommand_disable_collision(void) {
 /* NPCCommand_disable_npc_interaction(r5 = NPC object, r6 = script instruction pointer):
  * sets the NPC's "disable interaction" flag and advances the script by one command.
  * Leaves r0 = flag bit, r1 = updated flags value, r6 = next instruction index. */
-enum { OW_NPC_UNK_FLAGS_60_DISABLE_INTERACTION = 1 };
 
 Next NPCCommand_disable_npc_interaction(void) {
     R0 = OW_NPC_UNK_FLAGS_60_DISABLE_INTERACTION;
@@ -184,7 +182,6 @@ Next NPCCommand_disable_npc_interaction(void) {
 /* NPCCommand_do_not_face_player_when_interacted(r5 = NPC object, r6 = script counter):
  * Sets the "face player when interacted" flag (bit 1 of UnkFlags_60) on the NPC
  * and advances the script counter. Flags come from the counter increment. */
-enum { OW_NPC_UNK_FLAGS_60_FACE_PLAYER_WHEN_INTERACTED = 2 };
 
 Next NPCCommand_do_not_face_player_when_interacted(void) {
     R0 = OW_NPC_UNK_FLAGS_60_FACE_PLAYER_WHEN_INTERACTED;
@@ -226,7 +223,6 @@ Next NPCCommand_give_detatched_shadow(void) {
  * clear its movement flags, and disable its script. The script pointer is
  * then advanced past the 3-byte command (r6 += 3), and NZC are left from
  * that ADDS; r0 ends as whatever the script-disable call returned. */
-enum { MOVEMENT_FLAG_HOP_OR_LEAP = 8 };
 
 Next NPCCommand_init_hop(void) {
     ST8(R5 + 4 /* oOverworldNPCObject_MovementSpeed */, LD8(R6 + 1));
@@ -1529,7 +1525,6 @@ Next chatbox_runScript_803FE08(void) {
 /* ── sprite_clearMosaic ── */
 /* Field offsets the disassembly references symbolically. Define them here in
  * case they are not already provided by the shared header. */
-enum { oObjectHeader_TypeAndSpriteOffset = 2 };
 
 
 /* sprite_clearMosaic(r5 = object):
@@ -1577,7 +1572,6 @@ Next sprite_resetObjVars_800289C(void) {
 /* ── sprite_setColorShader ── */
 /* Field offsets used by sprite_setColorShader (not declared in game.h). */
 enum { oObjectHeader_TypeAndSpriteOffset_sprite_setColorShader = 2 };
-enum { oObjectSprite_Unk_06 = 6 };
 
 /* sprite_setColorShader(r0 = color shader id, r5 = object header):
  * Pick the sprite block selected by the high nibble of the object's
@@ -1773,7 +1767,6 @@ Next save_CommitWorkBufferToGamePak_803FB04(void) {
  * caller's r7 is saved on entry and restored on exit, so it is preserved.
  * Flags come from the final add (the Z update), which also leaves the new
  * Z in r3. */
-enum { oS200ace0_PlayerX = 8 };
 
 Next owPlayer_offsetS200ace0Coords_809e1fa(void) {
     u32 const player = A_eStruct200ace0;
@@ -1796,8 +1789,6 @@ Next owPlayer_offsetS200ace0Coords_809e1fa(void) {
 }
 
 /* ── owPlayer_setS2000aa0_param0x0to0x2_with0x40_0x40_0x0_respectively_809e2c2 ── */
-/* Default sprite transform values for the overworld player navi. */
-enum { DEFAULT_OW_PLAYER_NAVI_ROTATION = 0 };
 
 /* owPlayer_setS2000aa0_param0x0to0x2_with0x40_0x40_0x0_respectively_809e2c2:
  * reset the overworld player navi's sprite transform to its defaults
@@ -1827,7 +1818,6 @@ Next owPlayer_setS2000aa0_param0x0to0x2_with0x40_0x40_0x0_respectively_809e2c2(v
 
 /* Field offset from the disassembly: strb r0, [r3, #oS2000aa0_Sprite_04]
  * (byte_2000AA4 - 0x2000aa0). */
-enum { oS2000aa0_Sprite_04 = 4 };
 
 Next owPlayer_zeroS2000AA0Param0x4_809e312(void) {
     R0 = 0;

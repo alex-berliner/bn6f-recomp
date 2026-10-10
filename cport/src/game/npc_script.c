@@ -20,14 +20,9 @@
 #define NPC_STATE_TABLE   0x0809E580u     /* jt_809E580: init, standard, in chatbox */
 /* bn6f include/structs/OverworldNPCObject.inc, for what the shared header
  * does not export (it has OW_NPC_UNK_FLAGS_60_0x40 and _SHADOW_FLAG_0x80) */
-enum {
-    NPC_CUR_STATE = 0x08,            /* byte offset into jt_809E580 */
-    NPC_CUR_ACTION = 0x09,           /* byte offset into NPCCurActionJumptable */
-    NPC_UNK_07 = 0x07,
-    NPC_CUR_STATE_STANDARD = 0x4,
-    NPC_FLAGS_60_SPRITE_MIRRORED = 0x8,
-    NPC_FLAGS_60_SHADOW_0x100 = 0x100,   /* with SHADOW_FLAG_0x80: set = no shadow, clear = shadow ignores Z */
-};
+enum { NPC_CUR_STATE = 0x08, /* byte offset into jt_809E580 */
+    NPC_CUR_ACTION = 0x09, /* byte offset into NPCCurActionJumptable */
+    NPC_UNK_07 = 0x07, NPC_FLAGS_60_SPRITE_MIRRORED = 0x8, NPC_FLAGS_60_SHADOW_0x100 = 0x100, /* with SHADOW_FLAG_0x80: set = no shadow, clear = shadow ignores Z */ };
 #define NPC_SPRITE_SLOT   0x80            /* sprite_load's first argument for NPC sprites */
 
 /* Run the NPC's current state (r5 = NPC). */

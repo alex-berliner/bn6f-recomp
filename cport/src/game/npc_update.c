@@ -19,10 +19,8 @@
 #define NPC_HANDLERS     0x080045BCu  /* off_80045BC: by ObjectHeader.Index; one entry, npc_dispatch_809E570 */
 #define EVENT_NPC_OBJECTS_DISABLED 0x1701
 
-enum {  /* bn6f include/structs/ObjectHeader.inc */
-    OBJECT_FLAGS = 0x00, OBJECT_INDEX = 0x01,
-    OBJECT_FLAG_ACTIVE = 0x01, OBJECT_FLAG_VISIBLE = 0x02, OBJECT_FLAG_PAUSE_UPDATE = 0x04,
-};
+enum { /* bn6f include/structs/ObjectHeader.inc */
+    OBJECT_FLAGS = 0x00, OBJECT_INDEX = 0x01 };
 enum {
     NPC_SPRITE = 0xA0,               /* oOverworldNPCObject_SizeBeforeObjectSprite */
     NPC_POSITION = 0x24,             /* what sprite_projectAndCull projects */

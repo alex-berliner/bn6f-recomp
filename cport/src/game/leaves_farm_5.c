@@ -335,8 +335,6 @@ Next battle_applyNaviStatDamageTick_8013FF8(void) {
 }
 
 /* ── battle_EnableAIUnk0x48FlagForNonstandardBoard_80141F4 ── */
-/* BATTLE_MODE_DUSTMAN_MINI_GAME: battle mode id for the Dustman mini game. */
-enum { BATTLE_MODE_DUSTMAN_MINI_GAME = 9 };
 
 /* battle_EnableAIUnk0x48FlagForNonstandardBoard_80141F4:
  * Decide whether the AI's 0x48 flag needs to be raised. It is skipped when
@@ -1877,7 +1875,6 @@ Next chargeShotChargeObject_80E0DF0(void) {
  * ldrb overwrites the incoming r0), and R1 = the callee's thumb entry word
  * (e.g. sub_80EBE20+1), an artifact of loading the branch target into r1.
  */
-enum { oAIAttackVars_Unk_00 = 0 };
 #define CHARGE_ATTACK_TABLE 0x080EBE14
 
 Next megamanChargeShotAiAttack_80EBE00(void) {
@@ -1926,8 +1923,6 @@ Next megamanChargeShotAiAttack_80EBE00(void) {
  * from the "mov r0, r5" null check that gates the linking; v and c are left
  * untouched, as in the original (movs r0, r5 = lsls #0 does not set them). */
 
-/* Flags byte of an object header sits at offset 0 (ldrb r1, [r0, #0]). */
-enum { oObjectHeader_Flags = 0 };
 
 Next spawnChargeShotChargeObject_80E0F02(void) {
     u32 owner = R5;       /* object the charge effect belongs to */
@@ -2341,7 +2336,6 @@ Next battle_aiAttackDispatch_80EB436(void) {
 /* ── aiAttackTimerTick_80EB758 ── */
 /* The disassembly refers to the attack-phase byte at offset 1 as
  * oAIAttackVars_Unk_01; that name is not in the shared header, so provide it. */
-enum { oAIAttackVars_Unk_01 = 1 };
 
 /* aiAttackTimerTick_80EB758: AI attack-state timer tick (r7 = attack vars object).
  * On the first invocation (phase byte still 0) the countdown is initialised
