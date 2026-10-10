@@ -72,10 +72,21 @@ def blocked_until(spec: str, log_dir: str = "/tmp/bn-pacer"):
     return None
 
 
+def model_id(spec: str) -> str:
+    """One name per model whichever provider serves it: `hyper/minimax-m3` and `minimax/MiniMax-M3` are both
+    `minimax-m3`, `hyper/glm-5.3-flash` and `zai/glm-5.3-flash` both `glm-5.3-flash`. Pass rates compare
+    models by this name; quota stays per provider (the part before the slash)."""
+    return spec.split("/", 1)[-1].lower()
+
+
 def _read_events(response, spec: str) -> dict:
-    """A streamed chat completion, put together as the non-streamed reply would be."""
-    text, usage = [], None
+    """A streamed chat completion, put together as the non-streamed reply would be, plus when its first
+    line arrived (`first_byte_at`, epoch seconds): the wait before it is the pacer's and the provider's
+    queue, the rest is generation."""
+    text, usage, answered_by, first_byte_at = [], None, None, None
     for raw in response:
+        if first_byte_at is None:
+            first_byte_at = time.time()
         line = raw.decode(errors="replace").strip()
         if not line.startswith("data:"):
             continue
@@ -86,9 +97,11 @@ def _read_events(response, spec: str) -> dict:
         if event.get("error"):
             raise RuntimeError(f"{spec}: error in the stream: {str(event['error'])[:300]}")
         usage = event.get("usage") or usage
+        answered_by = answered_by or event.get("model")
         for choice in event.get("choices") or []:
             text.append((choice.get("delta") or {}).get("content") or "")
-    return {"choices": [{"message": {"content": "".join(text)}}], "usage": usage or {}}
+    return {"choices": [{"message": {"content": "".join(text)}}], "usage": usage or {}, "model": answered_by,
+            "first_byte_at": first_byte_at}
 
 
 def _limit_lifts_in(message: str):
@@ -104,8 +117,11 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
              retries: int = 3, tag: str = "", usage_log: str = "", wait_out_limits: bool = True,
              stream: bool = False) -> str:
     """The reply text. With usage_log (or $LLM_USAGE_LOG), appends one JSON line
-    per call: model, tag, seconds, input/output tokens as the provider reports
-    them (reasoning tokens are part of the output where reported).
+    per call: model (the spec asked for), model_id (the same model under every
+    provider, model_id()), answered_by (the model the provider says answered),
+    tag, seconds, first_byte (streamed calls: seconds until the reply's first
+    line), input/output tokens as the provider reports them (reasoning tokens
+    are part of the output where reported).
     wait_out_limits=False: a rate limit is raised at once (with when it lifts, as
     "retry after Ns") for a caller that can use another provider instead.
     stream=True (chat-completions providers): the reply comes as server-sent events,
@@ -137,6 +153,7 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
     while True:
         try:
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+            sent = time.time()   # this attempt's: time to first byte counts from here
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 reply = _read_events(r, spec) if body.get("stream") else json.load(r)
             break
@@ -165,7 +182,10 @@ def complete(spec: str, prompt: str, system: str = "", max_tokens: int = 16000, 
     log = usage_log or os.environ.get("LLM_USAGE_LOG", "")
     if log:
         u = reply.get("usage") or {}
-        rec = {"model": spec, "tag": tag, "seconds": round(time.time() - t0, 1),
+        first_byte_at = reply.get("first_byte_at") if body.get("stream") else None
+        rec = {"model": spec, "model_id": model_id(spec), "answered_by": reply.get("model"), "tag": tag,
+               "seconds": round(time.time() - t0, 1),
+               "first_byte": round(first_byte_at - sent, 1) if first_byte_at else None,
                "in": u.get("input_tokens", u.get("prompt_tokens")),
                "out": u.get("output_tokens", u.get("completion_tokens")),
                "reasoning": (u.get("completion_tokens_details") or {}).get("reasoning_tokens"),
