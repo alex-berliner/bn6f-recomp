@@ -22,6 +22,7 @@ ALL_ROUTES: tuple[Route, ...] = (
     _route("story6", 36237),
     _route("story7", 12601),
     _route("story8", 22494),
+    _route("story9", 38715),
     _route("title_mash_a", 8000),
     _route("wander", 8000),
 )
