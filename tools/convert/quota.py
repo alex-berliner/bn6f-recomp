@@ -2,7 +2,10 @@
 """Snapshot what each provider reports as used/left (keys from pi's auth.json,
 never printed): tools/convert/quota.py [OUT.json]. Hyper: credit balance;
 Z.ai: coding-plan quota windows; MiniMax: coding-plan remaining counts;
-OpenRouter: credits used. Compare two snapshots for a run's real cost."""
+OpenRouter: credits used. Compare two snapshots for a run's real cost.
+Every snapshot is also appended to tools/convert/quota.jsonl, one per line:
+tools/convert/scorecard.py turns the meters' movement between snapshots into
+tokens per plan unit."""
 import json, os, sys, time, urllib.error, urllib.request
 auth = json.load(open(os.path.expanduser("~/.pi/agent/auth.json")))
 key = lambda p: auth[p]["key"]
@@ -30,4 +33,6 @@ snap["openrouter"] = (get("https://openrouter.ai/api/v1/credits", {"Authorizatio
 text = json.dumps(snap, indent=1)
 if len(sys.argv) > 1:
     open(sys.argv[1], "w").write(text)
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "quota.jsonl"), "a") as log:
+    log.write(json.dumps(snap) + "\n")
 print(text)

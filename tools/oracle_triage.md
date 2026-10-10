@@ -26,3 +26,16 @@ and write-only display registers as 0.
 Harness improvements that would remove most of the rest: call-boundary
 tracing on the host (to place the ho_8034218 group); hand-written files' U16/S16/U32 modelling
 misaligned loads on the host (random pointers only).
+
+## Oracle drops from farm groups (convert runs, 2026-10-08/09)
+
+When farm groups went through convert, the full verify's oracle took 89 functions
+out (97 drops). Their differences are in `symbols/pool_drops.tsv` (made by
+`tools/convert/pool.py` from the Burr logs), sorted against the table above by name,
+by what each function calls, and by the shape of the difference. Only 5 match a
+known class: 4 BIOS leftovers (ho_8034218 and sub_8034268 with the unexplained
+r2 = 0x500, r3 = -1; the two LZ77 wrappers) and 1 caller of the hand-written ones
+(sub_8002694). The other 84 match none: 31 differ in memory, 31 in registers,
+16 in flags only, 5 only in a register's upper bits (the readable code returns a
+narrower value than the register the original left), and 1 has a callee that differed
+in the same run. 88 of the 89 are still not installed.

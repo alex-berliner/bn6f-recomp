@@ -32,6 +32,15 @@ log and the snapshot links (captures are named as the function was then) go to b
 
 The farm may be running: logs and accepted files are read once at the start, a function whose log
 changed in the last 10 minutes is left alone, and no log or existing accepted file is written.
+
+Drops: when a farm group goes through the convert workflow, the functions a check names are taken out
+of the group (drop_failing_functions). Why lived only in the Burr tracking logs
+(~/.burr/recomp-convert/RUN/log.jsonl, with the verify runs' own checks in ~/.burr/recomp-verify), which
+are read, never written. Every drop goes to symbols/pool_drops.tsv (one row per drop: run, the step whose
+check named it, reason, the check's own report; an oracle difference sorted into tools/oracle_triage.md's
+classes where it matches). Rows of runs no longer in ~/.burr are kept, so the ledger outlives the logs.
+pool.tsv gets each function's count and latest drop, its size (assembly instruction lines) and, when
+installed, the model its install commit names (both counted as tools/convert/scorecard.py counts them).
 """
 import argparse
 import json
@@ -45,23 +54,41 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Callable, NewType, cast
+from typing import Callable, NamedTuple, NewType, Protocol, cast
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tools/wf"))   # before farm.py puts tools/ first (tools/wf would shadow wf)
 sys.path.insert(0, str(REPO / "tools/abi"))
+sys.path.append(str(REPO / "tools/convert"))
 
 import yaml  # noqa: E402
 
 import lint  # noqa: E402  # pyright: ignore[reportMissingImports]  # tools/abi/lint.py: its register categories
+from wf.burr_typed import burr_dir  # noqa: E402
 from wf.repo import RUNS  # noqa: E402
 from wf.tools.build import build_host_difftest, committed_tree  # noqa: E402
 from wf.tools.models import ACCEPTED_DIR, FARM, LOG_DIR, CandidateC, ConversionContext, conversion_context  # noqa: E402
 from wf.types import BuildFailure, FunctionName, Result  # noqa: E402
+import scorecard  # noqa: E402  # pyright: ignore[reportMissingImports]  # tools/convert/scorecard.py: size and writer
 
 # tools/abi/lint.py's pieces: code with comments and strings blanked, and its register-level categories
 blank_comments_and_strings = cast(Callable[[str], tuple[str, object]], lint.strip)  # pyright: ignore[reportUnknownMemberType]
 REGISTER_CATEGORIES = cast(dict[str, re.Pattern[str]], lint.CATEGORIES)  # pyright: ignore[reportUnknownMemberType]
+
+
+class Assembly(Protocol):
+    """scorecard.Assembly: a function of bn6f/asm, as the scorecard counts its size."""
+    @property
+    def lines(self) -> int: ...      # assembly instruction lines
+    @property
+    def calls(self) -> frozenset[str]: ...
+    @property
+    def bios(self) -> frozenset[int]: ...
+
+
+# tools/convert/scorecard.py's pieces, so pool.tsv and the scorecard count sizes and writers alike
+assembly = cast(Callable[[], dict[str, Assembly]], scorecard.assembly)  # pyright: ignore[reportUnknownMemberType]
+writers = cast(Callable[[dict[FunctionName, FunctionName]], dict[str, str]], scorecard.writers)  # pyright: ignore[reportUnknownMemberType]
 
 ModelTag = NewType("ModelTag", str)    # a model as file names carry it: "hyper_glm-5.3-flash"
 InputKey = NewType("InputKey", str)    # farm.input_key: a hash of the function's original bytes
@@ -158,11 +185,14 @@ class Outcome(Result):
 
 # ── reading what the farm left ─────────────────────────────────────────
 
+YAML_LOADER = cast(type[yaml.SafeLoader], getattr(yaml, "CSafeLoader", yaml.SafeLoader))   # the C one when built: 10x faster
+
+
 def renames() -> dict[FunctionName, FunctionName]:
     """OLD -> today's name, from symbols/db's previous_names (see the module docstring)."""
     current: dict[FunctionName, FunctionName] = {}
     for path in sorted(DATABASE.glob("*.yaml")):
-        entry = cast(dict[str, object], yaml.safe_load(path.read_text()))
+        entry = cast(dict[str, object], yaml.load(path.read_text(), Loader=YAML_LOADER))
         for old in cast(list[str], entry.get("previous_names") or []):
             current[FunctionName(old)] = FunctionName(str(entry["name"]))
     return current
@@ -265,6 +295,246 @@ def lifted_names(cport: Path) -> set[FunctionName]:
     pattern = re.compile(r"^/\* (\w+): [0-9A-F]{8}-", re.M)
     return {FunctionName(n) for path in (cport / "src/lifted").glob("*.c")
             for n in cast(list[str], pattern.findall(path.read_text()))}
+
+
+# ── drops: why convert runs took functions out of farm groups ─────────
+
+DROPS = REPO / "symbols/pool_drops.tsv"
+DROP_COLUMNS = ("time", "run", "step", "function", "written_as", "kind", "cause", "reason", "report")
+
+
+class DropKind(Enum):
+    """Which check took a function out of its farm group (convert.py's failing_functions)."""
+    LOCKSTEP = "lockstep set-aside"       # a route differed and no check named a function: half the group went
+    ORACLE = "oracle"                     # the CPU oracle in the full verify
+    DIFFTEST = "difftest in the verify"
+    QUICK_TEST = "quick test"
+    COMPILE = "compile with the group"
+    BUILD = "full build"
+    REVIEW = "review"
+    OTHER_ENTRIES = "other entries"       # its code defined entries the farm did not write (an earlier rule)
+    DEFINED_TWICE = "defined twice"
+    NO_DRAFT = "no drafted entry"
+    NO_CALLS = "no captured calls"
+    OTHER = "other"
+
+
+_DROP_KINDS = ((r"^set aside", DropKind.LOCKSTEP), (r"CPU oracle", DropKind.ORACLE),
+               (r"^difftest found", DropKind.DIFFTEST), (r"^quick test", DropKind.QUICK_TEST),
+               (r"^does not compile", DropKind.COMPILE), (r"^the full build failed", DropKind.BUILD),
+               (r"^taken out at review", DropKind.REVIEW), (r"other entries the farm did not write", DropKind.OTHER_ENTRIES),
+               (r"must be defined exactly once|also defines", DropKind.DEFINED_TWICE),
+               (r"no drafted", DropKind.NO_DRAFT), (r"no captured calls", DropKind.NO_CALLS))
+
+
+class Drop(Result):
+    time: str                  # when the convert run took it out
+    run: str                   # the convert run: ~/.burr/recomp-convert/RUN
+    step: str                  # the step whose check named it: quick_test, install_and_verify, review_conversion
+    function: FunctionName     # today's name
+    written_as: FunctionName
+    kind: DropKind
+    cause: str                 # an oracle drop: its class in tools/oracle_triage.md, or what the difference looks like
+    reason: str                # as the run logged it
+    report: str                # the failing check's own report (oracle, verify difftest, lockstep), one line
+
+
+def drop_kind(reason: str) -> DropKind:
+    return next((kind for pattern, kind in _DROP_KINDS if re.search(pattern, reason)), DropKind.OTHER)
+
+
+# tools/oracle_triage.md's classes, by the functions its table names (names of 2026-10-08; renames are followed)
+TRIAGE_NAMES: dict[str, tuple[str, ...]] = {
+    "BIOS leftovers (one of the three unexplained: r2 = 0x500, r3 = -1)": ("ho_8034218", "sub_8034268", "sub_8039658"),
+    "sound hardware": ("CgbSound", "SoundMain", "m4aSoundMain", "call_m4aSoundMain", "sub_3005D78"),
+    "sub_30068E8's flags (fixed)": ("sub_30068E8", "sub_801C416", "sub_801C9E4", "sub_801CDEC", "sub_801D564",
+                                    "sub_802FE28", "sub_802AEB8", "sub_811FA98", "sub_81267A8", "sub_8127374",
+                                    "sub_812907C", "sub_8134548"),
+    "hand-written, narrower contract": ("sub_3006028", "sub_30061E8", "sub_3006440", "sub_3006920",
+                                        "copyTo_iObjectAttr3001D70_3006814", "sub_814E260"),
+    "callers of the hand-written ones": ("sub_8002694", "sub_8003E18", "sub_8004218", "sub_8004510"),
+    "serial I/O": ("libSIOControlStart", "libSIO814469C"),
+    "IWRAM data relocated to ROM": ("sub_802C5E6", "sub_802C646"),
+    "random input out of domain": ("getPrimaryElementWeaknessMultipler_3007432", "sub_814E4CC"),
+}
+BIOS_LEFTOVERS = {0x08: "Sqrt", 0x0A: "ArcTan2", 0x0B: "CpuSet", 0x0C: "CpuFastSet", 0x11: "LZ77UnCompWram",
+                  0x12: "LZ77UnCompVram"}   # the BIOS routines whose r1/r3 the host's SWI emulation left different
+_REGISTER = re.compile(r"\b(r\d+|lr|sp) lifted (0x[0-9a-f]+|\d+) original (0x[0-9a-f]+|\d+)")
+
+
+def oracle_cause(function: FunctionName, differences: list[str], differed_too: set[FunctionName],
+                 code: dict[str, Assembly], current: dict[FunctionName, FunctionName]) -> str:
+    """The class in tools/oracle_triage.md that matches, else "unmatched: " and what the difference looks like.
+    DIFFERED_TOO: the other functions the same verify run's oracle saw differ."""
+    def named(names: tuple[str, ...]) -> set[str]:
+        return {current.get(FunctionName(n), n) for n in names}
+    for cause, names in TRIAGE_NAMES.items():
+        if function in named(names):
+            return cause
+    registers = [(m[1], int(m[2], 0), int(m[3], 0)) for text in differences for m in _REGISTER.finditer(text)]
+    memory = any(text.startswith("MEM:") for text in differences)
+    flags = any("flags lifted" in text for text in differences)
+    if registers and not memory and {*registers} <= {("r2", 0x500, 0), ("r3", 0xFFFFFFFF, 0)}:
+        return "BIOS leftovers (r2 = 0x500, r3 = -1, as the three unexplained ones)"
+    own = code.get(function)
+    callees: set[str] = set(own.calls) if own else set()
+    bios = sorted({BIOS_LEFTOVERS[n] for a in (own, *map(code.get, callees)) if a for n in a.bios if n in BIOS_LEFTOVERS})
+    if bios and registers and not memory:
+        return f"BIOS leftovers (registers after {', '.join(bios)})"
+    hand_written = sorted(callees & named(TRIAGE_NAMES["hand-written, narrower contract"]))
+    if hand_written and registers and not memory:
+        return f"callers of the hand-written ones (calls {', '.join(hand_written)})"
+    sound = sorted(callees & named(TRIAGE_NAMES["sound hardware"]))
+    if sound:
+        return f"sound hardware (calls {', '.join(sound)})"
+    if flags and not registers and not memory and callees & named(("sub_30068E8", "sub_802FE28")):
+        return "sub_30068E8's flags (fixed)"
+    if any(0x08000000 <= port < 0x0A000000 and 0x03000000 <= original < 0x03008000 for _, port, original in registers):
+        return "IWRAM data relocated to ROM"
+    also = sorted(callees & differed_too)
+    if also:
+        return f"unmatched: a callee differed too ({', '.join(also)})"
+    if registers and not memory and all(port in (original & 0xFF, original & 0xFFFF) for _, port, original in registers):
+        return "unmatched: upper bits only (the readable code returns a narrower value)" + (", and flags" if flags else "")
+    if flags and not registers and not memory:
+        return "unmatched: flags only"
+    return "unmatched: memory differs" if memory else "unmatched: registers differ"
+
+
+_END_ENTRY = re.compile(rb'^\{"type": ?"end_entry"')
+_ACTION = re.compile(rb'"action": ?"(\w+)"')
+
+
+def _json(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value) if isinstance(value, dict) else {}
+
+
+def _list(value: object) -> list[object]:
+    return cast(list[object], value) if isinstance(value, list) else []
+
+
+_verify_states: dict[str, dict[str, object]] = {}
+
+
+def verify_state(run: str) -> dict[str, object]:
+    """A verify run's last state (every check's per-function results), from its Burr log."""
+    if run not in _verify_states:
+        state: dict[str, object] = {}
+        try:
+            with open(burr_dir() / "recomp-verify" / run / "log.jsonl", "rb") as log:
+                for line in log:
+                    if _END_ENTRY.match(line):
+                        try:
+                            state = _json(_json(cast(object, json.loads(line))).get("state")) or state
+                        except json.JSONDecodeError:
+                            continue
+        except FileNotFoundError:
+            pass
+        _verify_states[run] = state
+    return _verify_states[run]
+
+
+def check_report(kind: DropKind, function: str, attempt: dict[str, object]) -> tuple[str, list[str], set[FunctionName]]:
+    """The failing check's report for one dropped function (one line), the oracle's differences, and which
+    functions the same oracle run saw differ."""
+    verification = _json(attempt.get("verification"))
+    verify = verify_state(str(attempt.get("verify_run") or ""))
+    if kind is DropKind.LOCKSTEP:
+        failures = [str(f) for f in _list(verification.get("route_failures"))]
+        return "; ".join(failures) or "routes differed: " + ", ".join(str(r) for r in _list(verification.get("failed_routes"))), [], set()
+    if kind is DropKind.DIFFTEST:
+        parts: list[str] = []
+        for field, what in (("difftests", "random inputs"), ("captured_difftests", "captured calls")):
+            for result in map(_json, _list(verify.get(field))):
+                if result.get("function") == function:
+                    total = result.get("trials", result.get("runs"))
+                    parts.append(f"{what}: {result.get('outcome')}, {result.get('failures')} of {total} differ "
+                                 f"({result.get('out_of_domain')} out of domain)")
+        return "; ".join(parts) or "(the verify run's log has no difftest result for it)", [], set()
+    if kind is DropKind.ORACLE:
+        results = [_json(r) for r in _list(verify.get("oracle"))]
+        differed = {FunctionName(str(r.get("function"))) for r in results if cast(int, r.get("differed") or 0) > 0}
+        mine = next((r for r in results if r.get("function") == function), None)
+        if mine is None:
+            return "(the verify run's log has no oracle result for it)", [], differed
+        differences = [str(d) for d in _list(mine.get("differences"))]
+        return (f"{mine.get('differed')} of {mine.get('compared')} states differ: " + " | ".join(differences[:2]),
+                differences, differed - {FunctionName(function)})
+    return "-", [], set()
+
+
+def burr_drops(current: dict[FunctionName, FunctionName], code: dict[str, Assembly]) -> list[Drop]:
+    """Every function a convert run took out of a farm group, from the Burr logs. Only the drop steps' lines
+    are parsed (one log is over a gigabyte); a step's state lists every drop of the run so far, so a drop is
+    new the first time its function and reason appear in the run."""
+    found: list[Drop] = []
+    for log in sorted((burr_dir() / "recomp-convert").glob("*/log.jsonl")):
+        run, previous, seen = log.parent.name, "", set[tuple[str, str]]()
+        with open(log, "rb") as lines:
+            for line in lines:
+                if not _END_ENTRY.match(line):
+                    continue
+                action = _ACTION.search(line[:300])
+                if action is None or action[1] != b"drop_failing_functions":
+                    previous = action[1].decode() if action else previous
+                    continue
+                try:
+                    entry = _json(cast(object, json.loads(line)))
+                except json.JSONDecodeError:
+                    continue   # a step being written now
+                state = _json(entry.get("state"))
+                attempts = [_json(a) for a in _list(state.get("attempts"))]
+                failing = attempts[-2] if len(attempts) > 1 else (attempts[-1] if attempts else {})
+                for dropped in map(_json, _list(_json(entry.get("result")).get("dropped") or state.get("dropped"))):
+                    written_as, reason = FunctionName(str(dropped.get("function"))), str(dropped.get("reason") or "")
+                    if (written_as, reason) in seen:
+                        continue
+                    seen.add((written_as, reason))
+                    kind, today = drop_kind(reason), current.get(written_as, written_as)
+                    report, differences, differed = check_report(kind, written_as, failing)
+                    cause = (oracle_cause(today, differences, {current.get(f, f) for f in differed}, code, current)
+                             if kind is DropKind.ORACLE and differences else "-")
+                    found.append(Drop(time=str(entry.get("end_time") or "")[:19], run=run, step=previous or "?",
+                                      function=today, written_as=written_as, kind=kind, cause=cause,
+                                      reason=reason, report=report))
+    return found
+
+
+def one_line(text: str, limit: int = 400) -> str:
+    text = re.sub(r"\s+", " ", text).strip()
+    return text if len(text) <= limit else text[:limit - 3] + "..."
+
+
+def read_drop_ledger(current: dict[FunctionName, FunctionName]) -> list[Drop]:
+    """symbols/pool_drops.tsv as written last time, under today's names."""
+    if not DROPS.exists():
+        return []
+    rows = [line.split("\t") for line in DROPS.read_text().splitlines() if line and not line.startswith("#")]
+    drops: list[Drop] = []
+    for cells in rows[1:]:
+        fields = dict(zip(DROP_COLUMNS, cells))
+        written_as = FunctionName(fields["written_as"])
+        drops.append(Drop(time=fields["time"], run=fields["run"], step=fields["step"],
+                          function=current.get(written_as, written_as), written_as=written_as,
+                          kind=DropKind(fields["kind"]), cause=fields["cause"], reason=fields["reason"],
+                          report=fields["report"]))
+    return drops
+
+
+def drop_ledger(current: dict[FunctionName, FunctionName], code: dict[str, Assembly]) -> list[Drop]:
+    """The ledger's rows with every drop the Burr logs still hold (theirs win: read again, classified anew),
+    written back to symbols/pool_drops.tsv. Running again changes nothing."""
+    fresh = burr_drops(current, code)
+    runs = {d.run for d in fresh}
+    drops = sorted([d for d in read_drop_ledger(current) if d.run not in runs] + fresh,
+                   key=lambda d: (d.time, d.run, d.written_as))
+    header = ("# symbols/pool_drops.tsv: every function a convert run took out of a farm group, and why (from the "
+              "Burr logs, ~/.burr/recomp-convert and recomp-verify; rows of runs no longer there are kept); made by "
+              "tools/convert/pool.py")
+    rows = ["\t".join(one_line(cell) for cell in (d.time, d.run, d.step, d.function, d.written_as, d.kind.value, d.cause,
+                                                  d.reason, d.report)) for d in drops]
+    _ = DROPS.write_text("\n".join([header, "\t".join(DROP_COLUMNS), *rows]) + "\n")
+    return drops
 
 
 # ── re-testing ─────────────────────────────────────────────────────────
@@ -388,7 +658,15 @@ def write_accepted(outcome: Outcome, started: float, from_retests: set[Path]) ->
 # ── the ledger ─────────────────────────────────────────────────────────
 
 COLUMNS = ("current_name", "original_names", "input_key", "state", "candidates", "retest", "chosen",
-           "register_violations", "models", "notes")
+           "register_violations", "models", "notes", "asm_lines", "installed_by", "drops", "last_drop", "drop_kind",
+           "drop_cause")
+
+
+class Beside(NamedTuple):
+    """What pool.tsv shows beside the re-test: sizes, who wrote what is installed, and the drops."""
+    sizes: dict[str, Assembly]
+    written_by: dict[str, str]
+    drops: dict[FunctionName, list[Drop]]   # today's name -> its drops, oldest first
 
 
 def installed_share(function: Function, installed: Path) -> float:
@@ -402,7 +680,7 @@ def installed_share(function: Function, installed: Path) -> float:
     return max((len(lines(c.code) & there) / max(1, len(lines(c.code))) for c in pool), default=0.0)
 
 
-def row(outcome: Outcome) -> list[str]:
+def row(outcome: Outcome, beside: Beside) -> list[str]:
     function, best = outcome.function, outcome.best
     if best is None:
         retest_text = f"not run: {outcome.not_run}"
@@ -418,17 +696,23 @@ def row(outcome: Outcome) -> list[str]:
     if function.installed_in is not None and outcome.installed_share is not None:
         notes.insert(0, f"installed in {function.installed_in.name}; {outcome.installed_share:.0%} of the "
                         "closest candidate's lines are there")
+    size, drops = beside.sizes.get(function.name), beside.drops.get(function.name, [])
+    last = drops[-1] if drops else None
     cells = [function.name, ",".join(function.written_as), outcome.input_key or "-", outcome.state_after.value,
              str(len(function.candidates)), retest_text, chosen_path,
-             str(chosen.register_violations) if chosen else "-", ",".join(models), "; ".join(notes) or "-"]
+             str(chosen.register_violations) if chosen else "-", ",".join(models), "; ".join(notes) or "-",
+             str(size.lines) if size else "-",
+             beside.written_by.get(function.name, "-") if function.installed_in is not None else "-",
+             str(len(drops)) if drops else "-", one_line(f"{last.run} {last.step}: {last.reason}", 300) if last else "-",
+             last.kind.value if last else "-", last.cause if last else "-"]
     return [re.sub(r"\s+", " ", cell).strip() for cell in cells]
 
 
-def write_pool(outcomes: list[Outcome], tested_commit: str | None) -> None:
+def write_pool(outcomes: list[Outcome], tested_commit: str | None, beside: Beside) -> None:
     how = (f"re-tested against {tested_commit} without model calls" if tested_commit else "not re-tested")
     header = (f"# symbols/pool.tsv: the model farm's candidates per function under today's name (renames from "
               f"symbols/db), {how}; made by tools/convert/pool.py on {date.today().isoformat()}")
-    rows = sorted((row(o) for o in outcomes), key=lambda cells: (cells[0].lower(), cells[0]))
+    rows = sorted((row(o, beside) for o in outcomes), key=lambda cells: (cells[0].lower(), cells[0]))
     _ = POOL.write_text("\n".join([header, "\t".join(COLUMNS), *("\t".join(r) for r in rows)]) + "\n")
 
 
@@ -470,6 +754,29 @@ def summarise(outcomes: list[Outcome], seconds: float) -> None:
     print(f"installed functions with under half of their closest candidate's lines in the installed file: {len(unlike)}")
 
 
+def summarise_drops(outcomes: list[Outcome], beside: Beside) -> None:
+    """The drop ledger in counts: every drop by kind, and why the functions not installed were last dropped."""
+    every = [d for ds in beside.drops.values() for d in ds]
+    print(f"\ndrops (symbols/pool_drops.tsv): {len(every)} from {len({d.run for d in every})} convert runs, "
+          f"{len(beside.drops)} functions")
+    functions = {o.function.name: o for o in outcomes}
+    for kind, count in Counter(d.kind for d in every).most_common():
+        names = {d.function for d in every if d.kind is kind}
+        waiting = sum(1 for n in names if n in functions and functions[n].state_after is not State.INSTALLED)
+        print(f"  {count:4d} drops of {len(names):4d} functions  {kind.value}  ({waiting} not installed now)")
+    last = {name: ds[-1] for name, ds in beside.drops.items()
+            if name in functions and functions[name].state_after is not State.INSTALLED}
+    print(f"not installed now, by the latest drop: " + ", ".join(
+        f"{count} {kind.value}" for kind, count in Counter(d.kind for d in last.values()).most_common()))
+    oracle = {d.function: d for d in every if d.kind is DropKind.ORACLE}   # each function's latest oracle drop
+    print(f"oracle drops by cause ({len(oracle)} functions; classes of tools/oracle_triage.md where they match):")
+    for cause, count in Counter(re.sub(r" \(calls .*|\(.*", "", d.cause).strip() for d in oracle.values()).most_common():
+        print(f"  {count:4d}  {cause}")
+    missing = sorted(n for n in beside.drops if n not in functions)
+    if missing:
+        print(f"dropped functions with no farm candidate in the pool: {', '.join(missing[:10])}")
+
+
 # ── the run ────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -495,6 +802,11 @@ def main() -> None:
         use_tree(cport, difftest)
 
     current, installed, today = renames(), installed_functions(), lifted_names(cport)
+    code = assembly()
+    drops: dict[FunctionName, list[Drop]] = {}
+    for drop in drop_ledger(current, code):
+        drops.setdefault(drop.function, []).append(drop)
+    beside = Beside(sizes=code, written_by=writers(current), drops=drops)
     pool = read_candidates(current, today)
     functions = [Function(name=name, written_as=tuple(sorted({c.written_as for c in cs})), candidates=distinct(cs),
                           installed_in=installed.get(name), farm_busy=name in pool.farm_busy)
@@ -550,8 +862,9 @@ def main() -> None:
         if outcome.retests and f.state is State.PENDING and not outcome.passes_now:
             outcome = outcome.model_copy(update={"notes": (*outcome.notes, "no candidate passes against the last commit")})
         outcomes.append(write_accepted(outcome, started, pool.from_retests))
-    write_pool(outcomes, commit)
+    write_pool(outcomes, commit, beside)
     summarise(outcomes, time.time() - started)
+    summarise_drops(outcomes, beside)
     print(f"\nwrote {POOL.relative_to(REPO)}; run files in {run_dir.relative_to(REPO)}")
 
 
