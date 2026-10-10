@@ -149,6 +149,14 @@ static void mut_npc_secondary(Cpu *in, u32 (*rnd)(void)) {
     U8(p) = 0x33; U8(p + 1) = (u8)(rnd() % 8);
 }
 
+/* menu_moveCursor_811FA36 is the shared body of menu_moveCursorUpDown_811FA22 and
+ * menu_moveCursorLeftRight_811FA0C, entered with their frame on the stack: both store r3 (the
+ * current index) at [sp,#8] just before, and the body reads it back from there. */
+static void gen_cursor_body(Cpu *in, u32 (*rnd)(void)) {
+    (void)rnd;
+    U32(in->r[13] + 8) = in->r[3];
+}
+
 GenFn difftest_snap_mutator(const char *name) {
     if (!strcmp(name, "npc_runSecondaryScriptMaybe_809ebf8")) return mut_npc_secondary;
     if (!strcmp(name, "sprite_queueFramePieces")) return mut_sprite_pieces;
@@ -160,5 +168,6 @@ GenFn difftest_snap_mutator(const char *name) {
 GenFn difftest_generator(const char *name) {
     if (!strcmp(name, "sprite_buildOamShadow")) return gen_oam;
     if (!strcmp(name, "SoundMainRAM_iwram_03005700")) return gen_mixer;
+    if (!strcmp(name, "menu_moveCursor_811FA36")) return gen_cursor_body;
     return 0;
 }
