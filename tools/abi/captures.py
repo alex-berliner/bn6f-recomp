@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check claimed leftovers against the original's captured calls (docs/C_CALLING_CONVENTION.md 3.3).
 
-    tools/abi/captures.py build/abi/graph.json [-o build/abi/captures.json] [--dirs DIR...]
+    tools/abi/captures.py build-abi/graph.json [-o build-abi/captures.json] [--dirs DIR...]
 
 A readable function blocked only by `keep` (callers read registers it may change) needs no
 `keep:` when it leaves those registers as it found them: the generated adapter preserves
@@ -27,6 +27,8 @@ import sys
 from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/paths.env)
 DEFAULT_DIRS = ["build-wf-runs/capture-*/snapshots/*", "build-wf-runs/snapshots-latest/*"]
 HEADER = struct.Struct("<19I")     # magic, version, r0..r14, pc, cpsr
 FLAG_BITS = {"nz": 0xC0000000, "c": 0x20000000, "v": 0x10000000}   # CPSR N|Z, C, V
@@ -72,7 +74,7 @@ def calls(dirs: set[str]):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("graph")
-    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "build", "abi", "captures.json"))
+    ap.add_argument("-o", "--out", default=os.path.join(gamepaths.ABI_DIR, "captures.json"))
     ap.add_argument("--dirs", nargs="+", default=DEFAULT_DIRS, help="glob patterns of capture directories")
     ap.add_argument("--blockers", default="keep", help="check functions all of whose blockers are in this list "
                                                          "(comma-separated: keep, flags_out)")

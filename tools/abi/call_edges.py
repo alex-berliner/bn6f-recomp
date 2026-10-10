@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Observe indirect call edges on the recorded routes (docs/C_CALLING_CONVENTION.md 3.2).
 
-    tools/abi/call_edges.py build/abi/graph.json [ROUTE...] [--jobs N] [--mgba build-tools/mgba_run]
+    tools/abi/call_edges.py build-abi/graph.json [ROUTE...] [--jobs N] [--mgba build-tools/mgba_run]
 
 Takes the indirect sites (calls through a register and computed jumps) from an export
 of `lift.py --export-abi`, replays every route of tools/wf/wf/routes.py (or the ones
@@ -10,7 +10,9 @@ tools/traces/coverage/ROUTE.edges ("SITE TARGET LR COUNT", hex, sorted; committe
 to the coverage profiles, stamped with what they were observed on (hashes of the trace, its
 save and pokes, and the original ROM; the number of sites). Then merge them into the export:
 
-    python3 tools/lifter/lift.py --export-abi build/abi/graph.json --call-edges tools/traces/coverage/*.edges
+    python3 tools/lifter/lift.py --export-abi build-abi/graph.json --call-edges tools/traces/coverage/*.edges
+
+(build-abi/graph.json is ABI_GRAPH in tools/paths.env, where the ROM, BIOS and mgba_run come from too.)
 
 Prints a JSON summary: per route the distinct edges and seconds taken.
 """
@@ -28,10 +30,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TRACES = os.path.join(ROOT, "tools", "traces")
-ORIG = os.path.join(ROOT, "bn6f", "bn6f.gba")
-BIOS = os.path.join(ROOT, "gbarecomp", "bios", "gba_bios.bin")
-GAME_FRAME_ADDR = "0x020093D4"
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/paths.env)
+
+TRACES = gamepaths.TRACES
+ORIG = gamepaths.ORIG_ROM
+BIOS = gamepaths.GBA_BIOS
+GAME_FRAME_ADDR = gamepaths.GAME_FRAME_ADDR
 
 
 def routes() -> dict[str, int]:
@@ -46,7 +51,7 @@ def poke_args(trace: str) -> list[str]:
     out = ["--save", base + ".sav"] if os.path.exists(base + ".sav") else []
     if os.path.exists(base + ".poke"):
         game, spec = open(base + ".poke").read().split(maxsplit=1)
-        nm = subprocess.run(["arm-none-eabi-nm", ORIG.removesuffix(".gba") + ".elf"], capture_output=True,
+        nm = subprocess.run(["arm-none-eabi-nm", gamepaths.ORIG_ELF], capture_output=True,
                             text=True, check=True).stdout
         pc = next(line.split()[0] for line in nm.splitlines() if line.endswith(" main_awaitFrame"))
         out += ["--poke-at", f"0x{pc}", game, spec.strip()]
@@ -103,7 +108,7 @@ def main() -> None:
     ap.add_argument("graph", help="export of lift.py --export-abi")
     ap.add_argument("routes", nargs="*", help="route names (default: every route in tools/wf/wf/routes.py)")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
-    ap.add_argument("--mgba", default=os.path.join(ROOT, "build-tools", "mgba_run"))
+    ap.add_argument("--mgba", default=gamepaths.MGBA_RUN)
     ap.add_argument("--out-dir", default=os.path.join(TRACES, "coverage"))
     args = ap.parse_args()
     known = routes()

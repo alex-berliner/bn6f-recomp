@@ -24,19 +24,19 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tools/common.sh"
-ORIG="$ROOT/bn6f/bn6f.gba"
-MGBA="$ROOT/build-tools/mgba_run"
-BIOS="$ROOT/gbarecomp/bios/gba_bios.bin"
-RUN_ARGS="--frames 200000 --game-frame-addr 0x020093D4 --quiet"   # part of the cache key: change both together
+ORIG="$ORIG_ROM"
+MGBA="$MGBA_RUN"
+BIOS="$GBA_BIOS"
+RUN_ARGS="--frames 200000 --game-frame-addr $GAME_FRAME_ADDR --quiet"   # part of the cache key: change both together
 QUERY=0
 if [ "${1:-}" = --cached ]; then QUERY=1; shift; set -- "$ORIG" "$@"; fi
 ROM=$1
-TRACE=${2:-$ROOT/tools/traces/wander.trace}
+TRACE=${2:-$TRACES/wander.trace}
 N=${3:-8000}
 EVERY=${4:-20}
 case "${LOCKSTEP_CACHE:-}" in
   off) CACHE= ;;
-  "") CACHE="$(cd -P "$ROOT/bn6f/.." && pwd)/build-wf-cache/lockstep" ;;
+  "") CACHE="$(cd -P "$BN6F_DIR/.." && pwd)/build-wf-cache/lockstep" ;;
   *) CACHE=$LOCKSTEP_CACHE ;;
 esac
 orig_entry() {   # the cache directory for this replay of the original
@@ -74,8 +74,8 @@ else
   fi
 fi
 status=0
-export LS_ROOT="$ROOT" LS_ROM="$ROM" LS_TRACE="$TRACE"
-export LS_POKE_ORIG="$(poke_args "$ROOT/bn6f/bn6f.gba" "$TRACE")" LS_POKE_TEST="$(poke_args "$ROM" "$TRACE")"
+export LS_ORIG="$ORIG" LS_MGBA="$MGBA" LS_BIOS="$BIOS" LS_FRAME_ADDR="$GAME_FRAME_ADDR" LS_ROM="$ROM" LS_TRACE="$TRACE"
+export LS_POKE_ORIG="$(poke_args "$ORIG" "$TRACE")" LS_POKE_TEST="$(poke_args "$ROM" "$TRACE")"
 python3 - "$OUT" "$N" "$EVERY" <<'PY' || status=$?
 import os, shlex, subprocess, sys
 out, want, every = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
@@ -92,9 +92,8 @@ bad = [i for i in range(n) if o[i][4:] != t[i][4:]]
 
 
 def dump(rom, poke, frames, prefix):
-    root = os.environ["LS_ROOT"]
-    subprocess.run([f"{root}/build-tools/mgba_run", rom, "--frames", "200000", "--bios", f"{root}/gbarecomp/bios/gba_bios.bin",
-                    "--input", os.environ["LS_TRACE"], "--game-frame-addr", "0x020093D4",
+    subprocess.run([os.environ["LS_MGBA"], rom, "--frames", "200000", "--bios", os.environ["LS_BIOS"],
+                    "--input", os.environ["LS_TRACE"], "--game-frame-addr", os.environ["LS_FRAME_ADDR"],
                     "--until-game-frame", str(max(frames) + 1), "--dump-at-game", ",".join(map(str, frames)), prefix,
                     "--quiet"] + shlex.split(poke), check=True, stdout=subprocess.DEVNULL)
 
@@ -102,7 +101,7 @@ def dump(rom, poke, frames, prefix):
 def timing_only(gs):
     """Every differing 32-byte-aligned range of the tested ROM's palette/VRAM/OAM
     at game frame g equals the original's at g - 1 or g + 1."""
-    dump(f"{os.environ['LS_ROOT']}/bn6f/bn6f.gba", os.environ["LS_POKE_ORIG"],
+    dump(os.environ["LS_ORIG"], os.environ["LS_POKE_ORIG"],
          sorted({g + d for g in gs for d in (-1, 0, 1)}), f"{out}/skew_orig")
     dump(os.environ["LS_ROM"], os.environ["LS_POKE_TEST"], gs, f"{out}/skew_test")
     for g in gs:
@@ -149,10 +148,10 @@ if [ "$status" = 0 ] && ! cmp -s "$OUT/orig.txt.sav" "$OUT/test.txt.sav"; then
 fi
 if [ -f "$OUT/first_bad" ]; then
   g=$(cat "$OUT/first_bad")
-  for r in orig:$ROOT/bn6f/bn6f.gba test:$ROM; do
+  for r in orig:$ORIG test:$ROM; do
     mkdir -p "$OUT/${r%%:*}"
-    "$ROOT/build-tools/mgba_run" "${r#*:}" --frames 200000 --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
-        --input "$TRACE" --game-frame-addr 0x020093D4 --until-game-frame "$((g + 1))" \
+    "$MGBA" "${r#*:}" --frames 200000 --bios "$BIOS" \
+        --input "$TRACE" --game-frame-addr "$GAME_FRAME_ADDR" --until-game-frame "$((g + 1))" \
         --shot-at-game-frame "$g" --shots "$OUT/${r%%:*}" $(poke_args "${r#*:}" "$TRACE") --quiet > /dev/null
   done
   echo "screenshots: $OUT/orig $OUT/test"

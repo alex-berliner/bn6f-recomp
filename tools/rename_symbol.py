@@ -25,8 +25,10 @@ the pairs are listed in its body, one per line.
 import datetime, os, re, subprocess, sys
 import yaml
 
+import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BN6F = os.path.join(ROOT, "bn6f")
+BN6F = gamepaths.BN6F_DIR
 DB = os.path.join(ROOT, "symbols", "db")
 BN6F_EXT = (".s", ".inc", ".h", ".c", ".ld")
 SKIP_DIRS = {".git", "build", "tools", "temp"}
@@ -83,7 +85,7 @@ def main():
     if not args or len(args) % 2:
         sys.exit(__doc__)
     pairs = list(zip(args[::2], args[1::2]))
-    syms = set(run(["arm-none-eabi-nm", os.path.join(BN6F, "bn6f.elf")]).stdout.split())
+    syms = set(run(["arm-none-eabi-nm", gamepaths.ORIG_ELF]).stdout.split())
     for old, new in pairs:
         if old not in syms:
             sys.exit(f"{old}: not a symbol of bn6f.elf")

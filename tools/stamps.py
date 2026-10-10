@@ -33,11 +33,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, NamedTuple, NewType
 
+import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = "cport/src/game"
 INCLUDE = "cport/include"
 LIFTED = "cport/src/lifted"
-ROM = "bn6f/bn6f.gba"
+ROM = os.path.relpath(gamepaths.ORIG_ROM, ROOT)   # bn6f/bn6f.gba
+ELF = os.path.relpath(gamepaths.ORIG_ELF, ROOT)   # bn6f/bn6f.elf
 LIFT_PY = "tools/lifter/lift.py"
 LIFTER = "tools/lifter"
 POOL = "symbols/pool.tsv"
@@ -622,7 +625,7 @@ class World:
         out = [(int(v, 16), int(l, 16), int(s, 16)) for v, l, s in
                re.findall(rb'CodeCopy\("\w+",\s*(0x[0-9A-Fa-f]+),\s*(0x[0-9A-Fa-f]+),\s*(0x[0-9A-Fa-f]+)\)', raw)]
         try:
-            with open(os.path.join(ROOT, "bn6f", "bn6f.elf"), "rb") as fh:
+            with open(os.path.join(ROOT, ELF), "rb") as fh:
                 head = fh.read(4096)
             phoff, = struct.unpack_from("<I", head, 0x1C)
             size, count = struct.unpack_from("<HH", head, 0x2A)
@@ -631,7 +634,7 @@ class World:
                 if kind == 1 and filesz and vaddr != paddr:
                     out.append((vaddr, paddr, filesz))
         except (OSError, struct.error):
-            self.notes.append("no bn6f/bn6f.elf: IWRAM code's ROM bytes not found")
+            self.notes.append(f"no {ELF}: IWRAM code's ROM bytes not found")
         return out
 
     def rom_bytes(self) -> bytes:

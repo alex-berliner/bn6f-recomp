@@ -37,7 +37,7 @@ from stamps import ROOT, Cache, Tree  # noqa: E402
 
 DB = os.path.join(ROOT, "symbols", "db")
 DB_DIR = "symbols/db"
-ELF = os.path.join(ROOT, "bn6f", "bn6f.elf")
+ELF = os.path.join(ROOT, stamps.ELF)
 REQUIRED = ("name", "address", "kind", "status", "summary", "evidence")
 KINDS = {"function", "data", "ram", "constant", "struct-field"}
 STATUS = {"confirmed", "probable", "hypothesis"}
@@ -135,7 +135,7 @@ def elf_symbols(cache: Cache | None = None, wanted: Iterable[str] | None = None)
         return syms
     if cache is None or wanted is None:
         return read()
-    known: dict[str, int | None] = cache.get("nm", stamps.file_key("bn6f/bn6f.elf"), dict)
+    known: dict[str, int | None] = cache.get("nm", stamps.file_key(stamps.ELF), dict)
     wanted = set(wanted)
     if not wanted <= known.keys():
         full = read()

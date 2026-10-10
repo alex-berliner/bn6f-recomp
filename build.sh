@@ -9,6 +9,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
+. tools/common.sh   # the game profile, tools/paths.env: ORIG_ROM, ORIG_SHA1, ...
 JOBS="$(nproc 2>/dev/null || echo 4)"
 step() { printf '\n== %s\n' "$*"; }
 
@@ -29,8 +30,8 @@ TOOLS=(AS="$TC/arm-none-eabi-as" LD="$TC/arm-none-eabi-ld"
        OBJCOPY="$TC/arm-none-eabi-objcopy" OBJDUMP="$TC/arm-none-eabi-objdump" PY=python3)
 make -C bn6f "${TOOLS[@]}" assets -j"$JOBS" >/dev/null
 make -C bn6f "${TOOLS[@]}" -j"$JOBS" >/dev/null
-echo "$(cut -c1-40 bn6f/bn6f.sha1)  bn6f/bn6f.gba" | sha1sum -c --quiet \
-    && echo "bn6f/bn6f.gba matches the original (SHA-1 $(cut -c1-40 bn6f/bn6f.sha1))"
+echo "$(cut -c1-40 "$ORIG_SHA1")  $ORIG_ROM" | sha1sum -c --quiet \
+    && echo "${ORIG_ROM#"$ROOT"/} matches the original (SHA-1 $(cut -c1-40 "$ORIG_SHA1"))"
 
 step "4/5 lift the game to C"
 python3 tools/lifter/lift.py --bn6f bn6f --out cport/src/lifted --inc cport/include --overrides cport/src/game \

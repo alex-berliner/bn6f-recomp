@@ -2,9 +2,10 @@
 # profile.sh ROM [TRACE] [START_HW_FRAME] [STEPS] [TOP] — cycle profile per function
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ROM=$(realpath "$1"); TRACE=$(realpath "${2:-$ROOT/tools/traces/wander.trace}"); START=${3:-9000}; STEPS=${4:-8000000}; TOP=${5:-30}
+. "$ROOT/tools/common.sh"
+ROM=$(realpath "$1"); TRACE=$(realpath "${2:-$TRACES/wander.trace}"); START=${3:-9000}; STEPS=${4:-8000000}; TOP=${5:-30}
 TMP=$(mktemp -d)
-(cd "$TMP" && "$ROOT/build-tools/mgba_run" "$ROM" --frames $((START + 1)) --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
+(cd "$TMP" && "$MGBA_RUN" "$ROM" --frames $((START + 1)) --bios "$GBA_BIOS" \
     --input "$TRACE" --profile "$START" "$STEPS" --quiet > /dev/null)
 python3 - "$TMP/profile.txt" "${ROM%.gba}.elf" "$TOP" <<'PY'
 import bisect, collections, subprocess, sys

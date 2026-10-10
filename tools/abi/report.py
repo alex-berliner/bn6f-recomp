@@ -2,8 +2,8 @@
 """Evidence for choosing C signatures (docs/C_CALLING_CONVENTION.md 3.3), from an export
 of `lift.py --export-abi` (with --call-edges for the observed narrowing).
 
-    tools/abi/report.py build/abi/graph.json NAME...     evidence per function (JSON)
-    tools/abi/report.py build/abi/graph.json --summary [--captures build/abi/captures.json]
+    tools/abi/report.py build-abi/graph.json NAME...     evidence per function (JSON)
+    tools/abi/report.py build-abi/graph.json --summary [--captures build-abi/captures.json]
                                                          counts over the readable functions
 
 Per function: its contract, the proposed signature (static: what the lifter assumes for

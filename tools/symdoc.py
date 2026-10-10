@@ -20,8 +20,10 @@ bn6f right after (the record workflow renames next: one build checks both).
 import datetime, glob, os, re, subprocess, sys, textwrap
 import yaml
 
+import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BN6F = os.path.join(ROOT, "bn6f")
+BN6F = gamepaths.BN6F_DIR
 TAG = "// symdb: "
 
 

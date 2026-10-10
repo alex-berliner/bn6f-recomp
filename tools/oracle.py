@@ -20,6 +20,8 @@ every failing call in DIR/fail/.
 import argparse, glob, os, random, re, shutil, struct, subprocess, sys, tempfile
 from concurrent.futures import ProcessPoolExecutor
 
+import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = os.path.join(ROOT, "cport")
 MAGIC_LR = 0x080000C1           # ROM header: never executed by the game
@@ -61,8 +63,8 @@ def io_template(base):
         with open(os.path.join(d, "snap_io_0.bin"), "wb") as f:
             f.write(struct.pack("<19I", 0x53364E42, 1, *regs, 0x0801BFEC, 0x9F | 0x20))
             f.write(mem)
-        subprocess.run([os.path.join(ROOT, "build-tools/mgba_run"), os.path.join(ROOT, "bn6f/bn6f.gba"), "--quiet",
-                        "--frames", "1", "--bios", os.path.join(ROOT, "gbarecomp/bios/gba_bios.bin"),
+        subprocess.run([gamepaths.MGBA_RUN, gamepaths.ORIG_ROM, "--quiet",
+                        "--frames", "1", "--bios", gamepaths.GBA_BIOS,
                         "--call-snaps", d, "1000"], capture_output=True, check=True)
         _, ex = load_snap(os.path.join(d, "snap_io_0.exit.bin"))
         return ex[IO + 0x58:IO + 0x400]
@@ -108,13 +110,13 @@ def batch(args):
                         f.seek(76 + IO + lo)
                         f.write(bytes(hi - lo))
         try:   # calls without an exit snapshot (no return, or cut off here) are not counted
-            subprocess.run([os.path.join(ROOT, "build-tools/mgba_run"), os.path.join(ROOT, "bn6f/bn6f.gba"), "--quiet",
-                            "--frames", "1", "--bios", os.path.join(ROOT, "gbarecomp/bios/gba_bios.bin"),
+            subprocess.run([gamepaths.MGBA_RUN, gamepaths.ORIG_ROM, "--quiet",
+                            "--frames", "1", "--bios", gamepaths.GBA_BIOS,
                             "--call-snaps", d, "200000"], capture_output=True, text=True,
                            timeout=300)   # seconds normally; a call stuck inside one emulator step never ends
         except subprocess.TimeoutExpired:
             pass
-        env = dict(os.environ, BN6F_ROM=os.path.join(ROOT, "bn6f/bn6f.gba"), ORACLE_CONTRACT=CONTRACT)
+        env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=CONTRACT)
         r = subprocess.run([os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", d],
                            capture_output=True, text=True,
                            cwd=HOST, env=env)

@@ -10,11 +10,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/tools/common.sh"
 OUT=$(realpath -m "$1"); TRACE=$(realpath "$2"); G0=$3; G1=$4; N=$5; shift 5
-ORIG="$ROOT/bn6f/bn6f.gba"
+ORIG="$ORIG_ROM"
 RAW=$(mktemp -d)
 trap 'rm -rf "$RAW"' EXIT   # snapshots are large: never leave them behind
 declare -A NAME
-arm-none-eabi-nm "$ROOT/bn6f/bn6f.elf" > "$RAW/syms.txt"
+arm-none-eabi-nm "$ORIG_ELF" > "$RAW/syms.txt"
 for f in "$@"; do
   a=$(awk -v n="$f" '$3==n{print $1}' "$RAW/syms.txt" | head -n 1)
   [ -n "$a" ] || { echo "no symbol $f" >&2; continue; }
@@ -22,8 +22,8 @@ for f in "$@"; do
   NAME[$(printf '%08x' $((16#$a & ~1)))]=$f
 done
 mkdir -p "$RAW/snaps"
-"$ROOT/build-tools/mgba_run" "$ORIG" --quiet --frames $(( G1 * 3 )) --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
-  --input "$TRACE" --game-frame-addr 0x020093D4 --profile-game "$G0" "$G1" \
+"$MGBA_RUN" "$ORIG" --quiet --frames $(( G1 * 3 )) --bios "$GBA_BIOS" \
+  --input "$TRACE" --game-frame-addr "$GAME_FRAME_ADDR" --profile-game "$G0" "$G1" \
   ${KEEP_INTERRUPTED:+--snap-keep-interrupted} \
   --snap-funcs "$RAW/funcs.txt" "$RAW/snaps" "$N" $(poke_args "$ORIG" "$TRACE") > /dev/null
 tag=$(basename "$TRACE" .trace)

@@ -18,6 +18,8 @@ Run them with tools/tracesweep.sh.
 """
 import os, random, sys
 
+import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHIPS, CHIP_SIZE, NCHIPS = 0x21DA8, 0x2C, 411
 SETTINGS = [0x080AEE90, 0x080AEEB0, 0x080AEF00, 0x080AEF40, 0x080AEF80, 0x080AEFC0]
@@ -32,7 +34,7 @@ def mask(*keys):
 
 
 def chips():
-    rom = open(os.path.join(ROOT, "bn6f/bn6f.gba"), "rb").read()
+    rom = open(gamepaths.ORIG_ROM, "rb").read()
     out = {0: [], 1: [], 2: []}
     for cid in range(1, NCHIPS):
         e = rom[CHIPS + cid * CHIP_SIZE: CHIPS + (cid + 1) * CHIP_SIZE]
@@ -49,7 +51,7 @@ def main():
     c = chips()
     std, mega, giga = c[0], c[1], c[2]
     ngroups = max((len(std) + 23) // 24, (len(mega) + 3) // 4, (len(giga) + 1) // 2)
-    prefix = [l for l in open(os.path.join(ROOT, "tools/traces/battle.trace")) if l[0].isdigit() and int(l.split(",")[0]) < 16100]
+    prefix = [l for l in open(os.path.join(gamepaths.TRACES, "battle.trace")) if l[0].isdigit() and int(l.split(",")[0]) < 16100]
     for g in range(ngroups):
         folder = [std[(g * 24 + i) % len(std)] for i in range(24)] + \
                  [mega[(g * 4 + i) % len(mega)] for i in range(4)] + [giga[(g * 2 + i) % len(giga)] for i in range(2)]

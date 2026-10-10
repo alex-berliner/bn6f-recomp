@@ -1,5 +1,10 @@
-# Shared helpers for the test scripts (source this).
+# Shared helpers for the test scripts (source this, with ROOT set to the repo root).
 #
+# It loads the game profile, tools/paths.env: ORIG_ROM, ORIG_ELF, GBA_BIOS, MGBA_RUN,
+# GAME_FRAME_ADDR, TRACES, ABI_GRAPH and the rest, as absolute paths under $ROOT.
+: "${ROOT:?set ROOT to the repo root before sourcing tools/common.sh}"
+. "$ROOT/tools/paths.env"
+
 # poke_args ROM TRACE: extra mgba_run arguments for a trace's .poke sidecar
 # ("GAME_FRAME ADDR=VALUE/SIZE,..."): the writes are applied at the entry of
 # main_awaitFrame (the end of a game frame's work) in that ROM, so the

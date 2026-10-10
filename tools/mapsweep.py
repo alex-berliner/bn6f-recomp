@@ -19,6 +19,7 @@ import os, random, shutil, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/paths.env)
 ENTRIES = """
 00:00 804CE70 00:01 8097120
 01:00 804E3F0 01:01 804E3A0 01:02 804E410 01:03 804E400 01:04 804E3D0
@@ -49,7 +50,7 @@ def main():
     outdir, save = sys.argv[1], sys.argv[2]
     after = int(sys.argv[3]) if len(sys.argv) > 3 else 2500
     os.makedirs(outdir, exist_ok=True)
-    rom = open(os.path.join(ROOT, "bn6f/bn6f.gba"), "rb").read()
+    rom = open(gamepaths.ORIG_ROM, "rb").read()
     toks = ENTRIES.split()
     import fuzzplay
     kept = skipped = 0

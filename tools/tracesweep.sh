@@ -7,22 +7,23 @@
 # union of the profiles goes to tools/traces/coverage/COVNAME.prof.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/tools/common.sh"
 ROM=$(realpath "$1"); DIR=$(realpath "$2"); N=$3; G0=$4; COV=$5
 one() {
   local t=$1 r
   . "$ROOT/tools/common.sh"
   r=$(OUT="$DIR/ls_$t" "$ROOT/tools/lockstep.sh" "$ROM" "$DIR/$t.trace" "$N" 2>&1 | tail -n 1)
   mkdir -p "$DIR/cov_$t"
-  (cd "$DIR/cov_$t" && "$ROOT/build-tools/mgba_run" "$ROOT/bn6f/bn6f.gba" --quiet --frames $((N * 3)) \
-      --bios "$ROOT/gbarecomp/bios/gba_bios.bin" --input "$DIR/$t.trace" --game-frame-addr 0x020093D4 \
-      --profile-game "$G0" "$N" $(poke_args "$ROOT/bn6f/bn6f.gba" "$DIR/$t.trace") > /dev/null)
+  (cd "$DIR/cov_$t" && "$MGBA_RUN" "$ORIG_ROM" --quiet --frames $((N * 3)) \
+      --bios "$GBA_BIOS" --input "$DIR/$t.trace" --game-frame-addr "$GAME_FRAME_ADDR" \
+      --profile-game "$G0" "$N" $(poke_args "$ORIG_ROM" "$DIR/$t.trace") > /dev/null)
   echo "$t $r"
 }
 export -f one
 export ROOT ROM N DIR G0
 ls "$DIR"/*.trace | xargs -n1 basename | sed 's/\.trace$//' | xargs -P "${JOBS:-8}" -I{} bash -c 'one {}' | tee "$DIR/summary.txt"
 echo "$(grep -c ' OK:' "$DIR/summary.txt") of $(ls "$DIR"/*.trace | wc -l) runs identical; results in $DIR"
-python3 - "$DIR" "$ROOT/tools/traces/coverage/$COV.prof" <<'PY'
+python3 - "$DIR" "$TRACES/coverage/$COV.prof" <<'PY'
 import glob, sys
 pcs = set()
 for p in glob.glob(sys.argv[1] + "/cov_*/profile.txt"):
@@ -36,5 +37,5 @@ with open(sys.argv[2], "w") as f:
     for pc in sorted(pcs):
         f.write(pc + " 1\n")
 PY
-python3 "$ROOT/tools/coverage.py" "$ROOT"/tools/traces/coverage/*.prof
+python3 "$ROOT/tools/coverage.py" "$TRACES"/coverage/*.prof
 grep -q ' FAIL' "$DIR/summary.txt" && exit 1 || exit 0

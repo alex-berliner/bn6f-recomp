@@ -5,14 +5,18 @@ the recordings are in the main checkout (WF_REPO, default ~/Code/recomp).
 """
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from wf.types import CommitHash, SourceVersion
 
 REPO = Path(os.environ.get("WF_REPO", Path.home() / "Code" / "recomp"))
+sys.path.append(str(REPO / "tools"))
+import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/paths.env)
+
 CPORT = REPO / "cport"
-TRACES = REPO / "tools" / "traces"
-ORIGINAL_ROM = REPO / "bn6f" / "bn6f.gba"
+TRACES = Path(gamepaths.TRACES)
+ORIGINAL_ROM = Path(gamepaths.ORIG_ROM)
 TOOLCHAIN_BIN = REPO / "toolchain" / "bin"
 RUNS = REPO / "build-wf-runs"  # tool logs of workflow runs (ignored by git as build-*/)
 STATE_DIR = REPO / "build-wf-state"  # what all runs share, kept apart from them: locks, provider outages,

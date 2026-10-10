@@ -35,18 +35,19 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/wf"))
 from wf.repo import TOOLCHAIN_BIN  # noqa: E402
 from wf.tools.build import committed_tree, link_shared  # noqa: E402
+import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/paths.env)
 
 ENV = {**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}"}
 NEXT = r"^((?:IWRAM_\w+\s+|ARM_CODE\s+)*Next\s+){name}(\s*\(\s*void\s*\)\s*\{{)"
-ORIGINAL = ROOT / "bn6f/bn6f.gba"
+ORIGINAL = Path(gamepaths.ORIG_ROM)
 
 
 def run_rom(rom: Path, trace: Path, until: int, extra: list[str], cwd: Path | None = None) -> None:
-    poke = subprocess.run(["bash", "-c", f'. "{ROOT}/tools/common.sh"; poke_args "{rom}" "{trace}"'],
+    poke = subprocess.run(["bash", "-c", f'ROOT="{ROOT}"; . "{ROOT}/tools/common.sh"; poke_args "{rom}" "{trace}"'],
                           capture_output=True, text=True, check=True).stdout.split()
-    subprocess.run([str(ROOT / "build-tools/mgba_run"), str(rom), "--frames", "400000", "--bios",
-                    str(ROOT / "gbarecomp/bios/gba_bios.bin"), "--input", str(trace), "--game-frame-addr",
-                    "0x020093D4", "--until-game-frame", str(until), "--quiet", *extra, *poke],
+    subprocess.run([gamepaths.MGBA_RUN, str(rom), "--frames", "400000", "--bios",
+                    gamepaths.GBA_BIOS, "--input", str(trace), "--game-frame-addr",
+                    gamepaths.GAME_FRAME_ADDR, "--until-game-frame", str(until), "--quiet", *extra, *poke],
                    check=True, stdout=subprocess.DEVNULL, cwd=cwd)
 
 
@@ -85,7 +86,7 @@ def main() -> None:
     ap.add_argument("--candidates")
     ap.add_argument("--rev", default="HEAD")
     args = ap.parse_args()
-    trace = ROOT / "tools/traces" / f"{args.route}.trace"
+    trace = Path(gamepaths.TRACES) / f"{args.route}.trace"
     frames = (args.first_bad, args.first_bad + 16)
     work = Path(tempfile.mkdtemp(prefix="bisect-"))
 
@@ -115,7 +116,7 @@ def main() -> None:
         names = set(names)
         while True:
             switch_off(names)
-            lift = subprocess.run(["python3", str(tree / "tools/lifter/lift.py"), "--bn6f", str(ROOT / "bn6f"),
+            lift = subprocess.run(["python3", str(tree / "tools/lifter/lift.py"), "--bn6f", gamepaths.BN6F_DIR,
                                    "--out", str(tree / "cport/src/lifted"), "--inc", str(tree / "cport/include"),
                                    "--overrides", str(game)], capture_output=True, text=True, env=ENV)
             m = re.search(r"must define all its entries: missing \[(.*?)\]", lift.stdout + lift.stderr)

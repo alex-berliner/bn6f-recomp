@@ -10,6 +10,7 @@
 # many lifted functions the sweep executed (tools/coverage.py).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/tools/common.sh"
 ROM=$(realpath "$1")
 N=${2:-20000}
 shift $(( $# < 2 ? $# : 2 ))
@@ -21,10 +22,10 @@ print(' '.join([hex(0x080AEE70 + 16 * k) for k in range(0, 269, step)] +
 fi
 OUT=${OUT:-$(mktemp -d)}
 mkdir -p "$OUT"
-G0=$(awk '{print $1}' "$ROOT/tools/traces/battle.poke")
+G0=$(awk '{print $1}' "$TRACES/battle.poke")
 for s in "$@"; do
-  ln -sf "$ROOT/tools/traces/battle.trace" "$OUT/b_$s.trace"
-  sed -E "s/0x2001b9c=0x[0-9A-Fa-f]+/0x2001b9c=$s/" "$ROOT/tools/traces/battle.poke" > "$OUT/b_$s.poke"
+  ln -sf "$TRACES/battle.trace" "$OUT/b_$s.trace"
+  sed -E "s/0x2001b9c=0x[0-9A-Fa-f]+/0x2001b9c=$s/" "$TRACES/battle.poke" > "$OUT/b_$s.poke"
 done
 one() {  # settings address
   local s=$1 r
@@ -32,9 +33,9 @@ one() {  # settings address
   if [ "${COVERAGE:-0}" = 1 ]; then
     . "$ROOT/tools/common.sh"
     mkdir -p "$OUT/cov_$s"
-    (cd "$OUT/cov_$s" && "$ROOT/build-tools/mgba_run" "$ROOT/bn6f/bn6f.gba" --quiet --frames 200000 \
-        --bios "$ROOT/gbarecomp/bios/gba_bios.bin" --input "$OUT/b_$s.trace" --game-frame-addr 0x020093D4 \
-        --profile-game "$G0" "$N" $(poke_args "$ROOT/bn6f/bn6f.gba" "$OUT/b_$s.trace") > /dev/null)
+    (cd "$OUT/cov_$s" && "$MGBA_RUN" "$ORIG_ROM" --quiet --frames 200000 \
+        --bios "$GBA_BIOS" --input "$OUT/b_$s.trace" --game-frame-addr "$GAME_FRAME_ADDR" \
+        --profile-game "$G0" "$N" $(poke_args "$ORIG_ROM" "$OUT/b_$s.trace") > /dev/null)
   fi
   echo "$s $r"
 }

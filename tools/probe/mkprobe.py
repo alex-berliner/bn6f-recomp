@@ -5,10 +5,12 @@ with its own title and game code."""
 import os, struct, subprocess, sys
 here = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(os.path.dirname(here))
+sys.path.insert(0, os.path.join(root, "tools"))
+import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
 code = open(os.path.join(here, "probe.bin"), "rb").read()
 rom = bytearray(0xD80000)
 rom[:len(code)] = code
-orig = open(os.path.join(root, "bn6f/bn6f.gba"), "rb").read()
+orig = open(gamepaths.ORIG_ROM, "rb").read()
 rom[4:0xC0] = orig[4:0xC0]                         # logo and header fields
 rom[0xA0:0xAC] = b"CARTPROBE\0\0\0"
 rom[0xAC:0xB0] = b"PRBE"

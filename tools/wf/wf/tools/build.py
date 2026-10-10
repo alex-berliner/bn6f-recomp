@@ -18,9 +18,10 @@ from wf.types import BuildFailure, BuiltRom, LogPath, RomPath, ToolMessage
 ROM_BUILD_DIR = "build-wf"
 HOST_BUILD_DIR = "../build-wf-host"  # relative to cport/host
 WORKTREES = REPO / "build-wf-worktrees"
-# not in a worktree (submodules, and built tools git ignores): linked from the main checkout. The ROM
-# build links ../bn6f/bn6f.gba, the tools read the BIOS from gbarecomp and run build-tools/mgba_run.
-SHARED = ("bn6f", "gbarecomp", "build-tools", "toolchain")
+# not in a worktree (submodules, and files git ignores): linked from the main checkout. The ROM build
+# links ../bn6f/bn6f.gba; the tools read the BIOS from roms/ (older commits: gbarecomp/) and run
+# build-tools/mgba_run (tools/paths.env).
+SHARED = ("bn6f", "roms", "gbarecomp", "build-tools", "toolchain")
 CCACHE_LOG = STATE_DIR / "ccache.tsv"   # every workflow build: when, where, files compiled, ccache hits
 
 

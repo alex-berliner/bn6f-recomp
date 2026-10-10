@@ -6,8 +6,9 @@
 # --no-build: use bn6f as last built (the record workflow has just built it).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/tools/common.sh"
 TC="$ROOT/toolchain/bin"
-BN6F="$ROOT/bn6f"
+BN6F="$BN6F_DIR"
 SYM="$ROOT/symbols"
 
 if [ "${1:-}" != --no-build ]; then
@@ -18,8 +19,8 @@ if [ "${1:-}" != --no-build ]; then
   make -C "$BN6F" "${TOOLS[@]}" -j"$(nproc)"
 fi
 
-readelf -sW "$BN6F/bn6f.elf" > "$SYM/bn6f_readelf_syms.txt"
-readelf -SW "$BN6F/bn6f.elf" > "$SYM/bn6f_readelf_sections.txt"
+readelf -sW "$ORIG_ELF" > "$SYM/bn6f_readelf_syms.txt"
+readelf -SW "$ORIG_ELF" > "$SYM/bn6f_readelf_sections.txt"
 
 # Runtime code copies (ROM -> IWRAM), both resolved by symbol name:
 #   start.s copies 0x1ED4 bytes of IWRAM routines (IRQ handler etc.) to 0x03005B00.
@@ -28,7 +29,7 @@ python3 "$ROOT/gbarecomp/tools/symbol_import/import_decomp_symbols.py" \
     --id BR6E --name "Mega Man Battle Network 6: Cybeast Falzar (USA)" \
     --syms "$SYM/bn6f_readelf_syms.txt" \
     --sections "$SYM/bn6f_readelf_sections.txt" \
-    --rom "$BN6F/bn6f.gba" \
+    --rom "$ORIG_ROM" \
     --data-source sections \
     --code-copy-pair "sub_3005B00=IWRAMRoutinesROMLocation:arm:0x1ED4" \
     --code-copy-pair "byte_3005700=SoundMainRAM:thumb:0x400" \

@@ -6,17 +6,17 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tools/common.sh"
-ROM=$(realpath "$1"); TRACE=$(realpath "${2:-$ROOT/tools/traces/wander.trace}")
+ROM=$(realpath "$1"); TRACE=$(realpath "${2:-$TRACES/wander.trace}")
 G0=${3:-3000}; G1=${4:-4000}; TOP=${5:-40}
-ORIG="$ROOT/bn6f/bn6f.gba"
+ORIG="$ORIG_ROM"
 TMP=$(mktemp -d)
 run() {  # rom dir
   mkdir -p "$2"
-  (cd "$2" && "$ROOT/build-tools/mgba_run" "$1" --quiet --frames 200000 --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
-     --input "$TRACE" --game-frame-addr 0x020093D4 --profile-game "$G0" "$G1" $(poke_args "$1" "$TRACE") > /dev/null)
+  (cd "$2" && "$MGBA_RUN" "$1" --quiet --frames 200000 --bios "$GBA_BIOS" \
+     --input "$TRACE" --game-frame-addr "$GAME_FRAME_ADDR" --profile-game "$G0" "$G1" $(poke_args "$1" "$TRACE") > /dev/null)
 }
 run "$ORIG" "$TMP/o" & run "$ROM" "$TMP/t" & wait
-python3 - "$TMP/o/profile.txt" "$ROOT/bn6f/bn6f.elf" "$TMP/t/profile.txt" "${ROM%.gba}.elf" "$TOP" <<'PY'
+python3 - "$TMP/o/profile.txt" "$ORIG_ELF" "$TMP/t/profile.txt" "${ROM%.gba}.elf" "$TOP" <<'PY'
 import bisect, collections, subprocess, sys
 def syms(elf):
     # FUNC symbols only: bn6f's local code labels (loc_*, etc.) would split

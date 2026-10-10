@@ -7,8 +7,9 @@ port stops with "dispatch miss" when the game calls it.
   tools/find_hidden_code.py
 """
 import bisect, glob, os, re, subprocess
+import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-rom = open(os.path.join(ROOT, "bn6f/bn6f.gba"), "rb").read()
+rom = open(gamepaths.ORIG_ROM, "rb").read()
 # Every instruction the lifter translated has a "/* ADDR: insn */" comment.
 # (Unit ranges are not enough: the disassembly can put a data block, and
 # code hidden in it, inside a function's start/end markers.)
@@ -18,7 +19,7 @@ for f in glob.glob(os.path.join(ROOT, "cport/src/lifted/*.c")):
 def in_code(t):
     return t in lifted
 syms = {}
-for l in subprocess.run(["arm-none-eabi-nm", "-n", os.path.join(ROOT, "bn6f/bn6f.elf")],
+for l in subprocess.run(["arm-none-eabi-nm", "-n", gamepaths.ORIG_ELF],
                         capture_output=True, text=True).stdout.splitlines():
     p = l.split()
     if len(p) == 3:

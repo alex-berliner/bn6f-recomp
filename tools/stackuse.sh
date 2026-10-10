@@ -10,8 +10,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ROM=$1 TRACE=$2 N=$3
 ELF="${ROM%.gba}.elf"
 TMP=$(mktemp -d)
-"$ROOT/build-tools/mgba_run" "$ROM" --quiet --frames $((N * 3)) --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
-  --input "$TRACE" --game-frame-addr 0x020093D4 --until-game-frame "$N" --dump-ram "$TMP/ram" $(poke_args "$ROM" "$TRACE") >/dev/null
+"$MGBA_RUN" "$ROM" --quiet --frames $((N * 3)) --bios "$GBA_BIOS" \
+  --input "$TRACE" --game-frame-addr "$GAME_FRAME_ADDR" --until-game-frame "$N" --dump-ram "$TMP/ram" $(poke_args "$ROM" "$TRACE") >/dev/null
 sym() { arm-none-eabi-nm "$ELF" | awk -v n="$1" '$3==n{print $1}'; }
 python3 - "$TMP/ram.iwram.bin" "$(sym __bss_end)" "$(sym __sys_stack_top)" "$(sym __irq_stack_top)" "$(sym __sys_stack_limit)" <<'PY'
 import sys

@@ -13,6 +13,8 @@ test script starts both ROMs from it.
 import os, random, shutil, sys
 
 BITS = dict(A=0, B=1, SELECT=2, START=3, RIGHT=4, LEFT=5, UP=6, DOWN=7, R=8, L=9)
+import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -27,7 +29,7 @@ def main():
     out, save, seed = sys.argv[1], sys.argv[2], int(sys.argv[3])
     end = int(sys.argv[4]) if len(sys.argv) > 4 else 12000
     rng = random.Random(seed)
-    title = [l for l in open(os.path.join(ROOT, "tools/traces/menus2.trace"))
+    title = [l for l in open(os.path.join(gamepaths.TRACES, "menus2.trace"))
              if l[0].isdigit() and int(l.split(",")[0]) < 330]
     ev = [(int(l.split(",")[0]), int(l.split(",")[1], 16)) for l in title]
     ev += [(450, mask("A")), (456, 0x3FF)]

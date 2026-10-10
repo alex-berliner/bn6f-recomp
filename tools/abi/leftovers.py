@@ -17,7 +17,7 @@ compares only what F returns). Reading it is the bug class of commit 67673ff
 Each read is one of:
   contract   F never returns it: no original caller reads it after F (lifted header).
   site       F returns it to some callers, but the original of this caller never reads it
-             after F (per call site liveness in build/abi/graph.json, lift.py --export-abi).
+             after F (per call site liveness in build-abi/graph.json, lift.py --export-abi).
   passed     not read in C but passed on into the next callee G, which takes it as input,
              where the original of this caller does not do so.
   zflag      the original branches on F's flags right after the call (`bl F; beq x`) and also
@@ -51,12 +51,14 @@ from dataclasses import asdict, dataclass, field
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lint  # noqa: E402  # pyright: ignore[reportImplicitRelativeImport]  (tools/abi/lint.py, run as a script)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/paths.env)
 
 ROOT = lint.ROOT
 DEFAULT_PATHS = lint.DEFAULT_PATHS
 LIFTED_DIR = os.path.join(ROOT, "cport/src/lifted")
 LIFTED_H = lint.LIFTED_H
-DEFAULT_GRAPH = os.path.join(ROOT, "build/abi/graph.json")
+DEFAULT_GRAPH = gamepaths.ABI_GRAPH
 
 REGS = [f"r{n}" for n in range(13)]
 FLAGS = ["nz", "c", "v"]

@@ -4,17 +4,18 @@
 #   tools/compare_roms.sh FRAMES EVERY OUTDIR [INPUT_TRACE]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/tools/common.sh"
 FRAMES=$1; EVERY=$2; OUT=$3; INPUT=${4:-}
-RUN="$ROOT/build-tools/mgba_run"
+RUN="$MGBA_RUN"
 MARKER=$(arm-none-eabi-nm "$ROOT/cport/build/bn6f_lifted.elf" | awk '$3=="g_fatal_marker"{print "0x"$1}')
 mkdir -p "$OUT/orig" "$OUT/lifted"
-# Both ROMs boot through the real BIOS (gbarecomp/bios/gba_bios.bin) unless
+# Both ROMs boot through the real BIOS (GBA_BIOS in tools/paths.env) unless
 # BIOS= is set to another dump or to "hle" for mGBA's built-in replacement.
-BIOS=${BIOS:-$ROOT/gbarecomp/bios/gba_bios.bin}
+BIOS=${BIOS:-$GBA_BIOS}
 ARGS=(--frames "$FRAMES" --every "$EVERY" --quiet)
 [ "$BIOS" != hle ] && ARGS+=(--bios "$BIOS")
 [ -n "$INPUT" ] && ARGS+=(--input "$INPUT")
-"$RUN" "$ROOT/bn6f/bn6f.gba" "${ARGS[@]}" --shots "$OUT/orig" > "$OUT/orig.log" 2>&1 &
+"$RUN" "$ORIG_ROM" "${ARGS[@]}" --shots "$OUT/orig" > "$OUT/orig.log" 2>&1 &
 "$RUN" "$ROOT/cport/build/bn6f_lifted.gba" "${ARGS[@]}" --shots "$OUT/lifted" --marker "$MARKER" > "$OUT/lifted.log" 2>&1 || true
 wait
 cat "$OUT/lifted.log" | tail -5
