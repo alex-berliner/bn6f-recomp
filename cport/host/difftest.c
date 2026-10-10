@@ -6,7 +6,8 @@
  *                                                  N varied copies of each)
  *
  * For each trial both versions run (in forked children, 0.2 s timeout) from
- * the same randomised guest RAM and registers; all guest memory, cpu.ret, SP
+ * the same randomised guest RAM and registers (out of domain when the original
+ * faults, or returns elsewhere though it never unwinds); all guest memory, cpu.ret, SP
  * and what the function's register contract compares must match: every r0-r12
  * it does not leave free and the flags callers read (the lifter's refined
  * contract, in difftest_pairs.h), or the function's compare= line in
@@ -43,13 +44,14 @@
 #include "hostmem.h"
 
 /* compare_regs/compare_flags: the lifter's contract for the function (difftest_pairs.h), what is
- * compared after a call unless difftest.cfg gives the function a compare= line */
-typedef struct { const char *name; GuestFn hand, lifted; u32 compare_regs; int compare_flags; } Pair;
+ * compared after a call unless difftest.cfg gives the function a compare= line. returns: the
+ * lifter proves the original always returns to its caller (it never unwinds past it). */
+typedef struct { const char *name; GuestFn hand, lifted; u32 compare_regs; int compare_flags, returns; } Pair;
 /* Optional structured input generator: fills guest RAM/registers in place. */
 typedef void (*GenFn)(Cpu *in, u32 (*rnd)(void));
 GenFn difftest_generator(const char *name);
 GenFn difftest_snap_mutator(const char *name);
-#define PAIR(n, regs, flags) { #n, n, L_##n, regs, flags },
+#define PAIR(n, regs, flags, returns) { #n, n, L_##n, regs, flags, returns },
 static const Pair kPairs[] = {
 #include "difftest_pairs.h"
 };
@@ -427,6 +429,9 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
         run_child(p->lifted, &in, mem_in, ra, out_a);
         run_child(p->hand, &in, mem_in, rb, out_b);
         if (ra->status) { (*pcrashes)++; return; }   /* original faults: input out of domain */
+        /* An original that never unwinds coming back elsewhere: the input overwrote its own stack
+         * frame (e.g. a fill over its pushed LR), so it is out of domain too. */
+        if (p->returns && ra->cpu.ret != in.ret) { (*pcrashes)++; return; }
         const char *why = NULL;
         /* Stack below the final SP is dead after return (callee scratch, or a
          * caller frame the function popped). */
@@ -629,7 +634,9 @@ int main(int argc, char **argv) {
             lifted = (GuestFn)dlsym(RTLD_DEFAULT, name);
         if (!hand || !lifted) { printf("%s: missing %s\n", name, hand ? name : sym); return 2; }
         /* -R/-F take the place of the contract: a compare= line in difftest.cfg still wins */
-        Pair pr = { name, hand, lifted, 0, cand_flags };
+        Pair pr = { name, hand, lifted, 0, cand_flags, 0 };
+        for (unsigned i = 0; i < sizeof kPairs / sizeof kPairs[0]; i++)
+            if (!strcmp(kPairs[i].name, name)) pr.returns = kPairs[i].returns;
         char regs[256];
         snprintf(regs, sizeof regs, "%s", cand_regs);
         for (char *r = strtok(regs, ","); r; r = strtok(NULL, ",")) {

@@ -157,6 +157,17 @@ static void gen_cursor_body(Cpu *in, u32 (*rnd)(void)) {
     U32(in->r[13] + 8) = in->r[3];
 }
 
+/* dispatchStateHandler_81179AE jumps through a four-entry table on the state byte of the work area
+ * sub_8047D84 finds (0x02019A00 + (h[0x2011C24] + h[0x2011C28]) * 8); a random byte indexes past the
+ * table into whatever follows it. Give it a work area in EWRAM and a state the game has (0-3). */
+static void gen_state_handler_81179AE(Cpu *in, u32 (*rnd)(void)) {
+    (void)in;
+    U16(0x02011C24u) = (u16)(rnd() % 0x100);
+    U16(0x02011C28u) = (u16)(rnd() % 0x100);
+    u32 work = 0x02019A00u + (U16(0x02011C24u) + U16(0x02011C28u)) * 8;
+    U8(work) = (u8)(rnd() % 4);
+}
+
 GenFn difftest_snap_mutator(const char *name) {
     if (!strcmp(name, "npc_runSecondaryScriptMaybe_809ebf8")) return mut_npc_secondary;
     if (!strcmp(name, "sprite_queueFramePieces")) return mut_sprite_pieces;
@@ -169,5 +180,6 @@ GenFn difftest_generator(const char *name) {
     if (!strcmp(name, "sprite_buildOamShadow")) return gen_oam;
     if (!strcmp(name, "SoundMainRAM_iwram_03005700")) return gen_mixer;
     if (!strcmp(name, "menu_moveCursor_811FA36")) return gen_cursor_body;
+    if (!strcmp(name, "dispatchStateHandler_81179AE")) return gen_state_handler_81179AE;
     return 0;
 }

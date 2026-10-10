@@ -152,6 +152,9 @@ functions, normalised to C types).
   `difftest.cfg` has a `compare=` line), stamps record and the leftover lint checks the same
   contract. Against the lifter's own, for the 1,434 readable units: outputs narrower in 888,
   compared registers fewer in 777, inputs narrower in 820, none wider.
+  `difftest_pairs.h` also says whether the original always returns to its caller (the lifter proves
+  it never unwinds); for those, an original that comes back elsewhere on a random input has had its
+  own frame overwritten by the input, and the trial counts as out of domain.
 - **Leftover reads** `python3 tools/abi/leftovers.py [--check]` (review item R1-A21): readable
   code that reads, after `GUEST_CALL(F)`, a register or flag F does not return (its lifted
   contract), or one the original of that caller never reads after F (per-site liveness in
