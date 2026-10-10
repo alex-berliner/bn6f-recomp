@@ -39,8 +39,14 @@ def definition(name):
     return None, None
 
 
+def summary_line(e):
+    """The summary on one line (a YAML block scalar ends in a newline; a stray one used to leave a blank line
+    inside the block, which the next run did not see as part of it, so it added the block again)."""
+    return " ".join(str(e["summary"]).split())
+
+
 def block(e):
-    lines = [e["summary"]]
+    lines = [summary_line(e)]
     if e.get("interface"):
         lines += textwrap.wrap(str(e["interface"]), 96)
     lines.append(f"{e['status']}; evidence and how to reproduce it: recomp symbols/db/{e['name']}.yaml")
@@ -63,6 +69,15 @@ def main():
         top = at
         while top > 0 and lines[top - 1].startswith(TAG):
             top -= 1
+        # copies of this summary that the old blank-line bug left above the block, each followed by blank lines
+        old = (TAG + summary_line(e)).rstrip()
+        while True:
+            above = top
+            while above > 0 and not lines[above - 1].strip():
+                above -= 1
+            if above == top or above == 0 or " ".join(lines[above - 1].split()) != old:
+                break
+            top = above - 1
         new = block(e)
         if lines[top:at] != new:
             lines[top:at] = new
