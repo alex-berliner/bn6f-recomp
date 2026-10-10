@@ -7,7 +7,7 @@
  * TRACE uses gbarecomp's keyinput format: "frame,0xKEYINPUT" (active low).
  * Screenshots are binary PPMs (DIR/frame_NNNNNN.ppm).
  *
- * Build: gcc -O2 -o build-tools/mgba_run tools/mgba_run.c -lmgba
+ * Build: make -C tools mgba_run (needs libmgba-dev).
  */
 #include <mgba/core/core.h>
 #include <mgba/core/serialize.h>

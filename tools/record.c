@@ -1,7 +1,7 @@
 /*
  * record.c — play the original ROM and record an input trace for the tests.
  *
- *   build-tools/record ROM OUT.trace [--save START.sav] [--scale N]
+ *   build-tools/record ROM OUT.trace [--save START.sav] [--scale N] [--bios FILE]
  *   (tools/record.sh NAME [START.sav] wraps this)
  *
  * Runs the ROM on the same mGBA core and BIOS as the test harness
@@ -35,7 +35,7 @@
  * the keyboard, and prints mgba_run-style "digest" lines every 20 game
  * frames, so a replay of the trace can be compared.
  *
- * Build: gcc -O2 -o build-tools/record tools/record.c -lmgba $(sdl2-config --cflags --libs)
+ * Build: make -C tools record (it passes GAME_FRAME_ADDR from tools/paths.env).
  */
 #include <SDL.h>
 #include <fcntl.h>
@@ -50,7 +50,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define GAME_FRAME_ADDR 0x020093D4u   /* toolkit pointer; [+0] -> u16 game frame counter */
+#ifndef GAME_FRAME_ADDR   /* the toolkit's CurFramePtr: [it] -> u16 game frame counter (tools/paths.env) */
+#error "build with make -C tools: GAME_FRAME_ADDR comes from tools/paths.env"
+#endif
 #define SAVE_SIZE 0x8000              /* SRAM_V113: 32 KB battery SRAM */
 #define SAMPLE_RATE 48000
 #define FPS 59.7275
@@ -206,7 +208,7 @@ static int write_file(const char *path, const void *buf, size_t size) {
 
 int main(int argc, char **argv) {
     const char *rom = NULL, *out = NULL, *save = NULL;
-    const char *bios = "gbarecomp/bios/gba_bios.bin";
+    const char *bios = "roms/gba_bios.bin";   /* GBA_BIOS in tools/paths.env */
     int scale = 3;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--save") && i + 1 < argc) save = argv[++i];
