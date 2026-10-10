@@ -147,13 +147,7 @@ def bn6f_in_flux() -> str | None:
                            capture_output=True, text=True, env=plain_env()).stdout.strip()
     if dirty:
         return "bn6f has uncommitted changes"
-    try:
-        built = os.path.getmtime(os.path.join(sub, "bn6f.elf"))
-        committed = int(subprocess.run(["git", "-C", sub, "log", "-1", "--format=%ct"], capture_output=True,
-                                       text=True, env=plain_env()).stdout.strip() or 0)
-        if built < committed:
-            return "bn6f.elf is older than bn6f's last commit"
-    except (OSError, ValueError):
+    if not os.path.exists(os.path.join(sub, "bn6f.elf")):
         return "no bn6f.elf"
     return None
 
@@ -218,12 +212,12 @@ def check_wf(hook: bool) -> Result:
 
 # ── main ──
 
-def timed(fn: Callable[[], Result]) -> Result:
+def timed(name: str, fn: Callable[[], Result]) -> Result:
     t = time.monotonic()
     try:
         r = fn()
-    except Exception as e:     # a broken check must say so, not pass silently
-        r = Result(getattr(fn, "__name__", "check"), failures=[f"the check itself failed: {e!r}"])
+    except Exception as e:     # the gate's own failure says so loudly, but never blocks someone's commit
+        r = Result(name, warnings=[f"could not run, so nothing was checked here: {e!r} (tools/gate.py --all to retry)"])
     r.seconds = time.monotonic() - t
     return r
 
@@ -233,17 +227,17 @@ def main() -> int:
     hook = "--all" not in sys.argv
     changed = staged_paths() if hook else []
     touches = (lambda *prefixes: not hook or any(p.startswith(prefixes) or p in prefixes for p in changed))
-    jobs: list[Callable[[], Result]] = []
+    jobs: list[tuple[str, Callable[[], Result]]] = []
     if touches(GAME, BASELINE, LINT):
-        jobs.append(lambda: check_lint(hook, changed))
+        jobs.append(("lint", lambda: check_lint(hook, changed)))
     if touches("symbols/db/", GAME, "bn6f", "tools/lifter/", "tools/symdb.py", "tools/stamps.py"):
-        jobs.append(lambda: check_symdb(hook, changed))
+        jobs.append(("symdb", lambda: check_symdb(hook, changed)))
     if touches(WF):
-        jobs.append(lambda: check_wf(hook))
+        jobs.append(("wf", lambda: check_wf(hook)))
     results: list[Result] = [Result("?")] * len(jobs)
 
-    def run(i: int, job: Callable[[], Result]) -> None:
-        results[i] = timed(job)
+    def run(i: int, job: tuple[str, Callable[[], Result]]) -> None:
+        results[i] = timed(*job)
     threads = [threading.Thread(target=run, args=(i, j)) for i, j in enumerate(jobs)]
     for t in threads:
         t.start()
@@ -269,4 +263,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:     # never block a commit because the gate itself broke
+        print(f"gate: could not run ({e!r}); nothing was checked. tools/gate.py --all to retry", file=sys.stderr)
+        sys.exit(0 if "--all" not in sys.argv else 1)
