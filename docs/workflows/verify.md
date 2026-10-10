@@ -61,7 +61,7 @@ Run each changed function on the original game and on the port from the same rea
 
 ### `lockstep_routes` (step)
 
-Replay each recorded route on the original game and the port side by side.
+Replay each recorded route on the original game (cached after the first run) and the port side by side.
 
 - reads: `build: BuiltRom`, `routes: tuple[Route, ...]`, `run_dir: Path`
 - produces: `locksteps: tuple[LockstepResult, ...]`

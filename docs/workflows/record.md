@@ -5,9 +5,12 @@ disassembly (docs/PROCESS.md §6, and the user's rule: every discovery goes
 into bn6f and symbols/db with evidence and how to reproduce it).
 
 Claude writes or updates the symbols/db entries first; this workflow checks
-the database, renames symbols in bn6f (only confirmed or probable meanings),
-writes the `// symdb:` comments into bn6f, renders SYMBOLS.md, re-verifies
-the port when anything was renamed, and commits.
+the database, writes the `// symdb:` comments into bn6f, renames symbols in
+bn6f (only confirmed or probable meanings), renders SYMBOLS.md, and commits.
+bn6f is built once per run: by the rename when there is one (it checks the
+comments too), else after the comments. Renames change names, not code: the
+port is built before and after them, and re-verified only when its ROM bytes
+changed.
 
 ![record](record.png)
 
@@ -22,39 +25,40 @@ note what is uncommitted already (other work in the tree is never swept into thi
 
 - reads: `symbols: tuple[SymbolName, ...]`, `renames: tuple[Rename, ...]`, `run_dir: Path`
 - produces: `problems: tuple[ToolMessage, ...]`, `changed_before: tuple[Path, ...]`
-- then: `rename_in_bn6f` when `clean_with_renames`; `write_comments_into_bn6f` when `clean_without_renames`; `write_report` when `problems_found`
+- then: `build_port_before_renames` when `clean_with_renames`; `write_comments_into_bn6f` when `clean_without_renames`; `write_report` when `problems_found`
 
-### `rename_in_bn6f` (step)
+### `build_port_before_renames` (step)
 
-Rename in bn6f (ROM stays identical, bn6f commit), in the port's code, and regenerate the lifted C.
+Lift and build the port as it is, to compare the renamed one with byte for byte.
 
-- reads: `renames: tuple[Rename, ...]`, `run_dir: Path`
-- produces: `renamed_in_bn6f: CommitHash`
-- then: `refresh_pc_port_symbols_after_renames`
+- reads: `run_dir: Path`
+- produces: `port_before: str | None`
+- then: `write_comments_into_bn6f`
 
 ### `write_comments_into_bn6f` (step)
 
-Write each entry's `// symdb:` block at its definition in bn6f (ROM stays identical, bn6f commit).
+Write each entry's `// symdb:` block at its definition in bn6f (bn6f commit). bn6f is built here
+(ROM stays identical) unless renames follow: their build checks the comments too.
 
-- reads: `run_dir: Path`
+- reads: `run_dir: Path`, `renames: tuple[Rename, ...]`
 - produces: `comments_in_bn6f: typing.Optional[CommitHash]`
-- then: `render_symbols`
+- then: `rename_in_bn6f` when `renames_requested`; `render_symbols` when `no_renames_requested`
 
 ### `write_report` (step)
 
 Say what was recorded, or why nothing was.
 
-- reads: `problems: tuple[ToolMessage, ...]`, `renamed_in_bn6f: typing.Optional[CommitHash]`, `comments_in_bn6f: typing.Optional[CommitHash]`, `verification: VerifyReport | None`, `commit: typing.Optional[CommitHash]`
+- reads: `problems: tuple[ToolMessage, ...]`, `renamed_in_bn6f: typing.Optional[CommitHash]`, `comments_in_bn6f: typing.Optional[CommitHash]`, `port_before: str | None`, `port_after: str | None`, `verification: VerifyReport | None`, `commit: typing.Optional[CommitHash]`
 - produces: `report: RecordReport`
 - then: the run ends
 
-### `refresh_pc_port_symbols_after_renames` (step)
+### `rename_in_bn6f` (step)
 
-Refresh the PC port's symbol overlay from the renamed bn6f (tools/import_symbols.sh).
+Rename in bn6f (built once, ROM stays identical, bn6f commit) and in the port's code.
 
-- reads: `run_dir: Path`
-- produces: nothing
-- then: `write_comments_into_bn6f`
+- reads: `renames: tuple[Rename, ...]`, `run_dir: Path`
+- produces: `renamed_in_bn6f: CommitHash`
+- then: `refresh_pc_port_symbols_after_renames`
 
 ### `render_symbols` (step)
 
@@ -62,15 +66,24 @@ Regenerate symbols/SYMBOLS.md and symbols/symdb.sqlite.
 
 - reads: `run_dir: Path`
 - produces: nothing
-- then: `reverify_port` when `symbols_were_renamed`; `commit_records` when `nothing_was_renamed`
+- then: `build_port_after_renames` when `symbols_were_renamed`; `commit_records` when `nothing_was_renamed`
 
-### `reverify_port` (step)
+### `refresh_pc_port_symbols_after_renames` (step)
 
-Renames change the port's layout, not its behaviour: replay every route to make sure (a child verify run).
+Refresh the PC port's symbol overlay from the renamed bn6f (tools/import_symbols.sh, without building
+bn6f again).
 
 - reads: `run_dir: Path`
-- produces: `verification: VerifyReport`
-- then: `commit_records` when `port_still_verified`; `write_report` when `port_no_longer_verified`
+- produces: nothing
+- then: `render_symbols`
+
+### `build_port_after_renames` (step)
+
+Lift and build the renamed port; when its ROM is byte-identical to the one before, it behaves the same.
+
+- reads: `run_dir: Path`
+- produces: `port_after: str | None`
+- then: `commit_records` when `port_rom_unchanged`; `reverify_port` when `port_rom_changed`
 
 ### `commit_records` (step)
 
@@ -80,3 +93,11 @@ list of deferred renames, when that is where this run's renames came from).
 - reads: `commit_message: str`, `changed_before: tuple[Path, ...]`, `pending_renames: Path | None`
 - produces: `commit: CommitHash`
 - then: `write_report`
+
+### `reverify_port` (step)
+
+Renames change the port's layout, not its behaviour: replay every route to make sure (a child verify run).
+
+- reads: `run_dir: Path`
+- produces: `verification: VerifyReport`
+- then: `commit_records` when `port_still_verified`; `write_report` when `port_no_longer_verified`

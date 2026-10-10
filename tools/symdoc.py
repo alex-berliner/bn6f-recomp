@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write the symbol database's findings into the disassembly as comments.
 
-  tools/symdoc.py [--commit]
+  tools/symdoc.py [--commit] [--no-build]
 
 For every symbols/db entry, a comment block goes right above the symbol's
 definition in bn6f (before its thumb_func_start/arm_func_start/thumb_local_start
@@ -14,7 +14,8 @@ line for functions, above its label otherwise):
 Existing `// symdb:` lines there are replaced, so running it again updates
 the comments. bn6f is rebuilt (the ROM must stay identical; comments do not
 change it); with --commit the change is committed in bn6f and recorded in
-each entry's changes.
+each entry's changes. --no-build skips the rebuild, for a caller that builds
+bn6f right after (the record workflow renames next: one build checks both).
 """
 import datetime, glob, os, re, subprocess, sys, textwrap
 import yaml
@@ -68,13 +69,16 @@ def main():
     print(f"{len(changed)} comment blocks written")
     if not changed:
         return
-    tc = os.path.join(ROOT, "toolchain", "bin")
-    r = subprocess.run(["make", f"-j{os.cpu_count()}"] + [f"{v}={tc}/arm-none-eabi-{t}" for v, t in
-                       (("AS", "as"), ("LD", "ld"), ("OBJCOPY", "objcopy"), ("OBJDUMP", "objdump"))],
-                       cwd=BN6F, capture_output=True, text=True)
-    if r.returncode:
-        sys.exit("bn6f build failed or the ROM changed:\n" + (r.stdout + r.stderr)[-2000:])
-    print("bn6f rebuilt, ROM identical")
+    if "--no-build" in sys.argv:
+        print("bn6f not rebuilt (--no-build)")
+    else:
+        tc = os.path.join(ROOT, "toolchain", "bin")
+        r = subprocess.run(["make", f"-j{os.cpu_count()}"] + [f"{v}={tc}/arm-none-eabi-{t}" for v, t in
+                           (("AS", "as"), ("LD", "ld"), ("OBJCOPY", "objcopy"), ("OBJDUMP", "objdump"))],
+                           cwd=BN6F, capture_output=True, text=True)
+        if r.returncode:
+            sys.exit("bn6f build failed or the ROM changed:\n" + (r.stdout + r.stderr)[-2000:])
+        print("bn6f rebuilt, ROM identical")
     if "--commit" in sys.argv:
         subprocess.run(["git", "add", "-A"], cwd=BN6F, check=True)
         subprocess.run(["git", "commit", "-q", "-m", "Document symbols from the recomp symbol database (symdb comments)\n\n"

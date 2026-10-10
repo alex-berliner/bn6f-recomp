@@ -1,5 +1,6 @@
-"""The record graph with fake database tools: problems stop it, renames
-re-verify the port, a broken port is not committed."""
+"""The record graph with fake database tools: problems stop it, bn6f is built
+once, renames re-verify the port only when its ROM changed, a broken port is
+not committed."""
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,7 +22,9 @@ class FakeDatabase:
     problems: tuple[ToolMessage, ...] = ()
     status: SymbolStatus = SymbolStatus.PROBABLE
     port_still_verifies: bool = True
+    port_roms: list[str] = field(default_factory=lambda: ["rom-a", "rom-a"])   # before and after renames
     called: list[str] = field(default_factory=list[str])
+    comments_built_bn6f: list[bool] = field(default_factory=list[bool])
 
 
 def test_database_problems_stop_before_anything_changes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -46,18 +49,37 @@ def test_without_renames_it_comments_renders_and_commits(monkeypatch: pytest.Mon
 
     assert report.verdict is RecordVerdict.RECORDED
     assert database.called == ["check", "comments", "render", "commit"]
+    assert database.comments_built_bn6f == [True]
 
 
-def test_renames_re_verify_the_port_before_committing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_renames_with_an_unchanged_port_rom_skip_the_re_verify(monkeypatch: pytest.MonkeyPatch,
+                                                                 tmp_path: Path) -> None:
     database = FakeDatabase()
     report = record_with(database, monkeypatch, tmp_path, renames=(Rename(old=KNOWN, new=NEW_NAME),))
 
-    assert report.verdict is RecordVerdict.RECORDED
-    assert database.called == ["check", "rename", "pc port symbols", "comments", "render", "verify", "commit"]
+    assert report.verdict is RecordVerdict.RECORDED and report.port_rom_unchanged
+    assert database.called == ["check", "port", "comments", "rename", "pc port symbols", "render", "port", "commit"]
+    assert database.comments_built_bn6f == [False]     # the rename's build is the run's only one
+
+
+def test_renames_that_change_the_port_rom_re_verify_it(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    database = FakeDatabase(port_roms=["rom-a", "rom-b"])
+    report = record_with(database, monkeypatch, tmp_path, renames=(Rename(old=KNOWN, new=NEW_NAME),))
+
+    assert report.verdict is RecordVerdict.RECORDED and not report.port_rom_unchanged
+    assert database.called[-3:] == ["port", "verify", "commit"]
+
+
+def test_a_port_that_did_not_build_before_renames_is_re_verified(monkeypatch: pytest.MonkeyPatch,
+                                                                    tmp_path: Path) -> None:
+    database = FakeDatabase(port_roms=["", ""])      # no ROM either time: nothing to compare
+    report = record_with(database, monkeypatch, tmp_path, renames=(Rename(old=KNOWN, new=NEW_NAME),))
+
+    assert "verify" in database.called and not report.port_rom_unchanged
 
 
 def test_a_port_broken_by_renames_is_not_committed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    database = FakeDatabase(port_still_verifies=False)
+    database = FakeDatabase(port_still_verifies=False, port_roms=["rom-a", "rom-b"])
     report = record_with(database, monkeypatch, tmp_path, renames=(Rename(old=KNOWN, new=NEW_NAME),))
 
     assert report.verdict is RecordVerdict.PORT_BROKE
@@ -97,12 +119,17 @@ def install(database: FakeDatabase, monkeypatch: pytest.MonkeyPatch, run_dir: Pa
         database.called.append("rename")
         return CommitHash("b1")
 
-    def refresh_pc_port_symbols(log: LogPath) -> None:
+    def refresh_pc_port_symbols(log: LogPath, build: bool = True) -> None:
         database.called.append("pc port symbols")
 
-    def write_bn6f_comments(log: LogPath) -> CommitHash | None:
+    def write_bn6f_comments(log: LogPath, build: bool = True) -> CommitHash | None:
         database.called.append("comments")
+        database.comments_built_bn6f.append(build)
         return CommitHash("b2")
+
+    def port_rom_hash(log_dir: Path) -> str | None:
+        database.called.append("port")
+        return database.port_roms.pop(0) or None
 
     def render_database(log: LogPath) -> None:
         database.called.append("render")
@@ -125,7 +152,7 @@ def install(database: FakeDatabase, monkeypatch: pytest.MonkeyPatch, run_dir: Pa
         "check_database": check_database, "entry": entry, "rename_symbols": rename_symbols,
         "refresh_pc_port_symbols": refresh_pc_port_symbols, "write_bn6f_comments": write_bn6f_comments,
         "render_database": render_database, "run_verify": run_verify, "commit_files": commit_files,
-        "changed_files": changed_files,
+        "changed_files": changed_files, "port_rom_hash": port_rom_hash,
     }
     for name, fake in fakes.items():
         monkeypatch.setattr(record, name, fake)

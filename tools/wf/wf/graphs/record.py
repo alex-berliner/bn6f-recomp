@@ -3,9 +3,13 @@ disassembly (docs/PROCESS.md §6, and the user's rule: every discovery goes
 into bn6f and symbols/db with evidence and how to reproduce it).
 
 Claude writes or updates the symbols/db entries first; this workflow checks
-the database, renames symbols in bn6f (only confirmed or probable meanings),
-writes the `// symdb:` comments into bn6f, renders SYMBOLS.md, re-verifies
-the port when anything was renamed, and commits."""
+the database, writes the `// symdb:` comments into bn6f, renames symbols in
+bn6f (only confirmed or probable meanings), renders SYMBOLS.md, and commits.
+bn6f is built once per run: by the rename when there is one (it checks the
+comments too), else after the comments. Renames change names, not code: the
+port is built before and after them, and re-verified only when its ROM bytes
+changed."""
+import hashlib
 from enum import Enum
 from pathlib import Path
 
@@ -15,10 +19,11 @@ from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify
 from wf.repo import REPO
 from wf.routes import ALL_ROUTES
+from wf.tools.build import lift_and_build
 from wf.tools.git import changed_files, commit_files
 from wf.tools.symbols import (DATABASE, check_database, entry, refresh_pc_port_symbols, rename_symbols, render_database,
                               write_bn6f_comments)
-from wf.types import CommitHash, LogPath, Rename, Result, SymbolName, SymbolStatus, ToolMessage
+from wf.types import BuiltRom, CommitHash, LogPath, Rename, Result, SymbolName, SymbolStatus, ToolMessage
 
 PROJECT = "recomp-record"
 RENAMEABLE = (SymbolStatus.CONFIRMED, SymbolStatus.PROBABLE)
@@ -36,14 +41,18 @@ def record_graph() -> Graph["RecordState"]:
         first=check_entries,
         ends=[write_report],
         transitions=[
-            Transition(after=check_entries, go_to=rename_in_bn6f, when=clean_with_renames),
+            Transition(after=check_entries, go_to=build_port_before_renames, when=clean_with_renames),
             Transition(after=check_entries, go_to=write_comments_into_bn6f, when=clean_without_renames),
             Transition(after=check_entries, go_to=write_report, when=problems_found),
+            Transition(after=build_port_before_renames, go_to=write_comments_into_bn6f),
+            Transition(after=write_comments_into_bn6f, go_to=rename_in_bn6f, when=renames_requested),
+            Transition(after=write_comments_into_bn6f, go_to=render_symbols, when=no_renames_requested),
             Transition(after=rename_in_bn6f, go_to=refresh_pc_port_symbols_after_renames),
-            Transition(after=refresh_pc_port_symbols_after_renames, go_to=write_comments_into_bn6f),
-            Transition(after=write_comments_into_bn6f, go_to=render_symbols),
-            Transition(after=render_symbols, go_to=reverify_port, when=symbols_were_renamed),
+            Transition(after=refresh_pc_port_symbols_after_renames, go_to=render_symbols),
+            Transition(after=render_symbols, go_to=build_port_after_renames, when=symbols_were_renamed),
             Transition(after=render_symbols, go_to=commit_records, when=nothing_was_renamed),
+            Transition(after=build_port_after_renames, go_to=commit_records, when=port_rom_unchanged),
+            Transition(after=build_port_after_renames, go_to=reverify_port, when=port_rom_changed),
             Transition(after=reverify_port, go_to=commit_records, when=port_still_verified),
             Transition(after=reverify_port, go_to=write_report, when=port_no_longer_verified),
             Transition(after=commit_records, go_to=write_report),
@@ -73,6 +82,7 @@ class RecordReport(Result):
     comments_in_bn6f: CommitHash | None
     verification: VerifyReport | None
     commit: CommitHash | None
+    port_rom_unchanged: bool = False     # renamed, but the port ROM stayed byte-identical: not re-verified
 
 
 class RecordState(BaseModel):
@@ -85,6 +95,8 @@ class RecordState(BaseModel):
     pending_renames: Path | None = None      # the deferred renames this run makes: emptied in its commit
     renamed_in_bn6f: CommitHash | None = None
     comments_in_bn6f: CommitHash | None = None
+    port_before: str | None = None           # SHA-1 of the port ROM before the renames (None: it did not build)
+    port_after: str | None = None            # and after them
     verification: VerifyReport | None = None
     commit: CommitHash | None = None
     report: RecordReport | None = None
@@ -135,9 +147,40 @@ class RenameOutput(Result):
     renamed_in_bn6f: CommitHash
 
 
+class PortBuildInput(Result):
+    run_dir: Path
+
+
+class PortBeforeOutput(Result):
+    port_before: str | None
+
+
+@workflow.step
+def build_port_before_renames(given: PortBuildInput) -> PortBeforeOutput:
+    """Lift and build the port as it is, to compare the renamed one with byte for byte."""
+    return PortBeforeOutput(port_before=port_rom_hash(given.run_dir / "port-before"))
+
+
+class PortAfterOutput(Result):
+    port_after: str | None
+
+
+@workflow.step
+def build_port_after_renames(given: PortBuildInput) -> PortAfterOutput:
+    """Lift and build the renamed port; when its ROM is byte-identical to the one before, it behaves the same."""
+    return PortAfterOutput(port_after=port_rom_hash(given.run_dir / "port-after"))
+
+
+def port_rom_hash(log_dir: Path) -> str | None:
+    """SHA-1 of the port ROM lifted and built from the main checkout now (None if it did not build)."""
+    log_dir.mkdir(parents=True, exist_ok=True)
+    built = lift_and_build(log_dir)
+    return hashlib.sha1(built.rom.read_bytes()).hexdigest() if isinstance(built, BuiltRom) else None
+
+
 @workflow.step
 def rename_in_bn6f(given: RenameInput) -> RenameOutput:
-    """Rename in bn6f (ROM stays identical, bn6f commit), in the port's code, and regenerate the lifted C."""
+    """Rename in bn6f (built once, ROM stays identical, bn6f commit) and in the port's code."""
     return RenameOutput(renamed_in_bn6f=rename_symbols(given.renames, LogPath(given.run_dir / "rename.log"),
                                                        run=current_run_id()))
 
@@ -152,13 +195,15 @@ class RefreshOutput(Result):
 
 @workflow.step
 def refresh_pc_port_symbols_after_renames(given: RefreshInput) -> RefreshOutput:
-    """Refresh the PC port's symbol overlay from the renamed bn6f (tools/import_symbols.sh)."""
-    refresh_pc_port_symbols(LogPath(given.run_dir / "import_symbols.log"))
+    """Refresh the PC port's symbol overlay from the renamed bn6f (tools/import_symbols.sh, without building
+    bn6f again)."""
+    refresh_pc_port_symbols(LogPath(given.run_dir / "import_symbols.log"), build=False)
     return RefreshOutput()
 
 
 class CommentsInput(Result):
     run_dir: Path
+    renames: tuple[Rename, ...]
 
 
 class CommentsOutput(Result):
@@ -167,8 +212,10 @@ class CommentsOutput(Result):
 
 @workflow.step
 def write_comments_into_bn6f(given: CommentsInput) -> CommentsOutput:
-    """Write each entry's `// symdb:` block at its definition in bn6f (ROM stays identical, bn6f commit)."""
-    return CommentsOutput(comments_in_bn6f=write_bn6f_comments(LogPath(given.run_dir / "symdoc.log")))
+    """Write each entry's `// symdb:` block at its definition in bn6f (bn6f commit). bn6f is built here
+    (ROM stays identical) unless renames follow: their build checks the comments too."""
+    return CommentsOutput(comments_in_bn6f=write_bn6f_comments(LogPath(given.run_dir / "symdoc.log"),
+                                                               build=not given.renames))
 
 
 class RenderInput(Result):
@@ -228,6 +275,8 @@ class ReportInput(Result):
     problems: tuple[ToolMessage, ...]
     renamed_in_bn6f: CommitHash | None
     comments_in_bn6f: CommitHash | None
+    port_before: str | None
+    port_after: str | None
     verification: VerifyReport | None
     commit: CommitHash | None
 
@@ -248,7 +297,9 @@ def write_report(given: ReportInput) -> ReportOutput:
     return ReportOutput(report=RecordReport(verdict=verdict, problems=given.problems,
                                             renamed_in_bn6f=given.renamed_in_bn6f,
                                             comments_in_bn6f=given.comments_in_bn6f,
-                                            verification=given.verification, commit=given.commit))
+                                            verification=given.verification, commit=given.commit,
+                                            port_rom_unchanged=given.port_before is not None
+                                            and given.port_after == given.port_before))
 
 
 # ── decisions ──────────────────────────────────────────────────────────
@@ -265,12 +316,29 @@ def clean_without_renames(state: RecordState) -> bool:
     return not state.problems and not state.renames
 
 
+def renames_requested(state: RecordState) -> bool:
+    return bool(state.renames)
+
+
+def no_renames_requested(state: RecordState) -> bool:
+    return not state.renames
+
+
 def symbols_were_renamed(state: RecordState) -> bool:
     return state.renamed_in_bn6f is not None
 
 
 def nothing_was_renamed(state: RecordState) -> bool:
     return state.renamed_in_bn6f is None
+
+
+def port_rom_unchanged(state: RecordState) -> bool:
+    """The renamed port's ROM is byte-identical to the one before: the same program, nothing to re-verify."""
+    return state.port_before is not None and state.port_after == state.port_before
+
+
+def port_rom_changed(state: RecordState) -> bool:
+    return not port_rom_unchanged(state)
 
 
 def port_still_verified(state: RecordState) -> bool:

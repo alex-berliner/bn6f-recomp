@@ -12,23 +12,67 @@
 # next checkpoint matches again, and every differing range of the tested
 # ROM's memory equals the original's one game frame before or after.
 # On any other mismatch, screenshots of both are written next to the digests.
+#
+# The original game's side of a replay depends only on its inputs, so its digests
+# and end-of-run save memory are cached (build-wf-cache/lockstep next to the bn6f
+# the original ROM comes from), keyed by the hashes of the original ROM, mgba_run,
+# the BIOS, the trace and its .sav and .poke, and the frame counts: a replay then
+# runs only the tested ROM. LOCKSTEP_CACHE=off replays the original every time;
+# LOCKSTEP_CACHE=DIR keeps the cache there.
+#
+#   lockstep.sh --cached TRACE [GAME_FRAMES] [EVERY]   exit 0 if the original's side is cached
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tools/common.sh"
+ORIG="$ROOT/bn6f/bn6f.gba"
+MGBA="$ROOT/build-tools/mgba_run"
+BIOS="$ROOT/gbarecomp/bios/gba_bios.bin"
+RUN_ARGS="--frames 200000 --game-frame-addr 0x020093D4 --quiet"   # part of the cache key: change both together
+QUERY=0
+if [ "${1:-}" = --cached ]; then QUERY=1; shift; set -- "$ORIG" "$@"; fi
 ROM=$1
 TRACE=${2:-$ROOT/tools/traces/wander.trace}
 N=${3:-8000}
 EVERY=${4:-20}
+case "${LOCKSTEP_CACHE:-}" in
+  off) CACHE= ;;
+  "") CACHE="$(cd -P "$ROOT/bn6f/.." && pwd)/build-wf-cache/lockstep" ;;
+  *) CACHE=$LOCKSTEP_CACHE ;;
+esac
+orig_entry() {   # the cache directory for this replay of the original
+  local key f
+  key=$({ for f in "$ORIG" "$MGBA" "$BIOS" "$TRACE" "${TRACE%.trace}.sav" "${TRACE%.trace}.poke"; do
+            if [ -f "$f" ]; then sha1sum < "$f"; else echo none; fi
+          done
+          echo "$RUN_ARGS $N $EVERY"; } | sha1sum | cut -c1-16)
+  echo "$CACHE/$(basename "$TRACE" .trace)-$key"
+}
+if [ "$QUERY" = 1 ]; then
+  [ -n "$CACHE" ] && [ -f "$(orig_entry)/orig.txt" ]
+  exit
+fi
 OUT=${OUT:-$(mktemp -d)}
 mkdir -p "$OUT"
 run() {
-  "$ROOT/build-tools/mgba_run" "$1" --frames 200000 --bios "$ROOT/gbarecomp/bios/gba_bios.bin" \
-      --input "$TRACE" --game-frame-addr 0x020093D4 --until-game-frame "$N" \
-      --digest-every "$EVERY" --dump-save "$2.sav" $(poke_args "$1" "$TRACE") --quiet | grep digest > "$2"
+  "$MGBA" "$1" $RUN_ARGS --bios "$BIOS" --input "$TRACE" --until-game-frame "$N" \
+      --digest-every "$EVERY" --dump-save "$2.sav" $(poke_args "$1" "$TRACE") | grep digest > "$2"
 }
-run "$ROOT/bn6f/bn6f.gba" "$OUT/orig.txt" &
-run "$ROM" "$OUT/test.txt"
-wait
+ENTRY=$([ -n "$CACHE" ] && orig_entry || true)
+if [ -n "$ENTRY" ] && [ -f "$ENTRY/orig.txt" ] && [ -f "$ENTRY/orig.txt.sav" ]; then
+  cp "$ENTRY/orig.txt" "$ENTRY/orig.txt.sav" "$OUT/"
+  echo "original: cached replay ($ENTRY)"
+  run "$ROM" "$OUT/test.txt"
+else
+  run "$ORIG" "$OUT/orig.txt" &
+  orig_pid=$!
+  run "$ROM" "$OUT/test.txt"
+  # only a complete replay of the original is kept
+  if wait "$orig_pid" && [ -n "$ENTRY" ] && [ -s "$OUT/orig.txt" ] && [ -f "$OUT/orig.txt.sav" ]; then
+    mkdir -p "$CACHE" "$ENTRY.part.$$"
+    cp "$OUT/orig.txt" "$OUT/orig.txt.sav" "$ENTRY.part.$$/"
+    mv -T "$ENTRY.part.$$" "$ENTRY" 2>/dev/null || rm -rf "$ENTRY.part.$$"   # another run stored it first
+  fi
+fi
 status=0
 export LS_ROOT="$ROOT" LS_ROM="$ROM" LS_TRACE="$TRACE"
 export LS_POKE_ORIG="$(poke_args "$ROOT/bn6f/bn6f.gba" "$TRACE")" LS_POKE_TEST="$(poke_args "$ROM" "$TRACE")"

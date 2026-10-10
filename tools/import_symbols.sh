@@ -3,17 +3,20 @@
 # symbol table into the gbarecomp symbol overlay under symbols/.
 #
 # Requires the agbasm binutils fork in toolchain/bin (see tools/build_toolchain.sh).
+# --no-build: use bn6f as last built (the record workflow has just built it).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TC="$ROOT/toolchain/bin"
 BN6F="$ROOT/bn6f"
 SYM="$ROOT/symbols"
 
-make -C "$BN6F/tools/gbagfx" >/dev/null
-TOOLS=(AS="$TC/arm-none-eabi-as" LD="$TC/arm-none-eabi-ld"
-       OBJCOPY="$TC/arm-none-eabi-objcopy" OBJDUMP="$TC/arm-none-eabi-objdump" PY=python3)
-make -C "$BN6F" "${TOOLS[@]}" assets -j"$(nproc)" >/dev/null
-make -C "$BN6F" "${TOOLS[@]}" -j"$(nproc)"
+if [ "${1:-}" != --no-build ]; then
+  make -C "$BN6F/tools/gbagfx" >/dev/null
+  TOOLS=(AS="$TC/arm-none-eabi-as" LD="$TC/arm-none-eabi-ld"
+         OBJCOPY="$TC/arm-none-eabi-objcopy" OBJDUMP="$TC/arm-none-eabi-objdump" PY=python3)
+  make -C "$BN6F" "${TOOLS[@]}" assets -j"$(nproc)" >/dev/null
+  make -C "$BN6F" "${TOOLS[@]}" -j"$(nproc)"
+fi
 
 readelf -sW "$BN6F/bn6f.elf" > "$SYM/bn6f_readelf_syms.txt"
 readelf -SW "$BN6F/bn6f.elf" > "$SYM/bn6f_readelf_sections.txt"

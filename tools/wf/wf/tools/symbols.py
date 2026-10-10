@@ -43,21 +43,23 @@ def render_database(log: LogPath) -> None:
 
 
 def rename_symbols(renames: tuple[Rename, ...], log: LogPath, run: str | None = None) -> CommitHash:
-    """Rename in bn6f (ROM must stay identical; bn6f gets a commit, its subject naming RUN) and
-    regenerate the lifted C."""
+    """Rename in bn6f (ROM must stay identical; bn6f gets a commit, its subject naming RUN). The lifted C
+    is not regenerated here (--no-regen): the record workflow lifts and builds the port next."""
     pairs = [name for rename in renames for name in (rename.old, rename.new)]
     with held(BN6F):   # no run may lift while bn6f's names change
-        done = _tool(["python3", "tools/rename_symbol.py", *pairs, *(["--run", run] if run else [])], log)
+        done = _tool(["python3", "tools/rename_symbol.py", *pairs, "--no-regen", *(["--run", run] if run else [])],
+                     log)
     commit = _BN6F_COMMIT.search(done.stdout)
     if done.returncode != 0 or commit is None:
         raise ToolOutputError(f"rename_symbol.py failed, see {log}")
     return CommitHash(commit[1])
 
 
-def write_bn6f_comments(log: LogPath) -> CommitHash | None:
-    """`// symdb:` blocks at each definition in bn6f, committed there; None when nothing changed."""
+def write_bn6f_comments(log: LogPath, build: bool = True) -> CommitHash | None:
+    """`// symdb:` blocks at each definition in bn6f, committed there; None when nothing changed. Without
+    BUILD, bn6f is not rebuilt: the caller builds it next (a rename's build checks the comments too)."""
     with held(BN6F):
-        done = _tool(["python3", "tools/symdoc.py", "--commit"], log)
+        done = _tool(["python3", "tools/symdoc.py", "--commit", *([] if build else ["--no-build"])], log)
     if done.returncode != 0:
         raise ToolOutputError(f"symdoc.py failed (bn6f may be left modified), see {log}")
     commit = _BN6F_COMMIT.search(done.stdout)
@@ -76,8 +78,9 @@ def yaml_path(name: SymbolName) -> Path:
     return DATABASE / f"{name}.yaml"
 
 
-def refresh_pc_port_symbols(log: LogPath) -> None:
-    """After renames: rebuild bn6f and refresh the PC port's symbol overlay (tools/import_symbols.sh)."""
-    done = _tool(["tools/import_symbols.sh"], log)
+def refresh_pc_port_symbols(log: LogPath, build: bool = True) -> None:
+    """After renames: refresh the PC port's symbol overlay (tools/import_symbols.sh), rebuilding bn6f first
+    unless the caller just did."""
+    done = _tool(["tools/import_symbols.sh", *([] if build else ["--no-build"])], log)
     if done.returncode != 0:
         raise ToolOutputError(f"import_symbols.sh failed, see {log}")

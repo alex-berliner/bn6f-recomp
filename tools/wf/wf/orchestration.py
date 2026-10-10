@@ -334,7 +334,8 @@ STEP_SUMMARIES: dict[tuple[str, str], str] = {
     ("verify", "lockstep_routes"):
         "A verify run replays each recorded gameplay route ({routes}) on the original game and on the port side "
         "by side. It compares palette, VRAM and OAM at every checkpoint, and save memory at the end. This catches "
-        "behaviour changes anywhere in the game, not only in the named functions.",
+        "behaviour changes anywhere in the game, not only in the named functions. The original game's side of "
+        "each route is cached (tools/lockstep.sh), so after the first run only the port is replayed.",
     ("verify", "sweep_battles"):
         "Only when battle code changed, a verify run replays the 116 recorded battles in lockstep against the "
         "original game (tools/battlesweep.sh).",
@@ -442,22 +443,31 @@ STEP_SUMMARIES: dict[tuple[str, str], str] = {
         "A record run (for symbols named with `wf record`, or by a convert run) runs tools/symdb.py check on the "
         "symbol database. It checks that every named symbol has an entry, and that every requested rename has a "
         "confirmed or probable meaning. Problems end the run with nothing changed.",
+    ("record", "build_port_before_renames"):
+        "Before renaming, a record run lifts and builds the port as it is and keeps its ROM's hash, so the renamed "
+        "port can be compared with it byte for byte.",
     ("record", "rename_in_bn6f"):
         "A record run renames the requested symbols with tools/rename_symbol.py: in the bn6f disassembly sources "
         "(rebuilt, checked byte-identical, and committed in bn6f, one pair per line under a short subject), in the "
-        "port's hand-written code, the lifter's label lists and the lint baseline, and in the regenerated lifted C.",
+        "port's hand-written code, the lifter's label lists and the lint baseline. This is the run's one bn6f "
+        "build: it checks the comments written just before too.",
     ("record", "refresh_pc_port_symbols_after_renames"):
         "After renames, a record run refreshes the PC port's symbol overlay from the renamed bn6f "
-        "(tools/import_symbols.sh).",
+        "(tools/import_symbols.sh, without building bn6f again).",
     ("record", "write_comments_into_bn6f"):
         "A record run writes each symbols/db entry as a `// symdb:` comment block at the symbol's definition in "
-        "the bn6f disassembly (tools/symdoc.py), checks that the ROM is still byte-identical, and commits in bn6f.",
+        "the bn6f disassembly (tools/symdoc.py) and commits in bn6f. Without renames it builds bn6f and checks "
+        "that the ROM is still byte-identical; with renames, the rename's build that follows checks both.",
+    ("record", "build_port_after_renames"):
+        "After renames, a record run lifts and builds the renamed port. Renames change names, not code: when the "
+        "ROM is byte-identical to the one before, the port is the same program and goes straight to the commit; "
+        "otherwise a child verify run replays every route.",
     ("record", "render_symbols"):
         "A record run regenerates symbols/SYMBOLS.md (the readable symbol list) and symbols/symdb.sqlite from "
         "the entries in symbols/db.",
     ("record", "reverify_port"):
-        "Only after renames, a record run starts a child verify run that replays every recorded route. Renames "
-        "change the port's layout, not its behaviour; this proves it.",
+        "Only when renames changed the port ROM's bytes, a record run starts a child verify run that replays every "
+        "recorded route. Renames change the port's layout, not its behaviour; this proves it.",
     ("record", "commit_records"):
         "A record run commits the symbols/db entries, the bn6f submodule pointer and any renamed port code to "
         "the main checkout's local git, never pushed.",
@@ -503,6 +513,8 @@ FIELD_GLOSSARY: dict[str, str] = {
     "problems": "what the database check or the rename checks found",
     "renamed_in_bn6f": "the bn6f commit with the renames",
     "comments_in_bn6f": "the bn6f commit with the `// symdb:` comments, if anything changed",
+    "port_before": "the SHA-1 of the port ROM built before the renames, if it built",
+    "port_after": "the SHA-1 of the port ROM built after the renames, if it built",
     "commit": "a local git commit in the main checkout",
     "commit_message": "the message for the main checkout's commit",
     "pairs": "one result per function and model",

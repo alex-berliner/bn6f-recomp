@@ -20,11 +20,14 @@ _FIRST_BAD = re.compile(r"first at game=(\d+)")
 
 
 def run_lockstep_routes(rom: RomPath, routes: tuple[Route, ...], log_dir: Path) -> tuple[LockstepResult, ...]:
-    """Each route runs two emulators; run several routes at once."""
-    workers = max(1, (os.cpu_count() or 2) // 2)
+    """Each route runs two emulators, or one once the original game's replay of it is cached
+    (lockstep.sh keeps them): as many routes at once as that leaves a core each."""
+    cores = os.cpu_count() or 2
+    workers = cores if all(original_cached(route) for route in routes) else max(1, cores // 2)
+    longest_first = sorted(routes, key=lambda route: route.length, reverse=True)   # so the last ones end soon
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        runs = [pool.submit(run_lockstep, rom, route, log_dir) for route in routes]
-        return tuple(run.result() for run in runs)
+        runs = {route.name: pool.submit(run_lockstep, rom, route, log_dir) for route in longest_first}
+        return tuple(runs[route.name].result() for route in routes)
 
 
 def run_lockstep(rom: RomPath, route: Route, log_dir: Path) -> LockstepResult:
@@ -38,6 +41,13 @@ def run_lockstep(rom: RomPath, route: Route, log_dir: Path) -> LockstepResult:
     log.write_text(done.stdout + done.stderr)
     seconds = round(time.monotonic() - started, 1)
     return _parse(route, done.returncode, done.stdout, seconds, log)
+
+
+def original_cached(route: Route) -> bool:
+    """Whether lockstep.sh has the original game's replay of the route (its digests) cached."""
+    done = subprocess.run([str(LOCKSTEP), "--cached", str(route.trace), str(route.length)],
+                          capture_output=True, check=False)
+    return done.returncode == 0
 
 
 def _parse(route: Route, exit_code: int, output: str, seconds: float, log: LogPath) -> LockstepResult:

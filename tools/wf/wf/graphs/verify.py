@@ -207,7 +207,7 @@ class LockstepOutput(Result):
 
 @workflow.step
 def lockstep_routes(given: LockstepInput) -> LockstepOutput:
-    """Replay each recorded route on the original game and the port side by side."""
+    """Replay each recorded route on the original game (cached after the first run) and the port side by side."""
     return LockstepOutput(locksteps=run_lockstep_routes(given.build.rom, given.routes, given.run_dir))
 
 

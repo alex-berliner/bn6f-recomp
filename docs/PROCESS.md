@@ -162,6 +162,11 @@ functions were never compared"). What each proves, and what it cannot see:
 By hand, for triage: `(cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 NAME)`,
 `build-host/difftest -S DIR/NAME NAME`, `tools/oracle.py --base SNAPDIR --states 24 --out OUT NAME...`,
 `tools/lockstep.sh ROM tools/traces/ROUTE.trace N`, `JOBS=6 tools/battlesweep.sh ROM`.
+Lockstep caches the original game's side of each replay (digests and end save, in
+`build-wf-cache/lockstep`, keyed by the hashes of the original ROM, `mgba_run`, the
+BIOS, the trace with its `.sav`/`.poke`, and the frame counts), so after the first
+run only the tested ROM is replayed and verify runs all routes at once;
+`LOCKSTEP_CACHE=off` replays both.
 
 New recordings: `tools/record.sh NAME START.sav` (the user plays; inputs and a
 frame counter are shown on screen; start/end saves are stored), checked with
@@ -239,8 +244,10 @@ are converted).
   (`tools/rename_symbol.py`: bn6f sources and the port's hand-written code,
   bn6f rebuilt and everything undone unless the ROM is identical), refreshes
   the PC port's symbols, writes `// symdb:` comments into bn6f
-  (`tools/symdoc.py`), renders `symbols/SYMBOLS.md`, re-verifies the port after
-  renames, and commits. Keep the address suffix when the game-level meaning
+  (`tools/symdoc.py`; before the renames, so one bn6f build checks both),
+  renders `symbols/SYMBOLS.md`, re-verifies the port after renames (only when
+  the renamed port's ROM differs from the one built before them: renames
+  normally leave it byte-identical), and commits. Keep the address suffix when the game-level meaning
   is partly inferred; hypotheses get comments only.
 - Build bn6f by hand: `make -C bn6f AS=$PWD/toolchain/bin/arm-none-eabi-as LD=$PWD/toolchain/bin/arm-none-eabi-ld OBJCOPY=$PWD/toolchain/bin/arm-none-eabi-objcopy OBJDUMP=$PWD/toolchain/bin/arm-none-eabi-objdump`
   (toolchain from `tools/build_toolchain.sh`; bn6f's default path
