@@ -28,3 +28,34 @@ Caveat: the prompt asked for `bool` but game.h lacked stdbool.h then (fixed in 1
 | glm-5.3-flash (no stream) | 48k | 16 | 0 | 0 | 0 | 2 | 17199 | 305 | 7.3 |
 
 Findings: qwen3.8-flash never ran away (max 33k tokens at any cap) and used about half the tokens of the others; glm-5.3-flash and deepseek-v4.1-flash spend the whole cap on reasoning in 30-60% of calls at 24k and stop running away only at 96k. Streaming made no difference (glm no-stream 24k: 8/16 runaways). Cap had no visible effect on pass counts (2-4 of 16 in every cell). Next: the farm runs on qwen3.8-flash.
+
+## Re-test after the stdbool fix (14350e6; same answers, no model calls: max_tokens.py OUT --retest)
+
+| model | cap | calls | hit cap | no code | errors | passed | mean out tokens | mean s | passed per M out |
+|---|---|---|---|---|---|---|---|---|---|
+| deepseek-v4.1-flash | 24k | 16 | 10 | 10 | 0 | 2 | 20754 | 186 | 6.0 |
+| deepseek-v4.1-flash | 48k | 16 | 4 | 4 | 0 | 2 | 31511 | 280 | 4.0 |
+| deepseek-v4.1-flash | 72k | 16 | 3 | 3 | 0 | 3 | 34519 | 299 | 5.4 |
+| deepseek-v4.1-flash | 96k | 16 | 0 | 0 | 0 | 3 | 33166 | 283 | 5.7 |
+| deepseek-v4.1-flash | 120k | 16 | 0 | 0 | 0 | 4 | 30915 | 269 | 8.1 |
+| glm-5.3-flash | 24k | 16 | 5 | 5 | 0 | 3 | 17128 | 244 | 10.9 |
+| glm-5.3-flash | 48k | 16 | 2 | 1 | 0 | 4 | 26059 | 404 | 9.6 |
+| glm-5.3-flash | 72k | 16 | 1 | 1 | 0 | 3 | 22755 | 348 | 8.2 |
+| glm-5.3-flash | 96k | 16 | 0 | 0 | 0 | 5 | 29458 | 453 | 10.6 |
+| glm-5.3-flash | 120k | 16 | 0 | 0 | 0 | 4 | 26984 | 420 | 9.3 |
+| qwen3.8-flash | 24k | 16 | 0 | 0 | 0 | 4 | 12704 | 199 | 19.7 |
+| qwen3.8-flash | 48k | 16 | 0 | 0 | 0 | 3 | 13116 | 203 | 14.3 |
+| qwen3.8-flash | 72k | 16 | 0 | 0 | 0 | 4 | 15330 | 238 | 16.3 |
+| qwen3.8-flash | 96k | 16 | 0 | 0 | 0 | 4 | 13935 | 213 | 17.9 |
+| qwen3.8-flash | 120k | 16 | 0 | 0 | 0 | 3 | 13498 | 208 | 13.9 |
+
+| model | cap | calls | hit cap | no code | errors | passed | mean out tokens | mean s | passed per M out |
+|---|---|---|---|---|---|---|---|---|---|
+| glm-5.3-flash (no stream) | 24k | 16 | 8 | 8 | 0 | 4 | 17437 | 208 | 14.3 |
+| glm-5.3-flash (no stream) | 48k | 16 | 0 | 0 | 0 | 3 | 17199 | 305 | 10.9 |
+
+Passed out of 80 answers: glm-5.3-flash 19, qwen3.8-flash 18, deepseek-v4.1-flash 14; per million output tokens qwen
+passes about twice as many as glm. Remaining failures (240 answers): compile 96, behaviour 41, review rules 20, register
+check 17, style 8. Most compile errors are struct-offset names the assembly uses (oToolkit_JoypadPtr,
+oGFXAnimState_Timer, ...) that cport/include/bn6f_syms.h lacks, since it only holds the constants lifted code uses:
+6 of the 16 functions failed this way for every model.

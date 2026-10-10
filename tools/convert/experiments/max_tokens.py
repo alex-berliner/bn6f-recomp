@@ -4,6 +4,7 @@
   tools/wf/.venv/bin/python tools/convert/experiments/max_tokens.py OUT_DIR --functions FILE
       [--models hyper/glm-5.3-flash,...] [--caps 24000,48000,...] [--jobs N] [--no-stream]
   tools/wf/.venv/bin/python tools/convert/experiments/max_tokens.py OUT_DIR --summary
+  tools/wf/.venv/bin/python tools/convert/experiments/max_tokens.py OUT_DIR --retest [--jobs N]
 
 Every (model, cap) pair gets the same functions and the farm's first prompt
 (tools/convert/farm.py), one round, no repairs. Each answer goes through the
@@ -15,6 +16,9 @@ in results.jsonl. Nothing is written to tools/convert/accepted or log.
 --no-stream asks for the whole reply at once, as the farm does (2026-10-10: the
 farm's glm-5.3-flash calls ran away on reasoning about half the time, these
 streamed ones rarely; this arm tests whether streaming is the difference).
+--retest runs the acceptance test again on every saved answer with the current
+tree (no model calls) into OUT_DIR/retest.jsonl; --summary then uses those
+outcomes (2026-10-10: after game.h gained stdbool.h).
 """
 import argparse
 import json
@@ -85,8 +89,35 @@ def run(out: Path, functions: list[str], models: list[str], caps: list[int], job
         list(pool.map(one, calls))
 
 
+def retest(out: Path, jobs: int) -> None:
+    rows = [json.loads(l) for l in (out / "results.jsonl").read_text().splitlines()]
+    rows = [r for r in rows if "code" in r]
+    contexts = {f: conversion_context(FunctionName(f)) for f in {r["function"] for r in rows}}
+    lock = threading.Lock()
+
+    def one(row: dict) -> None:
+        test = test_candidate(contexts[row["function"]], row["code"], SNAPSHOTS, DIFFTEST)
+        new = {k: row[k] for k in ("function", "model", "cap")} | {"stream": row.get("stream", True),
+               "outcome": "passed" if test.passed else "failed", "report": test.report[:1500]}
+        with lock:
+            with open(out / "retest.jsonl", "a") as log:
+                log.write(json.dumps(new) + "\n")
+
+    (out / "retest.jsonl").unlink(missing_ok=True)
+    with ThreadPoolExecutor(jobs) as pool:
+        list(pool.map(one, rows))
+
+
+def _key(r: dict) -> tuple:
+    return r["function"], r["model"], r["cap"], r.get("stream", True)
+
+
 def summary(out: Path) -> str:
     rows = [json.loads(l) for l in (out / "results.jsonl").read_text().splitlines()]
+    if (out / "retest.jsonl").exists():
+        again = {_key(r): r for r in map(json.loads, (out / "retest.jsonl").read_text().splitlines())}
+        rows = [r | {"outcome": again[_key(r)]["outcome"], "report": again[_key(r)]["report"]} if _key(r) in again
+                else r for r in rows]
     usage = defaultdict(list)
     if (out / "usage.jsonl").exists():
         for u in map(json.loads, (out / "usage.jsonl").read_text().splitlines()):
@@ -120,9 +151,13 @@ def main() -> None:
     ap.add_argument("--jobs", type=int, default=24)
     ap.add_argument("--summary", action="store_true")
     ap.add_argument("--no-stream", action="store_true")
+    ap.add_argument("--retest", action="store_true")
     args = ap.parse_args()
     if args.summary:
         print(summary(args.out))
+        return
+    if args.retest:
+        retest(args.out, args.jobs)
         return
     args.out.mkdir(parents=True, exist_ok=True)
     functions = [l.strip() for l in open(args.functions) if l.strip()]
