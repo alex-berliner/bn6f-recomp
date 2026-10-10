@@ -280,6 +280,8 @@ def test(name, code, snaps, contract, workdir, check_registers=True):
     env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM)
     reports = []
     ok = True
+    if not os.path.isdir(snaps):
+        raise FileNotFoundError(f"no snapshot folder {snaps}")
     for extra in (["-S", os.path.join(snaps, name)], ["-n", "300"]):
         r = subprocess.run(base + extra + [name], capture_output=True, text=True, cwd=HOST, env=env, timeout=900)
         line = (r.stdout.strip().splitlines() or [""])[-1]

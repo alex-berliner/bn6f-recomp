@@ -34,6 +34,11 @@ def run_difftest(difftest: Path, functions: tuple[FunctionName, ...], trials: in
 
 def run_captured_difftest(difftest: Path, functions: tuple[FunctionName, ...], snapshots: SnapshotDir,
                           log_dir: Path, cport: Path = CPORT) -> tuple[CapturedDifftestResult, ...]:
+    # a function without captures has no folder here and rightly runs none, so only a missing store is an
+    # error (otherwise a wrong path passes every function on 0 captured calls)
+    if not snapshots.is_dir():
+        raise ToolOutputError(f"no snapshot folder {snapshots}")
+
     def run_one(function: FunctionName) -> str:
         return _difftest(difftest, ["-S", str(snapshots / function), function],
                          log_dir / f"difftest-captured-{function}.log", cport)
