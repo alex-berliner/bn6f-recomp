@@ -7,9 +7,11 @@ import os
 import subprocess
 import time
 from contextlib import nullcontext
+from datetime import datetime
 from pathlib import Path
+from typing import TextIO
 
-from wf.repo import CPORT, REPO, TOOLCHAIN_BIN
+from wf.repo import CPORT, REPO, RUNS, TOOLCHAIN_BIN
 from wf.tools.locks import BN6F, held
 from wf.types import BuildFailure, BuiltRom, LogPath, RomPath, ToolMessage
 
@@ -19,6 +21,7 @@ WORKTREES = REPO / "build-wf-worktrees"
 # not in a worktree (submodules, and built tools git ignores): linked from the main checkout. The ROM
 # build links ../bn6f/bn6f.gba, the tools read the BIOS from gbarecomp and run build-tools/mgba_run.
 SHARED = ("bn6f", "gbarecomp", "build-tools", "toolchain")
+CCACHE_LOG = RUNS / "ccache.tsv"   # every workflow build: when, where, files compiled, ccache hits
 
 
 def lift_and_build(log_dir: Path, tree: Path = REPO) -> BuiltRom | BuildFailure:
@@ -31,7 +34,8 @@ def lift_and_build(log_dir: Path, tree: Path = REPO) -> BuiltRom | BuildFailure:
     lift = _lift_command(tree)
     builds = [["make", "-C", str(cport), f"BUILD={ROM_BUILD_DIR}", jobs],
               ["make", "-C", str(cport / "host"), f"BUILD={HOST_BUILD_DIR}", jobs]]
-    env = {**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}"}
+    stats = log_dir / "ccache.stats"
+    env = {**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}", "CCACHE_STATSLOG": str(stats)}
     with open(log, "w") as out:
         for command in (lift, *builds):
             out.write(f"$ {' '.join(command)}\n")
@@ -40,12 +44,33 @@ def lift_and_build(log_dir: Path, tree: Path = REPO) -> BuiltRom | BuildFailure:
                 done = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=env, check=False)
             if done.returncode != 0:
                 return BuildFailure(log=log, last_lines=_last_lines(log, 12))
+        compiled, hits = note_ccache(stats, log_dir, out)
     return BuiltRom(
         rom=RomPath(cport / ROM_BUILD_DIR / "bn6f_lifted.gba"),
         difftest=cport / "build-wf-host" / "difftest",
         seconds=round(time.monotonic() - started, 1),
         log=log,
+        compiled=compiled,
+        ccache_hits=hits,
     )
+
+
+def note_ccache(stats: Path, log_dir: Path, out: TextIO) -> tuple[int, int]:
+    """How many files a build compiled and how many of those ccache answered (from ccache's per-build
+    stats log, CCACHE_STATSLOG): written to the build log and to build-wf-runs/ccache.tsv."""
+    compiled = hits = 0
+    if stats.exists():
+        for entry in ("\n" + stats.read_text()).split("\n# ")[1:]:   # "# SOURCE" then one counter per line
+            counters = set(entry.splitlines()[1:])
+            if counters & {"direct_cache_hit", "preprocessed_cache_hit", "cache_miss"}:
+                compiled += 1
+                hits += "cache_miss" not in counters
+        stats.unlink()
+    _ = out.write(f"ccache: {hits} of {compiled} compiled files from the cache\n")
+    RUNS.mkdir(parents=True, exist_ok=True)
+    with open(CCACHE_LOG, "a") as tsv:
+        _ = tsv.write(f"{datetime.now().isoformat(timespec='seconds')}\t{log_dir}\t{compiled}\t{hits}\n")
+    return compiled, hits
 
 
 def _last_lines(log: Path, count: int) -> tuple[ToolMessage, ...]:
@@ -57,7 +82,8 @@ def build_host_difftest(log_dir: Path, build_dir: str = "build-wf-host", tree: P
     """Only the host difftest (what model candidates are tested with), into cport/BUILD_DIR: from the
     main tree's current sources, or, given a committed tree (`committed_tree`), lifted and built there."""
     log = LogPath(log_dir / "build-difftest.log")
-    env = {**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}"}
+    stats = log_dir / "ccache-difftest.stats"
+    env = {**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}", "CCACHE_STATSLOG": str(stats)}
     cport = (tree / "cport") if tree is not None else CPORT
     lift = _lift_command(tree) if tree is not None else None
     commands = [["make", "-C", str(cport / "host"), f"BUILD=../{build_dir}", f"-j{os.cpu_count()}"]]
@@ -71,6 +97,7 @@ def build_host_difftest(log_dir: Path, build_dir: str = "build-wf-host", tree: P
                 done = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=env, check=False)
             if done.returncode != 0:
                 return BuildFailure(log=log, last_lines=_last_lines(log, 12))
+        _ = note_ccache(stats, log_dir, out)
     return cport / build_dir / "difftest"
 
 

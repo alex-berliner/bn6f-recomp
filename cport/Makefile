@@ -13,6 +13,9 @@ BUILD   := build
 ARCH    := -mcpu=arm7tdmi -mthumb -mthumb-interwork
 OPT     ?= -Os
 LIFTED_OPT ?= -O2
+# Each object's real header dependencies (build/**/*.d), so a changed header
+# rebuilds only the files that include it.
+DEPFLAGS := -MMD -MP
 CFLAGS  := $(ARCH) -ffreestanding -fno-strict-aliasing -fomit-frame-pointer \
            -DTARGET_GBA -Iinclude -Wall -Wno-unused-label -Wno-unused-variable -Wno-array-bounds -Wno-comment -Werror=return-type -Wno-unused-but-set-variable
 LDFLAGS := $(ARCH) -nostartfiles -T gba.ld -Wl,--gc-sections -Wl,-Map,$(BUILD)/bn6f_lifted.map
@@ -33,13 +36,15 @@ OBJS    := $(patsubst src/%.c,$(BUILD)/%.o,$(LIFTED) $(RUNTIME)) $(BUILD)/base.o
 
 all: $(BUILD)/bn6f_lifted.gba
 
-$(BUILD)/lifted/%.o: src/lifted/%.c $(wildcard include/*.h) Makefile
+$(BUILD)/lifted/%.o: src/lifted/%.c Makefile
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(LIFTED_OPT) $(LTOFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(DEPFLAGS) $(LIFTED_OPT) $(LTOFLAGS) -c $< -o $@
 
-$(BUILD)/%.o: src/%.c $(wildcard include/*.h) Makefile
+$(BUILD)/%.o: src/%.c Makefile
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(OPT) $(LTOFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(DEPFLAGS) $(OPT) $(LTOFLAGS) -c $< -o $@
+
+-include $(OBJS:.o=.d)
 
 # The ARM IRQ entry must be ARM code.
 $(BUILD)/gba/irq.o: CFLAGS += -marm

@@ -46,6 +46,8 @@ class BuiltRom(Result):
     difftest: Path  # the host difftest built from the same sources
     seconds: float
     log: LogPath
+    compiled: int = 0       # C files the two builds compiled (the rest were up to date)
+    ccache_hits: int = 0    # of those, how many ccache had already compiled
 
 
 class BuildFailure(Result):

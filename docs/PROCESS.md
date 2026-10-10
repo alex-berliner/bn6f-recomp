@@ -62,6 +62,18 @@ make -C cport -j$(nproc)            # rebuild only: cport/build/bn6f_lifted.gba 
 make -C cport/host -j$(nproc)       # host difftest build: cport/build-host/difftest
 ```
 
+An install rebuilds little: `lifted.h` declares only the plain names, so it
+stays the same when a function is installed (the lifted originals' `L_NAME`
+declarations are in `lifted_originals.h`, which only the host difftest reads);
+large modules are split into parts at fixed addresses (`tools/lifter/splits.txt`),
+so an install changes only the part that held the function; and both Makefiles
+use real header dependencies (`-MMD`). An install recompiles 3 files for the ROM
+(the LTO link then takes most of the time) and 4 for the host difftest, instead of
+all 149. ccache holds 20 GB (`ccache -M 20G`); workflow builds log how many files
+they compiled and how many ccache answered (the build log, and
+`build-wf-runs/ccache.tsv`). When the lifter warns that a part has grown too big
+(`difftest_lifted` grows with every install), add an address to `splits.txt`.
+
 Variants: `make BUILD=dir`, `OPT=` (hand-written/runtime code, default `-Os`),
 `LIFTED_OPT=` (lifted code, default `-O2`; `-Os` was measured slower at both
 cart timings because executed instructions dominate), `-DBOOT_DIAG` (coloured
@@ -88,10 +100,12 @@ or comments (check exits 2 then).
 | `tools/lifter/lift.py` | The lifter: bn6f (assembly + ELF) to C. Each function's header comment gives its register contract (`inputs`, `outputs`, `clobbers`). |
 | `cport/src/lifted/` | Generated lifted C (not committed). |
 | `cport/src/game/*.c` | Readable C. A `Next NAME(void)` here replaces the lifted function; the lifted original stays as `L_NAME` for testing. |
-| `cport/include/game.h`, `cpu.h` | Macros readable code uses (below). `bn6f_syms.h` and `lifted.h` are generated. |
+| `cport/include/game.h`, `cpu.h` | Macros readable code uses (below). `bn6f_syms.h`, `bn6f_equates.h`, `lifted.h` and (for the difftest) `lifted_originals.h` and `difftest_pairs.h` are generated. |
 | `cport/src/gba/` | Boot (`boot.c`), IRQ entry, debug (`rt_fatal` turns the screen magenta). |
 | `cport/src/runtime/swi.c` | BIOS services: the GBA build calls the **real BIOS**; the host test build uses C versions that follow the BIOS routines register for register. |
 | `tools/lifter/iwram.txt` | Lifted functions placed in IWRAM. |
+| `tools/lifter/splits.txt` | Where large lifted modules are split into parts (fixed addresses). |
+| `tools/lifter/golden/` | The golden test's reference (`golden.py`). |
 
 ### Writing readable code
 
