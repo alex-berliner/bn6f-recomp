@@ -75,6 +75,31 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
   reproduce: grep -l '^080143fc ' tools/traces/coverage/*.prof
+- method: assembly-reading
+  date: '2026-10-10'
+  detail: 'The readable version tested r0 after battle_isPaused and battle_isTimeStop (2 sites), but the original branches
+    on the Z flag right after the call (bne) and does not read r0 there: battle_isPaused returns r0 to some callers,
+    but the original of this function never reads r0 after it; battle_isTimeStop returns r0 to some callers, but the
+    original of this function never reads r0 after it. The callee sets Z from r0 on every path, so the game behaved the
+    same, but r0 is a leftover at this call: a typed or narrowed callee need not leave it (the bug class of recomp 67673ff,
+    TestEventFlag). Fixed to test ZERO_FLAG(), as the original does. Found by tools/abi/leftovers.py, the leftover-read
+    lint (review item R1-A21).'
+  refs:
+  - cport/src/game/leaves_farm_9.c
+  - tools/abi/leftovers.py
+  reproduce: 'mkdir -p /tmp/before && git show e988740^:cport/src/game/leaves_farm_9.c > /tmp/before/leaves_farm_9.c
+
+    python3 tools/abi/leftovers.py /tmp/before/leaves_farm_9.c   # before: reads r0 after battle_isPaused, battle_isTimeStop
+
+    python3 tools/abi/leftovers.py --check   # after: no contract or site reads
+
+    cd tools/wf && .venv/bin/python -m wf verify --function battle_runObjectAI_80143FC --snapshots ../../build-wf-runs/snapshots-latest
+    --battle-code
+
+    '
+  result: 'wf verify --battle-code on the 29 fixed functions (verify-20261010-144410): passed; random difftest 300 trials
+    each, 0 failures; CPU oracle 27 of 29 compared, 0 differ; lockstep 16 of 16 routes identical; battle sweep 116 of
+    116 identical. Captured calls of the original for the 29 (under their old capture names): 934, 0 failures.'
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_9.c
@@ -88,6 +113,10 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f 220cf4fd
   tool: tools/symdoc.py
+- date: '2026-10-10'
+  what: test the Z flag after battle_isPaused, battle_isTimeStop, as the original does, not r0 (leaves_farm_9.c)
+  where: recomp e988740
+  tool: by hand (Claude), from tools/abi/leftovers.py
 readable_c: cport/src/game/leaves_farm_9.c
 coverage:
 - battle
@@ -205,11 +234,13 @@ stamp:
     object_getFlag: r0
     sub_8014432: v r1
     battle_clearAIDataField4c_8014424: r1
-  headers: 6a3619bc0ac2
+  headers: 5475af9771da
   lifter: 20e11122b33e
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-010742
-  body: 87bcf07ed011b0c9
-  installed: de7782d
+  prompt: none
+  model: hand (Claude Opus 5.5)
+  run: claude session_01MV9x1XXyanCy3FkvpEo7b7
+  body: 28e0980f6cf0b144
+  installed: e988740
+  edited:
+  - e988740
   stamped: '2026-10-10'

@@ -68,6 +68,30 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
   reproduce: grep -l '^08037790 ' tools/traces/coverage/*.prof
+- method: assembly-reading
+  date: '2026-10-10'
+  detail: 'The readable version tested r0 after chatbox_mask_eFlags2009F38 (2 sites), but the original branches on the
+    Z flag right after the call (beq) and does not read r0 there: chatbox_mask_eFlags2009F38 returns r0 to some callers,
+    but the original of this function never reads r0 after it. The callee sets Z from r0 on every path, so the game behaved
+    the same, but r0 is a leftover at this call: a typed or narrowed callee need not leave it (the bug class of recomp
+    67673ff, TestEventFlag). Fixed to test ZERO_FLAG(), as the original does. Found by tools/abi/leftovers.py, the leftover-read
+    lint (review item R1-A21).'
+  refs:
+  - cport/src/game/leaves_farm_10.c
+  - tools/abi/leftovers.py
+  reproduce: 'mkdir -p /tmp/before && git show e988740^:cport/src/game/leaves_farm_10.c > /tmp/before/leaves_farm_10.c
+
+    python3 tools/abi/leftovers.py /tmp/before/leaves_farm_10.c   # before: reads r0 after chatbox_mask_eFlags2009F38
+
+    python3 tools/abi/leftovers.py --check   # after: no contract or site reads
+
+    cd tools/wf && .venv/bin/python -m wf verify --function CutsceneCmd_wait_chatbox --snapshots ../../build-wf-runs/snapshots-latest
+    --battle-code
+
+    '
+  result: 'wf verify --battle-code on the 29 fixed functions (verify-20261010-144410): passed; random difftest 300 trials
+    each, 0 failures; CPU oracle 27 of 29 compared, 0 differ; lockstep 16 of 16 routes identical; battle sweep 116 of
+    116 identical. Captured calls of the original for the 29 (under their old capture names): 934, 0 failures.'
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_10.c
@@ -77,6 +101,10 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f 220cf4fd
   tool: tools/symdoc.py
+- date: '2026-10-10'
+  what: test the Z flag after chatbox_mask_eFlags2009F38, as the original does, not r0 (leaves_farm_10.c)
+  where: recomp e988740
+  tool: by hand (Claude), from tools/abi/leftovers.py
 readable_c: cport/src/game/leaves_farm_10.c
 coverage:
 - battle
@@ -195,11 +223,13 @@ stamp:
   callees:
     ReadMapScriptByte: nz c v r4 r7
     chatbox_mask_eFlags2009F38: nz r0 r1
-  headers: 257924c10fdb
+  headers: cc2c72231404
   lifter: 20e11122b33e
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-012758
-  body: 67a3b07b9d0d5056
-  installed: 0d4fa72
+  prompt: none
+  model: hand (Claude Opus 5.5)
+  run: claude session_01MV9x1XXyanCy3FkvpEo7b7
+  body: ae9f81db6c632f15
+  installed: e988740
+  edited:
+  - e988740
   stamped: '2026-10-10'

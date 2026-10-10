@@ -66,6 +66,29 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
   reproduce: grep -l '^0803f530 ' tools/traces/coverage/*.prof
+- method: assembly-reading
+  date: '2026-10-10'
+  detail: 'The readable version tested r0 after sub_803F560 (1 site), but the original branches on the Z flag right after
+    the call (beq) and does not read r0 there: sub_803F560 returns r0 to some callers, but the original of this function
+    never reads r0 after it. The callee sets Z from r0 on every path, so the game behaved the same, but r0 is a leftover
+    at this call: a typed or narrowed callee need not leave it (the bug class of recomp 67673ff, TestEventFlag). Fixed
+    to test ZERO_FLAG(), as the original does. Found by tools/abi/leftovers.py, the leftover-read lint (review item R1-A21).'
+  refs:
+  - cport/src/game/leaves_farm_30.c
+  - tools/abi/leftovers.py
+  reproduce: 'mkdir -p /tmp/before && git show e988740^:cport/src/game/leaves_farm_30.c > /tmp/before/leaves_farm_30.c
+
+    python3 tools/abi/leftovers.py /tmp/before/leaves_farm_30.c   # before: reads r0 after sub_803F560
+
+    python3 tools/abi/leftovers.py --check   # after: no contract or site reads
+
+    cd tools/wf && .venv/bin/python -m wf verify --function tickCountdownGate_803F530 --snapshots ../../build-wf-runs/snapshots-latest
+    --battle-code
+
+    '
+  result: 'wf verify --battle-code on the 29 fixed functions (verify-20261010-144410): passed; random difftest 300 trials
+    each, 0 failures; CPU oracle 27 of 29 compared, 0 differ; lockstep 16 of 16 routes identical; battle sweep 116 of
+    116 identical. Captured calls of the original for the 29 (under their old capture names): 934, 0 failures.'
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_30.c
@@ -79,6 +102,10 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f f5b08caa
   tool: tools/symdoc.py
+- date: '2026-10-10'
+  what: test the Z flag after sub_803F560, as the original does, not r0 (leaves_farm_30.c)
+  where: recomp e988740
+  tool: by hand (Claude), from tools/abi/leftovers.py
 readable_c: cport/src/game/leaves_farm_30.c
 coverage:
 - battle
@@ -111,11 +138,13 @@ stamp:
     notZero_eByte200AD04: nz r0 r1
     sub_803F560: nz c v r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 lr
     setByte_200AD04_803F4EC: r1
-  headers: 2d02a396c15f
+  headers: 2b81ddbbb296
   lifter: 20e11122b33e
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-043200
-  body: 19cee8365f546eea
-  installed: ef7839f
+  prompt: none
+  model: hand (Claude Opus 5.5)
+  run: claude session_01MV9x1XXyanCy3FkvpEo7b7
+  body: 113edfe0af00c7ca
+  installed: e988740
+  edited:
+  - e988740
   stamped: '2026-10-10'

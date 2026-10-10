@@ -63,6 +63,22 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battles1, fuzz, maps, menus2, story1, story2, story3.'
   reproduce: grep -l '^080378c2 ' tools/traces/coverage/*.prof
+- method: assembly-reading
+  date: '2026-10-10'
+  detail: 'tools/abi/leftovers.py (the leftover-read lint, review item R1-A21) found that the readable version passes
+    on two carry flags the original does not: ReadMapScriptByte''s c into the first ClearCutsceneFlag, and that call''s
+    c into the second (the original sets c = 0 with its `add r0, #...` before each call, the C sets no flag). Harmless:
+    ClearCutsceneFlag reads c only to pass it on when its shift `lsl r1, r0` is by 0 (slot 0''s first flag, CUTSCENE_FLAG_SCRIPT_1_PAUSED
+    = 0), and the second call''s shift (4-7) always sets c = 0, as in the original; the function''s own flags come from
+    SET_FLAGS_ADD(R7, 6). No code change; a `leftover unused` note in the readable C records it.'
+  refs:
+  - cport/src/game/leaves_farm_12.c
+  - bn6f/asm/map_script_cutscene.s:6528 (ClearCutsceneFlag)
+  - tools/abi/leftovers.py
+  reproduce: 'python3 tools/abi/leftovers.py cport/src/game/leaves_farm_12.c   # 2 noted (passed c), none open
+
+    '
+  result: 2 passed-on flags, noted; no open sites
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_12.c
@@ -72,6 +88,10 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f 7e065978
   tool: tools/symdoc.py
+- date: '2026-10-10'
+  what: 'note in the readable C: the carry passed into ClearCutsceneFlag reaches nothing (leaves_farm_12.c)'
+  where: recomp e988740
+  tool: by hand (Claude), from tools/abi/leftovers.py
 readable_c: cport/src/game/leaves_farm_12.c
 coverage:
 - battles1
