@@ -1,0 +1,62 @@
+name: SoundMainRAM
+address: '0x0814DC88'
+kind: function
+status: confirmed
+summary: The m4a ("Sappy") PCM mixer that m4aSoundInit copies to IWRAM 0x03005700 and SoundMain runs every frame.
+interface: Tail-jumped to from SoundMain inside its stack frame (r0 = SoundInfo, r4 = pcmDmaCounter, r5 = buffer
+  position this frame, r8 = samples per frame; [sp+0x14] = scanline budget, [sp+0x18] = SoundInfo); returns through
+  SoundMain's epilogue.
+details: 'm4aSoundInit CpuSets 0x400 bytes from here to IWRAM 0x03005700 and the game runs that copy, so the lifter
+  lifts it at its IWRAM address (tools/lifter/lift.py COPIES: SoundMainRAM_iwram) and the port''s readable
+  replacement is SoundMainRAM_iwram_03005700 in cport/src/game/m4a_mixer.c (the C port skips the copy, see
+  m4aSoundInit). It ages the previous half of the PCM double buffer (reverb or silence), then advances every active
+  DirectSound channel''s envelope and mixes its samples into the buffer the DMA streams to the FIFOs: 8-bit
+  wraparound mixing, 23-bit fixed-point resampling, envelope steps, loops, and a scanline time budget, all exactly
+  as the original.'
+evidence:
+- method: library-match
+  date: '2026-10-07'
+  detail: The m4a library's SoundMainRAM (pokeemerald src/m4a_1.s), copied to IWRAM by SoundInit as in the library.
+  refs:
+  - bn6f/asm/libs.s
+  - pokeemerald src/m4a_1.s
+- method: readable-c
+  date: '2026-10-07'
+  detail: Hand-written readable replacement of the IWRAM copy (SoundMainRAM_iwram_03005700); later reworked by hand for
+    speed (word-at-a-time mixing, loops without a sub-word counter, Thumb in IWRAM where size matters).
+  refs:
+  - cport/src/game/m4a_mixer.c
+  - recomp 069af1b
+  - recomp 2a173b0
+  - recomp 4971f7e
+- method: difftest
+  date: '2026-10-07'
+  detail: 'Host difftest: the readable mixer against the lifted original on structured random inputs
+    (cport/host/difftest_gen.c builds valid SoundInfo, channel and wave data).'
+  reproduce: 'make -C cport/host
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 SoundMainRAM_iwram_03005700)'
+  result: bit-exact over 2000 trials (recomp 069af1b, 2026-10-07)
+- method: lockstep
+  date: '2026-10-09'
+  detail: Every recorded route plays music and sound effects through the mixer; palette, VRAM and OAM stay identical
+    to the original at every checkpoint, as every verify run since 2026-10-07 has checked with the readable mixer in
+    place.
+  reproduce: 'cd tools/wf && .venv/bin/python -m wf verify'
+  result: 8/8 routes identical (verify run convert-20261009-035817-verify-10)
+changes:
+- date: '2026-10-07'
+  what: readable C replacement of the IWRAM copy in cport/src/game/m4a_mixer.c
+  where: recomp 069af1b
+  tool: hand-written; verified as in evidence
+readable_c: cport/src/game/m4a_mixer.c
+coverage: []
+related:
+- m4aSoundInit
+- SoundMainBTM
+- iSoundInfo
+open_questions: []
+sources:
+- Claude Code sessions 2026-10-07/08 (recomp repo history)
+- 'symbols/db entry added 2026-10-10 for the stamp of SoundMainRAM_iwram_03005700 (the one readable function without
+  an entry)'
