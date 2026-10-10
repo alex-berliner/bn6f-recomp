@@ -1,5 +1,6 @@
 """Start workflows, answer the ones waiting at a pause point, see where every
-run is, and regenerate the docs.
+run is, and regenerate the docs. From anywhere in the repo, `./wf ARGS` (the
+launcher at the root) is `python -m wf ARGS` with this folder's venv.
 
   python -m wf verify  [--function NAME]... [--snapshots DIR] [--route NAME]... [--battle-code] [--trials N]
   python -m wf capture --function NAME... [--route NAME]... [--calls N]

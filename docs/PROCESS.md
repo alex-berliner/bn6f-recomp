@@ -2,11 +2,11 @@
 
 The decisions behind the project, the conventions for readable code, what
 each check proves, and the lessons learned. **The steps themselves live in
-typed workflows** (`tools/wf`, run as `cd tools/wf && .venv/bin/python -m wf
-...`): their pages and diagrams are in [docs/workflows](workflows/README.md),
+typed workflows** (`tools/wf`, run as `./wf ...` from the repo root, which is
+`python -m wf` with tools/wf's venv): their pages and diagrams are in [docs/workflows](workflows/README.md),
 generated from the code, and every run can be followed in the Burr UI
 (`tools/wf/.venv/bin/burr --no-open --no-copy-demo_data --host 0.0.0.0`,
-port 7241). `python -m wf status` says where every run is.
+port 7241). `./wf status` says where every run is.
 
 | Workflow | Does |
 |---|---|

@@ -79,14 +79,14 @@ def status(draft: SymbolDraft, check: FunctionChecks) -> SymbolStatus:
 def _entry(draft: SymbolDraft, check: FunctionChecks, provenance: Provenance,
            subsystem_functions: list[FunctionName]) -> dict[str, object]:
     today = date.today().isoformat()
-    verify = (f"cd tools/wf && .venv/bin/python -m wf capture --function {draft.function}\n"
-              f".venv/bin/python -m wf verify --function {draft.function} --snapshots SNAPSHOT_DIR")
+    verify = (f"./wf capture --function {draft.function}\n"
+              f"./wf verify --function {draft.function} --snapshots SNAPSHOT_DIR")
     evidence: list[dict[str, object]] = [
         {"method": "readable-c", "date": today,
          "detail": f"Written by {provenance.model} through the convert workflow ({provenance.attempts} attempt(s), "
                    f"run {provenance.convert_run}); reviewed by Claude before the commit.",
          "refs": [str(provenance.file.relative_to(REPO))],
-         "reproduce": f"cd tools/wf && .venv/bin/python -m wf convert --subsystem '{provenance.subsystem}' "
+         "reproduce": f"./wf convert --subsystem '{provenance.subsystem}' "
                       f"--file {provenance.file.name} {' '.join(subsystem_functions)}"},
     ]
     if check.captured is not None or check.random is not None:
