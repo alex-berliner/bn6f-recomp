@@ -275,8 +275,10 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
         signal(SIGFPE, die);
         /* Functions finish in microseconds; anything still running after
          * 0.2 s is spinning on hardware state the host model does not
-         * simulate (e.g. polling VCOUNT): out of domain. */
-        struct itimerval t = { { 0, 0 }, { 0, 200000 } };
+         * simulate (e.g. polling VCOUNT): out of domain. With hwtick the
+         * VCOUNT it polls comes from a ticker thread, which a loaded machine
+         * (a parallel verify) can starve for longer: 2 s. */
+        struct itimerval t = { { 0, 0 }, { g_hwtick ? 2 : 0, g_hwtick ? 0 : 200000 } };
         setitimer(ITIMER_REAL, &t, NULL);
         load_mem(mem_in);
         if (g_hwtick) {
