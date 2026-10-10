@@ -22,7 +22,7 @@ from wf.graphs.capture import CaptureReport, CaptureState, run_capture
 from wf.graphs.record import RecordReport, RecordState, run_record
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify_in_full
 from wf.routes import ALL_ROUTES
-from wf.repo import REPO
+from wf.repo import REPO, SNAPSHOTS
 from wf.tools.build import build_host_difftest, committed_tree, remove_tree
 from wf.tools.drafts import candidate_from_farm, function_at_line
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
@@ -171,7 +171,7 @@ def capture_original_calls(given: CaptureInput) -> CaptureOutput:
     if given.snapshots is not None:
         return CaptureOutput(capture=NotRun(reason=ToolMessage(f"reusing {given.snapshots}")), snapshots=given.snapshots)
     start = CaptureState(run_dir=given.run_dir, functions=given.functions,
-                         snapshots=SnapshotDir(given.run_dir / "snapshots"), candidate_routes=given.routes)
+                         snapshots=SnapshotDir(SNAPSHOTS), candidate_routes=given.routes)
     report = run_capture(start, f"{current_run_id()}-capture")
     return CaptureOutput(capture=report, snapshots=report.snapshots)
 

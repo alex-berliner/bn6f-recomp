@@ -3,7 +3,7 @@ run is, and regenerate the docs. From anywhere in the repo, `./wf ARGS` (the
 launcher at the root) is `python -m wf ARGS` with this folder's venv.
 
   python -m wf verify  [--function NAME]... [--snapshots DIR] [--route NAME]... [--battle-code] [--trials N]
-  python -m wf capture --function NAME... [--route NAME]... [--calls N]
+  python -m wf capture --function NAME... [--route NAME]... [--calls N]   # into build-snapshots/NAME
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] FUNCTION...
   python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--jobs N] [FUNCTION...]   # entries for accepted candidates
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
@@ -40,7 +40,7 @@ from wf.graphs.convert import DEFAULT_MODELS, PENDING_RENAMES, ConvertState, Rev
 from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, run_verify
-from wf.repo import REPO, RUNS
+from wf.repo import REPO, RUNS, SNAPSHOTS
 from wf.tools.archive import ARCHIVE, archive_cited_runs
 from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
 from wf.tools.sources import models_for
@@ -197,7 +197,7 @@ def start_verify(command: VerifyCommand) -> None:
 
 def start_capture(command: CaptureCommand) -> None:
     run_id, run_dir = new_run("capture")
-    start = CaptureState(run_dir=run_dir, functions=command.functions, snapshots=SnapshotDir(run_dir / "snapshots"),
+    start = CaptureState(run_dir=run_dir, functions=command.functions, snapshots=SnapshotDir(SNAPSHOTS),
                          candidate_routes=routes_named(command.routes), calls_per_function=command.calls)
     print_json(run_capture(start, run_id))
 
@@ -348,12 +348,12 @@ def parse_command() -> Command:
 
     verify = commands.add_parser("verify", help="lift, build, difftest, oracle, lockstep (and battle sweep)")
     verify.add_argument("--function", action="append", default=[], help="a changed function to check")
-    verify.add_argument("--snapshots", type=Path, help="captured calls of the functions (wf capture)")
+    verify.add_argument("--snapshots", type=Path, help="captured calls of the functions (wf capture: build-snapshots)")
     verify.add_argument("--route", action="append", default=[], help="a route to replay (default: all)")
     verify.add_argument("--battle-code", action="store_true", help="the change touches battle code")
     verify.add_argument("--trials", type=int, default=300, help="random difftest trials per function")
 
-    capture = commands.add_parser("capture", help="save the original game's calls of functions")
+    capture = commands.add_parser("capture", help="save the original game's calls of functions (into build-snapshots)")
     capture.add_argument("--function", action="append", required=True)
     capture.add_argument("--route", action="append", default=[], help="routes to choose from (default: all)")
     capture.add_argument("--calls", type=int, default=40, help="calls to save per function")
@@ -416,7 +416,11 @@ def parse_command() -> Command:
     docs = commands.add_parser("docs", help="regenerate docs/workflows from the code")
     docs.add_argument("out_dir", type=Path, nargs="?", default=REPO / "docs/workflows")
 
-    return TypeAdapter[Command](Command).validate_python(vars(parser.parse_args()))
+    given: dict[str, object] = dict(vars(parser.parse_args()))
+    for name, value in given.items():   # paths as given where wf was started; the tools run elsewhere (cport/)
+        if isinstance(value, Path):
+            given[name] = value.resolve()
+    return TypeAdapter[Command](Command).validate_python(given)
 
 
 if __name__ == "__main__":

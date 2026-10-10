@@ -1,7 +1,10 @@
 """Capture the original game's own calls of some functions (the inputs that
 difftest and the CPU oracle check conversions on): give each function a
 recorded route that executes it (as few routes as possible), replay those
-routes on the original in parallel, save the first calls of each function."""
+routes on the original in parallel, save the first calls of each function.
+The calls go into the snapshot store, build-snapshots/FUNCTION, next to what
+earlier captures saved there: one file per call, named by its route, and a
+replay is deterministic, so capturing on a route again writes the same files."""
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -52,6 +55,7 @@ class CaptureState(BaseModel):
     run_dir: Path
     functions: tuple[FunctionName, ...]
     snapshots: SnapshotDir                       # where the calls are saved, one directory per function
+                                                 # (the store, build-snapshots; tests use their own)
     candidate_routes: tuple[Route, ...]          # routes to choose from
     calls_per_function: int = 40
     assignments: tuple[RouteAssignment, ...] | None = None

@@ -80,7 +80,7 @@ def _entry(draft: SymbolDraft, check: FunctionChecks, provenance: Provenance,
            subsystem_functions: list[FunctionName]) -> dict[str, object]:
     today = date.today().isoformat()
     verify = (f"./wf capture --function {draft.function}\n"
-              f"./wf verify --function {draft.function} --snapshots SNAPSHOT_DIR")
+              f"./wf verify --function {draft.function} --snapshots build-snapshots")
     evidence: list[dict[str, object]] = [
         {"method": "readable-c", "date": today,
          "detail": f"Written by {provenance.model} through the convert workflow ({provenance.attempts} attempt(s), "

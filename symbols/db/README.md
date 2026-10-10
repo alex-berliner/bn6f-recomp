@@ -93,7 +93,7 @@ tools that rewrite an entry (`rename_symbol.py`, `symdoc.py`) keep the order.
 | `date` | When it was done. |
 | `detail` | What was found, concretely (**checked**: not empty). |
 | `refs` | Files and lines, other symbols, commits. |
-| `reproduce` | Exact commands, runnable from the recomp repo root (a `cd` inside the command is followed). Every path they name must exist (**warned**; generated build output such as `cport/build-host/difftest` is not counted, since the commands build it). No `/tmp` paths: those folders are gone after a reboot. For readable functions the self-contained pair is `./wf capture --function NAME`, then `./wf verify --function NAME --snapshots DIR` (`./wf` is the workflows' launcher at the repo root; older entries spell it `cd tools/wf && .venv/bin/python -m wf`). 81 older entries still cite `/tmp`; the db rewrite (review 2 Area 6) replaces them. |
+| `reproduce` | Exact commands, runnable from the recomp repo root (a `cd` inside the command is followed). Every path they name must exist (**warned**; generated build output such as `cport/build-host/difftest` is not counted, since the commands build it). No `/tmp` paths: those folders are gone after a reboot. For readable functions the self-contained pair is `./wf capture --function NAME`, then `./wf verify --function NAME --snapshots build-snapshots` (`./wf` is the workflows' launcher at the repo root; older entries spell it `cd tools/wf && .venv/bin/python -m wf`). 81 older entries still cite `/tmp`; the db rewrite (review 2 Area 6) replaces them. |
 | `result` | What the command showed: numbers, verdicts, the run id or commit it was run at. |
 
 Methods: **assembly-reading**; **caller-analysis**; **cpu-oracle** = the original (mGBA, real BIOS) and the port run

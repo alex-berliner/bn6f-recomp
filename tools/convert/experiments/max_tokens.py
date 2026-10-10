@@ -36,7 +36,7 @@ from wf.tools.models import conversion_context, first_prompt, test_candidate  # 
 from wf.types import FunctionName, SnapshotDir  # noqa: E402
 import farm  # noqa: E402  (tools/convert, on the path through wf.tools.models)
 
-SNAPSHOTS = SnapshotDir(str(ROOT / "build-wf-runs/snapshots-latest"))
+SNAPSHOTS = SnapshotDir(str(ROOT / "build-snapshots"))
 DIFFTEST = ROOT / "build-wf-worktrees/farm/cport/build-wf-farm-host/difftest"
 MODELS = "hyper/glm-5.3-flash,hyper/deepseek-v4.1-flash,hyper/qwen3.8-flash"
 CAPS = "24000,48000,72000,96000,120000"

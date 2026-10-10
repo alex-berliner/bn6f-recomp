@@ -21,6 +21,8 @@ TOOLCHAIN_BIN = REPO / "toolchain" / "bin"
 RUNS = REPO / "build-wf-runs"  # tool logs of workflow runs (ignored by git as build-*/)
 STATE_DIR = REPO / "build-wf-state"  # what all runs share, kept apart from them: locks, provider outages,
                                      # the install freeze, the build tally (ignored by git as build-*/)
+SNAPSHOTS = REPO / "build-snapshots"  # the original game's captured calls, FUNCTION/snap_ROUTE_N.bin: every
+                                     # capture adds to it; the farm and verify read it (ignored as build-*/)
 
 
 def current_sources(tree: Path = REPO) -> SourceVersion:

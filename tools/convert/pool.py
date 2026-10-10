@@ -97,7 +97,7 @@ POOL = REPO / "symbols/pool.tsv"
 DATABASE = REPO / "symbols/db"
 GAME = REPO / "cport/src/game"
 REJECTED_DIR = REPO / "tools/convert/rejected"
-SNAPSHOTS = REPO / "build-wf-runs/snapshots-latest"
+SNAPSHOTS = REPO / "build-snapshots"
 FARM_QUIET_SECONDS = 600   # a log written more recently than this belongs to a live farm run
 
 

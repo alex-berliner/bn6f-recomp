@@ -4,6 +4,9 @@ Capture the original game's own calls of some functions (the inputs that
 difftest and the CPU oracle check conversions on): give each function a
 recorded route that executes it (as few routes as possible), replay those
 routes on the original in parallel, save the first calls of each function.
+The calls go into the snapshot store, build-snapshots/FUNCTION, next to what
+earlier captures saved there: one file per call, named by its route, and a
+replay is deterministic, so capturing on a route again writes the same files.
 
 ![capture](capture.png)
 

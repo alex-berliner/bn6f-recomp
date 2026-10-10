@@ -217,7 +217,7 @@ STARTS: tuple[Start, ...] = (
 HANDBACKS: tuple[Handback, ...] = (
     Handback("capture", "pick_leaves", "snapshots\nfor wf farm",
              "A finished capture run hands back a CaptureReport: the snapshot directory with the original game's "
-             "calls, and which functions no route called. `wf farm --snapshots` takes that directory."),
+             "calls (the store, build-snapshots), and which functions no route called. `wf farm --snapshots` takes that directory."),
     Handback("farm", "integrate_farm", "accepted\ncandidates",
              "A farm run whose candidate passed leaves it in tools/convert/accepted/ (its entry comes from a "
              "drafts run)."),
@@ -480,7 +480,8 @@ FIELD_GLOSSARY: dict[str, str] = {
     "run_dir": "this run's folder for tool logs, under build-wf-runs/",
     "functions": "the bn6f function names this run works on",
     "function": "the bn6f function name this run works on",
-    "snapshots": "the directory of the original game's captured calls, made by a capture run",
+    "snapshots": "the directory of the original game's captured calls (build-snapshots, where capture runs "
+                 "save them)",
     "routes": "the recorded gameplay routes to replay (tools/traces)",
     "candidate_routes": "the recorded gameplay routes to choose from",
     "route": "the recorded gameplay route chosen for capturing",
