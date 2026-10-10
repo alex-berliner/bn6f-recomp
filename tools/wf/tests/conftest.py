@@ -1,11 +1,11 @@
 """Every test tracks its runs in a temporary directory, keeps its own record of which model
-sources are down, waits on a fake clock, and sees no local pacer logs: nothing reads or
-writes the real state."""
+sources are down and its own locks (and install freeze), waits on a fake clock, and sees no
+local pacer logs: nothing reads or writes the real state."""
 from pathlib import Path
 
 import pytest
 
-from wf.tools import sources
+from wf.tools import locks, sources
 from wf.types import ModelSpec
 
 
@@ -13,6 +13,13 @@ from wf.types import ModelSpec
 def private_tracking_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Test runs are tracked in a temporary directory, never in the Burr UI's ~/.burr."""
     monkeypatch.setenv("WF_BURR_DIR", str(tmp_path / "burr"))
+
+
+@pytest.fixture(autouse=True)
+def private_state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Locks and the install freeze live in a temporary directory, never in build-wf-state."""
+    monkeypatch.setattr(locks, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(locks, "FREEZE", tmp_path / "state" / "install-freeze")
 
 
 @pytest.fixture(autouse=True)

@@ -16,7 +16,7 @@ from typing import cast
 
 from pydantic import TypeAdapter
 
-from wf.repo import RUNS
+from wf.repo import STATE_DIR
 from wf.tools.locks import held
 from wf.tools.models import FARM
 from wf.types import ModelSpec, Result
@@ -43,7 +43,7 @@ OWN_QUOTA = frozenset(ModelSpec(model) for model in (
     "opencode/longcat-2.5-preview-free", "opencode/step-5-preview-free"))
 TIER_PREFIX = "tier/"   # `tier/cheap` names a whole tier where a model is expected (wf farm --model tier/cheap)
 
-STATE = RUNS / "sources.json"   # quota pool -> when it is expected back, and why it went down
+STATE = STATE_DIR / "sources.json"   # quota pool -> when it is expected back, and why it went down
 _LOCK = "sources"
 
 

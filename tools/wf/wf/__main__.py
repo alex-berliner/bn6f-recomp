@@ -14,11 +14,14 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
   python -m wf retry   RUN_ID              # carry on a failed or interrupted run from where it stopped
   python -m wf status
+  python -m wf freeze  --reason WHY        # installs, renames and commits wait (models go on); returns once
+  python -m wf thaw                        #   the ones under way are done; thaw lets them go on
   python -m wf docs [OUT_DIR]
 
 Every run is tracked for the Burr UI (`tools/wf/.venv/bin/burr --no-open
 --no-copy-demo_data --host 0.0.0.0`, port 7241); tool logs go to
-build-wf-runs/RUN_ID.
+build-wf-runs/RUN_ID; what all runs share (locks, provider outages, the install
+freeze) is in build-wf-state.
 """
 import argparse
 import json
@@ -37,6 +40,7 @@ from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, run_verify
 from wf.repo import REPO, RUNS
+from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
 from wf.tools.sources import models_for
 from wf.routes import ALL_ROUTES, route_named
 from wf.status import all_runs, workflow_of_run
@@ -118,13 +122,23 @@ class StatusCommand(BaseModel):
     command: Literal["status"]
 
 
+class FreezeCommand(BaseModel):
+    command: Literal["freeze"]
+    reason: str
+
+
+class ThawCommand(BaseModel):
+    command: Literal["thaw"]
+
+
 class DocsCommand(BaseModel):
     command: Literal["docs"]
     out_dir: Path
 
 
 Command = (VerifyCommand | CaptureCommand | FarmCommand | DraftsCommand | ConvertCommand | RecordCommand
-           | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | DocsCommand)
+           | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
+           | DocsCommand)
 
 
 def main() -> None:
@@ -150,6 +164,14 @@ def main() -> None:
             print_outcome(workflow_of_run(command.run_id).graph().retry(command.run_id))
         case StatusCommand():
             show_status()
+        case FreezeCommand():
+            freeze = freeze_installs(command.reason)
+            print(f"installs frozen since {freeze.since:%m-%d %H:%M} ({freeze.reason}); none under way. "
+                  "`wf thaw` lets them go on.")
+        case ThawCommand():
+            thawed = thaw_installs()
+            print(f"thawed: installs frozen since {thawed.since:%m-%d %H:%M} ({thawed.reason}) go on" if thawed
+                  else "installs were not frozen")
         case DocsCommand():
             for path in write_docs(command.out_dir):
                 print(f"wrote {path}")
@@ -288,6 +310,10 @@ def print_json(result: BaseModel) -> None:
 
 
 def show_status() -> None:
+    freeze = install_freeze()
+    if freeze is not None:
+        print(f"installs frozen since {freeze.since:%m-%d %H:%M} ({freeze.reason}): installs, renames and commits "
+              "wait for `wf thaw`")
     for status in all_runs():
         where = f" at {status.step}" if status.step else ""
         detail = f" ({status.detail})" if status.detail else ""
@@ -359,6 +385,11 @@ def parse_command() -> Command:
     retry.add_argument("run_id")
 
     commands.add_parser("status", help="where every run is")
+
+    freeze = commands.add_parser("freeze", help="installs, renames and commits wait (models go on), for structural moves")
+    freeze.add_argument("--reason", required=True, help="what the window is for, e.g. 'the db rewrite'")
+
+    commands.add_parser("thaw", help="end the install freeze")
 
     docs = commands.add_parser("docs", help="regenerate docs/workflows from the code")
     docs.add_argument("out_dir", type=Path, nargs="?", default=REPO / "docs/workflows")

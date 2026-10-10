@@ -43,7 +43,7 @@ MANIFEST = GOLDEN / "manifest.tsv"
 OVERRIDES = GOLDEN / "overrides.txt"
 BN6F = ROOT / "bn6f"
 GAME = ROOT / "cport" / "src" / "game"
-BN6F_LOCK = ROOT / "build-wf-runs" / "bn6f.lock"   # the workflows' lock: renames rewrite bn6f
+BN6F_LOCK = ROOT / "build-wf-state" / "bn6f.lock"   # the workflows' lock: renames rewrite bn6f
 DIFF_OUT = ROOT / "build" / "lifter-golden.diff"
 
 

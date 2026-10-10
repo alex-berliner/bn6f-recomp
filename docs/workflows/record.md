@@ -88,7 +88,8 @@ Lift and build the renamed port; when its ROM is byte-identical to the one befor
 ### `commit_records` (step)
 
 Commit the database, the bn6f submodule pointer and the renamed port code locally (and the emptied
-list of deferred renames, when that is where this run's renames came from).
+list of deferred renames, when that is where this run's renames came from), holding the main tree's
+lock: convert runs commit there too, and an install freeze holds commits.
 
 - reads: `commit_message: str`, `changed_before: tuple[Path, ...]`, `pending_renames: Path | None`
 - produces: `commit: CommitHash`

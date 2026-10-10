@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
-from wf.repo import CPORT, REPO, RUNS, TOOLCHAIN_BIN
+from wf.repo import CPORT, REPO, STATE_DIR, TOOLCHAIN_BIN
 from wf.tools.locks import BN6F, held
 from wf.types import BuildFailure, BuiltRom, LogPath, RomPath, ToolMessage
 
@@ -21,7 +21,7 @@ WORKTREES = REPO / "build-wf-worktrees"
 # not in a worktree (submodules, and built tools git ignores): linked from the main checkout. The ROM
 # build links ../bn6f/bn6f.gba, the tools read the BIOS from gbarecomp and run build-tools/mgba_run.
 SHARED = ("bn6f", "gbarecomp", "build-tools", "toolchain")
-CCACHE_LOG = RUNS / "ccache.tsv"   # every workflow build: when, where, files compiled, ccache hits
+CCACHE_LOG = STATE_DIR / "ccache.tsv"   # every workflow build: when, where, files compiled, ccache hits
 
 
 def lift_and_build(log_dir: Path, tree: Path = REPO) -> BuiltRom | BuildFailure:
@@ -57,7 +57,7 @@ def lift_and_build(log_dir: Path, tree: Path = REPO) -> BuiltRom | BuildFailure:
 
 def note_ccache(stats: Path, log_dir: Path, out: TextIO) -> tuple[int, int]:
     """How many files a build compiled and how many of those ccache answered (from ccache's per-build
-    stats log, CCACHE_STATSLOG): written to the build log and to build-wf-runs/ccache.tsv."""
+    stats log, CCACHE_STATSLOG): written to the build log and to build-wf-state/ccache.tsv."""
     compiled = hits = 0
     if stats.exists():
         for entry in ("\n" + stats.read_text()).split("\n# ")[1:]:   # "# SOURCE" then one counter per line
@@ -67,7 +67,7 @@ def note_ccache(stats: Path, log_dir: Path, out: TextIO) -> tuple[int, int]:
                 hits += "cache_miss" not in counters
         stats.unlink()
     _ = out.write(f"ccache: {hits} of {compiled} compiled files from the cache\n")
-    RUNS.mkdir(parents=True, exist_ok=True)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
     with open(CCACHE_LOG, "a") as tsv:
         _ = tsv.write(f"{datetime.now().isoformat(timespec='seconds')}\t{log_dir}\t{compiled}\t{hits}\n")
     return compiled, hits

@@ -71,7 +71,7 @@ use real header dependencies (`-MMD`). An install recompiles 3 files for the ROM
 (the LTO link then takes most of the time) and 4 for the host difftest, instead of
 all 149. ccache holds 20 GB (`ccache -M 20G`); workflow builds log how many files
 they compiled and how many ccache answered (the build log, and
-`build-wf-runs/ccache.tsv`). When the lifter warns that a part has grown too big
+`build-wf-state/ccache.tsv`). When the lifter warns that a part has grown too big
 (`difftest_lifted` grows with every install), add an address to `splits.txt`.
 
 Variants: `make BUILD=dir`, `OPT=` (hand-written/runtime code, default `-Os`),

@@ -15,6 +15,8 @@ TRACES = REPO / "tools" / "traces"
 ORIGINAL_ROM = REPO / "bn6f" / "bn6f.gba"
 TOOLCHAIN_BIN = REPO / "toolchain" / "bin"
 RUNS = REPO / "build-wf-runs"  # tool logs of workflow runs (ignored by git as build-*/)
+STATE_DIR = REPO / "build-wf-state"  # what all runs share, kept apart from them: locks, provider outages,
+                                     # the install freeze, the build tally (ignored by git as build-*/)
 
 
 def current_sources(tree: Path = REPO) -> SourceVersion:

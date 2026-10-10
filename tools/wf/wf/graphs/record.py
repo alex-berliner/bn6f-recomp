@@ -21,6 +21,7 @@ from wf.repo import REPO
 from wf.routes import ALL_ROUTES
 from wf.tools.build import lift_and_build
 from wf.tools.git import changed_files, commit_files
+from wf.tools.locks import MAIN_TREE, held
 from wf.tools.symbols import (DATABASE, check_database, entry, refresh_pc_port_symbols, rename_symbols, render_database,
                               write_bn6f_comments)
 from wf.types import BuiltRom, CommitHash, LogPath, Rename, Result, SymbolName, SymbolStatus, ToolMessage
@@ -264,11 +265,13 @@ class CommitOutput(Result):
 @workflow.step
 def commit_records(given: CommitInput) -> CommitOutput:
     """Commit the database, the bn6f submodule pointer and the renamed port code locally (and the emptied
-    list of deferred renames, when that is where this run's renames came from)."""
-    if given.pending_renames is not None:
-        _ = given.pending_renames.write_text("")
-    mine = tuple(path for path in changed_files(RECORDED_PATHS) if path not in given.changed_before)
-    return CommitOutput(commit=commit_files(mine, given.commit_message))
+    list of deferred renames, when that is where this run's renames came from), holding the main tree's
+    lock: convert runs commit there too, and an install freeze holds commits."""
+    with held(MAIN_TREE):
+        if given.pending_renames is not None:
+            _ = given.pending_renames.write_text("")
+        mine = tuple(path for path in changed_files(RECORDED_PATHS) if path not in given.changed_before)
+        return CommitOutput(commit=commit_files(mine, given.commit_message))
 
 
 class ReportInput(Result):
