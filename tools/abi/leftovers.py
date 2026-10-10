@@ -227,6 +227,16 @@ class Body:
         for i, t in enumerate(self.toks):
             if t == "{" and i in self.match:
                 self.blocks[i] = self._block(i)
+        # `else` after a brace-less if body -> where that body starts: a call in the body
+        # never runs the else branch (`if (k == 0) GUEST_CALL(f); else GUEST_CALL(g);`)
+        self.else_after_body: dict[int, int] = {}
+        for i, t in enumerate(self.toks):
+            if t == "if" and i + 1 < len(self.toks) and self.toks[i + 1] == "(" and (i + 1) in self.match:
+                body = self.match[i + 1] + 1
+                if body < len(self.toks) and self.toks[body] != "{":
+                    end = self.statement_end(body)
+                    if end + 1 < len(self.toks) and self.toks[end + 1] == "else":
+                        self.else_after_body[end + 1] = body
 
     def _block(self, i: int) -> Block:
         prev = self.toks[i - 1] if i else ""
@@ -412,6 +422,9 @@ class Scanner:
                 close = self.b.match.get(i + 1, i + 1)
                 if close + 1 < len(t) and t[close + 1] != "{" and tok != "switch":
                     scopes.append(Scope(close + 1, self.b.statement_end(close + 1), "cond", True))
+            elif tok == "else" and self.b.else_after_body.get(i, i) <= call_at < i:
+                i = self.b.skip_else(i)                 # the call was in the if's brace-less body
+                continue
             elif tok == "else" and i + 1 < len(t) and t[i + 1] not in ("{", "if"):
                 scopes.append(Scope(i + 1, self.b.statement_end(i + 1), "cond", True))
             elif tok == ";":
