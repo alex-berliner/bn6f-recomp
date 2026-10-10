@@ -837,10 +837,10 @@ def compare(world: World, entry: str, stamp: dict[str, Any]) -> list[Finding]:
                 add(Action.REVERIFY, f"callee {who} no longer returns {' '.join(sorted(dropped))}, which this code reads")
             else:
                 add(Action.INFO, f"callee {who} no longer returns {' '.join(sorted(dropped))} (not read here)")
-    if stamp.get("headers") not in (None, UNKNOWN) and stamp.get("headers") != now.headers:
-        add(Action.RECOMPILE, "the header definitions it uses changed")
-    if stamp.get("body") != now.body:
+    if stamp.get("body") != now.body:       # (a new body uses other header definitions: one finding)
         add(Action.HAND_EDIT, "body changed since the stamp, with no new stamp")
+    elif stamp.get("headers") not in (None, UNKNOWN) and stamp.get("headers") != now.headers:
+        add(Action.RECOMPILE, "the header definitions it uses changed")
     if stamp.get("lifter") not in (None, UNKNOWN) and stamp.get("lifter") != now.lifter:
         add(Action.INFO, "lifter changed since the stamp (golden tests and lockstep cover it)")
     return out
