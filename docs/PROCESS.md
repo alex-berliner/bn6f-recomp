@@ -45,7 +45,7 @@ Two ports share this repository:
 | C semantics | Models move each function out of its registers-as-arguments origin: typed C functions with real parameters and results, `Next NAME(void)` only as a thin register adapter. Where C cannot work they say so in a `/* register form: why */` comment, which review and symbols/db carry forward (future work: `docs/C_CALLING_CONVENTION.md`). |
 | Workflows | The process lives in small typed Burr graphs (pydantic models, NewTypes, readable step names), observable in the Burr UI on the LAN; not in prose. |
 | Model cost | Cost per converted function is the most important factor; test all models over time. glm-5.3-flash gave the user good results. |
-| Pacers | The local API pacers (`pi-pacer@{minimax,zai,opencode}.service`) are the user's setup: leave their settings alone unless requests start erroring. |
+| Pacers | The local API pacers (`pi-pacer@{minimax,zai,opencode}.service`) are the user's setup. Change their settings when the work needs it (the user, 2026-10-09: "whatever works, I don't care"); keep a backup of `api_pacer.py` and note the change. |
 | Flash cart | Paused ("done with flash cart stuff for now"); speed is to be looked at holistically later (section 8). |
 | Secrets | Never print API keys. |
 
@@ -283,7 +283,7 @@ when asked. Its text:
 > Rule (user, mandatory): every discovery about a symbol goes back into the bn6f disassembly and the symbol database (...).
 > Blockers: anything that needs the user (recordings, decisions). If the only remaining work is blocked, say so in one line and stop until the next check.
 > Backlog: 1. readable conversion of whole subsystems; 2. model farms for small leaf functions, one per provider, tracking cost per converted function; 3. coverage growth when it lets lockstep check more converted code; 4. keep notes and SESSIONS.md current.
-> Constraints: real BIOS, local git only, bn6f fixes on recomp-fixes with the ROM byte-identical, never print API keys, don't change the user's pacer settings without asking.
+> Constraints: real BIOS, local git only, bn6f fixes on recomp-fixes with the ROM byte-identical, never print API keys. (Pacers: changed when the work needs it, since 2026-10-09.)
 
 ## State
 
