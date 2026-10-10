@@ -110,7 +110,7 @@ pushed), holding the main tree's lock: parallel runs share difftest.cfg.
 
 symbols/db entries from the model's drafts plus this run's evidence; renames for confirmed/probable meanings.
 
-- reads: `subsystem: str`, `file_name: str`, `attempts: tuple[Attempt, ...]`, `checks: tuple[FunctionChecks, ...]`, `commit: CommitHash`
+- reads: `subsystem: str`, `file_name: str`, `attempts: tuple[Attempt, ...]`, `checks: tuple[FunctionChecks, ...]`, `commit: CommitHash`, `farm_model: typing.Optional[ModelSpec]`
 - produces: `entries: tuple[Path, ...]`, `renames: tuple[Rename, ...]`
 - then: `record_symbols`
 

@@ -403,6 +403,7 @@ class EntriesInput(Result):
     attempts: tuple[Attempt, ...]
     checks: tuple[FunctionChecks, ...]
     commit: CommitHash
+    farm_model: ModelSpec | None = None      # a farm group: its entries cite the run, not the group
 
 
 class EntriesOutput(Result):
@@ -417,7 +418,7 @@ def write_symbol_entries(given: EntriesInput) -> EntriesOutput:
     assert latest.verify_run is not None
     provenance = Provenance(subsystem=given.subsystem, file=game_file(given.file_name), model=latest.model,
                             attempts=latest.number, convert_run=current_run_id(), verify_run=latest.verify_run,
-                            commit=given.commit)
+                            commit=given.commit, farm_group=given.farm_model is not None)
     return EntriesOutput(entries=write_entries(latest.reply.drafts, given.checks, provenance),
                          renames=renames(latest.reply.drafts, given.checks))
 
