@@ -12,6 +12,10 @@ Checks, each only when the commit touches what it checks:
   symdb    tools/symdb.py check (about a second): entries valid against bn6f.elf; reproduce paths
            and the stamp report (tools/stamps.py: what changed since each function was stamped,
            and the action) are shown, not enforced
+  leftovers tools/abi/leftovers.py --check (a few seconds): no readable code reads a register or
+           flag a callee leaves behind but does not return (R1-A21), unless the site carries a note
+  golden   tools/lifter/golden.py check (about 40 s), when tools/lifter changes: the lifter still
+           writes the recorded output, or the commit re-records it (`golden.py update`)
   wf       the tools/wf tests, when tools/wf changes
 
 It reads files and git only: no model calls, no builds, no lockstep. In hook mode it checks the
@@ -37,6 +41,9 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 GAME = "cport/src/game/"
 BASELINE = "tools/abi/lint_baseline.json"
 LINT = "tools/abi/lint.py"
+LEFTOVERS = "tools/abi/leftovers.py"
+LIFTER = "tools/lifter/"
+GOLDEN = "tools/lifter/golden.py"
 WF = "tools/wf/"
 WF_PYTHON = os.path.join(ROOT, "tools", "wf", ".venv", "bin", "python")
 
@@ -130,6 +137,63 @@ def check_lint(hook: bool, changed: list[str]) -> Result:
                     res.notes.append(f"lint baseline: {before} -> {after} hits ({moved})")
     finally:
         shutil.rmtree(work, ignore_errors=True)
+    return res
+
+
+# ── leftovers ──
+
+def check_leftovers(hook: bool, changed: list[str]) -> Result:
+    res = Result("leftovers")
+    work = tempfile.mkdtemp(prefix="gate-leftovers-")
+    try:
+        if hook:
+            game = [p for p in git("ls-files", "-z", "--", GAME).split("\0") if p.endswith(".c")]
+            git("checkout-index", f"--prefix={work}/", "--", *game)
+            paths = [f"{work}/{GAME}"]
+        else:
+            paths = []
+        done = subprocess.run([sys.executable, os.path.join(ROOT, LEFTOVERS), "--quiet", *paths],
+                              capture_output=True, text=True)
+        try:
+            report = json.loads(done.stdout)
+        except json.JSONDecodeError:
+            res.warnings.append(f"leftovers.py did not run: {(done.stderr or done.stdout).strip()[-400:]}")
+            return res
+        mine = {os.path.basename(p) for p in changed if p.startswith(GAME)}
+        for s in report["sites"]:
+            if s["noted"] or s["kind"] == "zflag":
+                continue
+            name = os.path.basename(s["file"])
+            text = (f"{GAME}{name}:{s['line']} {s['function']}: reads {s['reg']} after {s['callee']}, which does "
+                    f"not return it ({s['kind']}). Read what the original reads, or note the site "
+                    f"(see {LEFTOVERS})")
+            (res.failures if not hook or name in mine else res.warnings).append(text)
+        zflag = sum(1 for s in report["sites"] if not s["noted"] and s["kind"] == "zflag")
+        if zflag:
+            res.notes.append(f"{zflag} sites test r0 where the original tests Z (listed by {LEFTOVERS}, not failing)")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return res
+
+
+# ── golden ──
+
+def check_golden(hook: bool) -> Result:
+    """The lifter's output against the recorded one. Lifts the working tree's lifter (the bn6f build is
+    pinned), so in hook mode a lifter with unstaged edits is only warned about."""
+    res = Result("golden")
+    if hook and git("diff", "--name-only", "--", LIFTER).strip():
+        res.warnings.append(f"{LIFTER} has unstaged edits, so the lifter checked is not the one committed")
+    done = subprocess.run([sys.executable, os.path.join(ROOT, GOLDEN), "check"], cwd=ROOT,
+                          capture_output=True, text=True, env=plain_env(), timeout=900)
+    last = ((done.stdout + done.stderr).strip().splitlines() or ["(no output)"])[-1]
+    if done.returncode == 0:
+        res.notes.append(last)
+    elif done.returncode == 2:
+        res.warnings.append(f"{last} (bn6f moved since the recording: python3 {GOLDEN} update)")
+    else:
+        res.failures.append(f"{last}. If the change is intended: python3 {GOLDEN} diff to see it, then "
+                            f"python3 {GOLDEN} update and commit tools/lifter/golden with it")
     return res
 
 
@@ -230,6 +294,10 @@ def main() -> int:
     jobs: list[tuple[str, Callable[[], Result]]] = []
     if touches(GAME, BASELINE, LINT):
         jobs.append(("lint", lambda: check_lint(hook, changed)))
+    if touches(GAME, LEFTOVERS, "tools/abi/lint.py"):
+        jobs.append(("leftovers", lambda: check_leftovers(hook, changed)))
+    if touches(LIFTER):
+        jobs.append(("golden", lambda: check_golden(hook)))
     if touches("symbols/db/", GAME, "bn6f", "tools/lifter/", "tools/symdb.py", "tools/stamps.py"):
         jobs.append(("symdb", lambda: check_symdb(hook, changed)))
     if touches(WF):

@@ -34,6 +34,7 @@
 #include <unistd.h>
 
 #include "lifted.h"
+#include "lifted_originals.h"   /* L_NAME, for difftest_pairs.h; only the difftest reads it */
 #include "dispatch.h"
 #include "hostmem.h"
 

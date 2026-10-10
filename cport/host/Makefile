@@ -23,11 +23,6 @@ $(BUILD)/host/%.o: %.c Makefile
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
 
-# The lifted originals' declarations (L_NAME, for difftest_pairs.h) are in a
-# header of their own that only the difftest reads: installs add to it, and
-# nothing else has to recompile.
-$(BUILD)/host/difftest.o: CFLAGS += -include lifted_originals.h
-
 -include $(OBJS:.o=.d)
 
 $(BUILD)/difftest: $(OBJS)
