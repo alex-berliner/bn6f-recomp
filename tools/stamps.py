@@ -1076,11 +1076,39 @@ def provenance(world: World, entries: dict[str, dict[str, Any]], names: Iterable
             elif model == "claude":       # Claude as the convert workflow's model: the commit names which
                 c = info.get(first)
                 model = c.trailer_model if c and c.trailer_model else "claude"
-            p = {"prompt": "legacy", "model": model, "run": run, "installed": installed}
+            entry = entries.get(home_entry(n, set(entries)) or n, {})
+            prompt = "legacy" if is_legacy(first) else (
+                farm_prompt([n, *(entry.get("previous_names") or [])], model) or UNKNOWN)
+            p = {"prompt": prompt, "model": model, "run": run, "installed": installed}
             if later:
                 p["edited"] = later
         out[n] = p
     return out
+
+
+LEGACY_BEFORE = "8b64ff5"    # the commit that brought stamps: code installed before it predates recorded prompts
+
+
+def is_legacy(sha: str) -> bool:
+    if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+        return False
+    return subprocess.run(["git", "merge-base", "--is-ancestor", sha, LEGACY_BEFORE], cwd=ROOT,
+                          capture_output=True).returncode == 0
+
+
+def farm_prompt(names: list[str], model: str) -> str | None:
+    """The prompt hash of the farm round that passed (tools/convert/log, named as the function was then)."""
+    for name in names:
+        path = os.path.join(ROOT, "tools", "convert", "log", f"{name}.{model.replace('/', '_')}.jsonl")
+        try:
+            with open(path) as fh:
+                rows = [json.loads(line) for line in fh if line.strip()]
+        except (OSError, ValueError):
+            continue
+        for row in reversed(rows):
+            if row.get("ok") and row.get("prompt_hash"):
+                return str(row["prompt_hash"])
+    return None
 
 
 def hand_model(c: Commit | None) -> str:
