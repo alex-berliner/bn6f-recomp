@@ -5,8 +5,8 @@
 
 Each lifted function's header carries its register contract (inputs, outputs, clobbers,
 preserved): the analysis below refined by the call edges the routes showed
-(tools/traces/coverage/*.edges; abi_export.REFINED), never wider than the analysis's own.
-The code itself follows the unrefined analysis.
+(tools/traces/coverage/*.edges; abi_export.REFINED). The code itself follows the unrefined
+analysis.
 """
 from __future__ import annotations
 
@@ -890,22 +890,20 @@ def main():
     # (difftest_pairs.h), what stamps record and the leftover-read lint checks. Refined, unless
     # --static-contracts: inputs and callers' reads under abi_export.REFINED; may-write and preserved
     # are the lifter's, so outputs and clobbers split the same written registers by what callers read.
-    # Never wider than the lifter's own: where the routes show callers the lifter does not see (code
-    # reached through pointers it misses), reading more, the header keeps the lifter's contract, and
-    # the units are listed (a wider contract would send readable code back to a model).
+    # Where the routes show callers the lifter does not see (code reached through pointers it misses),
+    # reading more, the refined contract is wider than the lifter's: the true one, so it stands; the
+    # lift lists those units (a readable one among them would need its code checked again).
     contract_inputs, contract_live = inputs, callers_live
     if not args.static_contracts:
         if not edge_files:
             raise SystemExit(f"no call edges ({DEFAULT_EDGES}): give --call-edges, or --static-contracts")
         t2 = time.time()
-        refined_inputs, refined_live = abi_export.refined_contracts(analysis, abi_export.read_edges(edge_files, rom_sha1))
-        contract_inputs = {e: refined_inputs[e] & inputs[e] for e in inputs}
-        contract_live = {s_: refined_live[s_] & callers_live[s_] for s_ in callers_live}
-        wider = sorted(u.name for u in p.units if refined_live[u.start] & may_write[u.start] & ~callers_live[u.start]
-                       or any(refined_inputs[e] & ~inputs[e] & ALL for e in u.entries))
+        contract_inputs, contract_live = abi_export.refined_contracts(analysis, abi_export.read_edges(edge_files, rom_sha1))
+        wider = sorted(u.name for u in p.units if contract_live[u.start] & may_write[u.start] & ~callers_live[u.start]
+                       or any(contract_inputs[e] & ~inputs[e] & ALL for e in u.entries))
         print(f"[lift] refined contracts from {len(edge_files)} call-edge files ({time.time() - t2:.1f}s)"
-              + (f"; {len(wider)} units kept at the lifter's narrower contract, where the routes show callers "
-                 f"reading more: {' '.join(wider[:12])}{' ...' if len(wider) > 12 else ''}" if wider else ""))
+              + (f"; {len(wider)} units wider than the lifter's own, where the routes show callers it does not "
+                 f"see: {' '.join(wider[:12])}{' ...' if len(wider) > 12 else ''}" if wider else ""))
     contract_outputs = {u.start: contract_live[u.start] & may_write[u.start] for u in p.units}
 
     def call_masks(t, call_addr, unit_start):

@@ -126,7 +126,7 @@ or comments (check exits 2 then).
   in between, and restore what the original restores. Mark such lines "as the
   original". Contracts are in the lifted header comments: the lifter's
   analysis refined by the call edges the routes showed (`abi_export.REFINED`;
-  never wider than the lifter's own, `lift.py --static-contracts` for that).
+  `lift.py --static-contracts` writes the lifter's own).
   Models are shown them, the difftest compares them (`difftest_pairs.h`), stamps
   record them, and `tools/abi/leftovers.py` checks readable callers against them.
 - Struct offsets the generated header does not export: local `enum`s taken

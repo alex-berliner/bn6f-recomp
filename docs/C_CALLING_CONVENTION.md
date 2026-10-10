@@ -144,9 +144,9 @@ functions, normalised to C types).
 - **Refined contracts in the lifted headers** (review item R1-A7, 2026-10-10): every lift runs the
   export's final model (`abi_export.REFINED`: edges from the committed
   `tools/traces/coverage/*.edges`, BIOS calls, per-site liveness, saves pass through) and writes
-  its inputs and its callers' reads into each header; may-write and preserved stay the lifter's, and
-  a contract is never wider than the lifter's own (9 units where the routes show more callers than
-  the lifter sees, SoundMain and the rfu IWRAM copies, keep the lifter's; the lift lists them).
+  its inputs and its callers' reads into each header; may-write and preserved stay the lifter's.
+  9 lifted units get a wider contract than the lifter's own: the routes show callers it does not see
+  (SoundMain and the rfu IWRAM copies, reached through pointers); the lift lists them.
   The code is unchanged: it follows the conservative analysis. So models are shown, the difftest
   compares (`difftest_pairs.h`: every r0-r12 not free plus the flags callers read, unless
   `difftest.cfg` has a `compare=` line), stamps record and the leftover lint checks the same
