@@ -21,8 +21,6 @@ when both halves are needed, the halving says so and stops.
 Found tryStartNotificationCutscene_8035054 on story4 at frame 32905 (2026-10-09).
 """
 import argparse
-import bisect
-import glob
 import os
 import re
 import subprocess
@@ -35,6 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/wf"))
 from wf.repo import TOOLCHAIN_BIN  # noqa: E402
 from wf.tools.build import committed_tree, link_shared  # noqa: E402
+import funcindex  # noqa: E402  # tools/funcindex.py: the function index (lifted units, readable functions)
 import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/paths.env)
 
 ENV = {**os.environ, "PATH": f"{TOOLCHAIN_BIN}:{os.environ['PATH']}"}
@@ -52,29 +51,20 @@ def run_rom(rom: Path, trace: Path, until: int, extra: list[str], cwd: Path | No
 
 
 def readable_names(game: Path) -> set[str]:
-    names: set[str] = set()
-    for f in game.glob("*.c"):
-        names |= set(re.findall(r"^(?:IWRAM_\w+\s+|ARM_CODE\s+)*Next\s+(\w+)\s*\(\s*void\s*\)\s*\{", f.read_text(), re.M))
-    return names
+    return set(funcindex.readable_functions(str(game)))
 
 
 def executed_units(trace: Path, first: int, last: int, work: Path) -> set[str]:
     """Lifted units (cport/src/lifted header names) the original executes in game frames first..last."""
     run_rom(ORIGINAL, trace, last + 1, ["--profile-game", str(first), str(last)], cwd=work)
-    units: dict[int, tuple[str, int]] = {}
-    for f in glob.glob(str(ROOT / "cport/src/lifted/*.c")):
-        for m in re.finditer(r"^/\* (\w+): ([0-9A-F]{8})-([0-9A-F]{8}) (?:THUMB|ARM)", open(f).read(), re.M):
-            a, b = int(m.group(2), 16), int(m.group(3), 16)
-            units[a] = (m.group(1), b if b - a < 0x10000 else a)
-    starts = sorted(units)
+    unit_at = funcindex.unit_finder(funcindex.unit_ranges(str(ROOT / "cport/src/lifted")))
     hit: set[str] = set()
     for line in open(work / "profile.txt"):
         if line.startswith("#"):
             continue
-        pc = int(line.split()[0], 16)
-        i = bisect.bisect_right(starts, pc) - 1
-        if i >= 0 and pc < units[starts[i]][1]:
-            hit.add(units[starts[i]][0])
+        name = unit_at(int(line.split()[0], 16))
+        if name is not None:
+            hit.add(name)
     return hit
 
 

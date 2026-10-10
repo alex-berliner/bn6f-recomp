@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, NamedTuple, NewType
 
+import funcindex  # tools/funcindex.py: the function index (lifted headers, contracts)
 import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,7 +46,7 @@ LIFT_PY = "tools/lifter/lift.py"
 LIFTER = "tools/lifter"
 POOL = "symbols/pool.tsv"
 CACHE = os.path.join(ROOT, "build", "symdb", "cache.pickle")
-CACHE_VERSION = 3
+CACHE_VERSION = 4    # 4: contracts and headers are tools/funcindex.py's types
 
 Name = NewType("Name", str)          # a symbol name as it is today
 Root = NewType("Root", str)          # a symbol's first name (stable across renames)
@@ -407,58 +408,10 @@ class Names:
 
 # ── the facts a stamp records, as found in the tree now ──
 
-class Contract(NamedTuple):
-    """The lifter's register contract (the lifted header): what a function reads and leaves."""
-    inputs: tuple[str, ...]
-    outputs: tuple[str, ...]
-    clobbers: tuple[str, ...]
-
-    def text(self) -> str:
-        return f"{' '.join(self.inputs) or '-'} -> {' '.join(self.outputs) or '-'}; clobbers {' '.join(self.clobbers) or '-'}"
-
-    @classmethod
-    def parse(cls, text: str) -> Contract | None:
-        m = re.fullmatch(r"\s*(.*?)\s*->\s*(.*?)\s*;\s*clobbers\s*(.*?)\s*", text or "")
-        if not m:
-            return None
-        regs = [tuple(x for x in g.split() if x != "-") for g in m.groups()]
-        return cls(regs[0], regs[1], regs[2])
-
-    def checked(self) -> set[str]:
-        """What the difftest compares (farm.compare_args): every r0-r12 that is not free, and output flags."""
-        regs = {f"r{i}" for i in range(13)} - set(self.clobbers)
-        return regs | {f for f in ("nz", "c", "v") if f in self.outputs}
-
-
-class Header(NamedTuple):
-    lo: int
-    hi: int
-    contract: Contract
-    asm: str | None                        # "asm00_2.s:613"
-
-
-HEADER_RE = re.compile(r"^/\* (\w+): ([0-9A-F]{8})-([0-9A-F]{8}) (?:THUMB|ARM)(?:, bn6f ([\w.]+:\d+))? \*/\n"
-                       r"/\*   inputs:  ([^\n]*)\n \*   outputs: ([^\n]*)\n \*   clobbers[^:]*: ([^\n]*)\n"
-                       r" \*   preserved: [^\n]*? \*/", re.M)
-BRANCH_RE = re.compile(r"/\* [0-9A-F]{8}: bl? (\w+)")
-
-
-def regs(text: str) -> tuple[str, ...]:
-    return tuple(x for x in text.split() if x != "-")
-
-
-def parse_lifted(text: str, with_callees: bool) -> tuple[dict[str, Header], dict[str, tuple[str, ...]]]:
-    headers: dict[str, Header] = {}
-    targets: dict[str, tuple[str, ...]] = {}
-    matches = list(HEADER_RE.finditer(text))
-    for i, m in enumerate(matches):
-        name = m.group(1)
-        headers[name] = Header(int(m.group(2), 16), int(m.group(3), 16),
-                               Contract(regs(m.group(5)), regs(m.group(6)), regs(m.group(7))), m.group(4))
-        if with_callees:
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-            targets[name] = tuple(dict.fromkeys(BRANCH_RE.findall(text, m.end(), end)))
-    return headers, targets
+# The lifted headers' contracts and callees: the function index's parser (tools/funcindex.py).
+Contract = funcindex.Contract
+Header = funcindex.Unit                    # lo, hi, contract, asm ("asm00_2.s:613")
+parse_lifted = funcindex.parse_units
 
 
 @dataclass(frozen=True)
