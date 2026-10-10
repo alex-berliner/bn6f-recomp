@@ -16,6 +16,7 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   python -m wf status
   python -m wf freeze  --reason WHY        # installs, renames and commits wait (models go on); returns once
   python -m wf thaw                        #   the ones under way are done; thaw lets them go on
+  python -m wf archive [--dry-run]         # copy the text logs of the runs symbols/db cites to build-wf-archive
   python -m wf docs [OUT_DIR]
 
 Every run is tracked for the Burr UI (`tools/wf/.venv/bin/burr --no-open
@@ -40,6 +41,7 @@ from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, run_verify
 from wf.repo import REPO, RUNS
+from wf.tools.archive import ARCHIVE, archive_cited_runs
 from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
 from wf.tools.sources import models_for
 from wf.routes import ALL_ROUTES, route_named
@@ -131,6 +133,11 @@ class ThawCommand(BaseModel):
     command: Literal["thaw"]
 
 
+class ArchiveCommand(BaseModel):
+    command: Literal["archive"]
+    dry_run: bool
+
+
 class DocsCommand(BaseModel):
     command: Literal["docs"]
     out_dir: Path
@@ -138,7 +145,7 @@ class DocsCommand(BaseModel):
 
 Command = (VerifyCommand | CaptureCommand | FarmCommand | DraftsCommand | ConvertCommand | RecordCommand
            | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
-           | DocsCommand)
+           | ArchiveCommand | DocsCommand)
 
 
 def main() -> None:
@@ -172,6 +179,8 @@ def main() -> None:
             thawed = thaw_installs()
             print(f"thawed: installs frozen since {thawed.since:%m-%d %H:%M} ({thawed.reason}) go on" if thawed
                   else "installs were not frozen")
+        case ArchiveCommand():
+            show_archive(command.dry_run)
         case DocsCommand():
             for path in write_docs(command.out_dir):
                 print(f"wrote {path}")
@@ -321,6 +330,16 @@ def show_status() -> None:
               f"{status.phase.value}{where}{detail}")
 
 
+def show_archive(dry_run: bool) -> None:
+    report = archive_cited_runs(dry_run)
+    verb = "would copy" if dry_run else "copied"
+    print(f"symbols/db cites {report.cited} runs; {verb} {report.files} files ({report.bytes / 1e6:.1f} MB) "
+          f"from {len(report.copied_from)} of them")
+    print(f"{ARCHIVE}: {report.archive_files} files, {report.archive_bytes / 1e6:.1f} MB")
+    if report.nowhere:
+        print(f"cited, but in neither build-wf-runs nor the archive: {', '.join(report.nowhere)}")
+
+
 # ── arguments ──────────────────────────────────────────────────────────
 
 def parse_command() -> Command:
@@ -390,6 +409,9 @@ def parse_command() -> Command:
     freeze.add_argument("--reason", required=True, help="what the window is for, e.g. 'the db rewrite'")
 
     commands.add_parser("thaw", help="end the install freeze")
+
+    archive = commands.add_parser("archive", help="copy the text logs of the runs symbols/db cites to build-wf-archive")
+    archive.add_argument("--dry-run", action="store_true", help="only say what would be copied")
 
     docs = commands.add_parser("docs", help="regenerate docs/workflows from the code")
     docs.add_argument("out_dir", type=Path, nargs="?", default=REPO / "docs/workflows")
