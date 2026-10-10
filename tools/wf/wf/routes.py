@@ -10,6 +10,7 @@ def _route(name: str, length: int) -> Route:
 
 ALL_ROUTES: tuple[Route, ...] = (
     _route("battles1", 20111),
+    _route("battles2", 20609),
     _route("battle", 20000),
     _route("menus2", 23042),
     _route("menus3", 12950),
