@@ -523,9 +523,9 @@ Next MapScriptCutsceneCmd_jump_if_flag_range_clear(void) {
 
     R0 = R4;                         /* first flag index of the range */
     R2 = R1;                         /* number of flags in the range */
-    GUEST_CALL(TestEventFlagRange);
+    GUEST_CALL(TestEventFlagRange);  /* answers in Z; the original branches on it */
 
-    if (R0 != 0) {                   /* at least one flag set: no jump */
+    if (!ZERO_FLAG()) {              /* at least one flag set: no jump */
         SET_FLAGS_ADD(R7, 8);
         R7 = R7 + 8;                 /* skip the byte, halfword and word operands */
         R0 = 1;

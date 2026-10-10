@@ -1623,8 +1623,8 @@ Next sprite_dispatchObjectUpdate_811BDCC(void) {
     R1 = kind;
     GUEST_CALL(sub_811BDEC);
 
-    GUEST_CALL(object_checkStatusFlag_811BE90);
-    if (R0 == 0)
+    GUEST_CALL(object_checkStatusFlag_811BE90);   /* answers in Z; the original branches on it */
+    if (ZERO_FLAG())
         RETURN_TO_CALLER();
 
     GUEST_CALL(sprite_update);

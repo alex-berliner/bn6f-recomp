@@ -941,8 +941,8 @@ Next sub_812365C(void) {
  * Flags on return are those left by whichever callee ran last. */
 Next sub_8123678(void) {
     R0 = 0;
-    GUEST_CALL(sprite_testFrameParamsMaskC0_81190F8);
-    if (R0 != 0) {
+    GUEST_CALL(sprite_testFrameParamsMaskC0_81190F8);   /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
         R0 = 4;
         ST8(R5 + 3, R0);
         GUEST_CALL(sub_8123D70);
