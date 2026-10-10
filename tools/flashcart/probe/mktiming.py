@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a cart timing probe: tools/probe/mktiming.py PORT.gba OUT.gba
+"""Build a cart timing probe: tools/flashcart/probe/mktiming.py PORT.gba OUT.gba
 
 PORT.gba (13.5 MB) with timing.c appended at 0x08D80000 and the header's
 first instruction pointed at it; hashes of PORT.gba's 64 KB blocks at

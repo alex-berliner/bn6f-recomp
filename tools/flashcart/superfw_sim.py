@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Apply what SuperFW (Supercard firmware) does to a ROM before booting it.
 
-  tools/superfw_sim.py IN.gba OUT.gba [--no-igm] [--no-directsave] [--fast-ewram] [--as GCODE]
+  tools/flashcart/superfw_sim.py IN.gba OUT.gba [--no-igm] [--no-directsave] [--fast-ewram] [--as GCODE]
 
 Follows SuperFW's loader (src/loader.c load_gba_rom, src/patcher.c
 patch_apply_rom) for a game found in its built-in database:

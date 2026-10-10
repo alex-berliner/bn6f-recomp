@@ -4,7 +4,7 @@
 with its own title and game code."""
 import os, struct, subprocess, sys
 here = os.path.dirname(os.path.abspath(__file__))
-root = os.path.dirname(os.path.dirname(here))
+root = os.path.dirname(os.path.dirname(os.path.dirname(here)))
 sys.path.insert(0, os.path.join(root, "tools"))
 import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
 code = open(os.path.join(here, "probe.bin"), "rb").read()

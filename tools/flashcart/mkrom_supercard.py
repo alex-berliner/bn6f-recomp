@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make a port ROM for Supercard flashcarts running SuperFW.
 
-  tools/mkrom_supercard.py IN.gba OUT.gba [WAITCNT]
+  tools/flashcart/mkrom_supercard.py IN.gba OUT.gba [WAITCNT]
 
 SuperFW recognises the original's game code (BR6E) and patches the ROM
 automatically, adding its in-game menu; the port does not boot on hardware

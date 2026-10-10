@@ -297,11 +297,11 @@ The user plays on a "flashgbacart plus+" (Supercard SD clone) running
 SuperFW. SuperFW recognises the original's game code (BR6E), patches the ROM
 from its database (WAITCNT store at 0x108 NOPed, 0x03007FF4 written at 0x1F8)
 and installs its in-game menu; the standard port ROM then shows a white
-screen on that cart. What works: `tools/mkrom_supercard.py IN OUT [WAITCNT]`
+screen on that cart. What works: `tools/flashcart/mkrom_supercard.py IN OUT [WAITCNT]`
 (game code B6CP, WAITCNT literal 0x4000), loaded with **"No patching"**. A ROM
 with SuperFW's current-source patch path baked in also works
-(`tools/superfw_sim.py --as BR6E`), so the user's SuperFW build likely differs
-from current source (version unknown). Hardware probes: `tools/probe/`
+(`tools/flashcart/superfw_sim.py --as BR6E`), so the user's SuperFW build likely differs
+from current source (version unknown). Hardware probes: `tools/flashcart/probe/`
 (`mkprobe.py`: reads/calls above 8 MB; `mkromcheck.py`: whole-ROM integrity
 grid, then boots the port; `mktiming.py`: which WAITCNT settings the cart
 handles; results never reported, work paused).

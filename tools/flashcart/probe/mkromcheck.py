@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a ROM-check ROM: tools/probe/mkromcheck.py PORT.gba OUT.gba
+"""Build a ROM-check ROM: tools/flashcart/probe/mkromcheck.py PORT.gba OUT.gba
 
 PORT.gba (13.5 MB, its _start at 0x08800000) with romcheck.c appended at
 0x08D80000 and the header's first instruction pointed at it; the hash of

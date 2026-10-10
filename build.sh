@@ -43,6 +43,6 @@ echo "built cport/build/bn6f_lifted.gba"
 
 if [ "${1:-}" = supercard ]; then
     mkdir -p roms/out
-    python3 tools/mkrom_supercard.py cport/build/bn6f_lifted.gba roms/out/bn6f_falzar_cport_supercard.gba
+    python3 tools/flashcart/mkrom_supercard.py cport/build/bn6f_lifted.gba roms/out/bn6f_falzar_cport_supercard.gba
     echo "built roms/out/bn6f_falzar_cport_supercard.gba"
 fi
