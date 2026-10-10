@@ -42,11 +42,12 @@ def render_database(log: LogPath) -> None:
         raise ToolOutputError(f"symdb.py render failed, see {log}")
 
 
-def rename_symbols(renames: tuple[Rename, ...], log: LogPath) -> CommitHash:
-    """Rename in bn6f (ROM must stay identical; bn6f gets a commit) and regenerate the lifted C."""
+def rename_symbols(renames: tuple[Rename, ...], log: LogPath, run: str | None = None) -> CommitHash:
+    """Rename in bn6f (ROM must stay identical; bn6f gets a commit, its subject naming RUN) and
+    regenerate the lifted C."""
     pairs = [name for rename in renames for name in (rename.old, rename.new)]
     with held(BN6F):   # no run may lift while bn6f's names change
-        done = _tool(["python3", "tools/rename_symbol.py", *pairs], log)
+        done = _tool(["python3", "tools/rename_symbol.py", *pairs, *(["--run", run] if run else [])], log)
     commit = _BN6F_COMMIT.search(done.stdout)
     if done.returncode != 0 or commit is None:
         raise ToolOutputError(f"rename_symbol.py failed, see {log}")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rename disassembly symbols everywhere, keeping the ROM byte-identical.
 
-  tools/rename_symbol.py OLD NEW [OLD NEW ...] [--no-regen]
+  tools/rename_symbol.py OLD NEW [OLD NEW ...] [--no-regen] [--run RUNID]
 
 For each pair:
   - the symbol database must have an entry for it (symbols/db/OLD.yaml or
@@ -9,12 +9,18 @@ For each pair:
     its name set to NEW, OLD added to previous_names and a change recorded;
   - bn6f (the disassembly): every whole-word OLD in its sources (.s, .inc,
     .h, .c, .ld; like bn6f's replace.sh) becomes NEW;
-  - this repo: hand-written C (cport/src/game), cport/host/difftest.cfg and
-    tools/lifter/iwram.txt, including the A_OLD / L_OLD forms.
+  - this repo: hand-written C (cport/src/game), cport/host/difftest.cfg,
+    tools/lifter/iwram.txt and not_entries.txt, and the lint baseline
+    (tools/abi/lint_baseline.json, keyed by function name), including the
+    A_OLD / L_OLD forms.
 Then bn6f is rebuilt (its Makefile checks bn6f.sha1: the ROM must be
 identical; on any failure every change is undone), committed on its current
 branch, and the lifted C is regenerated (tools/build_lifted.sh) unless
 --no-regen. The recomp repo is left for you to commit.
+
+The bn6f commit's subject is "Rename OLD -> NEW" for one pair, else "Rename N
+symbols", followed by the record run (--run) as in "(record-20261010-120000)";
+the pairs are listed in its body, one per line.
 """
 import datetime, os, re, subprocess, sys
 import yaml
@@ -24,7 +30,8 @@ BN6F = os.path.join(ROOT, "bn6f")
 DB = os.path.join(ROOT, "symbols", "db")
 BN6F_EXT = (".s", ".inc", ".h", ".c", ".ld")
 SKIP_DIRS = {".git", "build", "tools", "temp"}
-RECOMP_FILES = ["cport/host/difftest.cfg", "cport/host/difftest_gen.c", "tools/lifter/iwram.txt"]
+RECOMP_FILES = ["cport/host/difftest.cfg", "cport/host/difftest_gen.c", "tools/lifter/iwram.txt",
+                "tools/lifter/not_entries.txt", "tools/abi/lint_baseline.json"]
 
 
 def word(name, prefixes=("",)):
@@ -50,9 +57,29 @@ def run(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
 
 
+def commit_message(pairs, run=None):
+    """A short subject; the pairs go in the body (one rename record once made an 11,193-character subject)."""
+    if len(pairs) == 1:
+        subject = f"Rename {pairs[0][0]} -> {pairs[0][1]}"
+    else:
+        subject = f"Rename {len(pairs)} symbols" + (f" ({run})" if run and "record" in run else
+                                                     f" (record {run})" if run else "")
+    body = "\n".join(f"{o} -> {n}" for o, n in pairs)
+    return (f"{subject}\n\n{body}\n\n"
+            "Documented in the recomp repo's symbols/db (tools/rename_symbol.py). ROM unchanged.\n")
+
+
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    regen = "--no-regen" not in sys.argv
+    argv = sys.argv[1:]
+    run_id = None
+    if "--run" in argv:
+        i = argv.index("--run")
+        if i + 1 >= len(argv):
+            sys.exit("--run needs the record run's id")
+        run_id = argv[i + 1]
+        del argv[i:i + 2]
+    args = [a for a in argv if not a.startswith("--")]
+    regen = "--no-regen" not in argv
     if not args or len(args) % 2:
         sys.exit(__doc__)
     pairs = list(zip(args[::2], args[1::2]))
@@ -95,8 +122,7 @@ def main():
         undo("bn6f build failed or the ROM is no longer identical:\n" + (r.stdout + r.stderr)[-3000:])
     print(f"bn6f rebuilt, ROM identical ({len([p for p in touched if p.startswith(BN6F)])} files changed)")
 
-    msg = "Rename " + ", ".join(f"{o} -> {n}" for o, n in pairs) + \
-          "\n\nDocumented in the recomp repo's symbols/db (tools/rename_symbol.py). ROM unchanged.\n"
+    msg = commit_message(pairs, run_id)
     run(["git", "add", "-A"], cwd=BN6F)
     r = run(["git", "commit", "-q", "-m", msg], cwd=BN6F)
     if r.returncode:

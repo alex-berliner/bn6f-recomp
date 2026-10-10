@@ -93,7 +93,7 @@ def install(database: FakeDatabase, monkeypatch: pytest.MonkeyPatch, run_dir: Pa
     def entry(name: SymbolName) -> SymbolEntry | None:
         return SymbolEntry(name=name, status=database.status, file=run_dir / f"{name}.yaml")
 
-    def rename_symbols(renames: tuple[Rename, ...], log: LogPath) -> CommitHash:
+    def rename_symbols(renames: tuple[Rename, ...], log: LogPath, run: str | None = None) -> CommitHash:
         database.called.append("rename")
         return CommitHash("b1")
 

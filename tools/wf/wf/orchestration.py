@@ -444,8 +444,8 @@ STEP_SUMMARIES: dict[tuple[str, str], str] = {
         "confirmed or probable meaning. Problems end the run with nothing changed.",
     ("record", "rename_in_bn6f"):
         "A record run renames the requested symbols with tools/rename_symbol.py: in the bn6f disassembly sources "
-        "(rebuilt, checked byte-identical, and committed in bn6f), in the port's hand-written code, and in the "
-        "regenerated lifted C.",
+        "(rebuilt, checked byte-identical, and committed in bn6f, one pair per line under a short subject), in the "
+        "port's hand-written code, the lifter's label lists and the lint baseline, and in the regenerated lifted C.",
     ("record", "refresh_pc_port_symbols_after_renames"):
         "After renames, a record run refreshes the PC port's symbol overlay from the renamed bn6f "
         "(tools/import_symbols.sh).",

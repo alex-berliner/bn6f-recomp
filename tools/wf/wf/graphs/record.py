@@ -24,9 +24,11 @@ PROJECT = "recomp-record"
 RENAMEABLE = (SymbolStatus.CONFIRMED, SymbolStatus.PROBABLE)
 ACCEPTED_VERDICTS = (Verdict.PASSED, Verdict.PASSED_WITH_UNCHECKED_FUNCTIONS)
 # what the record tools change: the database and the PC port's symbol files, the bn6f pointer, and the
-# port's hand-written code and test files that rename_symbol.py renames in (nothing else is ever committed)
+# port's hand-written code, test files, lifter lists and lint baseline that rename_symbol.py renames in
+# (nothing else is ever committed)
 RECORDED_PATHS = (REPO / "symbols", REPO / "bn6f", REPO / "cport/src/game", REPO / "cport/host/difftest.cfg",
-                  REPO / "cport/host/difftest_gen.c", REPO / "tools/lifter/iwram.txt")
+                  REPO / "cport/host/difftest_gen.c", REPO / "tools/lifter/iwram.txt",
+                  REPO / "tools/lifter/not_entries.txt", REPO / "tools/abi/lint_baseline.json")
 
 
 def record_graph() -> Graph["RecordState"]:
@@ -136,7 +138,8 @@ class RenameOutput(Result):
 @workflow.step
 def rename_in_bn6f(given: RenameInput) -> RenameOutput:
     """Rename in bn6f (ROM stays identical, bn6f commit), in the port's code, and regenerate the lifted C."""
-    return RenameOutput(renamed_in_bn6f=rename_symbols(given.renames, LogPath(given.run_dir / "rename.log")))
+    return RenameOutput(renamed_in_bn6f=rename_symbols(given.renames, LogPath(given.run_dir / "rename.log"),
+                                                       run=current_run_id()))
 
 
 class RefreshInput(Result):
