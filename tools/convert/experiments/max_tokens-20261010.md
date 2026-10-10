@@ -59,3 +59,31 @@ passes about twice as many as glm. Remaining failures (240 answers): compile 96,
 check 17, style 8. Most compile errors are struct-offset names the assembly uses (oToolkit_JoypadPtr,
 oGFXAnimState_Timer, ...) that cport/include/bn6f_syms.h lacks, since it only holds the constants lifted code uses:
 6 of the 16 functions failed this way for every model.
+
+## Re-test after bn6f_equates.h (8549708: every assembler constant available to hand-written code)
+
+| model | cap | calls | hit cap | no code | errors | passed | mean out tokens | mean s | passed per M out |
+|---|---|---|---|---|---|---|---|---|---|
+| deepseek-v4.1-flash | 24k | 16 | 10 | 10 | 0 | 3 | 20754 | 186 | 9.0 |
+| deepseek-v4.1-flash | 48k | 16 | 4 | 4 | 0 | 5 | 31511 | 280 | 9.9 |
+| deepseek-v4.1-flash | 72k | 16 | 3 | 3 | 0 | 5 | 34519 | 299 | 9.1 |
+| deepseek-v4.1-flash | 96k | 16 | 0 | 0 | 0 | 6 | 33166 | 283 | 11.3 |
+| deepseek-v4.1-flash | 120k | 16 | 0 | 0 | 0 | 7 | 30915 | 269 | 14.2 |
+| glm-5.3-flash | 24k | 16 | 5 | 5 | 0 | 8 | 17128 | 244 | 29.2 |
+| glm-5.3-flash | 48k | 16 | 2 | 1 | 0 | 6 | 26059 | 404 | 14.4 |
+| glm-5.3-flash | 72k | 16 | 1 | 1 | 0 | 5 | 22755 | 348 | 13.7 |
+| glm-5.3-flash | 96k | 16 | 0 | 0 | 0 | 8 | 29458 | 453 | 17.0 |
+| glm-5.3-flash | 120k | 16 | 0 | 0 | 0 | 5 | 26984 | 420 | 11.6 |
+| qwen3.8-flash | 24k | 16 | 0 | 0 | 0 | 6 | 12704 | 199 | 29.5 |
+| qwen3.8-flash | 48k | 16 | 0 | 0 | 0 | 5 | 13116 | 203 | 23.8 |
+| qwen3.8-flash | 72k | 16 | 0 | 0 | 0 | 7 | 15330 | 238 | 28.5 |
+| qwen3.8-flash | 96k | 16 | 0 | 0 | 0 | 6 | 13935 | 213 | 26.9 |
+| qwen3.8-flash | 120k | 16 | 0 | 0 | 0 | 4 | 13498 | 208 | 18.5 |
+
+| model | cap | calls | hit cap | no code | errors | passed | mean out tokens | mean s | passed per M out |
+|---|---|---|---|---|---|---|---|---|---|
+| glm-5.3-flash (no stream) | 24k | 16 | 8 | 8 | 0 | 5 | 17437 | 208 | 17.9 |
+| glm-5.3-flash (no stream) | 48k | 16 | 0 | 0 | 0 | 7 | 17199 | 305 | 25.4 |
+
+Passed out of 80 answers: glm-5.3-flash 32, qwen3.8-flash 28, deepseek-v4.1-flash 26 (all three: 58 -> 86 from this fix
+alone). Per million output tokens: qwen about 25, glm about 16, deepseek about 11.
