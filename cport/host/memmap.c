@@ -40,9 +40,13 @@ void host_map_memory(const char *rom_path) {
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
     fseek(f, 0, SEEK_SET);
-    map_at(0x08000000u, ((size_t)n + 0xFFF) & ~(size_t)0xFFF);
+    size_t rom_size = ((size_t)n + 0xFFF) & ~(size_t)0xFFF;
+    map_at(0x08000000u, rom_size);
     if (fread((void *)(uintptr_t)0x08000000u, 1, (size_t)n, f) != (size_t)n) { perror("read rom"); exit(1); }
     fclose(f);
+    /* Read-only, so a store into ROM faults instead of changing the ROM image
+     * (the store macros in cpu.h no longer skip ROM addresses either). */
+    if (mprotect((void *)(uintptr_t)0x08000000u, rom_size, PROT_READ)) { perror("mprotect rom"); exit(1); }
 }
 
 void rt_log(const char *msg, u32 value) { fprintf(stderr, "[log] %s %#x\n", msg, value); }

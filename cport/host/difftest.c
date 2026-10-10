@@ -60,44 +60,92 @@ typedef struct {
     int hwtick;                          /* simulate a running VCOUNT/DISPSTAT */
     int compare_flags;                   /* compare flags too: 1 N/Z, 2 C, 4 V */
 } Cfg;
-static Cfg g_cfg[256];
-static int g_ncfg;
+/* One entry per configured function; grows (the generated cfg lines of
+ * tools/abi/gen.py can number in the thousands). */
+static Cfg *g_cfg;
+static int g_ncfg, g_cfg_cap;
+
+static Cfg *new_cfg(const char *name) {
+    if (g_ncfg == g_cfg_cap) {
+        g_cfg_cap = g_cfg_cap ? g_cfg_cap * 2 : 256;
+        g_cfg = realloc(g_cfg, (size_t)g_cfg_cap * sizeof *g_cfg);
+        if (!g_cfg) { perror("difftest.cfg"); exit(2); }
+    }
+    Cfg *c = &g_cfg[g_ncfg++];
+    memset(c, 0, sizeof *c);
+    snprintf(c->name, sizeof c->name, "%s", name);
+    return c;
+}
+
+/* A setting the parser cannot use is skipped, loudly (it used to be skipped
+ * silently, or to write past the arrays). */
+static void cfg_warn(const char *path, int lineno, const char *what, const char *tok) {
+    fprintf(stderr, "%s:%d: %s, ignored: %s\n", path, lineno, what, tok);
+}
+
+/* "rN" (N 0..12) as in compare= and rN=, or -1. */
+static int cfg_reg(const char *tok) {
+    char *end;
+    if (tok[0] != 'r' || tok[1] < '0' || tok[1] > '9') return -1;
+    long n = strtol(tok + 1, &end, 10);
+    return (n <= 12 && (*end == '\0' || *end == '=')) ? (int)n : -1;
+}
 
 static void load_cfg(const char *path) {
     FILE *f = fopen(path, "r");
-    char line[1024];
+    char line[4096];
+    int lineno = 0;
     while (f && fgets(line, sizeof line, f)) {
+        lineno++;
+        if (!strchr(line, '\n') && !feof(f)) {     /* too long: drop the whole line */
+            cfg_warn(path, lineno, "line longer than 4095 characters", "");
+            int ch;
+            while ((ch = fgetc(f)) != EOF && ch != '\n')
+                ;
+            continue;
+        }
         if (line[0] == '#' || line[0] == '\n') continue;
-        Cfg *c = &g_cfg[g_ncfg++];
-        memset(c, 0, sizeof *c);
         char *tok = strtok(line, " \t\n");
-        snprintf(c->name, sizeof c->name, "%s", tok);
+        if (!tok) continue;
+        Cfg *c = new_cfg(tok);
         while ((tok = strtok(NULL, " \t\n"))) {
             if (!strncmp(tok, "compare=", 8)) {
                 for (char *r = strtok(tok + 8, ","); r; r = strtok(NULL, ",")) {
-                    if (r[0] == 'r') c->compare_mask |= 1u << atoi(r + 1);
+                    int reg = cfg_reg(r);
+                    if (reg >= 0) c->compare_mask |= 1u << reg;
                     else if (!strcmp(r, "nz")) c->compare_flags |= 1;
                     else if (!strcmp(r, "c")) c->compare_flags |= 2;
                     else if (!strcmp(r, "v")) c->compare_flags |= 4;
+                    else cfg_warn(path, lineno, "compare= takes r0..r12, nz, c, v", r);
                 }
                 break;   /* strtok state reused; compare= must be last */
             }
             if (!strcmp(tok, "hwtick")) { c->hwtick = 1; continue; }
             if (!strncmp(tok, "ignore=", 7)) {
                 char *p = tok + 7;
-                c->ignore_addr[c->nignore] = (u32)strtoul(p, &p, 0);
+                u32 addr = (u32)strtoul(p, &p, 0);
+                if (*p != ':') { cfg_warn(path, lineno, "ignore= wants ADDR:LEN", tok); continue; }
+                if (c->nignore == (int)(sizeof c->ignore_addr / sizeof c->ignore_addr[0])) {
+                    cfg_warn(path, lineno, "more than 4 ignore= regions", tok);
+                    continue;
+                }
+                c->ignore_addr[c->nignore] = addr;
                 c->ignore_len[c->nignore++] = (u32)strtoul(p + 1, NULL, 0);
                 continue;
             }
             if (tok[0] == 'r' && strchr(tok, '=')) {
-                int reg = atoi(tok + 1);
+                int reg = cfg_reg(tok);
+                if (reg < 0) { cfg_warn(path, lineno, "rN= takes r0..r12", tok); continue; }
                 char *v = strchr(tok, '=') + 1;
-                c->has_choice[reg] = 1;
-                for (char *p = v; p && *p && c->nchoices[reg] < 16; ) {
+                for (char *p = v; p && *p; ) {
+                    if (c->nchoices[reg] == 16) { cfg_warn(path, lineno, "more than 16 values", tok); break; }
                     c->choices[reg][c->nchoices[reg]++] = (u32)strtoul(p, &p, 0);
                     if (*p == '|') p++; else break;
                 }
+                c->has_choice[reg] = c->nchoices[reg] > 0;
+                continue;
             }
+            cfg_warn(path, lineno, "unknown setting", tok);
         }
     }
     if (f) fclose(f);
@@ -160,6 +208,23 @@ static void die(int sig) {
     _exit(3);
 }
 
+/* A memory fault: with DIFFTEST_VERBOSE, say where (a store into the
+ * read-only ROM is the one cause worth naming: host/memmap.c). */
+static void die_fault(int sig, siginfo_t *si, void *ctx) {
+    (void)ctx;
+    if (getenv("DIFFTEST_VERBOSE")) {
+        u32 a = (u32)(uintptr_t)si->si_addr;
+        char msg[96];
+        int n = snprintf(msg, sizeof msg, "[child] %s at %#x, guest pc-ish lr=%#x\n",
+                         a - 0x08000000u < 0x06000000u && si->si_code == SEGV_ACCERR ? "store into ROM"
+                                                                                    : "bad access",
+                         a, cpu.r[14]);
+        write(2, msg, n);
+    }
+    (void)sig;
+    _exit(3);
+}
+
 /* For functions that wait on the display: advance VCOUNT and the DISPSTAT
  * VBlank flag in the background, like the LCD would. */
 static void *hw_ticker(void *arg) {
@@ -191,8 +256,9 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
     if (pid == 0) {
         if (!getenv("DIFFTEST_VERBOSE"))       /* out-of-domain inputs abort noisily */
             freopen("/dev/null", "w", stderr);
-        signal(SIGSEGV, die);
-        signal(SIGBUS, die);
+        struct sigaction fault = { .sa_sigaction = die_fault, .sa_flags = SA_SIGINFO };
+        sigaction(SIGSEGV, &fault, NULL);
+        sigaction(SIGBUS, &fault, NULL);
         signal(SIGALRM, die);
         signal(SIGABRT, die);
         signal(SIGFPE, die);
@@ -545,13 +611,14 @@ int main(int argc, char **argv) {
         if (!lifted)
             lifted = (GuestFn)dlsym(RTLD_DEFAULT, name);
         if (!hand || !lifted) { printf("%s: missing %s\n", name, hand ? name : sym); return 2; }
-        Cfg *c = &g_cfg[g_ncfg++];
-        memset(c, 0, sizeof *c);
-        snprintf(c->name, sizeof c->name, "%s", name);
+        Cfg *c = new_cfg(name);
         char regs[256];
         snprintf(regs, sizeof regs, "%s", cand_regs);
-        for (char *r = strtok(regs, ","); r; r = strtok(NULL, ","))
-            if (r[0] == 'r') c->compare_mask |= 1u << atoi(r + 1);
+        for (char *r = strtok(regs, ","); r; r = strtok(NULL, ",")) {
+            int reg = cfg_reg(r);
+            if (reg >= 0) c->compare_mask |= 1u << reg;
+            else fprintf(stderr, "-R takes r0..r12, ignored: %s\n", r);
+        }
         c->compare_flags = cand_flags;
         Pair pr = { name, hand, lifted };
         return test_pair(&pr, trials) != 0;
