@@ -141,6 +141,14 @@ functions, normalised to C types).
   `Next` body, thin adapter, `register form:` exception) as JSON; `--check` fails only on
   hits beyond `tools/abi/lint_baseline.json` (1,456 functions today). The convert
   workflow runs it on each candidate file (`check_registers`); not in `make`.
+- **Leftover reads** `python3 tools/abi/leftovers.py [--check]` (review item R1-A21): readable
+  code that reads, after `GUEST_CALL(F)`, a register or flag F does not return (its lifted
+  contract), or one the original of that caller never reads after F (per-site liveness in
+  `graph.json`), or passes such a leftover into the next callee. It would have caught all four
+  TestEventFlag bugs of 67673ff. `--check` fails unless a site carries a note
+  (`register form: relies on F leaving rN (contract says clobbered)` or
+  `leftover unused: F's rN (why)`); "zflag" sites (the original branches on F's Z, the C tests
+  r0, which F also returns) are listed for a look at F. 0 open sites since 2026-10-10.
 
 What the export says today (1,435 readable entries in 1,434 units; 13 routes, 1,314
 distinct edges from 340 of 1,862 computed call/jump sites). Readable units whose callers

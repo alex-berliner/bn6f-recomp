@@ -173,10 +173,10 @@ Next owPlayer_RequestFixedAnimation_809E14C(void) {
     R4 = anim;                  /* mov r4, r0: sub_809E462 reads r4 */
     R7 = A_eStruct200ace0;      /* ldr r7, =eStruct200ace0 */
 
-    /* sub_809E462 reports in r0 whether the animation can be applied now. */
-    GUEST_CALL(sub_809E462);
+    /* sub_809E462 reports in Z whether the animation can be applied now. */
+    GUEST_CALL(sub_809E462); /* answers in Z; the original branches on it */
 
-    if (R0 == 0) {
+    if (ZERO_FLAG()) {
         /* Approved: select the animation right away and flag the event. */
         ST8(A_eStruct200ace0 + 2, R4);  /* owPlayerFixedAnimationSelect */
 

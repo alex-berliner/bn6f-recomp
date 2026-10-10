@@ -282,8 +282,8 @@ Next aiTrySelectChipFromHand_801336C(void) {
     }
 
     /* ask the AI data whether its condition flags allow acting */
-    GUEST_CALL(returnBoolIfAIDataFlagsAreSet_8012F3E);
-    if (R0 == 0) {
+    GUEST_CALL(returnBoolIfAIDataFlagsAreSet_8012F3E); /* answers in Z; the original branches on it */
+    if (ZERO_FLAG()) {
         R0 = 0;
         SET_FLAGS_NZ(R0);
         RETURN_TO_CALLER();
@@ -382,8 +382,8 @@ Next battle_endTurnMarkActed_8017888(void) {
     u32 saved_r7 = R7;
     u32 obj = R5;
 
-    GUEST_CALL(battle_testFlag0x40_800A8F8);
-    if (R0 != 0) {
+    GUEST_CALL(battle_testFlag0x40_800A8F8); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
         R0 = LD16(obj + oBattleObject_NameID);
         GUEST_CALL(GetVerActorTyAndAIIdx_80182B4); /* -> {version, actor_type, ai_index} */
         R1 = LD8(R0 + 1); /* actor type */

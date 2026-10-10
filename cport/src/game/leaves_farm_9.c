@@ -282,12 +282,12 @@ Next getCurNaviStatTier_8014150(void) {
  * inputs:  r5 (object), r10 (battle context), lr
  * outputs: r1 (whatever the last callee left), v (set only by sub_8014432)   */
 Next battle_runObjectAI_80143FC(void) {
-    GUEST_CALL(battle_isTimeStop);
-    if (R0 != 0)
+    GUEST_CALL(battle_isTimeStop); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG())
         RETURN_TO_CALLER();
 
-    GUEST_CALL(battle_isPaused);
-    if (R0 != 0)
+    GUEST_CALL(battle_isPaused); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG())
         RETURN_TO_CALLER();
 
     GUEST_CALL(object_getFlag);
@@ -527,8 +527,8 @@ Next collision_resetAllHitData_801986C(void) {
  * Returns r3 = the object's collision data pointer (or the incoming r3 if
  * the battle was paused and nothing was touched). */
 Next battle_clearInvisFlashTimer_801A648(void) {
-    GUEST_CALL(battle_isPaused);
-    if (R0 != 0)
+    GUEST_CALL(battle_isPaused); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG())
         RETURN_TO_CALLER();
 
     u32 collision = LD32(R5 + oBattleObject_CollisionDataPtr);

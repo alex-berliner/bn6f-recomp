@@ -76,9 +76,9 @@ Next tickCountdownGate_803F530(void) {
 
     if (R0 != 0) {                      /* flag byte at 200AD04 is set */
         R4 = 1;
-        GUEST_CALL(sub_803F560);
+        GUEST_CALL(sub_803F560); /* answers in Z; the original branches on it */
 
-        if (R0 != 0) {
+        if (!ZERO_FLAG()) {
             /* Approved: count one step down. */
             R4 = 0;
             R6 = 1;

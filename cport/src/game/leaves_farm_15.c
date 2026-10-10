@@ -27,8 +27,8 @@ Next setSlotFieldsFromStartTo3_811A1F4(void) {
     u32 slot = R2;
     do {
         R0 = slot;
-        GUEST_CALL(getStructFrom2008450);
-        if (R0 != 0) {
+        GUEST_CALL(getStructFrom2008450); /* answers in Z; the original branches on it */
+        if (!ZERO_FLAG()) {
             ST16(R1 + 0xE, val0E);
             ST8(R1 + 0xC, val0C);
             ST16(R1 + 0x18, val18);
@@ -56,9 +56,9 @@ Next sprite_moveSlotGroupXY_811A220(void) {
 
     for (;;) {
         R0 = slot;
-        GUEST_CALL(getStructFrom2008450);
+        GUEST_CALL(getStructFrom2008450); /* answers in Z; the original branches on it */
 
-        if (R0 != 0) {
+        if (!ZERO_FLAG()) {
             /* sprite_setCoordinates takes the object's sprite handle in r5 */
             R5 = R1;
             R0 = x;

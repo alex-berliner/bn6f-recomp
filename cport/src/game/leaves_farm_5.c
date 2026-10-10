@@ -1224,9 +1224,9 @@ Next entity_setLookupEntryStateFromFlag_8117D10(void) {
     u32 flag = R0;
 
     R0 = R1;
-    GUEST_CALL(getStructFrom2008450);
+    GUEST_CALL(getStructFrom2008450); /* answers in Z; the original branches on it */
 
-    if (R0 != 0) {
+    if (!ZERO_FLAG()) {
         u32 entry = R1;
         ST8(entry + 9, flag != 0 ? 4 : 0);
     }
@@ -1395,9 +1395,9 @@ Next object_setSpritePosition_8119BE8(void) {
     /* r0 = struct lookup for object r2; the callee's null check gives
      * the Z flag the original branches on. */
     R0 = R2;
-    GUEST_CALL(getStructFrom2008450);
+    GUEST_CALL(getStructFrom2008450); /* answers in Z; the original branches on it */
 
-    if (R0 != 0) {
+    if (!ZERO_FLAG()) {
         u32 sprite = R1;   /* sprite/bank id returned by the lookup */
         u32 savedR5 = R5;  /* sprite_setCoordinates clobbers r5 */
 
@@ -1443,9 +1443,9 @@ Next registry_setEntryStatusByKey_8119C74(void) {
     u32 key = R1;
 
     R0 = key;
-    GUEST_CALL(getStructFrom2008450);
+    GUEST_CALL(getStructFrom2008450); /* answers in Z; the original branches on it */
 
-    if (R0 != 0) {
+    if (!ZERO_FLAG()) {
         u32 entry = R1;   /* r1 now points at the found registry entry */
         ST8(entry, (flag != 0) ? 0x23 : 1);
     }
@@ -1593,9 +1593,9 @@ Next sub_811B48C(void) {
     u32 flag = R0;
 
     R0 = R1;
-    GUEST_CALL(getStructFrom2008450);
+    GUEST_CALL(getStructFrom2008450); /* answers in Z; the original branches on it */
 
-    if (R0 != 0) {
+    if (!ZERO_FLAG()) {
         /* the helper leaves the destination byte's address in r1 */
         R2 = flag;
         ST8(R1, flag != 0 ? 0x23 : 1);
@@ -1643,11 +1643,11 @@ Next sprite_setPositionByStructIndex_811BDFC(void) {
     u32 savedR5 = R5;
 
     R0 = R2;
-    GUEST_CALL(getStructFrom2008450);
+    GUEST_CALL(getStructFrom2008450); /* answers in Z; the original branches on it */
 
-    /* R0 == 0 means there is no live entry for this index. Otherwise the
+    /* Z set means there is no live entry for this index. Otherwise the
      * entry comes back in R1 and is handed to sprite_setCoordinates in R5. */
-    if (R0 != 0) {
+    if (!ZERO_FLAG()) {
         R5 = R1;
         R0 = arg0;
         R1 = arg1;
@@ -2832,8 +2832,8 @@ Next battle_isAllianceActiveAndAiFlag0x4000_802DD2A(void) {
 /* sub_802DE5C: if test battle flag 0x40 is set, run sub_802E2C4 for
  * indices 0 and 1. Otherwise do nothing. */
 Next sub_802DE5C(void) {
-    GUEST_CALL(TestBattleFlag_0x40);
-    if (R0 != 0) { /* flag test returned set (Z clear in the original) */
+    GUEST_CALL(TestBattleFlag_0x40); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) { /* the flag is set */
         R0 = 0;
         GUEST_CALL(sub_802E2C4);
         R0 = 1;

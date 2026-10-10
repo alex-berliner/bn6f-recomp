@@ -58,8 +58,8 @@ Next battle_objAdvanceStateTimer_8008492(void) {
     GUEST_CALL(GetBattleMode);
 
     if (R0 != 5) {
-        GUEST_CALL(TestBattleFlag_0x40);
-        if (R0 != 0) {
+        GUEST_CALL(TestBattleFlag_0x40); /* answers in Z; the original branches on it */
+        if (!ZERO_FLAG()) {
             R0 = 6;
             SET_FLAGS_NZ(R0);           /* mov r0, #6 */
             ST8(R5 + 4, R0);
@@ -480,7 +480,11 @@ Next CutsceneCmd_spawn_cutscene_process(void) {
     /* Turn the field offset into an index over the script-position slots. */
     R4 = (R4 - oCutsceneState_CutsceneScriptPos) >> 2;
 
-    /* Clear both pause flags for this slot so the spawned process can run. */
+    /* Clear both pause flags for this slot so the spawned process can run.
+     * leftover unused: ReadMapScriptByte's c, ClearCutsceneFlag's c. The
+     * original enters both calls with c = 0 (from its add). ClearCutsceneFlag
+     * passes c on only when its shift is 0 (slot 0's first flag), and the
+     * second call's shift (4-7) sets it, so the c passed here reaches nothing. */
     R0 = R4 + CUTSCENE_FLAG_SCRIPT_1_PAUSED;
     GUEST_CALL(ClearCutsceneFlag);
     R0 = R4 + CUTSCENE_FLAG_SCRIPT_1_PAUSED_LONG;

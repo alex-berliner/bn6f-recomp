@@ -556,11 +556,11 @@ Next CutsceneCmd_wait_chatbox(void) {
     u32 flagOperand = R4;
 
     R0 = flagOperand & 0x80;
-    GUEST_CALL(chatbox_mask_eFlags2009F38);
-    if (R0 != 0) {
+    GUEST_CALL(chatbox_mask_eFlags2009F38); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
         R0 = flagOperand & 0x38;
-        GUEST_CALL(chatbox_mask_eFlags2009F38);
-        if (R0 == 0) {
+        GUEST_CALL(chatbox_mask_eFlags2009F38); /* answers in Z; the original branches on it */
+        if (ZERO_FLAG()) {
             /* Condition still pending: wait, don't consume the command. */
             R0 = 0;
             SET_FLAGS_NZ(R0);
@@ -1070,9 +1070,9 @@ Next sprite_testFrameParamsMaskC0_81190F8(void) {
     /* The callees see r4 = 0 here, matching the original's working register. */
     R4 = 0;
 
-    /* Fetch the struct for the handle in r0; r0 = NULL if there is none. */
-    GUEST_CALL(getStructFrom2008450);        /* -> r0 = struct ptr, r1 = frame info */
-    if (R0 != 0) {
+    /* Look up the entry for the handle in r0; Z set means it is unused. */
+    GUEST_CALL(getStructFrom2008450);        /* r1 = the entry; Z set when its first byte is 0 */
+    if (!ZERO_FLAG()) {
         /* The frame-parameter query takes the accompanying value in r5. */
         R5 = R1;
         GUEST_CALL(sprite_getFrameParameters);   /* -> r0 = frame parameter bits */
@@ -2085,8 +2085,8 @@ Next cutscene_TryStartNotification_8035084(void) {
     u32 result;
 
     /* Bail out if the Slip effect is running or a cutscene is already active. */
-    GUEST_CALL(IsNotSlipRunningAndNotInCutscene);
-    if (R0 != 0) {
+    GUEST_CALL(IsNotSlipRunningAndNotInCutscene); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
         /* Ask whether there is a pending notification; if so, start its
          * cutscene, passing the notification kind as the parameter. */
         GUEST_CALL(claimNextPendingRequest_8035756);
@@ -2206,9 +2206,9 @@ Next chatbox_stepContextScript_8047028(void) {
 
     /* Proceed only while event flag 0x8 is set. */
     R0 = 8;
-    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    GUEST_CALL(chatbox_mask_eFlags2009F38); /* answers in Z; the original branches on it */
 
-    if (R0 != 0) {
+    if (!ZERO_FLAG()) {
         /* Pick the script and scroll speed based on the repeat counter. */
         u32 scriptIdx = 1;
         u32 scrollSpeed = 8;

@@ -389,8 +389,8 @@ Next battle_objectCheckPanelByAlliance_800E5AC(void) {
     /* isValidPanel and getFlag both see the original r0/r1 (isValidPanel
      * may adjust them and getFlag consumes the result), so R0/R1 are left
      * alone until both calls are done. */
-    GUEST_CALL(object_isValidPanel);
-    if (R0 == 0) {                  /* invalid panel */
+    GUEST_CALL(object_isValidPanel); /* answers in Z; the original branches on it */
+    if (ZERO_FLAG()) {                  /* invalid panel */
         R0 = 0;
         SET_FLAGS_NZ(R0);           /* mov r0,#0: Z set, C/V untouched */
         RETURN_TO_CALLER();

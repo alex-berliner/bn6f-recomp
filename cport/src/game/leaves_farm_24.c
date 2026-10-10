@@ -539,11 +539,11 @@ Next battle_tickAiSelfDrain_8010230(void) {
     u32 savedR4 = R4;
 
     /* Skip entirely while time is stopped or the battle is paused. */
-    GUEST_CALL(battle_isTimeStop);
-    if (R0 != 0)
+    GUEST_CALL(battle_isTimeStop); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG())
         RETURN_TO_CALLER();
-    GUEST_CALL(battle_isPaused);
-    if (R0 != 0)
+    GUEST_CALL(battle_isPaused); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG())
         RETURN_TO_CALLER();
 
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
@@ -2307,8 +2307,8 @@ Next battle_setupAllianceEntryKind3_802DFC8(void) {
     R1 = 0xE8 + 0xE8; /* 0x1D0 bytes */
     GUEST_CALL(ZeroFillByWord);
 
-    GUEST_CALL(battle_testFlag0x40_800A8F8);
-    if (R0 != 0) {
+    GUEST_CALL(battle_testFlag0x40_800A8F8); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
         ST8(entry + 0x00, 1);            /* active */
         ST8(entry + 0x0B, 0xFF);
         ST8(entry + 0x10, 1);

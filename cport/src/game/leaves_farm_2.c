@@ -2023,9 +2023,9 @@ Next sub_800A86E(void) {
 Next battle_testFlag0x40_800A8F8(void) {
     u32 result;
 
-    GUEST_CALL(TestBattleFlag_0x40);
+    GUEST_CALL(TestBattleFlag_0x40); /* answers in Z; the original branches on it */
 
-    result = (R0 != 0) ? 1 : 0;
+    result = ZERO_FLAG() ? 0 : 1;
     R0 = result;
     SET_FLAGS_ADD(result, 0);
 

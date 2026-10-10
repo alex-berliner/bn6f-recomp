@@ -20,18 +20,18 @@ Next SaveMenuUpdate8132C68(void) {
 
     /* Was the menu already dismissed? */
     R0 = 8;
-    GUEST_CALL(chatbox_mask_eFlags2009F38);
-    startFade = (R0 != 0);
+    GUEST_CALL(chatbox_mask_eFlags2009F38); /* answers in Z; the original branches on it */
+    startFade = !ZERO_FLAG();
 
     if (!startFade) {
         /* Otherwise fade only once the chatbox text is done (0x20)
          * and the extra confirmation flag (0x110) is also set. */
         R0 = 0x20;
-        GUEST_CALL(chatbox_mask_eFlags2009F38);
-        if (R0 != 0) {
+        GUEST_CALL(chatbox_mask_eFlags2009F38); /* answers in Z; the original branches on it */
+        if (!ZERO_FLAG()) {
             R0 = 0x110;
-            GUEST_CALL(chatbox_mask_eFlags2009F38);
-            startFade = (R0 != 0);
+            GUEST_CALL(chatbox_mask_eFlags2009F38); /* answers in Z; the original branches on it */
+            startFade = !ZERO_FLAG();
         }
     }
 

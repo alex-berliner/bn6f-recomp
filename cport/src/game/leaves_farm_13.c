@@ -172,8 +172,8 @@ Next tryStartNotificationCutscene_8035054(void) {
 
     /* Only allowed while the player has normal control:
      * the slip must not be running and no cutscene may be active. */
-    GUEST_CALL(IsNotSlipRunningAndNotInCutscene);
-    if (R0 != 0) {
+    GUEST_CALL(IsNotSlipRunningAndNotInCutscene); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
         u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
 
         /* oGameState_Unk_12 being 0xFF blocks the notification. */

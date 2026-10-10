@@ -1036,8 +1036,8 @@ Next battle_checkFlowAdvanceFlags_800A046(void) {
  * for the caller. Flags come from the last TST of that byte (or from
  * battle_isTimeStop on the time-stop path). */
 Next battle_getPhaseMode_800A152(void) {
-    GUEST_CALL(battle_isTimeStop);
-    if (R0 != 0) {
+    GUEST_CALL(battle_isTimeStop); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
         R0 = 0;
         RETURN_TO_CALLER();
     }

@@ -258,8 +258,8 @@ Next ZeroFillObjectInteractionAreas_800378C(void) {
  * r1 is left as the last callee left it on the early exits, and is 0x20 on
  * the battle_getFlags() path; callers rely on this. */
 Next battle_isTimeStopPauseOrBattleFlags0x20_800a0a4(void) {
-    GUEST_CALL(battle_isTimeStop);
-    if (R0 != 0) {
+    GUEST_CALL(battle_isTimeStop); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
         R0 = 1;
         RETURN_TO_CALLER();
     }
@@ -291,9 +291,9 @@ Next battle_isTimeStopPauseOrBattleFlags0x20_800a0a4(void) {
 Next isSameSubsystem_800A732(void) {
     u32 same = 1; /* r4 = TRUE */
 
-    GUEST_CALL(IsCurSubsystemInUse); /* -> R0 = bool, flags set */
+    GUEST_CALL(IsCurSubsystemInUse); /* answers in Z; the original branches on it */
 
-    if (R0 != 0) {
+    if (!ZERO_FLAG()) {
         /* Subsystem is in use: "same" only while its state bit 1 is set. */
         R3 = A_eStruct203F7D8;
         R1 = LD8(A_eStruct203F7D8 + 1);

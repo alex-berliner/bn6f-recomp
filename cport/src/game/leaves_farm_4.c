@@ -751,9 +751,9 @@ Next object_highlightPanel(void) {
     u32 object = R0;
     u32 attr = R1;
 
-    GUEST_CALL(object_isValidPanel);
+    GUEST_CALL(object_isValidPanel); /* answers in Z; the original branches on it */
 
-    if (R0 == 0) {
+    if (ZERO_FLAG()) {
         /* Not a valid panel: restore the original arguments and return. */
         R0 = object;
         R1 = attr;
