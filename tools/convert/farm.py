@@ -15,6 +15,7 @@ import glob, json, os, re, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/paths.env)
 import llm  # noqa: E402
 
 HOST = os.path.join(ROOT, "cport")
@@ -206,7 +207,7 @@ def input_key(name):
         m = re.match(r"/\* \w+: ([0-9A-F]{8})-([0-9A-F]{8})", lifted)
         lo, hi = (int(m.group(1), 16), int(m.group(2), 16)) if m else (0, 0)
         if 0x08000000 <= lo < hi <= 0x0A000000 and hi - lo < 0x10000:
-            with open(os.path.join(ROOT, "bn6f", "bn6f.gba"), "rb") as rom:
+            with open(gamepaths.ORIG_ROM, "rb") as rom:
                 rom.seek(lo - 0x08000000)
                 return "rom:" + hashlib.sha1(rom.read(hi - lo)).hexdigest()[:16]
     asm = find_asm(name)
@@ -276,7 +277,7 @@ def test(name, code, snaps, contract, workdir, check_registers=True):
         return False, "compile errors:\n" + "\n".join(errs)
     regs, flags = compare_args(contract)
     base = [DIFFTEST, "-L", so, "-R", ",".join(regs)] + (["-F", ",".join(flags)] if flags else [])
-    env = dict(os.environ, BN6F_ROM=os.path.join(ROOT, "bn6f", "bn6f.gba"))
+    env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM)
     reports = []
     ok = True
     for extra in (["-S", os.path.join(snaps, name)], ["-n", "300"]):
