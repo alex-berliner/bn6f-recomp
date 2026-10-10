@@ -288,7 +288,7 @@ def convert(name, model, args):
         for rnd in range(args.rounds + 1):
             t0 = time.time()
             try:
-                reply = llm.complete(model, msgs, system=SYSTEM, max_tokens=24000, tag=f"{name} round {rnd}",
+                reply = llm.complete(model, msgs, system=SYSTEM, max_tokens=40000, tag=f"{name} round {rnd}",
                                      usage_log=os.path.join(ROOT, "tools/convert/usage.jsonl"))
             except Exception as e:
                 report = f"model error: {e}"

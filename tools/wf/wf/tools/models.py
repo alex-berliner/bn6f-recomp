@@ -124,7 +124,7 @@ def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool 
     llm = cast(ModuleType, _farm.llm)  # pyright: ignore[reportAny]
     started = time.monotonic()
     try:
-        reply = cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=24000,  # pyright: ignore[reportAny]
+        reply = cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=40000,  # pyright: ignore[reportAny]
                                        tag=tag, usage_log=str(USAGE_LOG), wait_out_limits=wait_out_limits))
     except Exception as error:  # the provider's own errors: HTTP, timeouts, bad JSON
         return ModelReply(candidate=None, seconds=round(time.monotonic() - started, 1),
