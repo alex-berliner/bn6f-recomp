@@ -1,0 +1,64 @@
+name: nullsub_106
+address: '0x080F28C0'
+kind: function
+status: confirmed
+summary: Empty placeholder function; tail-calls its adapter and immediately returns to the caller.
+interface: 'void nullsub_106(void); // inputs: lr; outputs: -; clobbers: -; preserved: -'
+details: A no-op stub at 0x080F28C0 that performs no work and returns immediately. Its body simply moves pc <- lr.
+  The implementation expands into a trivial call to nullsub_106_impl() followed by RETURN_TO_CALLER(), preserving
+  the original register contract (no I/O, no clobbers). It is immediately followed in ROM by byte_80F28C4 (an 8-byte
+  table), byte_80F28CC (a multi-record structure table, ~28 bytes), byte_80F28F0 (a 162-byte palette/tile-like table
+  of 0xFF bytes with sparse 0x34, 0xB1, 0x9F, 0xA9 entries), and off_80F29B0 (a Thumb jump table of 10 function
+  pointers, each stored as address+1 for Thumb mode). Those tables are unrelated to this function's behavior; they
+  only sit adjacent in the same 16-byte-aligned block.
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-013539);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 72' --file inbox_farm_72.c nullsub_106
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function nullsub_106
+
+    ./wf verify --function nullsub_106 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-013539-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function nullsub_106
+
+    ./wf verify --function nullsub_106 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-013539-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function nullsub_106
+
+    ./wf verify --function nullsub_106 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013539-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, story7.'
+  reproduce: grep -l '^080f28c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 59fc480
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battle
+- battlesweep
+- chips
+- story7
+open_questions:
+- Why was this slot kept as a nullsub rather than a TailCall to a real handler (i.e., was this an early-link callback
+  address later patched via off_80F29B0)?
+sources:
+- tools/wf run convert-20261011-013539
+- recomp 59fc480

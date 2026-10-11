@@ -1,0 +1,82 @@
+name: sub_80E0568
+address: '0x080E0568'
+kind: function
+status: confirmed
+summary: Battle object's "init" state action - loads sprite descriptor data, sets up animation/palette/flip, marks
+  the object active, then advances to the update phase.
+interface: u32 battle_objectInitAction_80E0568(u32 obj /* r5 */); // returns r0 = CUR_STATE_UPDATE; clobbers r0-r3,
+  lr, NZCV
+details: "Called once when a battle object first spawns, as the initial entry in its state-action table.\nReads\
+  \ oBattleObject_Param1 as an index into a 4-byte-per-entry descriptor table anchored at\nbyte_80E0398 (loaded\
+  \ via off_80E0634). Each descriptor is [sprite_id, palette_id, anim_id, base_palette_index].\n\nSequence:\n  1.\
+  \ sprite_load(0x80, desc[0], desc[1]) then sprite_loadAnimationData(), sprite_noShadow()\n  2. desc[2] -> oBattleObject_CurAnim\
+  \ and oBattleObject_CurAnimCopy, then sprite_setAnimation/loadAnimationData/update\n  3. sprite_setPalette(desc[3]\
+  \ + oBattleObject_Param3)\n  4. sprite_setFlip(oBattleObject_Param2)\n  5. Sets bit 1 of oObjectHeader_Flags (marks\
+  \ the object \"active\" in the object header)\n  6. If oBattleObject_Param4 != 0, forces sprite BG priority 0\
+  \ via sprite_setPriority_8002E14(0)\n  7. Calls battle_MirrorRelatedObjectFlag1_80E0616 (mirrors a related-object\
+  \ flag into this object)\n  8. Writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized\
+  \ and returns the same value\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-013539);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 72' --file inbox_farm_72.c sub_80E0568
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E0568
+
+    ./wf verify --function sub_80E0568 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 295 out
+    of domain (verify run convert-20261011-013539-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E0568
+
+    ./wf verify --function sub_80E0568 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 20 out of domain (verify run convert-20261011-013539-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E0568
+
+    ./wf verify --function sub_80E0568 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013539-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080e0568 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 59fc480
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Identity/contents of the descriptor table at byte_80E0398 (which Param1 indices map to which sprites)
+- 'Meaning of Param2/Param3/Param4 tweaks (likely per-battle-object-type variations: mirror, palette swap, BG priority)'
+- What exactly battle_MirrorRelatedObjectFlag1_80E0616 mirrors (header flag 0x1?)
+sources:
+- tools/wf run convert-20261011-013539
+- recomp 59fc480
