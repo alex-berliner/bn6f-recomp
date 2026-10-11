@@ -54,3 +54,34 @@ def test_an_install_queues_its_register_code_and_raises_the_baseline_by_it(monke
 
     assert fill_install_commit(functions, CommitHash("0123456789abcdef"))
     assert [row.install_commit for row in read_queue(queue)] == ["0123456789"]
+
+
+def test_register_form_hazards_name_their_functions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(retype, "_next_functions", lambda: frozenset({"sub_803A7EC", "TestEventFlag"}))
+    code = """/* ── sub_80498F8 ── */
+Next sub_80498F8(void) {
+    LR = 0x804990C | 1u;   /* tail call */
+    GUEST_CALL_ADDR(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8001000 ── */
+Next sub_8001000(void) {
+    u32 saved_lr = LR;
+    sub_803A7EC();
+    GUEST_CALL(TestEventFlag);
+    LR = saved_lr;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8001100 ── */
+Next sub_8001100(void) {
+    GUEST_CALL(sub_803A7EC);   /* sub_803A7EC() in a comment is fine */
+    RETURN_TO_CALLER();
+}
+"""
+    hazards = retype.register_form_hazards(code)
+
+    assert set(hazards) == {"sub_80498F8", "sub_8001000"}
+    assert "sets LR" in hazards[FunctionName("sub_80498F8")]
+    assert "sub_803A7EC as a C function" in hazards[FunctionName("sub_8001000")]

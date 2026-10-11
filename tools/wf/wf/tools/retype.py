@@ -9,7 +9,9 @@ the lint baseline by exactly those keys' counts. tools/gate.py lets the baseline
 commit adds here and by nothing else. A row goes when its function is typed (always allowed); renames
 (tools/rename_symbol.py) rename its function and keys as they do the baseline's."""
 import csv
+import functools
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -194,6 +196,40 @@ def leftover_reads(code: str, file_name: str) -> dict[FunctionName, str]:
             continue
         _ = found.setdefault(owner, f"reads {site.reg} after {site.callee}, which does not return it ({site.kind}; "
                                     f"line {site.line}, tools/abi/leftovers.py)")
+    return found
+
+
+# `LR = <an address>`: GUEST_CALL keeps LR, so RETURN_TO_CALLER later returns to that address, into the middle
+# of the original (sub_80498F8, old-prompt set 3: the port's main_ returned on menus3)
+_LR_CONSTANT = re.compile(r"^[ \t]*LR\s*=\s*(?:0x[0-9A-Fa-f]+|[0-9]+)\b[^;]*;", re.M)
+_CALL = re.compile(r"(?<![\w.>])(\w+)\s*\(\s*\)")
+
+
+@functools.cache
+def _next_functions() -> frozenset[str]:
+    """Every guest function the port declares (cport/include/lifted.h): `Next NAME(void)`."""
+    path = REPO / "cport/include/lifted.h"
+    return frozenset(re.findall(r"\bNext\s+(\w+)\s*\(void\)", path.read_text())) if path.exists() else frozenset()
+
+
+def register_form_hazards(code: str) -> dict[FunctionName, str]:
+    """The functions of an assembled farm file whose register-form code does what the tests can miss but the game
+    does not survive: LR set to an address (RETURN_TO_CALLER returns there), or a guest function called as a C
+    function instead of through GUEST_CALL (its continuation is dropped: a tail call or a multi-step return is cut
+    short; startScreen_AnimatePressStart_803E938, old-prompt set 1, stopped the port at the title screen)."""
+    bare = re.sub(r"/\*.*?\*/|//[^\n]*", lambda m: re.sub(r"[^\n]", " ", m[0]), code, flags=re.S)
+    defined = set(re.findall(r"\bNext\s+(\w+)\s*\(\s*void\s*\)\s*\{", bare))
+    found: dict[FunctionName, str] = {}
+    for match in _LR_CONSTANT.finditer(bare):
+        owner = function_at_line(code, bare.count("\n", 0, match.start()) + 1)
+        if owner is not None:
+            _ = found.setdefault(owner, f"sets LR to an address ({match[0].strip()}), so it returns there")
+    nexts = _next_functions()
+    for match in _CALL.finditer(bare):
+        if match[1] in nexts and match[1] not in defined:
+            owner = function_at_line(code, bare.count("\n", 0, match.start()) + 1)
+            if owner is not None:
+                _ = found.setdefault(owner, f"calls the guest function {match[1]} as a C function, not through GUEST_CALL")
     return found
 
 
