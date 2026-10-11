@@ -76,6 +76,33 @@ Next battle_setExtraAnimState_80E0F2E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E18DA ── */
+/* sub_80E18DA: tick a battle object's vanish/teleport phase.
+ *
+ * r5 = battle object pointer.
+ *
+ * If the phase hasn't been initialized yet (oBattleObject_PhaseInitialized == 0),
+ * seed the timer at 0x1E and mark phase initialized = 4. Then decrement the
+ * timer; once it would go negative, advance the phase state to 0x0C. */
+Next sub_80E18DA(void) {
+    u8 phaseInit = (u8)LD8(R5 + oBattleObject_PhaseInitialized);
+    if (phaseInit == 0) {
+        ST16(R5 + oBattleObject_Timer, 0x1E);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+    }
+
+    u16 timer = (u16)LD16(R5 + oBattleObject_Timer);
+    u32 result = timer - 1;
+    ST16(R5 + oBattleObject_Timer, (u16)result);
+    SET_FLAGS_NZ(result);
+
+    if (!NEGATIVE_FLAG())
+        RETURN_TO_CALLER();
+
+    ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0x0C);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectSetTimerFromParam1Table_80E19DC ── */
 /* battle_objectSetTimerFromParam1Table_80E19DC(r5 = battle object):
  * Load the object's next Timer value from a lookup table indexed by its

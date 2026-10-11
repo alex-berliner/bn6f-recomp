@@ -123,6 +123,20 @@ Next timer_IsEnabled_8144CE0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81453D4 ── */
+/* sub_81453D4: Sync VBlank; if rfu_syncVBlank returned non-zero,
+ * call sub_81461B0 with r0=0xF1, r1=0, then sub_81464B4. */
+Next sub_81453D4(void) {
+    GUEST_CALL(rfu_syncVBlank);
+    if ((s32)R0 != 0) {
+        R0 = 0xF1;
+        R1 = 0;
+        GUEST_CALL(sub_81461B0);
+        GUEST_CALL(sub_81464B4);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8146BF4 ── */
 /* sub_8146BF4: read the state byte of the object referenced by dword_2010CC0
  * (dword_2010CC0 -> struct; first byte is its state code).

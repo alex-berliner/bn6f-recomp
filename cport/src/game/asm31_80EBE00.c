@@ -826,6 +826,36 @@ Next aiAttackDispatchHandler_80FE452(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FE4AC ── */
+/* sub_80FE4AC: AI attack-state tick.
+ *
+ * Inputs:  r5 = BattleObject*, r6/r7 = AI attack vars / context, lr = return address.
+ * Outputs: r1.
+ * Clobbers: r0, r1, r2, r3, r6, r7, lr, flags.
+ *
+ * First call initializes the state (sets Unk_01 = 4, CurAnim = 0, copies Unk_18
+ * into the timer Unk_10). Subsequent calls tick the timer and, when it reaches
+ * zero, exit the attack state via object_exitAttackState.
+ */
+Next sub_80FE4AC(void) {
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        /* First-time initialization. */
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R5 + oBattleObject_CurAnim, 0);
+        ST16(R7 + oAIAttackVars_Unk_10, LD16(R7 + oAIAttackVars_Unk_18));
+    } else {
+        /* Tick the countdown timer. */
+        u32 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
+        ST16(R7 + oAIAttackVars_Unk_10, (u16)timer);
+        if (!(timer & 0x80000000) && timer != 0) {
+            /* timer > 0 signed -> still ticking, return. */
+        } else {
+            GUEST_CALL(object_exitAttackState);
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FE4D0 ── */
 /* Register contract:
  *   inputs:  r0 r2 r3 r4 r5 r6 r7 lr

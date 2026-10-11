@@ -2193,6 +2193,90 @@ Next chatbox_runVariantScript_8127ED4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8127F54 ── */
+/* sub_8127F54(r5 = entity, r10, lr):
+ *   Per-frame update for an entity on the field: if it is no longer active
+ *   (flags cleared or state id == 0x0C terminator), bail out. Otherwise load
+ *   an affine-bg parameter block from the entity, push it through sub_811FAF4
+ *   along with the tile index in the col/row table, then tick the entity's
+ *   duration timer. When the timer hits zero, pull the next (tile, duration)
+ *   pair from the dword_8127980 sequence via sub_8120CC8 and store them back. */
+Next sub_8127F54(void) {
+    u32 entity = R5;
+
+    /* Bail if the entity has been cleared (flag byte == 0) or its state
+     * id is 0x0C (terminator). */
+    if (LD8(entity + 0x1E) == 0)         RETURN_TO_CALLER();
+    if (LD8(entity + 0x02) == 0x0C)      RETURN_TO_CALLER();
+
+    /* Build the affine-bg setup word and forward it (plus the tile id and
+     * the per-column tile table) to sub_811FAF4. The 0x40000000 constant
+     * is passed to the callee as the destination/base argument; r4 must
+     * end up back at the caller's value. */
+    {
+        u32 saved_r4 = R4;
+        u32 bg_word  = 0xE0000;
+        u32 col_word = (u32)LD16(entity + 0x20) * 0x10 + 0x18;
+        u32 setup    = bg_word | col_word;
+        u32 tile_id  = LD8(entity + 0x0C);
+
+        R0 = setup;
+        R1 = 0x20003;
+        R2 = tile_id;
+        R3 = A_byte_8127978;
+        R4 = 0x40000000;
+        GUEST_CALL(sub_811FAF4);
+        R4 = saved_r4;
+    }
+
+    /* Tick the entity's duration timer; reset it from the table when it
+     * expires. */
+    {
+        u32 timer = LD8(entity + 0x0E) - 1;
+        ST8(entity + 0x0E, (u8)timer);
+        SET_FLAGS_NZ(timer);
+        if (!ZERO_FLAG())                RETURN_TO_CALLER();
+
+        /* Timer expired: pull the next tile/duration pair from the
+         * dword_8127980 sequence via sub_8120CC8. */
+        R1 = A_dword_8127980;
+        GUEST_CALL(sub_8120CC8);
+        ST8(entity + 0x0C, (u8)R0);
+        ST8(entity + 0x0E, (u8)R1);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8127FE4 ── */
+/* sub_8127FE4(r5 = object pointer)
+ * Wrapper that fills out the argument set and forwards to sub_811FA98
+ * (a large constructor / dispatcher). r5 is preserved across the call. */
+Next sub_8127FE4(void) {
+    u32 obj = R5;
+    u32 save_r4 = R4;
+    u32 save_r6 = R6;
+    u32 save_r7 = R7;
+
+    R0 = 0xE10014;
+    R1 = 0x20002;
+    R2 = LD16(obj + 0x1E);
+    R3 = LD16(obj + 0x24);
+
+    /* sub_811FA98 needs R4=4, R6=oSomeTable_30CA4C, R7=0x35. */
+    R4 = 4;
+    R6 = 0x30CA4C;
+    R7 = 0x35;
+
+    GUEST_CALL(sub_811FA98);
+
+    R4 = save_r4;
+    R6 = save_r6;
+    R7 = save_r7;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81280DC ── */
 /* NPC entry event table builder: zero-fills the table, then stamps sequential
  * 16-bit event numbers into each NPC's low/high u16 array using three sub-runs
@@ -2382,6 +2466,58 @@ Next palette_fillBufferWithFadeByte_8128260(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8128280 ── */
+/* sub_8128280: For each of up to 4 entries in the battle object table, check the
+ * "sub flag" derived from the object's flags+0x18 high half; if the matching
+ * event flag (sub_flag + 0x1DA0) is not set, call sub_81282C0 with the index.
+ *
+ *   r5 = battle object pointer
+ *   r10 = (preserved, used by caller)
+ *
+ *   inputs:  r5 r10 lr
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r6 r7
+ */
+Next sub_8128280(void) {
+    u16 obj_flags = LD16(R5 + 0x24);
+    u16 obj_count = LD16(R5 + 0x1E);
+
+    /* Skip everything if there are no entries. */
+    if (obj_count == 0) {
+        RETURN_TO_CALLER();
+    }
+
+    /* The base pointer dword_2027590 is a struct array whose stride is 0x20. */
+    u32 base = (u32)A_dword_2027590;
+    const u32 STRIDE = 0x20;
+
+    for (u32 i = 0; i < 4; i++) {
+        /* Stop the iteration once we've handled the configured number of entries. */
+        if (i >= obj_count) {
+            break;
+        }
+
+        u32 entry_addr = base + (obj_flags + i) * STRIDE;
+        u32 raw = LD32(entry_addr + 0x18);
+        u16 sub_flag = (u16)(raw >> 16);
+
+        /* TestEventFlag takes the flag id in r0; 0x1DA0 is the base offset
+         * where these per-object event flags live. */
+        R0 = sub_flag + 0x1DA0;
+        GUEST_CALL(TestEventFlag);
+        /* If the flag IS set, skip the helper call (bne = flag set path). */
+        if (!ZERO_FLAG()) {
+            /* TestEventFlag returned nz: flag set, nothing to do. */
+        } else {
+            R0 = i;
+            GUEST_CALL(sub_81282C0);
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81284A4 ── */
 /* sub_81284A4: store the mode/state pair (7, 4) at byte_2000FE0,
  * exactly as the original does via the byte_2000FE0 base pointer. */
@@ -2429,6 +2565,140 @@ Next sub_81284B4(void) {
     FlaggedEntryCount result = count_flagged_entries();
     R0 = result.flagged_count;
     R1 = result.unflagged_count;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81287DC ── */
+/* sub_81287DC:
+ *   inputs:  r5 r10 lr
+ *   outputs: r5
+ *
+ * Scene step routine. If a screen fade is currently active, mark the
+ * scene as needing to be cancelled (r5->field_2 = 4). Then run the two
+ * per-frame scene helpers (sub_8128B4C / sub_8128B98). Finally snapshot
+ * the live position/animation fields into the "previous" slots of the
+ * scene object so the next frame can compare against them.
+ */
+Next sub_81287DC(void) {
+    /* push {lr} ... pop {pc}: the original saves LR only to throw it
+       away on return, so no real stack frame is needed here. */
+
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        ST8(R5 + 2, 4);
+    }
+
+    GUEST_CALL(sub_8128B4C);
+    GUEST_CALL(sub_8128B98);
+
+    /* snapshot live state into the "prev" fields */
+    ST16(R5 + 0x26, LD16(R5 + 0x24));
+    ST16(R5 + 0x22, LD16(R5 + 0x20));
+    ST8 (R5 + 0x0E, LD8 (R5 + 0x0D));
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8128B4C ── */
+/* sub_8128B4C: Battle object rendering entry — pack a tile/affine descriptor and
+ * submit it via the affine-OBJ queue (sub_811FAF4). Reads the battle-object
+ * "visible" flag at +0x1E; if unset, returns immediately. Outputs the resulting
+ * tile attribute byte back into the object at +0xC.
+ *
+ * inputs:  r5, r10, lr
+ * outputs: r5
+ * clobbers: nz, c, v, r0, r1, r2, r3, lr
+ * preserved: r4, r5, r6, r7
+ */
+Next sub_8128B4C(void) {
+    /* R4 is callee-preserved by this function; stash and restore it. */
+    u32 saved_r4 = R4;
+
+    /* Skip entirely when the object isn't flagged visible. */
+    if (LD16(R5 + 0x1E) == 0)
+        goto done;
+
+    /* Build the affine attribute word:
+     *   base = 0x0100000   (affine-enabled OBJ group 1)
+     * If bit 0 of the object's flags (+0xD) is set, OR in 0x680000 (large +
+     * double-size affine bits), giving the extended affine variant. */
+    u32 attr01 = 0x0100000;
+    if (LD8(R5 + 0xD) & 0x01)
+        attr01 |= 0x680000;
+
+    /* Layer index (u16 at +0x20) -> row stride of 0x10, plus base offset 0x18. */
+    u32 layer_off = ((u32)LD16(R5 + 0x20) * 0x10) + 0x18;
+    attr01 |= layer_off;
+
+    /* Hand off to the queue helper. Returns the tile-attribute byte that gets
+     * stored back into the object at +0xC. */
+    R0 = attr01;
+    R1 = 0x20002;
+    R2 = LD8(R5 + 0xC);
+    R3 = (u32)A_byte_8128678;
+    R4 = 0x40000000;
+    GUEST_CALL(sub_811FAF4);
+    ST8(R5 + 0xC, (u8)R0);
+
+done:
+    R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8128BF0 ── */
+/* sub_8128BF0(r5 = dialogue object):
+ *   If the dialogue is still being drawn (state word at +0x1E) and the script
+ *   byte selected by (text_id_hi + text_id_lo)*2 + speaker_id is 0x40
+ *   (the "end of script" sentinel), kick the object into state 8 and trigger
+ *   a fast fade-out so the scene can close. */
+Next sub_8128BF0(void) {
+    /* "still drawing" flag */
+    if (LD16(R5 + 0x1E) == 0)
+        RETURN_TO_CALLER();
+
+    /* look up the script byte for the (lo, hi) text pair + speaker */
+    u32 idx = (LD16(R5 + 0x24) + LD16(R5 + 0x20)) << 1;
+    idx = (idx + LD8(R5 + 0xD)) << 1;
+    u8 byte = LD8(A_eTextScript201BF00 + idx);
+    if (byte != 0x40)
+        RETURN_TO_CALLER();
+
+    /* end-of-text: switch the object to state 8 and fade the screen out */
+    ST8(R5 + 2, 8);
+    R0 = 0x0C;
+    R1 = 0x10;
+    GUEST_CALL(SetScreenFade);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8128C20 ── */
+/* sub_8128C20(r5 = battle object pointer):
+ * Build a coordinate from the battle object's HP field (parity + half) and queue
+ * a sub_811FA98 call via a command buffer (opcode 0xE1.0x13, key 0x20002).
+ * Preserves r4, r5, r6, r7 across the call. */
+Next sub_8128C20(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+    u32 saved_r7 = R7;
+
+    u32 hp = LD16(R5 + 0x1E);
+    u32 half = hp >> 1;
+    u32 coord = (hp - (half << 1)) + half;
+
+    R0 = (0xE1u << 16) | 0x13;
+    R1 = 0x20002;
+    R2 = coord;
+    R3 = LD16(R5 + 0x24);
+    R4 = 4;
+    R6 = 0xC240;
+    R7 = 0x37;
+
+    GUEST_CALL(sub_811FA98);
+
+    R4 = saved_r4;
+    R6 = saved_r6;
+    R7 = saved_r7;
+
     RETURN_TO_CALLER();
 }
 
@@ -2831,6 +3101,322 @@ Next sub_812933C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129400 ── */
+/* sub_8129400: per-frame update for the screen-fade driven pop scene.
+ * Inputs:  r5 = scene state struct, r10 = some entity ref, lr = return addr
+ * Outputs: r5/r8/r9/r10/r11/r12 preserved with caller-supplied values
+ * Clobbers: r0/r1/r2/r3/r4/r6/lr and NZCV
+ */
+Next sub_8129400(void) {
+    /* If a screen fade is already running, skip the "pop in" path and just
+     * continue driving the scene's normal update tick. */
+    GUEST_CALL(IsScreenFadeActive);
+    if (ZERO_FLAG() == 0) {
+        GUEST_CALL(sub_8046664);
+        ST8(R5 + 0xD, 0);
+        ST8(R5 + 0x02, 0x0C);
+        GUEST_CALL(clearStruct200BC30_803EBAC);
+
+        /* Install the per-scene palette/screen data and bring up the BG. */
+        R0 = A_byte_8129168;
+        GUEST_CALL(sub_80465A0);
+        GUEST_CALL(bg_LoadFullScreenTilesAndSetup_812AFB0);
+
+        /* Show the dialog box frame; we will fill the body with text next. */
+        GUEST_CALL(chatbox_8040818);
+
+        /* Fade the screen out to black while the pop script plays. */
+        R0 = 8;
+        R1 = 0x10;
+        GUEST_CALL(SetScreenFade);
+
+        /* Run the pop-script indexed by the previous "next state" byte
+         * (a tiny dispatch table at dword_8129450 holds the script ids). */
+        u32 prev = LD8(R5 + 0xD);
+        u32 tableAddr = A_dword_8129450;
+        u32 scriptId = LD8(tableAddr + prev);
+        R0 = scriptId;
+        R1 = tableAddr;
+        GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+    }
+
+    /* Common per-frame tail: run entity handlers, refresh scene state,
+     * then advance the screen-fade sequencer one tick. */
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+    GUEST_CALL(sub_80465F8);
+    R0 = 0x0D;
+    GUEST_CALL(sub_812B29C);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81296A0 ── */
+/* sub_81296A0:
+ *   inputs:  r4 r5 r10 lr
+ *   outputs: r4 r5 r6
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r6 r7
+ *
+ * Handles chatbox flag transitions: if flag 0x8 is set, marks the
+ * chatbox state (byte at r5+3) and calls sub_812B3FC. Otherwise, if
+ * both flag 0x20 and flag 0x110 are set, marks another state byte
+ * (r5+2) and triggers a screen fade. */
+Next sub_81296A0(void) {
+    R0 = 8;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    if (ZERO_FLAG()) {
+        R0 = 0x20;
+        GUEST_CALL(chatbox_mask_eFlags2009F38);
+        if (!ZERO_FLAG()) {
+            R0 = 0x110;
+            GUEST_CALL(chatbox_mask_eFlags2009F38);
+            if (!ZERO_FLAG()) {
+                ST8(R5 + 2, 0x20);
+                R0 = 0xC;
+                R1 = 0x10;
+                GUEST_CALL(SetScreenFade);
+            }
+        }
+    } else {
+        ST8(R5 + 3, 8);
+        GUEST_CALL(sub_812B3FC);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129738 ── */
+/* sub_8129738(r5 = battle object ptr):
+ * If sub_812B318(3) succeeds, mark the object's state: store 3 at +0x1D,
+ * call sub_81325E4 on its +0xE byte and store the result at +2,
+ * then clear +3 to 0. Skips all of that if sub_812B318 returns nonzero. */
+Next sub_8129738(void) {
+    /* Try to acquire something via sub_812B318(arg=3); nonzero -> bail out. */
+    R0 = 3;
+    GUEST_CALL(sub_812B318);
+    if (R0 != 0) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Mark the object as state 3, recompute the +2 field from +0xE, and clear +3. */
+    ST8(R5 + 0x1D, (u8)3);
+    R0 = LD8(R5 + 0xE);
+    GUEST_CALL(sub_81325E4);
+    ST8(R5 + 2, (u8)R0);
+    ST8(R5 + 3, 0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129758 ── */
+/* sub_8129758(r5 = entity ptr)
+ * Reads entity field at offset 0x1D and asks sub_812B318 what to do with it.
+ * If sub_812B318 signals a follow-up (r1 != 0), call sub_812B218.
+ * If the chosen action is 3, set the entity's state byte to 0x14 and call
+ * sub_811A610(0, 0).
+ * Outputs: r4 = sub_812B318's r2 (the action), r5/r6 preserved. */
+Next sub_8129758(void) {
+    /* Ask sub_812B318 what to do with entity[0x1D]. */
+    R0 = (u32)LD8(R5 + 0x1D);
+    GUEST_CALL(sub_812B318);
+    /* r4 = action returned in r2 */
+    R4 = R2;
+
+    /* If sub_812B318 set r1, follow up with sub_812B218. */
+    if (R1 != 0) {
+        GUEST_CALL(sub_812B218);
+    }
+
+    /* Action 3: enter state 0x14 and call sub_811A610(0, 0). */
+    if (R4 == 3) {
+        R0 = 0x14;
+        ST8(R5 + 3, (u8)R0);
+        R0 = 0;
+        R1 = 0;
+        GUEST_CALL(sub_811A610);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129808 ── */
+/* sub_8129808: takes r5 = some battle object pointer (has a byte at +0x1d and +3),
+ * reads its state index byte, calls sub_812B318, and based on results either
+ * does nothing or flips the object's state to 4 and calls sub_811A610(1,0).
+ * Preserves r4/r5/r6 for the caller; clobbers r0-r3 and lr internally. */
+Next sub_8129808(void) {
+    u8 state_index = LD8(R5 + 0x1D);
+
+    R0 = state_index;
+    GUEST_CALL(sub_812B318);
+    u32 r4_save = R2;          /* sub_812B318's result in r2 -> cached in r4 */
+
+    if (R1 != 0) {
+        GUEST_CALL(sub_812B218);
+    }
+
+    if (r4_save != 3) {
+        RETURN_TO_CALLER();
+    }
+
+    /* r4 == 3: advance the object to the next animation/state step */
+    u32 new_state = 4;
+    ST8(R5 + 3, new_state);
+    R0 = 1;
+    R1 = 0;
+    GUEST_CALL(sub_811A610);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81298D4 ── */
+/* sub_81298D4(r5 = object):
+ *   Initialize a battle object to the "battle-canceled / show-fingers / etc."
+ *   state if preconditions are met, then return.
+ *
+ *   Inputs:  r5 (object pointer, caller-saved)
+ *   Outputs: r4, r5, r6 (preserved across the call)
+ *   Clobbers: r0, r1, r2, r3, lr, nz, c, v */
+Next sub_81298D4(void) {
+    /* First, ask the toolkit/engine whether this update path is even
+     * permitted right now (mode 3 = whatever the bsy check is). */
+    R0 = 3;
+    GUEST_CALL(sub_812B318);
+    if (R0 != 0)
+        RETURN_TO_CALLER();             /* not allowed -> bail, leave object alone */
+
+    /* Otherwise, stamp the object into the "post-event" pose:
+     *   +0x1D = 3   (state byte)
+     *   +0x20 = 2   (sub-state / pose index) */
+    ST8(R5 + 0x1D, 3);
+    ST8(R5 + 0x20, 2);
+
+    /* Look up the correct sprite index for whatever frame/state byte
+     * is at +0x12, then store it as the current animation frame. */
+    R0 = LD8(R5 + 0x12);
+    GUEST_CALL(sub_81325F4);
+    ST8(R5 + 2, (u8)R0);
+
+    /* Frame counter at +0x03 is reset to 0. */
+    ST8(R5 + 3, 0);
+
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81298F8 ── */
+/* sub_81298F8(r5 = battle object pointer, lr = return address)
+ * Initialize a battle object's visual/animation state to its "selected"/attack pose:
+ * sub_812B318 must allow it (r0 != 0 -> skip); on success set r5[0x1D]=3, r5[2]=4,
+ * r5[3]=0x10, r5[0x12]=r5[0x13]=0. */
+Next sub_81298F8(void) {
+    R0 = 3;
+    GUEST_CALL(sub_812B318);
+    if (R0 != 0) {
+        /* sub_812B318 refused; leave the object untouched. */
+    } else {
+        ST8(R5 + 0x1D, 3);
+        ST8(R5 + 2,    4);
+        ST8(R5 + 3,    0x10);
+        ST8(R5 + 0x12, 0);
+        ST8(R5 + 0x13, 0);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129948 ── */
+/* sub_8129948(r5 = some struct):
+ * Reads the byte at r5+0x1D and passes it to sub_812B318.
+ * Saves sub_812B318's r2 in r4. If its r1 is nonzero, also calls sub_812B218.
+ * If r4 == 3, sets state byte at r5+3 to 4 and calls sub_811A610(3, 0). */
+Next sub_8129948(void) {
+    u8 slot = LD8(R5 + 0x1D);
+
+    R0 = slot;
+    GUEST_CALL(sub_812B318);
+
+    R4 = R2;
+    SET_FLAGS_NZ(R1);
+    if (R1) {
+        GUEST_CALL(sub_812B218);
+    }
+
+    SET_FLAGS_CMP(R4, 3);
+    if (R4 == 3) {
+        ST8(R5 + 3, 4);
+        R0 = 3;
+        R1 = 0;
+        GUEST_CALL(sub_811A610);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129AC8 ── */
+/* sub_8129AC8(r5 = entity, lr = return):
+ *   Picks a battle-side action for the entity at r5: asks sub_812B318 what
+ *   kind to do (r2 = kind, r1 = valid). If valid and kind == 2 we mark the
+ *   entity's action byte (r5+3 = 4) and trigger the move event (sub_811A610);
+ *   otherwise we delegate to sub_812B318's sibling sub_812B218.
+ *   outputs: r4 r5 r6  preserved: r4 r5 r6 r7 */
+Next sub_8129AC8(void) {
+    /* Ask the battle-side helper which action this entity should take. */
+    R0 = LD8(R5 + 0x1D);
+    GUEST_CALL(sub_812B318);
+    /* r1 = valid, r2 = kind. Match the original: r4 picks up r2, then we
+     * test r1 with TST/SUBS so the Z flag reflects it. */
+    u32 kind = R2;
+
+    if (R1 == 0)
+        RETURN_TO_CALLER();
+
+    if (kind == 2) {
+        ST8(R5 + 3, 4);
+        R0 = 2;
+        R1 = 0;
+        GUEST_CALL(sub_811A610);
+    } else {
+        GUEST_CALL(sub_812B218);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129B90 ── */
+/* sub_8129B90(r5 = control struct pointer):
+ *   Ask sub_812B318 for state 2; if granted, initialise the chip-selection
+ *   counter fields on the struct. Preserves r4/r5/r6.
+ *   inputs:  r5, lr
+ *   outputs: r4, r5, r6 (preserved)
+ *   clobbers: r0-r3, lr, nz/c/v
+ *
+ *   Struct fields touched (offsets from r5):
+ *     +0x1D  selection slot            = 3
+ *     +0x02  ??                        = 4
+ *     +0x03  ??                        = 0x10
+ *     +0x12  counter low               = 0
+ *     +0x13  counter high              = 0
+ */
+Next sub_8129B90(void) {
+    /* sub_812B318(r0 = 2): request chip-use state 2. */
+    R0 = 2;
+    GUEST_CALL(sub_812B318);
+
+    /* tst r0, r0 — bne locret: bail out if it refused. */
+    SET_FLAGS_NZ(R0);
+    if (ZERO_FLAG()) {
+        ST8(R5 + 0x1D, 3);
+        ST8(R5 + 0x02, 4);
+        ST8(R5 + 0x03, 0x10);
+        ST8(R5 + 0x12, 0);
+        ST8(R5 + 0x13, 0);
+
+        /* Final flag-setter is `mov r0, #0` before the last two strbs. */
+        SET_FLAGS_NZ(0);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_812AEC8 ── */
 /* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
 static void run_entity_updates_sub_812AEC8(void) {
@@ -3015,6 +3601,84 @@ Next bg_LoadFullScreenTilesAndSetup_812AFB0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_812B1DC ── */
+/* sub_812B1DC: load a 4-byte entry pair table into a scratch buffer.
+ *
+ * Walks a small packed array starting at *r0 of records of the form
+ * { u8 a, u8 b, u16 c }; the array ends with a sentinel byte 0xFF.
+ * Each record is decoded via sub_8046670(a, b, c) and the result is
+ * stored into the 4-slot scratch buffer at unk_20251A0, indexed by slot
+ * number (0..3). The scratch buffer is zeroed up to 0x10 bytes first.
+ *
+ * inputs:  r0 = pointer to the entry table
+ * outputs: none meaningful (r4/r5/r6 left as the index walker state)
+ */
+Next sub_812B1DC(void) {
+    u32 entries = R0;
+    u32 scratch = (u32)A_unk_20251A0;
+
+    /* ZeroFillByWord(unk_20251A0, 0x10) */
+    R0 = scratch;
+    R1 = 0x10;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* The first record is decoded into the top half of the entry. */
+    u32 r2 = (u32)LD16(entries + 2);
+    u32 r1 = (u32)LD8(entries + 1);
+    u32 r0 = (u32)LD8(entries);
+    R0 = r0; R1 = r1; R2 = r2;
+    GUEST_CALL(sub_8046670);
+
+    /* Walk the rest of the table; each record's result lands in the
+     * scratch buffer at slot i. The loop terminates when the byte at
+     * the next record's offset 0 reads 0xFF. */
+    u32 walker = entries + 4;
+    u32 slot = 0;
+    for (;;) {
+        r2 = (u32)LD16(walker + 2);
+        r2 |= slot << 16;
+        r1 = (u32)LD8(walker + 1);
+        r0 = (u32)LD8(walker);
+        R0 = r0; R1 = r1; R2 = r2;
+        GUEST_CALL(sub_8046670);
+        ST32(scratch + (slot << 2), R0);
+
+        slot += 1;
+        walker += 4;
+
+        R0 = (u32)LD8(walker);
+        if (R0 != 0xFF) {
+            continue;
+        }
+        break;
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B414 ── */
+/* sub_812B414(r5 = battle object, r10 = ?, lr = return address):
+ * mark the battle object as the active target, clear its counters, flag it
+ * for selection, then trigger chatbox script 0x23.
+ * outputs: r4 r5 r6; clobbers r0 r1 r2 r3 lr nz cv. */
+Next sub_812B414(void) {
+    /* Battle state byte = 0x0C (some "selected"/"active" marker). */
+    ST8(R5 + 1, 0x0C);
+
+    /* Clear the per-object counter bytes. */
+    ST8(R5 + 2, 0);
+    ST8(R5 + 3, 0);
+
+    /* OR the 0x01 bit into the existing flag byte at offset 0x1B. */
+    u8 flags = LD8(R5 + 0x1B);
+    ST8(R5 + 0x1B, flags | 0x01);
+
+    /* Run chatbox script index 0x23 (the "selection" dialogue line). */
+    R0 = 0x23;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_drawIfFlagSet_812B504 ── */
 /* sprite_drawIfFlagSet_812B504(r5 = pointer to an object):
  * Test the flag byte at r5+0x1B for bit 4 (0x10). If set, invoke
@@ -3045,5 +3709,33 @@ Next sprite_drawIfFlagSet_812B504(void) {
 
         R4 = savedR4;   /* the original pushes/pops r4 around the call */
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B530 ── */
+/* sub_812B530(r5 = entity):
+ *  - Ask the entity for its jump-table offset 0 entry (function pointer / index).
+ *  - Use that as an index into an array of LZ77-compressed graphics blob pointers.
+ *  - Decompress the chosen blob into the LZ77 decompression buffer.
+ *  - DMA 0x100 bytes of the decompressed graphics (skipping the 4-byte LZ77 header)
+ *    into VRAM at 0x06014700.
+ *  - Set the entity's flag byte at offset 0x1B (OR-in 0x10).
+ */
+Next sub_812B530(void) {
+    u32 entity = R5;
+
+    GUEST_CALL(eStruct200BC30_getJumpOffset00);
+
+    const void *src = (const void *)LD32(A_off_812B55C + R0);
+    R0 = (u32)src;
+    R1 = (u32)A_eDecompBuffer2013A00;
+    GUEST_CALL(SWI_LZ77UnCompReadNormalWrite8bit);
+
+    R0 = (u32)A_eDecompBuffer2013A00 + 4;
+    R1 = 0x06014700;
+    R2 = 0x100;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+
+    ST8(entity + 0x1B, LD8(entity + 0x1B) | 0x10);
     RETURN_TO_CALLER();
 }

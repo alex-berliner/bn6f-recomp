@@ -1123,6 +1123,170 @@ Next menu_getTableEntryForStateIndex_811A268(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811A57C ── */
+/* sub_811A57C: clamp a sprite's X coordinate against 0x3C (using a per-state
+ * clamp table) and reset a state byte, then chain into sub_811A51C.
+ *   inputs:  r5 (sprite object), lr
+ *   outputs: r5
+ *   preserved: r4 r5 r6 r7 */
+Next sub_811A57C(void) {
+    /* sprite_addCoordinates(0x10, 0) — find slot 0x10, then move origin to (0,0). */
+    R0 = 0x10;
+    R1 = 0;
+    GUEST_CALL(sprite_addCoordinates);
+
+    /* x = sprite_getCoordinates() */
+    GUEST_CALL(sprite_getCoordinates);
+    s32 x = (s32)R0;
+
+    if (x >= 0x3C) {
+        /* Load per-sprite clamp value: table at byte_811A5AC (u16 array),
+         * indexed by the low byte of r5+6 (state byte), shifted left by 1. */
+        u32 index = (u32)LD8(R5 + 6) << 1;
+        u16 clamp = LD16(A_byte_811A5AC + index);
+
+        /* sprite_setCoordinates(0x3C, clamp) — set X to 0x3C, Y to table value. */
+        R0 = 0x3C;
+        R1 = clamp;
+        GUEST_CALL(sprite_setCoordinates);
+
+        /* r5+7 = 0 (clear the state flag). */
+        ST8(R5 + 7, 0);
+    }
+
+    /* Chain into the next stage. */
+    GUEST_CALL(sub_811A51C);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A5BC ── */
+/* sub_811A5BC: Position the battle-screen sprite whose index is implied by
+ * the object array R5 points into. Each per-frame entry stores three flag
+ * bytes (R5+4, R5+7) that pick one of three sprite-coordinate tables and a
+ * 4th byte (R5+6) that indexes a {x, y} pair inside the chosen table. The
+ * (x, y) pair is then handed to sprite_setCoordinates.
+ *
+ *   inputs:  r5  pointer into the per-frame object array
+ *   outputs: -
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ */
+Next sub_811A5BC(void) {
+    u32 tbl;
+
+    /* First flag clear? Use the "off-screen" table at byte_811A600. */
+    if (LD8(R5 + 4) != 0) {
+        /* Inner object not active either? Same off-screen table. */
+        if (LD8(R5 + 7) != 0) {
+            tbl = A_byte_811A600;
+        } else {
+            tbl = A_byte_811A5EC;
+        }
+    } else {
+        tbl = A_dword_811A5FC;
+    }
+
+    /* Read the chosen (x, y) pair (each is a signed halfword). */
+    u32 idx = (u32)LD8(R5 + 6) * 4u;
+    s32 x = (s32)LD16(tbl + idx);
+    s32 y = (s32)LD16(tbl + idx + 2);
+
+    R0 = (u32)x;
+    R1 = (u32)y;
+    GUEST_CALL(sprite_setCoordinates);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A6DC ── */
+/* sub_811A6DC(r1 = nav_index, r7 = unit_block, r10 = ?, lr = ?):
+ * Returns something via r10/r11 (set up for the caller). Picks an offset byte from
+ * a small constant table indexed by nav_index, bumping the index when the unit has
+ * no secondary action nav available, then forwards to sub_811A718 which records
+ * the chosen nav button. */
+Next sub_811A6DC(void) {
+    u32 nav_index = R1;
+    u8  block_flags = LD8(R7 + 0x1B);
+
+    /* If this is the secondary action nav slot AND the unit has no secondary nav
+     * flag set, skip ahead by one. */
+    u32 lookup;
+    if (nav_index == 2 && (block_flags & 2) == 0)
+        lookup = nav_index + 1;
+    else
+        lookup = nav_index;
+
+    /* dword_811A700 = 0x302F1A19, treated as four bytes: {0x19,0x1A,0x2F,0x30}. */
+    R0 = LD8(A_dword_811A700 + lookup);
+    GUEST_CALL(sub_811A718);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A718 ── */
+Next sub_811A718(void) {
+    u32 text_ptr = R0;
+    u32 chapter  = R1;
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    u32 dst_buf       = LD32(A_off_811A740 + (chapter << 2));
+    u32 layout_flags = LD32(A_byte_811A754 + (chapter << 2));
+
+    /* renderTextGfx_8045F8C wants r4=8, r5=1, r6=dword_86B7AE0, r7=0
+     * (it reads them as its own scratch), but r4-r7 are callee-saved in
+     * this function, so we restore the caller's values on return. */
+    R4 = 8;
+    R5 = 1;
+    R6 = A_dword_86B7AE0;
+    R7 = 0;
+
+    R0 = A_eTextScript201BA20;
+    R1 = text_ptr;
+    R2 = dst_buf;
+    R3 = layout_flags;
+    GUEST_CALL(renderTextGfx_8045F8C);
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A768 ── */
+/* sub_811A768(r0=sprite, r1=var):
+ *   Add (R0, 0) to the sprite via sprite_addCoordinates (which uses R5
+ *   as the sprite pointer and writes back into the sprite struct, e.g.
+ *   var+0x2c), then read back the x-coordinate with sprite_getCoordinates.
+ *   If it is < -48, write 8 to var+8 and return 0; otherwise return 1.
+ *   R4 and R5 are preserved across the call (the helper functions use R5
+ *   to locate the sprite, so we must set R5=var before invoking them). */
+Next sub_811A768(void) {
+    u32 var = R1;
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    R5 = var;
+    R4 = 1;
+    R1 = 0;
+    GUEST_CALL(sprite_addCoordinates);
+    GUEST_CALL(sprite_getCoordinates);
+
+    SET_FLAGS_CMP(R0, 0xFFFFFFD0u);
+    if ((s32)R0 < (s32)0xFFFFFFD0) {
+        ST8(var + 8, 8);
+        R0 = 0;
+        R4 = 0;
+    } else {
+        R0 = 1;
+    }
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_runObjectStateHandler_811B1EC ── */
 /* battle_runObjectStateHandler_811B1EC: run the current state handler of the battle object in r5.
  * The state id is stored at r5+8 and is used directly as a byte offset into

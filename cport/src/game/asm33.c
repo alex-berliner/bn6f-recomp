@@ -1006,6 +1006,33 @@ Next submenu_subchip_8124134(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── submenu_subchip_81242D8 ── */
+/* submenu_subchip_81242D8: handles the sub-chip submenu when the player selects a sub-chip. */
+Next submenu_subchip_81242D8(void) {
+    /* If the chatbox is busy with flag 0x80, skip straight to the post-action call. */
+    R0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    SET_FLAGS_NZ(R0);
+    if (ZERO_FLAG()) {
+        /* Player actually picked a sub-chip: set state to 4 and take one from the inventory. */
+        ST8(R5 + 2, 4);
+        R0 = LD16(R5 + 0x10);
+        R1 = 1;
+        GUEST_CALL(TakeItem);
+        GUEST_CALL(sub_8124384);
+
+        /* Decrement the cursor index by one; clamp so it doesn't exceed the new (lower) count. */
+        u32 new_cursor = (u32)LD8(R5 + 0xC) - 1;
+        u32 old_cursor = (u32)LD8(R5 + 0x14);
+        SET_FLAGS_CMP((s32)new_cursor, (s32)old_cursor);
+        if (NEGATIVE_FLAG()) {
+            ST8(R5 + 0x14, (u8)new_cursor);
+        }
+    }
+    GUEST_CALL(sub_8124870);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8124384 ── */
 /* Register-form call helpers for game functions outside this file */
 

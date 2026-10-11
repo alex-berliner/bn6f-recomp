@@ -24,6 +24,46 @@ Next chatbox_runScript_803FD9C_on_eTextScript201BA20(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8132614 ── */
+/* sub_8132614: Initialize the menu/state record pointed to by R5.
+ * inputs:  R5 = object pointer
+ * outputs: writes [R5+1] = 8, [R5+2] = dispatch result, [R5+3] = 4
+ *
+ * Calls sub_803EBB8 first, then dispatches on sub_8132290's return value:
+ *   0x18 / 0x1C -> replace field with sub_81325F4(LD8(R5+0x12))
+ *   0x20 / 0x24 -> field = 0x0C
+ *   default     -> field = 0x10
+ */
+Next sub_8132614(void) {
+    GUEST_CALL(sub_803EBB8);
+    ST8(R5 + 1, 8);
+
+    GUEST_CALL(sub_8132290);
+    u32 result = R0;
+
+    /* Pick the value written to [R5+2] from the dispatch table. */
+    if (result == 0x18 || result == 0x1C) {
+        SET_FLAGS_CMP(result, (result == 0x18) ? 0x18 : 0x1C);
+        R0 = LD8(R5 + 0x12);
+        GUEST_CALL(sub_81325F4);
+    } else if (result == 0x20 || result == 0x24) {
+        SET_FLAGS_CMP(result, (result == 0x20) ? 0x20 : 0x24);
+        R0 = 0x0C;
+    } else {
+        SET_FLAGS_CMP(result, 0x24);
+        R0 = 0x10;
+    }
+
+    ST8(R5 + 2, R0);
+    /* The original ends with `mov r0, #4` followed by `strb r0, [r5,#3]`,
+     * so R0 leaves as 4 (not the last dispatch value). */
+    R0 = 4;
+    SET_FLAGS_NZ(R0);
+    ST8(R5 + 3, R0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── HandleSaveMenu8132B88 ── */
 /* HandleSaveMenu8132B88: dispatcher for the save-menu scene.
  *
@@ -1057,6 +1097,43 @@ Next battle_spawnFixedArgEffect_wrapper_81345E8(void) {
     R6 = in_r6;
     R7 = in_r7;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813471C ── */
+/* sub_813471C: Copy background tiles for an object. The flag byte at r5+0xD
+ * selects between a small (2x2) and large (0x15x2) source rectangle; the
+ * destination tile block, tile id source, and the call's own j/i sizes are
+ * fixed.
+ *
+ * inputs:  r5
+ * outputs: r5 (preserved across the call via push/pop)
+ * clobbers: nz c v r0 r1 r2 r3 lr
+ * preserved: r4 r5 r6 r7 */
+Next sub_813471C(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    u32 j_size, i_size;
+    if (LD8(R5 + 0xD) != 0) {
+        j_size = 0x15;
+        i_size = 2;
+    } else {
+        j_size = 2;
+        i_size = 2;
+    }
+
+    R0 = j_size;
+    R1 = i_size;
+    R2 = 0;                       /* which_tile_block_32x32 */
+    R3 = A_unk_203486C;           /* tile_ids */
+    R4 = 8;
+    R5 = 0x11;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    /* Restore the caller's r4/r5 (CopyBackgroundTiles clobbers them). */
+    R4 = saved_r4;
+    R5 = saved_r5;
     RETURN_TO_CALLER();
 }
 

@@ -747,6 +747,35 @@ Next sub_811F214(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811F24C ── */
+/* sub_811F24C: tick a counter at r5+0xC (clamped to max 3) and replay the first
+ * (count+1) sprite/animation pairs into sub_802FE28. Each pair is two u32 entries
+ * from the table at dword_811F278 (8 bytes per entry). */
+Next sub_811F24C(void) {
+    /* Bump the local tick counter, clamped so it never exceeds 3 (i.e. count 0..3). */
+    u32 count = LD8(R5 + 0xC);
+    count = count + 1;
+    if ((s32)count <= (s32)3) {
+        ST8(R5 + 0xC, count);
+    }
+
+    /* Walk the table, replaying each entry via sub_802FE28(lo, hi, 0, 1). */
+    u32 tbl = A_dword_811F278;
+    u32 idx = 0;
+    while ((s32)idx < (s32)LD8(R5 + 0xC)) {
+        R0 = LD32(tbl);
+        R1 = LD32(tbl + 4);
+        R2 = 0;
+        R3 = 1;
+        GUEST_CALL(sub_802FE28);
+
+        tbl += 8;
+        idx += 1;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811F290 ── */
 #define off_811F2B0 0x0811F2B0u
 

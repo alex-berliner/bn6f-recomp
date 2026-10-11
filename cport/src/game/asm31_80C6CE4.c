@@ -179,6 +179,140 @@ Next sub_80C81F0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C8268 ── */
+/* sub_80C8268: Battle object phase-4 state — seed timer once from Param2,
+ * tick it each frame, dispatch Param3 while it lasts, then destroy. */
+Next sub_80C8268(void) {
+    if (LD8(R5 + oBattleObject_CurPhase) == 0) {
+        /* First entry: set phase, init Param3, seed timers, run setup. */
+        ST8(R5 + oBattleObject_CurPhase, 4);
+
+        R0 = LD8(R5 + oBattleObject_Param3);
+        GUEST_CALL(sub_80C832E);
+
+        u32 param2 = LD8(R5 + oBattleObject_Param2);
+        ST16(R5 + oBattleObject_Timer, param2);
+        ST16(R5 + oBattleObject_Timer2, 1);
+
+        GUEST_CALL(sub_80C82D0);
+    }
+
+    /* Tick the timer down by 1 and branch on the original's signed BLE. */
+    u32 timer = LD16(R5 + oBattleObject_Timer);
+    u32 new_timer = timer - 1;
+    SET_FLAGS_CMP(timer, 1);
+    ST16(R5 + oBattleObject_Timer, (u16)new_timer);
+
+    if ((s32)new_timer > 0) {
+        /* Timer still positive: dispatch the Param3 sub-handler. */
+        R0 = LD8(R5 + oBattleObject_Param3);
+        GUEST_CALL(sub_80C8310);
+    } else {
+        /* Timer expired: move to the destroy state. */
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C8310 ── */
+/* sub_80C8310(r0 = panel_count, r5 = battle_object):
+ *   Highlight the front-facing panels of a battle object, one per step.
+ *   Starting from the panel directly in front of the object, highlight
+ *   `panel_count` consecutive panels in that direction.
+ */
+Next sub_80C8310(void) {
+    u32 panel_count = R0;
+    u32 obj = R5;
+    u32 step;
+
+    for (step = 1; (s32)step <= (s32)panel_count; step++) {
+        /* object_getFrontDirection() returns the unit step along the axis the
+         * object is facing. Result comes back in R0. */
+        GUEST_CALL(object_getFrontDirection);
+        s32 x = (s32)LD8(obj + oBattleObject_PanelX) + (s32)R0 * (s32)step;
+        u32 y = LD8(obj + oBattleObject_PanelY);
+
+        R0 = (u32)x;
+        R1 = y;
+        GUEST_CALL(object_highlightPanel);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C8368 ── */
+/* sub_80C8368(r5 = array of object pointers at base+0x60 stride 4, count 5):
+ * For each of the 5 slots, if the pointer is non-NULL, dispatch sub_80E1B3C on it.
+ * Used to update/draw the 5 battle-object slots attached to r5. */
+Next sub_80C8368(void) {
+    for (u32 slot = 0; slot < 5; slot++) {
+        u32 ptr = LD32(R5 + (slot * 4 + 0x60));
+        if (ptr != 0) {
+            R0 = ptr;
+            GUEST_CALL(sub_80E1B3C);
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C913C ── */
+Next sub_80C913C(void) {
+    u32 obj = R5;
+    u32 panel_x = LD8(obj + oBattleObject_PanelX);
+    u32 panel_y = LD8(obj + oBattleObject_PanelY);
+
+    /* Save panel_x/panel_y on the stack as the original does */
+    u32 saved = SP -= 8;
+    ST32(saved, panel_x);
+    ST32(saved + 4, panel_y);
+
+    R0 = panel_x;
+    R1 = panel_y;
+    GUEST_CALL(object_getPanelParameters);
+    u32 params = R0;
+    /* Restore panel_x/panel_y to R0/R1 like the original's pop {r0,r1} */
+    R0 = panel_x;
+    R1 = panel_y;
+    SP += 8;
+
+    /* tst r3, #0x600000 */
+    SET_FLAGS_NZ(params & 0x600000);
+    if ((params & 0x600000) == 0) goto fail;
+
+    /* sub_800AE54(panel_x, panel_y, 1 - alliance) */
+    u32 alliance = LD8(obj + oBattleObject_Alliance);
+    R0 = panel_x;
+    R1 = panel_y;
+    R2 = (u32)(0 - alliance) + 1;
+    GUEST_CALL(sub_800AE54);
+    u32 found = R0;
+
+    SET_FLAGS_NZ(found);
+    if (found == 0) goto fail;
+
+    ST32(obj + oBattleObject_RelatedObject1Ptr, found);
+
+    /* Pick a slot: dword_203CFB0 (Alliance 0) or dword_203CFB0+0xC (Alliance != 0) */
+    u32 slot = (u32)A_dword_203CFB0;
+    alliance = LD8(obj + oBattleObject_Alliance);
+    SET_FLAGS_NZ(alliance);
+    if (alliance == 0) {
+        slot += 0xC;
+    }
+
+    ST32(slot, 0);
+    ST32(slot + 4, obj);
+    ST32(slot + 8, found);
+
+    R0 = found;
+    RETURN_TO_CALLER();
+
+fail:
+    R0 = 0;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_BDT_update2_80c950c ── */
 /* battle_BDT_update2_80c950c:
  *   inputs:  r5 lr
@@ -844,6 +978,79 @@ static u32 spawn_collision_for_object(u32 obj) {
 Next sub_80CB0AE(void) {
     u32 region = spawn_collision_for_object(R5);
     SET_FLAGS_NZ(region);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CE138 ── */
+/* sub_80CE138: Initialize a battle object sprite, set its flags, load
+ * its graphics and animation, place it on the panel grid, and queue
+ * the "update" state for the next frame. */
+Next sub_80CE138(void) {
+    /* Mark the object as active (flag bit 1). */
+    u8 flags = LD8(R5);
+    ST8(R5, flags | 0x02);
+
+    /* Load sprite graphics (sprite id 0x80, tiles 0x0C, palette 0x50). */
+    R0 = 0x80;
+    R1 = 0x0C;
+    R2 = 0x50;
+    GUEST_CALL(sprite_load);
+
+    /* Start the entry animation. */
+    R0 = 4;
+    ST16(R5 + oBattleObject_CurAnimAndCurAnimCopy, R0);
+    GUEST_CALL(sprite_setAnimation);
+
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_update);
+    GUEST_CALL(sprite_noShadow);
+    GUEST_CALL(object_setCoordinatesFromPanels);
+
+    /* Z = 0xA00000 (in front of the field), reset the per-state timer,
+     * and enter the update phase. */
+    ST32(R5 + oBattleObject_Z, 0x00A00000);
+    ST16(R5 + oBattleObject_Timer, 0);
+    ST32(R5 + 8, CUR_STATE_UPDATE);
+
+    GUEST_CALL(sub_80CE178);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80D84DE ── */
+/* sub_80D84DE: respawn / reinitialize a battle object.
+ * inputs:  r2 r4 r5 r8 r9 r10 r11 r12 lr
+ * outputs: r5 r8 r9 r10 r11 r12
+ * clobbers: nz c v r0 r1 r2 r3 r4 lr
+ * preserved: r6 r7
+ *
+ * r5 is the battle object pointer. Marks it as hidden/being-respawned
+ * (sets bit 1 of its header flags), clears its final palette, runs the
+ * generic post-death hook, sets HP to 1, installs the standard list of
+ * per-state handler functions, refreshes collision data and the timestop
+ * sprite bookkeeping. */
+Next sub_80D84DE(void) {
+    SP -= 4;
+    ST32(SP, LR);
+
+    /* Set oObjectHeader_Flags bit 1 (object-hidden / respawn flag). */
+    u8 flags = LD8(R5 + oObjectHeader_Flags) | 2;
+    SET_FLAGS_NZ(flags);
+    ST8(R5 + oObjectHeader_Flags, flags);
+
+    GUEST_CALL(sprite_clearFinalPalette);
+    GUEST_CALL(sub_801AD9E);
+
+    ST16(R5 + oBattleObject_HP, 1);
+
+    R0 = A_off_80D8508;
+    GUEST_CALL(sub_801B394);
+
+    GUEST_CALL(object_presentCollisionData);
+    GUEST_CALL(object_updateSpriteTimestop);
+
+    LR = LD32(SP);
+    SP += 4;
     RETURN_TO_CALLER();
 }
 
