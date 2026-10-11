@@ -1410,6 +1410,37 @@ Next background_drawSceneSection_81275A8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81275C8 ── */
+/* register form: calls sub_8127580 outside this file, which has no typed C interface yet */
+static void render_chip_slot(u32 slot_index, u32 palette_offset,
+                             u32 sel_byte, u32 toolkit_addr) {
+    u32 saved_r4 = R4;
+    ST32(toolkit_addr + 8, sel_byte);
+    R0 = slot_index;
+    R1 = palette_offset;
+    R2 = 0x6009000;
+    R3 = A_eTextScript201BF20;
+    R4 = A_unk_2018A00;
+    GUEST_CALL(sub_8127580);
+    R4 = saved_r4;
+}
+
+/* Render the three chip slots of a battle toolkit selection row.
+ * r5 points at a struct whose bytes 0x14/0x15/0x16 are the per-slot
+ * selected chip index; r10 carries a pointer to a struct whose +8
+ * field is updated before each slot's render call. r4..r9 preserved. */
+static void render_chip_slots(u32 r5, u32 r10) {
+    u32 toolkit_obj = LD32(r10 + oToolkit_Unk200a220_Ptr);
+    render_chip_slot(8,  0x000, (u32)LD8(r5 + 0x14), toolkit_obj);
+    render_chip_slot(9,  0x400, (u32)LD8(r5 + 0x15), toolkit_obj);
+    render_chip_slot(0xA, 0x800, (u32)LD8(r5 + 0x16), toolkit_obj);
+}
+
+Next sub_81275C8(void) {
+    render_chip_slots(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── bg_copyTileBlockFromStructOffset_8127618 ── */
 /* bg_copyTileBlockFromStructOffset_8127618(r5 = source struct): redraw a 3x3 block of background tiles.
  * The tile column offset is taken from the signed byte at [r5+0xD] and
@@ -1828,6 +1859,105 @@ static u32 set_fade_mode_if_active(u32 obj_ptr) {
 /* sub_8127B08(r5 = battle-object pointer) -> r0, nz c v */
 Next sub_8127B08(void) {
     R0 = set_fade_mode_if_active(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8127B18 ── */
+/* register form: calls IsButtonPressed outside this file, which has no typed C interface yet */
+static bool is_button_pressed(u32 button) {
+    R0 = button;
+    GUEST_CALL(IsButtonPressed);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_effect(u32 effect) {
+    R0 = effect;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls submenu_ConfirmExitAndFade_811FB64 outside this file, which has no typed C interface yet */
+static void confirm_exit_and_fade_811FB64(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(submenu_ConfirmExitAndFade_811FB64);
+}
+
+/* register form: calls sub_8128318 outside this file, which has no typed C interface yet */
+static void call_sub_8128318(void) {
+    GUEST_CALL(sub_8128318);
+}
+
+/* register form: calls sub_8128008 outside this file, which has no typed C interface yet */
+static void call_sub_8128008_sub_8127B18(void) {
+    GUEST_CALL(sub_8128008);
+}
+
+/* register form: calls bg_ReloadBackgroundRegion_5_3_81281C0 outside this file, which has no typed C interface yet */
+static void call_bg_reload_background_region_5_3_81281C0(void) {
+    GUEST_CALL(bg_ReloadBackgroundRegion_5_3_81281C0);
+}
+
+/* register form: calls sub_8120CC8 outside this file, which has no typed C interface yet */
+static void call_sub_8120CC8(u32 a, u32 b, u32 *out0, u32 *out1) {
+    R0 = a;
+    R1 = b;
+    GUEST_CALL(sub_8120CC8);
+    *out0 = (u8)R0;
+    *out1 = (u8)R1;
+}
+
+/* register form: calls sub_811F7F8 outside this file, which has no typed C interface yet */
+static u32 call_sub_811F7F8(u32 a, u32 b, u32 c, u32 d) {
+    R0 = a;
+    R1 = b;
+    R2 = c;
+    R3 = d;
+    GUEST_CALL(sub_811F7F8);
+    return R0;
+}
+
+/* Process B/A/Start and the held-input helper for this submenu screen. */
+static void submenu_handle_input_8127B18(u32 state, u32 toolkit) {
+    if (is_button_pressed(JOYPAD_B)) {
+        confirm_exit_and_fade_811FB64(8);
+        return;
+    }
+
+    if (is_button_pressed(JOYPAD_A)) {
+        if (LD16(state + 0x1E) == 0) {
+            confirm_exit_and_fade_811FB64(8);
+            return;
+        }
+        call_sub_8128318();
+        call_sub_8128008_sub_8127B18();
+        call_bg_reload_background_region_5_3_81281C0();
+        play_sound_effect(SOUND_MENU_SELECT);
+        return;
+    }
+
+    if (LD16(state + 0x1E) == 0)
+        return;
+
+    if (is_button_pressed(JOYPAD_START)) {
+        ST8(state + 2, 0x0C);
+        play_sound_effect(SOUND_MENU_SELECT);
+        u32 out0, out1;
+        call_sub_8120CC8(0, A_dword_8127980, &out0, &out1);
+        ST8(state + 0xF, out0);
+        ST8(state + 0x10, out1);
+        return;
+    }
+
+    u32 joypad = LD32(toolkit + oToolkit_JoypadPtr);
+    u32 low_held = LD16(joypad + oJoypad_LowSensitivityHeld);
+    if (call_sub_811F7F8(low_held, 4, 0, 0) != 0) {
+        call_sub_8128008_sub_8127B18();
+        call_bg_reload_background_region_5_3_81281C0();
+    }
+}
+
+Next sub_8127B18(void) {
+    submenu_handle_input_8127B18(R5, R10);
     RETURN_TO_CALLER();
 }
 
@@ -2321,6 +2451,99 @@ static void comm_menu_execute(void) {
 /* HandleCommMenu81291E8: dispatch to a comm-menu handler via jump table. */
 Next HandleCommMenu81291E8(void) {
     comm_menu_execute();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129248 ── */
+/* register form: calls zeroFillVRAM outside this file, which has no typed C interface yet */
+static void zero_fill_vram(void) {
+    GUEST_CALL(zeroFillVRAM);
+}
+
+/* register form: calls ZeroFill_byte_3001960 outside this file, which has no typed C interface yet */
+static void zero_fill_byte_3001960(void) {
+    GUEST_CALL(ZeroFill_byte_3001960);
+}
+
+/* register form: calls ZeroFillGFX30025c0 outside this file, which has no typed C interface yet */
+static void zero_fill_gfx_30025c0(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+static void sub_80015FC_call(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_80015FC);
+}
+
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+static void sub_8046664_call_sub_8129248(void) {
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls scene_loadAndStartCutscene_812AF18 outside this file, which has no typed C interface yet */
+static void scene_load_and_start_cutscene(void) {
+    GUEST_CALL(scene_loadAndStartCutscene_812AF18);
+}
+
+/* register form: calls sub_8120CC8 outside this file, which has no typed C interface yet.
+ * Returns the r0/r1 the callee left behind. */
+static void sub_8120CC8_call(u32 a0, u32 a1, u32 *out0, u32 *out1) {
+    R0 = a0;
+    R1 = a1;
+    GUEST_CALL(sub_8120CC8);
+    *out0 = R0;
+    *out1 = R1;
+}
+
+/* Init battle scene: clear VRAM/GFX, prime render info, start opening cutscene,
+ * then write the variant bytes from the dword_8129180 table into the state struct.
+ * Returns the r0/r1 the original leaves: r0 = 0 (final `mov r0, #0`),
+ * r1 = the second byte sub_8120CC8 produced (still in r1 at return). */
+static void init_battle_scene_sub_8129248(u32 toolkit_r10, u32 state_r5, u32 *out_r0, u32 *out_r1) {
+    u32 render_info_ptr;
+    u32 lo, hi;
+
+    zero_fill_vram();
+    zero_fill_byte_3001960();
+    zero_fill_gfx_30025c0();
+    sub_80015FC_call(0x10);
+    sub_8046664_call_sub_8129248();
+
+    render_info_ptr = LD32(toolkit_r10 + oToolkit_RenderInfoPtr);
+    ST16(render_info_ptr, 0x1F40);
+    ST16(render_info_ptr + 0x10, 0);
+    ST16(render_info_ptr + 0x12, 0);
+    ST16(render_info_ptr + 0x14, 0);
+    ST16(render_info_ptr + 0x16, 0);
+    ST16(render_info_ptr + 0x18, 0);
+    ST16(render_info_ptr + 0x1A, 0);
+
+    scene_load_and_start_cutscene();
+
+    ST8(state_r5 + 1, 4);
+    ST8(state_r5 + 2, 0);
+    ST8(A_eStruct200BC30 + 0xC, 0x3C);
+
+    sub_8120CC8_call(0, (u32)A_dword_8129180, &lo, &hi);
+    ST8(state_r5 + 0x17, (u8)lo);
+    ST8(state_r5 + 0x18, (u8)hi);
+    ST8(state_r5 + 0x1B, 0);
+
+    /* The original ends with `mov r0, #0` (which also sets NZ for r0==0); r1 is the
+     * byte sub_8120CC8 returned in r1, still live in r1 at the pop. */
+    *out_r0 = 0;
+    *out_r1 = hi;
+}
+
+Next sub_8129248(void) {
+    u32 out_r0, out_r1;
+
+    init_battle_scene_sub_8129248(R10, R5, &out_r0, &out_r1);
+
+    R0 = out_r0;
+    R1 = out_r1;
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
