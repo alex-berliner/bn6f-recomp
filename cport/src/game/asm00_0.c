@@ -1421,6 +1421,29 @@ Next copyToVRAMAndClear_iBGTileIdBlocks_Ptr(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80015FC ── */
+/* sub_80015FC: copies an 8-byte palette entry from the ROM table at
+ * byte_8001618 into the toolkit render-info slot (offset +4). The
+ * entry index is r0; r10 holds the toolkit pointer (the output goes
+ * into the render-info write area). */
+static void apply_overlay_palette(u32 toolkit, u32 entry_index,
+                                  u32 *out_render_info_post) {
+    u32 entry_addr = A_byte_8001618 + (entry_index << 3);
+    u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr) + 4;
+    ST32(render_info,     LD32(entry_addr));
+    ST32(render_info + 4, LD32(entry_addr + 4));
+    *out_render_info_post = render_info;
+}
+
+Next sub_80015FC(void) {
+    u32 render_info_post;
+    apply_overlay_palette(R10, R0, &render_info_post);
+    R2 = render_info_post;
+    R3 = R10;
+    SET_FLAGS_ADD(render_info_post - 4, 4);
+    RETURN_TO_CALLER();
+}
+
 /* ── map_lookupMapIdByGroupAndNumber_8001708 ── */
 /* map_lookupMapIdByGroupAndNumber_8001708(R0 = map group, R1 = map number):
  * Selects the real-world group table for groups below INTERNET_MAP_GROUP_START
@@ -1901,6 +1924,16 @@ Next BGScrollCB_BG3Diagonal3to2Scroll(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── nullsub_39 ── */
+/* nullsub_39 does nothing and just returns to the caller. */
+static void nullsub_39_impl(void) {
+}
+
+Next nullsub_39(void) {
+    nullsub_39_impl();
+    RETURN_TO_CALLER();
+}
+
 /* ── zeroFill_e20094C0 ── */
 /* zeroFill_e20094C0: clear the eGFXAnimStates block (0x1B0 bytes) to zero.
  * Inputs/outputs r2/r3 pass through untouched. */
@@ -2050,6 +2083,19 @@ Next sub_8001D64(void) {
     }
 
     R0 = LD32(src + 7 * 4);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8002000 ── */
+/* Copy 16 words (64 bytes) from src to dst. Returns the last word copied. */
+static u32 copy_64_bytes(u32 dst, u32 src) {
+    for (u32 off = 0; off < 0x40; off += 4)
+        ST32(dst + off, LD32(src + off));
+    return LD32(src + 0x3C);
+}
+
+Next sub_8002000(void) {
+    R0 = copy_64_bytes(R5, R4);
     RETURN_TO_CALLER();
 }
 
@@ -2232,6 +2278,73 @@ Next event_runArmedCallback_80024AE(void) {
         R7 = r7;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── copy_800260C ── */
+/* register form: calls ZeroFillByEightWords outside this file, which has no typed C interface yet */
+static void zero_fill_eight_words(u32 addr, u32 size) {
+    R0 = addr;
+    R1 = size;
+    GUEST_CALL(ZeroFillByEightWords);
+}
+
+/* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
+static void zero_fill_byte(u32 addr, u32 size) {
+    R0 = addr;
+    R1 = size;
+    GUEST_CALL(ZeroFillByByte);
+}
+
+/* register form: calls copy_8002668 outside this file, which has no typed C interface yet */
+static void copy_8002668_(void) {
+    GUEST_CALL(copy_8002668);
+}
+
+/* register form: calls InitializeOWPlayerObjectStruct outside this file, which has no typed C interface yet */
+static void init_ow_player_obj(void) {
+    GUEST_CALL(InitializeOWPlayerObjectStruct);
+}
+
+/* register form: calls InitializeOverworldNPCObjectStructs outside this file, which has no typed C interface yet */
+static void init_ow_npc_objs(void) {
+    GUEST_CALL(InitializeOverworldNPCObjectStructs);
+}
+
+/* register form: calls InitializeOverworldMapObjectStructs outside this file, which has no typed C interface yet */
+static void init_ow_map_objs(void) {
+    GUEST_CALL(InitializeOverworldMapObjectStructs);
+}
+
+/* register form: calls sprite_resetObjVars_800289C outside this file, which has no typed C interface yet */
+static void sprite_reset_obj_vars(void) {
+    GUEST_CALL(sprite_resetObjVars_800289C);
+}
+
+/* Typed core: reset overworld state on a new scene load.
+ *   - Zeros OAM (0x07000000, 0x400 bytes) and sound RAM (0x06010000, 0x8000 bytes).
+ *   - Runs copy_8002668 (loader/main copy hook).
+ *   - Initializes player, NPC, and map object structs.
+ *   - Resets sprite variables.
+ *   - Clears the 7-byte unk_200F388 RAM buffer. */
+static void copy_800260C_impl(void) {
+    zero_fill_eight_words(0x07000000u, 0x400u);
+    zero_fill_eight_words(0x06010000u, 0x8000u);
+
+    copy_8002668_();
+    init_ow_player_obj();
+    init_ow_npc_objs();
+    init_ow_map_objs();
+    sprite_reset_obj_vars();
+
+    zero_fill_byte(A_unk_200F388, 7u);
+}
+
+/* Thin adapter: inputs r2/r3/r4/r7 are untouched by the typed function, so they pass through
+ * automatically. The original function's only output (besides preserved inputs) is the
+ * side effects above; no registers or flags need to be set. */
+Next copy_800260C(void) {
+    copy_800260C_impl();
     RETURN_TO_CALLER();
 }
 

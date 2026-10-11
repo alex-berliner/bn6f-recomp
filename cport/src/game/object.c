@@ -207,6 +207,95 @@ Next object_dimScreen(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_timefreezeEnd ── */
+/* register form: calls object_freeMemory outside this file, which has no typed C interface yet */
+static void call_object_freeMemory(void) {
+    GUEST_CALL(object_freeMemory);
+}
+
+/* register form: calls sub_800B884 outside this file, which has no typed C interface yet */
+static void call_sub_800B884(u32 team, u32 arg) {
+    R0 = team;
+    R1 = arg;
+    GUEST_CALL(sub_800B884);
+}
+
+/* register form: calls sub_800B892 outside this file, which has no typed C interface yet */
+static u32 call_sub_800B892(u32 team) {
+    R0 = team;
+    GUEST_CALL(sub_800B892);
+    return R0;
+}
+
+/* register form: calls sub_800B8D8 outside this file, which has no typed C interface yet */
+static u32 call_sub_800B8D8(u32 team) {
+    R0 = team;
+    GUEST_CALL(sub_800B8D8);
+    return R0;
+}
+
+/* register form: calls byte_203CF00_getEntryPtr_800BF5C outside this file, which has no typed C interface yet */
+static u32 call_byte_203CF00_getEntryPtr_800BF5C(u32 team) {
+    R0 = team;
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
+    return R0;
+}
+
+/* register form: calls battle_resetObjAnimState_800B89C outside this file, which has no typed C interface yet */
+static void call_battle_resetObjAnimState(u32 team) {
+    R0 = team;
+    GUEST_CALL(battle_resetObjAnimState_800B89C);
+}
+
+/* register form: calls battle_clearFlags outside this file, which has no typed C interface yet */
+static void call_battle_clearFlags(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(battle_clearFlags);
+}
+
+/* End the time-freeze effect on the battle object whose pointer is in r5.
+ * If its phase is already initialized the object just releases its memory.
+ * Otherwise ask the engine to leave time-freeze for this side (arg 5), check
+ * the opponent's mode (must be 5 or 0 to proceed), reset animations on both
+ * sides and clear that side's entry counter, then release this object's
+ * memory. team is 0 (own side) or 1 (opponent); team^1 is the other side. */
+static void object_timefreezeEnd_impl(u32 r5) {
+    u8 phase_init = LD8(r5 + oBattleObject_PhaseInitialized);
+    if (phase_init != 0) {
+        call_object_freeMemory();
+        return;
+    }
+
+    u32 team = LD8(r5 + oBattleObject_Alliance);
+    call_sub_800B884(team, 5);
+    u32 mode = call_sub_800B892(team ^ 1);
+    if (mode != 5 && mode != 0)
+        return;
+
+    if (call_sub_800B8D8(team) != 0) {
+        u32 entry = call_byte_203CF00_getEntryPtr_800BF5C(team ^ 1);
+        u32 extra = LD32(entry + 8);
+        if (extra != 0) {
+            ST32(extra + 8, 8);
+            ST8(extra + 0xB, 4);
+        }
+        ST32(entry + 0xC, 0);
+        call_battle_resetObjAnimState(team ^ 1);
+        call_battle_clearFlags(4);
+    }
+
+    call_sub_800B884(team, 0);
+    call_battle_resetObjAnimState(team);
+    u32 entry = call_byte_203CF00_getEntryPtr_800BF5C(team);
+    ST32(entry + 0xC, 0);
+    call_object_freeMemory();
+}
+
+Next object_timefreezeEnd(void) {
+    object_timefreezeEnd_impl(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── byte_203CF00_getEntryPtr_800BF5C ── */
 /* byte_203CF00_getEntryPtr_800BF5C(r0 = index):
  * Convert a slot index into an address within the byte_203CF00 array,

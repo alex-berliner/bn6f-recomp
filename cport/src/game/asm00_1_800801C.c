@@ -1333,6 +1333,21 @@ Next battle_testFlag0x40_800A8F8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800A908 ── */
+/* Clear the 32-bit battle state counter at dword_2000B30 to 0 and return its address in r1.
+ * r0 is set to 0 so callers can detect "just cleared" via the NZ flag. */
+static u32 clear_battle_state_counter(void) {
+    ST32(A_dword_2000B30, 0);
+    return 0;
+}
+
+Next sub_800A908(void) {
+    R0 = clear_battle_state_counter();
+    R1 = A_dword_2000B30;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_800A954 ── */
 /* sub_800A954: run initIdListStruct_800A964 over each of the two work buffers at
  * byte_20349C0 and byte_2034A10. r2/r3/r4 pass through untouched. */
@@ -2268,6 +2283,64 @@ Next battle_backupStateForRestart_800B3A2(void) {
     R0 = 0x32;
     GUEST_CALL(sub_80200A4);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── transferBattleHandNaviStats_800B3D8 ── */
+/* Effect flag bit checked in GetBattleEffects to decide if the secondary
+ * (AI) hand/navi stats buffers are used in place of the primary ones. */
+#define BATTLE_EFFECT_FLAG_8  0x8
+
+/* Size of a battle hand/navi stats record copied by CopyWords (in bytes). */
+#define HAND_NAVI_RECORD_SIZE 0x50
+/* Size of a battle navi stats record copied by CopyWords (in bytes). */
+#define BATTLE_NAVI_STATS_SIZE 0x64
+
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words(const void *src, void *dst, u32 size) {
+    R0 = (u32)src;
+    R1 = (u32)dst;
+    R2 = size;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 get_battle_effects_transferBattleHandNaviStats_800B3D8(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* When the slot at the given marker address is not 0xFF, copy HAND_NAVI_RECORD_SIZE bytes
+ * from it into the corresponding destination buffer. */
+static void copy_slot_if_active(u32 marker_addr, u32 dst_addr) {
+    if (LD8(marker_addr) != 0xFF) {
+        copy_words((const void *)marker_addr, (void *)dst_addr, HAND_NAVI_RECORD_SIZE);
+    }
+}
+
+/* Transfer the battle hand/navi stats: the primary pairs are always copied
+ * (subject to per-slot activity), and the AI-flagged pairs additionally
+ * when the AI battle-effect flag is set in GetBattleEffects. */
+static void transfer_battle_hand_navi_stats(void) {
+    /* Primary hand/navi stats: copy only if the slot's marker byte is not 0xFF. */
+    copy_slot_if_active(A_byte_203F4A4, A_byte_20349C0);
+
+    /* AI battle-effect flag => copy the secondary hand/navi stats if active. */
+    if (get_battle_effects_transferBattleHandNaviStats_800B3D8() & BATTLE_EFFECT_FLAG_8) {
+        copy_slot_if_active(A_byte_203F5A4, A_byte_2034A10);
+    }
+
+    /* Primary battle navi stats block (always copied). */
+    copy_words((const void *)A_byte_203F4F4, (void *)A_eBattleNaviStats, BATTLE_NAVI_STATS_SIZE);
+
+    /* AI battle-effect flag => copy the secondary battle navi stats block. */
+    if (get_battle_effects_transferBattleHandNaviStats_800B3D8() & BATTLE_EFFECT_FLAG_8) {
+        copy_words((const void *)A_byte_203F5F4, (void *)A_eBattleNaviStats0_Size, BATTLE_NAVI_STATS_SIZE);
+    }
+}
+
+Next transferBattleHandNaviStats_800B3D8(void) {
+    transfer_battle_hand_navi_stats();
     RETURN_TO_CALLER();
 }
 

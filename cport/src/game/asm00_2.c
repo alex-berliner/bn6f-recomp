@@ -76,6 +76,72 @@ Next battle_getSelectedChipForUse_800ED90(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800EDD0 ── */
+/* register form: calls getBattleHandAddr_8010018 outside this file, which has no typed C interface yet */
+static u32 get_battle_hand_addr(u8 alliance) {
+    R0 = alliance;
+    GUEST_CALL(getBattleHandAddr_8010018);
+    return R0;
+}
+
+/* register form: calls unpackVerActorTyAndAIIdx_800F29C outside this file, which has no typed C interface yet */
+static u32 unpack_ver_actor_ty_ai(u16 name_id) {
+    R0 = name_id;
+    GUEST_CALL(unpackVerActorTyAndAIIdx_800F29C);
+    return R0;
+}
+
+/* register form: calls sub_800EF34 outside this file, which has no typed C interface yet */
+static u32 sub_800EF34_call(u16 arg0, u32 arg1, u32 *out_r1) {
+    R0 = arg0;
+    R1 = arg1;
+    GUEST_CALL(sub_800EF34);
+    *out_r1 = R1;
+    return R0;
+}
+
+typedef struct {
+    u32 r0, r1, r2, r3, r4;
+} SubEdd0Out;
+
+/* Gather battle-object metadata: actor-typed objects (type 2) read extra
+ * fields from a hand slot; other objects fall back to chip metadata.
+ * r5..r7 are preserved by the original's push/pop and the adapter leaves
+ * them alone; r4 is set on the actor path and passed through unchanged
+ * on the other. */
+static SubEdd0Out sub_800EDD0_impl(u32 obj, u32 saved_r1, u32 r4_in) {
+    if (unpack_ver_actor_ty_ai(LD16(obj + oBattleObject_NameID)) == 2) {
+        u32 hand = get_battle_hand_addr(LD8(obj + oBattleObject_Alliance));
+        u32 idx  = LD8(hand);
+        u32 slot = hand + idx * 2 + 2;
+
+        u32 ef34_r1;
+        u32 ef34_r0 = sub_800EF34_call(LD16(slot), saved_r1, &ef34_r1);
+
+        u32 r0 = LD16(slot);
+        u32 r1 = LD16(slot + 0x0C);
+        u32 r2 = LD16(slot + 0x18) + ef34_r0 + LD16(slot + 0x24);
+        u32 r3 = ef34_r1;
+        u32 b0 = LD8(hand + 0x44 + idx);
+        u32 r4 = ((u32)LD8(hand + idx + 0x3E) << 8) | b0;
+        return (SubEdd0Out){r0, r1, r2, r3, r4};
+    }
+
+    SubEdd0Out out;
+    out.r0 = LD16(obj + oBattleObject_Chip);
+    out.r1 = 0;
+    out.r2 = 0;
+    out.r3 = LD8(obj + oBattleObject_ChipsHeld);
+    out.r4 = r4_in;
+    return out;
+}
+
+Next sub_800EDD0(void) {
+    SubEdd0Out o = sub_800EDD0_impl(R0, R1, R4);
+    R0 = o.r0; R1 = o.r1; R2 = o.r2; R3 = o.r3; R4 = o.r4;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_addBarrierHitAdjust_800F1DC ── */
 /* battle_addBarrierHitAdjust_800F1DC(r0 = value, r2 = incoming hit/event type, r5 = battle object):
  * Certain incoming types (0x5F..0x61, and the special value 0x150) interact
@@ -372,6 +438,50 @@ Next battle_getObjectAllianceTeam_800F49E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800F9DE ── */
+/* register form: calls object_getAllianceDirection outside this file, which has no typed C interface yet;
+ * preserves r4 across the GUEST_CALL to mirror the push {r4,lr}/pop {r4,pc} frame in the original. */
+static u32 get_alliance_direction(u32 object) {
+    u32 saved_r4 = R4;
+    R0 = object;
+    GUEST_CALL(object_getAllianceDirection);
+    u32 result = R0;
+    R4 = saved_r4;
+    return result;
+}
+
+typedef struct { u32 dy; u32 dx; } DirOffset;
+
+/* Direction offset table at byte_800FA14 holds six entries of two signed bytes
+ * (dy, dx) each:
+ *   index 0: { 0,  0}
+ *   index 1: { 0, -1}
+ *   index 2: { 0,  1}
+ *   index 3: {-1,  0}
+ *   index 4: { 1,  0}
+ *   index 5: { 0,  0}
+ * Look up the entry for `index`, transform `src_dir` through object_getAllianceDirection,
+ * and return (alliance_dir * table.dy, table.dx). */
+static DirOffset direction_lookup(u32 index, u32 src_dir) {
+    u32 alliance_dir = get_alliance_direction(src_dir);
+    u32 addr = A_byte_800FA14 + (index * 2);
+    s32 dy = (s8)LD8(addr);
+    s32 dx = (s8)LD8(addr + 1);
+    DirOffset result;
+    result.dy = (u32)((s32)alliance_dir * dy);
+    result.dx = (u32)dx;
+    return result;
+}
+
+/* sub_800F9DE(r0 = direction index, r1 = source direction) -> r0 = dy*alliance, r1 = dx */
+Next sub_800F9DE(void) {
+    DirOffset r = direction_lookup(R0, R1);
+    R0 = r.dy;
+    R1 = r.dx;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_SpawnObjectOnFrontPanel_800FAAC ── */
 /* battle_SpawnObjectOnFrontPanel_800FAAC(r0, r1, r2, r3 = effect parameters, r5 = battle object):
  * Spawns a type-3 battle object on the panel in front of the given object
@@ -485,6 +595,28 @@ Next battle_drawCardToHand_800FC7C(void) {
     ST8(hand, count + 1);
     R0 = count + 1;
     SET_FLAGS_ADD(count, 1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800FC9E ── */
+/* chip_class_lookup: r0==0 reads table0[r1], r0!=0 reads table1[r0].
+ * In the original, the r0!=0 path is a single byte load at 0x0800FCD5 + r0
+ * from ROM (no length check), so it may return arbitrary ROM bytes for large r0. */
+static u32 chip_class_lookup(u32 class, u32 code, u32 *flag_out) {
+    if (class == 0) {
+        *flag_out = 0;
+        return LD8(0x0800FCBC + code);
+    } else {
+        *flag_out = 8;
+        return LD8(0x0800FCD5 + class);
+    }
+}
+
+/* sub_800FC9E(r0 = class, r1 = code) -> r1 = (0 | 8), r2 = table byte */
+Next sub_800FC9E(void) {
+    u32 flag;
+    R2 = chip_class_lookup(R0, R1, &flag);
+    R1 = flag;
     RETURN_TO_CALLER();
 }
 
@@ -602,6 +734,130 @@ Next battle_getAiDifficultyTier_800FE36(void) {
             SET_FLAGS_NZ(R0);
         }
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800FE52 ── */
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 battle_navi_stats_byte(u32 r5_arg, u32 offset) {
+    R5 = r5_arg;
+    R1 = offset;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls GetBattleNaviStatsHword_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 battle_navi_stats_hword(u32 r5_arg, u32 offset) {
+    R5 = r5_arg;
+    R1 = offset;
+    GUEST_CALL(GetBattleNaviStatsHword_AllianceFromBattleObject);
+    return R0;
+}
+
+/* Counts how many Navi-bonus stat fields are active on the allied BattleObject (R5).
+ * Field 0x31 counts only when equal to 1; the rest count when non-zero.
+ * Output: r0 = the count. */
+static u32 count_active_navi_bonuses(u32 r5_in) {
+    u32 count = 0;
+
+    if (battle_navi_stats_byte(r5_in, 0x31) == 1) count++;
+    if (battle_navi_stats_byte(r5_in, 0x13) != 0) count++;
+    if (battle_navi_stats_byte(r5_in, 0x14) != 0) count++;
+    if (battle_navi_stats_byte(r5_in, 0x16) != 0) count++;
+    if (battle_navi_stats_hword(r5_in, 0x54) != 0) count++;
+    if (battle_navi_stats_byte(r5_in, 0x24) != 0) count++;
+    if (battle_navi_stats_byte(r5_in, 0x18) != 0) count++;
+    if (battle_navi_stats_byte(r5_in, 0x19) != 0) count++;
+    if (battle_navi_stats_byte(r5_in, 0x1A) != 0) count++;
+    if (battle_navi_stats_byte(r5_in, 0x63) != 0) count++;
+
+    return count;
+}
+
+Next sub_800FE52(void) {
+    R0 = count_active_navi_bonuses(R5);
+    /* r4 is restored from the stack by the original `pop {r4,pc}`; the typed function
+     * never touched R4, so it still holds the caller's saved value. */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800FEEC ── */
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file,
+ * which has no typed C interface yet */
+static u8 battle_object_stat_byte(u32 battle_object, u32 stat_idx) {
+    R0 = battle_object;
+    R1 = stat_idx;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return (u8)R0;
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls ai_setBeastOutPwrAtk_800FFAA outside this file,
+ * which has no typed C interface yet */
+static void ai_set_beast_out_pwr_atk(u8 arg) {
+    R0 = arg;
+    GUEST_CALL(ai_setBeastOutPwrAtk_800FFAA);
+}
+
+/* Fill the AIData block from per-template table data (when the local alliance
+ * byte is non-zero). */
+static void fill_aidata_from_table(u32 ai_data, u8 alliance_idx) {
+    u32 row = (u32)alliance_idx * 6u + A_dat01;
+    ST8(ai_data + oAIData_Unk_04,          LD8(row + 0));
+    ST8(ai_data + oAIData_APwrAtk,         LD8(row + 1));
+    ST8(ai_data + oAIData_BButton,         LD8(row + 2));
+    ai_set_beast_out_pwr_atk(LD8(row + 3));
+    ST8(ai_data + oAIData_BLeftAbility,    LD8(row + 4));
+    ST8(ai_data + oAIData_BeastOutAPwrAtk, LD8(row + 5));
+}
+
+/* Compute the alliance byte for the stats path from the current battle mode
+ * (mode 9 -> stat 0x44 from the battle object, else 0xFF). */
+static u8 alliance_for_battle_mode(u32 battle_object) {
+    if (get_battle_mode() == 9)
+        return battle_object_stat_byte(battle_object, 0x44);
+    return 0xFF;
+}
+
+/* Fill the AIData block from live Navi stats (when the local alliance byte is zero).
+ * Preserves the original sequence of r1 values handed to the stats callee and the
+ * call to ai_setBeastOutPwrAtk between them. */
+static void fill_aidata_from_stats(u32 battle_object, u32 ai_data) {
+    ST8(ai_data + oAIData_Unk_04,
+        alliance_for_battle_mode(battle_object));
+    ST8(ai_data + oAIData_BButton,
+        battle_object_stat_byte(battle_object, 4));
+    ai_set_beast_out_pwr_atk(
+        battle_object_stat_byte(battle_object, 5));
+    ST8(ai_data + oAIData_APwrAtk,
+        battle_object_stat_byte(battle_object, 0x39));
+    ST8(ai_data + oAIData_BLeftAbility,
+        battle_object_stat_byte(battle_object, 7));
+    ST8(ai_data + oAIData_BeastOutAPwrAtk, 0xFF);
+}
+
+/* Initialize the AIData block for the battle object in r5, picking a source by alliance byte.
+ * Returns the AIData pointer, which is left in r4 by the original. */
+static u32 init_ai_data(u32 battle_object) {
+    u32 ai_data  = LD32(battle_object + oBattleObject_AIDataPtr);
+    u8  alliance = battle_object_stat_byte(battle_object, 0x2C);
+
+    if (alliance == 0)
+        fill_aidata_from_stats(battle_object, ai_data);
+    else
+        fill_aidata_from_table(ai_data, alliance);
+    return ai_data;
+}
+
+/* sub_800FEEC(r5 = BattleObject) -> r2 r4 r6 (clobbers nz c v r0 r1 lr) */
+Next sub_800FEEC(void) {
+    u32 aidata = init_ai_data(R5);
+    (void)aidata;
     RETURN_TO_CALLER();
 }
 
@@ -955,6 +1211,111 @@ Next battle_aiAddTotalDamageTaken_8010548(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80106C0 ── */
+/* sub_80106C0: status-effect setter used by chips whose code path wants to clear a flag bit
+ * on the *opponent* Navi's battle-stats byte 0x0D (a "busy/invisible/whatever bit-1 marker"),
+ * and then perform a battle-object spawn/animation. The gate flag 0x8 of GetBattleEffects()
+ * and the existing bit-1 of that stats byte decide whether to take action.
+ */
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 get_battle_effects_sub_80106C0(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+static u32 get_navi_stats_byte(u32 alliance, u32 stat_id) {
+    R0 = alliance;
+    R1 = stat_id;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return R0;
+}
+
+/* register form: calls SetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+static void set_navi_stats_byte(u32 alliance, u32 stat_id, u32 value) {
+    R0 = alliance;
+    R1 = stat_id;
+    R2 = value;
+    GUEST_CALL(SetBattleNaviStatsByte);
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static const void *get_chip_data_sub_80106C0(u32 which_chip) {
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return (const void *)R0;
+}
+
+/* register form: calls battle_findPlayer outside this file, which has no typed C interface yet */
+static u32 battle_find_player(u32 alliance) {
+    R0 = alliance;
+    GUEST_CALL(battle_findPlayer);
+    return R0;
+}
+
+/* Apply the status-byte change to the opposing Navi and run the spawn/animation effect.
+ * Caller passes: chip_index (r0), self BattleObject* (r5), and the other side's alliance (r6).
+ * The chip data must be of element type 1 or 2 (a passthrough gate the original uses).
+ * Returns 1 on success, 0 if any guard rejected the action. */
+static u32 apply_opponent_status_effect(u32 chip_index, const void *self_obj,
+                                        u32 opponent_alliance) {
+    (void)self_obj;
+
+    /* Gate 1: a specific battle-effects bit must be set. */
+    u32 effects = get_battle_effects_sub_80106C0();
+    if ((effects & 0x8) == 0)
+        return 0;
+
+    /* Gate 2: opponent's stats byte 0x0D must exist and have bit 1 set. */
+    u32 stats = get_navi_stats_byte(opponent_alliance, 0xD);
+    if (stats == 0xFF)
+        return 0;
+    if ((stats & 0x2) == 0)
+        return 0;
+
+    /* Gate 3: the chip's element byte (offset 7) must be 1 or 2. */
+    const void *chip = get_chip_data_sub_80106C0(chip_index);
+    u32 element = LD8((u32)chip + 7);
+    if (element != 1 && element != 2)
+        return 0;
+
+    /* Clear bit 1 of the opponent's stats byte 0x0D. */
+    u32 cleared = get_navi_stats_byte(opponent_alliance, 0xD) & ~0x2;
+    set_navi_stats_byte(opponent_alliance, 0xD, cleared);
+
+    /* Run the spawn/animation effect using the opponent's BattleObject. */
+    u32 opp_obj = battle_find_player(opponent_alliance);
+    u32 panel_x = LD8(opp_obj + oBattleObject_PanelX);
+    u32 panel_y = LD8(opp_obj + oBattleObject_PanelY);
+
+    /* register form: calls sub_80E90FE outside this file, which has no typed C interface yet */
+    R0 = panel_x;
+    R1 = panel_y;
+    R2 = 0;
+    R3 = 0;
+    R4 = 1;
+    R6 = 0;
+    R7 = 0x17A;
+    GUEST_CALL(sub_80E90FE);
+    u32 spawn_result = R0;
+
+    /* register form: calls sub_800BF16 outside this file, which has no typed C interface yet */
+    R0 = LD8(opp_obj + oBattleObject_Alliance);
+    R1 = 1;
+    R2 = spawn_result;
+    GUEST_CALL(sub_800BF16);
+
+    return 1;
+}
+
+Next sub_80106C0(void) {
+    /* r5 is the BattleObject* the caller passes in; r6 is the opposing alliance. */
+    R0 = apply_opponent_status_effect(R0, (const void *)(R5), R6);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_IsNoCustomPlusActive_80107C0 ── */
 /* battle_IsNoCustomPlusActive_80107C0: check the battle effects for the "no Custom+" style flag
  * (GetBattleEffects bit 3). Returns 3 if that effect is active, 0 otherwise. */
@@ -964,6 +1325,70 @@ Next battle_IsNoCustomPlusActive_80107C0(void) {
         R3 = 3;
     else
         R3 = 0;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80107D4 ── */
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
+static bool battle_is_time_stopped(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls getEntryPtr_2036120_1D0_802E070 outside this file, which has no typed C interface yet */
+static u32 get_alliance_entry(u8 alliance) {
+    R0 = alliance;
+    GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
+    return R0;
+}
+
+/* Decrement an 8-bit counter in place if it is currently nonzero. */
+static void tick_down_u8(u32 addr) {
+    u8 v = LD8(addr);
+    if (v != 0) {
+        ST8(addr, v - 1);
+    }
+}
+
+/* Decrement a 16-bit counter in place if it is currently nonzero. */
+static void tick_down_u16(u32 addr) {
+    u16 v = LD16(addr);
+    if (v != 0) {
+        ST16(addr, v - 1);
+    }
+}
+
+/* Per-frame battle-object housekeeping.
+ *
+ * If battle time is stopped, do nothing. Otherwise tick down the AI's chip
+ * lockout and unknown-0x15 timers, then tick down the alliance entry's
+ * counters at offsets 0x2E, 0x3A and 0x3C if the entry's byte 0 is nonzero.
+ * The input r4 is preserved across the call (callee-saved). */
+static u32 per_frame_ai_update(u32 orig_r4, u32 battle_object_ptr) {
+    if (battle_is_time_stopped()) {
+        return orig_r4;
+    }
+
+    u32 ai_data_ptr = LD32(battle_object_ptr + oBattleObject_AIDataPtr);
+    tick_down_u8(ai_data_ptr + oAIData_ChipLockoutTimer);
+    tick_down_u8(ai_data_ptr + oAIData_Unk_15);
+
+    u8 alliance = LD8(battle_object_ptr + oBattleObject_Alliance);
+    u32 entry = get_alliance_entry(alliance);
+
+    if (LD8(entry) == 0) {
+        return orig_r4;
+    }
+
+    tick_down_u16(entry + 0x2E);
+    tick_down_u16(entry + 0x3A);
+    tick_down_u16(entry + 0x3C);
+
+    return orig_r4;
+}
+
+Next sub_80107D4(void) {
+    R4 = per_frame_ai_update(R4, R5);
     RETURN_TO_CALLER();
 }
 
@@ -1141,6 +1566,150 @@ Next BasicBattleObjectInitialize(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── busterBugChargeShotDamageCalcHappensHere_8011A7E ── */
+/* oAIAttackVars field offsets (from disassembly usage) */
+#define AOAIAttackVars_Damage        0x08
+#define AOAIAttackVars_Unk_0c        0x0C
+#define AOAIAttackVars_Unk_02        0x02
+#define AOAIAttackVars_Unk_03        0x03
+#define AOAIAttackVars_Unk_04        0x04
+#define AOAIAttackVars_AttackBoost   0x06
+#define AOAIAttackVars_Unk_0a        0x0A
+#define AOAIAttackVars_Unk_05        0x05
+
+/* oBattleObject_Alliance offset */
+#define AoBattleObject_Alliance  oBattleObject_Alliance
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file,
+ * which has no typed C interface yet */
+static u8 get_battle_navi_stats_byte_busterBugChargeShotDamageCalcHappensHere_8011A7E(u8 stat_byte) {
+    R1 = stat_byte;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return (u8)R0;
+}
+
+/* register form: calls callPossiblyGetBattleEmotion_8015B54 outside this file,
+ * which has no typed C interface yet */
+static u8 get_battle_emotion(u8 alliance) {
+    R0 = alliance;
+    GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
+    return (u8)R0;
+}
+
+/* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */
+static s32 get_positive_signed_rng(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return (s32)R0;
+}
+
+/* Compute Buster-bug charge-shot damage for an AI attack.
+ * Writes various AI attack fields and returns 0x16 as the function value.
+ *   ai_vars: AI attack-vars struct (r7)
+ *   navi:    battle object whose stats we read (r5)
+ * Returns 0x16 (NZ). */
+static u32 buster_bug_charge_shot_damage(void *ai_vars, void *navi) {
+    u32 r7 = (u32)ai_vars;
+    u32 r5 = (u32)navi;
+
+    /* Base damage = (Attack stat + 1) * 10, doubled if the navi is "beast" (emotion == 5). */
+    u32 attack_plus_one = (u32)get_battle_navi_stats_byte_busterBugChargeShotDamageCalcHappensHere_8011A7E(1) + 1;
+    u32 damage_multiplier = (get_battle_emotion((u8)LD8(r5 + AoBattleObject_Alliance)) == 5) ? 2 : 1;
+    ST16(r7 + AOAIAttackVars_Damage, (u16)(attack_plus_one * damage_multiplier * 10));
+
+    /* "Hit-count / something" field: if the special stat is 0 or 6, force 6; otherwise
+     * randomize in {0..1} (or {0..7} when the stat is 9 or 0x23) and clamp to 6 if zero. */
+    u8 special = get_battle_navi_stats_byte_busterBugChargeShotDamageCalcHappensHere_8011A7E((u8)oNaviStats_Unk_4f);
+    u32 unk_0c;
+    if (special == 0 || special == 6) {
+        unk_0c = 6;
+    } else {
+        u32 mask = (special == 9 || special == 0x23) ? 7 : 1;
+        if ((get_positive_signed_rng() & (s32)mask) == 0)
+            unk_0c = 6;
+        else
+            unk_0c = special;
+    }
+    ST32(r7 + AOAIAttackVars_Unk_0c, unk_0c);
+
+    /* Clear the rest of the AI attack fields. */
+    ST8(r7 + AOAIAttackVars_Unk_02, 0);
+    ST8(r7 + AOAIAttackVars_Unk_03, 0);
+    ST8(r7 + AOAIAttackVars_Unk_04, 0);
+    ST16(r7 + AOAIAttackVars_AttackBoost, 0);
+    ST16(r7 + AOAIAttackVars_Unk_0a, 0);
+    ST8(r7 + AOAIAttackVars_Unk_05, 0);
+
+    return 0x16;
+}
+
+Next busterBugChargeShotDamageCalcHappensHere_8011A7E(void) {
+    R0 = buster_bug_charge_shot_damage((void *)R7, (void *)R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801265A ── */
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 navi_stats_byte(u32 battle_object, u32 field, u32 *out_r2, u32 *out_r3) {
+    R0 = battle_object;
+    R1 = field;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    *out_r2 = R2;
+    *out_r3 = R3;
+    return R0;
+}
+
+/* register form: calls callPossiblyGetBattleEmotion_8015B54 outside this file, which has no typed C interface yet */
+static u32 battle_emotion(u8 alliance, u32 *out_r2, u32 *out_r3) {
+    R0 = alliance;
+    GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
+    *out_r2 = R2;
+    *out_r3 = R3;
+    return R0;
+}
+
+/* byte_80126A4 (0x080126A4): 12 bytes, all 0x01, indexed by NaviCustomIndex. */
+static u32 beast_threshold_lookup(u8 navi_idx) {
+    static const u8 table[12] = {1,1,1,1,1,1,1,1,1,1,1,1};
+    return table[navi_idx];
+}
+
+/* off_80126B0 (0x080126B0): 28-byte table indexed by transformation.
+ * Only entry 9 is 1; the rest are 0. */
+static u32 transformation_bonus(u8 transformation) {
+    static const u8 table[28] = {
+        0,0,0,0, 0,0,0,0, 0,1,0,0, 0,0,0,0,
+        0,0,0,0, 0,0,0,0, 0,0,0,0
+    };
+    return table[transformation];
+}
+
+/* Damage cap used during beast-out / transformation. The original leaves R2/R3
+ * holding whatever the last guest call produced: callPossiblyGetBattleEmotion on
+ * the beast path, the Transformation stats-byte lookup on the other path. */
+static u32 compute_damage_cap(u32 battle_object, u32 *out_r2, u32 *out_r3) {
+    u32 discard_r2, discard_r3;
+    u8 navi_idx     = (u8)navi_stats_byte(battle_object, oNaviStats_NaviIndex, &discard_r2, &discard_r3);
+    u8 alliance_idx = (u8)navi_stats_byte(battle_object, 1, &discard_r2, &discard_r3);
+    u8 alliance     = (u8)LD8(battle_object + oBattleObject_Alliance);
+
+    u32 cap = alliance_idx + beast_threshold_lookup(navi_idx);
+
+    u32 emotion = battle_emotion(alliance, out_r2, out_r3);
+    if (emotion == 5) {
+        return 1;  /* Beast-out: damage cap fixed at 1. */
+    }
+
+    u8 transformation = (u8)navi_stats_byte(battle_object, oNaviStats_Transformation, out_r2, out_r3);
+    cap += transformation_bonus(transformation);
+    return cap > 10 ? 10 : cap;
+}
+
+Next sub_801265A(void) {
+    R0 = compute_damage_cap(R5, &R2, &R3);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_isChipSpecialDarkInvisQualifying_8012ABC ── */
 /* battle_isChipSpecialDarkInvisQualifying_8012ABC(r0 = battle object):
  * Returns 1 in r0 when the object's current chip qualifies for a special
@@ -1176,5 +1745,62 @@ Next battle_isChipSpecialDarkInvisQualifying_8012ABC(void) {
     }
 
     R0 = result;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8012B4E ── */
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file,
+ * which has no typed C interface yet */
+static u8 get_battle_navi_stats_byte_sub_8012B4E(u32 battle_object, u32 stat_offset) {
+    R0 = battle_object;
+    R1 = stat_offset;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return (u8)R0;
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet
+ * The callee returns a pointer to a chip descriptor; we expose it as a raw byte pointer
+ * since this file only does fixed-offset byte loads (offsets 4 and 9). */
+static const u8 *get_chip(u32 which_chip) {
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return (const u8 *)(u32)R0;
+}
+
+/* Decide if the given chip should be handled by an "HP-at-full restore" AI branch.
+ * r0=chip_id/battle object, r1=arg1, r5=battle object.
+ * Returns r0 (0 or 1); r6/r7 preserved by the caller. */
+static u32 sub_8012B4E_logic(u32 chip_id, u32 arg1, u32 battle_object) {
+    u32 st;
+
+    st = get_battle_navi_stats_byte_sub_8012B4E(chip_id, 0x29);
+    if (st != 6) {
+        st = get_battle_navi_stats_byte_sub_8012B4E(chip_id, 0x2C);
+        if (st != 6 && st != 0x12) {
+            return 0;
+        }
+    }
+
+    /* "Extra check" branch: also reachable when stat 0x2C == 0x12. */
+    {
+        const u8 *chip = get_chip(chip_id);
+        u32 flags = LD8((u32)chip + 9);
+        if ((flags & 2) == 0) return 0;
+        if ((flags & 1) != 0) return 0;
+        if (LD8((u32)chip + 4) != 2) return 0;
+        if (arg1 != 0) {
+            return 1;
+        } else {
+            u32 ai = LD32(battle_object + oBattleObject_AIDataPtr);
+            if (LD8(ai + oAIData_PwrAtkState) != 2) return 0;
+            if (LD8(ai + oAIData_PwrAtkButton) != 1) return 0;
+            return 1;
+        }
+    }
+}
+
+Next sub_8012B4E(void) {
+    R0 = sub_8012B4E_logic(R0, R1, R5);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }

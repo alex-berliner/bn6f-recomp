@@ -8,6 +8,56 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_8012BA2 ── */
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file,
+ * which has no typed C interface yet */
+static u32 battle_navi_alliance(u32 navi) {
+    R0 = navi;
+    R1 = 0x29;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static const u8 *get_chip_data_sub_8012BA2(u32 which_chip) {
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return (const u8 *)R0;
+}
+
+/* Computes the r7 "should do PowerAtk" flag. r4 is left unchanged on the trivial-return
+ * paths (matches `mov r4, r1` at the top of the original). */
+static u32 ai_pwratk_check(u32 navi, u32 r4_arg, u32 ai_obj, u32 chip_idx) {
+    (void)r4_arg;
+    if (battle_navi_alliance(navi) != 0xB)
+        return 0;
+
+    const u8 *chip = get_chip_data_sub_8012BA2(chip_idx);
+    u32 flags = LD8(chip + 9);
+    if ((flags & 2) == 0)
+        return 0;
+    if ((flags & 1) != 0)
+        return 0;
+    if (LD8(chip + 6) != 5)
+        return 0;
+    if (r4_arg != 0)
+        return 1;
+
+    u32 ai_data = LD32(ai_obj + oBattleObject_AIDataPtr);
+    if (LD8(ai_data + oAIData_PwrAtkState) != 2)
+        return 0;
+    if (LD8(ai_data + oAIData_PwrAtkButton) != 1)
+        return 0;
+    return 1;
+}
+
+Next sub_8012BA2(void) {
+    R4 = R1;
+    R0 = ai_pwratk_check(R0, R1, R5, R6);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8012C34 ── */
 /* sub_8012C34(r0 = value, r1 = flag bits):
  * OR in flag bits selected by r1 into r0. Bit 2 of r1 adds 0x4000,
@@ -159,6 +209,32 @@ Next aiTrySelectChipFromHand_801336C(void) {
     /* all checks passed: pick the chip (r0 = chip id, r1 = 0xFFFF) */
     R1 = 0xFFFF;
     GUEST_CALL(sub_8013236);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8013396 ── */
+/* register form: calls returnBoolIfAIDataFlagsAreSet_8012F3E outside this file,
+ * which has no typed C interface yet. Z set => AI data flags are set. */
+static bool ai_flags_set(u32 battle_object) {
+    R0 = battle_object;
+    GUEST_CALL(returnBoolIfAIDataFlagsAreSet_8012F3E);
+    return !ZERO_FLAG();
+}
+
+/* True when the battle object's AI is using its buster BP/atk:
+ * the BPwrAtk slot is not 0xFF (no override) AND the AI buster flags are set.
+ * Returns 1 on a buster attack, 0 otherwise. */
+static u32 ai_attacking_buster(u32 battle_object) {
+    u32 ai_data = LD32(battle_object + oBattleObject_AIDataPtr);
+    if (LD8(ai_data + oAIData_BPwrAtk) == 0xFF)
+        return 0;
+    return ai_flags_set(battle_object) ? 1 : 0;
+}
+
+/* sub_8013396: r5 = battle object, lr = return -> nz c v r0 */
+Next sub_8013396(void) {
+    R0 = ai_attacking_buster(R5);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 

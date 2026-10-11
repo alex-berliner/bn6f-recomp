@@ -1408,6 +1408,113 @@ Next gamestate_OnMapUpdate_8005268(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_init_80052D8 ── */
+/* register form: calls dispatch_80339CC outside this file, which has no typed C interface yet */
+static void call_dispatch_80339CC(void) {
+    GUEST_CALL(dispatch_80339CC);
+}
+
+/* register form: calls sub_80039AA outside this file, which has no typed C interface yet */
+static void call_sub_80039AA(void) {
+    GUEST_CALL(sub_80039AA);
+}
+
+/* register form: calls sub_8003AFA outside this file, which has no typed C interface yet */
+static void call_sub_8003AFA(void) {
+    GUEST_CALL(sub_8003AFA);
+}
+
+/* register form: calls sub_80027B4 outside this file, which has no typed C interface yet */
+static void call_sub_80027B4(void) {
+    GUEST_CALL(sub_80027B4);
+}
+
+/* register form: calls sub_800286C outside this file, which has no typed C interface yet */
+static void call_sub_800286C(void) {
+    GUEST_CALL(sub_800286C);
+}
+
+/* register form: calls sub_8003BF4 outside this file, which has no typed C interface yet */
+static void call_sub_8003BF4(void) {
+    GUEST_CALL(sub_8003BF4);
+}
+
+/* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
+static void call_sub_8003E98(void) {
+    GUEST_CALL(sub_8003E98);
+}
+
+/* register form: calls npc_drawSprites_800467C outside this file, which has no typed C interface yet */
+static void call_npc_drawSprites_800467C(void) {
+    GUEST_CALL(npc_drawSprites_800467C);
+}
+
+/* register form: calls sub_8004298 outside this file, which has no typed C interface yet */
+static void call_sub_8004298(void) {
+    GUEST_CALL(sub_8004298);
+}
+
+/* register form: calls sub_8004590 outside this file, which has no typed C interface yet */
+static void call_sub_8004590(void) {
+    GUEST_CALL(sub_8004590);
+}
+
+/* register form: calls sub_8004934 outside this file, which has no typed C interface yet */
+static void call_sub_8004934(void) {
+    GUEST_CALL(sub_8004934);
+}
+
+/* register form: calls event_runArmedCallback_80024AE outside this file, which has no typed C interface yet */
+static void call_event_runArmedCallback_80024AE(void) {
+    GUEST_CALL(event_runArmedCallback_80024AE);
+}
+
+/* register form: calls tickCountdownGate_803F530 outside this file, which has no typed C interface yet.
+ * Returns true when the countdown has finished (Z set). */
+static bool tick_countdown_gate_done(void) {
+    GUEST_CALL(tickCountdownGate_803F530);
+    return ZERO_FLAG();
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet.
+ * Returns true while a screen fade is in progress (Z clear). */
+static bool is_screen_fade_active_battle_init_80052D8(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_800531C outside this file, which has no typed C interface yet */
+static void call_sub_800531C(void) {
+    GUEST_CALL(sub_800531C);
+}
+
+/* Battle scene init: runs the per-frame dispatch and the various sub-systems, then, once the
+ * start countdown has finished and the screen fade is still in progress, hands control to the
+ * battle main loop (sub_800531C). */
+static void do_battle_init(void) {
+    call_dispatch_80339CC();
+    call_sub_80039AA();
+    call_sub_8003AFA();
+    call_sub_80027B4();
+    call_sub_800286C();
+    call_sub_8003BF4();
+    call_sub_8003E98();
+    call_npc_drawSprites_800467C();
+    call_sub_8004298();
+    call_sub_8004590();
+    call_sub_8004934();
+    call_event_runArmedCallback_80024AE();
+
+    if (tick_countdown_gate_done() && is_screen_fade_active_battle_init_80052D8()) {
+        call_sub_800531C();
+    }
+}
+
+Next battle_init_80052D8(void) {
+    do_battle_init();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80053E4 ── */
 /* register form: calls dispatch_80339CC outside this file, which has no typed C interface yet */
 static void call_dispatch(void) { GUEST_CALL(dispatch_80339CC); }

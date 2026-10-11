@@ -458,6 +458,54 @@ Next SetPrimaryToolkitPointersWrapper(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── SetExtraToolkitPointers ── */
+/* ToolkitExtraPtrsOffsetsEnd - ToolkitExtraPtrsOffsets + 4: byte size of the offset table
+ * (0x58 = 22 entries * 4 bytes). */
+#define TOOLKIT_EXTRA_PTRS_TABLE_SIZE 0x58
+
+/* Copies the toolkit's extra pointer table into the toolkit's GameStatePtr block.
+ * For each word in ToolkitExtraPtrsOffsets, reads a word-sized offset, adds the
+ * base of the extra memory, and stores the resulting absolute address into the
+ * toolkit struct.
+ *
+ * Iterates over 22 entries (0x58 / 4 = 22) by stepping the byte index by 4 while
+ * it is below 0x58.
+ *
+ * Inputs:  toolkit       = value of r10 on entry (the toolkit struct pointer).
+ *          index         = value of r1 on entry (loop counter, starts at 0).
+ *          base          = value of r2 on entry.
+ *          offsets_addr  = value of r3 on entry.
+ * Outputs: r1 = final index (after the last +4, i.e. 0x58).
+ *          r2 = base unchanged.
+ *          r3 = offsets_addr unchanged.
+ *          r4..r7 unchanged.
+ * Other regs are local to the typed function. */
+static void set_extra_toolkit_pointers(u32 toolkit, u32 index, u32 base,
+                                       u32 offsets_addr) {
+    u32 dst = toolkit + oToolkit_GameStatePtr;
+    u32 off = index;
+    while ((s32)off < (s32)TOOLKIT_EXTRA_PTRS_TABLE_SIZE) {
+        ST32(dst + off, LD32(offsets_addr + off) + base);
+        off += 4;
+    }
+}
+
+/* register form: calls no outside function; reads RAM constants via LD32 on
+ * the addresses that the original's ADR/ldr pseudo-ops resolve to. */
+static u32 derive_base(void) {
+    u32 r3 = LD32(A_eUnusedExtraToolkitPtrsOffset);
+    /* Original: r4 = 0; r3 &= r4 -> r3 = 0. */
+    return A_eGameState + (r3 & 0);
+}
+
+Next SetExtraToolkitPointers(void) {
+    set_extra_toolkit_pointers(R10, 0, derive_base(), A_ToolkitExtraPtrsOffsets);
+    R1 = TOOLKIT_EXTRA_PTRS_TABLE_SIZE;
+    R2 = derive_base();
+    R3 = A_ToolkitExtraPtrsOffsets;
+    RETURN_TO_CALLER();
+}
+
 /* ── encryption_initAll_8006d00 ── */
 /* ── helpers for external game functions ── */
 
