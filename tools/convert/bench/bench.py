@@ -381,6 +381,11 @@ class Pair(NamedTuple):
     rounds: list[dict]          # in order; model errors left out
 
     @property
+    def finished(self) -> bool:
+        """Passed, a runaway (not asked again), or repaired once: a pair cut short is not counted."""
+        return any(r["outcome"] in ("passed", "runaway") or r["round"] >= 1 for r in self.rounds)
+
+    @property
     def won(self) -> int | None:
         return next((r["round"] for r in self.rounds if r["outcome"] == "passed"), None)
 
@@ -422,7 +427,7 @@ def pairs_of(name: str) -> list[Pair]:
 def summary(names: list[str], tsv: Path | None) -> str:
     """Several runs (replicates of the same functions) pool their attempts: one attempt is one function in
     one arm in one run."""
-    pairs = [p for name in names for p in pairs_of(name)]
+    pairs = [p for name in names for p in pairs_of(name) if p.finished]
     if not pairs:
         return f"Runs {', '.join(names)}: no results in {RUNS}"
     arms = sorted({p.arm for p in pairs}, key=lambda a: list(ARMS).index(a) if a in ARMS else 99)
