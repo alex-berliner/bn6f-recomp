@@ -266,8 +266,8 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
         save_mem(mem_out);
         return;
     }
+    res->misaligned = 0;     /* before the fork: the child writes it, and may be done before the parent runs on */
     pid_t pid = fork();
-    res->misaligned = 0;
     if (pid == 0) {
         if (!getenv("DIFFTEST_VERBOSE"))       /* out-of-domain inputs abort noisily */
             freopen("/dev/null", "w", stderr);
