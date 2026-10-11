@@ -1,0 +1,93 @@
+name: sprite_makeScalable
+address: '0x08002D14'
+kind: function
+status: confirmed
+summary: Adjusts an object's sprite pointer to the nearest 16-byte-aligned scalable sprite data offset, then tail-jumps
+  to a continuation routine that uses the scaled pointer.
+interface: 'void sprite_makeScalable(void); // in: r5 = object ptr; out/clobbers: r5, r7, r0-r3, lr; clobbers: N,Z,C,V
+  flags'
+details: 'Reads the object''s sprite offset byte (oObjectHeader_SpriteOffset), rounds it down to a multiple of 16
+
+  via (x >> 4) << 4, adds this rounded offset back to the object base pointer in r5, then tail-jumps
+
+  into loc_8002D22 via a push/pop pair (the function pushes {r5,lr} so loc_8002D22 can pop them and
+
+  return directly to sprite_makeScalable''s caller). The result is that the caller sees this function
+
+  as a small wrapper that prepares a "scalable" sprite pointer and hands control to another routine
+
+  which finishes initializing/animating the scalable sprite.
+
+  Quirks: r5 holds the object pointer both at entry and exit (preserved across the tail call);
+
+  register contract notes that r7 is preserved while r0-r3 and the condition flags are freely
+
+  clobbered.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-001228);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/sprite.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 53' --file inbox_farm_53.c sprite_makeScalable
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sprite_makeScalable
+
+    ./wf verify --function sprite_makeScalable --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261011-001228-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sprite_makeScalable
+
+    ./wf verify --function sprite_makeScalable --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261011-001228-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sprite_makeScalable
+
+    ./wf verify --function sprite_makeScalable --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001228-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story4, story5, story6,
+    story7, story8, story9.'
+  reproduce: grep -l '^08002d14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/sprite.c
+  where: recomp 4e8475a
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/sprite.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly does loc_8002D22 do with the rounded sprite pointer (initialize scaling, set affine parameters, hook
+  the sprite into a draw/anim list, etc.)?
+- Which oObjectHeader_SpriteOffset bit layout denotes "scalable" sprites - is this an opt-in flag, and is the rounding
+  purely a sprite-data alignment requirement?
+- What struct does the sprite offset byte live in (oObjectHeader fields shared with other sprite helper functions),
+  and where is the scaler flag stored?
+sources:
+- tools/wf run convert-20261011-001228
+- recomp 4e8475a
