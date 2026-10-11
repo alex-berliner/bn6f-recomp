@@ -50,6 +50,28 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
   reproduce: grep -l '^08010162 ' tools/traces/coverage/*.prof
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: 'Triage of the oracle difference in the full verify verify-20261010-191155: a harness artifact (class
+    ''misaligned load'' in tools/oracle_triage.md), not a port bug. The collision pointer at [r5 + 0x54] was 0x060000A3
+    (odd), so ldrh of 0x060000C9 returned 0xFF0000FF. The original''s `sub r1, #1; blt` takes that as expired and
+    stores nothing; the readable u16 counter stores 0x00FE (VRAM 0x060000C8). With an aligned pointer they agree:
+    ldrh gives 0-0xFFFF, and blt after sub #1 means the counter was 0. tools/oracle.py now counts such states as
+    out of domain (mgba_run notes the original''s misaligned loads and open-bus reads; entry registers below SP
+    are the free stack).'
+  refs:
+  - tools/oracle_triage.md
+  - tools/oracle.py
+  - tools/mgba_run.c
+  reproduce: './wf verify --snapshots build-snapshots
+
+    mkdir -p build/repro/battle_tickCollisionTimer_8010162 && cp build-wf-runs/verify-20261010-195836/oracle/explained/snap_battle_tickCollisionTimer_8010162_6.*
+    build/repro/battle_tickCollisionTimer_8010162/
+
+    cd cport && BN6F_ROM=../bn6f/bn6f.gba ORACLE_CONTRACT=../build-wf-runs/verify-20261010-195836/oracle/contract.txt
+    build-host/difftest -G ../build/repro/battle_tickCollisionTimer_8010162'
+  result: 0 compared, 0 differed, 24 out of domain, of which 1 explained as misaligned load (state 6; verify run
+    verify-20261010-195836)
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_24.c

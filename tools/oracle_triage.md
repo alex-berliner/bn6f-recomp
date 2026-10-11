@@ -76,3 +76,11 @@ are open bus in mGBA 0.10.2.
 Limits: only differing states are reclassified, so a state that differs for some other reason and
 also makes such a load would be hidden; the function's other states still count. The free-stack
 check sees entry registers only, not pointers loaded from memory.
+
+Result: the full verify verify-20261010-195836 (8065daa: all 1,435 readable functions, 16 routes)
+passed. The oracle compared 1,293 of 1,434 functions, 0 differed, and these same 10 states were
+explained; difftests and lockstep passed (16/16 routes identical). The verdict is "passed, but some
+functions were never compared": 70 functions that no check compared (74 in the previous run). Such a
+verify names the functions (`--function NAME` for each of tools/funcindex.py's
+`readable_functions()`). With no `--function`, the difftests run nothing and the oracle tests every
+lifted function.
