@@ -85,6 +85,34 @@ def test_without_captured_calls_only_random_difftest_can_compare(
     assert tools.called == ["build", "random", "lockstep"]
 
 
+def test_a_run_given_no_functions_says_the_difftests_compare_nothing(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    install(FakeTools(), monkeypatch)
+    start = VerifyState(run_dir=tmp_path, functions=(), snapshots=None, routes=ROUTES, battle_code=False)
+
+    assert "compare nothing" in verify.what_it_checks(start) and "--all-readable" in verify.what_it_checks(start)
+    report = run_verify(start, run_id="test", tracked=False)
+    assert report.functions_checked == 0
+
+
+def test_a_run_given_functions_says_how_many_and_which_checks(tmp_path: Path) -> None:
+    start = VerifyState(run_dir=tmp_path, functions=(FUNCTION, FunctionName("other")),
+                        snapshots=SnapshotDir(Path("snapshots")), routes=ROUTES, battle_code=True)
+
+    said = verify.what_it_checks(start)
+
+    assert "random difftest of 2 functions" in said and "CPU oracle" in said and "battle sweep" in said
+
+
+def test_all_readable_lists_every_next_function_of_the_tree(tmp_path: Path) -> None:
+    game = tmp_path / "cport/src/game"
+    game.mkdir(parents=True)
+    (game / "a.c").write_text("Next first(void) {\n}\nstatic u32 helper(void) { return 0; }\n")
+    (game / "b.c").write_text("IWRAM_CODE Next second(void) {\n}\n")
+
+    assert verify.all_readable(tmp_path) == (FunctionName("first"), FunctionName("second"))
+
+
 # ── helpers ────────────────────────────────────────────────────────────
 
 def verify_with(tools: FakeTools, monkeypatch: pytest.MonkeyPatch, run_dir: Path, battle_code: bool = False,

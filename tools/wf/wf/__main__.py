@@ -2,7 +2,8 @@
 run is, and regenerate the docs. From anywhere in the repo, `./wf ARGS` (the
 launcher at the root) is `python -m wf ARGS` with this folder's venv.
 
-  python -m wf verify  [--function NAME]... [--snapshots DIR] [--route NAME]... [--battle-code] [--trials N]
+  python -m wf verify  [--function NAME]... [--all-readable] [--snapshots DIR] [--route NAME]... [--battle-code]
+                       [--trials N]   # it says first what it will compare: no functions, no difftest or oracle
   python -m wf capture --function NAME... [--route NAME]... [--calls N]   # into build-snapshots/NAME
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] FUNCTION...
   python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--jobs N] [FUNCTION...]   # entries for accepted candidates
@@ -39,7 +40,7 @@ from wf.graphs.drafts import DraftsState, run_drafts
 from wf.graphs.convert import DEFAULT_MODELS, PENDING_RENAMES, ConvertState, ReviewRequest, convert_graph, review_sheet
 from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.record import RecordState, record_graph
-from wf.graphs.verify import VerifyReport, VerifyState, run_verify
+from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify, what_it_checks
 from wf.repo import REPO, RUNS, SNAPSHOTS
 from wf.tools.archive import ARCHIVE, archive_cited_runs
 from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
@@ -52,6 +53,7 @@ from wf.types import FunctionName, ModelSpec, Rename, Route, RouteName, Snapshot
 class VerifyCommand(BaseModel):
     command: Literal["verify"]
     functions: tuple[FunctionName, ...] = Field(alias="function")
+    all_readable: bool
     snapshots: SnapshotDir | None
     routes: tuple[RouteName, ...] = Field(alias="route")
     battle_code: bool
@@ -189,9 +191,11 @@ def main() -> None:
 # ── starting runs ──────────────────────────────────────────────────────
 
 def start_verify(command: VerifyCommand) -> None:
+    functions = command.functions + (all_readable() if command.all_readable else ())
     run_id, run_dir = new_run("verify")
-    start = VerifyState(run_dir=run_dir, functions=command.functions, snapshots=command.snapshots,
+    start = VerifyState(run_dir=run_dir, functions=tuple(dict.fromkeys(functions)), snapshots=command.snapshots,
                         routes=routes_named(command.routes), battle_code=command.battle_code, trials=command.trials)
+    print(f"{run_id} {what_it_checks(start)}")
     print_report(run_verify(start, run_id))
 
 
@@ -298,6 +302,9 @@ def print_outcome(outcome: Finished[BaseModel] | Paused) -> None:
 def print_report(report: VerifyReport) -> None:
     dirty = " + uncommitted changes" if report.sources.has_uncommitted_changes else ""
     print(f"verdict: {report.verdict.value} ({report.sources.commit[:10]}{dirty})")
+    print(f"  functions compared by the difftests and the oracle: {report.functions_checked}"
+          if report.functions_checked else
+          "  no functions were given: the difftests and the CPU oracle compared nothing (build and lockstep only)")
     if report.build_failure is not None:
         print(f"  build log: {report.build_failure.log}")
         for line in report.build_failure.last_lines:
@@ -348,6 +355,8 @@ def parse_command() -> Command:
 
     verify = commands.add_parser("verify", help="lift, build, difftest, oracle, lockstep (and battle sweep)")
     verify.add_argument("--function", action="append", default=[], help="a changed function to check")
+    verify.add_argument("--all-readable", action="store_true",
+                        help="check every readable function (`Next NAME(void)` in cport/src/game), with --function's")
     verify.add_argument("--snapshots", type=Path, help="captured calls of the functions (wf capture: build-snapshots)")
     verify.add_argument("--route", action="append", default=[], help="a route to replay (default: all)")
     verify.add_argument("--battle-code", action="store_true", help="the change touches battle code")

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow
 from wf.repo import REPO, current_sources
+import funcindex  # tools/funcindex.py (wf.repo puts tools/ on the path): the readable functions
 from wf.tools.battlesweep import run_battle_sweep
 from wf.tools.build import lift_and_build
 from wf.tools.difftest import run_captured_difftest, run_difftest
@@ -77,6 +78,7 @@ class VerifyReport(Result):
     failed_routes: tuple[RouteName, ...]
     battle_sweep: BattleSweepResult | NotRun | None
     route_failures: tuple[ToolMessage, ...] = ()    # each failed route: its verdict and what the emulator said
+    functions_checked: int = 0                      # how many functions the difftests and the oracle were given
 
 
 class VerifyState(BaseModel):
@@ -100,6 +102,25 @@ class VerifyState(BaseModel):
 
 
 workflow = Workflow[VerifyState](VerifyState, project=PROJECT)
+
+
+def all_readable(tree: Path = REPO) -> tuple[FunctionName, ...]:
+    """Every readable function of the tree: `Next NAME(void)` in cport/src/game (tools/funcindex.py)."""
+    return tuple(FunctionName(name) for name in funcindex.readable_functions(str(tree / "cport/src/game")))
+
+
+def what_it_checks(state: VerifyState) -> str:
+    """One line saying what a run will compare, so a run given no functions never passes silently on
+    the difftests and the oracle (they compare only the functions given)."""
+    routes = f"lockstep on {len(state.routes)} route{'s' if len(state.routes) != 1 else ''}"
+    sweep = ", the battle sweep" if state.battle_code else ""
+    if not state.functions:
+        return (f"checks the build and {routes}{sweep}; no functions given, so the difftests and the CPU oracle "
+                "compare nothing (--function NAME, or --all-readable for every readable function)")
+    count = f"{len(state.functions)} function{'s' if len(state.functions) != 1 else ''}"
+    captured = (f"captured-call difftest and CPU oracle of them ({state.snapshots})" if state.snapshots is not None
+                else "no captured-call difftest or CPU oracle (no --snapshots)")
+    return f"checks the build, random difftest of {count}, {captured}, {routes}{sweep}"
 
 
 # ── steps ──────────────────────────────────────────────────────────────
@@ -264,6 +285,7 @@ def write_report(given: ReportInput) -> ReportOutput:
         failed_routes=tuple(result.route for result in given.locksteps if not result.passed),
         battle_sweep=battle_sweep,
         route_failures=tuple(route_failure(result) for result in given.locksteps if not result.passed),
+        functions_checked=len(given.functions),
     )
     return ReportOutput(report=report.model_copy(update={"verdict": _verdict(given, report)}))
 
