@@ -208,3 +208,40 @@ Next sub_809C968(void) {
     handle_coord_interaction(R10);
     RETURN_TO_CALLER();
 }
+
+/* ── sub_809CF2C ── */
+/* register form: calls sub_8034C36 outside this file, which has no typed C interface yet */
+static bool cond_check_sub_8034C36(void) {
+    GUEST_CALL(sub_8034C36);
+    return !ZERO_FLAG();           /* BEQ taken if Z set */
+}
+
+/* register form: calls reqBBS_81407D8 outside this file, which has no typed C interface yet */
+static bool reqBBS_pending(void) {
+    R0 = 0;                        /* reqBBS_81407D8 takes no args; clear R0 like the asm */
+    GUEST_CALL(reqBBS_81407D8);
+    return R0 != 0;                /* TST r0,r0; BEQ if zero */
+}
+
+/* register form: calls StartCutscene outside this file, which has no typed C interface yet */
+static void start_cutscene_bbs_gui(void) {
+    R0 = (u32)A_byte_809CEB4;                                     /* CutsceneScript */
+    u32 tbl = (u32)A_eReqBBSGui_SubsystemJumpTableOffset;         /* eReqBBSGui base */
+    u32 off = 0xE;
+    u32 byte = LD8(tbl + off);
+    R1 = (byte - 1) + 0x32;                                       /* sub #1; add #0x32 */
+    R2 = 0;                                                       /* StartCutscene ignores extras */
+    GUEST_CALL(StartCutscene);
+}
+
+/* Trigger the BBS-gui cutscene (param = (eReqBBSGui[0xE] - 1) + 0x32) when both
+ * the global cond-check passes and a BBS request is pending. Otherwise no-op. */
+static void try_start_bbs_gui_cutscene(void) {
+    if (cond_check_sub_8034C36() && reqBBS_pending())
+        start_cutscene_bbs_gui();
+}
+
+Next sub_809CF2C(void) {
+    try_start_bbs_gui_cutscene();
+    RETURN_TO_CALLER();
+}

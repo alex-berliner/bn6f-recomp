@@ -142,6 +142,63 @@ Next event_TestPlayerAdvanceForward_809DB50(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809DB60 ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_u16(u16 bank, u16 flag) {
+    R0 = bank;
+    R1 = flag;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* !Z if the flag is set */
+}
+
+/* register form: calls sub_809DBC4 outside this file, which has no typed C interface yet */
+static void call_809DBC4(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_809DBC4);
+}
+
+/* Run the player's overworld input/animation tick:
+ *  - prime Unk_34 from a small ROM blob;
+ *  - if the slip-run event is set, or arrows are held, refresh Unk_50 from the table at off_809DCEC
+ *    indexed by facing;
+ *  - if game-state byte 0x11 is set, refresh Unk_48 from the table at off_809DC0C indexed by facing;
+ *  - always clear Unk_34, Unk_48 and Unk_50 on the player object. */
+static void ow_player_input_tick(u32 player_r5, u32 toolkit_r10) {
+    /* Prime Unk_34 with the base animation data. */
+    call_809DBC4(A_byte_809DBF4, player_r5 + oOWPlayerObject_Unk_34);
+
+    /* Skip arrows check when the slip-run event is active. */
+    bool slip = event_flag_set_u16(0x17, 0x3D); /* EVENT_IN_SLIPRUN_STATE */
+    u32 joypad_ptr = LD32(toolkit_r10 + oToolkit_JoypadPtr);
+    u32 held = LD16(joypad_ptr);               /* oJoypad_Held */
+    bool arrows_held = (held & JOYPAD_ARROWS) != 0;
+
+    if (slip || arrows_held) {
+        u32 facing = LD8(player_r5 + oOWPlayerObject_FacingDirection);
+        u32 ptr = LD32(A_off_809DCEC + facing * 4);
+        call_809DBC4(ptr, player_r5 + oOWPlayerObject_Unk_50);
+    }
+
+    u32 gamestate_ptr = LD32(toolkit_r10 + oToolkit_GameStatePtr);
+    if (LD8(gamestate_ptr + oGameState_Unk_11) != 0) {
+        u32 facing = LD8(player_r5 + oOWPlayerObject_FacingDirection);
+        u32 ptr = LD32(A_off_809DC0C + facing * 4);
+        call_809DBC4(ptr, player_r5 + oOWPlayerObject_Unk_48);
+    }
+
+    /* Always clear the three animation slots on the player object. */
+    ST32(player_r5 + oOWPlayerObject_Unk_34, 0);
+    ST32(player_r5 + oOWPlayerObject_Unk_48, 0);
+    ST32(player_r5 + oOWPlayerObject_Unk_50, 0);
+}
+
+Next sub_809DB60(void) {
+    /* r5 must be preserved (per contract). */
+    ow_player_input_tick(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_809DBC4 ── */
 /* register form: calls createOWObjectInteractionArea_80037ac outside this file,
  * which has no typed C interface yet */
@@ -1052,6 +1109,59 @@ Next resetStruct2000aa0State_809E3B2(void) {
     ST16(state + 0x14, 0);
     ST16(state + 0x18, 0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809E3D6 ── */
+/* Clamp the overworld player object's position against the bounding box held in
+ * the eStruct2000aa0 structure. Reads through the toolbox to find the player
+ * object, then pushes primary/secondary coordinates towards the limits stored
+ * in the structure (max/min pairs at offsets 0xC/0x14 and 0x10/0x18).
+ * If the structure's enable byte is clear, this is a no-op. */
+static void clamp_player_position(u32 toolbox_ptr) {
+    u32 clamps = A_eStruct2000aa0;
+    if (LD8(clamps + 0xB) == 0)
+        return;
+
+    u32 state = LD32(toolbox_ptr + oToolkit_GameStatePtr);
+    u32 player = LD32(state + oGameState_OverworldPlayerObjectPtr);
+    /* The assembly loads oGameState_MapGroup and compares it to 0x80, but the
+     * result is never used — only the side effect of loading the player ptr
+     * matters, so we don't need to repeat that here. */
+
+    s32 primary   = LD32(player + 0x1C);
+    s32 secondary = LD32(player + 0x20);
+
+    s32 hi_primary = LD32(clamps + 0xC);
+    if (hi_primary > primary) {
+        ST32(player + 0x1C, (u32)hi_primary);
+        ST32(player + 0x20, LD32(player + 0x2C));
+        return;
+    }
+
+    s32 lo_primary = LD32(clamps + 0x14);
+    if (lo_primary < primary) {
+        ST32(player + 0x1C, (u32)lo_primary);
+        ST32(player + 0x20, LD32(player + 0x2C));
+        return;
+    }
+
+    s32 hi_secondary = LD32(clamps + 0x10);
+    if (hi_secondary > secondary) {
+        ST32(player + 0x20, (u32)hi_secondary);
+        ST32(player + 0x1C, LD32(player + 0x28));
+        return;
+    }
+
+    s32 lo_secondary = LD32(clamps + 0x18);
+    if (lo_secondary < secondary) {
+        ST32(player + 0x20, (u32)lo_secondary);
+        ST32(player + 0x1C, LD32(player + 0x28));
+    }
+}
+
+Next sub_809E3D6(void) {
+    clamp_player_position(R10);
     RETURN_TO_CALLER();
 }
 

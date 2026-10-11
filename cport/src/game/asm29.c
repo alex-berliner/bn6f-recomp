@@ -126,6 +126,106 @@ Next menu_stateDispatch_80A4BDC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A4BFC ── */
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void call_sprite_load(u32 tile_count, u32 tile_slot, u32 pal_slot) {
+    R0 = tile_count;
+    R1 = tile_slot;
+    R2 = pal_slot;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls checkZCoordModifiers_8031612 outside this file, which has no typed C interface yet */
+static u32 call_checkZCoordModifiers(u32 coord_ptr) {
+    R0 = coord_ptr;
+    GUEST_CALL(checkZCoordModifiers_8031612);
+    return R0;
+}
+
+/* register form: calls applyLayerEffectToOWObject_8035694 outside this file, which has no typed C interface yet */
+static void call_applyLayerEffectToOWObject(u32 coord_ptr) {
+    R0 = coord_ptr;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void call_sprite_setPriority(void) {
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_sprite_setAnimation(u32 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_sprite_loadAnimationData(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void call_sprite_noShadow(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void call_sprite_setPalette(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_tickWithFlagReset_80A4C46 outside this file, which has no typed C interface yet */
+static void call_sprite_tickWithFlagReset(void) {
+    GUEST_CALL(sprite_tickWithFlagReset_80A4C46);
+}
+
+/* Sprite setup for a shockwave / effect overworld object: writes the "loaded" state byte,
+ * loads the sprite graphics into VRAM, applies Z-coordinate and layer-effect transforms to
+ * the object's coord triple, configures priority/animation/palette, then kicks off the
+ * per-frame tick. Returns the original Z value loaded from offset 0x14, which the caller
+ * observes in r6 (the assembly clobbers r6 with that load). */
+static u32 setup_effect_sprite(u32 obj) {
+    /* state byte = 3 ("sprite loaded") */
+    ST8(obj, 3);
+
+    /* sprite_load(tile_count = 0x80, tile_slot, palette_slot) */
+    call_sprite_load(0x80, LD8(obj + 6), LD8(obj + 7));
+
+    /* The two transform calls operate on the coord triple at obj+0xC and read a "Z bias"
+     * from obj+0x14. The original saves r6 = [obj+0x14], runs checkZCoordModifiers (returns
+     * a value to shift <<16 and write into obj+0x14), runs applyLayerEffectToOWObject (which
+     * reads the shifted value), then restores [obj+0x14] to the saved value. */
+    u32 saved_z = LD32(obj + 0x14);
+    u32 z_mod   = call_checkZCoordModifiers(obj + 0xC);
+    ST32(obj + 0x14, z_mod << 16);
+    call_applyLayerEffectToOWObject(obj + 0xC);
+    ST32(obj + 0x14, saved_z);
+
+    /* Priority, animation, palette configuration. */
+    call_sprite_setPriority();
+    call_sprite_setAnimation(LD8(obj + 4));
+    call_sprite_loadAnimationData();
+    call_sprite_noShadow();
+    call_sprite_setPalette(LD8(obj + 5));
+
+    /* animation-step field = 4 */
+    ST8(obj + 8, 4);
+
+    call_sprite_tickWithFlagReset();
+
+    return saved_z;
+}
+
+/* sub_80A4BFC: sprite setup for a shockwave/effect overworld object (writes the
+ * state byte, loads the sprite, applies Z/layer transforms, sets up animation+palette,
+ * kicks off the per-frame tick). r5 holds the object pointer; r6 is clobbered with
+ * the original Z value loaded from offset 0x14. */
+Next sub_80A4BFC(void) {
+    R6 = setup_effect_sprite(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_tickWithFlagReset_80A4C46 ── */
 /* sprite_tickWithFlagReset_80A4C46(r4 = unused context, r5 = sprite object):
  * Sprite animation tick: fetch the current frame's parameters, and if the
@@ -175,6 +275,270 @@ Next npc_stateDispatchStep_80A51C4(void) {
     default:   dispatch(target);        break;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A51F8 ── */
+/* ---------- register-form helpers for game functions with no typed C interface yet ---------- */
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool test_event_flag_sub_80A51F8(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void sprite_load_register(int sprite_id, int a2, int a3) {
+    R0 = sprite_id;
+    R1 = a2;
+    R2 = a3;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void sprite_setPriority_register(u8 priority) {
+    R0 = priority;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_setAnimation_register(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_loadAnimationData_register(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_noShadow_register(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setUnk0x2c outside this file, which has no typed C interface yet */
+static void sprite_setUnk0x2c_register(u32 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void sprite_setPalette_register(int palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls ClearEventFlag outside this file, which has no typed C interface yet */
+static void clear_event_flag_register(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(ClearEventFlag);
+}
+
+/* register form: calls SetEventFlag outside this file, which has no typed C interface yet */
+static void set_event_flag_register(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* register form: calls sub_80A5268 outside this file, which has no typed C interface yet */
+static u32 call_sub_80A5268(void) {
+    GUEST_CALL(sub_80A5268);
+    return R0;
+}
+
+/* register form: calls sub_80A5350 outside this file, which has no typed C interface yet */
+static u32 call_sub_80A5350(void) {
+    GUEST_CALL(sub_80A5350);
+    return R0;
+}
+
+/* ---------- typed function ---------- */
+
+/* Entry-controller update. If the entry's trigger flag is set, load the sprite for it,
+ * clear its two associated flags, and call sub_80A5268. Otherwise set those flags,
+ * mark the entry hidden, and call sub_80A5350.
+ * The output r0/flags come from whichever tail subroutine was called. */
+static u32 update_entry(u32 ctrl_addr, u32 entry_addr) {
+    u16 trigger   = LD16(entry_addr);
+    u8  sprite_a2 = LD8(entry_addr + 6);
+    u8  sprite_a3 = LD8(entry_addr + 7);
+    u8  priority  = LD8(entry_addr + 0xC);
+    u8  animation = LD8(entry_addr + 8);
+    u8  unk0x2c   = LD8(entry_addr + 0xA);
+    u8  palette   = LD8(entry_addr + 0xB);
+    u16 flag2     = LD16(entry_addr + 2);
+    u16 flag4     = LD16(entry_addr + 4);
+
+    if (test_event_flag_sub_80A51F8(trigger)) {
+        /* trigger set -> show the entry */
+        ST8(ctrl_addr, 3);
+
+        sprite_load_register(0x80, sprite_a2, sprite_a3);
+        sprite_setPriority_register(priority);
+        sprite_setAnimation_register(animation);
+        sprite_loadAnimationData_register();
+        sprite_noShadow_register();
+        sprite_setUnk0x2c_register((u32)unk0x2c << 24);
+        sprite_setPalette_register(palette);
+
+        clear_event_flag_register(flag2);
+        clear_event_flag_register(flag4);
+
+        ST8(ctrl_addr + 8, 4);
+        return call_sub_80A5268();
+    } else {
+        /* trigger clear -> hide the entry */
+        set_event_flag_register(flag2);
+        set_event_flag_register(flag4);
+        ST8(ctrl_addr + 8, 0x10);
+        return call_sub_80A5350();
+    }
+}
+
+/* ---------- thin adapter ---------- */
+
+Next sub_80A51F8(void) {
+    R0 = update_entry(R5, R7);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A5268 ── */
+/* Sub-object struct accessed via r7:
+ *   +0x0: u16 flag_a
+ *   +0x2: u16 flag_b
+ *   +0x4: u16 flag_c
+ *   +0x7: u8  state
+ *   +0x8: u8  anim_a
+ *   +0x9: u8  anim_b
+ *   +0xE: u16 sound_id
+ *
+ * Parent struct (r5) fields written:
+ *   +0x08: u8  next_sub_state
+ *   +0x24: u32 zero
+ */
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool test_event_flag_sub_80A5268(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();          /* Z set => flag clear */
+}
+
+/* register form: calls SetEventFlag outside this file, which has no typed C interface yet */
+static void set_event_flag(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_effect_sub_80A5268(u16 sound_id) {
+    R0 = sound_id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_set_anim(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_load_animation_data(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static void sprite_update_fn(void) {
+    GUEST_CALL(sprite_update);
+}
+
+/* register form: calls screenFade_80062C8 outside this file, which has no typed C interface yet */
+static u32 screen_fade_80062C8(void) {
+    GUEST_CALL(screenFade_80062C8);
+    return R0;
+}
+
+/* Sub-object step dispatch. r7 is the sub-object, r5 the parent; reads sub-state to
+ * drive animation/sound updates and writes the next sub-state to the parent. */
+static void sub_80A5268_impl(u32 r7, u32 r5) {
+    u16 flag_a = LD16(r7 + 0x0);
+    if (test_event_flag_sub_80A5268(flag_a))
+        goto done;
+
+    /* Common fade tick: if bit 1 of the fade result is clear, fall into the
+     * state-driven branches below. */
+    {
+        u32 fade = screen_fade_80062C8();
+        if (!((fade >> 2) & 1)) {
+            u8 sub_state = LD8(r7 + 0x7);
+            if (sub_state == 1) {
+                u8 anim_a = LD8(r7 + 0x8);
+                u8 anim_b = LD8(r7 + 0x9);
+                sprite_set_anim(anim_b);
+                sprite_load_animation_data();
+                set_event_flag(LD16(r7 + 0x4));
+                ST32(r5 + 0x24, 0);
+                ST8(r5 + 0x8, 0x0C);
+                goto done;
+            } else {
+                u16 sound = LD16(r7 + 0xE);
+                if (sound != 0xFFFF)
+                    play_sound_effect_sub_80A5268(sound);
+            }
+        }
+    }
+
+    /* Shared tail: set flag_c, then branch on anim_b vs anim_a. */
+    set_event_flag(LD16(r7 + 0x4));
+    {
+        u8 anim_a = LD8(r7 + 0x8);
+        u8 anim_b = LD8(r7 + 0x9);
+        if (anim_b == anim_a) {
+            set_event_flag(LD16(r7 + 0x2));
+            ST8(r5 + 0x8, 0x10);
+        } else {
+            sprite_set_anim(anim_b);
+            sprite_load_animation_data();
+            ST8(r5 + 0x8, 0x08);
+        }
+    }
+
+done:
+    sprite_update_fn();
+}
+
+/* sub_80A5268(r2, r4, r5=parent, r6, r7=sub, r10, lr) -> preserved */
+Next sub_80A5268(void) {
+    /* r7/r5 are inputs the typed function consumes; lr is left as-is by the original
+     * (`pop {pc}` returns via the saved lr). No other output is computed here. */
+    sub_80A5268_impl(R7, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A5350 ── */
+/* sub_80A5350: thin wrapper that calls FreeOverworldMapObject and pops PC.
+ * Register contract:
+ *   inputs:  r5 lr
+ *   outputs: nz c v r0 r1 r2 r3 r5 lr
+ *   clobbers: -
+ *   preserved: r5
+ *
+ * The original just tail-calls FreeOverworldMapObject (passing lr through) and
+ * returns via `pop {pc}`. Since lr is the caller-supplied return address, the
+ * typed function can simply invoke the outer helper with no arguments and let
+ * the GUEST_CALL sequence leave whatever FreeOverworldMapObject leaves in the
+ * registers/flags. */
+
+/* register form: calls FreeOverworldMapObject outside this file, which has no typed C interface yet */
+static void call_FreeOverworldMapObject(void) {
+    GUEST_CALL(FreeOverworldMapObject);
+}
+
+Next sub_80A5350(void) {
+    call_FreeOverworldMapObject();
     RETURN_TO_CALLER();
 }
 

@@ -414,6 +414,36 @@ Next npc_runPrimaryScript_809ebdc(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── npc_decrementSecondaryTimer_809ec1c ── */
+/* Decrement the NPC secondary-script timer. When it reaches zero, mark the script for
+ * teardown so the script loop will drop it next tick.
+ * Returns the post-decrement timer (or 0 on the terminate path) and reports the pre-decrement
+ * value so the adapter can reproduce the SUBS flags exactly. */
+typedef struct {
+    u32 r0;        /* value left in r0: post-decrement timer, or 0 on the terminate path */
+    u32 pre_timer; /* value before the decrement, so the adapter can reproduce the SUBS flags */
+} NpcDecTimerResult;
+
+static NpcDecTimerResult npc_decrement_secondary_timer(u32 npc) {
+    u32 timer = LD16(npc + oOverworldNPCObject_Timer_22);
+    u32 new_timer = timer - 1;
+    ST16(npc + oOverworldNPCObject_Timer_22, new_timer);
+    NpcDecTimerResult r = { .r0 = new_timer, .pre_timer = timer };
+    if (new_timer == 0) {
+        ST8(npc + oOverworldNPCObject_TerminateScript_1f, 0);
+        r.r0 = 0;
+    }
+    return r;
+}
+
+Next npc_decrementSecondaryTimer_809ec1c(void) {
+    NpcDecTimerResult res = npc_decrement_secondary_timer(R5);
+    R0 = res.r0;
+    /* Original: SUBS r0, r0, #1 sets N/Z/C/V on the pre-decrement value. */
+    SET_FLAGS_CMP(res.pre_timer, 1);
+    RETURN_TO_CALLER();
+}
+
 /* ── NPCCommand_jump_if_flag_clear ── */
 /* register form: calls ReadNPCScriptHalfword outside this file, which has no typed C interface yet */
 static u16 read_npc_script_halfword(u32 addr) {
@@ -870,6 +900,32 @@ Next NPCCommand_give_detatched_shadow(void) {
     R6 = R6 + 1;
     SET_FLAGS_ADD(R6 - 1, 1);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── NPCCommand_remove_shadow ── */
+/* register form: calls sprite_removeShadow outside this file, which has no typed C interface yet */
+static void call_sprite_removeShadow(void) {
+    GUEST_CALL(sprite_removeShadow);
+}
+
+/* Set the NPC's shadow flag bits (set 0x80, clear 0x100), drop its shadow sprite,
+ * then return the advanced cursor (r6). */
+static u32 remove_npc_shadow(u32 obj_addr, u32 cursor) {
+    u32 flags = LD32(obj_addr + oOverworldNPCObject_UnkFlags_60);
+    flags |= OW_NPC_UNK_FLAGS_60_SHADOW_FLAG_0x80;
+    flags &= ~OW_NPC_UNK_FLAGS_60_SHADOW_FLAG_0x100;
+    ST32(obj_addr + oOverworldNPCObject_UnkFlags_60, flags);
+
+    call_sprite_removeShadow();
+    return cursor + 1;
+}
+
+/* NPCCommand_remove_shadow: set the NPC's "no shadow" flag pair, drop the shadow sprite,
+ * then advance the command-list cursor by one. */
+Next NPCCommand_remove_shadow(void) {
+    R6 = remove_npc_shadow(R5, R6);
+    SET_FLAGS_NZ(R6);
     RETURN_TO_CALLER();
 }
 

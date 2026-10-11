@@ -229,6 +229,107 @@ Next mysteryData_InitMapGroupTables_809FAF4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809FB04 ── */
+/* register form: calls sub_809FB4C outside this file, which has no typed C interface yet.
+ * (kind, placements, contents, eventFlag) -> { kindResult in kindR, placementResult in placementR } */
+static void call_sub_809FB4C(u32 kind, u32 placements, u32 contents, u16 eventFlag,
+                             u32 *kindR, u32 *placementR) {
+    R0 = kind;
+    R1 = placements;
+    R2 = contents;
+    R3 = eventFlag;
+    GUEST_CALL(sub_809FB4C);
+    *kindR = R0;
+    *placementR = R1;
+}
+
+/* register form: calls sub_809FACE outside this file, which has no typed C interface yet.
+ * (eventFlag, kindResult, placementResult) -> void */
+static void call_sub_809FACE_sub_809FB04(u16 eventFlag, u32 kindResult, u32 placementResult) {
+    R0 = eventFlag;
+    R1 = kindResult;
+    R2 = placementResult;
+    GUEST_CALL(sub_809FACE);
+}
+
+/* register form: calls ClearEventFlag outside this file, which has no typed C interface yet.
+ * (eventFlag) -> void */
+static void call_clear_event_flag_sub_809FB04(u16 eventFlag) {
+    R0 = eventFlag;
+    GUEST_CALL(ClearEventFlag);
+}
+
+/* Walk the mystery-data map and clear the event flag on every non-GREEN entry.
+ * Pointer layout (per the disassembly):
+ *   group -> struct MysteryDataMapGroupEntry { u32 MapGroup; u32 MapNumberPtr; }
+ *          -> null-terminated array (MapGroup == 1 ends walk; MapGroup == 0 skips group)
+ *   group.MapNumberPtr -> u32* -> null-terminated array of MysteryDataEntry*
+ *   MysteryDataEntry { u8 Kind; u8 pad; u16 EventFlag; u32 PlacementsPtr; u32 ContentsPtr; }
+ * r5/r6/r7 are taken in and returned unchanged so the in-out registers the contract lists
+ * mirror what the original leaves behind on the pop. */
+static void clear_mystery_data_event_flags(u32 group, u32 *r5Out, u32 *r6Out, u32 *r7Out) {
+    for (;;) {
+        u32 mapGroup = LD32(group + oMysteryDataMapGroupEntry_MapGroup);
+        if (mapGroup == 1) {
+            /* mysteryDataEntriesDone: pop leaves whatever R0/R5/R6/R7 hold here. */
+            return;
+        }
+        if (mapGroup == 0) {
+            /* doneCurrentMapGroupEntry from the very first MapGroup check. */
+            group += oMysteryDataMapGroupEntry_Size;
+            continue;
+        }
+
+        /* Valid group: walk its null-terminated array of MysteryDataEntry pointers. */
+        u32 slotPtr = LD32(group + oMysteryDataMapGroupEntry_MapNumberPtr);
+        for (;;) {
+            u32 entry = LD32(slotPtr);
+            if (entry == 0) {
+                /* doneCurrentMapGroupEntry from the slot check: advance group and try the next. */
+                group += oMysteryDataMapGroupEntry_Size;
+                break;
+            }
+
+            /* Walk the per-map-number entries until Kind == 0. */
+            for (;;) {
+                u32 kind = LD8(entry);
+                if (kind == 0) break;                      /* doneCurrentMapNumberEntry */
+                if (kind == GREEN_MYSTERY_DATA) {
+                    entry += oMysteryDataEntry_Size;
+                    continue;                              /* skipGMD */
+                }
+
+                u32 placements = LD32(entry + oMysteryDataEntry_PlacementsPtr);
+                u32 contents   = LD32(entry + oMysteryDataEntry_ContentsPtr);
+                u16 eventFlag  = LD16(entry + oMysteryDataEntry_EventFlag);
+
+                u32 kindResult, placementResult;
+                call_sub_809FB4C(kind, placements, contents, eventFlag,
+                                 &kindResult, &placementResult);
+                call_sub_809FACE_sub_809FB04(eventFlag, kindResult, placementResult);
+                call_clear_event_flag_sub_809FB04(eventFlag);
+
+                entry += oMysteryDataEntry_Size;
+            }
+
+            slotPtr += 4;
+            /* Mirror the original: after incrementing the slot pointer we re-enter the
+             * group loop, which re-reads LD32(r6); a 0 there falls into doneCurrentMapGroupEntry. */
+            continue;
+        }
+    }
+}
+
+Next sub_809FB04(void) {
+    u32 group = R4;
+    u32 r5 = R5, r6 = R6, r7 = R7;
+    clear_mystery_data_event_flags(group, &r5, &r6, &r7);
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── mysteryData_resolveMapGroupEntry_809FBF2 ── */
 /* mysteryData_resolveMapGroupEntry_809FBF2(r0 = map group id, r1 = base pointer):
  * Resolve the pointer for the requested map group. Group 5 (the mystery
