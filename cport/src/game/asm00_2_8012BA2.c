@@ -222,6 +222,109 @@ Next returnBoolIfAIDataFlagsAreSet_8012F3E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── DeterminePowerAttackChargeTime ── */
+/*
+ * DeterminePowerAttackChargeTime (0x08012F62)
+ *
+ * Works out how many frames the navi's charged power attack takes, based on
+ * the battle object's AI data. Entry r0 selects the AIData charge field:
+ * JOYPAD_B picks oAIData_BPwrAtk directly, anything else picks
+ * oAIData_APwrAtk and additionally consults the navi's transformation -- a
+ * Beast Over transformation whose current chip is elementless switches to
+ * oAIData_BeastOutAPwrAtk instead. r5 holds the battle object whose AIData
+ * pointer is read.
+ *
+ * The original also leaves the charge-table index in r1 (or 0xFF on the
+ * "no data" early return) and the powerAttackChargeTimes base address in r2
+ * on the paths that load from it; both are part of the register contract, so
+ * they are reproduced exactly -- see the register-form helpers below.
+ */
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 get_navi_stats_byte_DeterminePowerAttackChargeTime(u32 battleObject, u32 statsOffset) {
+    R0 = battleObject;
+    R1 = statsOffset;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls getCurChipInBattleHand_8010004 and getChip8021DA8 outside this file, which have no typed C interface yet.
+ * The original branches on the Z flag getCurChipInBattleHand_8010004 leaves
+ * behind (the disassembly notes that branch can never succeed, since the
+ * hand lookup does not set the control codes it seems to test) and feeds its
+ * r0 result straight into getChip8021DA8; both behaviours are kept here. */
+static u32 current_chip_data(u32 transformation) {
+    R0 = transformation;
+    GUEST_CALL(getCurChipInBattleHand_8010004);
+    if (!ZERO_FLAG())
+        GUEST_CALL(getChip8021DA8);   /* r0 still holds the hand chip id */
+    return R0;
+}
+
+/* register form: the contract lists r2 as an output. On the paths that read
+ * the table the original leaves the powerAttackChargeTimes base address in
+ * guest r2, while on the 0xFF early return r2 must keep whatever the last
+ * callee left behind -- a value that only exists in the guest register file,
+ * so the table address has to be placed in r2 exactly where the original's
+ * ldr sits, and only on the paths that reach it. */
+static u32 load_charge_time(u32 tableIndex) {
+    R2 = A_powerAttackChargeTimes_8020404;
+    return LD16(R2 + tableIndex);
+}
+
+typedef struct {
+    u32 chargeTime; /* -> r0: charge frames, or 0xFF when there is no entry */
+    u32 r1Value;    /* -> r1: charge-table index, or 0xFF on the early return */
+} PowerAttackChargeResult;
+
+static PowerAttackChargeResult determine_power_attack_charge_time(u32 selector, u32 battleObject) {
+    PowerAttackChargeResult result;
+    u32 aiData = LD32(battleObject + oBattleObject_AIDataPtr);
+    u32 pwrAtkOffset;
+    u32 currentR0 = selector; /* tracks the original's r0 through the lookup chain */
+
+    if (currentR0 == JOYPAD_B) {
+        pwrAtkOffset = 7; /* oAIData_BPwrAtk */
+    } else {
+        pwrAtkOffset = 5; /* oAIData_APwrAtk */
+
+        /* Beast Out transformations may switch to the Beast-Out field,
+         * provided the chip currently in the battle hand is elementless. */
+        u32 transformation = get_navi_stats_byte_DeterminePowerAttackChargeTime(currentR0, oNaviStats_Transformation);
+        currentR0 = transformation;
+        if ((s32)transformation >= (s32)TF_GREGARBEAST
+                && (s32)transformation <= (s32)TF_FALZARBEASTOVER) {
+            u32 chipPtr = current_chip_data(transformation);
+            u32 chipElement = LD8(chipPtr + 6 /* oChipData_ChipElement */);
+            currentR0 = chipElement;
+            if (chipElement == CHIP_ELEM_NONE)
+                pwrAtkOffset = oAIData_BeastOutAPwrAtk;
+        }
+    }
+
+    /* Charge level (navi stats byte 3) picks the row of the charge table. */
+    u32 chargeLevelTimes2 = get_navi_stats_byte_DeterminePowerAttackChargeTime(currentR0, 3) * 2;
+
+    u32 pwrAtkStat = LD8(aiData + pwrAtkOffset);
+    if (pwrAtkStat == 0xFF) {
+        /* No power-attack data: report the maximum charge time. r2 keeps
+         * whatever the last callee left behind, as in the original. */
+        result.chargeTime = 0xFF;
+        result.r1Value = 0xFF;
+    } else {
+        result.r1Value = pwrAtkStat * 10 + chargeLevelTimes2;
+        result.chargeTime = load_charge_time(result.r1Value);
+    }
+    return result;
+}
+
+Next DeterminePowerAttackChargeTime(void) {
+    PowerAttackChargeResult out = determine_power_attack_charge_time(R0, R5);
+    R0 = out.chargeTime;
+    R1 = out.r1Value;
+    RETURN_TO_CALLER();
+}
+
 /* ── aiTrySelectChipFromHand_801336C ── */
 /* aiTrySelectChipFromHand_801336C (r5 = battle object):
  * Decide whether the enemy AI should play the chip currently in its battle

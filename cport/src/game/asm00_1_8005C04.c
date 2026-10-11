@@ -8,6 +8,190 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── map_triggerEnterMapOnWarp_8005C04 ── */
+/* map_triggerEnterMapOnWarp_8005C04 — runs when the player finishes a warp:
+ * tears down the old map, copies the selected warp table entry into the warp
+ * work struct, saves the overworld player state on real-world <-> internet
+ * crossings, picks the respawn position, and rewrites the GameState map id so
+ * cbGameState_80050EC can enter the target map. */
+
+#define WARP_TRANSITION_EVENT_FLAG 0x171B /* EVENT_171B: set while the warp animation plays */
+
+/* register form: calls FreeAllObjectsOfSpecifiedTypes outside this file, which has no typed C interface yet */
+static void free_all_objects_of_specified_types(u32 type_mask) {
+    R0 = type_mask;
+    GUEST_CALL(FreeAllObjectsOfSpecifiedTypes);
+}
+
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls map_lookupMapIdByGroupAndNumber_8001708 outside this file, which has no typed C interface yet */
+static void map_lookup_map_id(u32 map_group, u32 map_number) {
+    R0 = map_group;
+    R1 = map_number;
+    GUEST_CALL(map_lookupMapIdByGroupAndNumber_8001708);
+}
+
+/* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
+static void set_render_info_lcd_control(u32 lcd_control) {
+    R0 = lcd_control;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool test_event_flag(u32 flag) {
+    R0 = flag >> 8;
+    R1 = flag & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* the callee clears Z when the flag is set */
+}
+
+/* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void clear_event_flag(u32 flag) {
+    R0 = flag >> 8;
+    R1 = flag & 0xFF;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+/* Values the original leaves behind in r0-r3 that no callee provides:
+ * r0 = 0 (final movs), r1 = map group before the warp, r2 = previous
+ * "last map group", r3 = destination Z chosen in .gotWarpInfo.
+ * target_map_id is returned so the adapter can reproduce the C flag that
+ * lsr r7, r6, #8 leaves behind. */
+typedef struct {
+    u32 target_map_id;
+    u32 old_map_group;
+    u32 old_last_map_group;
+    u32 player_z;
+} EnterMapOnWarpResult;
+
+static EnterMapOnWarpResult trigger_enter_map_on_warp(u32 toolkit) {
+    EnterMapOnWarpResult result;
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+
+    /* the warp sequence owns this pointer until it is done */
+    ST32(game_state + oGameState_Ptr_20, 0);
+
+    /* remove the objects belonging to the map we are leaving (type 0x25) */
+    free_all_objects_of_specified_types(0x25);
+
+    /* copy the selected warp table entry (index-1) over the warp work struct */
+    u32 warp = LD32(toolkit + oToolkit_Warp2011bb0_Ptr);
+    u32 warp_entry = LD32(warp + oWarp2011bb0_WarpDataPtr)
+        + (LD8(warp + oWarp2011bb0_WarpIndex) - 1) * oWarpData_Size;
+    copy_words(warp_entry, warp, oWarpData_Size);
+
+    /* resolve the incoming map and turn the LCD back on for the new area */
+    game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    map_lookup_map_id(LD8(game_state + oGameState_MapGroup),
+                      LD8(game_state + oGameState_MapNumber));
+    set_render_info_lcd_control(0x40);
+
+    warp = LD32(toolkit + oToolkit_Warp2011bb0_Ptr);
+    game_state = LD32(toolkit + oToolkit_GameStatePtr);
+
+    /* while the warp animation runs the player state was saved already,
+     * so only remember where the overworld player stood on plain warps */
+    if (!test_event_flag(WARP_TRANSITION_EVENT_FLAG)) {
+        u32 warp_group = LD8(warp + oWarp2011bb0_MapGroup);
+        u32 current_group = LD8(game_state + oGameState_MapGroup);
+        if ((warp_group ^ current_group) & 0x80) {
+            /* real world <-> internet crossing: the state we are leaving
+             * behind is stored in the save block of the world we are in
+             * (warping to the internet saves the real-world position) */
+            u32 saved = game_state
+                + ((warp_group & 0x80)
+                       ? oGameState_SavedRealWorldCoords_FacingDirection_MapId
+                       : oGameState_SavedInternetCoords_FacingDirection_MapId);
+            u32 player = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+            ST32(saved + oSavedOWPlayerInfo_X, LD32(player + oOWPlayerObject_X));
+            ST32(saved + oSavedOWPlayerInfo_Y, LD32(player + oOWPlayerObject_Y));
+            ST32(saved + oSavedOWPlayerInfo_Z, LD32(player + oOWPlayerObject_Z));
+            ST32(saved + oSavedOWPlayerInfo_FacingDirection,
+                 LD8(player + oOWPlayerObject_FacingDirection));
+            ST32(saved + oSavedOWPlayerInfo_MapId,
+                 (LD8(game_state + oGameState_MapNumber) << 8)
+                     | LD8(game_state + oGameState_MapGroup));
+        }
+    }
+
+    clear_event_flag(WARP_TRANSITION_EVENT_FLAG);
+
+    /* where the player reappears depends on the kind of crossing */
+    u32 transition_type = LD8(warp + oWarp2011bb0_MapGroupTransitionType);
+    u32 x, y, z, facing_direction, target_map_id;
+    if (transition_type == MAP_GROUP_TRANSITION_TYPE_INTERNET_TO_REAL_WORLD) {
+        x = LD32(game_state + oGameState_SavedRealWorldX);
+        y = LD32(game_state + oGameState_SavedRealWorldY);
+        z = LD32(game_state + oGameState_SavedRealWorldZ);
+        facing_direction = LD32(game_state + oGameState_SavedRealWorldFacingDirection);
+        target_map_id = LD32(game_state + oGameState_SavedRealWorldMapId);
+    } else if (transition_type == MAP_GROUP_TRANSITION_TYPE_REAL_WORLD_TO_INTERNET) {
+        x = LD32(game_state + oGameState_SavedInternetX);
+        y = LD32(game_state + oGameState_SavedInternetY);
+        z = LD32(game_state + oGameState_SavedInternetZ);
+        facing_direction = LD32(game_state + oGameState_SavedInternetFacingDirection);
+        target_map_id = LD32(game_state + oGameState_SavedInternetMapId);
+    } else {
+        /* same-world warp: the (just copied) warp entry carries the destination */
+        ST8(warp + oWarp2011bb0_Unk_10, 2);
+        x = LD32(warp + oWarp2011bb0_X);
+        y = LD32(warp + oWarp2011bb0_Y);
+        z = LD32(warp + oWarp2011bb0_Z);
+        facing_direction = LD8(warp + oWarp2011bb0_FacingDirection);
+        target_map_id = LD16(warp + oWarp2011bb0_MapId);
+    }
+
+    ST32(game_state + oGameState_PlayerX, x);
+    ST32(game_state + oGameState_PlayerY, y);
+    ST32(game_state + oGameState_PlayerZ, z);
+    ST32(game_state + oGameState_FacingDirectionAfterWarp, facing_direction);
+
+    u32 target_group = target_map_id & 0xFF;
+    u32 target_number = (target_map_id >> 8) & 0xFF;
+
+    /* entering a map restarts its subsystem and records where we came from;
+     * skipping the subsystem reset leaves a white screen after the warp */
+    ST8(game_state + oGameState_SubsystemIndex, 0);
+    ST8(game_state + oGameState_LastMapNumber, LD8(game_state + oGameState_MapNumber));
+    u32 previous_group = LD8(game_state + oGameState_MapGroup);
+    result.old_last_map_group = LD8(game_state + oGameState_LastMapGroup);
+    ST8(game_state + oGameState_LastMapGroup, previous_group);
+    ST8(game_state + oGameState_MapGroup, target_group);
+    ST8(game_state + oGameState_MapNumber, target_number);
+
+    /* reset the warp animation state */
+    u32 warp_state = LD32(toolkit + oToolkit_S2001c04_Ptr);
+    ST16(warp_state + oS2001c04_Unk_12, 0);
+    ST16(warp_state + oS2001c04_Unk_14, 0);
+
+    result.old_map_group = previous_group;
+    result.player_z = z;
+    result.target_map_id = target_map_id;
+    return result;
+}
+
+/* map_triggerEnterMapOnWarp_8005C04() -> flags nz c v, r0-r3, preserves r4-r12/lr */
+Next map_triggerEnterMapOnWarp_8005C04(void) {
+    EnterMapOnWarpResult result = trigger_enter_map_on_warp(R10);
+    R0 = 0;                                   /* final mov r0, #0 */
+    R1 = result.old_map_group;                /* final r1: map group before the warp */
+    R2 = result.old_last_map_group;           /* final r2: previous last map group */
+    R3 = result.player_z;                     /* final r3: destination Z from .gotWarpInfo */
+    /* lsr r7, r6, #8 leaves C = bit 7 of the target map id (V=0 from the cmps) */
+    SET_FLAGS_CMP(0, 1 - ((result.target_map_id >> 7) & 1));
+    /* the final movs r0, #0 leaves N clear and Z set */
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
 /* ── subsystem_launchShop ── */
 /* subsystem_launchShop (0x08005D28):
  * Leave the current map and hand control over to the shop subsystem.
@@ -288,6 +472,62 @@ Next sub_8005F78(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8005F84 ── */
+/* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
+static void set_lcd_render_info(u16 lcd_control) {
+    R0 = lcd_control;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* register form: calls sub_809F68C outside this file, which has no typed C interface yet */
+static void call_sub_809F68C(void) {
+    GUEST_CALL(sub_809F68C);
+}
+
+/* register form: calls chatbox_8040818 outside this file, which has no typed C interface yet */
+static void call_chatbox_8040818(void) {
+    GUEST_CALL(chatbox_8040818);
+}
+
+/* register form: calls chatbox_clear_eFlags2009F38 outside this file, which has no typed C interface yet */
+static void clear_chatbox_flag_block(u32 flag_bits) {
+    R0 = flag_bits;
+    GUEST_CALL(chatbox_clear_eFlags2009F38);
+}
+
+/* Tear the current scene down and send the game back to its opening state:
+ * restore the LCD render defaults, release the effect/chatbox state, clear
+ * the 0x40 chatbox event-flag block, then rewind the main jumptable to step 4
+ * and reset the game state to kind 0, phase 8.
+ *
+ * Returns the phase byte (8) written last, which the original leaves in r1
+ * on exit. r2/r3 and the c/v flags the caller sees are whatever
+ * chatbox_clear_eFlags2009F38 (the last callee) left behind, exactly as in
+ * the original; r4-r7 are untouched. */
+static u32 reset_to_opening_state(u32 toolkit) {
+    set_lcd_render_info(0x40);
+    call_sub_809F68C();
+    call_chatbox_8040818();
+    clear_chatbox_flag_block(0x40);
+
+    /* Main jumptable back to step 4. */
+    u32 jumptable_index_ptr = LD32(toolkit + oToolkit_MainJumptableIndexPtr);
+    ST8(jumptable_index_ptr, 4);
+
+    /* Game state back to kind 0, phase 8. */
+    u32 game_state_ptr = LD32(toolkit + oToolkit_GameStatePtr);
+    ST8(game_state_ptr, 0);
+    ST8(game_state_ptr + 0x16, 8);
+    return 8;
+}
+
+/* sub_8005F84(r10 = toolkit) -> r1 = 8; r2 r3 c v left behind by
+ * chatbox_clear_eFlags2009F38; r4-r7 preserved. */
+Next sub_8005F84(void) {
+    R1 = reset_to_opening_state(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── screenFade_80062C8 ── */
 /* screenFade_80062C8: read the current screen fade state.
  * eScreenFade is the fade controller struct; its +1 byte is the fade mode
@@ -432,6 +672,100 @@ Next sub_800647C(void) {
     R5 = work;
     R6 = savedR6;
     R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80064BE ── */
+/*
+ * Color-fade stepper (sub_80064BE).
+ *
+ * The state block arrived in r5 describes a fade that repaints two palette
+ * slots a little further every tick:
+ *   +0x03 u8   running flag, cleared once the fade has finished
+ *   +0x04 u16  step added to the position every tick
+ *   +0x06 u16  current fade position
+ *   +0x08 u16  first argument for the palette update call
+ *   +0x0A u16  end position; reaching it ends the fade
+ *   +0x0C u8   base palette slot number
+ *   +0x10 u32 / +0x18 u16  description of the first palette slot to repaint
+ *   +0x14 u32 / +0x1C u16  description of the second palette slot to repaint
+ *
+ * After the position is updated and the palettes repainted via sub_8002378
+ * (slots base+0x12 and base+0x13), one of the two handlers in the table at
+ * off_8006510 is invoked: sub_8006518 while the fade is still running
+ * (table index 0), sub_8006580 once it finished (table index 4).
+ */
+
+/* register form: calls sub_8002378 outside this file, which has no typed C interface yet.
+ * Besides its five arguments, the original keeps the fade color in r6 and the
+ * handler-table index in r7 live across this call, so set those too. */
+static void set_palette_color(u32 arg0, u32 color, u32 arg2, u32 slot, u32 arg4, u32 index) {
+    R0 = arg0;
+    R1 = color;
+    R2 = arg2;
+    R3 = slot;
+    R4 = arg4;
+    R6 = color;
+    R7 = index;
+    GUEST_CALL(sub_8002378);
+}
+
+/* register form: calls sub_8006518 outside this file, which has no typed C interface yet.
+ * The original reaches it through the table at off_8006510 and enters it with the
+ * fetched table entry in r0; r1-r7 still hold the values set up for sub_8002378
+ * (r3 deliberately keeps whatever sub_8002378 left behind, as in the original). */
+static void call_fade_step_handler(u32 handler) {
+    R0 = handler;
+    GUEST_CALL(sub_8006518);
+}
+
+/* register form: calls sub_8006580 outside this file, which has no typed C interface yet.
+ * Same entry state as the step handler above. */
+static void call_fade_end_handler(u32 handler) {
+    R0 = handler;
+    GUEST_CALL(sub_8006580);
+}
+
+static void fade_tick(u32 state) {
+    u32 end = LD16(state + 0xA);
+    u32 pos = LD16(state + 6) + LD16(state + 4);
+    u32 index = 0;                    /* table entry of the "still running" handler */
+
+    if ((s32)pos >= (s32)end) {
+        ST8(state + 3, 0);            /* fade finished: clear the running flag ... */
+        pos = end;                    /* ... and clamp the position at the end value */
+        index = 4;                    /* table entry of the "finished" handler */
+    }
+    ST16(state + 6, pos);
+
+    /* Broadcast the position's top 4 bits as one gray level to the R, G and B
+     * halves of an RGB555 color. */
+    u32 level = pos >> 4;
+    u32 color = level | (level << 5) | (level << 10);
+
+    set_palette_color(LD16(state + 8), color, LD16(state + 0x18),
+                      LD8(state + 0xC) + 0x12, LD32(state + 0x10), index);
+    set_palette_color(LD16(state + 8), color, LD16(state + 0x1C),
+                      LD8(state + 0xC) + 0x13, LD32(state + 0x14), index);
+
+    u32 handler = LD32(A_off_8006510 + index);
+    if (index == 0)
+        call_fade_step_handler(handler);
+    else
+        call_fade_end_handler(handler);
+}
+
+/* sub_80064BE(r5 = fade state block) */
+Next sub_80064BE(void) {
+    /* The original body runs between push {r4-r7,lr} / pop {r4-r7,pc}: the calls
+     * inside clobber r4/r6/r7, but the caller's copies must survive.  r0-r3 and
+     * the condition flags are whatever the dispatched handler leaves behind, so
+     * the adapter does not write them. */
+    u32 r4 = R4, r6 = R6, r7 = R7;
+    fade_tick(R5);
+    R4 = r4;
+    R6 = r6;
+    R7 = r7;
     RETURN_TO_CALLER();
 }
 
