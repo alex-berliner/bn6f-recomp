@@ -406,6 +406,122 @@ Next chatbox_runScript(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_selectCompTextByMap_8040730 ── */
+/* Pick the compressed text script that matches the map the player is standing on.
+ *
+ * off_8040770 holds two rows of two table roots:
+ *   row 0 (idx 0): normal per-map completion text   (real world / internet)
+ *   row 1 (idx 1): L-button textscripts             (real world / internet)
+ * Within a row the lookup goes [world][map group] and, for the normal tables
+ * only, one level further down by [map number]; the final index into the
+ * resulting pointer array is oGameState_Unk_08. */
+typedef struct {
+    u32 text;      /* r0: the selected LZ77-compressed text script pointer */
+    u32 slotTable; /* r3 before the final index is added, kept for the flags */
+    u32 slotOffset;/* r2 as the original leaves it: 4 * oGameState_Unk_08 */
+    u32 slotPtr;   /* r3 as the original leaves it: &table[Unk_08] */
+} CompTextLookup;
+
+static CompTextLookup select_comp_text_by_map_chatbox_selectCompTextByMap_8040730(u32 idx, u32 toolkit)
+{
+    CompTextLookup out;
+
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 mapGroup  = LD8(gameState + oGameState_MapGroup);
+    u32 mapNumber = LD8(gameState + oGameState_MapNumber);
+    u32 textSlot  = LD8(gameState + oGameState_Unk_08);
+
+    /* Real-world and internet areas use separate halves of every table. */
+    u32 worldOffset = 0;
+    if ((s32)mapGroup >= INTERNET_MAP_GROUP_START) {
+        worldOffset = 4;
+        mapGroup -= INTERNET_MAP_GROUP_START;
+    }
+
+    /* Each idx selects one row of two roots in off_8040770. */
+    u32 rowOffset  = 8 * idx;
+    u32 groupTable = LD32(A_off_8040770 + rowOffset + worldOffset);
+    u32 slotTable  = LD32(groupTable + 4 * mapGroup);
+
+    /* The normal tables narrow down by map number inside each group first;
+     * the L-button tables point straight at the per-slot pointer arrays. */
+    if (rowOffset == 0)
+        slotTable = LD32(slotTable + 4 * mapNumber);
+
+    out.slotOffset = 4 * textSlot;
+    out.slotTable  = slotTable;
+    out.slotPtr    = slotTable + out.slotOffset;
+    out.text       = LD32(out.slotPtr);
+    return out;
+}
+
+/* chatbox_selectCompTextByMap_8040730(r0 = idx) -> r0 = text script,
+ * r2 = 4 * Unk_08, r3 = &table[Unk_08], flags set as by ADDS r3, r2.
+ * r4-r7 are only pushed/popped by the original, so they pass through here
+ * untouched. */
+Next chatbox_selectCompTextByMap_8040730(void) {
+    CompTextLookup out = select_comp_text_by_map_chatbox_selectCompTextByMap_8040730(R0, R10);
+    R0 = out.text;
+    R2 = out.slotOffset;
+    R3 = out.slotPtr;
+    SET_FLAGS_ADD(out.slotTable, out.slotOffset);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_selectCompTextByMap_80407C8 ── */
+/* Selects the compressed chat text for the current map.
+ *
+ * The text tables are three nested arrays: one pointer table per world
+ * (real world / internet, picked by whether the map group is >= 0x80,
+ * with 0x80 subtracted to index into the internet table), then one entry
+ * per map group, then one entry per map number, giving an array of five
+ * script pointers indexed by story progress. This lookup always uses
+ * progress stage 4.
+ *
+ * The original leaves r3 pointing at the table slot it loaded the text
+ * pointer from and r2 = 16 (the stage-4 stride it just added); callers
+ * branch on the flags from that address computation, so both are returned. */
+typedef struct {
+    u32 text;        /* *const LZ77Compressed<TextScriptArchive> for this map */
+    u32 slotAddress; /* guest address of the table slot holding the pointer */
+} CompTextSelection;
+
+static CompTextSelection select_comp_text_by_map_chatbox_selectCompTextByMap_80407C8(u32 toolkit)
+{
+    CompTextSelection result;
+
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 group     = LD8(gameState + oGameState_MapGroup);
+    u32 mapNumber = LD8(gameState + oGameState_MapNumber);
+
+    /* Pick the world table; internet groups are numbered from 0x80. */
+    u32 worldIndex = 0;
+    if (group >= INTERNET_MAP_GROUP_START) {
+        worldIndex = 1;
+        group -= INTERNET_MAP_GROUP_START;
+    }
+
+    u32 worldTable = LD32(A_mapPtrs80407FC + worldIndex * 4);
+    u32 groupTable = LD32(worldTable + group * 4);
+    u32 mapEntry   = LD32(groupTable + mapNumber * 4);
+
+    u32 slotAddress = mapEntry + 4 * 4; /* stage 4 = last story progress */
+    result.text        = LD32(slotAddress);
+    result.slotAddress = slotAddress;
+    return result;
+}
+
+/* chatbox_selectCompTextByMap_80407C8
+ * (r10 = toolkit) -> r0 = text script, r2 = 16, r3 = slot address, flags nz/c/v */
+Next chatbox_selectCompTextByMap_80407C8(void) {
+    CompTextSelection sel = select_comp_text_by_map_chatbox_selectCompTextByMap_80407C8(R10);
+    R0 = sel.text;
+    R2 = 16;
+    R3 = sel.slotAddress;
+    SET_FLAGS_ADD(sel.slotAddress, 16);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_config_80408D0 ── */
 /* register form: calls chatbox_resetAndClearBuffers_8045F60 outside this file, which has no typed C interface yet */
 static void chatbox_reset_buffers(u32 chatbox) {
@@ -1080,6 +1196,94 @@ Next chatbox_EC_label(void) {
     R0 = 1;
     SET_FLAGS_NZ(R0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_EF_checkflag ── */
+/*
+ * chatbox script-command dispatcher (0x0804156C).
+ *
+ * The chatbox work area (r4) holds a command opcode at offset 1. This function
+ * looks the opcode up in the handler table jt_ctrl_8041580 and jumps to the
+ * matching handler, leaving r0 = table entry and r1 = opcode*4 for the callee.
+ * It is a tail call in disguise: `mov lr, pc` points back at the `pop {pc}`,
+ * so the handler returns straight to this function's caller, and every register
+ * and flag as the handler leaves them becomes this function's result.
+ */
+
+/* register form: calls the chatbox script handlers outside this file (the targets
+ * of jt_ctrl_8041580), which have no typed C interface yet. The callee runs with
+ * this function's register state; its r0..r12 and flags at return are what the
+ * caller of chatbox_EF_checkflag must see, which no typed interface can express. */
+static void chatbox_dispatch_command(u32 ctx)
+{
+    u32 cmd = LD8(ctx + 1);                        /* opcode byte selects the handler */
+    u32 entry = LD32(A_jt_ctrl_8041580 + cmd * 4); /* handler address | 1, as the original leaves it in r0 */
+
+    R0 = entry;
+    R1 = cmd * 4;                                  /* r1 as the original leaves it for the callee */
+
+    switch (cmd) {
+    case 0:  GUEST_CALL(chatbox_804171C); break;
+    case 1:  GUEST_CALL(chatbox_cmdRunScriptByGameProgress_8041748); break;
+    case 2:  GUEST_CALL(chatbox_80416C4); break;
+    case 3:  GUEST_CALL(chatbox_8041774); break;
+    case 4:  GUEST_CALL(chatbox_80416F0); break;
+    case 5:  GUEST_CALL(chatbox_stepScriptEntry_80417A4); break;
+    case 6:  GUEST_CALL(chatbox_80417C0); break;
+    case 7:  GUEST_CALL(chatbox_80417E4); break;
+    case 8:
+    case 9:
+    case 42: GUEST_CALL(chatbox_8041818); break;
+    case 10:
+    case 11:
+    case 12:
+    case 13: GUEST_CALL(chatbox_8042A9C); break;
+    case 14:
+    case 15:
+    case 16:
+    case 17: GUEST_CALL(chatbox_8042B38); break;
+    case 18:
+    case 19:
+    case 20:
+    case 21: GUEST_CALL(chatbox_8042C18); break;
+        /* slots 22-25, 31, 35-39, 44, 45, 48 and 58 are empty (0) in the table;
+         * they are never dispatched on real game states, so nothing is called. */
+    case 26: GUEST_CALL(chatbox_80418CC); break;
+    case 27:
+    case 28:
+    case 29:
+    case 30: GUEST_CALL(chatbox_8043A5C); break;
+    case 32: GUEST_CALL(chatbox_8041904); break;
+    case 33: GUEST_CALL(chatbox_8041944); break;
+    case 34: GUEST_CALL(chatbox_processScriptEntry_80419D0); break;
+    case 40: GUEST_CALL(chatbox_8041694); break;
+    case 41: GUEST_CALL(chatbox_8041670); break;
+    case 43: GUEST_CALL(chatbox_8041964); break;
+    case 46: GUEST_CALL(chatbox_804198C); break;
+    case 47: GUEST_CALL(chatbox_startCurNaviScript_80419B4); break;
+    case 49: GUEST_CALL(chatbox_80419F8); break;
+    case 50: GUEST_CALL(chatbox_8041A28); break;
+    case 51: GUEST_CALL(chatbox_8041A4C); break;
+    case 52:
+    case 53:
+    case 54:
+    case 55:
+    case 56:
+    case 57: GUEST_CALL(chatbox_8041A7C); break;
+    case 59: GUEST_CALL(chatbox_8041ABC); break;
+    default:
+        /* out-of-range opcodes would read past the table in the original and
+         * jump to garbage; unreachable in practice. */
+        break;
+    }
+}
+
+/* chatbox_EF_checkflag: dispatch the chatbox script command in [r4+1].
+ * Everything the caller sees afterwards (all registers, flags) is whatever the
+ * dispatched handler left behind, so the adapter only forwards r4 and returns. */
+Next chatbox_EF_checkflag(void) {
+    chatbox_dispatch_command(R4);
     RETURN_TO_CALLER();
 }
 
@@ -1765,6 +1969,92 @@ Next chatbox_80420BC(void) {
     R4 = res.dest;
     R7 = res.slot_addr;
     SET_FLAGS_ADD(0, 1);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_8042128 ── */
+/*
+ * Chatbox nesting step (chatbox_8042128).
+ *
+ * r4 points at a 4-byte text command word: byte 2 is a parameter for the text
+ * setup routine, byte 3 selects a chatbox text slot.  r5 is the chatbox work
+ * object.  Opening the command adds one nesting level, points the chatbox's
+ * text cursor at the script to run (the slot's saved script, or one built by
+ * sub_803D06C when the command doesn't name a slot), and records where the
+ * outer command list resumes once this level closes.
+ *
+ * Final register states the callers rely on:
+ *   r0 = 1, r1 = history slot offset, r2 = 4 (left over from the mul),
+ *   r3 = whatever chatbox_8042A14 left in it, r4 = the slot's text bank.
+ */
+typedef struct {
+    u32 result;        /* r0: always 1 */
+    u32 historyOffset; /* r1: offset of the history slot that received cmd+4 */
+    u32 textBank;      /* r4: byte_200AFA0 + slot*64, the per-slot text buffer */
+} ChatboxPushResult;
+
+/* register form: calls sub_803D06C outside this file, which has no typed C interface yet */
+static u32 default_text_script(u32 kind, u32 arg1, u32 arg2, u32 arg3) {
+    R0 = kind; R1 = arg1; R2 = arg2; R3 = arg3;
+    GUEST_CALL(sub_803D06C);
+    /* the original pops r1-r3 back around this call, so put the entry values back */
+    R1 = arg1; R2 = arg2; R3 = arg3;
+    return R0;
+}
+
+/* register form: calls chatbox_8042A14 outside this file, which has no typed C interface yet */
+static u32 setup_text_script(u32 scriptPtr, u32 param, u32 textBank) {
+    R0 = scriptPtr; R1 = param; R2 = textBank;
+    GUEST_CALL(chatbox_8042A14);
+    /* r0 is unused here; r3 simply keeps whatever the callee left in it */
+    return R0;
+}
+
+static ChatboxPushResult chatbox_push_text_level(u32 arg1, u32 arg2, u32 arg3, u32 cmd, u32 chat) {
+    ChatboxPushResult out;
+
+    /* one more nested text level is now open */
+    ST8(chat + oChatbox_Unk_05, LD8(chat + oChatbox_Unk_05) + 1);
+
+    /* where does the text for this box come from? */
+    u32 slot = LD8(cmd + 3);
+    u32 scriptPtr;
+    if (slot != 0)
+        scriptPtr = LD32(chat + 0x4C + (slot - 1) * 4);  /* script saved by the interrupted box */
+    else
+        scriptPtr = default_text_script(0, arg1, arg2, arg3);
+
+    u32 textBank = A_byte_200AFA0 + (LD8(cmd + 3) << 6);
+    setup_text_script(scriptPtr, LD8(cmd + 2), textBank);
+
+    /* the setup routine may have edited the command word, so re-read the slot */
+    slot = LD8(cmd + 3);
+    textBank = A_byte_200AFA0 + (slot << 6);
+    ST32(chat + oChatbox_TextScriptCursorPtr, textBank);
+
+    /* when this level closes, resume the command list after this word */
+    cmd += 4;
+    ST32(chat + oChatbox_Unk_44, cmd);
+
+    /* stack the resume point for the level we just opened */
+    u32 depth = LD8(chat + oChatbox_Unk_05);  /* re-read: the callee may have changed it */
+    u32 historyOffset = 0x140 + (depth - 1) * 4;
+    ST32(chat + historyOffset, cmd);
+
+    out.result = 1;
+    out.historyOffset = historyOffset;
+    out.textBank = textBank;
+    return out;
+}
+
+Next chatbox_8042128(void) {
+    ChatboxPushResult out = chatbox_push_text_level(R1, R2, R3, R4, R5);
+    R0 = out.result;
+    R1 = out.historyOffset;
+    R2 = 4;                 /* the original's "mov r2, #4" mul scratch survives to the end */
+    R4 = out.textBank;
+    /* the original ends with adds r4,r0,#0 then movs r0,#1: N/Z from 1, C/V cleared */
+    SET_FLAGS_ADD(out.result, 0);
     RETURN_TO_CALLER();
 }
 

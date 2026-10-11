@@ -1927,6 +1927,116 @@ Next sub_800AF84(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── someChipHandValidationHappensHere_800B090 ── */
+/* someChipHandValidationHappensHere_800B090 -- battle-start hand sanity check.
+ *
+ * Unless battle flag 0x40 is set, the hand entry selected by the hand's
+ * leading byte is inspected and overwritten with the placeholder chip id
+ * 0x185 when it is unusable: an empty slot (0xFFFF) is left alone, a chip
+ * whose code is rejected by validateChipCode_8006EE8 is blanked, and element
+ * chips (elemIdx 1/2) go through a stat-table check in which the original
+ * overwrites the fetched stat byte with the hand address (mov r0, r9) before
+ * comparing, so the table byte is really compared against the hand pointer.
+ *
+ * The original pushes r0-r9 and pops them before returning, so all ten
+ * argument registers reach the caller unchanged.  The guest callees used
+ * here preserve r3-r9; only r0-r2 get disturbed (call arguments/returns and
+ * getChip8021DA8's r2 side result), so those three are round-tripped through
+ * the typed function and written back by the adapter. */
+
+#define PLACEHOLDER_CHIP_ID 0x185   /* dword_800B10C */
+
+/* The caller's r0-r2, which the original leaves untouched. */
+typedef struct { u32 r0, r1, r2; } CallerRegs;
+
+/* register form: calls TestBattleFlag_0x40 outside this file, which has no typed C interface yet */
+static bool test_battle_flag_0x40(u32 r8val, u32 r9val) {
+    R0 = r8val;                    /* the original moves r8/r9 into r0/r1 first */
+    R1 = r9val;
+    GUEST_CALL(TestBattleFlag_0x40);
+    return R0 != 0;                /* original: cmp r0, #0 / bne */
+}
+
+/* register form: calls getBattleHandAddr_8010018 outside this file, which has no typed C interface yet */
+static u32 get_battle_hand_addr(u32 naviId) {
+    R0 = naviId;
+    GUEST_CALL(getBattleHandAddr_8010018);
+    return R0;
+}
+
+/* register form: calls validateChipCode_8006EE8 outside this file, which has no typed C interface yet */
+static bool chip_code_rejected(u32 chipId, u32 codeArg) {
+    R0 = chipId;
+    R1 = codeArg;
+    GUEST_CALL(validateChipCode_8006EE8);
+    return !ZERO_FLAG();           /* original: bne -> blank the entry */
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_data_addr(u32 chipId) {
+    R0 = chipId;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+static u32 get_battle_navi_stats_byte(u32 naviId, u32 offset) {
+    R0 = naviId;
+    R1 = offset;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return R0;
+}
+
+/* Inspect the hand slot the hand's leading byte points at; blank it with the
+ * placeholder chip when it fails validation. */
+static CallerRegs validate_hand_chip(u32 r0In, u32 r1In, u32 r2In,
+                                     u32 savedR8, u32 savedR9, u32 toolkit) {
+    if (test_battle_flag_0x40(savedR8, savedR9))
+        return (CallerRegs){ r0In, r1In, r2In };     /* flag 0x40: hand untouched */
+
+    u32 battleState = LD32(toolkit + oToolkit_BattleStatePtr);
+    u32 naviId = LD8(battleState + oBattleState_Unk_0d);
+
+    /* Hand layout: one leading byte, then 2-byte chip entries from offset 2;
+     * the leading byte selects the entry under scrutiny. */
+    u32 hand = get_battle_hand_addr(naviId);
+    u32 slotIndex = LD8(hand);
+    u32 entry = hand + slotIndex * 2 + 2;
+    u32 chipId = LD16(entry);
+
+    if (chipId == 0xFFFF)                            /* empty slot: nothing to check */
+        return (CallerRegs){ r0In, r1In, r2In };
+
+    if (chip_code_rejected(chipId, 0xFF)) {
+        ST16(entry, PLACEHOLDER_CHIP_ID);            /* bad code: blank the entry */
+        return (CallerRegs){ r0In, r1In, r2In };
+    }
+
+    u32 elemIdx = LD8(get_chip_data_addr(chipId) + 7);   /* ChipData.elemIdx */
+    if (elemIdx == 1 || elemIdx == 2) {
+        /* The stat byte fetched here is immediately overwritten by the hand
+         * address in the original (mov r0, r9), so the comparison below is
+         * against the hand pointer, exactly as the game does it. */
+        (void)get_battle_navi_stats_byte(naviId, 0xA + elemIdx);
+        u32 tableByte = LD8(A_dword_20367E0 + elemIdx);
+        if ((s32)tableByte >= (s32)hand)
+            ST16(entry, PLACEHOLDER_CHIP_ID);
+    }
+
+    return (CallerRegs){ r0In, r1In, r2In };
+}
+
+/* someChipHandValidationHappensHere_800B090
+ * inputs: r0-r10, lr -- only r10 is read as data; r8/r9 feed TestBattleFlag_0x40
+ * outputs: r0-r9 left exactly as they arrived (the original push/pops them) */
+Next someChipHandValidationHappensHere_800B090(void) {
+    CallerRegs keep = validate_hand_chip(R0, R1, R2, R8, R9, R10);
+    R0 = keep.r0;
+    R1 = keep.r1;
+    R2 = keep.r2;
+    RETURN_TO_CALLER();
+}
+
 /* ── encryption_applyPackList_800B110 ── */
 /* encryption_applyPackList_800B110: walk the halfword table at word_800B128 (pack indices,
  * 0-terminated) and re-apply each encryption pack through

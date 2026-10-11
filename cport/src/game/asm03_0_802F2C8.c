@@ -29,6 +29,154 @@ Next sub_802F2C8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── startScreen_initGfx_802F574 ── */
+/* ---- register-form call helpers ---- */
+
+/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+static void set_display_mode(u32 mode) {
+    R0 = mode;
+    GUEST_CALL(sub_80015FC);
+}
+
+/* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
+static void set_lcd_control(u16 value) {
+    R0 = value;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* register form: calls renderInfo_8001788 outside this file, which has no typed C interface yet */
+static void render_info_8001788(void) {
+    GUEST_CALL(renderInfo_8001788);
+}
+
+/* register form: calls renderInfo_80017A0 outside this file, which has no typed C interface yet */
+static void render_info_80017A0(void) {
+    GUEST_CALL(renderInfo_80017A0);
+}
+
+/* register form: calls startScreen_initGfx_802FCC0 outside this file, which has no typed C interface yet */
+static void start_screen_init_gfx_802FCC0(void) {
+    GUEST_CALL(startScreen_initGfx_802FCC0);
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void set_screen_fade_startScreen_initGfx_802F574(s32 mode, s32 speed) {
+    R0 = (u32)mode;
+    R1 = (u32)speed;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* register form: calls musicGameState_8000784 outside this file, which has no typed C interface yet */
+static void music_set_game_state(void) {
+    GUEST_CALL(musicGameState_8000784);
+}
+
+/* register form: calls LoadGFXAnims outside this file, which has no typed C interface yet */
+static void load_gfx_anim_table(u32 table) {
+    R0 = table;
+    GUEST_CALL(LoadGFXAnims);
+}
+
+/* register form: calls sub_803FA42 outside this file, which has no typed C interface yet */
+static void call_sub_803FA42(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_803FA42);
+}
+
+/* register form: calls sub_803F838 outside this file, which has no typed C interface yet */
+static bool sub_803F838_flag(void) {
+    GUEST_CALL(sub_803F838);
+    return !ZERO_FLAG();          /* sub_803F838 answers in the Z flag */
+}
+
+/* register form: calls GetTitleScreenIconCount outside this file, which has no typed C interface yet */
+static void fetch_title_screen_stats(u32 self) {
+    GUEST_CALL(GetTitleScreenIconCount);
+    ST8(self + oStartScreen_Unk_0C, R0);              /* icon count (r0, u8) */
+    ST16(self + oStartScreen_AchievmentFlags, R1);    /* achievement flags (r1, u16) */
+}
+
+/* register form: calls startScreen_TstZero outside this file, which has no typed C interface yet */
+static bool startScreen_TstZero_flag(void) {
+    GUEST_CALL(startScreen_TstZero);
+    return !ZERO_FLAG();          /* startScreen_TstZero answers in the Z flag */
+}
+
+/* ---- typed body ---- */
+
+/* Final register state besides the screen struct: the original ends with
+ * movs r0, #0 (r0 = 0, Z set), and r6/r7 hold the new menu cursor/choice count. */
+typedef struct {
+    u32 r0_out;
+    u32 cursor_pos;   /* ends up in r6 */
+    u32 num_choices;  /* ends up in r7 */
+} StartScreenInitResult;
+
+/* Initialise the start screen: reset video state, load its graphics/animation
+ * data, start the fade-in, and prepare the menu cursor. */
+static StartScreenInitResult start_screen_init_gfx_startScreen_initGfx_802F574(u32 self)
+{
+    StartScreenInitResult out;
+
+    /* Video mode and render/LCD setup for the title screen. */
+    set_display_mode(0xB);
+    set_lcd_control(0x1140);
+    render_info_8001788();
+    render_info_80017A0();
+    start_screen_init_gfx_802FCC0();
+
+    /* Fade in from black and switch the music to the title screen state. */
+    set_screen_fade_startScreen_initGfx_802F574(0xC, 0xFF);
+    music_set_game_state();
+
+    /* Load the start screen's animation scripts. */
+    load_gfx_anim_table(A_pt_802F5F0);
+
+    /* Hand control to the main start-screen state (via startScreen_render_802F544). */
+    ST8(self + oStartScreen_JumpTableOff_00, 4);
+    ST8(self + oStartScreen_Unk_02, 0);
+
+    call_sub_803FA42(0);
+
+    /* sub_803F838 clear (Z set): no existing data was found, so flag that and
+     * read the icon count / achievement flags for the title screen. */
+    if (!sub_803F838_flag()) {
+        ST8(self + oStartScreen_Unk_02, 1);
+        fetch_title_screen_stats(self);
+    }
+
+    /* Build the menu: starting at "Continue" requires existing data (Unk_02 set),
+     * and startScreen_TstZero enables one further choice. */
+    if (LD8(self + oStartScreen_Unk_02) != 0) {
+        out.cursor_pos = 1;
+        out.num_choices = 2;
+        if (startScreen_TstZero_flag())
+            out.num_choices = 3;
+    } else {
+        out.cursor_pos = 0;
+        out.num_choices = 1;
+        if (startScreen_TstZero_flag())
+            out.num_choices = 2;
+    }
+
+    ST8(self + oStartScreen_CurrCursorPos, out.cursor_pos);
+    ST8(self + oStartScreen_NumChoices, out.num_choices);
+    ST8(self + oStartScreen_Unk_03, 0);
+
+    out.r0_out = 0;
+    return out;
+}
+
+/* startScreen_initGfx_802F574(r5 = self: *StartScreen) -> () ; leaves Z set (movs r0, #0) */
+Next startScreen_initGfx_802F574(void) {
+    StartScreenInitResult out = start_screen_init_gfx_startScreen_initGfx_802F574(R5);
+    R0 = out.r0_out;
+    R6 = out.cursor_pos;
+    R7 = out.num_choices;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── startScreen_RunStateHandler_802F63C ── */
 /* startScreen_RunStateHandler_802F63C(self: *StartScreen in r5) -> ():
  * Start screen state dispatcher. Reads the screen's state byte and calls the
@@ -599,6 +747,120 @@ Next cleareMemory_802FF2C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── camera_init_802FF4C ── */
+/* Saved high registers that the original pushes on entry and pops back before
+ * returning, so the caller sees them unchanged. */
+typedef struct {
+    u32 r5, r6, r7, r8, r9, r12;
+} CameraSavedRegisters;
+
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word_camera_init_802FF4C(u32 mem, u32 num_bytes) {
+    R0 = mem;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: camera_doShakeEffect_80301e8 reads the camera pointer from r5 and
+ * pass-through values from r6/r7; it has no typed C interface yet */
+static void camera_do_shake_effect(u32 camera, u32 saved_r9, u32 saved_r12) {
+    R5 = camera;
+    R6 = saved_r9;
+    R7 = saved_r12;
+    GUEST_CALL(camera_doShakeEffect_80301e8);
+}
+
+/* register form: calls camera_dispatchUpdate_8030054 outside this file, which has no typed C interface yet */
+static void camera_dispatch_update(void) {
+    GUEST_CALL(camera_dispatchUpdate_8030054);
+}
+
+/* register form: calls sub_80302D0 outside this file, which has no typed C interface yet */
+static void run_camera_post_update(void) {
+    GUEST_CALL(sub_80302D0);
+}
+
+/* register form: calls camera_SavePosition_803011A outside this file, which has no typed C interface yet */
+static void camera_save_position(void) {
+    GUEST_CALL(camera_SavePosition_803011A);
+}
+
+/* Reset the camera for a newly entered map: zero its state (keeping the mode
+ * byte and one live field), derive its movement limits from the map size,
+ * move it to the player, pick the shake setting for the map group, and run
+ * the camera update chain. Returns the saved high registers unchanged, since
+ * the original pops them back before returning. */
+static CameraSavedRegisters camera_init(u32 x, u32 y, u32 z, u32 map_group, u32 map_number,
+                                        u32 toolkit, CameraSavedRegisters saved)
+{
+    u32 camera = LD32(toolkit + oToolkit_CameraPtr);
+
+    /* Clear the camera block, preserving Unk_03 and Unk_14 across the fill. */
+    u32 mode = LD8(camera + 3);
+    u32 unk14 = LD32(camera + oCamera_Unk_14);
+    zero_fill_by_word_camera_init_802FF4C(camera, 0x4C);
+    ST8(camera + 3, mode);
+    ST32(camera + oCamera_Unk_14, unk14);
+
+    /* Movement limits from the map dimensions, in 1/4-tile fixed point (<< 18):
+     * Unk_1c/Unk_20 hold the maxima, Unk_18/Unk_24 the negated minima. */
+    u32 map_tiles = A_eMapTilesState200be70_MapWidth;
+    u32 x_limit = (LD8(map_tiles + oMapTilesState200be70_MapWidth) - 0x1E) << 18;
+    ST32(camera + oCamera_Unk_1c, x_limit);
+    ST32(camera + oCamera_Unk_18, 0 - x_limit);
+    u32 y_limit = (LD8(map_tiles + oMapTilesState200be70_MapHeight) - 0x14) << 18;
+    ST32(camera + oCamera_Unk_20, y_limit);
+    ST32(camera + oCamera_Unk_24, 0 - y_limit);
+
+    /* Place the camera at the player's position and clear the scroll state. */
+    ST32(camera + oCamera_X, x);
+    ST32(camera + oCamera_Y, y);
+    ST32(camera + oCamera_Z, z);
+    ST16(camera + 4, 0);
+    ST16(camera + 6, 0);
+
+    /* Shake strength for this map: fixed values for groups >= 0xD0, otherwise
+     * a per-group table of byte arrays indexed by the map number. */
+    u32 shake;
+    if ((s32)map_group >= 0xF0) {
+        shake = 8;
+    } else if ((s32)map_group >= 0xE0) {
+        shake = 0xC;
+    } else if ((s32)map_group >= 0xD0) {
+        shake = 0x10;
+    } else {
+        u32 table;
+        u32 index;
+        if ((s32)map_group >= 0x80) {
+            table = A_off_803378C;
+            index = map_group - 0x80;
+        } else {
+            table = A_off_8033770;
+            index = map_group;
+        }
+        shake = LD32(LD32(table + index * 4) + map_number);
+    }
+    ST8(camera + 2, shake);
+
+    camera_do_shake_effect(camera, saved.r9, saved.r12);
+    camera_dispatch_update();
+    run_camera_post_update();
+    camera_save_position();
+    return saved;
+}
+
+/* camera_init_802FF4C(r0 = player_x, r1 = player_y, r2 = player_z,
+ *                     r3 = map_group, r4 = map_number, r10 = toolkit) -> ()
+ * Leaves c/v and r1/r3/r4 as camera_SavePosition_803011A left them, and
+ * restores r5-r9/r12 exactly as the original's epilogue does. */
+Next camera_init_802FF4C(void) {
+    CameraSavedRegisters saved = camera_init(R0, R1, R2, R3, R4, R10,
+        (CameraSavedRegisters){ R5, R6, R7, R8, R9, R12 });
+    R5 = saved.r5; R6 = saved.r6; R7 = saved.r7;
+    R8 = saved.r8; R9 = saved.r9; R12 = saved.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── camera_dispatchUpdate_8030054 ── */
 /* camera_dispatchUpdate_8030054: camera mode dispatcher.
  *
@@ -902,6 +1164,68 @@ Next render_ClearScrollOffsets_8030336(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── initMapTilesState_803037c ── */
+/* Tables used to look up a map's data, split by world:
+ *  - descriptor tables: [map_group][map_number] -> MapBGDescriptor
+ *  - callback tables:   [map_group][map_number] -> 3 function pointers   */
+#define REAL_WORLD_CALLBACK_TABLE off_8032F6C /* [*const [[*const Fn; 3]]; REAL_WORLD_NUM_GROUPS] */
+#define INTERNET_CALLBACK_TABLE   off_8032F88 /* Nullable<[*const [[*const Fn; 3]]>; INTERNET_NUM_GROUPS] */
+
+/* Per-map callbacks stored in the map tiles state (three function pointers). */
+#define MAP_CALLBACK_ENTRY_SIZE 12
+
+/* Set up eMapTilesState200be70 for the given map: resolve the map's BG
+ * descriptor (from the real-world or internet table, depending on the map
+ * group) and its three per-map callbacks, then record the tilemap's width and
+ * height, the palette and tileset pointers, and the address of the buffer the
+ * tilemap will be decompressed into. */
+static void init_map_tiles_state(u32 map_group, u32 map_number) {
+    u32 state = A_eMapTilesState200be70_MapWidth;
+    u32 descriptor_table;
+    u32 callback_table;
+
+    if ((s32)map_group < INTERNET_MAP_GROUP_START) {
+        /* Real-world maps: both tables are always present. */
+        descriptor_table = A_off_80329A8;
+        callback_table = A_off_8032F6C;
+    } else {
+        /* Internet maps use their own table set, indexed from 0. */
+        descriptor_table = A_off_80329C4;
+        callback_table = A_off_8032F88;
+        map_group -= INTERNET_MAP_GROUP_START;
+    }
+
+    u32 descriptor = LD32(descriptor_table + map_group * 4)
+                   + map_number * oMapBGDescriptor_Size;
+    ST32(state + oMapTilesState200be70_MapBGDescriptorPtr, descriptor);
+
+    u32 callbacks = LD32(callback_table + map_group * 4)
+                  + map_number * MAP_CALLBACK_ENTRY_SIZE;
+    ST32(state + oMapTilesState200be70_UnkCallback_18, LD32(callbacks));
+    ST32(state + oMapTilesState200be70_UnkCallback_1c, LD32(callbacks + 4));
+    ST32(state + oMapTilesState200be70_UnkCallback_20, LD32(callbacks + 8));
+
+    u32 tilemap = LD32(descriptor + oMapBGDescriptor_TilemapPtr);
+    u32 decomp_buffer = A_eDecompBuffer2013A00;
+
+    ST8(state + oMapTilesState200be70_MapWidth,
+        LD8(tilemap + oMapBGTilemapHeader_Width));
+    ST8(state + oMapTilesState200be70_MapHeight,
+        LD8(tilemap + oMapBGTilemapHeader_Height));
+    ST32(state + oMapTilesState200be70_PalettePtr,
+         LD32(descriptor + oMapBGDescriptor_PalettePtr));
+    ST32(state + oMapTilesState200be70_TilesetPtr,
+         LD32(descriptor + oMapBGDescriptor_TilesetPtr));
+    ST32(state + oMapTilesState200be70_Unk_0c, decomp_buffer);
+}
+
+/* initMapTilesState_803037c(r0 = map_group, r1 = map_number) -> ()
+ * r4-r9/r12 are saved and restored by the original, so they end unchanged. */
+Next initMapTilesState_803037c(void) {
+    init_map_tiles_state(R0, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── mapTiles_ResetDimensionsToDefault_80303E8 ── */
 /* mapTiles_ResetDimensionsToDefault_80303E8: reset the map tile grid dimensions to the default 32x32. */
 Next mapTiles_ResetDimensionsToDefault_80303E8(void) {
@@ -1099,6 +1423,112 @@ Next npc_spawnObjectThenSetUnk10_TempAnimScriptPtr_8030a8c(void) {
     R1 = whichScript;
     R2 = animScriptPtr;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── decompressCoordEventData_8030aa4 ── */
+/*
+ * Coordinate-event record layout (per map):
+ *   u32 section_offset[4];   -- offsets into the decompression buffer, filled
+ *                               in below once the payload is unpacked
+ *   u8  lz77_data[];         -- compressed payload, at record + 0x10
+ * The four sections are handed to the map-script / object stream handlers
+ * after decompression into the shared scratch buffer DecompBuf_2027A00.
+ */
+
+/* register form: calls SWI_LZ77UnCompReadNormalWrite8bit outside this file, which has no typed C interface yet */
+static void lz77_uncompress(u32 src, u32 dest) {
+    R0 = src;
+    R1 = dest;
+    GUEST_CALL(SWI_LZ77UnCompReadNormalWrite8bit);
+}
+
+/* register form: calls sub_8030B0C outside this file, which has no typed C interface yet */
+static void call_sub_8030B0C(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8030B0C);
+}
+
+/* register form: calls sub_8031600 outside this file, which has no typed C interface yet */
+static void call_sub_8031600(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8031600);
+}
+
+/* register form: calls chatbox_loadScriptWordAndResetScroll_803189C outside this file, which has no typed C interface yet */
+static void call_chatbox_loadScriptWordAndResetScroll_803189C(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(chatbox_loadScriptWordAndResetScroll_803189C);
+}
+
+/* register form: calls overworldObject55_ReadStreamEntry_8031A68 outside this file, which has no typed C interface yet */
+static void call_overworldObject55_ReadStreamEntry_8031A68(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(overworldObject55_ReadStreamEntry_8031A68);
+}
+
+/*
+ * Decompress the coordinate-event data for (map_group, map_number) into the
+ * shared LZ77 scratch buffer and feed the four resulting sections (object
+ * table, ..., chatbox script, object stream) to their consumers.
+ *
+ * in_r4..in_r12 are the entry values of the callee-saved registers: the
+ * original pushes/pops them around the guest calls, and the guest callees
+ * really do trash some of them, so they must be written back on exit.
+ */
+static void decompress_coord_event(s32 map_group, u32 map_number,
+                                   u32 in_r4, u32 in_r5, u32 in_r6, u32 in_r7,
+                                   u32 in_r8, u32 in_r9, u32 in_r12) {
+    u32 table;
+    u32 group;
+    u32 map_entries;
+    u32 record;
+    u32 buf;
+
+    /* Internet maps live in a separate table, indexed from the first
+     * internet group; everything below that is a real-world group. */
+    if (map_group >= (s32)INTERNET_MAP_GROUP_START) {
+        table = A_pt_803354C;
+        group = (u32)map_group - INTERNET_MAP_GROUP_START;
+    } else {
+        table = A_pt_8033530;
+        group = (u32)map_group;
+    }
+
+    /* table[group] -> per-map array of record pointers, then [map_number]. */
+    map_entries = LD32(table + group * 4);
+    record = LD32(map_entries + map_number * 4);
+
+    buf = A_DecompBuf_2027A00;
+
+    /* Compressed payload sits after the four section offsets. */
+    lz77_uncompress(record + 0x10, buf);
+
+    call_sub_8030B0C(LD32(record + 0x00) + buf);
+    call_sub_8031600(LD32(record + 0x04) + buf);
+    call_chatbox_loadScriptWordAndResetScroll_803189C(LD32(record + 0x08) + buf);
+    call_overworldObject55_ReadStreamEntry_8031A68(LD32(record + 0xC) + buf);
+
+    /* register form: the guest callees leave clobbered values in r5/r12 (and
+     * may clobber the other callee-saved registers too); the original caller
+     * preserves r4-r9/r12 with its push/pop, so the entry values must be
+     * written back into the guest registers before returning. */
+    R4 = in_r4;
+    R5 = in_r5;
+    R6 = in_r6;
+    R7 = in_r7;
+    R8 = in_r8;
+    R9 = in_r9;
+    R12 = in_r12;
+}
+
+/*
+ * decompressCoordEventData_8030aa4(r0 = map_group, r1 = map_number) -> ()
+ * The original restores r4-r9/r12 from its push/pop, so the typed function
+ * receives their entry values and hands them back unchanged.
+ */
+Next decompressCoordEventData_8030aa4(void) {
+    decompress_coord_event((s32)R0, R1, R4, R5, R6, R7, R8, R9, R12);
     RETURN_TO_CALLER();
 }
 

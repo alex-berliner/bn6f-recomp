@@ -1732,6 +1732,122 @@ Next battle_redrawCommandMenuWindow_801E1A4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── RetrieveAndRenderEnemyVirusNamesInBattle_801E574 ── */
+/* One rendered name, as returned by selectVirusOrNaviNamesAndWhich_800EC56 in
+ * r0/r1: the text script holding the name, and which variant of the name to draw. */
+typedef struct {
+    u32 text_script;
+    u32 name_variant;
+} VirusNameText;
+
+/* register form: calls LoadVirusNameIDsForUpToFourSlots_800A998 outside this file, which has no typed C interface yet */
+static u32 load_virus_name_ids(u32 name_id_arr) {
+    R0 = name_id_arr;
+    R4 = name_id_arr; /* the original holds the slot array pointer in r4 across this call */
+    GUEST_CALL(LoadVirusNameIDsForUpToFourSlots_800A998);
+    return R0;
+}
+
+/* register form: calls selectVirusOrNaviNamesAndWhich_800EC56 outside this file, which has no typed C interface yet */
+static VirusNameText select_virus_or_navi_name(u32 name_id) {
+    VirusNameText name;
+    R0 = name_id;
+    GUEST_CALL(selectVirusOrNaviNamesAndWhich_800EC56);
+    name.text_script = R0;
+    name.name_variant = R1;
+    return name;
+}
+
+/* register form: calls renderTextGfx_8045F8C outside this file, which has no typed C interface yet */
+static u32 render_virus_name_text(u32 text_script, u32 name_variant, u32 text_dst, u32 gfx_dst, u32 font_gfx) {
+    R0 = text_script;
+    R1 = name_variant;
+    R2 = text_dst;
+    R3 = gfx_dst;
+    R4 = 9;       /* name box is nine tiles wide */
+    R5 = 1;
+    R6 = font_gfx;
+    R7 = 0;
+    GUEST_CALL(renderTextGfx_8045F8C);
+    return R0;
+}
+
+/* register form: calls dispatch_801DA48 outside this file, which has no typed C interface yet.
+ * Runs inside the entry frame the original still has pushed ({r4,r5,r7,lr}, done by the
+ * caller of this helper); dispatch leaves an SP-derived pointer in r3 and its own r2/r3/r6.
+ * The original pops r4/r5/r7 right after this call, so the helper restores them here. */
+static void dispatch_name_gfx_update(u32 event, u32 stride, u32 text_dst_end, u32 gfx_dst_end,
+                                     u32 slot_ptr_end, u32 font_gfx, u32 last_written,
+                                     u32 entry_r4, u32 entry_r5, u32 entry_r7) {
+    R0 = event;
+    R1 = stride;
+    R2 = text_dst_end;
+    R3 = gfx_dst_end;
+    R4 = slot_ptr_end;
+    R6 = font_gfx;
+    R7 = last_written;
+    GUEST_CALL(dispatch_801DA48);
+    R4 = entry_r4;
+    R5 = entry_r5;
+    R7 = entry_r7;
+}
+
+/* Fill the four enemy virus name slots for the current battle, render each name into its
+ * own 0x240-byte slice of the text buffer (byte_203EBA0) and tile buffer (0x600BB40), and
+ * hand the buffers to the VRAM update dispatcher.
+ * The caller's r4/r5/r7 pass through unchanged; r2/r3/r6 end up as dispatch_801DA48 left them. */
+static void retrieve_and_render_enemy_virus_names(u32 entry_r4, u32 entry_r5, u32 entry_r7, u32 entry_lr) {
+    /* register form: the original's entry push {r4,r5,r7,lr} stays live until the final
+     * dispatch_801DA48 call (and every callee in between), and dispatch leaves an
+     * SP-derived pointer in r3 — so the frame must exist in guest memory, not just in C. */
+    SP -= 16;
+    ST32(SP + 0, entry_r4);
+    ST32(SP + 4, entry_r5);
+    ST32(SP + 8, entry_r7);
+    ST32(SP + 12, entry_lr);
+
+    u32 name_id_arr = A_eStruct2035280 + oStruct2035280_VirusNameIdxU16Arr;
+
+    /* Mark all four slots empty (0xFF = no name) before asking the battle state
+     * which viruses are actually present. */
+    ST16(name_id_arr + 0, 0xFF);
+    ST16(name_id_arr + 2, 0xFF);
+    ST16(name_id_arr + 4, 0xFF);
+    ST16(name_id_arr + 6, 0xFF);
+
+    u32 slot_count = load_virus_name_ids(name_id_arr);
+
+    u32 text_dst = A_byte_203EBA0;
+    u32 gfx_dst = 0x600BB40;
+    u32 slot_ptr = name_id_arr;
+    u32 last_written = 0;
+    u32 remaining = slot_count;
+
+    do {
+        u32 name_id = LD16(slot_ptr);
+        VirusNameText name = select_virus_or_navi_name(name_id);
+        last_written = render_virus_name_text(name.text_script, name.name_variant,
+                                              text_dst, gfx_dst, A_dword_86B7AE0);
+        /* Remember the drawn name's id in the slot it was read from. */
+        ST16(slot_ptr, last_written);
+        slot_ptr += 2;
+        text_dst += 0x240;
+        gfx_dst += 0x240;
+    } while (--remaining != 0);
+
+    /* 0x2000 (bit 13) tells the dispatcher to upload the freshly rendered name tiles. */
+    dispatch_name_gfx_update(0x2000, 0x240, text_dst, gfx_dst, slot_ptr, A_dword_86B7AE0,
+                             last_written, entry_r4, entry_r5, entry_r7);
+
+    SP += 16;
+}
+
+Next RetrieveAndRenderEnemyVirusNamesInBattle_801E574(void) {
+    retrieve_and_render_enemy_virus_names(R4, R5, R7, LR);
+    /* r2/r3/r6 already hold dispatch_801DA48's results and r8-r12 pass through untouched. */
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_801E5E0 ── */
 /* sub_801E5E0: call flags_clearBits_20352C4_801BEC2 with r0 = 0x4000.
  * The wrapper itself contributes nothing but the argument: r0-r2 and the

@@ -816,6 +816,51 @@ Next map_beginEnterMapOnWarpStep4_80342EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── decompJackInAnimationGfx_8034314 ── */
+/* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
+static void call_decompAndCopyData(u32 table) {
+    R0 = table;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet.
+ * The original also passes the animation table in r3, and whatever r3 the callee leaves
+ * behind is what callers of decompJackInAnimationGfx_8034314 see, so it is set here and
+ * deliberately not restored afterwards. */
+static void call_sub_8046664(u32 table) {
+    R3 = table;
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet.
+ * This is the last callee, so the flags it leaves are the ones callers branch on. */
+static void call_sub_80465A0(u32 frameList) {
+    R0 = frameList;
+    GUEST_CALL(sub_80465A0);
+}
+
+/* Decompress the jack-in animation graphics (chip selection screen) and set up the
+ * animation state at `obj`: reset its byte at +3, copy the frame count from the
+ * animation table header, initialise the animator from that table, and hand it the
+ * frame list (tile 0x39 entries for tiles 0..E, 0xFF terminator).
+ * r3 and the condition flags are left exactly as the original leaves them: by the
+ * callees themselves, not by this code. */
+static void jack_in_animation_gfx(u32 obj) {
+    call_decompAndCopyData(A_initRefs_8034338);
+
+    ST8(obj + 3, 0);                            /* obj+3 = 0 */
+    ST16(obj + 6, LD32(A_off_8034400 + 8));     /* obj+6 = dword_8034408 */
+
+    call_sub_8046664(A_off_8034400);
+    call_sub_80465A0(A_byte_8034370);
+}
+
+/* decompJackInAnimationGfx_8034314(r5 = animation state object) -> r2 r3 r4-r7, nz c v */
+Next decompJackInAnimationGfx_8034314(void) {
+    jack_in_animation_gfx(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8034C36 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active_sub_8034C36(void) {

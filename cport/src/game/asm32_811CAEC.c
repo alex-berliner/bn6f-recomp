@@ -804,6 +804,85 @@ Next sub_811F290(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CopyBackgroundTiles_onNaviSelect_811F54C ── */
+/* Offsets into the navi-select background work struct (arrives in r5). */
+#define BG_SCROLL_TIMER  0xD  /* u8: frames left until the background steps one row */
+#define BG_ROW_COUNTER   0xE  /* u8: index of the 32x32 block row being copied */
+#define BG_BASE_J        0x10 /* s16: base j coordinate of the copied region */
+
+/* ROM pointer table off_811F5B8: one tile-id array per 32x32 block row. */
+#define TILE_ID_TABLE A_off_811F5B8
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u32 get_cur_pet_navi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return R0;
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet;
+   its 5th/6th arguments travel in r4/r5, so the helper puts the caller's r4-r7 back afterwards */
+static void copy_background_tiles_block(u32 j, u32 i, u32 tileBlock32x32, u32 tileIds,
+                                        u32 keepR4, u32 keepR5, u32 keepR6, u32 keepR7) {
+    R0 = j;
+    R1 = i;
+    R2 = tileBlock32x32;
+    R3 = tileIds;
+    R4 = 9; /* j_size */
+    R5 = 2; /* i_size */
+    GUEST_CALL(CopyBackgroundTiles);
+    R4 = keepR4;
+    R5 = keepR5;
+    R6 = keepR6;
+    R7 = keepR7;
+}
+
+/* Scroll the navi select screen's background up by one 32x32 block row:
+ *  - decrement the scroll timer at +0xD; when it reaches zero, reload it with
+ *    2 and step the row counter at +0xE (never letting it reach 8),
+ *  - then copy every block row from the row counter down to 0, taking the
+ *    tile ids from the table entry for that row; while a navi is selected on
+ *    the PET, row 3 uses the extra (navi-specific) tile table instead.
+ * Returns the counter value the final loop decrement consumed (always 0):
+ * the original leaves that decrement's flags behind and r3 = value - 1,
+ * while r0-r2 hold whatever CopyBackgroundTiles left in them. */
+static u32 navi_select_scroll_background(u32 keepR4, u32 work, u32 keepR6, u32 keepR7) {
+    u32 extraRowTable = 0;
+    if (get_cur_pet_navi() != 0)
+        extraRowTable = 1;
+
+    u32 timer = LD8(work + BG_SCROLL_TIMER);
+    timer -= 1;
+    ST8(work + BG_SCROLL_TIMER, timer);
+    if (timer == 0) {
+        ST8(work + BG_SCROLL_TIMER, 2);
+        u32 nextRow = LD8(work + BG_ROW_COUNTER) + 1;
+        if ((s32)nextRow < 8)
+            ST8(work + BG_ROW_COUNTER, nextRow);
+    }
+
+    s32 row = (s32)LD8(work + BG_ROW_COUNTER);
+    while (row >= 0) {
+        s32 baseJ = LDS16(work + BG_BASE_J);
+        u32 tableIndex = (u32)row;
+        if (row == 3 && extraRowTable != 0)
+            tableIndex = 8;
+        copy_background_tiles_block((u32)(baseJ + 4), 3 + 2 * (u32)row, 0,
+                                    LD32(TILE_ID_TABLE + 4 * tableIndex),
+                                    keepR4, work, keepR6, keepR7);
+        row--;
+    }
+
+    return (u32)(row + 1);
+}
+
+/* CopyBackgroundTiles_onNaviSelect_811F54C(r4, r5 = work struct, r6, r7 preserved) */
+Next CopyBackgroundTiles_onNaviSelect_811F54C(void) {
+    u32 lastCounter = navi_select_scroll_background(R4, R5, R6, R7);
+    R3 = lastCounter - 1;
+    SET_FLAGS_CMP(lastCounter, 1);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811F5DC ── */
 /* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
 static void queue_gfx_transfer(u32 r0_val, u32 r1_val, u32 r2_val) {

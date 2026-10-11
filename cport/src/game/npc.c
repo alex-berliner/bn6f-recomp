@@ -8,6 +8,95 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── npc_doHopMovement_809e8cc ── */
+/*
+ * npc_doHopMovement_809e8cc — run one step of an overworld NPC's hop/leap movement.
+ *
+ * The NPC's oOverworldNPCObject_MovementFlag_0a byte selects one of six handlers
+ * (init/update × hop/leap/diagonal leap) through a jump table; the raw byte is used
+ * directly as a word offset, so the stored values are 0, 4, 8, 12, 16, 20.
+ * Afterwards the NPC's secondary script callback always runs.
+ */
+
+/* register form: calls npc_initHopMovement_809e8fc outside this file, which has no typed C interface yet */
+static void call_npc_initHopMovement(u32 flag, u32 handler) {
+    R0 = flag;              /* the movement flag byte, as the original passes it */
+    R7 = handler;           /* original leaves the table entry in r7 across the call */
+    GUEST_CALL(npc_initHopMovement_809e8fc);
+}
+
+/* register form: calls npc_updateHopMovement_809e916 outside this file, which has no typed C interface yet */
+static void call_npc_updateHopMovement(u32 flag, u32 handler) {
+    R0 = flag;
+    R7 = handler;
+    GUEST_CALL(npc_updateHopMovement_809e916);
+}
+
+/* register form: calls npc_initLeapMovement_809e944 outside this file, which has no typed C interface yet */
+static void call_npc_initLeapMovement(u32 flag, u32 handler) {
+    R0 = flag;
+    R7 = handler;
+    GUEST_CALL(npc_initLeapMovement_809e944);
+}
+
+/* register form: calls npc_updateLeapMovement_809e95e outside this file, which has no typed C interface yet */
+static void call_npc_updateLeapMovement(u32 flag, u32 handler) {
+    R0 = flag;
+    R7 = handler;
+    GUEST_CALL(npc_updateLeapMovement_809e95e);
+}
+
+/* register form: calls npc_initDiagonalLeapMovement_809e9c0 outside this file, which has no typed C interface yet */
+static void call_npc_initDiagonalLeapMovement(u32 flag, u32 handler) {
+    R0 = flag;
+    R7 = handler;
+    GUEST_CALL(npc_initDiagonalLeapMovement_809e9c0);
+}
+
+/* register form: calls npc_updateDiagonalLeapMovement_809e9da outside this file, which has no typed C interface yet */
+static void call_npc_updateDiagonalLeapMovement(u32 flag, u32 handler) {
+    R0 = flag;
+    R7 = handler;
+    GUEST_CALL(npc_updateDiagonalLeapMovement_809e9da);
+}
+
+/* register form: calls npc_runSecondaryScriptMaybe_809ebf8 outside this file, which has no typed C interface yet */
+static u32 run_secondary_script_maybe_npc_doHopMovement_809e8cc(void) {
+    /* r0 still holds whatever the movement handler left; the original passes it on unchanged */
+    GUEST_CALL(npc_runSecondaryScriptMaybe_809ebf8);
+    return R0;
+}
+
+/* Run the movement handler selected by the NPC's movement flag, then its secondary
+ * script. Returns the secondary script's r0; the condition flags the caller sees are
+ * the ones npc_runSecondaryScriptMaybe_809ebf8 left behind, matching the original. */
+static u32 npc_doHopMovement(u32 npcObj) {
+    u32 flag = LD8(npcObj + oOverworldNPCObject_MovementFlag_0a);
+
+    /* The original indexes the jump table with the raw byte and jumps to the entry;
+     * the six valid entries are the hop/leap handlers below. Any other byte would send
+     * the original jumping into unrelated ROM, which cannot happen in practice. */
+    u32 handler = LD32(A_jt_809E8E0 + flag);
+
+    switch (flag) {
+    case 0:  call_npc_initHopMovement(flag, handler); break;              /* hop: init  */
+    case 4:  call_npc_updateHopMovement(flag, handler); break;            /* hop: update  */
+    case 8:  call_npc_initLeapMovement(flag, handler); break;             /* leap: init  */
+    case 12: call_npc_updateLeapMovement(flag, handler); break;           /* leap: update  */
+    case 16: call_npc_initDiagonalLeapMovement(flag, handler); break;     /* diagonal leap: init  */
+    case 20: call_npc_updateDiagonalLeapMovement(flag, handler); break;   /* diagonal leap: update  */
+    default: break;
+    }
+
+    return run_secondary_script_maybe_npc_doHopMovement_809e8cc();
+}
+
+/* npc_doHopMovement_809e8cc(r5 = overworld NPC object) -> r0, nz/c/v from the callee */
+Next npc_doHopMovement_809e8cc(void) {
+    R0 = npc_doHopMovement(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── npc_updateHopMovement_809e916 ── */
 /* register form: calls checkZCoordModifiers_8031612 outside this file, which has no typed C interface yet */
 static u32 get_ground_z(u32 coords_addr) {

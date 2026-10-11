@@ -1631,6 +1631,67 @@ Next calcFinalDamageAsPanelDamage1to5SumReturnFinalDamage_r0_PanelDamage6_r1_800
     RETURN_TO_CALLER();
 }
 
+/* ── object_calculateFinalDamage1 ── */
+/* register form: calls object_getPanelDataOffset outside this file, which has no typed C interface yet */
+static u32 get_panel_data_offset(u32 panel_x, u32 panel_y) {
+    R0 = panel_x;
+    R1 = panel_y;
+    GUEST_CALL(object_getPanelDataOffset);
+    return R0;
+}
+
+/* register form: calls sub_802CE10 outside this file, which has no typed C interface yet */
+static u32 clamp_final_damage(u32 damage) {
+    R0 = damage;
+    GUEST_CALL(sub_802CE10);
+    return R0;
+}
+
+/* Sum the object's five panel-damage entries into its final damage.
+ * On holy panels (panel type 5) each entry is halved, rounding up
+ * ((damage + 1) >> 1); on normal panels the entries are summed as-is.
+ * The total is passed through sub_802CE10 (damage caps etc.) and stored
+ * into oCollisionData_FinalDamage.
+ * Returns the CollisionDataPtr so the adapter can reproduce the flags of
+ * the original's final `add r3, #oCollisionData_FinalDamage`.
+ * Leaves r2 as sub_802CE10 left it (callers read it from there). */
+static u32 total_panel_damage(u32 object_ptr) {
+    u32 collision = LD32(object_ptr + oBattleObject_CollisionDataPtr);
+
+    u32 panel = get_panel_data_offset(LD8(object_ptr + oBattleObject_PanelX),
+                                      LD8(object_ptr + oBattleObject_PanelY));
+
+    u32 holy_shift = 0;
+    if (LD8(panel + oPanelData_Type) == 5)      /* holy panel? */
+        holy_shift = 1;
+
+    /* (1 << shift) - 1: the +1 added before halving so it rounds up */
+    u32 holy_bonus = (1u << holy_shift) - 1u;
+
+    u32 total = 0;
+    u32 entry = collision + oCollisionData_PanelDamage1;
+    for (int i = 0; i < 5; i++) {
+        u32 dmg = (LD16(entry) + holy_bonus) >> holy_shift;
+        ST16(entry, dmg);
+        total += dmg;
+        entry += 2;
+    }
+
+    total = clamp_final_damage(total);
+
+    u32 final_ptr = collision + oCollisionData_FinalDamage;
+    ST16(final_ptr, total);
+    return collision;
+}
+
+/* object_calculateFinalDamage1(r4 = scratch in, r5 = object, r6 = scratch in, lr)
+ * -> r4/r6 restored, r2 as left by sub_802CE10, c/v from collisionPtr + oCollisionData_FinalDamage */
+Next object_calculateFinalDamage1(void) {
+    u32 collision = total_panel_damage(R5);
+    SET_FLAGS_ADD(collision, oCollisionData_FinalDamage);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_getFlip ── */
 /* object_getFlip(r5 = battle object):
  * Returns the object's horizontal orientation: its alliance bit (player/enemy
@@ -1878,6 +1939,75 @@ Next object_canMove(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── playerObjectMovingToPanelValidityRelated_800E618 ── */
+/*
+ * Player-object "may move onto this panel?" pre-check.
+ *
+ * (r0, r1) describe the panel being moved onto, r5 is the moving object.
+ * The real verdict comes from object_checkPanelParameters; this function only
+ * picks which of the four parameter pairs in the table at byte_800E660 to pass
+ * it: the pair is selected by the object's alliance, offset by 0x10 when the
+ * object carries flag bit 0x10 or is not standing on a solid panel.
+ * Every observable output (r0-r3, nz/c/v, lr) is simply what the last callee
+ * left behind, so nothing is computed or rewritten here on the way out.
+ */
+
+/* {word0, word1} pairs passed to object_checkPanelParameters, indexed by
+ * alliance*8 + (0 or 0x10); the table lives in the original ROM image. */
+#define PANEL_PARAM_TABLE A_byte_800E660
+
+/* register form: calls object_isValidPanel outside this file, which has no typed C interface yet */
+static bool target_panel_is_valid(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(object_isValidPanel);
+    return !ZERO_FLAG();          /* Z set when the panel is not valid */
+}
+
+/* register form: calls object_getFlag outside this file, which has no typed C interface yet */
+static u32 object_get_flag(void) {
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+/* register form: calls object_isPanelSolid outside this file, which has no typed C interface yet */
+static bool panel_is_solid(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(object_isPanelSolid);
+    return !ZERO_FLAG();          /* Z set when the panel is not solid */
+}
+
+/* register form: calls object_checkPanelParameters outside this file, which has no typed C interface yet */
+static void check_panel_parameters(u32 x, u32 y, u32 param_a, u32 param_b) {
+    R0 = x;
+    R1 = y;
+    R2 = param_a;
+    R3 = param_b;
+    GUEST_CALL(object_checkPanelParameters);
+    /* leaves r0-r3 and nz/c/v exactly as object_checkPanelParameters set them */
+}
+
+static void player_object_moving_to_panel_check(u32 x, u32 y, u32 obj) {
+    if (!target_panel_is_valid(x, y))
+        return;                   /* early out: flags (Z set) and r1-r3 stay as object_isValidPanel left them */
+
+    /* Table base offset: 0x10 unless the object has flag bit 0x10 clear and
+     * already stands on a solid panel, in which case the first pair is used. */
+    u32 base = 0x10;
+    if ((object_get_flag() & 0x10) == 0 &&
+        panel_is_solid(LD8(obj + oBattleObject_PanelX), LD8(obj + oBattleObject_PanelY)))
+        base = 0;
+
+    u32 entry = PANEL_PARAM_TABLE + base + ((u32)LD8(obj + oBattleObject_Alliance) << 3);
+    check_panel_parameters(x, y, LD32(entry), LD32(entry + 4));
+}
+
+Next playerObjectMovingToPanelValidityRelated_800E618(void) {
+    player_object_moving_to_panel_check(R0, R1, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── IsR2BetweenR0AndR1 ── */
 /* IsR2BetweenR0AndR1: 0800E6E8 THUMB
  * Returns whether r2 lies in (min(r0,r1), max(r0,r1)] — note the lower
@@ -2012,6 +2142,57 @@ Next selectVirusOrNaviNamesAndWhich_800EC56(void) {
 
     R0 = nameScript;
     R1 = chipId & 0xFF;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800EC80 ── */
+/* register form: calls stub_returnZero_8000E30 outside this file, which has no typed C interface yet */
+static s32 stub_returnZero(void) {
+    GUEST_CALL(stub_returnZero_8000E30);
+    return (s32)R0;
+}
+
+/* register form: calls getCurNaviStatTier_8014150 outside this file, which has no typed C interface yet */
+static s32 cur_navi_stat_tier(void) {
+    GUEST_CALL(getCurNaviStatTier_8014150);
+    return (s32)R0;
+}
+
+/* register form: calls GetVerActorTyAndAIIdx_80182B4 outside this file, which has no typed C interface yet */
+static u32 enemy_version_and_actor_type(u32 enemy_idx) {
+    R0 = enemy_idx;
+    GUEST_CALL(GetVerActorTyAndAIIdx_80182B4);
+    return R0;
+}
+
+/* Adjust an enemy chip index based on the current navi stat tier, capped by the
+ * enemy's version for enemies whose actor type is 0 (bosses). Other actor types
+ * pass the index through unchanged. (The original binary also contains a dead
+ * actor-type-1 branch capping with 2 - version; it is unreachable and omitted.) */
+static u32 adjust_enemy_index(u32 enemy_idx) {
+    s32 bonus = stub_returnZero();      /* floor value; the stub always yields 0 */
+    s32 tier = cur_navi_stat_tier();
+    if (tier > bonus)
+        bonus = tier;
+
+    u32 info = enemy_version_and_actor_type(enemy_idx);
+    u32 actor_type = LD8(info + 1);
+    if (actor_type != 0)
+        return enemy_idx;
+
+    s32 version_cap = 5 - (s32)LD8(info);   /* higher version -> smaller cap */
+    if (version_cap <= 0)
+        return enemy_idx;
+
+    s32 doubled = bonus + bonus;
+    if (doubled > version_cap)
+        doubled = version_cap;
+    return enemy_idx + (u32)doubled;
+}
+
+/* sub_800EC80(r0 = enemy_idx) -> r0 (r4/r5/r6/r7 preserved) */
+Next sub_800EC80(void) {
+    R0 = adjust_enemy_index(R0);
     RETURN_TO_CALLER();
 }
 

@@ -8,6 +8,86 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── calledWhenUsingSlipRun_809D6BC ── */
+/* Per-direction overworld animation tables.  Each table holds two array
+ * pointers, selected by the byte at eStruct2000aa0+3 (0 outside internet
+ * map groups); each array holds one 12-byte entry per facing direction. */
+
+typedef struct {
+    u32 r0_out;        /* always 4: also stored to oOWPlayerObject_Unk_0a */
+    u32 r1_out;        /* eStruct2000aa0 group byte in internet maps, else 0 */
+    u32 r3_out;        /* caller's r3, passed through untouched */
+    u32 r6_out;        /* game state pointer */
+    u32 anim_array;    /* base of the selected per-direction animation array */
+    u32 entry_offset;  /* facing direction * 12 (entry stride) */
+} FacingAnimResult;
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool test_event_flag(u16 flag) {
+    R0 = flag >> 8;             /* movflag passes the flag id as two bytes */
+    R1 = flag & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();        /* Z set when the flag is clear */
+}
+
+/* Apply the overworld player animation for the current facing direction
+ * (r5 = OW player object, r10 = toolkit).  While EVENT_1716 is set the
+ * SlipRun variant of the table is used instead of the default one, unless
+ * EVENT_173F is also set. */
+static FacingAnimResult load_facing_anim(u32 r3, u32 player, u32 toolkit) {
+    FacingAnimResult out;
+
+    out.r3_out = r3;
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    out.r6_out = game_state;
+
+    /* The extra group byte only applies to internet map groups. */
+    u32 group_byte = 0;
+    if ((s32)LD8(game_state + oGameState_MapGroup) >= (s32)INTERNET_MAP_GROUP_START)
+        group_byte = LD8(A_eStruct2000aa0 + oS2000aa0_Unk_03);
+    out.r1_out = group_byte;
+
+    u32 facing = LD8(player + oOWPlayerObject_FacingDirection);
+
+    /* Pick the table: default unless EVENT_1716 says we are in the
+     * SlipRun sequence and EVENT_173F does not override it. */
+    u32 table_addr = A_off_809D71C;
+    if (test_event_flag(EVENT_1716)) {
+        if (test_event_flag(EVENT_IN_SLIPRUN_STATE) || !test_event_flag(EVENT_173F))
+            table_addr = A_off_809D728;
+    }
+
+    u32 anim_array = LD32(table_addr + group_byte);
+    u32 entry = anim_array + facing * 12;
+
+    ST32(player + oOWPlayerObject_Unk_38, LD32(entry + 4));
+    ST32(player + oOWPlayerObject_Unk_3c, LD32(entry + 8));
+    ST8(player + oOWPlayerObject_AnimationSelect, LD8(entry));
+    ST8(player + oOWPlayerObject_Unk_0a, 4);
+
+    out.r0_out = 4;
+    out.anim_array = anim_array;
+    out.entry_offset = facing * 12;
+    return out;
+}
+
+/* calledWhenUsingSlipRun_809D6BC(r3, r4, r5 = OW player object, r10 = toolkit)
+ * Leaves r0 = 4, r1 = group byte, r3 = input r3, r6 = game state pointer,
+ * r7 = address of the selected animation entry.  r4 and r5 pass through
+ * untouched (the flag-test callee preserves them).  Flags end as N=0 Z=0
+ * with C/V from the final address addition. */
+Next calledWhenUsingSlipRun_809D6BC(void) {
+    FacingAnimResult out = load_facing_anim(R3, R5, R10);
+    R0 = out.r0_out;
+    R1 = out.r1_out;
+    R3 = out.r3_out;
+    R6 = out.r6_out;
+    R7 = out.anim_array + out.entry_offset;
+    SET_FLAGS_ADD(out.anim_array, out.entry_offset);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_809D75E ── */
 /* Offsets within the animation/event struct at eStruct200ace0 (0x200ACE0). */
 #define oAnimState_TransitionFlag      0x01

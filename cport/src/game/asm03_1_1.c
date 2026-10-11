@@ -2177,6 +2177,72 @@ Next sub_803FB64(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── playGameOver_803FB9C ── */
+/*
+ * playGameOver_803FB9C — per-frame update of the game-over sequence state
+ * (self in r5). Each call decrements the state's DownCounter:
+ *   - when it reaches 0, start the screen fade (mode 12, speed 8) and switch
+ *     the state's Index to 8 (the next cutscene step);
+ *   - when it reaches 0xAF, play the game-over jingle.
+ * The original leaves r0/r1/flags behind for its caller; r2/r3 and the
+ * preserved registers pass through untouched.
+ */
+
+/* Values the original leaves behind in the caller-visible registers. */
+typedef struct {
+    u32 r0;
+    u32 r1;
+    u32 counter; /* decremented DownCounter; on the countdown path the
+                    original's flags come from "cmp counter, 0xAF" */
+} PlayGameOverResult;
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static u32 set_screen_fade_playGameOver_803FB9C(u32 mode, u32 speed) {
+    R0 = mode;
+    R1 = speed;
+    GUEST_CALL(SetScreenFade);
+    return R1; /* SetScreenFade may clobber r1, and the original leaves its r1 behind */
+}
+
+/* register form: calls PlayMusic outside this file, which has no typed C interface yet */
+static void play_music(u32 song) {
+    R0 = song;
+    GUEST_CALL(PlayMusic); /* PlayMusic preserves r0/r1, so r0 keeps the song id */
+}
+
+static PlayGameOverResult play_game_over(u32 self) {
+    PlayGameOverResult out;
+
+    u32 counter = (u16)LD16(self + oS200F348_DownCounter) - 1;
+    ST16(self + oS200F348_DownCounter, counter);
+    out.counter = counter;
+
+    if (counter == 0) {
+        /* Counter expired: fade the screen out, then advance to the next state. */
+        u32 fade_r1 = set_screen_fade_playGameOver_803FB9C(0xC, 8);
+        ST8(self + oS200F348_Index_00, 8);
+        out.r0 = 8;
+        out.r1 = fade_r1;
+    } else if (counter == 0xAF) {
+        /* Point in the countdown where the game-over jingle starts. */
+        play_music(SONG_GAME_OVER);
+        out.r0 = SONG_GAME_OVER;
+        out.r1 = 0xAF;
+    } else {
+        out.r0 = counter;
+        out.r1 = 0xAF;
+    }
+    return out;
+}
+
+Next playGameOver_803FB9C(void) {
+    PlayGameOverResult out = play_game_over(R5);
+    R0 = out.r0;
+    R1 = out.r1;
+    SET_FLAGS_CMP(out.counter, 0xAF); /* last flag write on the countdown path: cmp r0, #0xAF */
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803FBC2 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active(void) {
@@ -2304,5 +2370,74 @@ Next sub_803FC14(void) {
     R2 = out.r2;
     R3 = out.r3;
     SET_FLAGS_CMP(out.cmp_a, out.cmp_b);
+    RETURN_TO_CALLER();
+}
+
+/* ── copyTileData_803FC64 ── */
+/* register form: calls resetAllGraphicsState_8005F40 outside this file, which has no typed C interface yet */
+static void reset_all_graphics_state(void) {
+    GUEST_CALL(resetAllGraphicsState_8005F40);
+}
+
+/* register form: calls runSetupStepAndClearWorkArea_8005F6C outside this file, which has no typed C interface yet */
+static void run_setup_step_and_clear_work_area(void) {
+    GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
+}
+
+/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+static void call_sub_80027C4_copyTileData_803FC64(void) {
+    GUEST_CALL(sub_80027C4);
+}
+
+/* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
+static void decomp_and_copy_data(const u32 *init_refs) {
+    R0 = (u32)init_refs;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* register form: calls ZeroFillGFX30025c0 outside this file, which has no typed C interface yet */
+static void zero_fill_gfx(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+/* register form: CopyBackgroundTiles takes i_size in r5, but the caller keeps
+ * r5 alive across the call by pushing/popping it around the bl; a guest
+ * register save/restore around an untyped call cannot be expressed as typed C,
+ * so this helper saves r5, sets up the call, and restores r5 afterwards. */
+static void copy_background_tiles_copyTileData_803FC64(u32 j, u32 i, u32 which_tile_block_32x32,
+                                  const u16 *tile_ids, u32 j_size, u32 i_size) {
+    u32 saved_r5 = R5;
+    R0 = j;
+    R1 = i;
+    R2 = which_tile_block_32x32;
+    R3 = (u32)tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+    R5 = saved_r5;
+}
+
+/* One-time graphics setup: restore default graphics state, decompress the
+ * shared font/palette data listed in the init table, clear the tile GFX
+ * area, then blit the two background tile maps into VRAM tile blocks 1
+ * (32x20 tiles) and 2 (30x20 tiles). */
+static void copy_tile_data(void) {
+    reset_all_graphics_state();
+    run_setup_step_and_clear_work_area();
+    call_sub_80027C4_copyTileData_803FC64();
+
+    decomp_and_copy_data((const u32 *)A_initRefs803FCA4);
+    zero_fill_gfx();
+
+    copy_background_tiles_copyTileData_803FC64(0, 0, 1, (const u16 *)A_eTileIds2018A04, 0x20, 0x14);
+    copy_background_tiles_copyTileData_803FC64(0, 0, 2, (const u16 *)A_eTileIds2017A04, 0x1E, 0x14);
+}
+
+/* Inputs r0/r1 and r2-r7/r10 are ignored. r5-r7 are preserved (the original
+ * pushes/pops r5 and never touches r6/r7); r2-r4 and the flags are whatever
+ * the last callee (CopyBackgroundTiles) leaves behind, which the GUEST_CALL
+ * in copy_background_tiles_copyTileData_803FC64 reproduces exactly. */
+Next copyTileData_803FC64(void) {
+    copy_tile_data();
     RETURN_TO_CALLER();
 }

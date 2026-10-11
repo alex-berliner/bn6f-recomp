@@ -560,6 +560,85 @@ Next battle_snapshotPlayerHP_800FAE0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800FAF6 ── */
+/*
+ * sub_800FAF6 - forward panel scan for a battle object.
+ *
+ * Reads the direction the object is facing, then walks one panel at a time
+ * from the object's position in that direction, counting the panels it
+ * crosses.  The walk stops at the first panel that either has no panel
+ * parameters (i.e. is off the field) or whose type bits include the stop mask
+ * for the object's alliance (one mask word per alliance in byte_800FB4C).
+ * The count is capped at 5, and together with the column selector in r2 it
+ * indexes the per-column result table at byte_80209CC, whose byte is the
+ * function's answer.
+ */
+
+#define FRONT_SCAN_MAX_STEPS 5
+
+/* register form: calls object_getFrontDirection outside this file, which has no typed C interface yet */
+static s32 object_front_direction(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(object_getFrontDirection);
+    return (s32)R0;
+}
+
+/* register form: calls object_getPanelParameters outside this file, which has no typed C interface yet */
+static u32 object_panel_parameters(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(object_getPanelParameters);
+    return R0;
+}
+
+typedef struct {
+    u32 table_byte;  /* byte_80209CC[column * 6 + steps]           -> r0 */
+    u32 index;       /* column * 6 + steps                         -> r1 */
+    u32 index_add_a; /* the two operands of the original's final   */
+    u32 index_add_b; /* ADDS, so the adapter can set nz/c/v from it */
+} front_scan_result;
+
+static front_scan_result scan_front_panels(u32 x, u32 y, u32 column, u32 object)
+{
+    front_scan_result out;
+    s32 step = object_front_direction(x, y);
+    s32 steps = 0;
+
+    for (;;) {
+        u32 panel = object_panel_parameters(x, y);
+        if (panel == 0)
+            break; /* walked off the field */
+
+        u32 alliance = LD8(object + oBattleObject_Alliance);
+        u32 stop_mask = LD32(A_byte_800FB4C + alliance * 4);
+        if (panel & stop_mask)
+            break; /* a panel type reserved against this alliance blocks the way */
+
+        steps++;
+        x += step;
+    }
+
+    if (steps > FRONT_SCAN_MAX_STEPS)
+        steps = FRONT_SCAN_MAX_STEPS;
+
+    out.index_add_a = column * 6;
+    out.index_add_b = steps;
+    out.index = out.index_add_a + out.index_add_b;
+    out.table_byte = LD8(A_byte_80209CC + out.index);
+    return out;
+}
+
+/* sub_800FAF6(r0 = x, r1 = y, r2 = column, r5 = object) -> r0, r1, r2, nz/c/v */
+Next sub_800FAF6(void) {
+    front_scan_result out = scan_front_panels(R0, R1, R2, R5);
+    R0 = out.table_byte;
+    R1 = out.index;
+    R2 = 6; /* the original's "mov r2, #6" mul operand is still live at return */
+    SET_FLAGS_ADD(out.index_add_a, out.index_add_b);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_drawCardToHand_800FC7C ── */
 /* battle_drawCardToHand_800FC7C(r5 = battle object):
  * Draw the next card from the alliance's deck into its battle hand.

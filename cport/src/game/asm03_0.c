@@ -151,6 +151,101 @@ Next object_runFrameUpdate_8026A6C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── custMenuMainMaybe_8026A88 ── */
+/* Register contract for the custom-menu state machine step:
+ * dispatches the handler selected by oS20364C0_JumpOffset01 from the table at
+ * off_8026AA4, then runs the shared per-frame update sub_802A2B0. Both are
+ * called with the menu work area (0x020364C0) in r5; the state handler also
+ * receives the raw table offset in r0 and its own table entry in r1, exactly
+ * as the original's jump-table dispatch leaves the registers. */
+
+/* register form: calls the custom-menu state handlers (sub_8026B04,
+ * custMenuUpdateWaitSelectionState_8026CCC, sub_8026BF4, sub_8026D06,
+ * sub_8026DB0, sub_8026DC4, chatbox_stateMaybeFinishText_8026E4C,
+ * battle_updateObjectByKind_8026E98, sub_8026FC0, sub_8027044, sub_80271F8,
+ * sub_802728C, sub_80273A4, chatbox_resetTextStateIfHidden_80273EC,
+ * sub_8027406, sub_802753E, sub_8027548, sub_80275EC, sub_802770C,
+ * sub_8027834, sub_802790C, sub_802794A, sub_8026E78, sub_8027A58) outside
+ * this file; they have no typed C interface yet */
+static void run_state_handler(u32 state_offset, u32 self) {
+    u32 handler = LD32(A_off_8026AA4 + state_offset);
+
+    R0 = state_offset;  /* handlers see the table offset in r0 */
+    R1 = handler;       /* the original holds the table entry in r1 across bx */
+    R5 = self;          /* handlers receive the menu work area in r5 */
+
+    /* JumpOffset01 always holds one of the word offsets into the handler
+     * table, so switch on it directly; the table entry above is what the
+     * original would have jumped through. */
+    switch (state_offset) {
+    case 0x00: GUEST_CALL(sub_8026B04); break;
+    case 0x04: GUEST_CALL(custMenuUpdateWaitSelectionState_8026CCC); break;
+    case 0x08: GUEST_CALL(sub_8026BF4); break;
+    case 0x0C: GUEST_CALL(sub_8026D06); break;
+    case 0x10: GUEST_CALL(sub_8026DB0); break;
+    case 0x14: GUEST_CALL(sub_8026DC4); break;
+    case 0x18: GUEST_CALL(chatbox_stateMaybeFinishText_8026E4C); break;
+    case 0x1C: GUEST_CALL(battle_updateObjectByKind_8026E98); break;
+    case 0x20: GUEST_CALL(sub_8026FC0); break;
+    case 0x24: GUEST_CALL(sub_8027044); break;
+    case 0x28: GUEST_CALL(sub_80271F8); break;
+    case 0x2C: GUEST_CALL(sub_802728C); break;
+    case 0x30: GUEST_CALL(sub_80273A4); break;
+    case 0x34: GUEST_CALL(chatbox_resetTextStateIfHidden_80273EC); break;
+    case 0x38: GUEST_CALL(sub_8027406); break;
+    case 0x3C: GUEST_CALL(sub_802753E); break;
+    case 0x40: GUEST_CALL(sub_8027548); break;
+    case 0x44: GUEST_CALL(sub_80275EC); break;
+    case 0x48: GUEST_CALL(sub_802770C); break;
+    case 0x4C: GUEST_CALL(sub_8027834); break;
+    case 0x50: GUEST_CALL(sub_802790C); break;
+    case 0x54: GUEST_CALL(sub_802794A); break;
+    case 0x58: GUEST_CALL(sub_8026E78); break;
+    case 0x5C: GUEST_CALL(sub_8027A58); break;
+    default: break; /* unreachable: the state byte is always a table offset */
+    }
+}
+
+/* register form: calls sub_802A2B0 outside this file, which has no typed C interface yet */
+static void run_menu_update(u32 self) {
+    R5 = self;  /* sub_802A2B0 receives the menu work area in r5 */
+    GUEST_CALL(sub_802A2B0);
+}
+
+typedef struct CustMenuStepResult {
+    u32 result;      /* value for r0: always 0 */
+    u32 caller_r5;   /* value for r5: the original pushes/pops r5 around the dispatch */
+} CustMenuStepResult;
+
+/* Advance the custom menu state machine one frame: run the handler for the
+ * current state, then the shared per-frame update. r0 comes back 0 (the
+ * original's `movs r0,#0`, which sets Z set / N clear and leaves C/V alone). */
+static CustMenuStepResult cust_menu_main_step(u32 caller_r5) {
+    u32 self = A_eS20364C0_JumpOffset00;                /* fixed work area 0x020364C0 */
+    u32 state_offset = LD8(self + oS20364C0_JumpOffset01);
+
+    run_state_handler(state_offset, self);
+    run_menu_update(self);
+
+    {
+        CustMenuStepResult out;
+        out.result = 0;
+        out.caller_r5 = caller_r5;
+        return out;
+    }
+}
+
+/* custMenuMainMaybe_8026A88(void) -> r0 = 0 with Z set / N clear (from the
+ * original's final `movs r0,#0`), r5 preserved, other registers as the
+ * callees leave them. */
+Next custMenuMainMaybe_8026A88(void) {
+    CustMenuStepResult out = cust_menu_main_step(R5);
+    R0 = out.result;
+    R5 = out.caller_r5;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8026B04 ── */
 /* Number of tile entries per animation row */
 #define TILEMAP_COLS       0x14

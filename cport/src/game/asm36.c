@@ -252,6 +252,109 @@ Next ExitSaveMenu8132CA0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── saveMenu_config_textscript_8132CB8 ── */
+/* saveMenu_config_textscript_8132CB8: rebuilds the save menu's init-ref list,
+ * decompresses the background data, loads the network text script and draws
+ * the text-script background tiles.
+ *
+ * Register contract: the original pushes r4-r7 on entry and pops them on
+ * exit, so the listed outputs r4-r7 are just the incoming values restored.
+ * Because the CopyBackgroundTiles helper passes its 5th/6th argument in
+ * guest R4/R5, the adapter saves the incoming r4-r7 and restores them after
+ * the typed function has run. */
+
+/* register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+static u32 convert_init_ref(u32 data, u32 size) {
+    R0 = data;
+    R1 = size;
+    GUEST_CALL(sub_811FB84);
+    return R0;
+}
+
+/* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
+static void decomp_and_copy(u32 list) {
+    R0 = list;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+static void load_network_text_script(u32 ptr_table, u32 script_area, u32 decomp_buffer) {
+    R0 = ptr_table;
+    R1 = script_area;
+    R2 = decomp_buffer;
+    GUEST_CALL(sub_8123300);
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet
+ * (r4/r5 carry the 5th and 6th arguments; the adapter restores the caller's r4-r7 afterwards) */
+static void copy_background_tiles_saveMenu_config_textscript_8132CB8(u32 j, u32 i, u32 tile_block, u32 tile_ids,
+                                  u32 j_size, u32 i_size) {
+    R0 = j;
+    R1 = i;
+    R2 = tile_block;
+    R3 = tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* Table at off_8132D58: two entries of four words each --
+ * { data pointer, size, extra word, extra word } -- describing the records
+ * that get assembled into the init-ref list at unk_20096E0. */
+
+/* Build the init-ref list: for each table entry, store the pointer produced by
+ * convert_init_ref() followed by the entry's two extra words verbatim, then a
+ * zero terminator. */
+static void build_init_ref_list(void) {
+    u32 dest = A_unk_20096E0;
+    u32 table = A_off_8132D58;
+    u32 out = 0;
+
+    for (u32 src = 0; src < 0x20; src += 16) {
+        u32 data = LD32(table + src);
+        u32 size = LD32(table + src + 4);
+
+        ST32(dest + out, convert_init_ref(data, size));
+        out += 4;
+
+        for (u32 k = 2; k < 4; k++) {
+            ST32(dest + out, LD32(table + src + k * 4));
+            out += 4;
+        }
+    }
+
+    ST32(dest + out, 0);
+}
+
+/* Set up everything the save menu needs before it opens. */
+static void save_menu_config_textscript(void) {
+    build_init_ref_list();
+
+    /* Decompressing the assembled list supplies part of the background
+     * (omitting it leaves the background partially drawn). */
+    decomp_and_copy(A_unk_20096E0);
+
+    /* Second compressed blob for the background
+     * (omitting it leaves the background black). */
+    decomp_and_copy(A_off_8132D80);
+
+    /* Decompress the network text script (omitting it crashes the save menu). */
+    load_network_text_script(A_TextScriptNetworkPtrs8132D18,
+                             A_eTextScript201BF00,
+                             A_eDecompBuffer2013A00);
+
+    /* Copy the 30x20 grid of text-script background tiles from tile block 1. */
+    copy_background_tiles_saveMenu_config_textscript_8132CB8(0, 0, 1, A_eTextScript201BA00, 0x1E, 0x14);
+}
+
+Next saveMenu_config_textscript_8132CB8(void) {
+    /* The original's push/pop of r4-r7: outputs are the incoming values. */
+    u32 r4_in = R4, r5_in = R5, r6_in = R6, r7_in = R7;
+    save_menu_config_textscript();
+    R4 = r4_in; R5 = r5_in; R6 = r6_in; R7 = r7_in;
+    RETURN_TO_CALLER();
+}
+
 /* ── saveMenu_8132D9C ── */
 /* register form: calls renderTextGfx_8045F8C outside this file, which has no typed C interface yet.
  * Saves/restores R4–R7 because the callee uses them as scratch after consuming them as parameters. */

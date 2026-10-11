@@ -447,6 +447,42 @@ Next sub_8006910(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── SetPrimaryToolkitPointers ── */
+/* CopyWords helper — the game's word-copy routine has no typed C interface yet. */
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words_SetPrimaryToolkitPointers(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(CopyWords);
+}
+
+/* Bytes copied: ToolkitPointersEnd - ToolkitPointers (15 pointer entries). */
+#define TOOLKIT_POINTERS_SIZE_SetPrimaryToolkitPointers 0x3C
+
+/* Copy the primary toolkit pointer table (joypad, render info, camera, battle
+ * state, chatbox, ...) from ROM into eToolkit.  This re-points every global
+ * the toolkit uses at the start of the game's boot sequence.
+ *
+ * Returns the value the original leaves in r0: it pops its saved LR back off
+ * the stack into r0 and returns through it, so r0 ends up holding this
+ * function's own return address.  r1/r2 and the nz/c flags are simply left as
+ * CopyWords left them. */
+static u32 set_primary_toolkit_pointers(u32 saved_return_address) {
+    copy_words_SetPrimaryToolkitPointers(A_ToolkitPointers, A_eToolkit, TOOLKIT_POINTERS_SIZE_SetPrimaryToolkitPointers);
+    return saved_return_address;
+}
+
+/* SetPrimaryToolkitPointers() -> ()
+ * Also leaves r10 pointing at eToolkit; callers rely on that as the frame
+ * pointer base for all toolkit globals.  LR is passed in because the original
+ * hands it back in r0. */
+Next SetPrimaryToolkitPointers(void) {
+    R0 = set_primary_toolkit_pointers(LR);
+    R10 = A_eToolkit;
+    RETURN_TO_CALLER();
+}
+
 /* ── SetPrimaryToolkitPointersWrapper ── */
 /* SetPrimaryToolkitPointersWrapper: 08006C18 THUMB
  * A trivial trampoline: it just tail-calls SetPrimaryToolkitPointers, which
@@ -455,6 +491,84 @@ Next sub_8006910(void) {
  * through untouched. */
 Next SetPrimaryToolkitPointersWrapper(void) {
     GUEST_CALL(SetPrimaryToolkitPointers);
+    RETURN_TO_CALLER();
+}
+
+/* ── RandomizeExtraToolkitPointers ── */
+/* Layout constants from the disassembly. */
+#define TOOLKIT_POINTERS_SIZE_RandomizeExtraToolkitPointers   0x3C   /* ToolkitPointersEnd - ToolkitPointers */
+#define TOOLKIT_EXTRA_MEM_SIZE   0x35BC /* ToolkitExtraPtrsMemorySize */
+
+/* The original compares the counter after adding 4, so the last pass runs at
+ * index 0x54 and the counter is left at 0x58 when the loop exits. */
+#define EXTRA_PTR_LOOP_BOUND     0x58   /* ToolkitExtraPtrsOffsetsEnd - ToolkitExtraPtrsOffsets + 4 */
+
+/* Register values the original leaves behind in r0-r3, plus the loop counter
+ * its final CMP uses (that counter is also what ends up in r1). */
+typedef struct {
+    u32 return_address; /* r0: the original pops its saved lr into r0 before bx r0 */
+    u32 loop_index;     /* r1: loop counter left at the loop bound */
+    u32 block_base;     /* r2: eGameState + stored offset */
+    u32 offsets_table;  /* r3: &ToolkitExtraPtrsOffsets */
+} ExtraToolkitPtrsExit;
+
+/* register form: calls GetRNG outside this file, which has no typed C interface yet */
+static u32 get_rng_RandomizeExtraToolkitPointers(void) {
+    GUEST_CALL(GetRNG);
+    return R0;
+}
+
+/* register form: calls copyWords_80014EC outside this file, which has no typed C interface yet */
+static void copy_words_RandomizeExtraToolkitPointers(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(copyWords_80014EC);
+}
+
+/* Refill the extra toolkit pointer slots at the end of the ToolkitPointers
+ * table in eGameState. The "randomization" is disabled: both the old stored
+ * offset and the freshly drawn RNG offset are ANDed with 0, so the offset
+ * saved to eUnusedExtraToolkitPtrsOffset is always 0 and the block copy is a
+ * self-copy of eGameState. GetRNG still runs, so the RNG state advances
+ * exactly as in the original. */
+static void randomize_extra_toolkit_pointers(u32 return_address, u32 toolkit_pointers,
+                                             ExtraToolkitPtrsExit *out) {
+    u32 new_offset = get_rng_RandomizeExtraToolkitPointers() & 0u;                              /* drawn offset, masked to zero */
+    u32 old_offset = LD32(A_eUnusedExtraToolkitPtrsOffset) & 0u;  /* read, then masked to zero */
+
+    ST32(A_eUnusedExtraToolkitPtrsOffset, new_offset);
+
+    copy_words_RandomizeExtraToolkitPointers(A_eGameState + old_offset, A_eGameState + new_offset, TOOLKIT_EXTRA_MEM_SIZE);
+
+    u32 ptr_table  = toolkit_pointers + TOOLKIT_POINTERS_SIZE_RandomizeExtraToolkitPointers;
+    u32 block_base = A_eGameState + new_offset;
+
+    u32 index = 0;
+    while (index < EXTRA_PTR_LOOP_BOUND) {
+        u32 offset = LD32(A_ToolkitExtraPtrsOffsets + index);
+        ST32(ptr_table + index, block_base + offset);
+        index += 4;
+    }
+
+    out->return_address = return_address;
+    out->loop_index     = index;
+    out->block_base     = block_base;
+    out->offsets_table  = A_ToolkitExtraPtrsOffsets;
+}
+
+/* RandomizeExtraToolkitPointers: rewrites the extra toolkit pointers after a
+ * game-state reload. r10 holds the start of the ToolkitPointers table.
+ * The original exits with "pop {r0}; bx r0", so r0 ends up holding the saved
+ * return address (the entry lr) rather than anything the body computed. */
+Next RandomizeExtraToolkitPointers(void) {
+    ExtraToolkitPtrsExit out;
+    randomize_extra_toolkit_pointers(LR, R10, &out);
+    R0 = out.return_address;
+    R1 = out.loop_index;
+    R2 = out.block_base;
+    R3 = out.offsets_table;
+    SET_FLAGS_CMP(out.loop_index, EXTRA_PTR_LOOP_BOUND);
     RETURN_TO_CALLER();
 }
 
@@ -1228,6 +1342,44 @@ static void spawn_battle_object(u32 panel_x, u32 panel_y, u32 alliance) {
 /* sub_800753C(r0=panel_x, r1=panel_y, r2=alliance) -> r0 r1 r2 r3, nz c v, r4 r5 r6 r7 preserved */
 Next sub_800753C(void) {
     spawn_battle_object(R0, R1, R2);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80075CA ── */
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word_sub_80075CA(u32 dst, u32 num_bytes) {
+    R0 = dst;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls QueueGFXTransfersInList outside this file, which has no typed C interface yet */
+static void queue_gfx_transfers_in_list(u32 dataRefs) {
+    R0 = dataRefs;
+    GUEST_CALL(QueueGFXTransfersInList);
+}
+
+/* register form: calls SWI_LZ77UnCompReadNormalWrite16bit outside this file, which has no typed C interface yet */
+static void lz77_unpack_wide(u32 src, u32 dst) {
+    R0 = src;
+    R1 = dst;
+    GUEST_CALL(SWI_LZ77UnCompReadNormalWrite16bit);
+}
+
+/* Load this scene's graphics:
+ * - clear the 64-byte tile buffer at 0x6008000 (the original clears it twice),
+ * - queue the VRAM/palette transfers described by the list at off_80075F0,
+ * - LZ77-decompress the tile set dword_86DDBA0 to 0x6001460. */
+static void load_scene_gfx(void) {
+    zero_fill_by_word_sub_80075CA(0x6008000, 0x40);
+    zero_fill_by_word_sub_80075CA(0x6008000, 0x40);
+    queue_gfx_transfers_in_list(A_off_80075F0);
+    lz77_unpack_wide(A_dword_86DDBA0, 0x6001460);
+}
+
+/* sub_80075CA() -> r2 r3 r4 r5 r6 r7 (all left unchanged; r0/r1/lr and flags are clobbered) */
+Next sub_80075CA(void) {
+    load_scene_gfx();
     RETURN_TO_CALLER();
 }
 

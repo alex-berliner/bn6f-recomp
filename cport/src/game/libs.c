@@ -1133,6 +1133,109 @@ Next sub_814EB84(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── m4aSoundVSync ── */
+/* Offsets within the M4A driver state block (byte_3007FF0 holds a pointer to it). */
+#define SOUNDINFO_MAGIC       0    /* u32: driver stamp, checked against the seed */
+#define SOUNDINFO_FRAMES_LEFT 4    /* u8: VSyncs left before the DMA rekick */
+#define SOUNDINFO_PERIOD      0xB  /* u8: value the frame counter reloads to */
+
+/* The guard passes while (stamp + seed) wraps to 0 or 1, i.e. while the
+ * driver has stamped the state block with its magic value. */
+#define VSYNC_MAGIC_SEED 0x978C92ADu
+
+#define DMA_WCOUNT_ENABLE 0x2000000u  /* 0x80 << 18: channel still armed */
+#define DMA_WCOUNT_RELOAD 0x84400004u /* full-word reload written to an armed channel */
+#define DMA_CTRL_DISABLE  0x0400u     /* 0x80 << 3: 32-bit transfer, channel off */
+#define DMA_CTRL_RESTART  0xB600u     /* 0xB6 << 8: repeat + 32-bit + enable */
+
+/* Everything the adapter must write back.  The original exits through
+ * `pop {r0}; bx r0`, so r0 always comes out as the entry LR, and each exit
+ * leaves the flags behind from a different instruction:
+ *   magic-guard exit:  CMP  magic, #1   == ADDS magic, 0xFFFFFFFF
+ *   countdown exit:    CMP  count, #0   == ADDS 0xFFFFFFFF, count + 1
+ *   DMA rekick exit:   MOVS r0, 0xB600  == ADDS 0xB600, 0
+ * flag_a/flag_b hold the ADDS operand pair for whichever exit was taken, so
+ * the branch-free adapter reproduces N/Z/C/V with a single SET_FLAGS_ADD. */
+typedef struct {
+    u32 r0, r1, r2, r3;
+    u32 flag_a, flag_b;
+} SoundVSyncExit;
+
+/* Per-frame service routine for the M4A sound driver: counts down a frame
+ * gate and, once it expires, reloads it and restarts the two sound DMA
+ * channels so Direct Sound streaming continues. */
+static SoundVSyncExit m4a_sound_vsync_body(u32 entry_r3, u32 return_addr) {
+    SoundVSyncExit out;
+
+    u32 state = LD32(A_byte_3007FF0); /* pointer to the sound state block */
+
+    /* Without the driver's stamp in the state block there is nothing to do. */
+    u32 magic = LD32(state + SOUNDINFO_MAGIC) + VSYNC_MAGIC_SEED;
+    if (magic > 1) {
+        out.r0 = return_addr;
+        out.r1 = VSYNC_MAGIC_SEED;     /* the seed add is the last thing r1 held */
+        out.r2 = state;
+        out.r3 = entry_r3;             /* untouched on this path */
+        out.flag_a = magic;            /* CMP magic, #1 */
+        out.flag_b = 0xFFFFFFFFu;
+        return out;
+    }
+
+    /* Count this VSync down; while the counter is still positive the DMA
+     * channels keep running and nothing else happens this frame. */
+    u32 old_count = LD8(state + SOUNDINFO_FRAMES_LEFT);
+    ST8(state + SOUNDINFO_FRAMES_LEFT, old_count - 1);
+    u32 count_test = LD8(state + SOUNDINFO_FRAMES_LEFT) << 24; /* tested as signed */
+    if ((s32)count_test > 0) {
+        out.r0 = return_addr;
+        out.r1 = old_count;            /* pre-decrement value, loaded for the strb */
+        out.r2 = state;
+        out.r3 = entry_r3;             /* untouched on this path */
+        out.flag_a = 0xFFFFFFFFu;      /* CMP count, #0 */
+        out.flag_b = count_test + 1;
+        return out;
+    }
+
+    /* Gate expired: restore the frame period and rekick both DMA channels. */
+    ST8(state + SOUNDINFO_FRAMES_LEFT, LD8(state + SOUNDINFO_PERIOD));
+
+    u32 dma1_wcount = A_DMA1WordCount;
+    if ((LD32(dma1_wcount) & DMA_WCOUNT_ENABLE) != 0)
+        ST32(dma1_wcount, DMA_WCOUNT_RELOAD);
+    u32 dma2_wcount = A_DMA2WordCount;
+    if ((LD32(dma2_wcount) & DMA_WCOUNT_ENABLE) != 0)
+        ST32(dma2_wcount, DMA_WCOUNT_RELOAD);
+
+    u32 dma1_ctrl = A_DMA1Control;
+    u32 dma2_ctrl = A_DMA2Control;
+    ST16(dma1_ctrl, DMA_CTRL_DISABLE);
+    ST16(dma2_ctrl, DMA_CTRL_DISABLE);
+    ST16(dma1_ctrl, DMA_CTRL_RESTART);
+    ST16(dma2_ctrl, DMA_CTRL_RESTART);
+
+    out.r0 = return_addr;
+    out.r1 = dma2_ctrl;                /* the DMA addresses/word are what the
+                                          rekick sequence last left in r1..r3 */
+    out.r2 = dma1_ctrl;
+    out.r3 = DMA_CTRL_RESTART;
+    out.flag_a = DMA_CTRL_RESTART;     /* MOVS r0, r3 */
+    out.flag_b = 0;
+    return out;
+}
+
+/* m4aSoundVSync() -- VSync hook of the M4A sound driver.
+ * Inputs: lr (pushed around the body; the final pop loads it into r0).
+ * Outputs: nz c v r0 r1 r2 r3. */
+Next m4aSoundVSync(void) {
+    SoundVSyncExit out = m4a_sound_vsync_body(R3, LR);
+    R0 = out.r0;
+    R1 = out.r1;
+    R2 = out.r2;
+    R3 = out.r3;
+    SET_FLAGS_ADD(out.flag_a, out.flag_b);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_814F3A4 ── */
 /* sub_814F3A4 – packed-table interpolation lookup.
  *
