@@ -148,6 +148,40 @@ Next battle_spawnLinkedObject_80E1A6A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t4_0x14_80E1CF8 ── */
+/* register form: dispatches a battle-object update through a computed
+ * jump-table pointer; the target is resolved from guest memory at runtime,
+ * has no typed C interface, and all guest registers pass through it */
+static void battle_object_state_dispatch(void) {
+    u32 state = LD8(R5 + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80E1D0C + state);
+
+    /* Reproduce the register state the callee sees:
+     * r0 = state index, r1 = resolved handler pointer (as in bx r1). */
+    R0 = state;
+    R1 = handler;
+
+    switch (state) {
+    case 0:
+        GUEST_CALL(sub_80E1D18);
+        break;
+    case 4:
+        GUEST_CALL(battle_objectFlyAnimUpdateAndDestroy_80E1D54);
+        break;
+    case 8:
+        GUEST_CALL(battle_objectFreeWrapper_80E1D72);
+        break;
+    }
+}
+
+/* t4_0x14_80E1CF8: per-frame battle-object update dispatch via state table.
+ * r5 = BattleObject*; reads CurState (offset 8) to pick one of three
+ * handlers; all registers pass through the callee. */
+Next t4_0x14_80E1CF8(void) {
+    battle_object_state_dispatch();
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectFlyAnimUpdateAndDestroy_80E1D54 ── */
 /* battle_objectFlyAnimUpdateAndDestroy_80E1D54(r5 = battle object):
  * Advance the object's sprite animation, integrate its Z velocity into its Z
@@ -190,6 +224,68 @@ Next battle_objectFlyAnimUpdateAndDestroy_80E1D54(void) {
  * r0-r3 and the flags come back from object_freeMemory. */
 Next battle_objectFreeWrapper_80E1D72(void) {
     GUEST_CALL(object_freeMemory);
+    RETURN_TO_CALLER();
+}
+
+/* ── t4_0x30_80E3B70 ── */
+/* Dispatch to the BattleObject's state handler from the jump table at
+ * 0x080E3B88, then always call object_updateSprite.
+ *
+ * Table layout (indexed by the CurState byte stored at offset 0/4/8):
+ *   state 0 → sub_80E3B94
+ *   state 4 → battle_objectUpdatePosAndRunAction_80E3BEA
+ *   state 8 → object_freeMemory
+ *
+ * Inputs come via registers (R5 = BattleObject ptr, state byte at R5+8);
+ * all output registers and flags are set by the callees. */
+
+#define STATE_HANDLER_TABLE 0x080E3B88u
+
+/* register form: calls sub_80E3B94 outside this file, which has no typed C interface yet */
+static void state_handler_idle(u32 state) {
+    R0 = state;
+    GUEST_CALL(sub_80E3B94);
+}
+
+/* register form: calls battle_objectUpdatePosAndRunAction_80E3BEA outside this file, which has no typed C interface yet */
+static void state_handler_run(u32 state) {
+    R0 = state;
+    GUEST_CALL(battle_objectUpdatePosAndRunAction_80E3BEA);
+}
+
+/* register form: calls object_freeMemory outside this file, which has no typed C interface yet */
+static void state_handler_free(u32 state) {
+    R0 = state;
+    GUEST_CALL(object_freeMemory);
+}
+
+/* register form: calls object_updateSprite outside this file, which has no typed C interface yet */
+static void call_update_sprite_t4_0x30_80E3B70(void) {
+    GUEST_CALL(object_updateSprite);
+}
+
+/* battle_obj: pointer to the BattleObject (was in R5 from the caller). */
+static void battle_object_state_dispatch_and_update(u32 battle_obj) {
+    u32 state = LD8(battle_obj + oBattleObject_CurState);
+
+    /* Read the handler address from the jump table (matches original memory access). */
+    LD32(STATE_HANDLER_TABLE + state);
+
+    switch (state) {
+    case 0:  state_handler_idle(state); break;
+    case 4:  state_handler_run(state);  break;
+    case 8:  state_handler_free(state); break;
+    default: break;  /* out-of-range state: original would branch to garbage */
+    }
+
+    /* Always update the sprite after the state handler, even if the handler
+     * clobbered R5 — matches the original's unconditional bl. */
+    call_update_sprite_t4_0x30_80E3B70();
+}
+
+/* t4_0x30_80E3B70 — BattleObject per-frame state dispatch + sprite update */
+Next t4_0x30_80E3B70(void) {
+    battle_object_state_dispatch_and_update(R5);
     RETURN_TO_CALLER();
 }
 

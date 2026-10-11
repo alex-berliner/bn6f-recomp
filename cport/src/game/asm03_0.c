@@ -1332,6 +1332,153 @@ Next customScreen_ExitSequence_8028E32(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── updateCustomScreen_WhenUnselectingChip_8028EC8 ── */
+/* register form: calls getLocOfActiveChips_8027E1C outside this file, which has no typed C interface yet */
+static u32 get_loc_of_active_chips(u32 param) {
+    u32 s2 = R2, s3 = R3, s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = param;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    u32 res = R0;
+    R2 = s2; R3 = s3; R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    return res;
+}
+
+/* register form: calls getChipID_802A54E outside this file, which has no typed C interface yet */
+static u32 get_chip_id(u16 raw_data) {
+    u32 s1 = R1, s2 = R2, s3 = R3, s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = (u32)raw_data;
+    GUEST_CALL(getChipID_802A54E);
+    u32 res = R0;
+    R1 = s1; R2 = s2; R3 = s3; R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    return res;
+}
+
+/* register form: calls chipIDIs13f_8029FF4 outside this file, which has no typed C interface yet */
+static bool chip_id_is_13f(u32 id) {
+    u32 s2 = R2, s3 = R3, s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = id;
+    GUEST_CALL(chipIDIs13f_8029FF4);
+    bool res = R0 != 0;
+    R2 = s2; R3 = s3; R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    return res;
+}
+
+#define SLOT_SIZE 12
+#define MAX_ACTIVE_SLOTS 10
+#define STAR_CODE 0x1A
+#define SPECIAL_CODE_LO 0x1B
+#define SPECIAL_CODE_HI 0x1C
+#define ACTIVE_CHIP_OFF 0x20
+#define SELECTED_COUNT_OFF 8
+#define MONOCODE_OFF 9
+#define ACTIVE_CODE_OFF 0x0A
+#define SELECTED_FLAG_OFF 7
+
+/*
+ * Mark each of the 10 active-chip slots as selectable (0) or unselectable (1).
+ * state: custom-screen control block.
+ * Returns the final scratch value that the loop leaves in r2 (used as output).
+ */
+static u32 update_chip_slot_selections(u32 state, u32 r2_scratch) {
+    u32 slot = get_loc_of_active_chips(0);
+
+    for (int i = 0; i < MAX_ACTIVE_SLOTS; i++) {
+        /* Skip non-empty slots and slots already marked "selected" (2) */
+        if (LD8(slot) != 0) { slot += SLOT_SIZE; continue; }
+        if (LD8(slot + SELECTED_FLAG_OFF) == 2) { slot += SLOT_SIZE; continue; }
+
+        /* If 5 or more chips already selected, no more can be added */
+        if (LD8(state + SELECTED_COUNT_OFF) >= 5) {
+            ST8(slot + SELECTED_FLAG_OFF, 1);
+            slot += SLOT_SIZE;
+            continue;
+        }
+
+        /* Decode the chip's code and ID from its data pointer */
+        u32 data_ptr = LD32(slot + 8);
+        u32 chip_val = get_chip_id((u16)LD16(data_ptr));
+        u32 code = chip_val >> 9;
+        u32 id = chip_val & 0x1FF;
+        u32 flag = 0;  /* assume selectable; set to 1 if a check rejects it */
+
+        /* Chips with special ID 0x13f are always selectable */
+        if (chip_id_is_13f(id)) {
+            ST8(slot + SELECTED_FLAG_OFF, flag);
+            slot += SLOT_SIZE;
+            continue;
+        }
+
+        /* Codes 0x1B–0x1C: special active-code gating */
+        if (code >= SPECIAL_CODE_LO && code <= SPECIAL_CODE_HI) {
+            u32 active_code = LD8(state + ACTIVE_CODE_OFF);
+            if (active_code == 0) {
+                flag = 0;
+            } else if (active_code == code) {
+                flag = 0;
+            } else {
+                flag = 1;
+            }
+            ST8(slot + SELECTED_FLAG_OFF, flag);
+            slot += SLOT_SIZE;
+            continue;
+        }
+
+        /* Normal code path: check against active chip */
+        {
+            s32 active_chip = (s32)LDS16(state + ACTIVE_CHIP_OFF);
+            r2_scratch = (u32)active_chip;
+
+            if (active_chip != -1 && id == (u32)active_chip) {
+                ST8(slot + SELECTED_FLAG_OFF, flag);  /* selectable */
+                slot += SLOT_SIZE;
+                continue;
+            }
+        }
+
+        /* Monocode path (active_chip == -1, or chip ID didn't match active) */
+        {
+            u32 mono = LD8(state + MONOCODE_OFF);
+            r2_scratch = mono;
+
+            if (mono == 0xFF) {
+                flag = 1;
+                ST8(slot + SELECTED_FLAG_OFF, flag);
+                slot += SLOT_SIZE;
+                continue;
+            }
+
+            if (mono == STAR_CODE) {
+                /* All selected chips are stars so far → always compatible */
+                ST8(slot + SELECTED_FLAG_OFF, flag);
+                slot += SLOT_SIZE;
+                continue;
+            }
+        }
+
+        /* Mixed codes: star wildcard or exact monocode match required */
+        if (code == STAR_CODE) {
+            /* Chip is a star → selectable regardless of monocode */
+            flag = 0;
+        } else if (code == r2_scratch) {
+            /* Chip code matches the current monocode */
+            flag = 0;
+        } else {
+            flag = 1;
+        }
+        ST8(slot + SELECTED_FLAG_OFF, flag);
+        slot += SLOT_SIZE;
+    }
+
+    return r2_scratch;
+}
+
+/* updateCustomScreen_WhenUnselectingChip_8028EC8(r2,r4,r5,r6,r7,r10) -> r2,r3; r4,r5,r6,r7 preserved */
+Next updateCustomScreen_WhenUnselectingChip_8028EC8(void) {
+    R2 = update_chip_slot_selections(R5, R2);
+    R3 = 0;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_updateActiveChipSlotB_state_8028F48 ── */
 /* battle_updateActiveChipSlotB_state_8028F48(r4..r7, r10, lr = caller context; r5 = battle object):
  * Bookkeeping for slot 11 of the active-chip list (the chip currently being

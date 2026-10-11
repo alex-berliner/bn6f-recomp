@@ -686,6 +686,58 @@ Next SpawnCounterPinkRingMaybe_80C4C12(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t3_0x0_80C4E58 ── */
+/* register form: calls sub_80C4E7C outside this file, which has no typed C interface yet */
+static void call_idle_handler(u32 state, u32 object_ptr) {
+    R0 = state;
+    R5 = object_ptr;
+    GUEST_CALL(sub_80C4E7C);
+}
+
+/* register form: calls sub_80C4F02 outside this file, which has no typed C interface yet */
+static void call_active_handler(u32 state, u32 object_ptr) {
+    R0 = state;
+    R5 = object_ptr;
+    GUEST_CALL(sub_80C4F02);
+}
+
+/* register form: calls object_genericDestroy outside this file, which has no typed C interface yet */
+static void call_destroy_handler(u32 state, u32 object_ptr) {
+    R0 = state;
+    R5 = object_ptr;
+    GUEST_CALL(object_genericDestroy);
+}
+
+/* register form: calls object_updateSprite outside this file, which has no typed C interface yet */
+static void call_update_sprite_t3_0x0_80C4E58(u32 object_ptr) {
+    R5 = object_ptr;
+    GUEST_CALL(object_updateSprite);
+}
+
+/* Dispatch the battle object's per-state handler (jump table keyed by CurState byte),
+ * then unconditionally refresh its sprite. */
+static void battle_object_state_update(u32 object_ptr) {
+    u32 state = LD8(object_ptr + oBattleObject_CurState);
+    switch (state) {
+    case 0:
+        call_idle_handler(state, object_ptr);
+        break;
+    case 4:
+        call_active_handler(state, object_ptr);
+        break;
+    case 8:
+        call_destroy_handler(state, object_ptr);
+        break;
+    }
+    call_update_sprite_t3_0x0_80C4E58(object_ptr);
+}
+
+/* t3_0x0_80C4E58(r5 = battle object pointer) */
+Next t3_0x0_80C4E58(void) {
+    battle_object_state_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C4F02 ── */
 /* Collision phase handler for a battle object.
  * Processes the object's collision data, advances its panel-movement timer,
@@ -1021,6 +1073,36 @@ Next battle_object_stepLifetimeDestroyOnHit_80C532E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t3_0x8_80C5BB0 ── */
+/*
+ * t3_0x8_80C5BB0 — battle-object state-machine dispatcher.
+ *
+ * The jump table off_80C5BC8 is indexed by CurState (byte offsets 0, 4, 8):
+ *   0 → sub_80C5BD4       (spawn / initialize)
+ *   4 → sub_80C5C40       (active / per-frame logic)
+ *   8 → object_genericDestroy (death cleanup)
+ * After the handler returns, object_updateSprite is called every frame.
+ */
+
+/* register form: dispatches via the state jump table and then refreshes the sprite */
+static void dispatch_state_and_update_sprite(u32 object) {
+    R5 = object;
+    u32 state = LD8(R5 + oBattleObject_CurState);
+    R0 = state;
+    switch (state) {
+        case 0: GUEST_CALL(sub_80C5BD4); break;
+        case 4: GUEST_CALL(sub_80C5C40); break;
+        case 8: GUEST_CALL(object_genericDestroy); break;
+    }
+    GUEST_CALL(object_updateSprite);
+}
+
+/* t3_0x8_80C5BB0(r5 = battle object) → dispatch on CurState, then update sprite */
+Next t3_0x8_80C5BB0(void) {
+    dispatch_state_and_update_sprite(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C5C40 ── */
 /* Jump table address for collision action dispatch (entries at +0 and +4). */
 #define COLLISION_ACTION_TABLE  0x080C5C94u
@@ -1159,6 +1241,62 @@ static void handle_collision_event(u32 obj) {
 /* sub_80C5C40(r5 = battle object pointer) -> side effects; all registers are outputs via callees */
 Next sub_80C5C40(void) {
     handle_collision_event(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── t3_0xf_80C6414 ── */
+/* t3_0xf_80C6414 (0x080C6414): Battle-object state-machine dispatch.
+ * Reads CurState from the object, looks up the handler in a ROM jump table,
+ * calls it, then refreshes the object's sprite for timestop before returning. */
+
+/* register form: calls sub_80C6438 outside this file, which has no typed C interface yet */
+static void state_init(u32 state, u32 handlerAddr, u32 battleObj) {
+    R0 = state;
+    R1 = handlerAddr;
+    R5 = battleObj;
+    GUEST_CALL(sub_80C6438);
+}
+
+/* register form: calls sub_80C647C outside this file, which has no typed C interface yet */
+static void state_active(u32 state, u32 handlerAddr, u32 battleObj) {
+    R0 = state;
+    R1 = handlerAddr;
+    R5 = battleObj;
+    GUEST_CALL(sub_80C647C);
+}
+
+/* register form: calls object_genericDestroy outside this file, which has no typed C interface yet */
+static void state_destroy(u32 state, u32 handlerAddr, u32 battleObj) {
+    R0 = state;
+    R1 = handlerAddr;
+    R5 = battleObj;
+    GUEST_CALL(object_genericDestroy);
+}
+
+/* register form: calls object_updateSpriteTimestop outside this file, which has no typed C interface yet */
+static void update_sprite_timestop(void) {
+    GUEST_CALL(object_updateSpriteTimestop);
+}
+
+static void dispatch_state(u32 battleObj) {
+    u32 state       = LD8(battleObj + oBattleObject_CurState);
+    u32 handlerAddr = LD32(A_off_80C642C + state);
+
+    /* Jump-table entries are at byte offsets 0, 4, 8 (word-sized) */
+    if (state == 0)
+        state_init(state, handlerAddr, battleObj);
+    else if (state == 4)
+        state_active(state, handlerAddr, battleObj);
+    else
+        state_destroy(state, handlerAddr, battleObj);
+
+    /* After the handler returns, update the sprite for timestop visibility */
+    update_sprite_timestop();
+}
+
+/* t3_0xf_80C6414(r5 = BattleObject*) */
+Next t3_0xf_80C6414(void) {
+    dispatch_state(R5);
     RETURN_TO_CALLER();
 }
 

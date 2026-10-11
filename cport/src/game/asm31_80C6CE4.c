@@ -210,6 +210,35 @@ Next battle_objectDestroyWhenAnimFrameDone_80C9CC4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t3_0x33_80CA544 ── */
+/* Dispatch a battle object's current state through a three-entry jump table,
+ * then update its sprite. The state byte is a direct offset into the table
+ * (0, 4, or 8). Each handler and object_updateSprite may modify any guest
+ * register; the register state after the final call is the complete result.
+ *
+ * register form: indirect dispatch through a jump table whose entries have no
+ * typed C interface; all guest registers pass through to callees that modify
+ * them in ways the type system cannot express. */
+static void dispatch_battle_state(u32 r5) {
+    u8 state = (u8)LD8(r5 + oBattleObject_CurState);
+    R0 = state;
+    R1 = LD32(A_off_80CA55C + state);
+
+    switch (state) {
+        case 0: GUEST_CALL(sub_80CA568);           break;
+        case 4: GUEST_CALL(sub_80CA61A);           break;
+        case 8: GUEST_CALL(object_genericDestroy);  break;
+    }
+
+    GUEST_CALL(object_updateSprite);
+}
+
+/* t3_0x33_80CA544(r5 = battle object ptr) -> all registers */
+Next t3_0x33_80CA544(void) {
+    dispatch_battle_state(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_spawnAndInitObject0x33_80CA686 ── */
 /* battle_spawnAndInitObject0x33_80CA686: spawn a battle object of type 0x33 and hand it the caller's
  * arguments. The new object pointer comes back from object_spawnType3 in r5;
@@ -367,12 +396,202 @@ Next sub_80CAE94(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CAF14 ── */
+/* Tables indexed by (param1 << 2) for ship extra-variable offsets. */
+#define SHIP_EXTRA_TABLE_1  A_byte_80CAF78
+#define SHIP_EXTRA_TABLE_2  A_byte_80CAF8C
+
+#define FRONT_DIR_SCALE  0x140000
+#define SHIP_Z_DEFAULT   0x280000
+#define SHIP_SPRITE_ID   0x80
+#define SHIP_SPRITE_LAYER 8
+#define SHIP_SPRITE_PRIO  0xD
+#define SHIP_ANIM_ID      0x16
+#define OBJ_FLAG_ACTIVE   (1u << 1)
+#define CUR_STATE_UPDATE_sub_80CAF14  4
+
+/* register form: calls object_setCoordinatesFromPanels outside this file, which has no typed C interface yet */
+static void call_set_coordinates(void) {
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+/* register form: calls object_getFrontDirection outside this file, which has no typed C interface yet */
+static s32 call_get_front_direction(void) {
+    GUEST_CALL(object_getFrontDirection);
+    return (s32)R0;
+}
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void call_sprite_load(u32 id, u32 layer, u32 priority) {
+    R0 = id; R1 = layer; R2 = priority;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void call_no_shadow(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_set_animation(u32 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_load_anim_data(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void call_set_palette(u32 pal) {
+    R0 = pal;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls object_getFlip outside this file, which has no typed C interface yet */
+static u32 call_get_flip(void) {
+    GUEST_CALL(object_getFlip);
+    return R0;
+}
+
+/* register form: calls sprite_setFlip outside this file, which has no typed C interface yet */
+static void call_set_flip(u32 flip) {
+    R0 = flip;
+    GUEST_CALL(sprite_setFlip);
+}
+
+/* Result of ship initialization: only the values the original explicitly leaves in r0/r1.
+ * r2 is left behind by sprite_setFlip's GUEST_CALL and must not be overridden. */
+typedef struct { u32 phase; u32 r1; } ShipInitResult;
+
+/* Initialize a battle-ship sprite: front-row X offset, default Z, sprite load,
+ * animation/palette setup, flip propagation, param1-indexed extra vars, and
+ * transition to the update phase. */
+static ShipInitResult init_ship(u32 obj) {
+    /* Place on the front row: X += direction × scale, Z = fixed altitude. */
+    call_set_coordinates();
+    s32 dir = call_get_front_direction();
+    ST32(obj + oBattleObject_X, (s32)LD32(obj + oBattleObject_X) + dir * (s32)FRONT_DIR_SCALE);
+    ST32(obj + oBattleObject_Z, SHIP_Z_DEFAULT);
+
+    /* Load ship sprite and disable its shadow. */
+    call_sprite_load(SHIP_SPRITE_ID, SHIP_SPRITE_LAYER, SHIP_SPRITE_PRIO);
+    call_no_shadow();
+
+    /* Mark object as active/visible in the header flags byte. */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | OBJ_FLAG_ACTIVE);
+
+    /* Assign and load the idle animation. */
+    ST8(obj + oBattleObject_CurAnim, SHIP_ANIM_ID);
+    ST8(obj + oBattleObject_CurAnimCopy, SHIP_ANIM_ID);
+    call_set_animation(SHIP_ANIM_ID);
+    call_load_anim_data();
+
+    /* Default palette 0, then propagate the object's facing to the sprite. */
+    call_set_palette(0);
+    u32 flip = call_get_flip();
+    call_set_flip(flip);
+
+    /* Copy param1-indexed extra-variable offsets from the two ship tables. */
+    u32 idx = (u32)LD8(obj + oBattleObject_Param1) << 2;
+    u32 extra1 = LD32(SHIP_EXTRA_TABLE_1 + idx);
+    u32 extra2 = LD32(SHIP_EXTRA_TABLE_2 + idx);
+    ST32(obj + oBattleObject_ExtraVars, extra1);
+    ST32(obj + oBattleObject_ExtraVars + 4, extra2);
+
+    /* Transition to the update state. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE_sub_80CAF14);
+
+    /* The original's last write to r1 is the table-2 load; r2 is left by sprite_setFlip. */
+    ShipInitResult r = { CUR_STATE_UPDATE_sub_80CAF14, extra2 };
+    return r;
+}
+
+/* sub_80CAF14(r5 = battle object) -> r0=CUR_STATE_UPDATE_sub_80CAF14, r1=extra2, nz from r0 */
+Next sub_80CAF14(void) {
+    ShipInitResult res = init_ship(R5);
+    R0 = res.phase;
+    R1 = res.r1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_destroyWrapper_80CB078 ── */
 /* object_destroyWrapper_80CB078: thin wrapper that destroys the object pointed to by R0
  * via the generic object destructor; all results and flags come straight
  * from object_genericDestroy. */
 Next object_destroyWrapper_80CB078(void) {
     GUEST_CALL(object_genericDestroy);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CB080 ── */
+/* register form: calls object_spawnType3 outside this file, which has no typed C interface yet */
+static u32 spawn_object_type3(u32 type) {
+    u32 saved_r5 = R5;
+    R0 = type;
+    GUEST_CALL(object_spawnType3);
+    u32 result = R5;
+    R5 = saved_r5;
+    return result;
+}
+
+struct SpawnConfigResult {
+    u32 r1;
+    u32 r2;
+    u32 r3;
+};
+
+/* Spawn a type-0x38 battle object and configure it: set future panel coords,
+ * copy panel position / alliance / element / damage-disabler from the source,
+ * and activate the object (flags |= 0x10).
+ * Returns the final values of r1, r2, r3 that the original leaves behind. */
+static struct SpawnConfigResult configure_spawned_object(
+    u32 future_x, u32 future_y, u32 element,
+    u32 source_obj, u32 damage_disabler)
+{
+    struct SpawnConfigResult res;
+    u32 new_obj = spawn_object_type3(0x38);
+
+    if (new_obj == 0) {
+        /* Spawn failed: original pop shifts r0→r1, r1→r2, r2→r3 */
+        res.r1 = future_x;
+        res.r2 = future_y;
+        res.r3 = element;
+        return res;
+    }
+
+    ST8(new_obj + oBattleObject_FuturePanelX, future_x);
+    ST8(new_obj + oBattleObject_FuturePanelY, future_y);
+    ST8(new_obj + oBattleObject_PanelX,
+        LD8(source_obj + oBattleObject_PanelX));
+    ST8(new_obj + oBattleObject_PanelY,
+        LD8(source_obj + oBattleObject_PanelY));
+    ST8(new_obj + oBattleObject_Element, element);
+    ST32(new_obj + oBattleObject_DamageAndStaminaDamageCounterDisabler,
+         damage_disabler);
+    u16 alliance = LD16(source_obj + oBattleObject_AllianceAndDirectionFlip);
+    ST16(new_obj + oBattleObject_AllianceAndDirectionFlip, alliance);
+
+    u8 flags = LD8(new_obj + oObjectHeader_Flags) | 0x10;
+    ST8(new_obj + oObjectHeader_Flags, flags);
+
+    /* Final register state left by the original's last writes */
+    res.r1 = 0x10;
+    res.r2 = flags;
+    res.r3 = alliance;
+    return res;
+}
+
+/* sub_80CB080(r0=futureX, r1=futureY, r2=element, r5=sourceObj, r6=damageDisabler)
+ * Outputs r1, r2, r3; r4–r7 preserved. */
+Next sub_80CB080(void) {
+    struct SpawnConfigResult res = configure_spawned_object(
+        R0, R1, R2, R5, R6);
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
     RETURN_TO_CALLER();
 }
 
@@ -720,6 +939,51 @@ Next battle_spawnTypeD3ObjectWithPanelElementAndDamage_80DFF84(void) {
         R3 = alliance;                  /* ldrh overwrites r3 on this path */
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── t4_0x0_80E0548 ── */
+/* t4_0x0_80E0548: battle-object state dispatcher (ROM jump table at off_80E055C) */
+
+/* register form: calls sub_80E0568 outside this file, which has no typed C interface yet */
+static u32 call_sub_80E0568(u32 state, u32 handler_addr) {
+    R0 = state;
+    R1 = handler_addr;
+    GUEST_CALL(sub_80E0568);
+    return R0;
+}
+
+/* register form: calls sub_80E05C4 outside this file, which has no typed C interface yet */
+static u32 call_sub_80E05C4(u32 state, u32 handler_addr) {
+    R0 = state;
+    R1 = handler_addr;
+    GUEST_CALL(sub_80E05C4);
+    return R0;
+}
+
+/* register form: calls object_freeMemory outside this file, which has no typed C interface yet */
+static u32 call_object_freeMemory(u32 state, u32 handler_addr) {
+    R0 = state;
+    R1 = handler_addr;
+    GUEST_CALL(object_freeMemory);
+    return R0;
+}
+
+/* Dispatch a battle object to its per-state handler via the ROM jump table.
+ * The state byte is used directly as a byte offset into the table (0, 4, or 8). */
+static u32 dispatch_battle_object_state(u32 battle_obj) {
+    u32 state = LD8(battle_obj + oBattleObject_CurState);
+    u32 handler_addr = LD32(A_off_80E055C + state);
+    switch (state) {
+    case 0: return call_sub_80E0568(state, handler_addr);
+    case 4: return call_sub_80E05C4(state, handler_addr);
+    case 8: return call_object_freeMemory(state, handler_addr);
+    }
+    return 0;
+}
+
+Next t4_0x0_80E0548(void) {
+    R0 = dispatch_battle_object_state(R5);
     RETURN_TO_CALLER();
 }
 
