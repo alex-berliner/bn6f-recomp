@@ -263,6 +263,75 @@ Next object_freeMemory(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── InitializeStructsOfObjectType ── */
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word(u32 dst, u32 byte_count) {
+    R0 = dst;
+    R1 = byte_count;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* Values the original leaves in r0..r3 on return; the adapter also derives the
+ * exit flags from the final CMP of the init loop. */
+typedef struct {
+    u32 cursor;        /* r0: array pointer advanced past the last initialized object */
+    u32 counter;       /* r1: loop counter as of the final comparison */
+    u32 sprite_data;   /* r2: sprite-data byte written to every object */
+    u32 object_count;  /* r3: number of objects for this type */
+} InitStructsResult;
+
+/* Zero and initialize the object pool for one object type (r0 = table index):
+ * clears the active-object bitfield, clears the whole object array, then for
+ * each object writes the sprite-data byte at +2 and the object's index at +3. */
+static InitStructsResult initialize_structs_of_object_type(u32 object_type) {
+    u32 table_entry = A_InitializeStructsOfObjectType_ObjectInitializationTable + object_type * 16;
+
+    /* Clear the active-object bitfield: one bit per object, rounded up to whole words. */
+    u32 bitfield_words = ((u32)LD8(table_entry + 0xC) + 0x1F) >> 5;
+    u32 bitfield_base = LD32(A_ActiveObjectBitfieldPointers + object_type * 4);
+    zero_fill_by_word(bitfield_base, bitfield_words * 4);
+
+    /* Clear the entire object array for this type. */
+    u32 linked_list_base = LD32(table_entry);
+    u32 array_size = LD16(table_entry + 8);
+    zero_fill_by_word(linked_list_base, array_size);
+
+    /* Per-object header: sprite-data byte at +2, objects are object_size apart. */
+    u32 cursor = LD32(table_entry + 4);
+    u32 sprite_data = LD8(table_entry + 0xA);
+    u32 object_size = LD8(table_entry + 0xB);
+    u32 object_count = LD8(table_entry + 0xC);
+
+    /* Each object's +3 byte gets the loop counter (its index), not a constant.
+     * The original tests the counter only after the first object is written
+     * (do/while), so one object is initialized even when the count is zero. */
+    u32 counter = 0;
+    do {
+        ST8(cursor + 2, sprite_data);
+        ST8(cursor + 3, counter);
+        cursor += object_size;
+        counter++;
+    } while ((s32)counter < (s32)object_count);
+
+    InitStructsResult result;
+    result.cursor = cursor;
+    result.counter = counter;
+    result.sprite_data = sprite_data;
+    result.object_count = object_count;
+    return result;
+}
+
+/* InitializeStructsOfObjectType(r0 = object type) -> r0..r3, flags from the loop's final CMP */
+Next InitializeStructsOfObjectType(void) {
+    InitStructsResult result = initialize_structs_of_object_type(R0);
+    R0 = result.cursor;
+    R1 = result.counter;
+    R2 = result.sprite_data;
+    R3 = result.object_count;
+    SET_FLAGS_CMP(R1, R3);
+    RETURN_TO_CALLER();
+}
+
 /* ── InitializeOWPlayerObjectStruct ── */
 /* InitializeOWPlayerObjectStruct:
  * Initializes the player's overworld object struct (object type 0) by
@@ -329,6 +398,76 @@ Next InitializeOverworldNPCObjectStructs(void) {
 Next InitializeOverworldMapObjectStructs(void) {
     R0 = 5; /* OVERWORLD_MAP_OBJECT */
     GUEST_CALL(InitializeStructsOfObjectType);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800362C ── */
+/* Address of the mirror-x flag (eCamera.unk_4C = eCamera + 0x4C). */
+#define CAMERA_MIRROR_FLAG 0x20099CCu
+
+/* Offsets into the object struct holding its world position (halfwords). */
+#define OBJ_POS_X 2
+#define OBJ_POS_Y 6
+#define OBJ_POS_Z 0xA
+
+/* Visible window: a 240x160 screen centred at (120, 80), clipped with a margin. */
+#define SCREEN_CLIP_MIN_X (-0x20)
+#define SCREEN_CLIP_MAX_X 0x110   /* 0xF0 + 0x20 */
+#define SCREEN_CLIP_MIN_Y (-0x20)
+#define SCREEN_CLIP_MAX_Y 0xE0    /* 0xA0 + 0x40 */
+#define CLIP_FALLBACK_X   0xA0
+#define CLIP_FALLBACK_Y   0x50
+
+/* Projection result, in the layout the original leaves in the registers.
+ * r4-r7 are preserved by the original (push/pop), so they are never touched. */
+typedef struct {
+    u32 x;       /* r0: screen x, or the 0xA0 fallback when clipped */
+    u32 y;       /* r1: screen y, or the 0x50 fallback when clipped */
+    u32 visible; /* r2: 1 if the point is on screen, 0 if clipped */
+    u32 camera;  /* r3: camera pointer, which the original leaves behind */
+} ScreenProjection;
+
+/* Project the world position of the object at `object` into screen space,
+ * relative to the camera's next-frame scroll. When eCamera.unk_4C is set the
+ * x axis is mirrored. Points outside the clip bounds collapse to the fixed
+ * fallback position with the visible flag cleared. */
+static ScreenProjection project_object_to_screen(u32 object, u32 toolkit)
+{
+    ScreenProjection out;
+    u32 camera = LD32(toolkit + oToolkit_CameraPtr);
+
+    s32 x = LDS16(object + OBJ_POS_X) - ((s32)LD32(camera + oCamera_nextX_3c) >> 16);
+    if (LD8(CAMERA_MIRROR_FLAG) != 0)   /* eCamera.unk_4C: mirror-x flag */
+        x = -x;
+    x += 0x78;                      /* centre horizontally on the screen */
+
+    s32 y = LDS16(object + OBJ_POS_Y) - ((s32)LD32(camera + oCamera_nextY_40) >> 16);
+    y += 0x50;                      /* centre vertically on the screen */
+    s32 depth = LDS16(object + OBJ_POS_Z) - ((s32)LD32(camera + oCamera_nextZ_44) >> 16);
+    y -= depth;                     /* height shifts with Z distance */
+
+    if (x >= SCREEN_CLIP_MIN_X && x < SCREEN_CLIP_MAX_X &&
+        y >= SCREEN_CLIP_MIN_Y && y < SCREEN_CLIP_MAX_Y) {
+        out.x = (u32)x;
+        out.y = (u32)y;
+        out.visible = 1;
+    } else {
+        out.x = CLIP_FALLBACK_X;
+        out.y = CLIP_FALLBACK_Y;
+        out.visible = 0;
+    }
+    out.camera = camera;
+    return out;
+}
+
+/* sub_800362C(r0 = object ptr, r10 = toolkit) -> r0 = screen x, r1 = screen y,
+ * r2 = visible flag, r3 = camera ptr; r4-r7 preserved. */
+Next sub_800362C(void) {
+    ScreenProjection out = project_object_to_screen(R0, R10);
+    R0 = out.x;
+    R1 = out.y;
+    R2 = out.visible;
+    R3 = out.camera;
     RETURN_TO_CALLER();
 }
 
@@ -1199,6 +1338,79 @@ static void init_new_game_data(u32 toolkit) {
 /* initNewGameData_8004DF0() -> (r2, r4-r12 preserved/callee-side-effects) */
 Next initNewGameData_8004DF0(void) {
     init_new_game_data(R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── cbGameState_80050EC ── */
+/*
+ * cbGameState_80050EC — one tick of the top-level game state machine.
+ *
+ * Reads the current GameState from the toolkit, runs the subsystem handler
+ * selected by its SubsystemIndex through GameStateJumptable, then ticks both
+ * hardware RNGs. All registers the original leaves behind (r0-r3 and the
+ * flags) come straight out of the last callee; r4-r7 are restored to the
+ * caller's values, exactly as the original's push/pop does.
+ */
+
+/* register form: calls GetRNG outside this file, which has no typed C interface yet.
+ * The result is discarded by the caller, so R0 is left as GetRNG leaves it. */
+static void call_GetRNG(void) {
+    GUEST_CALL(GetRNG);
+}
+
+/* register form: calls GetRNGSecondary outside this file, which has no typed C
+ * interface yet. R0/R1 and the flags are left exactly as the callee leaves them,
+ * since they are this function's observable outputs. */
+static void call_GetRNGSecondary(void) {
+    GUEST_CALL(GetRNGSecondary);
+}
+
+/* register form: the subsystem handler is selected at run time from
+ * GameStateJumptable, so the call has no single typed C interface to wrap.
+ * Call state matches the original `mov lr, pc / bx r0`: R0 holds the handler's
+ * own address (left over from the table load), R1 the raw subsystem index byte,
+ * and R5 the GameState pointer the handlers use as their self. */
+static void call_subsystem_handler(u32 index, u32 game_state) {
+    R0 = LD32(A_GameStateJumptable + index);
+    R1 = index;
+    R5 = game_state;
+    switch (index) {
+    case 0x00: GUEST_CALL(EnterMap); break;
+    case 0x04: GUEST_CALL(gamestate_OnMapUpdate_8005268); break;
+    case 0x08: GUEST_CALL(battle_init_80052D8); break;
+    case 0x0C: GUEST_CALL(HandlesBattleMainUntilEndOfBattleThenTriggersEnterMap); break;
+    case 0x10: GUEST_CALL(sub_800536E); break;
+    case 0x14: GUEST_CALL(sub_80053E4); break;
+    case 0x18: GUEST_CALL(sub_8005462); break;
+    case 0x1C: GUEST_CALL(sub_800555A); break;
+    case 0x20: GUEST_CALL(sub_8005642); break;
+    case 0x24: GUEST_CALL(sub_80056B8); break;
+    case 0x28: GUEST_CALL(sub_800572C); break;
+    case 0x2C: GUEST_CALL(sub_80057A0); break;
+    case 0x30: GUEST_CALL(sub_80055CE); break;
+    case 0x34: GUEST_CALL(sub_8005814); break;
+    case 0x38: GUEST_CALL(sub_800585A); break;
+    }
+}
+
+/* Run the active game state subsystem, then advance both RNG counters. */
+static void game_state_update(u32 toolkit) {
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 subsystem  = LD8(game_state + oGameState_SubsystemIndex);
+
+    call_subsystem_handler(subsystem, game_state);
+    call_GetRNG();
+    call_GetRNGSecondary();
+}
+
+/* cbGameState_80050EC (r10 = toolkit) */
+Next cbGameState_80050EC(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    game_state_update(R10);
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
     RETURN_TO_CALLER();
 }
 

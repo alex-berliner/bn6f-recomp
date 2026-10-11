@@ -931,6 +931,87 @@ Next ShuffleHwordList_SecondaryRNG(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── memory_bcd_8000D84 ── */
+/* BCD digits of a broken-down time, packed into one word:
+ * byte 3 = hours, byte 2 = minutes, byte 1 = seconds, byte 0 = hundredths. */
+struct PackedBcd {
+    u32 packed;
+    u32 r2_out;   /* value the original leaves in r2 (minutes << 16) */
+    u32 r3_out;   /* value the original leaves in r3 (seconds << 8)  */
+};
+
+struct Hmsf {
+    u32 hours;
+    u32 minutes;
+    u32 seconds;
+    u32 frames;
+};
+
+/* Largest play-time frame count shown normally; anything above renders as 99:59:59.99. */
+#define MAX_PLAYTIME_FRAMES 0x1499727u
+
+/* register form: calls clock_breakPlayTimeIntoHMSF_8000DE0 outside this file, which has no typed C interface yet */
+static struct Hmsf clock_break_playtime_into_hmsf(u32 frames) {
+    R0 = frames;
+    GUEST_CALL(clock_breakPlayTimeIntoHMSF_8000DE0);
+    struct Hmsf t = { R0, R1, R2, R3 };
+    return t;
+}
+
+/* register form: calls memory_bcdConvert outside this file, which has no typed C interface yet */
+static u32 memory_bcd_convert(u32 value) {
+    R0 = value;
+    GUEST_CALL(memory_bcdConvert);
+    return R0;
+}
+
+/* register form: BIOS division (swi 6 Div, signed; quotient in r0) */
+static s32 bios_div(s32 numerator, s32 denominator) {
+    R0 = (u32)numerator;
+    R1 = (u32)denominator;
+    swi_call(6);
+    return (s32)R0;
+}
+
+/* Play-time frames -> packed BCD for the save screen's time display.
+ * Anything past the cap (~100h of frames) renders as the sentinel 99:59:59.99. */
+static struct PackedBcd playtime_to_bcd(u32 frames, u32 r2_in, u32 r3_in) {
+    struct PackedBcd out;
+
+    if ((s32)frames > (s32)MAX_PLAYTIME_FRAMES) {
+        out.packed = 0x99595999u;   /* BCD 99:59:59.99 */
+        out.r2_out = r2_in;
+        out.r3_out = r3_in;
+        return out;
+    }
+
+    struct Hmsf t = clock_break_playtime_into_hmsf(frames);
+
+    u32 hours_bcd   = memory_bcd_convert(t.hours);
+    u32 minutes_bcd = memory_bcd_convert(t.minutes);
+    u32 seconds_bcd = memory_bcd_convert(t.seconds);
+    /* frames (1/60s) -> hundredths of a second */
+    u32 centis_bcd  = memory_bcd_convert((u32)bios_div((s32)(t.frames * 100u), 60));
+
+    out.packed = centis_bcd
+               + (hours_bcd << 24)
+               + (minutes_bcd << 16)
+               + (seconds_bcd << 8);
+    out.r2_out = minutes_bcd << 16;
+    out.r3_out = seconds_bcd << 8;
+    return out;
+}
+
+/* memory_bcd_8000D84(r0 = play time in frames) -> r0 packed BCD; r2/r3 carry
+ * shifted BCD minutes/seconds on the normal path and are untouched on overflow. */
+Next memory_bcd_8000D84(void) {
+    struct PackedBcd res = playtime_to_bcd(R0, R2, R3);
+    R0 = res.packed;
+    R2 = res.r2_out;
+    R3 = res.r3_out;
+    RETURN_TO_CALLER();
+}
+
 /* ── clock_breakPlayTimeIntoHMSF_8000DE0 ── */
 /* Frame counts used by the in-game clock: the play-time counter is measured
  * in frames at 60 fps, so one second is 60 frames, one minute 3600 and
@@ -983,6 +1064,97 @@ Next clock_breakPlayTimeIntoHMSF_8000DE0(void) {
  * restores r4-r7, so the only observable effect is R0 = 0. */
 Next stub_returnZero_8000E30(void) {
     R0 = 0;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8000E3A ── */
+/* Weighted random pick from a table of u8 weights.
+ *
+ * Entry registers: r0 = weight table, r1 = entry count, r10 = toolkit.
+ * The routine first draws the RNG once to size a "stir" (high two bits of
+ * that draw plus the low two bits of the current frame counter), burns that
+ * many more draws, and keeps the last draw (masked to 16 bits) as the roll.
+ * It then sums the whole table, takes the roll modulo the total via BIOS
+ * Div, adds one to get a target in [1, total], and walks the table from
+ * index 0 until the running weight reaches the target. If the walk runs
+ * past the end of the table it falls back to index 0.
+ *
+ * r0 and r2 both receive the chosen index. r3 receives the last table byte
+ * the walk loaded (on the fallback path that is the final entry, not the
+ * returned index's byte). r4-r7 and lr are left as the caller set them.
+ */
+typedef struct {
+    u32 index;        /* chosen entry -> r0 and r2 */
+    u32 last_weight;  /* last table byte the walk loaded -> r3 */
+} weighted_pick;
+
+/* register form: calls GetRNG outside this file, which has no typed C interface yet */
+static u32 draw_rng(void) {
+    GUEST_CALL(GetRNG);
+    return R0;
+}
+
+/* register form: BIOS Div (swi 6) — must run with the raw guest registers so
+ * the hardware/BIOS side effects match; only the remainder (r1) is used here */
+static s32 bios_div_remainder(u32 numerator, u32 denominator) {
+    R0 = numerator;
+    R1 = denominator;
+    swi_call(6);
+    return (s32)R1;
+}
+
+static weighted_pick pick_weighted_index(u32 table, s32 count, u32 toolkit)
+{
+    /* Stir the RNG: one draw to size the stir, then that many more. */
+    u32 rng = draw_rng();
+    u32 frame = LD16(LD32(toolkit + oToolkit_CurFramePtr));
+    s32 extra_draws = (s32)(rng >> 30) + (s32)(frame & 3);
+
+    do {
+        rng = draw_rng();
+    } while (--extra_draws >= 0);
+    rng &= 0xFFFF;
+
+    /* Total weight over all entries. The original sums back to front and
+     * reads one entry even for a zero-count table (table[-1]), so a
+     * do-while keeps that exact behaviour. */
+    s32 total = 0;
+    s32 i = count - 1;
+    do {
+        total += LD8(table + i);
+    } while (--i >= 0);
+
+    /* Target point in [1, total]; BIOS Div leaves the remainder in r1. */
+    s32 target = bios_div_remainder(rng, (u32)total) + 1;
+
+    /* First index whose running weight reaches the target; if the walk
+     * passes the end of the table, fall back to index 0. The last byte
+     * loaded is kept because the original leaves it behind in r3. */
+    weighted_pick res;
+    s32 run = 0;
+    s32 picked = 0;
+    for (;;) {
+        res.last_weight = LD8(table + picked);
+        run += (s32)res.last_weight;
+        if (run >= target)
+            break;
+        picked++;
+        if (picked >= count) {
+            picked = 0;
+            break;
+        }
+    }
+    res.index = (u32)picked;
+    return res;
+}
+
+/* sub_8000E3A(r0 = weight table, r1 = entry count, r10 = toolkit)
+ * -> r0 = chosen index, r2 = chosen index, r3 = last weight byte read */
+Next sub_8000E3A(void) {
+    weighted_pick pick = pick_weighted_index(R0, (s32)R1, R10);
+    R0 = pick.index;
+    R2 = pick.index;
+    R3 = pick.last_weight;
     RETURN_TO_CALLER();
 }
 
@@ -2142,6 +2314,109 @@ Next sub_8001C94(void) {
     process_gfx_animation(R0, R7, R4, &ewram_final, &src_data);
     R5 = ewram_final;
     R6 = src_data;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8001CFC ── */
+/*
+ * Graphics animation decoder (sub_8001CFC).
+ *
+ * A GFXAnimState describes one animated graphics object:
+ *   Param0 - base address of the source tile graphics
+ *   Param1 - destination address the finished tiles are copied to
+ *   Param2 - number of 0x40-byte tiles to process
+ *   Param3 - index of this object's scratch buffer in the off_8001AB8 table
+ *
+ * params (r0 on entry) points to a GFXAnimData whose first word is the
+ * animation code list: one halfword per tile, laid out as
+ *   bits 0-9  tile number (byte offset = tile * 0x40 into the source gfx)
+ *   bits 10+  mode, selecting one of four per-mode decoder routines
+ *
+ * Each code is decoded into the object's scratch buffer (0x40 bytes per
+ * tile), and afterwards one eight-word-aligned transfer is queued to copy
+ * the whole rendered frame from the scratch buffer to the destination.
+ */
+
+/* register form: calls the animation mode handlers sub_8002000 / sub_8002042 /
+ * sub_800218C / sub_80021CE outside this file, which have no typed C interface yet */
+static void call_gfx_anim_handler(u32 mode, u32 handler, u32 codeOffset, u32 jumpOffset,
+                                  u32 tileOffset, u32 tileSrc, u32 scratch, u32 codeList)
+{
+    /* Register image at the original's indirect call: r0 still holds the
+     * handler address loaded from the jump table, r1-r6 the decode state. */
+    R0 = handler;
+    R1 = codeOffset;
+    R2 = jumpOffset;
+    R3 = tileOffset;
+    R4 = tileSrc;
+    R5 = scratch;
+    R6 = codeList;
+    switch (mode) {
+    case 0: GUEST_CALL(sub_8002000); break;
+    case 1: GUEST_CALL(sub_8002042); break;
+    case 2: GUEST_CALL(sub_800218C); break;
+    case 3: GUEST_CALL(sub_80021CE); break;
+    default: break;               /* the jump table only covers modes 0-3 */
+    }
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx_transfer_sub_8001CFC(u32 src, u32 dest, u32 size, u32 gfxBase, u32 scratch, u32 codeList)
+{
+    /* r4-r6 are live game values the original carries into the call. */
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    R4 = gfxBase;
+    R5 = scratch;
+    R6 = codeList;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+static u32 anim_scratch_base(u32 self)
+{
+    return LD32(A_off_8001AB8 + ((u32)LD8(self + oGFXAnimState_Param3) << 2));
+}
+
+static void build_gfx_anim_frame(u32 self, u32 params)
+{
+    u32 codeList = LD32(params);
+    u32 scratch  = anim_scratch_base(self);
+    u32 gfxBase  = LD32(self + oGFXAnimState_Param0);
+
+    /* Decode one code halfword per tile; the tile count is re-read every
+     * iteration just as the original does. */
+    for (u32 codeOffset = 0;
+         (s32)codeOffset < (s32)((u32)LD8(self + oGFXAnimState_Param2) << 1);
+         codeOffset += 2)
+    {
+        u16 code       = LD16(codeList + codeOffset);
+        u32 tileOffset = (u32)(code & 0x3FF) << 6;      /* tile -> byte offset */
+        u32 mode       = (u32)code >> 10;               /* handler selector    */
+        u32 handler    = LD32(A_off_8001D54 + (mode << 2));
+
+        call_gfx_anim_handler(mode, handler, codeOffset, mode << 2, tileOffset,
+                              gfxBase + tileOffset, scratch, codeList);
+        scratch += 0x40;        /* one rendered tile per code */
+    }
+
+    /* Queue the copy of the fully rendered frame.  The scratch base is looked
+     * up again here, matching the original's second table read. */
+    queue_gfx_transfer_sub_8001CFC(anim_scratch_base(self),
+                       LD32(self + oGFXAnimState_Param1),
+                       (u32)LD8(self + oGFXAnimState_Param2) << 6,
+                       gfxBase, scratch, codeList);
+}
+
+/* sub_8001CFC(r7 = GFXAnimState *self, r0 = GFXAnimData *params) */
+Next sub_8001CFC(void)
+{
+    u32 savedR4 = R4;           /* the original pops r4 back on exit */
+    build_gfx_anim_frame(R7, R0);
+    R4 = savedR4;
+    /* r0-r3, r5, r6, the flags and lr are left exactly as
+     * QueueEightWordAlignedGFXTransfer returned them; r7 and r8-r12 were
+     * never written. */
     RETURN_TO_CALLER();
 }
 
