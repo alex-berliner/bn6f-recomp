@@ -1023,10 +1023,12 @@ def commit_info(shas: Iterable[str]) -> dict[str, Commit]:
 
 
 def provenance(world: World, entries: dict[str, dict[str, Any]], names: Iterable[str],
-               keep: dict[str, dict[str, Any]], explicit: dict[str, str]) -> dict[str, dict[str, Any]]:
+               keep: dict[str, dict[str, Any]], explicit: dict[str, str],
+               tool_edit: bool = False) -> dict[str, dict[str, Any]]:
     """Who made each function's current body. In order: what the caller says (--model/--run/--prompt);
     the existing stamp when the body is unchanged; otherwise the entry's record, pool.tsv and git
-    history; "unknown" where none of them can tell."""
+    history; "unknown" where none of them can tell. TOOL_EDIT: a changed body is a tool's edit (a
+    mechanical rename, a codemod): its author stays, and the commit that changed it goes into `edited`."""
     names = list(names)
     pool = pool_models()
     hist = history(world, set(names))
@@ -1043,6 +1045,9 @@ def provenance(world: World, entries: dict[str, dict[str, Any]], names: Iterable
             p = {k: old.get(k) for k in ("prompt", "model", "run", "installed", "edited")}
             if p.get("installed") in ("uncommitted", None, UNKNOWN):
                 p["installed"] = installed
+        elif old and tool_edit:
+            p = {k: old.get(k) for k in ("prompt", "model", "run", "installed")}
+            p["edited"] = [*(old.get("edited") or []), installed]
         elif old:
             p = {"prompt": "none", "model": hand_model(info.get(installed)), "run": hand_run(info.get(installed)),
                  "installed": installed, "edited": [*(old.get("edited") or []), installed]}
@@ -1102,7 +1107,7 @@ def hand_run(c: Commit | None) -> str:
 # ── stamp: write stamps into entries ──
 
 def write_stamps(world: World, entries_by_file: dict[str, dict[str, Any]], names: list[str],
-                 explicit: dict[str, str], dry_run: bool = False) -> list[str]:
+                 explicit: dict[str, str], dry_run: bool = False, tool_edit: bool = False) -> list[str]:
     """(Re)stamp NAMES; returns the entry files written. Entries are re-read just before writing and only
     their stamp block changes, so concurrent edits to the rest of an entry are kept."""
     by_name = {str(e.get("name")): (f, e) for f, e in entries_by_file.items()}
@@ -1116,7 +1121,7 @@ def write_stamps(world: World, entries_by_file: dict[str, dict[str, Any]], names
     for n, f in homes.items():
         if n in names:
             keep[n] = entries_by_file[f].get("stamp") or {}
-    prov = provenance(world, {n: e for n, (_, e) in by_name.items()}, names, keep, explicit)
+    prov = provenance(world, {n: e for n, (_, e) in by_name.items()}, names, keep, explicit, tool_edit)
     written: list[str] = []
     for n in names:
         home = home_entry(n, set(by_name))

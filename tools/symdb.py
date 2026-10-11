@@ -6,6 +6,7 @@
   tools/symdb.py show NAME               print one entry (current or previous name)
   tools/symdb.py stamps [--json] [NAME...]                     what each stamp check found, per function
   tools/symdb.py stamp (NAME... | --all | --unstamped | --changed) [--model M --run R --prompt P]
+                      [--tool-edit]
                                                                (re)write stamps (tools/stamps.py)
 
 check: required fields; the name exists in bn6f/bn6f.elf at `address`; previous names no longer
@@ -395,7 +396,9 @@ def stamp(argv: list[str]) -> bool:
     --model/--run/--prompt/--installed say who made the bodies (an install); without them the
     existing stamp is kept where the body is unchanged, an edited body is stamped as a hand edit,
     and a first stamp takes model and run from the entry, symbols/pool.tsv and git history
-    (prompt "legacy"), "unknown" where none of them tells. Writes only the `stamp:` block."""
+    (prompt "legacy"), "unknown" where none of them tells. --tool-edit: the edited bodies are a
+    tool's edit (a mechanical rename, a codemod; its commit says which): their author stays and
+    the commit goes into `edited`. Writes only the `stamp:` block."""
     opts: dict[str, str] = {}
     names: list[str] = []
     it = iter(argv)
@@ -423,7 +426,8 @@ def stamp(argv: list[str]) -> bool:
     if opts and "prompt" not in opts:
         sys.exit("--model/--run need --prompt too (the prompt hash, or 'none' for a hand edit)")
     full = {e["_file"]: e for e in load_full()}
-    written = stamps.write_stamps(world, full, names, opts, dry_run="--dry-run" in argv)
+    written = stamps.write_stamps(world, full, names, opts, dry_run="--dry-run" in argv,
+                                  tool_edit="--tool-edit" in argv)
     cache.save()
     print(f"stamped {len(names)} functions; {len(written)} entries changed")
     return True

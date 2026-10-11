@@ -163,6 +163,9 @@ unchanged, a changed body is stamped as a hand edit), and commit the entry. An
 install gives its provenance: `tools/symdb.py stamp NAME --model M --run R
 --prompt P`. `tools/symdb.py stamp --unstamped` stamps new functions from their
 entries; `--changed` re-stamps every hand edit; `--all` recomputes everything.
+A tool's edit (a mechanical rename, a codemod) is stamped with `--tool-edit`
+(e.g. `tools/symdb.py stamp --changed --tool-edit`): the author stays and the
+commit that changed the body goes into `edited`.
 
 `tools/symdb.py check` (and the commit gate) compares every stamp with the tree
 and names one action per change, the fixed table of the joint plan. It is a
