@@ -1,0 +1,79 @@
+name: sub_8118F44
+address: '0x08118F44'
+kind: function
+status: confirmed
+summary: 'Initialize a battle sprite: set type 0x23, load animation, configure visuals, place from coordinate table,
+  and kick off first update tick.'
+interface: void sprite_initBattle_8118F44(SpriteRecord *sprite /* r5 */) -> (NZCV, r0-r12, lr clobbered per callee
+  chain; sprite pointer preserved in r5)
+details: "Entry-point \"Next\" task called with the sprite record pointer in r5.\n\nField writes to the sprite record\
+  \ (r5-relative):\n  +0: type byte set to 0x23 (battle-entity tag).\n  +0xC: copy of animation ID from +4 (sub-animation\
+  \ slot).\n  +8: set to 4 (active / ready state).\n\nCalls in order:\n  1. loc_8002774(8, unk_201E284) – allocates/registers\
+  \ per-sprite config slot 8.\n  2. sprite_setAnimation(animId) / sprite_loadAnimationData() – fetches OAM frames.\n\
+  \  3. sprite_noShadow() – disables the sprite's shadow.\n  4. sprite_setPalette(0), sprite_setPriority_8002E14(2)\
+  \ – OBJ palette 0, draw priority 2.\n  5. slotList_storeHalfwordAndClearField_800306C(0) – zero the slot-list\
+  \ halfword;\n     sub_81190E0 – init sub-slot; sprite_setSubRecordFieldA_8003060(4) – sub-record field A = 4.\n\
+  \  6. Coordinates: indexes byte_8118FA4 with (r5[+5] << 2), reads two u16s (x, y),\n     calls sprite_setCoordinates(x,\
+  \ y). Table has 5 entries\n     {(0x30,0x20),(0x78,0x20),(0xC0,0x20),(0x2A,0x62),(0x2A,0x5A)} plus trailing word\
+  \ 0x100.\n  7. sprite_dispatchUpdate_8118FC0(byte_8118FA4) – runs the first update tick,\n     passing the same\
+  \ coordinate table as a context pointer in r2.\n\nThe caller's r4–r12 and lr are passed straight through; none\
+  \ are used as inputs\nby this routine beyond r5.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c sub_8118F44
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8118F44
+
+    ./wf verify --function sub_8118F44 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8118F44
+
+    ./wf verify --function sub_8118F44 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 5 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8118F44
+
+    ./wf verify --function sub_8118F44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08118f44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Meaning of config-slot value 8 passed to loc_8002774 and what unk_201E284 holds.
+- Semantics of sub-record field A = 4 set by sprite_setSubRecordFieldA_8003060.
+- Whether the trailing 0x100 word in byte_8118FA4 is a sentinel, a sprite-ID, or a size field.
+- What sprite_dispatchUpdate_8118FC0 does with the table pointer beyond the first tick.
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

@@ -1,0 +1,85 @@
+name: sub_8120018
+address: '0x08120018'
+kind: function
+status: confirmed
+summary: Wraps a mode-dispatched battle handler with two-pass lock/unlock of a field array across all battle objects,
+  so the handler can safely read or toggle per-object state without races.
+interface: battle_fieldLockDispatch_8120018(r0=base, r1=count, r2=fieldIndex, r3=mode) → nz, r2, r3, r4, r6, r7;
+  clobbers r0, r1, r5, r8-r12, lr
+details: 'Iterates count rows of a 0x20-byte-stride battle-object array, targeting the u32 field at byte offset
+  fieldIndex*4 within each row. Two modes are supported (r3=0 and r3=4; other values would index off the 2-entry
+  jump table at 0x081200E0): Mode 0 (sentinel-lock): Pass 1 stamps any entry whose lower 16 bits are zero with the
+  sentinel 0x7FFFFFFF, marking it "inert" so the handler can skip it. Pass 2 clears any entry still holding the
+  sentinel back to zero (entries the handler modified are left alone). Mode 4 (bit-invert-lock): Pass 1 bitwise-inverts
+  the lower 16 bits of every entry (upper 16 preserved), acting as a lock flag. Pass 2 inverts again, restoring
+  the original lower half if the handler did not alter it; writes the result back. Between the two passes a GUEST_CALL
+  is made to an IWRAM handler selected by mode from a 2-entry jump table: mode 0 → 0x030069A9, mode 4 → 0x03006A5F.
+  These handlers operate on the same base/count/field/mode arguments. Output registers: r2 retains the byte offset
+  (fieldIndex<<2); r3 holds the last value read/written in pass 2; r4 is handler-passthrough (mode 0) or last upper-16
+  (mode 4); r6 is the row byte offset of the final iteration; r7 is the negative loop counter sentinel; flags reflect
+  r7 (negative → C set, zero → Z set).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c sub_8120018
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8120018
+
+    ./wf verify --function sub_8120018 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8120018
+
+    ./wf verify --function sub_8120018 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 2 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8120018
+
+    ./wf verify --function sub_8120018 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story1, story2, story4, story6, story8, story9.'
+  reproduce: grep -l '^08120018 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story1
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What specific battle field (HP, timer, animation state, etc.) is identified by the fieldIndex parameter for each
+  call-site?
+- Confirm that only mode values 0 and 4 ever reach this function, or whether other modes alias into the 2-entry
+  table via byte-offset arithmetic.
+- Identify the IWRAM handlers at 0x030069A9 and 0x03006A5F and determine whether they modify the locked field or
+  only adjacent fields.
+- Does the sentinel path (mode 0) interact with the Navi-death or Met-freeze mechanic that checks for zero-lower-half
+  entries?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

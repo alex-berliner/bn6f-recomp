@@ -1,0 +1,87 @@
+name: sub_813CEA0
+address: '0x0813CEA0'
+kind: function
+status: confirmed
+summary: If the PET Navi's equipped chip has an element level exceeding the Navi's stat-9 threshold, mark that chip
+  slot as consumed (0xFF).
+interface: void battle_clearIncompatibleChipSlot_813CEA0(void /* R10 = toolkit ptr */); /* returns R2 = leftover
+  from split9BitsFromBitfield_8021AE0 */
+details: 'Reads the Navi''s stat byte 9 (element-level threshold) and the active chip-pack index (stat byte 0x2D).
+  Computes the current slot offset as chip_index + 0x2E and reads its value; bails if it is already 0xFF. Using
+  the Toolkit struct at R10 (field oToolkit_S_Chip_2002178_Ptr), indexes the chip pack''s u16 table (0x3C bytes
+  per pack) at the slot value, then calls split9BitsFromBitfield_8021AE0 to unpack the 18-bit combined chip-ID into
+  two 9-bit halves, followed by getChip8021DA8 to resolve the ChipData record. Compares ChipData[8] (the chip''s
+  element level) against stat 9; if the element level is greater, writes 0xFF back to the same PET-Navi stat slot
+  via SetCurPETNaviStatsByte, effectively consuming / disabling the chip for this Navi''s next turn. The clobbered
+  R2 on return carries the upper 9-bit half from the bitfield split and is an artifact of the helper calls rather
+  than an intentional output.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c sub_813CEA0
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_813CEA0
+
+    ./wf verify --function sub_813CEA0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_813CEA0
+
+    ./wf verify --function sub_813CEA0 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_813CEA0
+
+    ./wf verify --function sub_813CEA0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0813cea0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does stat byte 9 represent exactly – is it the Navi's rank/level or a dedicated element-resistance threshold?
+- Why does slot 0x2E + chip_index track the 'current' pack slot rather than a per-Navi fixed offset?
+- Is the leftover R2 ever consumed by the caller, or is it purely dead?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

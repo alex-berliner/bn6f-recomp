@@ -1,0 +1,83 @@
+name: ExitSaveMenu8132CA0
+address: '0x08132CA0'
+kind: function
+status: confirmed
+summary: Finalizes the PET save submenu, optionally resetting the chatbox e-flags and returning the PET menu to
+  the overworld map while a screen fade is active, then refreshes the save-menu text graphics.
+interface: void ExitSaveMenu8132CA0(void); // uses r10/lr in; clobbers nz,c,v,r0-r3,lr; preserves r4-r9; final outputs
+  (r5,r8,r9,r10,r11,r12) come from saveMenuTextGfx_8132F4C
+details: 'Thin trampoline that, while IsScreenFadeActive() returns true (zf clear), clears chatbox e-flags via chatbox_set_eFlags2009F38
+  with the literal mask 0x40 (likely bit 6, the "do not draw / suppress" flag for the chatbox), then calls pet_menuExitToMap_811F708
+  to dismiss the PET menu back to the map. After the optional cleanup it unconditionally invokes saveMenuTextGfx_8132F4C,
+  whose call-clobber list (r0-r3, r5, r8-r12, lr, nz/c/v) accounts for the function''s full output set; r5/r8/r9/r11/r12
+  are otherwise untouched in this body. A developer comment notes this breaks on entering the Save submenu and continues
+  inside it before the save is confirmed, and that disabling it crashes the game when entering the save menu.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c ExitSaveMenu8132CA0
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ExitSaveMenu8132CA0
+
+    ./wf verify --function ExitSaveMenu8132CA0 --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ExitSaveMenu8132CA0
+
+    ./wf verify --function ExitSaveMenu8132CA0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ExitSaveMenu8132CA0
+
+    ./wf verify --function ExitSaveMenu8132CA0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08132ca0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Whether 0x40 in chatbox_set_eFlags2009F38 is the "suppress draw" bit or an unrelated chatbox control flag (its
+  field is "eFlags" so the exact bit meaning is unverified).
+- Why the fade-active branch is the one that runs pet_menuExitToMap_811F708; the comment suggests the function must
+  run to prevent a crash entering the save menu, but it is gated behind IsScreenFadeActive.
+- Whether saveMenuTextGfx_8132F4C is a finalization/redraw of the save menu's text tiles or a more general cleanup
+  routine, since it runs even on the non-fade path.
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

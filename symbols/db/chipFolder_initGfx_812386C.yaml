@@ -1,0 +1,77 @@
+name: chipFolder_initGfx_812386C
+address: '0x0812386C'
+kind: function
+status: confirmed
+summary: 'Initializes all graphics for the chip-folder PET screen: decompresses tile/sprite/palette data, loads
+  folder-page label text scripts, and fills two regions of tile-block-1 with background grid tiles.'
+interface: void chipFolder_initGfx(void); // r4-r7 preserved; r2/r3 carry last CopyBackgroundTiles in/out params
+details: "Step 1 – Build a 4-entry descriptor table in scratch RAM at unk_20096E0 from the ROM\ntable at off_812391C\
+  \ (four {src_ptr, size, arg1, arg2} quadruplets). Each src_ptr is\nresolved through sub_811FB84 (handles COMPRESSED_PTR_FLAG\
+  \ indirection), then written as\na flat {resolved_ptr, arg1, arg2} triple followed by a null terminator (0x40\
+  \ + 4 bytes).\n\nStep 2 – Call decompAndCopyData twice: once on the built table (unk_20096E0) for folder\nicons/sprites/palettes,\
+  \ and once on the static table at dword_8123964 for additional\ncompressed tiles (VRAM targets at 0x6000000+),\
+  \ tile maps, and BG data.\n\nStep 3 – Load compressed text-script blocks (folder-page title/label glyphs) via\n\
+  sub_8123300, reading the pointer list at off_81238E4 into eTextScript201C220 through\ndecompression buffer eDecompBuffer2013A00.\n\
+  \nStep 4 – Copy background tiles into tile block 1 at two grid positions:\n  (i=0, j=0) 30×20 tiles from eTextScript201BA20,\
+  \ and\n  (i=9, j=6) 20×13 tiles from eTextScript201BF20.\nThese form the folder navigation background layout.\n\
+  \nSource data rows include palette_3001960, BG tile blocks at 0x6004000/0x6006800/\n0x6006B80/0x6012800/0x6012C00/0x6014800/0x6014980/0x6014A00,\
+  \ and sprite/object buffers\nin WRAM.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c chipFolder_initGfx_812386C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chipFolder_initGfx_812386C
+
+    ./wf verify --function chipFolder_initGfx_812386C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chipFolder_initGfx_812386C
+
+    ./wf verify --function chipFolder_initGfx_812386C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chipFolder_initGfx_812386C
+
+    ./wf verify --function chipFolder_initGfx_812386C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^0812386c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Exact role of sub_811FB84 (pointer resolution vs. decompression-mode selection?)
+- What is the 'j'/'i' axis convention in CopyBackgroundTiles (column/row or row/column)?
+- Are the two text-script tile arrays (eTextScript201BA20/201BF20) purely background decor or do they encode selectable
+  folder entries?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

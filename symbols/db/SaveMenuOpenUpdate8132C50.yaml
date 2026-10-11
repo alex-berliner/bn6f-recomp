@@ -1,0 +1,83 @@
+name: SaveMenuOpenUpdate8132C50
+address: '0x08132C50'
+kind: function
+status: confirmed
+summary: 'Save-menu per-frame update: while the screen fade is active, clear chatbox eFlag 0x40 and mark the menu
+  object''s state byte as "fading" (4), then always refresh the save-menu text GFX.'
+interface: void SaveMenuOpenUpdate8132C50(u32 menu_ptr /* r5 */) -> clobbers nz,c,v,r0,r1,r2,r3; preserves r4-r11
+details: 'Called every frame (or each tick) while the save-menu sub-state is open, with r5 holding the save-menu
+  object pointer. While IsScreenFadeActive() reports the screen is still fading (Z clear), it clears chatbox eFlag
+  0x40 via chatbox_clear_eFlags2009F38 and writes 4 (state = SAVE_MENU_FADING / "fade-out done") to menu_ptr+2,
+  suppressing further interaction until the fade completes. Once the fade is over (Z set) the early branch is skipped,
+  but saveMenuTextGfx_8132F4C is unconditionally called each invocation to redraw/update the save-menu text graphics
+  (e.g., file slot names, "Save Complete" banner). r5 is treated as a preserved callee-trashable register across
+  this function — all internal callees leave r5 untouched so the caller''s save-menu object stays valid. The "0x40"
+  chatbox flag and the value "4" written to offset 0x2 are hard-coded magic constants from the save-menu state machine.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c SaveMenuOpenUpdate8132C50
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function SaveMenuOpenUpdate8132C50
+
+    ./wf verify --function SaveMenuOpenUpdate8132C50 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function SaveMenuOpenUpdate8132C50
+
+    ./wf verify --function SaveMenuOpenUpdate8132C50 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function SaveMenuOpenUpdate8132C50
+
+    ./wf verify --function SaveMenuOpenUpdate8132C50 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08132c50 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the exact struct layout of the save-menu object at menu_ptr — what is at offset 0x2 and what other state
+  values exist beyond "4"?
+- What does IsScreenFadeActive() actually check (a global fade counter, a hardware register, the chatbox eFlags)?
+- Is this invoked from a fixed tick rate or only on VBlank?
+- Does chatbox_clear_eFlags2009F38 take a bitmask (0x40 = a single bit) or an eFlag index?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

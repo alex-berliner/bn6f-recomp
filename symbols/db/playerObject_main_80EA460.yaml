@@ -1,0 +1,82 @@
+name: playerObject_main_80EA460
+address: '0x080EA460'
+kind: function
+status: confirmed
+summary: Dispatches the player's battle-object state machine by CurState, then runs the shared post-state hook.
+interface: void playerObject_main_80EA460(void); /* r5 = player battle-object pointer (BattleObject*) */
+details: "Reads the CurState byte at oBattleObject_CurState on the battle-object pointed to by r5,\nindexes into\
+  \ a 3-entry thumb jump table at off_80EA478, and bx-jumps to the matching\nhandler with the byte value in r0:\n\
+  \  state 0 -> playerObject_init_80172F0   (init)\n  state 4 -> playerObject_update_80EA484 (per-frame update)\n\
+  \  state 8 -> sub_8016C4E                 (likely teardown/exit)\nAfter the dispatched handler returns, control\
+  \ falls through to sub_801BCF4, the shared\npost-state hook called for every state. The function only preserves\
+  \ lr across the whole\ndispatch (push {lr}; ... pop {pc}); the per-handler tail call reuses lr as a temp for\n\
+  the bx, so caller-saved regs (r0-r3, r12) are implicitly clobbered across the dispatch.\nReturn values to the\
+  \ caller come from r5/r8/r9/r10/r11/r12 as per the lifter contract,\nwhich means sub_801BCF4 (and possibly handlers)\
+  \ populate those registers as outputs.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c playerObject_main_80EA460
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function playerObject_main_80EA460
+
+    ./wf verify --function playerObject_main_80EA460 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 1 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function playerObject_main_80EA460
+
+    ./wf verify --function playerObject_main_80EA460 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 2 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function playerObject_main_80EA460
+
+    ./wf verify --function playerObject_main_80EA460 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080ea460 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does sub_8016C4E actually do? It looks like a third state phase but has no name.
+- Why does the jump table only carry entries at byte values 0, 4, 8 (stride 4)? Is CurState scaled by 4 before lookup,
+  or are these the only legal values?
+- What registers/values does sub_801BCF4 leave in r5/r8/r9/r10/r11/r12 for the caller?
+- Is there a state 2 / state 6 / state 10 etc. that is intentionally not dispatched here (handled by another path)?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

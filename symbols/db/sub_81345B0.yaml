@@ -1,0 +1,69 @@
+name: sub_81345B0
+address: '0x081345B0'
+kind: function
+status: hypothesis
+summary: Fixed-parameter thunk that instantiates a sprite/effect (ID 0xF3, type 0x16) by calling a common object-init
+  routine with a ROM data table and flag 0x10000000.
+interface: void sprite_initEffectF3_81345B0(void); // r4-r7 preserved, r0-r3 clobbered, lr clobbered
+details: 'Wraps sub_813468C with hardcoded arguments: r0=0xF3 (likely sprite/effect ID), r1=0x16 (object or type
+  index), r2=0, r3=0x11 (possibly a colour/effect variant), r4=&off_81345C4 which contains a pointer to byte_81331EC
+  (ROM sprite/image data) and the value 0x20002 (possibly width/height packed or a descriptor tag), r6=0x10000000
+  (single-bit flag). The call to sub_813468C is the actual creation/configuration step; this function merely provides
+  the fixed parameters and preserves the caller''s r4-r7 via push/pop.'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c sub_81345B0
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81345B0
+
+    ./wf verify --function sub_81345B0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 187 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81345B0
+
+    ./wf verify --function sub_81345B0 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81345B0
+
+    ./wf verify --function sub_81345B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081345b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What does sub_813468C do with these arguments—create a sprite, set a battle effect, or something else?
+- Is byte_81331EC 8x8/16x16 tile data, a palette, or a generic configuration block?
+- What game element uses effect ID 0xF3 / type 0x16 in Falzar?
+- Does flag 0x10000000 select a draw layer, a transparency mode, or a memory-bank target?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

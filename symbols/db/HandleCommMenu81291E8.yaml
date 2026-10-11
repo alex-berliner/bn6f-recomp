@@ -1,0 +1,72 @@
+name: HandleCommMenu81291E8
+address: '0x081291E8'
+kind: function
+status: confirmed
+summary: Comm-menu state dispatcher that tail-calls a handler selected by the comm-menu state byte via CommMenuJumpTable81291FC.
+interface: 'void HandleCommMenu81291E8(void); /* inputs: r5 (comm-menu context pointer whose byte [r5+1] is the
+  state index). No other inputs used. No outputs returned; handlers run via tail call. clobbers nz,c,v,r0-r4,r6,r7,lr.
+  */'
+details: Standard ARM/Thumb "push lr / mov lr,pc / bx r0 / pop {pc}" tail-call dispatcher. Loads a 32-bit function
+  pointer from CommMenuJumpTable81291FC indexed by LD8(R5+1) (treated as a word index — the actual byte value acts
+  as the slot selector) and tail-calls it, so the caller's return is restored as the handler's return. r5 is not
+  declared in the caller contract but is implicitly the comm-menu state object (its byte at offset 1 selects the
+  sub-state). The jump table at 0x081291FC has 18 entries (slots 0x00..0x48 by 4) covering handlers such as sub_8129248
+  (slot 0), sub_81292A8 (slot 4), sub_8129598 (slot 8), sub_8129F04 (slot 0xC), sub_812A76C (slot 0x10), sub_812A8A4
+  (slot 0x14), sub_812B5C8 (slot 0x18), sub_8130904 (slot 0x1C), sub_812B80C (slot 0x20), sub_812B874 (slot 0x24),
+  sub_812C2C0 (slot 0x28), sub_812DAE4 (slot 0x2C), sub_812F094 (slot 0x30), and the cluster sub_812ABEC / sub_812AD04
+  / sub_812ADFC / sub_812AEC8 / sub_812AEE0 / sub_812AF14 (slots 0x34..0x48). The .hword 0x0 after `pop {pc}` is
+  padding for word alignment of the offset pointer. off_81291F8 points to the jump table base itself (an immediate
+  self-reference used by the ldr pseudo-op).
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c HandleCommMenu81291E8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function HandleCommMenu81291E8
+
+    ./wf verify --function HandleCommMenu81291E8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function HandleCommMenu81291E8
+
+    ./wf verify --function HandleCommMenu81291E8 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function HandleCommMenu81291E8
+
+    ./wf verify --function HandleCommMenu81291E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, menus3, story2.'
+  reproduce: grep -l '^081291e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- The jump table is indexed by a byte but the code scales it as `[R0 + R1]` into a table of `.word` entries — is
+  the byte actually a multiply-of-4 sub-state id, or is the addressing using byte arithmetic (i.e. the index is
+  shifted internally somewhere not shown)?
+- Which sub-handler corresponds to which high-level comm-menu screen/sub-action (join/leave lobby, trade battle,
+  etc.) — needs mapping of the 18 slots to game states.
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

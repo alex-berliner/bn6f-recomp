@@ -1,0 +1,90 @@
+name: reloadCurNaviStatBoosts_813c3ac
+address: '0x0813C3AC'
+kind: function
+status: confirmed
+summary: Heals/clamps the current PET navi's HP (and slot 0's HP) to MaxHP, branching on map group and the EVENT_PET_NAVI_ACTIVE
+  flag, with a MegaMan-only side effect when no PET navi is set.
+interface: void reloadCurNaviStatBoosts(u32 *toolkit /* r10 */); /* preserves r4-r7, returns NZCV + all caller-saved
+  regs */
+details: "Entry: reads the toolkit pointer from r10 (oToolkit_GameStatePtr -> oGameState_MapGroup).\n1. If GetCurPETNavi()\
+  \ == 0 (no PET navi selected, i.e. MegaMan himself), calls\n   applyNaviStatsMaybe_813C458, then if flag EVENT_163\
+  \ (\"1:0x63\") is set calls sub_8121154\n   before falling through.\n2. Map-group split (signed compare vs 0x80):\n\
+  \   - Real world (map_group < 0x80): if EVENT_PET_NAVI_ACTIVE (\"0x17:0x1D\") is clear the\n     function returns\
+  \ immediately; otherwise it copies MaxHP -> CurHP for slot 0 and again\n     for the navi returned by GetCurPETNavi\
+  \ (a full heal of the active pet).\n   - Internet (map_group >= 0x80): clamps slot 0's CurHP down to MaxHP if\
+  \ CurHP > MaxHP\n     (never heals up), then repeats the clamp for the active navi. The final `cmp`/branch\n \
+  \    against the active navi's CurHP/MaxHP lives entirely in guest CPU flags (no GUEST_CALL\n     on the taken-false\
+  \ path), so the returned NZCV is meaningful to the caller.\nTouches the PET navi stats table (navi index 0 + GetCurPETNavi),\
+  \ offset pairs\noNaviStats_MaxHP / oNaviStats_CurHP, the toolkit/game-state chain, and event-flag\npages EVENT_PET_NAVI_ACTIVE\
+  \ (0x17:0x1D) and EVENT_163 (1:0x63).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c reloadCurNaviStatBoosts_813c3ac
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reloadCurNaviStatBoosts_813c3ac
+
+    ./wf verify --function reloadCurNaviStatBoosts_813c3ac --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reloadCurNaviStatBoosts_813c3ac
+
+    ./wf verify --function reloadCurNaviStatBoosts_813c3ac --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reloadCurNaviStatBoosts_813c3ac
+
+    ./wf verify --function reloadCurNaviStatBoosts_813c3ac --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0813c3ac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What applyNaviStatsMaybe_813C458 / sub_8121154 actually do and why they are gated by the "no PET navi + EVENT_163"
+  condition.
+- Why the MegaMan branch precedes the map-group check rather than being mutually exclusive with it (presumably EVENT_PET_NAVI_ACTIVE
+  is cleared in that case, so the real-world path early-returns anyway -- worth confirming).
+- Whether callers branch on the final NZCV returned from the internet-navi clamp path (verified C can't, so this
+  is purely a contract for the lifter).
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

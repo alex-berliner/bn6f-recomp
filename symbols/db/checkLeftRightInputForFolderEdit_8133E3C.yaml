@@ -1,0 +1,70 @@
+name: checkLeftRightInputForFolderEdit_8133E3C
+address: '0x08133E3C'
+kind: function
+status: confirmed
+summary: Checks left/right d-pad to navigate between folder view and pack view during folder editing.
+interface: s32 folderEdit_CheckLeftRightNav(u32 r0 mode_offset, u32 r5 mode_base, u32 r10 toolkit_ptr) -> r0 result,
+  nz flags
+details: 'Reads the current view mode (bit 2 of byte at mode_base+mode_offset: 0=folder view, 1=pack view) from
+  the toolkit''s joypad struct (toolkit+4 gives joypad pointer, +4 gives low-sensitivity held buttons). If left
+  is held, returns 1 (accepted) when in folder view, 0 (denied) when in pack view. If right is held, returns 1 when
+  in pack view, 0 when in folder view. If neither is held, returns 2 (no input). On denial (result==0), plays sound
+  effect 0x7A (the invalid/buzzer beep) via PlaySoundEffect before returning. r1 is an unused input. clobbers r2
+  and r0; preserves r3-r7, r10.'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c checkLeftRightInputForFolderEdit_8133E3C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function checkLeftRightInputForFolderEdit_8133E3C
+
+    ./wf verify --function checkLeftRightInputForFolderEdit_8133E3C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function checkLeftRightInputForFolderEdit_8133E3C
+
+    ./wf verify --function checkLeftRightInputForFolderEdit_8133E3C --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function checkLeftRightInputForFolderEdit_8133E3C
+
+    ./wf verify --function checkLeftRightInputForFolderEdit_8133E3C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08133e3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What UI action does the caller perform on result==1 (accept) -- does it toggle the mode byte or call a separate
+  view-switch handler?
+- Confirm sound 0x7A is the buzzer/invalid selection sound (no direct cross-reference checked).
+- Is the low-sensitivity held mask intentionally used here to avoid double-triggering on held buttons?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

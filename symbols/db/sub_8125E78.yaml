@@ -1,0 +1,66 @@
+name: sub_8125E78
+address: '0x08125E78'
+kind: function
+status: confirmed
+summary: Renders the battle arena background floor tiles, selecting between a Dark-Chip-team layout (alliance==5)
+  and a standard-team layout based on the object's team field.
+interface: void bg_drawArenaTiles_8125E78(arena_obj *r5)
+details: 'Reads the team/alliance identifier at obj+0x60; returns immediately if it is 0. Computes a row index from
+  obj+0x74 (subtracting the 0x71 base) and a tile-set id from obj+0x2c (u16).  When alliance == 5 the function additionally
+  calls sub_81261FC to initialise the tile background and sub_812625C to set a 4-wide tile block of value 5 before
+  placing tiles; the standard path skips those two calls.  Both branches then execute the same six-stage pipeline:
+  place a tile at map coords (0xa, 0xb) with tile numbers 0x70 (Dark Chip) or 0x71 (regular), draw a 4-wide tile
+  strip (value 0xa), copy a tilemap from ROM data at byte_8124A14 into VRAM 0x6007400, draw a 2x14 tile region,
+  update the map via sub_8126494, and copy a tile-patch block.  Row offsets added to the computed base differ between
+  the two layouts (e.g. +1/+6/+4/+0xe for Dark Chip vs +3/+1/+0xb for regular).  Globals referenced: byte_2017A00
+  (active tileset), dword_201EC20 (active map buffer), byte_8124A14 (ROM tile-source data).'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c sub_8125E78
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8125E78
+
+    ./wf verify --function sub_8125E78 --snapshots build-snapshots'
+  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8125E78
+
+    ./wf verify --function sub_8125E78 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 8 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8125E78
+
+    ./wf verify --function sub_8125E78 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^08125e78 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- story2
+open_questions:
+- Exact meaning of alliance value 5 vs other non-zero values; is 5 the only Dark Chip identifier?
+- What tile values 5, 0xa, 0x70, 0x71 correspond to in the arena tile-set (floor, border, team-panel tiles)?
+- sub_81261FC and sub_812625C lack typed interfaces; confirm whether they modify tileset state persistently or are
+  idempotent.
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

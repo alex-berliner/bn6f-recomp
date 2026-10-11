@@ -1,0 +1,80 @@
+name: HandleLibraryMenu8124B3C
+address: '0x08124B3C'
+kind: function
+status: confirmed
+summary: Trampoline that dispatches the Library Menu's per-frame/state handler via a 3-entry jump table.
+interface: 'void HandleLibraryMenu8124B3C(void); /* inputs: r2, r5, r10, lr preserved on entry; reads [R5+1] as
+  state index; clobbers c,v and most scratch regs; returns via pop {pc} */'
+details: 'Thin dispatcher living in the Library Menu (library/data) code. Loads a pointer from
+
+  off_8124B4C (= off_8124B50) into r0, then uses byte [R5+1] (a state byte inside the
+
+  menu''s R5-tagged object/struct) to index a 3-entry thumb table at off_8124B50. The
+
+  table holds three thumb entry points compiled with the +1 thumb-bit trick:
+
+  sub_8124B5C+1, sub_8124C30+1, sub_8125254+1 (state values 0, 4, 8). Before the
+
+  tail-call it puts the chosen target into r0 (so the callee sees its own entry
+
+  address in r0, matching GUEST_CALL convention) and the state byte into r1. Ends
+
+  with `pop {pc}`, so it does not return normally; caller-supplied lr is used to
+
+  resume the caller''s loop. Callers must therefore keep r5 (and the structure
+
+  behind it) alive and set [R5+1] to 0/4/8 to select a phase. No registers are
+
+  preserved across the dispatch.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c HandleLibraryMenu8124B3C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function HandleLibraryMenu8124B3C
+
+    ./wf verify --function HandleLibraryMenu8124B3C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function HandleLibraryMenu8124B3C
+
+    ./wf verify --function HandleLibraryMenu8124B3C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function HandleLibraryMenu8124B3C
+
+    ./wf verify --function HandleLibraryMenu8124B3C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08124b3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+open_questions:
+- Which of the three handlers corresponds to which visible state (open/init, browse, close/confirm)?
+- Is r2/r10 used by the callers merely as scratch or do they carry context the callees read?
+- Is this dispatcher called once per frame from the Library Menu main loop, or only on state transitions?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

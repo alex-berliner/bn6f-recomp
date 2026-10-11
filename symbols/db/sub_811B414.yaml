@@ -1,0 +1,68 @@
+name: sub_811B414
+address: '0x0811B414'
+kind: function
+status: confirmed
+summary: 'Initialize GUI sprite 0x2C (Navi-panel element): mark slot active, build sprite, configure animation/palette/priority/OAM,
+  then update wrapper.'
+interface: void gui_initSprite0x2C_811B414(u32 r1_guiArg, StateSlot* r5_state); /* r4,r6 preserved; returns r0 and
+  NZCV from sprite_updateWrapper */
+details: 'Writes byte 1 to state->active (offset 0) to claim the slot. Calls initGuiSprite_8002770 with sprite id
+  0x2C and the r1 argument to allocate the GUI sprite. Retrieves an animation id via sub_80101F8 (which reads a
+  global/sub-record value), then sets that animation and loads its frame data. Disables shadow, sets palette bank
+  0, and priority 2. Stores the halfword 0xC0 into the OAM slot list via slotList_storeHalfwordAndClearField_800306C.
+  Configures the sub-entry: palette bank 6 (sprite_setSubEntryPaletteBank_800304A) and sub-record field A = 4 (sprite_setSubRecordFieldA_8003060).
+  Writes byte 4 to state->subType (offset 8) to tag this slot as a sub-entry sprite. Finally calls sprite_updateWrapper_811B414''s
+  neighbour at 0x811B45C to flush the wrapper. r4 and r6 are untouched by the body and restored on pop; r5 is used
+  throughout as the state pointer. The function is one of several per-sprite-id initializers invoked by a larger
+  GUI/NavPanel setup dispatcher.'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c sub_811B414
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811B414
+
+    ./wf verify --function sub_811B414 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811B414
+
+    ./wf verify --function sub_811B414 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 22 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811B414
+
+    ./wf verify --function sub_811B414 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^0811b414 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+- story2
+open_questions:
+- What does the r1 (guiArg) value represent—likely a NavPanel slot index or parent group id; needs caller analysis.
+- What is the exact layout of the state struct pointed to by r5 (offsets 0 and 8 confirmed; other fields unknown).
+- Why 0xC0 specifically for the OAM slot-list halfword—is it a tile-map entry index or a flag combination?
+- What animation id does sub_80101F8 return for sprite 0x2C in normal NaviPanel state?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

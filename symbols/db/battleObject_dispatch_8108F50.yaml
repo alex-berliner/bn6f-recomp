@@ -1,0 +1,98 @@
+name: battleObject_dispatch_8108F50
+address: '0x08108F50'
+kind: function
+status: confirmed
+summary: Dispatches a battle object (r5) to its current-state handler via a 3-entry jump table, then runs the post-dispatch
+  update that keeps enemy attack animations playing.
+interface: 'void battleObject_dispatch_8108F50(struct BattleObject* battle_obj /* r5 */);
+
+  // inputs:  r4–r12, lr preserved by callees
+
+  // outputs: r5, r8–r12
+
+  // clobbers: r0–r4, r6, r7, lr, flags (N, Z, C, V)
+
+  '
+details: 'Reads byte field oBattleObject_CurState from the BattleObject pointed to by r5,
+
+  uses it as a byte offset into the 3-entry jump table at 0x08108F68
+
+  (off_8108F64 -> off_8108F68), and tail-calls the matching handler with the full
+
+  register file intact (mov lr,pc; bx r1). The three targets are sub_8016F56
+
+  (offset "0":0), battle_8108F74 (offset "4":1), and sub_8016C4E (offset "8":2).
+
+  After the handler returns, it unconditionally calls sub_8016E64, which the
+
+  in-source comment notes "disabling this causes enemy attack animations to
+
+  cease playing", implying sub_8016E64 drives enemy attack animation/tick
+
+  processing for the battle-object subsystem. The function itself uses lr (push
+
+  {lr} / pop {pc}) only as a stack frame; no local stack is allocated.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c battleObject_dispatch_8108F50
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_dispatch_8108F50
+
+    ./wf verify --function battleObject_dispatch_8108F50 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_dispatch_8108F50
+
+    ./wf verify --function battleObject_dispatch_8108F50 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 2 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_dispatch_8108F50
+
+    ./wf verify --function battleObject_dispatch_8108F50 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story2, story4, story5, story6,
+    story8, story9.'
+  reproduce: grep -l '^08108f50 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What are the three CurState values (0/4/8) semantically (idle, attack anim, hit react)?
+- What exactly does sub_8016E64 tick (animation frame, particle, sound)?
+- Is battle_8108F74 the active attack handler the comment alludes to?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

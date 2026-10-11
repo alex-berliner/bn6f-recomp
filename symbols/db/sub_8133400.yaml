@@ -1,0 +1,73 @@
+name: sub_8133400
+address: '0x08133400'
+kind: function
+status: confirmed
+summary: 'Per-frame update tick for a battle object: guards against screen-fade transitions, then advances logic,
+  animation, camera, and turn-reset subroutines.'
+interface: "void battle_objectUpdate_8133400(\n    u32 r4 /* context */, u32 *r5 /* battle object ptr */,\n    u32\
+  \ r6 /* context */, u32 r7 /* context */, u32 r10, u32 lr\n);\n/* returns via lr; r0-r3, nz, c, v carry the residue\
+  \ of the last sub_81353F0 call */\n"
+details: 'If IsScreenFadeActive signals a fade is in progress, writes state byte 4 (idle) to [r5+2] and clears the
+  timer byte at [r5+3] to 0, effectively pausing the object until the transition finishes. Then unconditionally
+  calls four sub-utilities: sub_8134594 (advance battle logic), sub_8134538 (advance sprite/animation), sub_81341A0
+  (advance camera), and sub_81353DC (reset turn state). Finally it sets two sub-states in sequence via sub_81353F0:
+  (5, 0) then (6, 1), which the readable C describes as the standard idle/ready transition pair. r4-r7 are preserved
+  across the call; only r0-r3 and condition flags are modified as pass-through from the last callee.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c sub_8133400
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8133400
+
+    ./wf verify --function sub_8133400 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8133400
+
+    ./wf verify --function sub_8133400 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 13 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8133400
+
+    ./wf verify --function sub_8133400 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08133400 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What do sub-state values 5/0 and 6/1 mean concretely (idle-standby vs. ready-to-act)?
+- What additional context do r4, r6, r7 carry for the sub-utilities that are read via globals?
+- Is state byte 4 truly 'idle' or a fade-specific hold; is byte 2 the only state field?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

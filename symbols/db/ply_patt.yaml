@@ -1,0 +1,85 @@
+name: ply_patt
+address: '0x0814E0FC'
+kind: function
+status: confirmed
+summary: Advance one step in a music pattern's playback (writes the next note pointer, bumps the step index, then
+  yields via ply_goto) or signals end-of-pattern to ply_fine once all 3 steps are consumed.
+interface: void ply_patt(u32 patt) /* r1 in; r4 r5 lr out; clobbers r0 r1 r2 r3 nzcv */
+details: 'Operates on a pattern-state object addressed by r1. Reads the 8-bit step index at offset +2; if it is
+  < 3 the routine computes a per-step slot pointer (patt + (step<<2)), pulls the 32-bit "next-note" address from
+  offset +0x40, adds 4 to it, and stores it into that slot at slot+0x44. It then increments the step byte at offset
+  +2 and tail-calls ply_goto to continue playback. When step already equals 3 (pattern fully consumed) it branches
+  to ply_fine instead. The 0x40/0x44 offset pair looks like a note-stream cursor written into the per-step entry
+  of a 4-entry (step 0..3) inline table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c ply_patt
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ply_patt
+
+    ./wf verify --function ply_patt --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ply_patt
+
+    ./wf verify --function ply_patt --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ply_patt
+
+    ./wf verify --function ply_patt --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814e0fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact layout of the patt struct beyond offsets 0x2, 0x40, 0x44 (the 4-entry step table appears to start at offset
+  4).
+- Whether the value at +0x40 is a pointer to a note record or an index/offset (the +4 advance suggests fixed-size
+  notes).
+- 'Why the cut-off is exactly step == 3 (hard-coded bcs #3).'
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c

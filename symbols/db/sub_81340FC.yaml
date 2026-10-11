@@ -1,0 +1,75 @@
+name: sub_81340FC
+address: '0x081340FC'
+kind: function
+status: confirmed
+summary: Looks up a battle-table entry via the object's index fields, unpacks two bit-fields from offset +0x1C,
+  and forwards them to the shared three-table-entry setter.
+interface: void battle_setFieldsFromObj(u32 *obj /*r5*/); // outputs c v r1 r2 r3 (from callee); preserves r4 r5
+  r6 r7; clobbers r0 nz
+details: 'Reads a flag byte at obj+0xE. If set, uses the secondary index pair (obj+0x2A + obj+0x2E) and the alternate
+  table pointer unk_202A3E0; otherwise uses the primary pair (obj+0x20 + obj+0x24) and word_202A020. The summed
+  index is multiplied by 0x20 (entry size) to address the table. A 32-bit packed value at entry offset +0x1C is
+  unpacked: bits [15:7] (lsl #16 / lsr #23) become r0, bits [6:0] (AND 0x7F) become r1. r2 is forced to 0 and r3
+  is set to the entry index. The tail call to setFieldsInThreeTableEntries_811980C writes r1/r2/r3 and sets the
+  c and v flags, which the caller reads back.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c sub_81340FC
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81340FC
+
+    ./wf verify --function sub_81340FC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81340FC
+
+    ./wf verify --function sub_81340FC --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81340FC
+
+    ./wf verify --function sub_81340FC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081340fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What do bits [15:7] and [6:0] of the packed field represent in game terms (animation phase, palette index, sprite
+  sub-row)?
+- What distinguishes the primary (word_202A020) and secondary (unk_202A3E0) battle tables — different enemy tiers,
+  area-specific data, or Falzar-vs-Gregar variants?
+- The meaning of the flag byte at obj+0xE (secondary-table selector) is inferred from branch structure; its game-level
+  name is unknown.
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c
