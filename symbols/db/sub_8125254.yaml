@@ -1,0 +1,64 @@
+name: sub_8125254
+address: '0x08125254'
+kind: function
+status: confirmed
+summary: Resolves a pending chatbox-related event flag by closing the chatbox and clearing flag 0x1711, otherwise
+  exits the pet menu back to the map.
+interface: void chatbox_flagResolve_8125254(void) -> u32 r0 (nonzero if chatbox flag was set), flags nz set from
+  r0, c/v/clobbered
+details: "Reads event flag \"0x1711\" (EVENT_CHATBOX_FLAG). If set:\n  - calls chatbox_8040818 (close chatbox)\n\
+  \  - calls chatbox_clear_eFlags2009F38 with r0=0x40 to clear bit 0x40 of the chatbox eFlags word at 0x02009F38\n\
+  \  - clears event flag 0x1711\n  - returns 1\nIf the flag is clear:\n  - calls pet_menuExitToMap_811F708 to leave\
+  \ the pet menu and return to the overworld map\n  - returns 0\nLikely used as a per-frame or input-handler dispatcher\
+  \ that decides whether the current\noverlay (chatbox) needs to be torn down or the pet menu needs to back out\
+  \ to the map.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_8125254
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8125254
+
+    ./wf verify --function sub_8125254 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8125254
+
+    ./wf verify --function sub_8125254 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8125254
+
+    ./wf verify --function sub_8125254 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08125254 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+open_questions:
+- What exactly writes event 0x1711 in the first place (chatbox open / pet interaction)?
+- What does eFlags bit 0x40 at 0x02009F38 represent (e.g. busy/drawing flag)?
+- Is this called from the main loop, an input handler, or a state transition?
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

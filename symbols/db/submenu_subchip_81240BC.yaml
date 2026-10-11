@@ -1,0 +1,69 @@
+name: submenu_subchip_81240BC
+address: '0x081240BC'
+kind: function
+status: confirmed
+summary: Per-frame tick of the sub-chip sub-menu; advances its update routine and, once the screen fade completes,
+  marks the sub-menu state as ready.
+interface: void subchipSubmenu_tick_81240BC(struct UnkSubMenu* state /* r5 */);
+details: 'Takes the UnkSubMenu state in r5. Calls sub_81244EC (the routine that performs the per-frame work for
+  this sub-menu). Then calls IsScreenFadeActive; if the fade is still active (Z set), it returns IsScreenFadeActive''s
+  r0 with flags NZ seeded so N=1, Z=0. When the fade is done, it writes the literal byte 4 to state->byte2 (offset
+  0x2 of UnkSubMenu, used as the "ready/phase 4" flag), and returns r0=4 with NZ seeded to 4 (N=0, Z=0). Function
+  exits via `pop {pc}` (tail return). Preserved: r4, r5, r6, r7. Two zero padding bytes follow the function for
+  alignment.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c submenu_subchip_81240BC
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function submenu_subchip_81240BC
+
+    ./wf verify --function submenu_subchip_81240BC --snapshots build-snapshots'
+  result: 'captured calls: 34 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 203 out
+    of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function submenu_subchip_81240BC
+
+    ./wf verify --function submenu_subchip_81240BC --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function submenu_subchip_81240BC
+
+    ./wf verify --function submenu_subchip_81240BC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^081240bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+open_questions:
+- Exact semantics of UnkSubMenu+2 == 4 (likely the "done/ready" phase marker).
+- What sub_81244EC actually does inside the sub-menu update (typed C interface not yet available).
+- Why IsScreenFadeActive's return value is forwarded to the caller on the fade-active path.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

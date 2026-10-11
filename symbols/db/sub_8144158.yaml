@@ -1,0 +1,86 @@
+name: sub_8144158
+address: '0x08144158'
+kind: function
+status: confirmed
+summary: Reset GBA link-cable hardware and zero multiplayer comm buffers/state.
+interface: 'void sub_8144158(void) /* no registers in/out: lr passes through; preserved {r4-r7}; clobbers nz c v
+  {r0 r1 r2 r3} */'
+details: "Saves IME around masked IE writes (disables the SIO IRQ bit 7 while the\nSIO mode/control registers are\
+  \ reconfigured, then re-enables it). Drives\nSIOCNT through a dummy transfer (writes 0x2000 then OR-s 0x4003 to\
+  \ start)\nto bring the multi-player state machine back to a known idle. Clears the\nSIO data registers (SIODATA8/SIODATA32\
+  \ pair, all four words) and zero-fills\nthe link-state RAM blobs:\n  * A 614-word (0x266 words, 32-bit) fill into\
+  \ eTimerEnable200F460\n    (multi-player per-connection timing/enable table).\n  * A 2-halfword copy from a zero\
+  \ on the stack into unk_200F44C.\n  * Individual bytes/halfwords at byte_200F450, byte_2006DFE,\n    byte_2006E00,\
+  \ byte_200F440, byte_200F448, byte_2006E01,\n    word_2006E02, word_2006E04 (misc per-link flags and the cached\n\
+  \    IE/IME word at word_2006DFC).\nAll SIO/IE access is bracketed by IME=0 to keep IRQ handlers from\nracing\
+  \ the reconfiguration. Returns via the lifted \"RETURN_TO_CALLER\"\ntail (`pop {r0}; bx r0`) rather than the usual\
+  \ `pop {pc}`.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_8144158
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8144158
+
+    ./wf verify --function sub_8144158 --snapshots build-snapshots'
+  result: 'captured calls: 28 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8144158
+
+    ./wf verify --function sub_8144158 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8144158
+
+    ./wf verify --function sub_8144158 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08144158 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exactly what the call SWI_CpuSet mode word 0x5000266 / 0x1000002 controls (count/source layout for the unk_200F44C
+  zero-init).
+- Who the two cached tables actually feed (presumably the link/multiplayer handler in another translation unit).
+- Whether this runs at start-up only or is reused to recover after a noisy link reset.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

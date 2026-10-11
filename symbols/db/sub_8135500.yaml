@@ -1,0 +1,76 @@
+name: sub_8135500
+address: '0x08135500'
+kind: function
+status: confirmed
+summary: Scans the 30 battle-object array for allies of a given alliance, buckets them by HP tier, and reports whether
+  the caller would exceed the per-tier spawn limit for its own HP bucket.
+interface: 'u32 battle_CheckSpawnLimit_8135500(u32 obj_ptr, u32 alliance) -> r0: exceeded flag (0/1); r1: capped
+  limit (when exceeded) or current bucket count + 1 (when not); r2: overflowing bucket index 0..4 (when exceeded)
+  or unchanged (when not); clobbers nzcv'
+details: "Operates on word_202A020, the in-battle object array of 0x20-byte slots iterated 0x3C0/0x20 = 30 times.\n\
+  For each slot whose u16 alliance tag at +0x1C (extracted by r0 >> 7) matches the caller-supplied alliance,\nthe\
+  \ slot's HP field at +0x18 (upper 16 bits of a u32) is bucketed into one of five tiers:\n  bucket 0: HP <= 0x13\
+  \   (limit 5)\n  bucket 1: HP <= 0x1D   (limit 4)\n  bucket 2: HP <= 0x27   (limit 3)\n  bucket 3: HP <= 0x31\
+  \   (limit 2)\n  bucket 4: HP >  0x31   (limit 1)\nThe caller object itself is bucketed by reading a u8 tier at\
+  \ obj_ptr+0x08 using the same thresholds.\nIf counts[bucket] + 1 exceeds the bucket's hard cap, r0 is set to 1\
+  \ and r1/r2 carry the capped count\nand overflowing bucket index; otherwise r0 = 0 and r1 carries the proposed\
+  \ count while r2 is left\nas the caller passed it (acts as an in/out parameter for bucket id when no overflow\
+  \ occurs).\nUsed to gate whether an additional allied unit of a given strength tier may be spawned/added.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_8135500
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8135500
+
+    ./wf verify --function sub_8135500 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 182 out of
+    domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8135500
+
+    ./wf verify --function sub_8135500 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8135500
+
+    ./wf verify --function sub_8135500 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08135500 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Where is r2's caller's value meaningful? The C notes it passes through as prev_r2 when no overflow; the actual
+  caller semantics (e.g. whether r2 is an existing bucket or count slot) are not visible from this function alone.
+- The alliance extraction as "(bits 7..15) >> 7" only yields 9 bits; whether +0x1C stores alliance in a packed bitfield
+  alongside another flag (bit 0..6) is unknown.
+- The exact meaning of the HP tier boundaries (0x13/0x1D/0x27/0x31) and whether they correspond to enemy rank letters
+  or numeric HP thresholds is not confirmed.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

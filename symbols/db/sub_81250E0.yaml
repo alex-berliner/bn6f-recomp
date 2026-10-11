@@ -1,0 +1,83 @@
+name: sub_81250E0
+address: '0x081250E0'
+kind: function
+status: confirmed
+summary: 'Battle scene update: runs five battle sub-updates and, if a screen fade is active, marks the scene state
+  byte at [r5+1] as 8.'
+interface: void battle_runUpdatesAndF ade_81250E0(void) /* uses r5 as a pointer to a battle-scene state struct;
+  returns r0 = 8 with N=0,Z=0 if a screen fade was active, otherwise r0 and flags from IsScreenFadeActive */
+details: 'Pushes {lr} and tail-calls five battle subsystems in sequence:
+
+  sub_812674C, sub_81267A8, sub_8125444, sub_8125D10, sub_81264F4.
+
+  Then calls IsScreenFadeActive(); if it returns "fade in progress" (BEQ not taken
+
+  in the disassembly, i.e. Z clear), the function writes the immediate 8 to the byte
+
+  at [r5+1] and returns r0 = 8 with N=0,Z=0. Otherwise it falls through to locret_8125100
+
+  and returns whatever r0/condition codes IsScreenFadeActive produced (Z set when
+
+  no fade is active). C and V flags are not modified here, so callers observe
+
+  IsScreenFadeActive''s C/V. r5 is a battle scene state pointer carried by every
+
+  caller; the byte at offset +1 is some kind of "next/last sub-state" or
+
+  "fade-related phase" marker that is forced to 8 (= "fading") while a fade plays.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_81250E0
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81250E0
+
+    ./wf verify --function sub_81250E0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81250E0
+
+    ./wf verify --function sub_81250E0 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 1 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81250E0
+
+    ./wf verify --function sub_81250E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^081250e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+open_questions:
+- What the five sub-updates (sub_812674C, sub_81267A8, sub_8125444, sub_8125D10, sub_81264F4) actually drive (animation,
+  input, cursor, particles, etc.).
+- Exact meaning of the state byte at [r5+1]; only the value 8 is ever written here.
+- Why this function specifically pokes [r5+1] only during a fade - probably so other battle code can short-circuit
+  or pick a "do nothing" frame while the screen is faded.
+- The "register form" comment indicates the lifter could not statically type the callees; the actual signatures
+  are unknown.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

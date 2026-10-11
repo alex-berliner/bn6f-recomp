@@ -1,0 +1,71 @@
+name: sub_8125C08
+address: '0x08125C08'
+kind: function
+status: confirmed
+summary: Builds the available COM-chip list by scanning event flags for chips 0x140-0x15E and compacting the resulting
+  slot array.
+interface: void buildComChipFilter_8125C08(void); /* returns chip count in r0 */
+details: "Zeros the 0x578-byte buffer at dword_201FC20 (a packed slot array of word entries up to unk_2020198).\
+  \ Iterates chip IDs 0x140..0x15E (31 chips). For each chip, fetches its ChipData via getChip8021DA8 and reads\
+  \ the element kind at offset 0x15; the slot pointer is ((kind-1) << 2) + base. Only kind-byte == 4 (the COM element)\
+  \ is processed.\n\nFor each COM chip, three event-flag ranges are tested via TestEventFlag:\n  - flag 0x1F60+i\
+  \          -> status byte 0 (always unlocked)\n  - flag (0x2220+i)+(0x1F60-0x1E20) -> status byte 1\n  - flag\
+  \ (0x2020+i)+(0x1F60-0x1E20) -> status byte is then refined: TestEventFlagFromImmediate(page 0x17, idx 0x11) returns\
+  \ 2 if set, else 1\n\nWhen a flag matches, the slot at r2 receives: [u16 chip_id][u8 status][u8 pad] and r5 (count)\
+  \ is incremented.\n\nAfter the scan, a second pass compacts the word array from base toward unk_2020198 by sliding\
+  \ non-zero words forward and zeroing the vacated slots (in-place compaction, 0x13F iterations).\n\nReturns: r0\
+  \ = number of matching COM chips (count), r5/r4-r7 preserved across the call.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_8125C08
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8125C08
+
+    ./wf verify --function sub_8125C08 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8125C08
+
+    ./wf verify --function sub_8125C08 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8125C08
+
+    ./wf verify --function sub_8125C08 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08125c08 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+related:
+- sub_8124B5C
+open_questions:
+- 'What consumes the resulting packed slot table (status byte semantics: 0 = normal unlock, 1 = event-gated, 2 =
+  post-0x1711 unlock)?'
+- Why does the COM-only filter (kind == 4) ignore other element kinds' availability rather than including them?
+- What is the relationship of the 0x1F60/0x1E20/0x2020/0x2220 flag ranges to chip-unlock progression?
+- What is the upper bound at unk_2020198 (0x578 / 4 = 0x15E slots) relative to the 31 chips scanned?
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

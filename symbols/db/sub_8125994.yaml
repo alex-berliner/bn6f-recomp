@@ -1,0 +1,68 @@
+name: sub_8125994
+address: '0x08125994'
+kind: function
+status: confirmed
+summary: Scans chip IDs 1..0x13F, writes available chips into a per-usage-type slot list at dword_201E420 with a
+  category byte (0/1/2) derived from three event-flag ranges, compacts the buffer, and returns the chip count.
+interface: 'void buildChipCatalogByType(void); /* r0 out: number of qualifying chips; r5 also holds count; r10 lr
+  in */'
+details: "Clears 0x578 (1400) bytes at dword_201E420 via ZeroFillByWord. For each chip id 1..0x13F,\nfetches its\
+  \ ChipData via getChip8021DA8 (offsets into ChipData: 0x07 = kind, 0x09 bits,\n0x15 = usage type index, 0x16 =\
+  \ hidden flags). A chip qualifies only when kind == 1,\nbit 0x40 of field 9 is set, and bit 0 of field 0x16 is\
+  \ clear. Slot offset = (field_0x15 - 1) * 4.\nThree event-flag ranges then gate the chip into one of three categories,\
+  \ written as:\n  halfword id, byte category at slot + 2. Ranges (flag base + id):\n    0x1E20+id -> category 0;\
+  \ 0x2220+id -> category 1; 0x2020+id -> category 1 or 2\n    (category 2 iff TestEventFlagFromImmediate(0x17,\
+  \ 0x11) is set, i.e. event 0x1711).\nAfter the scan, the per-type sub-arrays are compacted by collapsing zero\
+  \ entries forward.\nOutput r0 = r5 = count of accepted chips. Preserves r4-r7; clobbers r1-r3, lr, nz/c/v.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_8125994
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8125994
+
+    ./wf verify --function sub_8125994 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8125994
+
+    ./wf verify --function sub_8125994 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8125994
+
+    ./wf verify --function sub_8125994 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08125994 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+related:
+- sub_8124B5C
+open_questions:
+- Exact role of event ranges 0x1E20/0x2220/0x2020 (likely shop-unlock vs. plot-unlock tiers).
+- Whether the category byte corresponds to in-game folder/sort categories or shop stock IDs.
+- Why each chip is allowed only one slot among the three ranges (first match wins).
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

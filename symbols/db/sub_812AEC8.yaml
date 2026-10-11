@@ -1,0 +1,69 @@
+name: sub_812AEC8
+address: '0x0812AEC8'
+kind: function
+status: confirmed
+summary: Pet-menu overworld tick — runs all entity update handlers (and a secondary tick handler), then bails out
+  to the overworld map once the screen fade completes.
+interface: void sub_812AEC8(void);
+details: "Wraps four guest calls in a fixed sequence:\n  1. entity_runAllUpdateHandlers_80465BC — advances every\
+  \ registered entity update handler (sprite/animation/state machines).\n  2. sub_80465F8 — secondary per-frame\
+  \ tick (untyped here).\n  3. IsScreenFadeActive — Z set when a fade transition is currently running.\n  4. If\
+  \ no fade is active, pet_menuExitToMap_811F708 closes the pet menu and returns control to the map scene.\nLives\
+  \ in the pet-menu module (near 0x0812xxxx, alongside pet_menuExitToMap_811F708). Return path is `pop {pc}`, so\
+  \ the caller resumes immediately and the LR save register is just the function's return address. The trailing\
+  \ `.byte 0, 0` is alignment padding, not data — typical of thumb functions in this range. Register contract `inputs:\
+  \ r10 lr` reflects the lone `push {lr}`; callee clobbers (r0–r3, r5/r8/r9/r11/r12, lr, nzcv) match the union of\
+  \ the four guest calls' side effects rather than anything local.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_812AEC8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812AEC8
+
+    ./wf verify --function sub_812AEC8 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812AEC8
+
+    ./wf verify --function sub_812AEC8 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812AEC8
+
+    ./wf verify --function sub_812AEC8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, menus3, story2.'
+  reproduce: grep -l '^0812aec8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- What does sub_80465F8 actually tick? (Not lifted here — could be input, audio, or another entity bucket.)
+- Why is exit_to_overworld_map gated on "no fade active" rather than "fade finished"? Suggests a fade-out is normally
+  initiated just before this loop, and the menu tears down the frame the fade starts.
+- Is this called every frame from the pet-menu VBlank/task loop, or only once per state transition? The name `runAllUpdateHandlers`
+  plus the fade-poll suggests an idle/transition tick rather than a one-shot.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

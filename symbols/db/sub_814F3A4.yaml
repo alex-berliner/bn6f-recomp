@@ -1,0 +1,91 @@
+name: sub_814F3A4
+address: '0x0814F3A4'
+kind: function
+status: hypothesis
+summary: Mode-selecting packed/single-byte LUT lookup with linear interpolation between adjacent packed entries,
+  used as a generic helper across multiple subsystems.
+interface: 'u32 interpLutLookup_814F3A4(u8 mode, u8 index, u8 frac); /* inputs: r0=mode, r1=index, r2=frac, r3/r4/r5/r6/r7/lr=unused;
+  outputs: r0=result, r1=lr (return), r2=0 or frac, r3=table addr, r12=frac (interp path) or frac (simple); flags
+  set by final add (interp: add(interp, 0x800); simple: add(idx, table_addr)) */'
+details: "Two branches selected by `mode` (r0):\n  * mode == 4 (\"simple\"): clamps `index` to range [0..0x3B] (clamped\
+  \ to 0 if <=0x14, else index-0x15); returns the byte at `byte_81C0640 + clamped_index`. r2 and r12 keep the original\
+  \ `frac` byte; r3 unchanged.\n  * other modes (\"packed\"): clamps `index` to range [0..0x82] (clamped to 0 if\
+  \ <=0x23, else index-0x24; `frac` forced to 0 if idx<=0x23 and to 0xFF if idx saturated at 0x82). Each byte of\
+  \ `byte_81C05A4` is a packed entry: low nibble indexes an s16 in the pool `byte_81C0628` (scaled <<1), high nibble\
+  \ is an arithmetic shift amount (ASR). Decodes entry at idx and idx+1, then returns `va + ((frac * (vb-va)) >>\
+  \ 8) + 0x800` (a fixed-point linear interpolation), with final `adds` setting nz/c/v from the +0x800.\nOutput\
+  \ registers: r0=result, r1=return address popped, r2=0 on interp path (frac on simple), r3=`byte_81C05A4` on interp\
+  \ path (passthru on simple), r12=`frac` always. r4-r7 preserved. r4 holds TABLE_S16 (`byte_81C0628`) and r5 holds\
+  \ the clamped index / frac scratch inside the function.\nTables involved: `byte_81C05A4` (packed entries), `byte_81C0628`\
+  \ (s16 pool), `byte_81C0640` (simple byte LUT). The exact consumer (battle, map, sprite, etc.) is not deducible\
+  \ from this function alone - several call sites exist and reuse the same helper for unrelated contexts.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_814F3A4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_814F3A4
+
+    ./wf verify --function sub_814F3A4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_814F3A4
+
+    ./wf verify --function sub_814F3A4 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_814F3A4
+
+    ./wf verify --function sub_814F3A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814f3a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which game subsystem actually owns mode 4 vs the interpolation modes (the LUTs `byte_81C05A4`, `byte_81C0628`,
+  `byte_81C0640` are shared, so naming this `battle_*` or `sprite_*` without a known caller is speculation).
+- Meaning of each non-4 mode value - mode is treated as a boolean here, but the routine may be invoked with mode
+  values beyond 4 that just fall into the same interpolation branch.
+- Intended semantics of the +0x800 bias on the interpolated result (rounding offset vs domain offset).
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

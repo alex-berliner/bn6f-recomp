@@ -1,0 +1,86 @@
+name: sub_8136C24
+address: '0x08136C24'
+kind: function
+status: confirmed
+summary: Reapplies the current PET Navi's stat initialization while preserving its in-battle stat values (HP, level,
+  etc.).
+interface: void sub_8136C24(void);  /* takes no arguments, returns nothing; r1, r2, flags c/v left from SetCurPETNaviStatsByte
+  */
+details: "Targets navi index 0 (the current PET Navi) via GetCurPETNaviStatsByte/Hword and their Set*\ncounterparts.\
+  \ Snapshots 17 fields onto the stack (one slot is a padding/unused 0x0C gap),\ncalls GetNaviStatsIndexGivenCurPETNavi(0)\
+  \ and init_8013B4E(stats_index, 0) to reinitialize the\nstats block, then writes every saved field back so the\
+  \ navi's battle progress is not clobbered.\nStat ids touched (bytes unless noted):\n  0x0E, 0x21, 0x22, 0x2C,\
+  \ 0x2D, 0x2E, 0x2F, 0x30, 0x09,\n  0x3E (hword), oNaviStats_CurHP (hword, read),\n  0x40 (hword, write — CurHP\
+  \ restored here),\n  0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B.\nQuirks: CurHP is read from oNaviStats_CurHP but written\
+  \ back to stat 0x40; one stack slot\n(offset 0x08) is never read or written. The function does not consume its\
+  \ own inputs, so\ncallers' r4/r6/r7/r10 are unused and r6/r7 outputs in the contract reflect end-of-function\n\
+  register state inherited from the last SetCurPETNaviStatsByte.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_8136C24
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8136C24
+
+    ./wf verify --function sub_8136C24 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8136C24
+
+    ./wf verify --function sub_8136C24 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8136C24
+
+    ./wf verify --function sub_8136C24 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08136c24 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What is the trigger for re-running init (e.g., Cross-Flavor/equip changes, scene entry)?
+- Why is stat 0x08 reserved (alignment/padding or a slot that no longer exists)?
+- Why is oNaviStats_CurHP read but written to 0x40 — are 0x40 and oNaviStats_CurHP aliases, or is one a base-HP
+  and the other current-HP?
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

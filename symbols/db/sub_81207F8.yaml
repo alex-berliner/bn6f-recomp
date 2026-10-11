@@ -1,0 +1,98 @@
+name: sub_81207F8
+address: '0x081207F8'
+kind: function
+status: confirmed
+summary: Counts chip IDs whose per-entry event flag is set AND whose attribute/element matches the requested chip
+  category (support / element-gated / MegaMan / general).
+interface: u32 sub_81207F8(u32 chipCategory /* r0 */);  // returns count in r0; clobbers r1-r3, nzcv; preserves
+  r4-r7, lr
+details: "Iterates a small table whose first entry (word_8120888) holds three base event-flag\nIDs and an entry\
+  \ count, plus an alternate table (word_8120890) used when category==4\n(support chips). For each index 0..count\
+  \ inclusive, it tests flag1/base+idx,\nflag2/base+idx and flag3/base+idx via TestEventFlag; the chip only \"qualifies\"\
+  \ if\nat least one of the three is set (any clear → skip).\n\nWhen a flag passes, it looks up the chip via getChip8021DA8(index),\
+  \ where the index\nis shifted by \"0x140\" (=320) when category==4 (drops into the support-chip range).\n\nAttribute\
+  \ filters depend on category:\n  * category 4 (support): bypass the 0x40 bit test? No - code does NOT branch\n\
+  \    differently at the cmp r5,#4; the offset addition only happens before the chip\n    lookup. After lookup,\
+  \ falls into the general path (chip_type != 6 branch) and\n    must have 0x40 set in chip attribute byte at offset\
+  \ 9.\n  * category 5 (element-gated): in addition to passing the 0x40 support-bit test,\n    must also have bit\
+  \ 0 of byte 0x16 set.\n  * category 6 (Mega Man): skips the 0x40 test entirely (jumps straight to\n    loc_8120856);\
+  \ only requires the 0x20 bit on byte 9.\n  * categories 0..3 (general): require 0x40 on byte 9, then if 0x20 on\
+  \ byte 9 is\n    clear must have bit 0 of byte 0x16 clear and byte 7 (element) match category.\n\nTables:\n  word_8120888\
+  \ = {baseFlag1=0x1E20, baseFlag2=0x2020, baseFlag3=0x2220, count=0x13F}\n  word_8120890 = {baseFlag1=0x1F60, baseFlag2=0x2160,\
+  \ baseFlag3=0x2360, count=0x1E}\n\nQuirks:\n  * Branch on (count) is \"ble\" (≤), so the loop runs count+1 times\
+  \ — off-by-one\n    relative to a naive \"0..count-1\" read.\n  * r1/r2/r3 are output registers in the original\
+  \ (callees read their values),\n    but have no semantic meaning outside the trailing TestEventFlag/getChip call\
+  \ —\n    the C abstraction treats them as scratch.\n  * The \"support\" branch (cmp r5,#4) only differs in *which*\
+  \ table is used and\n    the +0x140 index offset; the attribute filter path is the same as for\n    non-6/non-5\
+  \ categories.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_81207F8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81207F8
+
+    ./wf verify --function sub_81207F8 --snapshots build-snapshots'
+  result: 'captured calls: 28 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81207F8
+
+    ./wf verify --function sub_81207F8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81207F8
+
+    ./wf verify --function sub_81207F8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^081207f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+related:
+- sub_8124B5C
+open_questions:
+- Exact in-game meaning of categories 0..3 vs 5/6 — which category value corresponds to which chip class (Standard,
+  Mega, Giga, Dark, etc.)? The matching against chip byte 7 (element) for categories 0..3 suggests each category
+  is an element id (Fire/Aqua/Elec/Wood or similar).
+- Why does category 4 (support) reuse the same 0x40 attribute filter as general chips, instead of getting a dedicated
+  branch? Likely because support chips all have the 0x40 bit set, so the test is redundant for that category.
+- Are the three flag bases (per entry) really three independent flags that all must be clear for the chip to NOT
+  qualify? Original branches suggest "any one set" qualifies — semantically these look like "chip obtained / chip
+  seen / chip used" style markers, but their identity is unconfirmed.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7

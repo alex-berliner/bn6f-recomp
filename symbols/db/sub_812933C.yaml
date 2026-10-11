@@ -1,0 +1,80 @@
+name: sub_812933C
+address: '0x0812933C'
+kind: function
+status: confirmed
+summary: 'Battle sub-menu input handler: drives cursor movement (showing each option''s dialogue), confirms the
+  highlighted option (A) with a screen fade, and cancels out of the sub-menu (B).'
+interface: 'void sub_812933C(u32* state_ptr /* r5 */, void* toolkit_ptr /* r10 */);
+
+  /* reads: r5 (+0x1,+0x2,+0x3,+0xD,+0xE,+0x21), r10->joypad->Pressed (r5/r10 preserved across call) */
+
+  /* clobbers NZCV; r0,r1,r2,r3,r6,lr */
+
+  /* preserves r4,r7,r8,r9,r12 */
+
+  '
+details: "Skips input while IsScreenFadeActive returns true (ZF set).  Otherwise reads the\npressed-buttons halfword\
+  \ from r10->oToolkit_JoypadPtr->oJoypad_Pressed and feeds it,\nalong with the current cursor byte at state_ptr+0xD,\
+  \ to\nmenu_moveCursorUpDown_811FA22 (max=2, min=1).  When the cursor changes, the new\ncursor index is stored\
+  \ back at +0xD and a small table at dword_81293FC\n(packed word 0x5B5A → entries 0x5A, 0x5B) selects a chat-script\
+  \ id which is run\nvia chatbox_runScript_803FD9C_on_eTextScript201BA20.  Two flag-driven overrides\nfrom gameState_GetUnk74_8006DEC\
+  \ rewrite entries: bit0 set & script==0x5A → 0x5F;\nbit1 set & script==0x5B → 0x60 (regional/version branches\
+  \ per game-state).\n\nOn A press it plays SOUND_MENU_SELECT then branches on the cursor byte:\n  • cursor==0 (\"\
+  Exit\"): calls eStruct200BC30_setJumpOffset00(0), writes 8/0/0/0\n    to state +1/+2/+3/+0xE and triggers SetScreenFade(0xC,\
+  \ 0x10).\n  • any other cursor: writes 8 to state +2, 0 to state +0x21, same fade.\nOn B press it plays SFX 0x83,\
+  \ calls submenu_ConfirmExitAndFade_811FB64(0x40),\nthen SetScreenFade(0xC, 0x10).\n\nAfter the input block (always\
+  \ executed) it runs entity_runAllUpdateHandlers_80465BC,\nsub_80465F8, and finally sub_812B29C(0xD) to tick the\
+  \ menu's update counter.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_812933C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812933C
+
+    ./wf verify --function sub_812933C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812933C
+
+    ./wf verify --function sub_812933C --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812933C
+
+    ./wf verify --function sub_812933C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, menus3, story2.'
+  reproduce: grep -l '^0812933c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- Which sub-menu (battle results, mystery data, link, etc.) actually uses this handler, and what do the two flag-rewrite
+  scripts 0x5F/0x60 add (likely alternate/regional dialogue)?
+- Exact layout/meaning of the surrounding state block at r5 (offsets +1,+2,+3,+0xE,+0x21) and which other menu states
+  share this struct.
+- Whether off_81293F8 is ever updated (e.g., loaded from a per-page script table elsewhere).
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
