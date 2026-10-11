@@ -1,0 +1,71 @@
+name: sub_81296A0
+address: '0x081296A0'
+kind: function
+status: hypothesis
+summary: Chatbox phase-4 tick handler that advances the chatbox state on flag 0x8, otherwise triggers a screen fade
+  when both flags 0x20 and 0x110 are set.
+interface: void chatbox_tickPhase4_81296A0(void);  /* r4/r5/r10 in; r4/r5/r6 out; clobbers r0-r3, lr, flags; preserves
+  r6, r7 */
+details: 'Polls chatbox_mask_eFlags2009F38 with flag 0x8; if set, writes 0x08 to chatbox state byte at r5+3 and
+  calls sub_812B3FC (next chatbox phase step).
+
+  Otherwise tests flag 0x20, then flag 0x110 (constant loaded from off_81296D4 = 0x110); if both set, writes 0x20
+  to r5+2 and invokes SetScreenFade(0xC, 0x10) to begin a fade-out.
+
+  r5 is a chatbox-state struct pointer (state bytes at offsets 2 and 3). The two-branch structure suggests the function
+  is driven by a chatbox flag mask that promotes the dialog through successive phases.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file inbox_farm_old_5.c
+    sub_81296A0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81296A0
+
+    ./wf verify --function sub_81296A0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81296A0
+
+    ./wf verify --function sub_81296A0 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81296A0
+
+    ./wf verify --function sub_81296A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^081296a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Exact meaning of state bytes r5+2 and r5+3 (phase IDs, animation stages, or completion flags).
+- What sub_812B3FC does and why it is only called on the 0x8 branch.
+- Whether flag 0x110 is a composite (e.g., 0x100 | 0x10) and what underlying conditions it represents.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63

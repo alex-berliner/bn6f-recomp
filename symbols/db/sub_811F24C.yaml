@@ -1,0 +1,97 @@
+name: sub_811F24C
+address: '0x0811F24C'
+kind: function
+status: confirmed
+summary: Replays a sequence of sprite/animation frames from a small table, advancing a clamped tick counter each
+  call
+interface: 'void sub_811F24C(void);  // in: r5 = base of caller state struct (writes r5+0xC counter); clobbers r0,r1,r2,r3,r6,r7,lr;
+  preserves r4-r7 (caller-saved by push/pop); NZCV clobbered'
+details: 'Increments a byte counter at offset 0xC on a caller-supplied state struct (held in r5),
+
+  clamping the new value so it never exceeds 3 (i.e. legal values 0..3). It then iterates
+
+  over the (count+1) entries of the 8-byte-pair table at dword_811F278, invoking
+
+  sub_802FE28(lo32, hi32, 0, 1) for each pair. Each 8-byte entry therefore feeds two
+
+  u32 arguments (likely tile/map pointers or sprite descriptors) into sub_802FE28 with
+
+  fixed a3=0, a4=1, suggesting a "replay/restart this animation frame" primitive.
+
+  Loop bound = post-bump counter; loop is skipped entirely if counter is already at 3
+
+  (cmp r0,#3 / bgt: when count+1 > 3, the increment is discarded and loop bound stays 3,
+
+  so a fourth call also iterates only 3 times). Index type is treated as signed (cmp/blt).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file inbox_farm_old_5.c
+    sub_811F24C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811F24C
+
+    ./wf verify --function sub_811F24C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 203 out
+    of domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811F24C
+
+    ./wf verify --function sub_811F24C --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811F24C
+
+    ./wf verify --function sub_811F24C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0811f24c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Identity of the struct at r5 and meaning of the 0xC counter (frame index? phase?).
+- Semantic of each 8-byte table entry (likely (tilePtr, mapPtr) or (animId, palSlot)).
+- Why a3=0 and a4=1 are fixed for sub_802FE28 (start-from-zero / play-once flags?).
+- Caller chain that drives this each tick.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63

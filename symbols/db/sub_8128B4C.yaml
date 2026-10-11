@@ -1,0 +1,97 @@
+name: sub_8128B4C
+address: '0x08128B4C'
+kind: function
+status: confirmed
+summary: Enqueues a battle object's affine-OBJ descriptor (skipping when not visible) and stores the returned tile-attribute
+  byte into the object.
+interface: 'void sub_8128B4C(void);
+
+  // inputs:  r5 (battle-object ptr), r10, lr
+
+  // outputs: r5 (preserved)
+
+  // clobbers: nz, c, v, r0, r1, r2, r3, lr
+
+  // preserved: r4, r5, r6, r7
+
+  '
+details: 'Guards on the object''s visibility flag at +0x1E (u16); returns immediately if 0.
+
+  Builds an affine OBJ attribute1 word: base = 0x0100000 (affine OBJ group 1); when
+
+  bit 0 of the object flags at +0xD is set, also ORs 0x680000 (double-size + large
+
+  affine bits). The layer index at +0x20 (u16) is multiplied by 0x10 and added to
+
+  0x18, then OR''d into the attribute word.
+
+  Submits the descriptor by calling sub_811FAF4 with r0 = attr01, r1 = 0x20002,
+
+  r2 = byte from +0xC (current tile attr), r3 = pointer to the affine matrix entry
+
+  at byte_8128678, r4 = 0x40000000 (status/control dword).
+
+  The tile-attribute byte returned by sub_811FAF4 is written back at +0xC.
+
+  Touched fields on the battle object (r5): +0xC (tile attr byte), +0xD (flags),
+
+  +0x1E (visibility u16), +0x20 (layer index u16).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file inbox_farm_old_5.c
+    sub_8128B4C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8128B4C
+
+    ./wf verify --function sub_8128B4C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 209 out
+    of domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8128B4C
+
+    ./wf verify --function sub_8128B4C --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8128B4C
+
+    ./wf verify --function sub_8128B4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08128b4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+related:
+- sub_81287DC
+open_questions:
+- Exact semantics of the 0x20002 / 0x40000000 arguments to sub_811FAF4 and how they map to OBJ attribute fields
+  (BPP/palette bank vs. status).
+- Whether +0xD bit 0 specifically means "extended affine (large + double)" only, or is a more generic layer variant
+  flag.
+- Why r10 is listed in the contract if it isn't referenced inside the body.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63

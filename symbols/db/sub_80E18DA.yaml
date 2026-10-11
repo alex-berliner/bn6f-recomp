@@ -1,0 +1,71 @@
+name: sub_80E18DA
+address: '0x080E18DA'
+kind: function
+status: hypothesis
+summary: Tick a battle object's timed phase, advancing to phase 0x0C after a 0x1E-frame countdown.
+interface: void sub_80E18DA(battleObject_t *r5); /* clobbers r0, sets N/Z based on timer-1 */
+details: 'On first entry (phase-init byte == 0) seeds oBattleObject_Timer with 0x1E and writes
+
+  phase-init=4 so it doesn''t re-seed. Each call decrements oBattleObject_Timer; when the
+
+  decrement would underflow (result negative, i.e. timer hit zero and goes below), the
+
+  phase state field oBattleObject_CurPhaseAndPhaseInitialized is overwritten with 0x000C,
+
+  handing the object off to its next sub-phase handler. Behavior matches a generic
+
+  wait/vanish-style phase tick used by battle object state machines.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file inbox_farm_old_5.c
+    sub_80E18DA
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E18DA
+
+    ./wf verify --function sub_80E18DA --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E18DA
+
+    ./wf verify --function sub_80E18DA --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E18DA
+
+    ./wf verify --function sub_80E18DA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080e18da ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- story9
+open_questions:
+- Which battle object(s) route into this handler (which sub-state ID number this is).
+- Whether the "0x0C" handoff represents "vanish" or "teleport done" or just an arbitrary next-phase slot.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63

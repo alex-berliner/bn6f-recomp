@@ -1,0 +1,76 @@
+name: sub_8132614
+address: '0x08132614'
+kind: function
+status: hypothesis
+summary: Dispatches on sub_8132290's menu choice, sets a flag byte, picks a sub-state via lookup, and writes the
+  next handler index into the menu record.
+interface: void sub_8132614(struct MenuRecord *r5) * ; returns nz=1 in Z due to `mov r0,
+details: "Calls `sub_803EBB8` (some menu helper), then forces `[R5+1] = 8` (a fixed \"menu open\" or\ntype byte).\
+  \ Calls `sub_8132290` (likely a \"wait for selection\" routine that returns the\nhighlighted/pressed option id\
+  \ 0x18/0x1C/0x20/0x24).\nDispatches on the returned choice:\n  * 0x18 or 0x1C -> read an 8-bit selection index\
+  \ from `[R5+0x12]`, call `sub_81325F4`\n    (probably resolves/corrects it via a table) and use its return as\
+  \ `[R5+2]`.\n  * 0x20 or 0x24 -> `[R5+2] = 0x0C`.\n  * anything else -> `[R5+2] = 0x10`.\nFinally writes `[R5+3]\
+  \ = 4` and returns with R0=4 (not the dispatch value), so R0 is\neffectively a constant \"done, state=4\" return\
+  \ rather than the menu pick itself. The\nobject layout touched is small: bytes at offsets 0x01, 0x02, 0x03, 0x12,\
+  \ strongly\nsuggesting a compact menu/state record.\nQuirk: R5 (the only input) is preserved across the calls\
+  \ (`push {lr}` only), so it is\nthe live working pointer the caller must keep valid. The \"8 / 0x0C / 0x10 / 4\"\
+  \ constants\nread like a small FSM phase/cursor field set.\n\nRegister form, old prompt; queued for retype (the\
+  \ farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file inbox_farm_old_5.c
+    sub_8132614
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8132614
+
+    ./wf verify --function sub_8132614 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out of
+    domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8132614
+
+    ./wf verify --function sub_8132614 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 2 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8132614
+
+    ./wf verify --function sub_8132614 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08132614 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm36.c
+coverage:
+- menus3
+open_questions:
+- What is the type/length of the record at R5 and what does byte +0x01=8, +0x02 (state), +0x03=4, and byte +0x12
+  (selection index) actually represent?
+- What menu does `sub_8132290` belong to, and what do the choices 0x18/0x1C/0x20/0x24 label in the UI (e.g. Yes/No/Buy/Sell,
+  Chip select slots, etc.)?
+- What does `sub_81325F4` do with `[R5+0x12]` -- is it clamping, validation, or a lookup that yields a real handler
+  index?
+- Why is R0 explicitly set to 4 on exit instead of the dispatch value? Is byte +0x03 a "ready" / "next handler id"
+  flag and 4 the universal "idle" phase?
+- Is `sub_803EBB8` a teardown of a previous menu or an init helper, given it runs before the type byte is rewritten?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63

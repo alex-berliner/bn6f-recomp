@@ -1,0 +1,72 @@
+name: sub_811A768
+address: '0x0811A768'
+kind: function
+status: hypothesis
+summary: Shifts a sprite left by a sprite-add-coordinate offset and flags var+8 when it crosses a leftward bound.
+interface: void sub_811A768(void *sprite, void *var); // r0=sprite, r1=var; returns r0=1 normally, r0=0 if clamped
+details: 'Uses sprite_addCoordinates with a dx-of-zero-ish and dy-of-zero argument set (r0=var as sprite, r1=0)
+
+  to nudge the sprite leftward (R5 must hold the sprite/var pointer per caller convention), then reads
+
+  the post-update x via sprite_getCoordinates. If the resulting x < -48 (0xFFFFFFD0), it writes the
+
+  value 8 into var+8 and returns 0; otherwise returns 1. R4/R5 are preserved through the helper calls.
+
+  var+8 is treated as a small state/flag byte (value 8 written on out-of-bounds). The exact meaning of
+
+  0xFFFFFFD0 (-48) and var+8 is not visible from this function alone.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file inbox_farm_old_5.c
+    sub_811A768
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811A768
+
+    ./wf verify --function sub_811A768 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 179 out
+    of domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811A768
+
+    ./wf verify --function sub_811A768 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811A768
+
+    ./wf verify --function sub_811A768 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0811a768 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+open_questions:
+- What structure is `var`? Field at +8 stores a state code (8 = clamped/off-screen left).
+- Is sprite_addCoordinates called with a real offset or is r0/r1=0 effectively a no-op nudge?
+- Does the caller branch on the returned 0/1 to stop further motion or trigger despawn?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63
