@@ -869,6 +869,11 @@ REVIEW_CHECKLIST = (
     "each narrowed promise (difftest.cfg) holds for every caller, not just one",
     "paths the captured calls never ran are named (a difftest_gen.c mutator can reach them)",
     "typed functions use no registers; every `register form` reason really rules C out",
+    "read each function against its assembly on every path, not just those the checks ran: every register a "
+    "callee reads is set as the original sets it (objects in r5/r6/r7/r8 are the usual miss), values a call can "
+    "change are re-read after it, branch conditions keep their sense and signedness, loops that test at the end "
+    "stay do-while, tables copied into C match the ROM entry for entry, and preserved or output registers come "
+    "back as the original leaves them (2026-10-11: 15% of farm functions that passed every check failed this)",
 )
 
 

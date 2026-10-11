@@ -295,6 +295,15 @@ bn6f source on 2026-10-10 (`tools/layout.py`, §2 Layout).
   `palette_addOrSubtractColor` promised only r5/r7 because one caller needs
   no more, but two other callers exist; it now leaves every register as the
   original. Prefer exact registers over a narrow contract when cheap.
+- Passing every check is not enough for farm code. On 2026-10-11 review agents
+  read 444 farm functions that had passed the quick test, full verify and
+  lockstep against their bn6f assembly: about 1 in 7 differed on paths no
+  captured call or route ran (a callee's input register left unset, a value
+  not re-read after a call, an inverted condition, a mistyped table, a
+  missing store). 56 installed ones were taken out (51d348b); candidates the
+  review rejects go to `tools/convert/rejected/` with a `.review.txt` saying
+  why. Review reads each function against its assembly (the review sheet's
+  checklist), before the commit.
 
 ## 8. Flash cart (paused)
 
