@@ -443,6 +443,7 @@ class World:
         self.cache = cache or tree.cache or Cache()
         self._canon: dict[int, tuple[Item, str]] = {}   # the item is kept so its id stays its own
         self._deps: dict[tuple[int, int], list[tuple[Item, bool]]] = {}
+        self._order: dict[int, int] = {}            # id(item) -> its place in its file (macros apply after it)
         self._empty: dict[str, list[Item]] = {}
         self.names = Names.of(entries)
         self.notes: list[str] = []                 # why some facts could not be found
@@ -499,6 +500,8 @@ class World:
     def _readable(self) -> dict[str, Readable]:
         local: dict[str, dict[str, list[Item]]] = {}
         shared: dict[str, list[Item]] = {}
+        for items in self.files.values():
+            self.note_order(items)
         for path, items in self.files.items():
             for it in items:
                 if it.kind in ("proto", "pp"):
@@ -533,6 +536,23 @@ class World:
                 todo.append(it)
         return body, head
 
+    def note_order(self, items: list[Item]) -> None:
+        """Remember where each item of a file is (a file's items are parsed once per content)."""
+        for i, it in enumerate(items):
+            self._order[id(it)] = i
+
+    def _in_effect(self, user: Item, found: list[Item]) -> list[Item]:
+        """Of a file's definitions of one name, those USER sees: a macro only from its `#define` on, and
+        of several (a macro defined again by a later part of the file) the last one before USER. So a
+        macro defined after its user does not count, and the user sees the header's, as the compiler
+        does (tools/layout.py puts parts that define a macro in address order)."""
+        macros = [it for it in found if it.kind == "macro"]
+        at = self._order.get(id(user))
+        if not macros or at is None:
+            return found
+        before = [it for it in macros if self._order.get(id(it), -1) < at]
+        return [it for it in found if it.kind != "macro"] + before[-1:]
+
     def _uses(self, item: Item, local: dict[str, list[Item]], shared: dict[str, list[Item]],
               memo: dict[tuple[int, int], list[tuple[Item, bool]]]) -> list[tuple[Item, bool]]:
         """The definitions an item names directly (other readable functions excluded: they have stamps
@@ -541,7 +561,7 @@ class World:
         if key not in memo:
             out: list[tuple[Item, bool]] = []
             for n in item.idents:
-                found = local.get(n) or shared.get(n)
+                found = self._in_effect(item, local.get(n) or []) or shared.get(n)
                 if found:
                     out += [(it, True) for it in found if not it.next]
                 else:
@@ -959,6 +979,8 @@ def history(world: World, names: set[str]) -> dict[str, tuple[str, list[str]]]:
                      else shared).setdefault(n, []).append(it)
         out: dict[str, str] = {}
         memo: dict[tuple[int, int], list[tuple[Item, bool]]] = {}     # this state's own (ids are reused later)
+        for items in state.values():
+            world.note_order(items)
         for path, items in state.items():
             for it in items:
                 if it.next and it.names:
