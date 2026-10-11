@@ -752,59 +752,6 @@ Next pet_addCurNaviStat0x3ECapped_803CF3C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── GiveZenny ── */
-#define MAX_ZENNY 999999u
-
-/* register form: calls encryption_zenny_8006f78 outside this file, which has no typed C interface yet */
-static bool zenny_encryption_valid(void) {
-    GUEST_CALL(encryption_zenny_8006f78);
-    return ZERO_FLAG();
-}
-
-/* register form: calls encryption_zenny_8006f54 outside this file, which has no typed C interface yet */
-static void zenny_encryption_update(u32 status, u32 new_zenny, u32 game_state, u32 max) {
-    u32 saved_r4 = R4;
-    R0 = status;
-    R1 = new_zenny;
-    R2 = game_state;
-    R3 = status;
-    R4 = max;
-    GUEST_CALL(encryption_zenny_8006f54);
-    R4 = saved_r4;  /* original preserves caller's r4 via push/pop */
-}
-
-/* Give zenny to the player, clamped to MAX_ZENNY.
- * Returns 0 = added normally, 1 = already at max (or integrity check failed), 2 = clamped to max. */
-static u32 give_zenny(s32 amount, u32 toolkit) {
-    if (!zenny_encryption_valid())
-        return 1;
-
-    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
-    u32 current    = LD32(game_state + oGameState_ProtectedZenny);
-
-    if ((s32)current == (s32)MAX_ZENNY)
-        return 1;
-
-    u32 new_zenny = current + (u32)amount;
-    u32 status    = 0;
-
-    if ((s32)new_zenny > (s32)MAX_ZENNY) {
-        status    = 2;
-        new_zenny = MAX_ZENNY;
-    }
-
-    ST32(game_state + oGameState_ProtectedZenny, new_zenny);
-    zenny_encryption_update(status, new_zenny, game_state, MAX_ZENNY);
-
-    return status;
-}
-
-/* GiveZenny(r0 = zenny amount, r10 = toolkit ptr) -> r0 = status */
-Next GiveZenny(void) {
-    R0 = give_zenny((s32)R0, R10);
-    RETURN_TO_CALLER();
-}
-
 /* ── sub_803D02C ── */
 /* register form: calls encryption_zenny_8006f78 outside this file, which has no typed C interface yet */
 static bool call_encryption_78(u32 arg0, u32 arg1, u32 arg2, u32 arg3,

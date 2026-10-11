@@ -8,67 +8,6 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_801728E ── */
-/* register form: calls battle_testFlag0x40_800A8F8 outside this file, which has no typed C interface yet */
-static bool battle_test_flag_0x40(void) {
-    GUEST_CALL(battle_testFlag0x40_800A8F8);
-    return !ZERO_FLAG();
-}
-
-/* register form: calls getEntryPtr_2036120_1D0_802E070 outside this file, which has no typed C interface yet */
-static u8 get_entry_flag_byte(u8 alliance) {
-    R0 = alliance;
-    GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
-    return LD8(R0 + 0x50);
-}
-
-/* register form: calls battle_getStateUnk40_800A704 outside this file, which has no typed C interface yet */
-static u32 battle_get_state_unk40(void) {
-    GUEST_CALL(battle_getStateUnk40_800A704);
-    return R0;
-}
-
-/* register form: calls sprite_setColorShader outside this file, which has no typed C interface yet */
-static void sprite_set_color_shader(u32 arg) {
-    R0 = arg;
-    GUEST_CALL(sprite_setColorShader);
-}
-
-/* 32-entry palette ramp used to drive the dimmer shader. */
-static const u8 kPalRamp[32] = {
-    0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E,
-    0x10, 0x12, 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E,
-    0x1E, 0x1C, 0x1A, 0x18, 0x16, 0x14, 0x12, 0x10,
-    0x0E, 0x0C, 0x0A, 0x08, 0x06, 0x04, 0x02, 0x00,
-};
-
-/* Apply the per-battle dimmer shader to the current object's sprite when the
- * global test-flag 0x40 is set, the object has a non-idle current action, and
- * its alliance's entry table byte at offset 0x50 is non-zero. The shader input
- * is ramp[idx]*33, where idx = (battleState & 0x1F). */
-static u32 sub_801728E_core(u32 r3_in, u32 battle_obj, u32 r10_unused) {
-    (void)r10_unused;
-    if (!battle_test_flag_0x40())
-        return r3_in;
-    if (LD8(battle_obj + oBattleObject_CurAction) == 0)
-        return r3_in;
-    u8 alliance = LD8(battle_obj + oBattleObject_Alliance);
-    if (get_entry_flag_byte(alliance) == 0)
-        return r3_in;
-    u32 state = battle_get_state_unk40();
-    u8 ramp_idx = (u8)(state & 0x1F);
-    u8 ramp_val = kPalRamp[ramp_idx];
-    u32 shader_arg = (u32)ramp_val + ((u32)ramp_val << 5);
-    sprite_set_color_shader(shader_arg);
-    return r3_in;
-}
-
-Next sub_801728E(void) {
-    R3 = sub_801728E_core(R3, R5, R10);
-    SET_FLAGS_NZ(R3);
-    RETURN_TO_CALLER();
-}
-
 /* ── battle_objectTickTimerAndSetPhaseC_80174AA ── */
 /* battle_objectTickTimerAndSetPhaseC_80174AA (r5 = battle object): tick the object's action timer down by
  * one. When it reaches zero, reset the timer and advance the object to
