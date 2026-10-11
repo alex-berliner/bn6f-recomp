@@ -1,0 +1,88 @@
+name: sub_8129248
+address: '0x08129248'
+kind: function
+status: confirmed
+summary: Initializes the battle scene by clearing VRAM/GFX buffers, priming the toolkit's render-info block (0x1F40
+  at offset 0, rest zeroed), starting the opening cutscene, and writing the variant sub-bytes pulled from dword_8129180
+  into the state struct held in r5.
+interface: "void battle_initScene_8129248(void /* r5=state, r10=toolkit */);\n  // inputs:  r5 (state struct ptr),\
+  \ r10 (toolkit ptr), lr\n  // outputs: r0 = 0, r1 = low byte of the dword_8129180 entry that sub_8120CC8 returned\
+  \ in r1;\n  //          NZ reflects r0; preserves r4-r7.\n"
+details: 'Clears VRAM (zeroFillVRAM, ZeroFill_byte_3001960, ZeroFillGFX30025c0), calls sub_80015FC(0x10)
+
+  and sub_8046664, then takes the render-info pointer from r10 via the oToolkit_RenderInfoPtr
+
+  offset, writes 0x1F40 (8000) as the first halfword at offset 0 and zeroes the next six
+
+  halfwords (offsets 0x10..0x1A), so the render info gets a fresh BG row/cycle count plus a
+
+  cleared viewport/affine area before the cutscene starts. Runs scene_loadAndStartCutscene_812AF18
+
+  for the battle-opening cutscene. After it returns, writes 4 into state+1 (subState = 4, the
+
+  "post-cutscene" battle state), 0 into state+2, and 0x3C into eStruct200BC30+0xC (a small
+
+  timer/frame counter, likely the 60-frame battle intro delay). Calls sub_8120CC8(0,
+
+  dword_8129180) and stores the two result bytes into state+0x17 and state+0x18 - this is the
+
+  "variant bytes" consumed by the wider battle initializer (chip pool, encounter table, etc.);
+
+  state+0x1B is then zeroed. Final r0 = 0 sets NZ for the r0==0 check, r1 carries the high byte
+
+  sub_8120CC8 left behind. No flags are produced by the function itself beyond the r0 write.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-011652);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 66' --file inbox_farm_66.c sub_8129248
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129248
+
+    ./wf verify --function sub_8129248 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-011652-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129248
+
+    ./wf verify --function sub_8129248 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-011652-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129248
+
+    ./wf verify --function sub_8129248 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011652-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, menus3, story2.'
+  reproduce: grep -l '^08129248 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp e2ce7a9
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- Exact meaning of dword_8129180's entry pointed at by sub_8120CC8 with a0=0 (which two of its bytes become state+0x17/+0x18
+  - i.e. which variant slot does battle slot 0 pick?).
+- What sub_8120CC8(0, &dword_8129180) actually computes (random-with-pool? fixed lookup?).
+- Role of eStruct200BC30+0xC = 0x3C (intro delay / fade counter) and which sub-system owns that struct.
+- What sub_80015FC(0x10) and sub_8046664 set up - likely sound engine + window/LCD init, given the name "init".
+sources:
+- tools/wf run convert-20261011-011652
+- recomp e2ce7a9
