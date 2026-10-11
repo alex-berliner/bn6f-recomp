@@ -22,6 +22,82 @@ Next sub_80269D0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80269E2 ── */
+/* eS20364C0 RAM pointer (r5 in the original). */
+#define eS20364C0_PTR A_eS20364C0_JumpOffset00
+
+/* Replicates sub_80269E2:
+ *   - r0 starts at 0.
+ *   - Read byte 0 as r1; if r1 is 0 or 8, r0 becomes 1 (and that CMP's flags win).
+ *   - Otherwise read byte 1 as r1; if r1 is any of {0, 8, 4, 0xC, 0x2C, 0x30, 0x34,
+ *     0x10, 0x14, 0x18, 0x1C, 0x20}, r0 becomes 1 and that CMP's flags win.
+ *   - Else r0 stays 0 and the final CMP r1, #0x20 (BNE taken) sets the flags.
+ * Returns the r0 result and the operands of the final CMP so the adapter can
+ * set c/v exactly as the original does. */
+static u32 check_es20364c0(u8 *last_cmp_r1, u8 *last_cmp_op) {
+    u8 b0 = LD8(eS20364C0_PTR);
+    u8 b1 = LD8(eS20364C0_PTR + 1);
+    u32 result = 0;
+
+    if (b0 == 0) {
+        result = 1;
+        *last_cmp_r1 = b0; *last_cmp_op = 0;
+    } else if (b0 == 8) {
+        result = 1;
+        *last_cmp_r1 = b0; *last_cmp_op = 8;
+    } else if (b1 == 0) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0;
+    } else if (b1 == 8) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 8;
+    } else if (b1 == 4) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 4;
+    } else if (b1 == 0x0C) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x0C;
+    } else if (b1 == 0x2C) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x2C;
+    } else if (b1 == 0x30) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x30;
+    } else if (b1 == 0x34) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x34;
+    } else if (b1 == 0x10) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x10;
+    } else if (b1 == 0x14) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x14;
+    } else if (b1 == 0x18) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x18;
+    } else if (b1 == 0x1C) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x1C;
+    } else if (b1 == 0x20) {
+        result = 1;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x20;
+    } else {
+        /* Fall through: b1 != 0x20, BNE taken, r0 stays 0. Final CMP was r1, #0x20. */
+        result = 0;
+        *last_cmp_r1 = b1; *last_cmp_op = 0x20;
+    }
+    return result;
+}
+
+/* sub_80269E2(r5 = eS20364C0 pointer) -> r0, sets c, v from the final CMP */
+Next sub_80269E2(void) {
+    u8 last_r1, last_op;
+    u32 r = check_es20364c0(&last_r1, &last_op);
+    R0 = r;
+    SET_FLAGS_CMP((u32)last_r1, (u32)last_op);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8026A50 ── */
 /* sub_8026A50(self: r5 = *S20364C0) -> u8 in r0 (always 0)
  *
@@ -488,6 +564,132 @@ Next battle_updateObjectByKind_8026E98(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8026EC8 ── */
+/* Register form: GetBattleEffects has no typed C interface yet. */
+static u32 get_battle_effects(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* Register form: GetBattleMode has no typed C interface yet. */
+static u32 get_battle_mode_sub_8026EC8(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* Register form: chatbox_runScript has no typed C interface yet. */
+static void chatbox_run_script(u32 archive, u32 script_idx) {
+    R0 = archive;
+    R1 = script_idx;
+    GUEST_CALL(chatbox_runScript);
+}
+
+/* Register form: PlaySoundEffect has no typed C interface yet. */
+static void play_sound_effect_sub_8026EC8(u32 id) {
+    R0 = id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* Runs the tutorial/battle-run dialog script appropriate for the current state
+ * and plays the unselect jingle. r5 points to a small battle-state object
+ * (+2 = script-result slot, +0xC = tutorial-index byte); r4 is a base pointer
+ * into the per-row text-script indices used by the run-away dialog. */
+static void run_battle_dialog(u32 base_r4, u32 state_ptr) {
+    u32 effects = get_battle_effects();
+
+    if (effects & 0x20) {
+        ST16(state_ptr + 2, 4);
+        chatbox_run_script(A_TextScriptBattleRunDialog, base_r4);
+    } else {
+        ST16(state_ptr + 2, 8);
+        if (get_battle_mode_sub_8026EC8() == 5) {
+            chatbox_run_script(LD32(A_TextScriptFirstBattleTutorials + 0x0C), 0x23);
+        } else {
+            u32 idx = LD8(state_ptr + 0xC);
+            if (idx == 0xFF) {
+                chatbox_run_script(A_TextScriptBattleRunDialog, base_r4 + 3);
+            } else {
+                chatbox_run_script(LD32(A_TextScriptFirstBattleTutorials + (idx << 2)),
+                                   LD8(A_byte_8027034 + idx));
+            }
+        }
+    }
+
+    play_sound_effect_sub_8026EC8(SOUND_UNSELECT_7B);
+}
+
+Next sub_8026EC8(void) {
+    run_battle_dialog(R4, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8026FC0 ── */
+/* Struct offsets for the battle-run tutorial state object (S20364C0). */
+#define oBattleRunSelf_Timer  1
+#define oBattleRunSelf_State  2
+#define oBattleRunSelf_Mode   4
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 call_GetBattleEffects(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls battle_ClearPendingEventFlag_802A0EC outside this file, which has no typed C interface yet */
+static void call_battle_ClearPendingEventFlag_802A0EC(void) {
+    GUEST_CALL(battle_ClearPendingEventFlag_802A0EC);
+}
+
+/* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
+static u32 call_chatbox_mask_eFlags2009F38(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return R0;
+}
+
+/* register form: calls chatbox_runScript outside this file, which has no typed C interface yet */
+static void call_chatbox_runScript(u32 archive, u32 script_idx) {
+    R0 = archive;
+    R1 = script_idx;
+    GUEST_CALL(chatbox_runScript);
+}
+
+/* Drive the "battle is about to run away" tutorial dialog.
+ *  - On first entry (state == 0): mark the tutorial seen (state := 1),
+ *    clear the pending event flag, then run the tutorial script at page
+ *    1 (mode == 2) or page 2 (mode != 2), plus the page offset (4) that
+ *    comes from GetBattleEffects() & 0x200000.
+ *  - On subsequent entries, while chatbox flag 0x80 is busy, do nothing.
+ *    Once it clears, set timer = 0x14 and zero the 16-bit state field. */
+static u32 run_battle_run_tutorial(u32 self) {
+    u32 page_offset = (call_GetBattleEffects() & 0x200000u) ? 4u : 0u;
+
+    u8 state = LD8(self + oBattleRunSelf_State);
+    if (state == 0) {
+        ST8(self + oBattleRunSelf_State, 1);
+        call_battle_ClearPendingEventFlag_802A0EC();
+        /* mov r1, #1; if (mode != 2) mov r1, #2; add r1, r4
+         * So r1 == 1 when mode == 2, else r1 == 2; then +page_offset. */
+        u32 script_idx = (LD8(self + oBattleRunSelf_Mode) == 2) ? 1u : 2u;
+        script_idx += page_offset;
+        call_chatbox_runScript(A_TextScriptBattleRunDialog, (u8)script_idx);
+        return 0;
+    }
+
+    u32 mask = call_chatbox_mask_eFlags2009F38(0x80);
+    if (mask != 0)
+        return (u32)mask;
+    ST8(self + oBattleRunSelf_Timer, 0x14);
+    ST16(self + oBattleRunSelf_State, 0);
+    return 0;
+}
+
+Next sub_8026FC0(void) {
+    u32 result = run_battle_run_tutorial(R5);
+    SET_FLAGS_NZ(result);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_loadObjTableEntryAndSetState4_80272B8 ── */
 /* battle_loadObjTableEntryAndSetState4_80272B8: load the AI/behavior table entry selected by the object's
  * state byte (+0xC) into the object (+0x40) and switch its state to 4.
@@ -669,6 +871,219 @@ Next battle_countFolderChips_8027D58(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8027D78 ── */
+/* Register-form helpers for game functions that have no typed C interface yet. */
+
+/* register form: calls sub_801E71C outside this file, which has no typed C interface yet */
+static void call_sub_801E71C_sub_8027D78(void) {
+    R0 = 0;
+    GUEST_CALL(sub_801E71C);
+}
+
+/* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
+static void call_dispatch_801DACC_sub_8027D78(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(dispatch_801DACC);
+}
+
+/* register form: calls sub_801E0A0 outside this file, which has no typed C interface yet */
+static void call_sub_801E0A0(u32 a0, u32 a1) {
+    R0 = a0;
+    R1 = a1;
+    GUEST_CALL(sub_801E0A0);
+}
+
+/* register form: calls eStruct2035280_SetRequestBits_801BECC outside this file, which has no typed C interface yet */
+static void call_SetRequestBits_801BECC(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(eStruct2035280_SetRequestBits_801BECC);
+}
+
+/* register form: calls dispatch_801DA48 outside this file, which has no typed C interface yet */
+static void call_dispatch_801DA48(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(dispatch_801DA48);
+}
+
+/* register form: calls battle_IsBattleEnding_800A97A outside this file, which has no typed C interface yet */
+static bool battle_is_ending(void) {
+    GUEST_CALL(battle_IsBattleEnding_800A97A);
+    return !ZERO_FLAG();        /* Z clear when battle is ending */
+}
+
+/* register form: calls battle_testFlag0x40_800A8F8 outside this file, which has no typed C interface yet */
+static bool battle_test_flag0x40(void) {
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+    return !ZERO_FLAG();        /* Z clear when flag is set */
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode_sub_8027D78(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls sub_801DF0C outside this file, which has no typed C interface yet */
+static void call_sub_801DF0C(void) { GUEST_CALL(sub_801DF0C); }
+
+/* register form: calls sub_801DEEE outside this file, which has no typed C interface yet */
+static void call_sub_801DEEE(void) { GUEST_CALL(sub_801DEEE); }
+
+/* register form: calls custGauge_Init_801DED0 outside this file, which has no typed C interface yet */
+static void cust_gauge_init(void) { GUEST_CALL(custGauge_Init_801DED0); }
+
+/* register form: calls ClearCustGauge outside this file, which has no typed C interface yet */
+static void clear_cust_gauge(void) { GUEST_CALL(ClearCustGauge); }
+
+
+/* Request flag bits (from the dispatch constants in the original). */
+enum {
+    CUST_REQUEST_ENDING_BIT = 0x400u,
+    CUST_REQUEST_BIT        = 0x20000u,
+    CUST_REQUEST_MODE1_BIT  = 0x20u,
+    CUST_REQUEST_OTHER_BIT  = 0x10u,
+};
+
+/* Unconditional "ending" request: the original at the top of the function
+ * calls SetRequestBits BEFORE dispatch (the reverse of the other paths). */
+static void set_request_ending_bit(void) {
+    call_SetRequestBits_801BECC(CUST_REQUEST_ENDING_BIT);
+    call_dispatch_801DA48(CUST_REQUEST_ENDING_BIT);
+}
+
+/* Request paths used for 0x20000 / 0x20 / 0x10: dispatch BEFORE SetRequestBits. */
+static void cust_request(u32 bits) {
+    call_dispatch_801DA48(bits);
+    call_SetRequestBits_801BECC(bits);
+}
+
+/* Per-turn "battle ends" routine for the Custom Gauge / panel UI.
+ * `toolkit` is the GBA pointer held in r10 on entry. */
+static void battle_custom_gauge_per_turn(u32 toolkit) {
+    /* Clear pending-trigger field in the render-info struct. */
+    u32 render = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render + 0x18, 0);
+
+    call_sub_801E71C_sub_8027D78();                              /* gauge setup / display reset */
+    call_dispatch_801DACC_sub_8027D78(0x80);                     /* mark request flag 0x80 */
+    call_sub_801E0A0(0, 0);                          /* clear gauge counter */
+    set_request_ending_bit();                        /* ending flag (0x400): SetRequestBits then dispatch */
+
+    if (battle_is_ending())
+        return;
+
+    /* Battle-state byte 7 selects which ending routine we take. */
+    u32 bstate = LD32(toolkit + oToolkit_BattleStatePtr);
+    u32 path   = LD8(bstate + 7);
+
+    if (path == 1) {
+        if (battle_test_flag0x40()) {
+            call_sub_801DF0C();                      /* "flag 0x40" end-of-turn path */
+            return;
+        }
+        if (get_battle_mode_sub_8027D78() == 1) {
+            call_sub_801DEEE();                      /* mode-1 end-of-turn cleanup */
+        } else {
+            cust_gauge_init();                       /* default init for custom gauge */
+        }
+        return;
+    }
+
+    /* path != 1 */
+    if (battle_test_flag0x40()) {
+        cust_request(CUST_REQUEST_BIT);              /* 0x20000: dispatch + request bits */
+        return;
+    }
+    clear_cust_gauge();
+    if (get_battle_mode_sub_8027D78() == 1) {
+        cust_request(CUST_REQUEST_MODE1_BIT);        /* 0x20 */
+    } else {
+        cust_request(CUST_REQUEST_OTHER_BIT);        /* 0x10 */
+    }
+}
+
+Next sub_8027D78(void) {
+    /* The typed function touches no guest registers, so flags (including v)
+     * and clobbered/preserved registers are automatically correct. */
+    battle_custom_gauge_per_turn(R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8027E90 ── */
+/* Battle mode flag used to select the panel-status branch. */
+enum {
+    BATTLE_MODE_SINGLE = 1,
+};
+
+/* Offsets into a battle-record slot (12 slots, 0xC bytes each). */
+#define SLOT_SIZE         0xC
+#define SLOT_COUNT_sub_8027E90        12
+#define PANEL_MODE_OFFSET 0x84
+#define PANEL_FLAG_OFFSET 0x8B
+#define PANEL_MODE_VALUE_SINGLE 3
+#define PANEL_MODE_VALUE_OTHER  2
+
+/* ROM address of the per-slot template table (each entry: 4-byte panel-id pointer). */
+#define SLOT_TEMPLATE_TABLE_PTR A_dword_802A7CC
+
+/* RAM address of the battle-mode configuration struct. */
+#define BATTLE_CONFIG_PTR A_dword_20349A0
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode_sub_8027E90(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls sub_8029FB4 outside this file, which has no typed C interface yet */
+static bool sub_8029FB4_retbool(void) {
+    GUEST_CALL(sub_8029FB4);
+    return R0 != 0;
+}
+
+/* register form: calls sub_802A57E outside this file, which has no typed C interface yet */
+static bool sub_802A57E_retbool(void) {
+    GUEST_CALL(sub_802A57E);
+    return R0 != 0;
+}
+
+/* sub_8027E90: initialise the 12 battle-record slots from the ROM template, then set the
+ * panel-status byte on the slot array header according to the current battle mode.
+ * slot_array_ptr (r4) points to the slot array. Returns the address one past the last slot
+ * (r4 + 12 * 0xC), matching the original's final r2. */
+static u32 reset_battle_record(u32 slot_array_ptr) {
+    u32 template_addr = SLOT_TEMPLATE_TABLE_PTR;
+    u32 slot_addr = slot_array_ptr;
+    for (u32 i = 0; i < SLOT_COUNT_sub_8027E90; i++) {
+        ST32(slot_addr,     LD32(template_addr));
+        ST32(slot_addr + 4, 0);
+        ST32(slot_addr + 8, 0);
+        template_addr += 4;
+        slot_addr += SLOT_SIZE;
+    }
+
+    u32 mode = get_battle_mode_sub_8027E90();
+    if (mode == BATTLE_MODE_SINGLE) {
+        if (LD8(BATTLE_CONFIG_PTR + 4) == 0) {
+            ST8(slot_array_ptr + PANEL_MODE_OFFSET, PANEL_MODE_VALUE_SINGLE);
+        }
+    } else if (sub_8029FB4_retbool()) {
+        u32 flag = 1;
+        if (sub_802A57E_retbool()) {
+            flag = 0;
+        }
+        ST8(slot_array_ptr + PANEL_MODE_OFFSET, PANEL_MODE_VALUE_OTHER);
+        ST8(slot_array_ptr + PANEL_FLAG_OFFSET, (u8)flag);
+    }
+
+    return slot_addr;
+}
+
+Next sub_8027E90(void) {
+    R2 = reset_battle_record(R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_BuildFolderEntryRecords_8027EE8 ── */
 /* battle_BuildFolderEntryRecords_8027EE8(r4 = destination records, r5 = source header struct, r6 = slot limit):
  * Fill battle folder entries into 12-byte records. The record count is the
@@ -716,6 +1131,144 @@ Next battle_clearActiveChipIfMegaGiga_8027F6A(void) {
     if (chipClass == 0xA || chipClass == 0xB)
         ST8(R7 + 1, 0xFF);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8027F84 ── */
+/* Chip ID table indexed by slot category (0..11). */
+static const u8 chip_slot_table[12] = {
+    0x07, 0x06, 0x05, 0x04, 0x02, 0x11,
+    0x10, 0x0F, 0x07, 0x01, 0x00, 0x00,
+};
+
+/* register form: calls getLocOfActiveChips_8027E1C outside this file,
+ * which has no typed C interface yet */
+static u32 loc_of_active_chips(u32 a1) {
+    R0 = a1;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    return R0;
+}
+
+/* register form: calls sub_8028034 outside this file,
+ * which has no typed C interface yet */
+static u32 sub_8028034_caller(u32 a0) {
+    R0 = a0;
+    GUEST_CALL(sub_8028034);
+    return R0;
+}
+
+/* Sets the chip ID at [r7+2] based on the active chip pointer table.
+ * If the chip pointer is 0xA or 0xB, picks from the A-table; otherwise
+ * from the B-table. The "sub r6, #1" path swaps slots 5 or 9 down by one
+ * in the 0xA/0xB branch only when r6 >= 5 and < 0xA. The picked ID is
+ * passed to sub_8028034; if it returns r6 unchanged, the field is
+ * set to 0xFF (clamped/max). Otherwise the looked-up value stays. */
+static void update_chip_slot_id(u32 r6_in, u32 r7) {
+    u32 loc = loc_of_active_chips(LD8(r7 + 2));
+    u32 chip_kind = LD8(loc);
+    u32 new_r6 = r6_in;
+
+    if (chip_kind != 0xA && chip_kind != 0xB)
+        return;
+
+    u32 base;
+    if (chip_kind == 0xA) {
+        /* r6 == 0xA is the out-of-range slot; clamp via A-table. */
+        base = A_off_802A7FC;
+        if (r6_in == 0xA)
+            goto apply;
+        if ((s32)r6_in < 5)
+            goto apply;
+        /* r6 between 5 and 9 (i.e. 5..9): swap r6 with r6-1 using B-table. */
+        base = A_byte_802A804;
+        u32 slot_byte = LD8(r7);
+        if (slot_byte != 9 && slot_byte != 5)
+            goto apply;
+        new_r6 = r6_in - 1;
+    } else {
+        base = A_byte_802A804;
+        u32 slot_byte = LD8(r7);
+        if (slot_byte == 9 || slot_byte == 5)
+            new_r6 = r6_in - 1;
+    }
+
+apply:
+    {
+        u32 offset = chip_slot_table[new_r6];
+        u32 lookup = base + offset;
+        u32 result = sub_8028034_caller(lookup);
+        if (result == new_r6)
+            result = 0xFF;
+        ST8(r7 + 2, result);
+    }
+}
+
+Next sub_8027F84(void) {
+    update_chip_slot_id(R6, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8027FDC ── */
+/* register form: calls getLocOfActiveChips_8027E1C outside this file, which has
+ * no typed C interface yet. Takes an int chip id and returns a void*. */
+static void *get_loc_of_active_chips_sub_8027FDC(u32 chip_id) {
+    R0 = chip_id;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    return (void *)R0;
+}
+
+/* register form: calls sub_8028034 outside this file, which has no typed C
+ * interface yet. Takes an address and returns a u8 in R0. */
+static u8 sub_8028034_helper(u32 addr) {
+    R0 = addr;
+    GUEST_CALL(sub_8028034);
+    return (u8)R0;
+}
+
+/* Per-id index table at 0x08028028 (12 bytes, used as [r6] for r6 in 0..11). */
+static const u8 table_byte_8028028[12] = {
+    0x1, 0x2, 0x3, 0x5, 0x7, 0x1, 0x2, 0x3, 0x4, 0x5, 0x0, 0x0
+};
+
+/* Look up the active-chip byte and decide whether to do the table work.
+ * On the early-return path, r1 is left at 0xFF (matches `mov r1, #0xff`).
+ * On the main path, r1 ends up holding state[0] (matches `ldrb r1, [r7]`).
+ * Returns true if we entered the main path. */
+static bool run_table_lookup(void *active_loc, u32 id, u8 flag, u8 *state,
+                             u8 *out_r1) {
+    u8 loc_byte0 = LD8((u32)active_loc);
+    if (loc_byte0 != 0xA && loc_byte0 != 0xB) {
+        *out_r1 = 0xFF;
+        return false;
+    }
+
+    /* Main path: r1 = state[0]. */
+    *out_r1 = flag;
+
+    u32 base = 0x802A817;
+    u32 bumped_id = id;
+    if (id != 0xA && (s32)id >= 5 && (flag == 8 || flag == 4)) {
+        base = 0x802A81F;
+        bumped_id = id + 1;
+    }
+
+    u8 index  = table_byte_8028028[bumped_id];
+    u8 lookup = sub_8028034_helper(base + index);
+
+    u8 stored = (lookup == (u8)bumped_id) ? 0xFF : lookup;
+    state[3] = stored;
+    return true;
+}
+
+Next sub_8027FDC(void) {
+    u8  *state = (u8 *)R7;
+    u32  id    = R6;
+
+    u8 out_r1;
+    run_table_lookup(get_loc_of_active_chips_sub_8027FDC(state[3]), id, state[0], state,
+                      &out_r1);
+
+    R1 = out_r1;
     RETURN_TO_CALLER();
 }
 
@@ -1232,6 +1785,76 @@ Next beastout_LoadSelectionScreenSpriteSheets_802869E(void) {
     R3 = 3;
     GUEST_CALL(sub_802868C);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80286D4 ── */
+/* register form: calls sub_80287D2 outside this file, which has no typed C interface yet */
+static void call_sub_80287D2(void) {
+    GUEST_CALL(sub_80287D2);
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* register form: calls beastout_LoadSelectionScreenSpriteSheets_802869E outside this file, which has no typed C interface yet */
+static void load_selection_screen_sprite_sheets(void) {
+    GUEST_CALL(beastout_LoadSelectionScreenSpriteSheets_802869E);
+}
+
+/* Queue two DMA tile transfers (map + tileset) selected by a palette index in the
+ * battle state's alliance field, then load the selection-screen sprite sheets. */
+static void do_palette_gfx_and_sheets(u32 state) {
+    call_sub_80287D2();
+    u32 idx = (LD8(state + 8) != 0) ? 4 : 0;
+    u32 gfx_src = LD32(A_off_8028708 + idx);
+    queue_gfx(gfx_src, 0x6009560, 0x540);
+    u32 tileset_src = LD32(A_off_8028714 + idx);
+    queue_gfx(tileset_src, A_unk_3001AA0, 0x20);
+    load_selection_screen_sprite_sheets();
+}
+
+Next sub_80286D4(void) {
+    do_palette_gfx_and_sheets(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80287D2 ── */
+/* register form: calls sub_802868C outside this file, which has no typed C interface yet */
+static void sprite_descriptor_fill(void) {
+    /* Copy 8 bytes of sprite descriptor table (byte_802A6C0) into the
+     * engine's 8-byte sprite descriptor slot at 0x6009360. */
+    R0 = (u32)A_byte_802A6C0;
+    R1 = 0x6009360;
+    R3 = 8;
+    GUEST_CALL(sub_802868C);
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file,
+ * which has no typed C interface yet */
+static void queue_sprite_tile_gfx(void) {
+    /* Queue a 0x20-byte tile row from ROM (byte_86E587C) into VRAM
+     * (unk_3001A80). */
+    R0 = (u32)A_byte_86E587C;
+    R1 = (u32)A_unk_3001A80;
+    R2 = 0x20;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* Queue a sprite tile row into VRAM and prime the sprite descriptor slot. */
+static void load_one_sprite_tile_row(void) {
+    sprite_descriptor_fill();
+    queue_sprite_tile_gfx();
+}
+
+/* sub_80287D2(r2, r4, r5, r6, r7, lr) -> r4 r5 r6 r7 (preserved) */
+Next sub_80287D2(void) {
+    load_one_sprite_tile_row();
     RETURN_TO_CALLER();
 }
 

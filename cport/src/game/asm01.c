@@ -46,6 +46,108 @@ Next sub_801FE5E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801FE6C ── */
+/* Register-form helpers: each calls a game function outside this file which has no typed C
+ * interface yet. They put arguments in R0.., call the function, and return the result. */
+
+static bool test_event_flag(u16 flag) {
+    /* Register form: calls TestEventFlagFromImmediate outside this file, which has no typed C
+     * interface yet. The original loads r0 = 0x17 (section) then r1 = flag as the flag id. */
+    R0 = 0x17;
+    R1 = flag;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* Z set => flag is clear */
+}
+
+static bool battle_effects_has_8(void) {
+    /* Register form: calls GetBattleEffects outside this file, which has no typed C interface
+     * yet. Mirrors `GetBattleEffects; mov r1, #8; tst r0, r1`. */
+    GUEST_CALL(GetBattleEffects);
+    R1 = 8;
+    return ((R0 & R1) != 0);
+}
+
+static u32 sub_8144D04_call(u32 arg) {
+    /* Register form: calls sub_8144D04 outside this file, which has no typed C interface yet. */
+    R0 = arg;
+    GUEST_CALL(sub_8144D04);
+    return R0;
+}
+
+static u8 sub_803DEB4_call(void) {
+    /* Register form: calls sub_803DEB4 outside this file, which has no typed C interface yet.
+     * Returns the chosen step byte (the original stores r0 as a byte). */
+    GUEST_CALL(sub_803DEB4);
+    return (u8)R0;
+}
+
+static void copy_words(u32 src, u32 dst, u32 size) {
+    /* Register form: calls CopyWords outside this file, which has no typed C interface yet. */
+    R0 = src;
+    R1 = dst;
+    R2 = size;
+    GUEST_CALL(CopyWords);
+}
+
+/* Reads/writes the small struct at eStruct203F7D8 used by this routine. */
+static u8  e_state_byte0(void)      { return LD8(A_eStruct203F7D8); }
+static u8  e_state_byte1(void)      { return LD8(A_eStruct203F7D8 + 1); }
+static void e_state_set_byte1(u8 v) { ST8(A_eStruct203F7D8 + 1, v); }
+
+enum {
+    E_STEP_DEFAULT = 2,            /* not busy; nothing decided yet */
+    E_STEP_BUSY    = 4,            /* a transition step is in flight */
+};
+
+/* One step of the bus/deck transition driver. Saves the previous step byte, force-sets the
+ * state to E_STEP_DEFAULT, then either kicks off a transition or copies fresh defaults
+ * depending on the current day-1 flag and the current battle-effects mask. */
+static void do_step(u8 prev_step) {
+    e_state_set_byte1(E_STEP_DEFAULT);
+
+    if (e_state_byte0() == 0) {
+        /* First-time init: copy the two default 0x10-byte blobs into the per-step buffers. */
+        copy_words(A_eStruct2036780, A_eCollisionDataEnd, 0x10);
+        copy_words(A_eStruct2036780, A_unk_2039A00, 0x10);
+        return;
+    }
+
+    if (!test_event_flag(0x172D)) {
+        /* Event 0x172D not set: pick a new step based on whether bit 0x8 of the current
+         * battle-effects word is clear. When clear, run sub_803DEB4 to choose the step;
+         * when set, restore whatever was saved (the original redundantly reloads the byte). */
+        if (battle_effects_has_8()) {
+            e_state_set_byte1(prev_step);
+            (void)e_state_byte1();                   /* mirrored load after the store */
+        } else {
+            e_state_set_byte1(sub_803DEB4_call());
+        }
+        return;
+    }
+
+    /* Event 0x172D set path. Restore the previous step first, then check the new value. */
+    e_state_set_byte1(prev_step);
+    if (e_state_byte1() != E_STEP_DEFAULT)
+        return;
+
+    /* Bit 0x8 of the current battle-effects word must be set to enter the questioning
+     * sequence below. */
+    if (!battle_effects_has_8())
+        return;
+
+    /* Two-step handshake with sub_8144D04: ask with arg 0, then with arg 3. If both
+     * answer "1" we leave the step alone; otherwise commit step 4 (E_STEP_BUSY). */
+    if (sub_8144D04_call(0) == 1 && sub_8144D04_call(3) == 1)
+        return;
+    e_state_set_byte1(E_STEP_BUSY);
+}
+
+Next sub_801FE6C(void) {
+    u8 prev_step = e_state_byte1();
+    do_step(prev_step);
+    RETURN_TO_CALLER();
+}
+
 /* ── eStruct203F7D8_getUnk01 ── */
 /* eStruct203F7D8_getUnk01: return the byte at eStruct203F7D8+1. */
 Next eStruct203F7D8_getUnk01(void) {
@@ -90,6 +192,22 @@ Next eStruct200BC30_dispatchStateHandler_801FEEE(void) {
     R5 = saved_r5;
     R6 = saved_r6;
     R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80200A4 ── */
+/* Set the "value" byte of eStruct203F7D8 and OR the "flags" byte with 1.
+ * Returns 1 in r1, leaves r3 pointing at eStruct203F7D8. */
+static void set_struct_byte_and_flag(u8 value) {
+    u32 base = A_eStruct203F7D8;
+    ST8(base + 3, value);
+    ST8(base + 2, LD8(base + 2) | 1);
+}
+
+Next sub_80200A4(void) {
+    set_struct_byte_and_flag((u8)R0);
+    R1 = 1;
+    R3 = A_eStruct203F7D8;
     RETURN_TO_CALLER();
 }
 
