@@ -1,0 +1,78 @@
+name: sub_8016D08
+address: '0x08016D08'
+kind: function
+status: confirmed
+summary: 'Advances a single battle object one step through its panel-movement phase: promotes the future panel,
+  dispatches the actor''s turn, resolves collisions, then queues the next panel displacement or resets the object
+  to idle.'
+interface: battleAdvanceObjectPhase_8016D08(r5 = BattleObject *obj) -> r0 = 4|8 (sub-phase state), r1/r2 = callee
+  residue, nz from r0
+details: 'Called with r5 pointing to a BattleObject. Sets MOVE_FLAG_BIT (1<<20) via object_setFlag1 to mark the
+  object as in-motion, then calls battle_dispatchActorTurnByTypeAndAIIdx_800F404 to give the actor its turn. Clears
+  RelatedObject1Ptr, promotes FuturePanelXY into PanelXY, then calls object_setCoordinatesFromPanels and object_updateCollisionPanels
+  to sync pixel position and collision tiles. Clears the 0x1000 "phase-complete" flag and calls battle_resetCollisionState_800101C4.
+  Releases the panel currently occupied by the object via object_removePanelReserve. Queries sub_800E45E which returns
+  a signed dx (r0), signed dy (r1), and a phaseInitialized byte (r2); all three are stored into oBattleObject_Unk_1c,
+  oBattleObject_Unk_1d, and oBattleObject_PhaseInitialized. If phaseInitialized != 0 the object has a pending step:
+  XVelocity is set to 0xA0000 * dx and YVelocity to 0x60000 * dy (fixed-point per-panel movement speeds), FuturePanelX/Y
+  are updated to current PanelX/Y + dx/dy, the new destination panel is reserved via object_reservePanel, and Unk_0d
+  is set to 4 ("stepping" sub-state); r0 returns 4. If phaseInitialized == 0 the movement sequence is finished:
+  CurPhase is set to 0x18 (idle), Unk_0d is set to 8 ("done" sub-state), and r0 returns 8. The nz flag is set from
+  r0 by the caller adapter. Constants at 0x8016D80–0x8016D88 supply the flag values and velocity scalars. r6/r7
+  are preserved across the call; all other registers are clobbered or read-back by the contract.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-011541);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 64' --file inbox_farm_64.c sub_8016D08
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8016D08
+
+    ./wf verify --function sub_8016D08 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-011541-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8016D08
+
+    ./wf verify --function sub_8016D08 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 1 out of domain (verify run convert-20261011-011541-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8016D08
+
+    ./wf verify --function sub_8016D08 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011541-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, story2, story4, story9.'
+  reproduce: grep -l '^08016d08 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 6544998
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- story2
+- story4
+- story9
+open_questions:
+- What exactly does sub_800E45E compute? Its return triple (dx, dy, phaseInitialized) drives the next step but its
+  internals are unknown.
+- Is oBattleObject_Unk_0d a sub-state enum (4=stepping, 8=idle) or a bitmask?
+- Does CurPhase 0x18 correspond to a named idle/waiting phase in the object's phase table?
+- Is this invoked once per frame for every active battle object, or only when an object is mid-movement?
+sources:
+- tools/wf run convert-20261011-011541
+- recomp 6544998
