@@ -1596,7 +1596,7 @@ typedef struct {
  * (The array size constant is the literal 0xD80 from off_809F6A8; no named
  * macro for it exists in this port's headers.) */
 static Sub809F68C_Result clear_npc_busy_flags(void) {
-    u32 cursor = A_eOverworldNPCObject0_Flags;
+    u32 cursor = A_eOverworldNPCObjects;
     u32 end = cursor + 0xD80;
 
     do {

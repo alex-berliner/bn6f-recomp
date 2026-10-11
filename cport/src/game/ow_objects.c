@@ -350,7 +350,7 @@ Next createOWObjectInteractionArea_80037ac(void) {
     }
 
     /* Entry slot = array base + index * entry size. */
-    u32 entry = A_eOWObjectInteractionArea_0_X
+    u32 entry = A_eOWObjectInteractionAreas
               + count * oOWObjectInteractionArea_Size;
     ST32(entry + AREA_XY_PACKED, R1);
     ST32(entry + AREA_Z_KIND, R2);

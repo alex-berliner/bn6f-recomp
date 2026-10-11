@@ -123,10 +123,10 @@ Next spriteLoadMugshot_800275A(void) {
 }
 
 /* ── sub_80027B4 ── */
-/* sub_80027B4: set the flag at dword_200F350 (A_eS200F348_Size) to 1.
+/* sub_80027B4: set the flag at dword_200F350 (A_dword_200F350) to 1.
  * Probably marks some sprite/resource table as loaded/available. */
 Next sub_80027B4(void) {
-    ST32(A_eS200F348_Size, 1);
+    ST32(A_dword_200F350, 1);
     RETURN_TO_CALLER();
 }
 
@@ -135,7 +135,7 @@ Next sub_80027B4(void) {
  * Sets the entry size to 4, the entry count to 10, and the halfword
  * transfer length to 0x2FF for the upcoming palette DMA copy. */
 Next palette_InitTransferState_80027D4(void) {
-    u32 state = A_ePalette20097a0_21_Size;  /* = byte_20098A8 */
+    u32 state = A_byte_20098A8;  /* = byte_20098A8 */
 
     ST8(state + 1, 4);        /* byte_20098A9 = 4  */
     ST8(state, 0xA);          /* byte_20098A8 = 10 */

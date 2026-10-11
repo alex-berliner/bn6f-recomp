@@ -436,7 +436,7 @@ Next battle_initSlotsOrderPhaseB_80133EC(void) {
  * and fill it with the default stats.
  * Returns r2 = eBattleNaviStats0 (base of the stats array). */
 Next battle_InitNaviStatsByIndex_8013422(void) {
-    u32 statsBase = A_eBattleNaviStats;
+    u32 statsBase = A_eBattleNaviStats0;
 
     R2 = statsBase;
     R0 = statsBase + R0 * 100; /* &eBattleNaviStats0[index * 0x64] */
@@ -511,9 +511,9 @@ Next initNaviStats_WithDefaultStatsMaybe_8013438(void) {
 Next GetBattleNaviStatsAddr(void) {
     u32 offset = R0 * oNaviStats_Size;
 
-    R1 = A_eBattleNaviStats;
-    SET_FLAGS_ADD(offset, A_eBattleNaviStats);
-    R0 = offset + A_eBattleNaviStats;
+    R1 = A_eBattleNaviStats0;
+    SET_FLAGS_ADD(offset, A_eBattleNaviStats0);
+    R0 = offset + A_eBattleNaviStats0;
 
     RETURN_TO_CALLER();
 }

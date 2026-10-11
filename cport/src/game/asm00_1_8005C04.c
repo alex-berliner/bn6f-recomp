@@ -908,10 +908,10 @@ static void randomize_extra_toolkit_pointers(u32 return_address, u32 toolkit_poi
 
     ST32(A_eUnusedExtraToolkitPtrsOffset, new_offset);
 
-    copy_words_RandomizeExtraToolkitPointers(A_eGameState + old_offset, A_eGameState + new_offset, TOOLKIT_EXTRA_MEM_SIZE);
+    copy_words_RandomizeExtraToolkitPointers(A_eToolkitExtraPtrsMemory + old_offset, A_eToolkitExtraPtrsMemory + new_offset, TOOLKIT_EXTRA_MEM_SIZE);
 
     u32 ptr_table  = toolkit_pointers + TOOLKIT_POINTERS_SIZE_RandomizeExtraToolkitPointers;
-    u32 block_base = A_eGameState + new_offset;
+    u32 block_base = A_eToolkitExtraPtrsMemory + new_offset;
 
     u32 index = 0;
     while (index < EXTRA_PTR_LOOP_BOUND) {
@@ -978,7 +978,7 @@ static void set_extra_toolkit_pointers(u32 toolkit, u32 index, u32 base,
 static u32 derive_base(void) {
     u32 r3 = LD32(A_eUnusedExtraToolkitPtrsOffset);
     /* Original: r4 = 0; r3 &= r4 -> r3 = 0. */
-    return A_eGameState + (r3 & 0);
+    return A_eToolkitExtraPtrsMemory + (r3 & 0);
 }
 
 Next SetExtraToolkitPointers(void) {
@@ -2162,7 +2162,7 @@ static void setup_battle_entry(u32 battle_state) {
     call_sub_800C8F0();
     call_clear_object_lists();
     call_panel_update();
-    call_init_sprite_state(A_eLogoScreenState_Index_00);
+    call_init_sprite_state(A_eLogoScreenState);
 
     /* Skip sprite decomp when bit 3 of the battle-effects word is set */
     u32 effects = call_get_battle_effects();

@@ -1489,7 +1489,7 @@ Next textWindow_openDialog_802C5B0(void) {
     /* renderTextGfx_8045F8C(script = TextScript8736D74, 5, tiles = unk_2035320,
      * vram = 0x600BA80, 10, 1, palette = dword_86B7AE0, 8):
      * blit the window's text graphics. */
-    R0 = A_text_8736D74;
+    R0 = A_TextScript8736D74;
     R1 = 5;
     R2 = A_unk_2035320;
     R3 = 0x600BA80;
@@ -2407,7 +2407,7 @@ Next battle_initWorkArea_802DFFC(void) {
     GUEST_CALL(ZeroFillByWord);
 
     /* battle state's object-table pointer field = battle object 0 */
-    R0 = A_eT1BattleObject0_Flags;
+    R0 = A_eT1BattleObject0;
     ST32(A_unk_20362F0 + 0x44, R0); /* dword_2036334 */
 
     GUEST_CALL(zeroFill_802E544);

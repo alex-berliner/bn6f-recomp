@@ -28,7 +28,7 @@ enum {  /* bn6f include/structs/MapTilesState200be70.inc, not in the shared head
 enum {  /* bn6f include/structs/Camera.inc */
     CAMERA_X = 0x04, CAMERA_Y = 0x06,              /* Unk_04/06: position in pixels */
 };
-#define MAP_TILES_STATE A_eMapTilesState200be70_MapWidth  /* eMapTilesState200be70 */
+#define MAP_TILES_STATE A_eMapTilesState200be70  /* eMapTilesState200be70 */
 #define WINDOW_TILES    32  /* the BG tile-id blocks are 32x32 */
 #define REDRAW_DISTANCE 5   /* the camera jumped this many tiles: redraw everything */
 

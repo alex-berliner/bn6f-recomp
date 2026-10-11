@@ -622,7 +622,7 @@ Next owPlayer_setJumptableIndex09AndOthers_809e004(void) {
  * r1 = 1 and r2 = one-past-end of the NPC array on every exit. */
 Next ow_findInteractableNPC_809E01C(void) {
     u32 player = R5;
-    u32 npc = A_eOverworldNPCObject0_Flags; /* == eOverworldNPCObjects */
+    u32 npc = A_eOverworldNPCObjects; /* == eOverworldNPCObjects */
     u32 arrayEnd = npc + 0xD80; /* dword_809E048: byte size of the NPC array */
 
     SET_FLAGS_ADD(0xD80, npc); /* add r2, r2, r7 */

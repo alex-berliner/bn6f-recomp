@@ -107,7 +107,7 @@ static void do_step(u8 prev_step) {
 
     if (e_state_byte0() == 0) {
         /* First-time init: copy the two default 0x10-byte blobs into the per-step buffers. */
-        copy_words(A_eStruct2036780, A_eCollisionDataEnd, 0x10);
+        copy_words(A_eStruct2036780, A_unk_20399F0, 0x10);
         copy_words(A_eStruct2036780, A_unk_2039A00, 0x10);
         return;
     }
@@ -215,7 +215,7 @@ Next sub_80200A4(void) {
 /* eStruct2038160_clearStruct: zero out the 4-byte battle object struct
  * at eStruct2038160 (r2, r3 are preserved across the call). */
 Next eStruct2038160_clearStruct(void) {
-    R0 = A_eT4BattleObjectsEnd; /* =eStruct2038160 */
+    R0 = A_eStruct2038160; /* =eStruct2038160 */
     R1 = sizeof(u32);
     GUEST_CALL(ZeroFillByWord);
     RETURN_TO_CALLER();

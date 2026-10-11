@@ -765,12 +765,12 @@ Next MapScriptCutsceneCmd_do_pet_effect(void) {
 static void run_secondary_continuous_map_script_body(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7, saved_r12 = R12;
 
-    R5 = A_eMapScriptState_Unk_00;
+    R5 = A_eMapScriptState;
     R0 = LD32(R5 + oMapScriptState_SecondaryContinuousMapScriptPtr);
 
     if (R0 != 0) {
         R4 = saved_r12;                     /* mov r4, r12 — handler sees saved r12 */
-        R12 = A_map_script_cutscene;        /* ldr r6/jumptable; mov r12, r6 */
+        R12 = A_MapScriptCommandJumptable;        /* ldr r6/jumptable; mov r12, r6 */
         R7 = R0;                            /* mov r7, r0 — script cursor */
 
         for (;;) {
@@ -1080,12 +1080,12 @@ Next TryCutsceneSkip(void) {
 /* SetCutsceneCameraScript(r0 = script pointer):
  * Points the cutscene camera at a new script and clears its command timer
  * (offsets 0 and 4 of eCutsceneCameraInfo, the struct at 0x2011BD0 that the
- * literal pool references via A_eWarp2011bb0End), so the script starts fresh.
+ * literal pool references via A_eCutsceneCameraInfo), so the script starts fresh.
  * Then calls camera_writeUnk03_14_80301b2(0) to reset the camera's pending
  * write state; the final r1/r2 values are whatever that callee leaves. */
 Next SetCutsceneCameraScript(void) {
     /* ldr r1, =eCutsceneCameraInfo */
-    u32 cameraInfo = A_eWarp2011bb0End;
+    u32 cameraInfo = A_eCutsceneCameraInfo;
 
     /* str r0, [r1, #oCutsceneCameraInfo_CutsceneCameraScriptPtr] */
     ST32(cameraInfo + 0, R0);
@@ -2335,7 +2335,7 @@ static SpawnRelativeResult spawn_map_object_relative_to_npc(
                   + (slot_sel & 0xF) * 4;
 
     u32 npc_index = read_script_byte(2, slot_addr, script_cursor);
-    u32 npc = A_eOverworldNPCObject0_Flags + npc_index * oOverworldNPCObject_Size;
+    u32 npc = A_eOverworldNPCObjects + npc_index * oOverworldNPCObject_Size;
     u32 npc_x = LD32(npc + oOverworldNPCObject_X);
     u32 npc_y = LD32(npc + oOverworldNPCObject_Y);
     u32 npc_z = LD32(npc + oOverworldNPCObject_Z);

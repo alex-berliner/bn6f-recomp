@@ -548,7 +548,7 @@ Next updateMapNameDisplay_811F014(void) {
     ST32(sceneState + 8, R0);
 
     /* Render the map name text (script 0xF1, palette 7, one line) into VRAM. */
-    R0 = A_text_86CB360;      /* TextScriptMapNames */
+    R0 = A_TextScriptMapNames;      /* TextScriptMapNames */
     R1 = 0xF1;
     R2 = A_unk_200C0E0;
     R3 = 0;
@@ -589,7 +589,7 @@ Next drawMapNamesScreen_811F050(void) {
 
     /* Render text script #0xF2 (map names) into the unk_200C2A0 buffer:
      * 6 rows starting at row 0, using the font data at dword_86A5D60. */
-    R0 = A_text_86CB360;    /* TextScriptMapNames */
+    R0 = A_TextScriptMapNames;    /* TextScriptMapNames */
     R1 = 0xF2;
     R2 = A_unk_200C2A0;
     R3 = 0;
@@ -636,7 +636,7 @@ Next drawCurrentMapName_811F08C(void) {
     /* renderTextGfx_8045F8C(stringTable, stringIndex, workBuffer,
      *                        0, 12, 1, fontTable, 0):
      * render the map name text into the work buffer. */
-    R0 = A_text_86CB360;       /* TextScriptMapNames string table */
+    R0 = A_TextScriptMapNames;       /* TextScriptMapNames string table */
     R1 = mapNameString;
     R2 = A_byte_200C620;       /* rendered-text work buffer */
     R3 = 0;

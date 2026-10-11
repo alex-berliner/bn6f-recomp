@@ -1806,7 +1806,7 @@ Next SetBGScrollCallbacks(void) {
     SET_FLAGS_NZ(R0); /* tst r0, r0 */
 
     if (R0 != 0) {
-        u32 callbacks = A_eBGScrollCallbacks_Callback0;
+        u32 callbacks = A_eBGScrollCallbacks;
 
         ST32(callbacks, R0);      /* oBGScrollCallbacks_Callback0     */
         ST32(callbacks + 8, R1);  /* oBGScrollCallbacks_Callback1     */
@@ -1837,7 +1837,7 @@ Next SetBGScrollCallbacks(void) {
  * Outputs: r1 = HBlank dummy handler, r2 = callback table (as left by the
  * interrupt dispatcher), lr = return link of the SetInterruptCallback call. */
 Next SetDummyBGScrollCallbacks(void) {
-    u32 callbacks = A_eBGScrollCallbacks_Callback0;
+    u32 callbacks = A_eBGScrollCallbacks;
     u32 bgDummy = A_nullsub_39 | 1;      /* Thumb entry addresses, hence |1 */
     u32 hblankDummy = A_nullsub_38 | 1;
 
@@ -1953,7 +1953,7 @@ Next nullsub_39(void) {
 /* zeroFill_e20094C0: clear the eGFXAnimStates block (0x1B0 bytes) to zero.
  * Inputs/outputs r2/r3 pass through untouched. */
 Next zeroFill_e20094C0(void) {
-    R0 = A_eGFXAnimState0;
+    R0 = A_eGFXAnimStates;
     R1 = 0x1B0;
     GUEST_CALL(ZeroFillByWord);
     RETURN_TO_CALLER();
@@ -1970,7 +1970,7 @@ Next TerminateGFXAnim(void) {
     u32 animIndex = R0;
 
     /* state entry for this animation = eGFXAnimStates[index] */
-    u32 state = A_eGFXAnimState0 + animIndex * oGFXAnimState_Size;
+    u32 state = A_eGFXAnimStates + animIndex * oGFXAnimState_Size;
     ST8(state, 0); /* clear the state byte: animation no longer running */
 
     R0 = animIndex;
@@ -1985,7 +1985,7 @@ Next TerminateGFXAnim(void) {
  * Z/N flags from it, so callers can branch on "animation active".
  * r4-r7 are preserved untouched; r0-r1 are scratch. */
 Next IsGFXAnimActive(void) {
-    u32 state = LD8(A_eGFXAnimState0 + oGFXAnimState_Size * R0);
+    u32 state = LD8(A_eGFXAnimStates + oGFXAnimState_Size * R0);
     SET_FLAGS_NZ(state);
     RETURN_TO_CALLER();
 }
@@ -2097,7 +2097,7 @@ Next LoadGFXAnims(void) {
  * with zeroes (one word at a time, via ZeroFillByWord).
  * Flags on return are whatever ZeroFillByWord leaves. */
 Next zeroFill_e20097A0(void) {
-    R0 = A_ePalette20097a0_0_Unk_00;
+    R0 = A_ePalette20097a0;
     R1 = 0x108;
     GUEST_CALL(ZeroFillByWord);
     RETURN_TO_CALLER();
@@ -2118,7 +2118,7 @@ enum { PAL20097A0_00 = 0, PAL20097A0_01 = 1, PAL20097A0_02 = 2, PAL20097A0_04 = 
  * filled and 0 otherwise, and that same value is returned in r3.
  * r5-r7 are preserved. */
 Next sub_8002378(void) {
-    u32 base = A_ePalette20097a0_0_Unk_00;
+    u32 base = A_ePalette20097a0;
     u32 offset = R3 * oPalette20097a0_Size;
     u32 filled = 0;
 
@@ -2151,7 +2151,7 @@ Next sub_8002378(void) {
  * Leaves r0 = 0, r1 = entry size, r2 = address of the cleared byte;
  * nz reflects the stored zero, c/v come from the address computation (ADDS). */
 Next Terminate_ePalette20097a0_Transform(void) {
-    u32 base = A_ePalette20097a0_0_Unk_00;
+    u32 base = A_ePalette20097a0;
     u32 offset = R0 * oPalette20097a0_Size;
 
     u32 entry = base + offset;
@@ -2171,7 +2171,7 @@ Next Terminate_ePalette20097a0_Transform(void) {
  * (0xD8 bytes, cleared word by word).
  * r0/r1 are scratch; r2/r3 and LR are untouched. */
 Next palette_clearEPalette20097a0_80023A8(void) {
-    R0 = A_ePalette20097a0_0_Unk_00;
+    R0 = A_ePalette20097a0;
     R1 = 0xD8;
     GUEST_CALL(ZeroFillByWord);
     RETURN_TO_CALLER();

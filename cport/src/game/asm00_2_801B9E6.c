@@ -403,7 +403,7 @@ static void reset_battle_buffers(void) {
     ST16(A_eStruct2035280 + 0x26, (u16)0 - 1);   /* 0xFFFF */
 
     /* Zero the 0x30-byte and 0x50-byte sibling buffers. */
-    zero_fill_by_word_sub_801BE70(A_eStruct2035280_Size, 0x30);
+    zero_fill_by_word_sub_801BE70(A_dword_20352E0, 0x30);
     zero_fill_by_word_sub_801BE70(A_byte_203EB50, 0x50);
 
     /* Clear the two dword slots. */
@@ -1261,7 +1261,7 @@ Next battle_sceneFrameSetup_801DA24(void) {
     ST16(renderInfo + oRenderInfo_Unk_0a, 0x1F09);
 
     /* dataList (off_801ECB4) */
-    R0 = A_dat00;
+    R0 = A_off_801ECB4;
     GUEST_CALL(QueueGFXTransfersInList);
 
     GUEST_CALL(battle_preUpdateAndGetPlayerObject_80103EC);
@@ -1329,7 +1329,7 @@ Next sub_801DB78(void) {
  *   +1  stored x position
  *   +2  stored y position
  *   +4  pointer to the battle object being tracked                    */
-#define POS_TABLE  A_eStruct2035280_Size
+#define POS_TABLE  A_dword_20352E0
 
 /* battleRefreshTrackedObjectArmPos_801DBD4(r5 = battle object):
  * Find the table slot that tracks this battle object and refresh its
@@ -1381,7 +1381,7 @@ Next sub_801DC06(void) {
     u32 value = R0;   /* byte written to slot+1 on a hit */
     u32 amount = R1;  /* slot+2 receives amount - 8 */
     u32 id = R5;      /* id being looked up */
-    u32 slot = A_eStruct2035280_Size;
+    u32 slot = A_dword_20352E0;
     u32 remaining = 6;
 
     for (;;) {
@@ -1422,7 +1422,7 @@ Next sub_801DC06(void) {
  * last comparison executed: the value comparison on a match, the final
  * "subs r3, #1" (1 - 1) when the table is exhausted. */
 Next releaseSlotByValue_801DC36(void) {
-    u32 slot = A_eStruct2035280_Size; /* == dword_20352E0, start of the slot table */
+    u32 slot = A_dword_20352E0; /* == dword_20352E0, start of the slot table */
     u32 slotsLeft = 6;
 
     while (1) {

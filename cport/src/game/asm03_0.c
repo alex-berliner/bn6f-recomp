@@ -24,7 +24,7 @@ Next sub_80269D0(void) {
 
 /* ── sub_80269E2 ── */
 /* eS20364C0 RAM pointer (r5 in the original). */
-#define eS20364C0_PTR A_eS20364C0_JumpOffset00
+#define eS20364C0_PTR A_eS20364C0
 
 /* Replicates sub_80269E2:
  *   - r0 starts at 0.
@@ -221,7 +221,7 @@ typedef struct CustMenuStepResult {
  * current state, then the shared per-frame update. r0 comes back 0 (the
  * original's `movs r0,#0`, which sets Z set / N clear and leaves C/V alone). */
 static CustMenuStepResult cust_menu_main_step(u32 caller_r5) {
-    u32 self = A_eS20364C0_JumpOffset00;                /* fixed work area 0x020364C0 */
+    u32 self = A_eS20364C0;                /* fixed work area 0x020364C0 */
     u32 state_offset = LD8(self + oS20364C0_JumpOffset01);
 
     run_state_handler(state_offset, self);
@@ -1307,7 +1307,7 @@ Next gfx_queueIndexedRecordTiles_802812C(void) {
  * Returns the address in r0. */
 Next getIndexed80hRecordPtr_8028164(void) {
     u8 entry = LD8(A_byte_802819C + R0);
-    R0 = A_dat38_86 + entry * 0x80;
+    R0 = A_byte_86F5834 + entry * 0x80;
     RETURN_TO_CALLER();
 }
 

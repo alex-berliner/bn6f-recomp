@@ -81,7 +81,7 @@ enum {  /* event flags checked as chip id + base (which is which is a guess) */
 
 #define ROW_BYTES 0x400  /* each screen row owns this much of every buffer and map */
 
-#define NAME_SCRIPT  A_text_873D9FC       /* the fixed name script (kind 1) */
+#define NAME_SCRIPT  A_TextScript873D9FC       /* the fixed name script (kind 1) */
 #define CODE_SCRIPT  A_TextScript86EF71C  /* the code letters */
 #define NAME_BANKS   A_off_80476E4        /* {TextScriptChipNames0, TextScriptChipNames1} */
 #define DECOMP_NAMES A_eDecompBuffer2013A00

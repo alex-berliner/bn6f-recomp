@@ -57,7 +57,7 @@ Next reqBBS_initMemory_813F9DA(void) {
 /* Clear three single-byte flags at offsets 0xD, 0xE, 0xF in the eReqBBSGui state struct. */
 static void clear_reqbbs_flags(void) {
     u8 zero = 0;
-    u32 gui = A_eReqBBSGui_SubsystemJumpTableOffset;
+    u32 gui = A_eReqBBSGui;
     ST8(gui + 0xD, zero);
     ST8(gui + 0xE, zero);
     ST8(gui + 0xF, zero);

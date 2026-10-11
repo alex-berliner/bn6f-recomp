@@ -13,7 +13,7 @@
  * Returns the address of one 44-byte ChipData entry; the flags left behind are
  * those of the address addition (callers may branch on c/v). */
 Next getChip8021DA8(void) {
-    R1 = A_ChipDataArr;
+    R1 = A_ChipDataArr_8021DA8;
     R2 = 44;                 /* sizeof(ChipData) */
     R0 = R0 * R2;            /* byte offset of the chip's entry */
     SET_FLAGS_ADD(R0, R1);   /* ADDS r0, r0, r1 */

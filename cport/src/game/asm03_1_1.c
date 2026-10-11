@@ -873,7 +873,7 @@ Next sub_803D0F4(void) {
  * r4-r7 are saved around the calls (the original's push/pop), so the
  * caller's copies survive whatever the handlers do to them. */
 Next logoScreen_dispatch_803D1CA(void) {
-    u32 state = A_eLogoScreenState_Index_00;
+    u32 state = A_eLogoScreenState;
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
 
     u32 index = LD8(state);                     /* oLogoScreenState_Index_00 */
@@ -1191,7 +1191,7 @@ static void zero_fill_by_byte(void *dst, u32 num_bytes) {
  *                          to 0x10/0x12/0x14/0x16 as 0xFFFF).
  *   r2 -> .unk_53 (u8), r3 -> .unk_52 (u8). */
 static void camera_init(u32 ptr, u32 layout_ix, u32 r2, u32 r3) {
-    u32 cam = A_eCameraEnd;
+    u32 cam = A_eLinkState;
 
     ST32(cam + oCamera_unk_70, ptr);
     ST32(cam + oCamera_unk_74, ptr);
@@ -1250,7 +1250,7 @@ Next link_getModeSelector_803DD30(void) {
         R0 = 1;
     } else {
         /* default: dword_2009A18 (eLinkState field 0x48), masked to 2 bits */
-        R0 = LD32(A_eCameraEnd + 0x48) & 3;
+        R0 = LD32(A_eLinkState + 0x48) & 3;
     }
 
     SET_FLAGS_NZ(R0);
@@ -1294,7 +1294,7 @@ Next sub_803DE72(void) {
 Next eLinkState_ResetForNewUse_803DE88(void) {
     u32 statePtr = R0;
 
-    R0 = A_eCameraEnd;
+    R0 = A_eLinkState;
     R1 = 0x58;
     GUEST_CALL(ZeroFillByHalfword);
 
@@ -1306,7 +1306,7 @@ Next eLinkState_ResetForNewUse_803DE88(void) {
     R1 = 0x40;
     GUEST_CALL(ZeroFillByHalfword);
 
-    ST32(A_eCameraEnd + 0x58, statePtr);
+    ST32(A_eLinkState + 0x58, statePtr);
 
     RETURN_TO_CALLER();
 }
@@ -1425,7 +1425,7 @@ Next runPendingWorkIfFlagged_803EA1C(void) {
  * otherwise r0 = 0. Flags (nzcv) left as the CMP leaves them. */
 Next net_isLinkConnected_803EA2C(void) {
     R0 = 0;
-    R1 = LD8(A_eCameraEnd); /* literal pool points at eLinkState */
+    R1 = LD8(A_eLinkState); /* literal pool points at eLinkState */
     SET_FLAGS_CMP(R1, 0xC);
     if (R1 == 0xC)
         R0 = 1;
@@ -1491,7 +1491,7 @@ Next sub_803EF60(void) {
 /* ── sub_803EF7C ── */
 /* sub_803EF7C: return eCamera.unk_84 (the camera's end value). */
 Next sub_803EF7C(void) {
-    R0 = LD32(A_eCameraEnd + 0x34);
+    R0 = LD32(A_eLinkState + 0x34);
     RETURN_TO_CALLER();
 }
 
@@ -1499,9 +1499,9 @@ Next sub_803EF7C(void) {
 /* sub_803EF84(r0 = value):
  * Store r0 into the link-state camera field at eLinkState+0x34, which the
  * disassembly also refers to as eCamera.unk_84 (the eLinkState symbol sits at
- * the same address as A_eCameraEnd, hence the alias in the original literal). */
+ * the same address as A_eLinkState, hence the alias in the original literal). */
 Next sub_803EF84(void) {
-    ST32(A_eCameraEnd + 0x34, R0);
+    ST32(A_eLinkState + 0x34, R0);
     RETURN_TO_CALLER();
 }
 
@@ -1821,7 +1821,7 @@ Next s2001c04_ComputeChecksumOfEwramRegion_803F894(void) {
 
     u32 sum = 0;
     for (s32 i = 0x670F; i >= 0; i--)
-        sum += LD8(A_ewram_2000000 + i);
+        sum += LD8(A_timer_2000000 + i);
 
     sum += 0x18;
     ST32(work + 0x68, sum);
@@ -1857,7 +1857,7 @@ Next verifyEwramWorkAreaChecksum_803F8C4(void) {
     /* Sum every byte of the work area, plus the fixed 0x18 bias. */
     u32 sum = 0x18;
     for (s32 i = 0x670F; i >= 0; i--)
-        sum += LD8(A_ewram_2000000 + i);
+        sum += LD8(A_timer_2000000 + i);
 
     R0 = (sum == storedChecksum) ? 0 : 1;
     SET_FLAGS_NZ(R0);

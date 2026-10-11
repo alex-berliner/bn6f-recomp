@@ -830,7 +830,7 @@ static CameraSavedRegisters camera_init(u32 x, u32 y, u32 z, u32 map_group, u32 
 
     /* Movement limits from the map dimensions, in 1/4-tile fixed point (<< 18):
      * Unk_1c/Unk_20 hold the maxima, Unk_18/Unk_24 the negated minima. */
-    u32 map_tiles = A_eMapTilesState200be70_MapWidth;
+    u32 map_tiles = A_eMapTilesState200be70;
     u32 x_limit = (LD8(map_tiles + oMapTilesState200be70_MapWidth) - 0x1E) << 18;
     ST32(camera + oCamera_Unk_1c, x_limit);
     ST32(camera + oCamera_Unk_18, 0 - x_limit);
@@ -1206,7 +1206,7 @@ Next render_ClearScrollOffsets_8030336(void) {
  * height, the palette and tileset pointers, and the address of the buffer the
  * tilemap will be decompressed into. */
 static void init_map_tiles_state(u32 map_group, u32 map_number) {
-    u32 state = A_eMapTilesState200be70_MapWidth;
+    u32 state = A_eMapTilesState200be70;
     u32 descriptor_table;
     u32 callback_table;
 
@@ -1255,8 +1255,8 @@ Next initMapTilesState_803037c(void) {
 /* ── mapTiles_ResetDimensionsToDefault_80303E8 ── */
 /* mapTiles_ResetDimensionsToDefault_80303E8: reset the map tile grid dimensions to the default 32x32. */
 Next mapTiles_ResetDimensionsToDefault_80303E8(void) {
-    ST8(A_eMapTilesState200be70_MapWidth, 0x20);
-    ST8(A_eMapTilesState200be70_MapWidth + 1, 0x20); /* MapHeight (byte_200BE71) */
+    ST8(A_eMapTilesState200be70, 0x20);
+    ST8(A_eMapTilesState200be70 + 1, 0x20); /* MapHeight (byte_200BE71) */
 
     RETURN_TO_CALLER();
 }
@@ -2342,7 +2342,7 @@ Next sub_8031A5E(void) {
  * pointer by one entry and records it in the struct (+0), then marks both
  * terminator bytes (+6, +7) as 0xFE. */
 Next overworldObject55_ReadStreamEntry_8031A68(void) {
-    u32 state = A_eOverworldMapObject55_Size;
+    u32 state = A_dword_2013920;
 
     u32 value = LD32(R0);
     ST16(state + 4, value);          /* word_2013924: low halfword of the entry */
@@ -2367,7 +2367,7 @@ Next overworldObject55_ReadStreamEntry_8031A68(void) {
 Next sub_8031B7C(void) {
     u32 mode = R0;
 
-    R5 = A_eOverworldMapObject55_Size;
+    R5 = A_dword_2013920;
     SET_FLAGS_CMP(mode, 1);             /* cmp r0, #1 */
 
     if (mode == 1) {

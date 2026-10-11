@@ -913,7 +913,7 @@ Next battle_getStateUnk40_800A704(void) {
  * (16 bytes each) of battleSettingsList0. Clobbers r1 like the original. */
 Next getBattleSettingsFromList0(void) {
     R1 = (u32)R0 * 0x10;
-    R0 = A_BattleSettings + R1;
+    R0 = A_battleSettingsList0 + R1;
     RETURN_TO_CALLER();
 }
 
@@ -2154,16 +2154,16 @@ static void nand_byte_arrays(u32 a, u32 b, u32 c) {
  * transfer auxiliary data (RNG seed, 40-byte arrays, battle-result dwords). */
 static void copy_battle_structs(void) {
     /* Copy working stats into the four active navi slots */
-    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats,        oNaviStats_Size);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats0,        oNaviStats_Size);
     copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats203CB10, oNaviStats_Size);
     copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats2034A60, oNaviStats_Size);
-    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats203C980_Size, oNaviStats_Size);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats203C9E4, oNaviStats_Size);
 
     /* If battle-effect bit 3 is set, also propagate the secondary stats buffer */
     if (get_battle_effects_battle_copyStructsIncludingBattleStats_800b2d8() & 8) {
-        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats0_Size,          oNaviStats_Size);
-        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats203CB10_Size,    oNaviStats_Size);
-        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats2034A60_End,     oNaviStats_Size);
+        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats1,          oNaviStats_Size);
+        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats203CB74,    oNaviStats_Size);
+        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats2034AC4,     oNaviStats_Size);
         copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats203C980,         oNaviStats_Size);
     }
 
@@ -2286,11 +2286,11 @@ static void transfer_battle_hand_navi_stats(void) {
     }
 
     /* Primary battle navi stats block (always copied). */
-    copy_words((const void *)A_byte_203F4F4, (void *)A_eBattleNaviStats, BATTLE_NAVI_STATS_SIZE);
+    copy_words((const void *)A_byte_203F4F4, (void *)A_eBattleNaviStats0, BATTLE_NAVI_STATS_SIZE);
 
     /* AI battle-effect flag => copy the secondary battle navi stats block. */
     if (get_battle_effects_transferBattleHandNaviStats_800B3D8() & BATTLE_EFFECT_FLAG_8) {
-        copy_words((const void *)A_byte_203F5F4, (void *)A_eBattleNaviStats0_Size, BATTLE_NAVI_STATS_SIZE);
+        copy_words((const void *)A_byte_203F5F4, (void *)A_eBattleNaviStats1, BATTLE_NAVI_STATS_SIZE);
     }
 }
 
@@ -2381,7 +2381,7 @@ Next battle_doBothTrackedIdsMatch_800B46C(void) {
  * Store the battle result byte at byte_200A009 (one byte past
  * eOWPlayerObjectEnd), leaving the field's base address in r1. */
 Next eStruct200A008_setBattleResult(void) {
-    R1 = A_eOWPlayerObject_SpriteData_Size;
+    R1 = A_eOWPlayerObjectEnd;
     ST8(R1 + 1, R0);
     RETURN_TO_CALLER();
 }
@@ -2391,7 +2391,7 @@ Next eStruct200A008_setBattleResult(void) {
  * byte_200A009 (one byte past the start of the OW player object table).
  * Outputs: r0 = flag value, r1 = eOWPlayerObjectEnd (0x200A008). */
 Next eStruct200A008_getBattleResult(void) {
-    R1 = A_eOWPlayerObject_SpriteData_Size;   /* literal pool value: eOWPlayerObjectEnd */
+    R1 = A_eOWPlayerObjectEnd;   /* literal pool value: eOWPlayerObjectEnd */
     R0 = LD8(R1 + 1);                         /* byte_200A009 */
     RETURN_TO_CALLER();
 }
@@ -2400,7 +2400,7 @@ Next eStruct200A008_getBattleResult(void) {
 /* eStruct200A008_setUnk00(r0 = value):
  * stores a single byte at the eOWPlayerObject_SpriteData_Size location. */
 Next eStruct200A008_setUnk00(void) {
-    ST8(A_eOWPlayerObject_SpriteData_Size, R0);
+    ST8(A_eOWPlayerObjectEnd, R0);
     RETURN_TO_CALLER();
 }
 
@@ -2411,7 +2411,7 @@ Next eStruct200A008_setUnk00(void) {
 Next eStruct200A008_setUnk02(void) {
     u32 value = R0;
 
-    R1 = A_eOWPlayerObject_SpriteData_Size;
+    R1 = A_eOWPlayerObjectEnd;
     ST8(R1 + 2, value);
 
     RETURN_TO_CALLER();
@@ -2423,7 +2423,7 @@ Next eStruct200A008_setUnk02(void) {
  * eOWPlayerObject_SpriteData_Size (i.e. word_200A00C). Used as a simple
  * setter for that field; nothing else is touched. */
 Next eStruct200A008_setUnk04(void) {
-    u32 structBase = A_eOWPlayerObject_SpriteData_Size; /* 0x200A008 */
+    u32 structBase = A_eOWPlayerObjectEnd; /* 0x200A008 */
     ST16(structBase + 4, R0);
     RETURN_TO_CALLER();
 }
@@ -2432,7 +2432,7 @@ Next eStruct200A008_setUnk04(void) {
 /* eStruct200A008_getUnk04: return the u16 field at 0x200A00C (the player's
  * overworld object struct's "Unk04" field). Result in r0. */
 Next eStruct200A008_getUnk04(void) {
-    R0 = LD16(A_eOWPlayerObject_SpriteData_Size + 4);
+    R0 = LD16(A_eOWPlayerObjectEnd + 4);
     RETURN_TO_CALLER();
 }
 
@@ -2441,7 +2441,7 @@ Next eStruct200A008_getUnk04(void) {
  * Store r0 as a halfword at word_200A00E — the +0x6 field of the
  * struct whose base is the literal eOWPlayerObjectEnd. */
 Next eStruct200A008_setUnk06(void) {
-    ST16(A_eOWPlayerObject_SpriteData_Size + 6, R0);
+    ST16(A_eOWPlayerObjectEnd + 6, R0);
     RETURN_TO_CALLER();
 }
 
@@ -2449,7 +2449,7 @@ Next eStruct200A008_setUnk06(void) {
 /* eStruct200A008_getUnk06:
  * read the halfword field at offset 6 of the struct at eOWPlayerObjectEnd
  * (word_200A00E) and return it in r0. */
-#define word_200A00E (A_eOWPlayerObject_SpriteData_Size + 6)
+#define word_200A00E (A_eOWPlayerObjectEnd + 6)
 
 Next eStruct200A008_getUnk06(void) {
     R0 = LD16(word_200A00E);
@@ -2464,7 +2464,7 @@ Next eStruct200A008_getUnk06(void) {
  * player object (byte_200A00B, the "unk03" field of struct 200A008).
  * Leaves r1 = end-of-player-object address (200A008), as the original does. */
 Next eStruct200A008_setUnk03(void) {
-    u32 base = A_eOWPlayerObject_SpriteData_Size;
+    u32 base = A_eOWPlayerObjectEnd;
 
     ST8(base + 3, R0);
     R1 = base;

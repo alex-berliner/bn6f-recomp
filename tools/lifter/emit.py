@@ -63,6 +63,24 @@ class Ctx:
     may_unwind: object = None      # entry addr -> may return past its caller
     tail_free: object = None       # entry addr -> never returns a tail call (Next)
     dirty_at: object = None        # (unit, call addr) -> registers changed since last sync
+    src: object = None             # srcnames.SourceNames: what bn6f's source calls each constant
+    sym_values: dict = None        # A_ name -> its value (bn6f_syms.h), for every one emitted
+    earlier: dict = None           # A_ name -> value: what lifts before srcnames called these addresses
+
+    def use(self, r) -> str:
+        """Note the names a srcnames.Rendered expression uses; its C text."""
+        for nm, v in r.labels.items():
+            self.define(nm, v)
+        self.used_equates.update(r.equates)
+        return r.c
+
+    def define(self, nm: str, v: int):
+        if self.sym_values is None:
+            self.sym_values = {}
+        old = self.sym_values.setdefault(nm, v)
+        if old != v:
+            raise SystemExit(f"{nm} is both {old:#x} and {v:#x}")
+        self.used_addr_syms.add(nm)
 
 
 class UnitEmitter:
@@ -82,39 +100,42 @@ class UnitEmitter:
             return h(ins.addr + (12 if regshift else 8))
         return REGN[n]
 
-    def addr_const(self, v: int, mode_bit: bool = False) -> str:
-        """Render an address constant using a symbol name when one exists."""
+    def addr_const(self, v: int, mode_bit: bool = False, src=None) -> str:
+        """Render an address constant: as bn6f's source writes it (SRC, a srcnames.Rendered checked
+        against V), else by the first label at the address, else as a number."""
         # Data inside the IWRAM routine block (jump/callback/lookup tables)
         # is read from its identical ROM image: the lifted build never copies
         # the routines into IWRAM, and reuses that space for host stacks.
-        if IWRAM_TEXT_VMA <= v < IWRAM_TEXT_VMA + IWRAM_TEXT_SIZE and not self.is_code(v & ~1):
-            nm = self.ctx.addr_names.get(v)
+        iwram_data = IWRAM_TEXT_VMA <= v < IWRAM_TEXT_VMA + IWRAM_TEXT_SIZE and not self.is_code(v & ~1)
+        base = v if iwram_data or not mode_bit else v & ~1
+        nm = self.ctx.addr_names.get(base) if iwram_data or v >= 0x02000000 else None
+        if src is not None:
             if nm is not None:
-                self.ctx.used_addr_syms.add(nm)
-                return f"IWRAM_ROM({nm})"
-            return f"IWRAM_ROM({h(v)})"
-        base = v & ~1 if mode_bit else v
-        nm = self.ctx.addr_names.get(base)
-        if nm is not None and v >= 0x02000000:
-            self.ctx.used_addr_syms.add(nm)
+                if self.ctx.earlier is None:
+                    self.ctx.earlier = {}
+                self.ctx.earlier[nm] = base
+            c = self.ctx.use(src)
+            return f"IWRAM_ROM({c})" if iwram_data else c
+        if nm is not None:
+            self.ctx.define(nm, base)
+        if iwram_data:
+            return f"IWRAM_ROM({nm if nm is not None else h(v)})"
+        if nm is not None:
             if mode_bit and v & 1:
                 return f"({nm} | 1)"
             return nm
         return h(v)
 
+    def src_address(self, ins: Insn, v: int):
+        return self.ctx.src.address(ins, v) if self.ctx.src is not None else None
+
     def is_code(self, a: int) -> bool:
         return (a, True) in self.p.insns or (a, False) in self.p.insns or a in self.ctx.names
 
     def imm(self, v: int, ins: Insn) -> str:
-        """Immediate, rendered as a named equate when the source line used one."""
-        src = self.info.source_line(ins.addr) or ""
-        for m in re.finditer(r"#\s*([A-Za-z_][A-Za-z0-9_]*)", src):
-            nm = m.group(1)
-            val = self.info.equates.get(nm)
-            if val is not None and (val & 0xFFFFFFFF) == (v & 0xFFFFFFFF) and v > 9:
-                self.ctx.used_equates[nm] = val
-                return nm
-        return h(v)
+        """Immediate, rendered as bn6f's source writes it when that names something (srcnames)."""
+        r = self.ctx.src.immediate(ins, v) if self.ctx.src is not None else None
+        return self.ctx.use(r) if r is not None else h(v)
 
     def op2(self, ins: Insn, want_carry: bool) -> tuple[str, str | None]:
         """(value_expr, carry_expr or None if C unchanged). Carry expressions
@@ -506,7 +527,7 @@ class UnitEmitter:
         rd = REGN[ins.rd]
         if op == "adr":
             v = ((ins.addr + 4) & ~3) + ins.op2.imm
-            return [f"{rd} = {self.addr_const(v)};"]
+            return [f"{rd} = {self.addr_const(v, src=self.src_address(ins, v))};"]
         s = ins.s and ins.rd != 15
         nzl = s and bool(live & NZ)
         cl = s and bool(live & C)
@@ -519,7 +540,7 @@ class UnitEmitter:
             if ins.rd != 15:
                 v = (ins.addr + 8 + (ins.op2.imm if op == "add" else -ins.op2.imm)) if not ins.thumb else None
                 if v is not None:
-                    return [f"{rd} = {self.addr_const(v)};"]
+                    return [f"{rd} = {self.addr_const(v, src=self.src_address(ins, v))};"]
         pre = []
         if carry == "__inline__":
             pass  # *_REG_C helpers update c themselves
@@ -596,12 +617,13 @@ class UnitEmitter:
             if ins.rd == 15:
                 return [self.goto_or_tail(lit & ~1)] if (lit & ~1) in self.ctx.names else [f"JUMP({h(lit)});"]
             la = self.p.literal_addr(ins)
+            src = self.ctx.src.literal(ins, la, lit) if self.ctx.src is not None else None
             if lit in FIRMWARE_PATCHED and la is not None and 0x08000000 <= la < 0x0A000000:
                 # read from the pool, as the original does: flashcart firmware
                 # patches these constants in the ROM image (SuperFW redirects the
                 # WAITCNT and IRQ-vector writes of games on its slow SDRAM)
-                return [f"{rd} = LD32({h(la)});   /* ={self.addr_const(lit, mode_bit=True)} */"]
-            return [f"{rd} = {self.addr_const(lit, mode_bit=True)};"]
+                return [f"{rd} = LD32({h(la)});   /* ={self.addr_const(lit, mode_bit=True, src=src)} */"]
+            return [f"{rd} = {self.addr_const(lit, mode_bit=True, src=src)};"]
         base = self.reg(ins.rn, ins)
         if ins.rn == 15 and ins.thumb:
             base = h((ins.addr + 4) & ~3)

@@ -35,6 +35,9 @@ class ElfInfo:
     mapping: list[tuple[int, str]] = field(default_factory=list)  # (addr, 'a'|'t'|'d')
     equates: dict[str, int] = field(default_factory=dict)     # ABS assembler constants
     lines: dict[int, tuple[str, int]] = field(default_factory=dict)  # addr -> (file, line)
+    # addr -> the source file's path under src_root, where the line table names it (22 loader.s,
+    # 23 data.s, ... share a basename, so `lines` alone can't say which one)
+    line_paths: dict[int, str] = field(default_factory=dict)
     src_root: str = ""
     _src_cache: dict[str, list[str]] = field(default_factory=dict)
     _src_paths: dict[str, str] = field(default_factory=dict)
@@ -76,7 +79,7 @@ class ElfInfo:
         if not loc:
             return None
         fname, line = loc
-        path = self._src_paths.get(fname)
+        path = self.line_paths.get(addr) or self._src_paths.get(fname)
         if path is None:
             return None
         text = self._src_cache.get(path)
@@ -148,13 +151,20 @@ def load(bn6f_dir: str) -> ElfInfo:
         if s.name == "iwram_text" and lma is not None:
             s.file_off = lma - 0x08000000
 
-    # DWARF line table -> per-address source location.
-    cur_file = None
+    # DWARF line table -> per-address source location. Rows give the file's basename; the
+    # header line before each run of rows ("./maps/ACDCTown/loader.s:") gives its path.
+    cur_path = None
     for line in _run(["readelf", "--debug-dump=decodedline", elf]).splitlines():
         parts = line.split()
+        if len(parts) == 1 and line.endswith(".s:"):
+            cur_path = os.path.normpath(os.path.join(bn6f_dir, line[:-1]))
+            continue
         if len(parts) >= 3 and parts[0].endswith(".s") and parts[1].isdigit() and parts[2].startswith("0x"):
-            info.lines.setdefault(int(parts[2], 16), (parts[0], int(parts[1])))
-            cur_file = parts[0]
+            a = int(parts[2], 16)
+            if a not in info.lines:
+                info.lines[a] = (parts[0], int(parts[1]))
+                if cur_path is not None and os.path.basename(cur_path) == parts[0] and os.path.isfile(cur_path):
+                    info.line_paths[a] = cur_path
     # Resolve basenames to paths inside the repo.
     for root, _dirs, files in os.walk(bn6f_dir):
         if "/.git" in root or "/tools" in root:

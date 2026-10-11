@@ -85,6 +85,19 @@ unproven assumption: no call through a pointer unwinds past its caller (true on
 every recorded route; `LIFT_TRACE` builds log any return-address mismatch).
 `--indirect-calls-may-unwind` drops it.
 
+**Names in lifted code.** The lifter writes each constant as bn6f's source
+writes it (`tools/lifter/srcnames.py`, review R1-A22), checked against the
+instruction's value: a literal-pool load as its `.word` (`A_eOWPlayerObjectEnd`,
+`(A_sub_80F6FEC + 1)`), an immediate as its operand (`oObjectSprite_Unk_06`,
+`(OBJECT_FLAG_ACTIVE | OBJECT_FLAG_STOP_SPRITE_UPDATE)`), and a bare offset whose
+comment names the field as that field (`(A_byte_200A00B - 0x200A008)`). A number
+the source writes stays a number. Labels and address-valued constants (I/O
+registers) are `A_NAME`, other constants keep their names; `bn6f_syms.h` defines
+the ones lifted code uses. Readable code uses the name its lifted original uses.
+`bn6f_equates.h` (hand-written code only) also keeps the names lifts before
+2026-10-11 gave these addresses (the first label at each), so code and farm
+candidates written against them still compile.
+
 **Golden test.** `python3 tools/lifter/golden.py check` lifts into a temporary
 directory and compares every generated file with `tools/lifter/golden/manifest.tsv`
 (hashes; the inputs are pinned: the bn6f build, and the readable functions listed

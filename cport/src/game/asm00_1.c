@@ -486,7 +486,7 @@ Next object_Clear3RAMBytes_800371A(void) {
  * interaction-area pool and reset the number of entries it holds.
  * Flags on return come from ZeroFillByWord's final flag-setting instruction. */
 Next ZeroFillObjectInteractionAreas_800378C(void) {
-    R0 = A_eOWObjectInteractionArea_0_X;
+    R0 = A_eOWObjectInteractionAreas;
     R1 = 0x280; /* pool size in bytes */
     GUEST_CALL(ZeroFillByWord);
 
@@ -606,7 +606,7 @@ Next SpawnOWPlayerObject(void) {
     u32 bits = LD32(bitfieldAddr);
     u32 mask = 0x80000000u;                          /* r1 = 0x80 << 24 */
     u32 slot = A_eOWPlayerObject;
-    u32 poolEnd = A_eOWPlayerObject_SpriteData_Size; /* = eOWPlayerObjectEnd */
+    u32 poolEnd = A_eOWPlayerObjectEnd; /* = eOWPlayerObjectEnd */
 
     /* The LSL that builds the mask shifts a zero bit out, clearing carry;
        it stays clear through the loop (each LSR shifts out a zero, and the
@@ -740,11 +740,11 @@ typedef struct {
 } NpcResetResult;
 
 /* Clear the active/behavior word (offset 0xC4) of all 16 overworld NPC slots.
- * A_eOverworldNPCObject0_Flags is the table base (== eOverworldNPCObjects in
+ * A_eOverworldNPCObjects is the table base (== eOverworldNPCObjects in
  * the disassembly's literal pool). */
 static NpcResetResult clear_overworld_npc_active_words(void)
 {
-    u32 base = A_eOverworldNPCObject0_Flags;
+    u32 base = A_eOverworldNPCObjects;
     u32 lastWordAddr = 0;
 
     for (u32 slot = 0; slot < 16; slot++) {
@@ -2125,7 +2125,7 @@ static void finish_battle_and_enter_map(u32 toolkit) {
 
     init_battle_structs_and_vram(LD32(gameState + oGameState_CurBattleDataPtr), gameState);
 
-    word_fill(A_eLogoScreenState_Index_00, 0x2180, ~0u);
+    word_fill(A_eLogoScreenState, 0x2180, ~0u);
 }
 
 Next sub_800531C(void) {

@@ -863,7 +863,7 @@ Next text_decompressMessageAssets_80471F8(void) {
     GUEST_CALL(SWI_LZ77UnCompReadNormalWrite8bit);
 
     /* CompText873DE4C -> eDecomp202BA00. */
-    R0 = A_TextScript873D9FC_unk135;
+    R0 = A_CompText873DE4C;
     R1 = A_eDecomp202BA00;
     GUEST_CALL(SWI_LZ77UnCompReadNormalWrite8bit);
 
@@ -2016,7 +2016,7 @@ Next sub_804A17A(void) {
  * marker (not copied). An 0xE4 escape byte is copied together with the byte that
  * follows it. R4-R7 are preserved; R0/R1 and the flags are clobbered. */
 Next textScript_copyFolderNameToWide_804A1FC(void) {
-    u32 table = A_TextScriptFolderNames_inc;
+    u32 table = A_TextScriptFolderNames;
     u32 src = table + LD16(table + (R0 << 1));
     u32 dst = R1;
 

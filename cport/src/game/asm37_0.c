@@ -671,10 +671,10 @@ Next sub_813CEA0(void) {
  * callers can branch on whether the flag is set.
  *   r0 = byte value, r1 = &eS200BC50, flags = Z/N from the byte. */
 Next test0x200bc50_0x5_813D60C(void) {
-    u32 flags = LD8(A_eS200BC50_Index00 + 5);
+    u32 flags = LD8(A_eS200BC50 + 5);
 
     R0 = flags;
-    R1 = A_eS200BC50_Index00;
+    R1 = A_eS200BC50;
     SET_FLAGS_NZ(flags);
     RETURN_TO_CALLER();
 }
@@ -683,7 +683,7 @@ Next test0x200bc50_0x5_813D60C(void) {
 /* sub_813D62C(r0 = value): store the value into byte_200BC55 (offset 5 of
  * the eS200BC50 struct); r1 = struct base address. */
 Next sub_813D62C(void) {
-    u32 base = A_eS200BC50_Index00;
+    u32 base = A_eS200BC50;
     ST8(base + 5, R0);
     R1 = base;
     RETURN_TO_CALLER();
@@ -694,9 +694,9 @@ Next sub_813D62C(void) {
  * Signal "link connection teardown requested" by storing 4 into the link
  * state work area's state field (dword_2009A28, at offset 0x58 of the
  * pointer that the literal pool carries; the port exposes that pointer
- * value as A_eCameraEnd). */
+ * value as A_eLinkState). */
 Next link_RequestDisconnect_813D8C4(void) {
-    ST32(A_eCameraEnd + 0x58, 4);
+    ST32(A_eLinkState + 0x58, 4);
     RETURN_TO_CALLER();
 }
 
@@ -708,12 +708,12 @@ Next link_RequestDisconnect_813D8C4(void) {
 Next zeroFill_813D960(void) {
     u32 savedByte;
 
-    R0 = A_eS200BC50_Index00;
+    R0 = A_eS200BC50;
     savedByte = LD8(R0 + 7);
 
     R1 = 0x10;
     GUEST_CALL(ZeroFillByWord);
 
-    ST8(A_eS200BC50_Index00 + 7, savedByte);
+    ST8(A_eS200BC50 + 7, savedByte);
     RETURN_TO_CALLER();
 }

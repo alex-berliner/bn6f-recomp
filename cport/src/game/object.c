@@ -1948,7 +1948,7 @@ Next sub_800EC80(void) {
  *   r0 = 0, r1 = &eUsedAIDataBitfield, r2 = 8, r3 = 0x100 (slot stride),
  *   flags from the loop's last "cmp r2, #8" (equal: Z=1, C=1, V=0). */
 Next ai_resetAIDataSlots_800ED00(void) {
-    u32 ai = A_eAIData0_ActorType;   /* base of eAIData, one slot per AI actor */
+    u32 ai = A_eAIData;   /* base of eAIData, one slot per AI actor */
     u32 mask = 0x80000000;
     u32 slot = 0;
 
@@ -1997,7 +1997,7 @@ static struct AIDataAlloc create_ai_data(u32 r5_in) {
     u32 usedBitsAddr = A_eUsedAIDataBitfield;
     u32 usedBits = LD32(usedBitsAddr);
     u32 mask = 0x80000000;          /* slot 0 lives at bit 31 */
-    u32 block = A_eAIData0_ActorType;
+    u32 block = A_eAIData;
 
     for (u32 slot = 0; slot < AI_DATA_SLOT_COUNT; slot++) {
         if ((usedBits & mask) == 0) {
