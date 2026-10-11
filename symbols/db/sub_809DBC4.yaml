@@ -1,0 +1,109 @@
+name: sub_809DBC4
+address: '0x0809DBC4'
+kind: function
+status: confirmed
+summary: Builds an OW interaction area on the player object using a template struct's offsets plus the player's
+  world position, then stores the new handle at the caller-supplied output pointer.
+interface: "void sub_809DBC4(u32 area_struct /* r0: ptr to ow_player_interaction_area_struct template */,\n    \
+  \             u32 out_handle_ptr /* r1: ptr to write the created area handle into */,\n                 u32 player_obj\
+  \ /* r5: ptr to OW player object */);\n// flags clobbered; r4, r5 (preserved across callee) preserved on return\n"
+details: 'Clears the caller''s handle word at *r1 to 0, then resolves a world-space interaction
+
+  area by adding the player object''s X/Y/Z (offsets oOWPlayerObject_X/Y/Z) to the
+
+  template struct''s local offsets (oOWPlayerInteractionArea_XOffset/YOffset/ZOffset).
+
+  Pulls radius (oOWPlayerInteractionArea_Radius_ZReachAmount) and the flag pairs
+
+  oOWPlayerInteractionArea_Flags_10 and _Flags_14 from the template, and tail-calls
+
+  createOWObjectInteractionArea_80037ac with the standard r0=world_x, r1=world_y,
+
+  r2=world_z, r3=radius, r4=flags_10, r5=flags_14, r6=out_handle_ptr, r7=area_struct
+
+  convention. r5 (player pointer) is pushed/popped so it survives the tail call.
+
+  Sits next to three arrays of 8 templates (off_809DC0C and off_809DCEC, plus the
+
+  single byte_809DBF4) encoding directional interactions around the player: the first
+
+  array uses 0x80000/0x5a826 offsets (radius 8, OW_OBJECT_INTERACTION_AREA_FLAG_0x1
+
+  with 0x20000|0x40000), the third uses 0x40000/0x2d413 offsets (radius 4,
+
+  0x200000 with 0x400000|0x800000) - the radii are sub-tile fractions (0x80000 =
+
+  half a tile, 0x40000 = quarter tile, 0x5a826 ≈ cos(30°)/2, 0x2d413 ≈ cos(60°)/2),
+
+  giving a ring of 8 neighbour cells at two distances for interaction lookups.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c sub_809DBC4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809DBC4
+
+    ./wf verify --function sub_809DBC4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 294 out
+    of domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809DBC4
+
+    ./wf verify --function sub_809DBC4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809DBC4
+
+    ./wf verify --function sub_809DBC4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0809dbc4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/ow_player.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which of the three nearby template arrays this function is intended to consume (the function takes a pointer in
+  r0, so callers pick).
+- Whether the cleared *r1 word is the "interaction target slot" used by subsequent bus scan logic, and whether OW_OBJECT_INTERACTION_AREA_FLAG_0x1
+  / 0x200000 distinguish two scan passes (e.g. chip-enemy vs. talkable NPC).
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd

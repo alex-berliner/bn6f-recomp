@@ -1,0 +1,74 @@
+name: sub_80C6A34
+address: '0x080C6A34'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's per-frame logic to its current-phase handler via a small jump table (phase
+  0 -> routine; else -> battle_object_destroy_80C6AAC).
+interface: void sub_80C6A34(BattleObject* obj) /* r5 in; r0/r1/nzcv out */
+details: 'Reads the 1-byte CurPhase field (oBattleObject_CurPhase) from the BattleObject pointer passed in r5, then
+  loads a 32-bit handler address from a 2-entry table at off_80C6A48 (offset = CurPhase * 4). The table at off_80C6A48
+  currently holds two entries: sub_80C6A50 (phase 0) and battle_object_destroy_80C6AAC (phase >= 1, i.e. destruction/teardown).
+  It then tail-calls that handler with the original BattleObject still in r5 by using the `mov lr, pc; bx r1; pop
+  {pc}` trampoline pattern, which preserves the caller''s lr-return semantics (the outer pop returns to the caller
+  of sub_80C6A34). The function does no register save of its own besides lr; the handler is expected to obey the
+  usual ARM caller convention on r0-r3/r12. Because the dispatched routine is selected by data, the function has
+  no single C signature; in practice the two known slots are `sub_80C6A50` (active phase work) and `battle_object_destroy_80C6AAC`
+  (cleanup/destroy).'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c sub_80C6A34
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C6A34
+
+    ./wf verify --function sub_80C6A34 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C6A34
+
+    ./wf verify --function sub_80C6A34 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 11 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C6A34
+
+    ./wf verify --function sub_80C6A34 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, story2, story6, story7.'
+  reproduce: grep -l '^080c6a34 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- story2
+- story6
+- story7
+open_questions:
+- Are there really only two phases in the table, or is off_80C6A48 expected to grow with more phase slots (the CurPhase
+  read is unbounded)?
+- What does sub_80C6A50 do specifically (the real "phase 0" behavior)?
+- Is CurPhase ever written by the dispatcher itself, or only by the called handler?
+- Who calls sub_80C6A34 each frame -- is it a per-frame battle object update tick, and are r5/r10 only used to pass
+  the BattleObject pointer and a scratch?
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd

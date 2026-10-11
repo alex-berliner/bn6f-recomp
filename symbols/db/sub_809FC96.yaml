@@ -1,0 +1,94 @@
+name: sub_809FC96
+address: '0x0809FC96'
+kind: function
+status: confirmed
+summary: Look up mystery-data output (four bytes + C/V flags) for a Navi ID, using the current map's mystery-data
+  table and the current PET Navi's "special" stat to pick between a direct entry and a cyclic gold-scan fallback.
+interface: void mysteryData_lookupForNavi_809FC96(u32 r0_naviId, struct GameToolkit* r10_toolkit); /* returns r0,r1,r2,r3
+  and clobbers flags C,V (r4-r7,r12,lr preserved) */
+details: "Resolves the in-game mystery-data (Request BBS) entry for a Navi against the current map.\n- Reads the\
+  \ current PET Navi (GetCurPETNavi) and reads stat byte 0x33; if it equals 1, a\n  \"special\" flag (r5) is set;\
+  \ otherwise it is cleared. This flag controls the alternate\n  mystery-type-5 code path.\n- Reads game state from\
+  \ the toolkit (r10 -> oToolkit_GameStatePtr), getting oGameState_MapGroup\n  and oGameState_MapNumber. Map groups\
+  \ >= 0x80 (the \"internet\" range) use\n  InternetMysteryDataMapGroupEntries; the rest use RealWorldMysteryDataMapGroupEntries.\
+  \ The\n  selected entry has its map_group value subtracted by 0x80 in the internet branch.\n- Two-level indirection\
+  \ into the map-group table: group entry is read at +4 of an 8-byte record,\n  then the per-map entry is read as\
+  \ a 4-byte pointer at index oGameState_MapNumber.\n- Linear search with stride 0xC for the record whose u16 Navi\
+  \ ID at offset +2 matches r0. Records\n  whose first byte is 0 terminate the list. Not found -> returns (r0,r1,r2,r3)\
+  \ = (0xFF,0xFF,\n  0xFF,0xFF) with C=1.\n- Found: calls sub_809FADE (pet resolve) to obtain pet_info (saved as\
+  \ r7), then calls\n  mysteryData_resolveMapGroupEntry_809FBF2 with mystery_type (the record's first byte), the\n\
+  \  data pointer at record+8, the record pointer itself, the \"special\" flag, the Navi ID, and\n  pet_info; this\
+  \ returns a base pointer to a gold-data array.\n- Calls goldMysteryData_GetEntryDataIfIdMatches_809FE44 with the\
+  \ Navi ID, r3 = pet_info[1]\n  (the skip index), and r4 = the resolved base; the function returns a (base, index)\
+  \ pair in\n  (r4, r3).\n- If mystery_type == 5 AND the special flag is set (r5 != 0, hence the precondition `tst\
+  \ r5,r5;\n  bne loc_809FD20` taken only when both conditions hold -- the outer `cmp r1,#5; bne ...` lets\n  non-type-5\
+  \ fall through to the normal path even if special is set): runs scan_gold_cyclic,\n  which cyclically walks up\
+  \ to 8 gold entries at stride 8 looking for entries whose type byte\n  is 3 or 7, decrementing a remaining counter\
+  \ (loaded from pet_info+1) until it underflows\n  (C=0 -> bge skipped -> branch taken). Returns the matching entry.\n\
+  - Otherwise (or after the scan): lands at loc_809FD6A and emits the same four output values:\n  r0 = LD32(entry+4),\
+  \ r1 = LD8(entry+3), r3 = LD8(entry+0) (the entry's \"type\" byte), and\n  r2 = ((type-1)*10 + mystery_type -\
+  \ 1). The tail flag-setting sequence `sub r2,#1` from a\n  value of ((type-1)*10 + mystery_type - 1) reproduces\
+  \ a CMP against 1 to set C and V on return.\n- Saves r12 on stack (push {r4} with r4 = r12) so it survives GetCurPETNavi\
+  \ / GetNaviStatsByte /\n  sub_809FADE, none of which the contract treats as r12-preservers.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm28_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c sub_809FC96
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809FC96
+
+    ./wf verify --function sub_809FC96 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809FC96
+
+    ./wf verify --function sub_809FC96 --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 1 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809FC96
+
+    ./wf verify --function sub_809FC96 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, maps, menus3, story2, story4, story5, story6, story8, story9.'
+  reproduce: grep -l '^0809fc96 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm28_1.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm28_1.c
+coverage:
+- battles1
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What is the in-game meaning of mystery_type values 3 and 7 that the cyclic scanner matches on?
+- Does mysteryData_resolveMapGroupEntry_809FBF2 return a base pointer into gold data, or some other table?
+- What controls pet_info[1] (the skip index consumed by goldMysteryData_GetEntryDataIfIdMatches)?
+- The branch at loc_809FCFC tests `mystery_type == 5` AND `tst r5,r5` but uses `bne` to fall through when EITHER
+  condition fails, so the cyclic path runs only when both are true; confirm this is the intended game semantics
+  and not an overlap with another type.
+- What does the computed r2 value ((type-1)*10 + mystery_type - 1) actually mean in the request UI -- an index,
+  an item ID, or something else?
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd

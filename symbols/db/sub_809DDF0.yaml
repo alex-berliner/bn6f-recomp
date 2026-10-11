@@ -1,0 +1,80 @@
+name: sub_809DDF0
+address: '0x0809DDF0'
+kind: function
+status: confirmed
+summary: 'Overworld: exits the player''s slip-run state when the slip-run event is no longer active.'
+interface: void sub_809DDF0(void) /* r5=OWPlayerObject*, r10=?, lr=ret; trashes r0-r3, r6, r7, nz/c/v, lr */
+details: "Guarded by three checks before doing any state change:\n  1) event flag \"0x1716\" must be set (TestEventFlagFromImmediate).\n\
+  \  2) event flag \"0x173D\" (EVENT_IN_SLIPRUN_STATE) must be set.\n  3) the 0xC00000 bit pair in OWPlayerObject+0x50\
+  \ must be non-zero.\nIf all three hold, it clears flag 0x173D and flag 0x173E, sets flag 0x173F, and calls\nsub_809DE60\
+  \ (the slip-run transition handler). Any failed guard returns immediately\nvia pop {pc}. r5 holds the overworld\
+  \ player object; r10 is caller-saved but unused here.\nThe 0xC00000 mask against OWPlayerObject+0x50 is what represents\
+  \ \"slip-run is still\nactive in the object's runtime state\" — once that clears, the state machine exits.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c sub_809DDF0
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809DDF0
+
+    ./wf verify --function sub_809DDF0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809DDF0
+
+    ./wf verify --function sub_809DDF0 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809DDF0
+
+    ./wf verify --function sub_809DDF0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0809ddf0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/ow_player.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What gameplay flag is "EVENT_1716"? (Likely the per-frame/per-tick "player input is still moving fast enough to
+  keep slipping" gate, but unverified.)
+- What does sub_809DE60 actually do — play the recovery animation, restore walking speed, etc.?
+- Why are flags 0x173E cleared and 0x173F set together — is 0x173F a "just exited slip-run this frame" flag the
+  next routine uses?
+- Field at OWPlayerObject+0x50 is currently named Unk_50; is it really the movement/ animation state, or a separate
+  slip-run timer?
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd

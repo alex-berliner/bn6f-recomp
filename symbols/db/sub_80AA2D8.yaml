@@ -1,0 +1,71 @@
+name: sub_80AA2D8
+address: '0x080AA2D8'
+kind: function
+status: confirmed
+summary: 'Battle-object sprite-state-3 dispatcher: jumps to the init/update/done handler picked by the selector
+  byte at [obj+8].'
+interface: void sub_80AA2D8(void /* r5 = battle object */);
+details: 'Loads a pointer to a 3-entry thumb jump-table (off_80AA2EC -> {object_initSpriteState3_80AA2F8+1, sub_80AA322+1,
+  sub_80AA36C+1})
+
+  via off_80AA2E8. The selector byte at [r5+8] is used as an index into that table to tail-call the matching handler
+
+  (init/update/done for sprite-state-3). Effectively a tail-call dispatch: the routine does not return in the normal
+
+  sense, it pops {r4-r7,pc} after the bx, so the dispatched function returns directly to sub_80AA2D8''s caller.
+
+  Touches only the byte at battle object + 8 (the sprite-state-3 selector).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c sub_80AA2D8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AA2D8
+
+    ./wf verify --function sub_80AA2D8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AA2D8
+
+    ./wf verify --function sub_80AA2D8 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 11 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AA2D8
+
+    ./wf verify --function sub_80AA2D8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, story1, story2, story8.'
+  reproduce: grep -l '^080aa2d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm29.c
+coverage:
+- maps
+- story1
+- story2
+- story8
+open_questions:
+- Confirm the three table entries map 0->init, 1->update, 2->done and what selector values beyond 2 do.
+- Confirm the exact struct field name for offset 8 in the battle-object layout (offset 8 is currently named oSpriteState3_Sel
+  here as a guess).
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd

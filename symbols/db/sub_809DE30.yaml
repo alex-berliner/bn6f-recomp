@@ -1,0 +1,78 @@
+name: sub_809DE30
+address: '0x0809DE30'
+kind: function
+status: confirmed
+summary: 'If the EVENT_1716 gate is active, finalize the player''s slip-run: optionally mark EVENT_173F, then clear
+  the in-slip-run flag and EVENT_173E.'
+interface: void endSlipRunState_809DE30(void);
+details: "Operates exclusively on event flags in page 0x17:\n  - 0x1716: gate flag; routine returns immediately\
+  \ if this is clear.\n  - 0x173D: \"in slip-run\" state flag.\n  - 0x173F: transition/event flag set on slip-run\
+  \ exit when 0x173D was set.\n  - 0x173E: companion flag that is unconditionally cleared on exit.\nFlow:\n  1.\
+  \ Test 0x1716; bail out (locret_809DE5E) if it is clear.\n  2. Test 0x173D; if set, set 0x173F (loc_809DE4E branch).\n\
+  \  3. Clear 0x173D, then clear 0x173E.\nAll flag manipulation goes through TestEventFlagFromImmediate,\nSetEventFlagFromImmediate,\
+  \ and ClearEventFlagFromImmediate with\npage in R0 and byte in R1 (event-flag API convention).\nRegister contract:\
+  \ only LR is preserved across the call; the\nflag/result registers are left by whichever event-flag helper\nran\
+  \ last on each return path (a return-via-pop {pc} is used).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c sub_809DE30
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809DE30
+
+    ./wf verify --function sub_809DE30 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809DE30
+
+    ./wf verify --function sub_809DE30 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809DE30
+
+    ./wf verify --function sub_809DE30 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6,
+    story7, story8, story9.'
+  reproduce: grep -l '^0809de30 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/ow_player.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What gameplay event sets EVENT_1716 (0x1716) as the gate enabling slip-run teardown?
+- Is EVENT_173F purely a one-shot exit marker consumed elsewhere, or does it also gate re-entry?
+- Why is EVENT_173E always cleared even on the branch where 0x173D was not set?
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd
