@@ -218,7 +218,8 @@ everything), `SoundMainRAM_iwram_03005700` (callers unknown).
 
 Allowed only with `convention: registers` and a stated reason:
 - **Non-local control flow:** returns somewhere other than its caller (`may_unwind`),
-  pops or shares a caller's frame (e.g. `sub_811FA22` / `loc_811FA36` in `leaves_misc.c`).
+  pops or shares a caller's frame (e.g. `menu_moveCursorUpDown_811FA22` / `menu_moveCursor_811FA36`
+  in `asm32_811CAEC.c`).
 - **Temporary:** a still-lifted caller reads a computed leftover that cannot sensibly be
   produced in the adapter — convert that caller next instead of keeping it.
 - **Measured hot paths** where the adapter costs speed (`tools/speed.sh`), e.g. the m4a
@@ -236,7 +237,8 @@ Allowed only with `convention: registers` and a stated reason:
   (14 wrappers → `bool`/`void` C functions), `ow_objects`, `palette_effects`,
   `battle_helpers`; then the fully readable trees (`battle_isTimeStop` → `battle_getFlags`,
   `NPCCommand_jump` → `ReadNPCScriptWord`, `npc_drawSprites_800467C` → sprite pipeline);
-  then `npc_commands`, `npc_actions`, `npc_script`, `leaves_misc`; m4a by measurement.
+  then `npc_commands`, `npc_actions`, `npc_script`, the farm's functions (by bn6f source since the
+  regroup, `tools/layout.py`); m4a by measurement.
   Update `docs/PROCESS.md` (replace the "register mirroring rule") and the `farm.py`
   CONVENTIONS/TEMPLATE so new model output is already C-ABI.
 - **Phase 3 — LangGraph orchestrator (decided: after the tools exist).** Its own venv under

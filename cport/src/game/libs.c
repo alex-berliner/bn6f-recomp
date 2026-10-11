@@ -1,0 +1,946 @@
+/*
+ * libs.c: readable functions of bn6f libs.s, in address order.
+ *
+ * Laid out by tools/layout.py: a function converted on its own (the model farm) lives in
+ * the file of the bn6f source that defines it, a big source in parts (tools/layout.txt).
+ * Each function's part starts at its `── NAME ──` line and holds what it needs.
+ */
+#include "game.h"
+#include "runtime.h"
+
+/* ── sub_8144240 ── */
+/* sub_8144240: run both steps of the (likely per-frame) update for this
+ * subsystem: sub_8144158 followed by sub_81440D8. Neither takes arguments;
+ * whatever the callees leave in r2/r3 is passed through to the caller. */
+Next sub_8144240(void) {
+    GUEST_CALL(sub_8144158);
+    GUEST_CALL(sub_81440D8);
+    RETURN_TO_CALLER();
+}
+
+/* ── ereader_updateTimerEnable_8144380 ── */
+/* ereader_updateTimerEnable_8144380: update the e-Reader timer-enable flag (eTimerEnable200F460)
+ * based on the current SIO mode. When the link port is in the 0x8 mode
+ * and the secondary byte_200F462 flag is clear, the flag byte is set to
+ * that mode value (0x8); in every other case it is cleared to 0. */
+Next ereader_updateTimerEnable_8144380(void) {
+    u32 sioMode = LD32(A_SIOControlRegister) & 0xC;
+    u32 flagBase = A_eTimerEnable200F460;
+
+    if (sioMode == 0x8 && LD8(flagBase + 2) == 0)
+        ST8(flagBase, sioMode);
+    else
+        ST8(flagBase, 0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── timer_IsEnabled_8144CE0 ── */
+/* timer_IsEnabled_8144CE0: return the enabled state of the timer flags at
+ * eTimerEnable200F460 (its second byte). */
+Next timer_IsEnabled_8144CE0(void) {
+    R0 = LD8(A_eTimerEnable200F460 + 1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8146BF4 ── */
+/* sub_8146BF4: read the state byte of the object referenced by dword_2010CC0
+ * (dword_2010CC0 -> struct; first byte is its state code).
+ * R0 = 1 if the state is 0 or 1, else 0. NZ/C/V are left as the original's
+ * final CMP + MOV sequence leaves them so callers can branch on the result. */
+Next sub_8146BF4(void) {
+    u32 state = LD8(LD32(A_dword_2010CC0));
+
+    SET_FLAGS_CMP(state, 1);
+    if (state == 1) {
+        R0 = 1;
+    } else {
+        SET_FLAGS_CMP(state, 0);
+        if (state != 0)
+            R0 = 0;
+        else
+            R0 = 1;
+    }
+    SET_FLAGS_NZ(R0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── rfu_setTimerInterrupt ── */
+/* rfu_setTimerInterrupt(r0, r1): set up the hardware timer used by the
+ * wireless library, with the two arguments swapped and the first one
+ * truncated to 8 bits before being handed to STWI_init_timer.
+ * Whatever STWI_init_timer leaves in r2-r5 is passed through to our caller. */
+Next rfu_setTimerInterrupt(void) {
+    u32 argA = R0;
+    u32 argB = R1;
+
+    R0 = argB;
+    R1 = argA & 0xFF;
+    GUEST_CALL(STWI_init_timer);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── rfu_STC_REQ_callback ── */
+/* rfu_STC_REQ_callback(r0 = requesting device id, r1 = request command):
+ * RFU library callback invoked when a REQ packet arrives.  Reinstalls the
+ * library's default async callback, records the request command in the RFU
+ * work area, and — if the callback slot is armed (bit 3 of the work area's
+ * status byte) — forwards the request to its handler.
+ *
+ * Flag outputs: on the dispatch path they are whatever sub_814DA68 leaves;
+ * on the skip path they come from the arm-bit test (CMP against 0).
+ * r4/r5 are preserved: the original pushes them around the call and pops
+ * them back (sub_814DA68 sees reqCmd in r4 and srcId in r5).
+ *
+ * Note on the return: the original exits with `pop {r4,r5}` / `pop {r0}` /
+ * `bx r0`.  Because its push saved lr as the third word, that `pop {r0}`
+ * loads the *return address* into r0 — so r0 leaves the function holding
+ * the entry LR value on both paths. */
+Next rfu_STC_REQ_callback(void) {
+    u32 srcId   = R0 & 0xFF;      /* byte argument   */
+    u32 reqCmd  = R1 & 0xFFFF;    /* halfword argument */
+    u32 entryLR = LR;             /* becomes the outgoing r0 (see note above) */
+    u32 inR4 = R4, inR5 = R5;     /* entry values, restored on the dispatch path */
+
+    /* Always (re)install the default serial callback. */
+    R0 = A_rfu_CB_defaultCallback | 1u;
+    GUEST_CALL(STWI_set_Callback_M);
+
+    /* Record the request command in the RFU work area. */
+    u32 rfuWork = LD32(A_dword_2010CC4);
+    ST16(rfuWork + 0x1C, reqCmd);
+
+    u32 status = LD8(rfuWork);
+    if (status & 8) {
+        /* Slot armed: dispatch (id, command, handler list pointer). */
+        R0 = srcId;
+        R1 = reqCmd;
+        R2 = LD32(LD32(A_dword_2010CC8));
+        R4 = reqCmd;
+        R5 = srcId;
+        GUEST_CALL(sub_814DA68);
+        R4 = inR4;    /* original pops r4/r5 back over the callee's values */
+        R5 = inR5;
+    } else {
+        /* Skip path: exit flags are those of the arm-bit test, r1 keeps
+         * the whole status byte as loaded by `ldrb r1, [r0]`. */
+        SET_FLAGS_CMP(status & 8, 0);
+        R1 = status;
+    }
+
+    /* `pop {r0}; bx r0`: r0 exits holding the saved return address. */
+    R0 = entryLR;
+    RETURN_TO_CALLER();
+}
+
+/* ── STWI_init_timer ── */
+/* STWI_init_timer(r0 = callback slot, r1 = timer id):
+ * Install STWI_intr_timer as the handler stored at *r0 and record the timer id
+ * in the STWI work area (dword_2010CCC). Then enable the timer's IRQ bit in
+ * REG_IE, briefly disabling interrupts (REG_IME) around the update so the new
+ * bit can't fire mid-write.
+ *
+ * Results left for the caller:
+ *   r2 = REG_IME value as it was before the update
+ *   r3 = &REG_IME (InterruptMasterEnableRegister)
+ * r4/r5 are clobbered internally but restored, so they stay as they came in. */
+Next STWI_init_timer(void) {
+    u32 slot = R0;
+    u32 timerId = R1;
+
+    /* Hook the timer interrupt handler into the caller's callback slot. */
+    ST32(slot, A_STWI_intr_timer | 1);
+
+    /* Save the timer id in the STWI work area. */
+    u32 workSlot = A_dword_2010CCC;
+    u32 work = LD32(workSlot);
+    ST8(work + 0xA, timerId);
+
+    /* Turn interrupts off while we update the enable mask. */
+    u32 imeReg = A_InterruptMasterEnableRegister;
+    u32 savedIme = LD16(imeReg);
+    ST16(imeReg, 0);
+
+    /* Set the IRQ enable bit for the selected timer (bit 3 << timer id),
+     * keeping any enables that were already requested. */
+    u32 ieReg = A_InterruptEnableRegister;
+    u32 idByte = LD8(work + 0xA);          /* reread the id just stored */
+    u32 timerBit = LSL_REG(8, idByte & 0xFF);
+    ST16(ieReg, timerBit | LD16(ieReg));
+
+    /* Restore the previous interrupt master enable state. */
+    ST16(imeReg, savedIme);
+
+    R2 = savedIme;
+    R3 = imeReg;
+    RETURN_TO_CALLER();
+}
+
+/* ── STWI_init_Callback_M ── */
+/* STWI_init_Callback_M: clear the wireless callback handler (pass NULL to
+ * STWI_set_Callback_M) so no more STWI callback is invoked. */
+Next STWI_init_Callback_M(void) {
+    R0 = 0;
+    GUEST_CALL(STWI_set_Callback_M);
+    RETURN_TO_CALLER();
+}
+
+/* ── STWI_init_Callback_S ── */
+/* STWI_init_Callback_S:
+ * Registers the default (NULL) callback for the STWI wireless lib and
+ * returns to our caller. Equivalent to STWI_set_Callback_S(NULL). */
+Next STWI_init_Callback_S(void) {
+    R0 = 0;
+    GUEST_CALL(STWI_set_Callback_S);
+    RETURN_TO_CALLER();
+}
+
+/* ── STWI_set_Callback_M ── */
+/* STWI_set_Callback_M(r0 = callback function pointer):
+ * Store the given callback into the STWI work struct's callback slot (offset 0x18),
+ * so the wireless library invokes it when a message arrives. */
+Next STWI_set_Callback_M(void) {
+    u32 stwiWork = LD32(A_dword_2010CCC);
+
+    ST32(stwiWork + 0x18, R0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── STWI_set_Callback_S ── */
+/* STWI_set_Callback_S(r0 = callback function pointer):
+ * Register r0 as the "send done" callback in the STWI library's work struct. */
+Next STWI_set_Callback_S(void) {
+    u32 stwiWork = LD32(A_dword_2010CCC);
+    ST32(stwiWork + 0x1C, R0); /* oStwiWork_Callback */
+    RETURN_TO_CALLER();
+}
+
+/* ── STWI_set_Callback_ID ── */
+/* STWI_set_Callback_ID(r0 = callback ID):
+ * Store the given ID as the STWI (wireless) callback ID in the STWI work
+ * struct pointed to by dword_2010CCC. */
+Next STWI_set_Callback_ID(void) {
+    ST32(LD32(A_dword_2010CCC) + 0x20, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── SWI_CpuFastSet ── */
+/* SWI_CpuFastSet(r0 = src, r1 = dest, r2 = length | mode):
+ * BIOS call 0xC. Copies or fills words in 8-word bursts.
+ *   r2 bit 24 set: fill dest with the word at [src]; otherwise copy.
+ * Length (bits 0-20) is rounded up by the BIOS to a multiple of 8 words;
+ * both addresses must be 4-byte aligned. */
+Next SWI_CpuFastSet(void) {
+    swi_call(0xC);
+    RETURN_TO_CALLER();
+}
+
+/* ── SWI_CpuSet ── */
+/* SWI_CpuSet: thin wrapper around BIOS CpuSet (svc 0xB).
+ *   r0 = source address (word-aligned for 32-bit transfers, halfword-aligned for 16-bit)
+ *   r1 = destination address (same alignment rules)
+ *   r2 = length/mode: bits 0-20 = element count, bit 24 = fixed source (fill),
+ *        bit 26 = 32-bit transfers when set, 16-bit otherwise.
+ * No return value; the result is the data written to the destination.
+ * r0 is clobbered by the BIOS; r1-r3 pass through unchanged. */
+Next SWI_CpuSet(void) {
+    swi_call(0xB);
+    RETURN_TO_CALLER();
+}
+
+/* ── SWI_Div ── */
+/* SWI_Div(r0 = dividend, r1 = divisor):
+ * Thin wrapper around the BIOS signed-division call (svc 6). The BIOS itself
+ * produces the results: r0 = dividend / divisor, r1 = dividend % divisor
+ * (both signed), and r3 = abs(quotient) as an unsigned value. r2 and lr are
+ * passed through untouched. */
+Next SWI_Div(void) {
+    swi_call(6);
+    RETURN_TO_CALLER();
+}
+
+/* ── libSave_CopyToGamePak ── */
+/* libSave_CopyToGamePak(r0 = source, r1 = destination, r2 = byte count):
+ * Copy `count` bytes (e.g. save data) to or from Game Pak address space.
+ * While doing so, the WS0 field of the Game Pak waitstate control is forced
+ * to 3 (the fastest setting) and left that way afterwards. The copy loop is
+ * skipped entirely when count == 0. Always returns r3 = -1; r4/r5 (and the
+ * waitstate bits above WS0) are preserved. */
+Next libSave_CopyToGamePak(void) {
+    u32 src = R0;
+    u32 dst = R1;
+    s32 count = (s32)R2;
+
+    /* Force the Game Pak waitstates to 0b11 while touching the save chip. */
+    u32 waitcnt = LD16(A_GamePakWaitstateControl);
+    ST16(A_GamePakWaitstateControl, (waitcnt & 0xFFFCu) | 0x3u);
+
+    /* Copy count bytes; the decrement-first structure means count == 0
+     * copies nothing. */
+    count--;
+    if (count != -1) {
+        do {
+            ST8(dst, LD8(src));
+            src++;
+            dst++;
+        } while (--count != -1);
+    }
+
+    R3 = 0xFFFFFFFF;
+    RETURN_TO_CALLER();
+}
+
+/* ── umul3232H32 ── */
+/* umul3232H32(r0, r1): 64-bit unsigned multiply r0 * r1.
+ * Returns the high 32 bits of the product in r0; the low 32 bits are also
+ * left in r2 and the high bits in r3 (as the original's umull does).
+ * The original switches to ARM just to execute the single umull. */
+Next umul3232H32(void) {
+    u64 product = (u64)R0 * (u64)R1;
+    R2 = (u32)product;        /* low word  */
+    R3 = (u32)(product >> 32); /* high word */
+    R0 = R3;                  /* result: high word */
+    RETURN_TO_CALLER();
+}
+
+/* ── SoundMainBTM ── */
+/* SoundMainBTM(r0 = sound work struct):
+ * clear the 64-byte struct at r0 (four STM blocks of {r1-r4}), leaving r0
+ * pointing just past it and r1-r3 zeroed. r4 is preserved; r12 receives the
+ * incoming r4. Flags come from the final "movs r4, #0" (zero). */
+Next SoundMainBTM(void) {
+    u32 ptr = R0;
+
+    R12 = R4;   /* saved r4, restored into r4 after the stores */
+    R1 = 0;
+    R2 = 0;
+    R3 = 0;
+    /* R4 is momentarily zeroed in the original, then restored from r12;
+     * net effect: r4 unchanged. */
+
+    for (u32 off = 0; off < 64; off += 4)
+        ST32(ptr + off, 0);
+    R0 = ptr + 64;
+
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
+/* ── RealClearChain ── */
+/* RealClearChain(r0 = chain node): unlink a node from its doubly linked list.
+ *
+ * Each node links to its list anchor at +0x2C, to the previous node at +0x30
+ * and to the next node at +0x34; the anchor keeps the first node at +0x20.
+ * If the node is attached, splice it out (fixing up the head pointer when it
+ * was the first entry) and clear its anchor link. If it is not attached
+ * (anchor == NULL), leave everything untouched.
+ *
+ * On return: r3 = the anchor link as read, r2 = the node's old "prev" and
+ * r1 = its old "next" (both only written when the node was attached, r1 ends
+ * as 0 afterwards). Flags: every path ends with Z set / C set / V clear,
+ * i.e. "equal". */
+Next RealClearChain(void) {
+    R3 = LD32(R0 + 0x2C);               /* the list this node is attached to */
+
+    if (R3 != 0) {
+        R1 = LD32(R0 + 0x34);           /* next node in the chain */
+        R2 = LD32(R0 + 0x30);           /* previous node in the chain */
+
+        if (R2 != 0)
+            ST32(R2 + 0x34, R1);        /* prev->next = next */
+        else
+            ST32(R3 + 0x20, R1);        /* node was first: update list head */
+
+        if (R1 != 0)
+            ST32(R1 + 0x30, R2);        /* next->prev = prev */
+
+        R1 = 0;
+        ST32(R0 + 0x2C, 0);             /* mark the node as detached */
+    }
+
+    /* Both exit paths leave the flags as if comparing 0 against 0. */
+    SET_FLAGS_CMP(0, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E09C ── */
+/* sub_814E09C: convert/copy the 36-word table at off_81C0418 into the buffer
+ * whose address arrives in r0. Each word is fetched and then passed through
+ * sub_814E0B6 (destination pointer in r0, source address in r2, word value in
+ * r3; the converted word comes back in r3) before being stored. Like the
+ * original, r12 is left holding the return address. */
+Next sub_814E09C(void) {
+    u32 dest = R0;
+    u32 ret = LR;
+    u32 src = A_off_81C0418;
+
+    for (s32 count = 0x24; count > 0; count--) {
+        u32 word = LD32(src);
+
+        R0 = dest;
+        R1 = (u32)count;
+        R2 = src;
+        R3 = word;
+        R12 = ret;
+        GUEST_CALL(sub_814E0B6);
+
+        ST32(dest, R3);
+        dest += 4;
+        src += 4;
+    }
+
+    R12 = ret;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E0B4 ── */
+/* sub_814E0B4(r0 = arg, r2 = pointer): read the byte at *r2 into r3 and
+ * tail-call sub_814E0B6, which continues the work with that byte.
+ * r0 is passed through untouched; flags and results come from the callee. */
+Next sub_814E0B4(void) {
+    R3 = LD8(R2);
+    GUEST_CALL(sub_814E0B6);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E0B6 ── */
+/* sub_814E0B6(r0 preserved, r2 = value to check, r3):
+ * Range-check r2 and clear r3 when it is not an acceptable address.
+ * Always returns with r0 unchanged. Flags reflect the last check performed:
+ *   - if r2 has bit 25 set (>= 0x02000000) the check passes untouched and the
+ *     flags come from that top-bit shift,
+ *   - otherwise r2 is compared against the ROM constant off_81C0418; values
+ *     below it fail (r3 = 0, flags from the comparison's MOV after it),
+ *   - values at/above it are split on bit 14 (r2 >> 14) before r3 is cleared. */
+Next sub_814E0B6(void) {
+    u32 addr = R2;
+    u32 saved_r0 = R0; /* the original pushes/pops r0 around its scratch use */
+
+    /* Top-bit test: anything with bit 25 set is accepted as-is. */
+    R0 = addr >> 25;
+    SET_FLAGS_NZ(R0);
+    cpu.c = (addr >> 24) & 1; /* LSR #25 carry: last bit shifted out */
+    if (R0 != 0) {
+        R0 = saved_r0;
+        RETURN_TO_CALLER();
+    }
+
+    /* Below 0x02000000: compare against the ROM constant. */
+    {
+        u32 limit = A_off_81C0418;
+        SET_FLAGS_CMP(addr, limit);
+        if (addr < limit) {
+            R3 = 0; /* mov r3,#0: N,Z only, C/V still from the CMP */
+            SET_FLAGS_NZ(R3);
+            R0 = saved_r0;
+            RETURN_TO_CALLER();
+        }
+    }
+
+    /* At/above the constant: shift test on bit 14, then clear r3 unless zero. */
+    R0 = addr >> 14;
+    SET_FLAGS_NZ(R0);
+    cpu.c = (addr >> 13) & 1; /* LSR #14 carry: last bit shifted out */
+    if (R0 != 0) {
+        R3 = 0; /* mov r3,#0: N,Z only, C/V still from the shift/CMP */
+        SET_FLAGS_NZ(R3);
+    }
+    R0 = saved_r0;
+    RETURN_TO_CALLER();
+}
+
+/* ── ply_pend ── */
+/* ply_pend(r1 = pending-entry list):
+ * Pop the most recently queued entry and make it the current one. The list
+ * header holds a count at offset 2; the queued entries start at offset 0x44
+ * (4 bytes each), and the "current" slot is at offset 0x40. An empty list is
+ * left untouched (except that r2 still holds the count read from the header).
+ * Flags come from the count test on the empty path and from the address
+ * addition on the pop path. */
+Next ply_pend(void) {
+    u32 list = R1;
+
+    R2 = LD8(list + 2);
+    if (R2 == 0) {
+        /* list empty: nothing to pop, only the count test's flags remain */
+        SET_FLAGS_CMP(R2, 0);
+        RETURN_TO_CALLER();
+    }
+
+    R2 = R2 - 1;
+    ST8(list + 2, R2);
+
+    R2 = R2 << 2;
+    R3 = list + R2;
+    SET_FLAGS_ADD(list, R2);
+
+    R2 = LD32(R3 + 0x44);
+    ST32(list + 0x40, R2);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E168 ── */
+/* sub_814E168: refresh two halfword fields of the object whose address
+ * sub_814E0D0 returns in r0. Field +0x1C receives the callee's r3 doubled;
+ * field +0x20 receives that doubled value scaled by the halfword at +0x1E
+ * (an 8.8 fixed-point multiply: (doubled * scale) >> 8).
+ * The original saves its return address into r12 and returns through it,
+ * so r12 must end as the incoming lr; the callee preserves r12.
+ * Flags come from the final shift: nz from the result, c from the last bit
+ * shifted out (bit 7 of the product). The callee's r0/r2/r3 results stay in
+ * r0/r2/r3 as the original leaves them. */
+Next sub_814E168(void) {
+    R12 = LR;   /* mov r12, lr — the original returns via bx r12 */
+
+    GUEST_CALL(sub_814E0D0);
+
+    u32 obj = R0;
+
+    R3 <<= 1;                       /* doubled value from the callee */
+    ST16(obj + 0x1C, R3);
+
+    R2 = LD16(obj + 0x1E);          /* fixed-point scale factor */
+    u32 product = R3 * R2;
+    cpu.c = (product >> 7) & 1;     /* carry out of the lsr #8 */
+    R3 = product >> 8;
+    SET_FLAGS_NZ(R3);
+    ST16(obj + 0x20, R3);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E17C ── */
+/* sub_814E17C(r1 = object, remaining inputs forwarded to sub_814E0D0):
+ * Runs sub_814E0D0, which computes a byte value in r3 from the object state.
+ * That byte is written to offset 0xA of the object, and the flag byte at
+ * offset 0 gets its 0xC bits forced on (object marked as ...).
+ * Returns r2 = 0xC, r3 = updated flag byte; NZ flags come from the ORR.
+ * r1 and r12 pass through unchanged (sub_814E0D0 preserves both). */
+Next sub_814E17C(void) {
+    R12 = LR; /* sub_814E0D0 preserves r12; it still holds our return address */
+
+    u32 obj = R1;
+    GUEST_CALL(sub_814E0D0);
+
+    ST8(obj + 0xA, R3);      /* store the computed byte */
+
+    R2 = 0xC;
+    R3 = LD8(obj) | R2;      /* set the 0xC bits in the object's flag byte */
+    SET_FLAGS_NZ(R3);
+    ST8(obj, R3);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── loadNextQueuedParams_814E190 ── */
+/* loadNextQueuedParams_814E190(r0 = owner struct, r1 = work struct):
+ * Read the next entry index from the byte queue at r1+0x40, then fetch the
+ * three words of that 12-byte entry from the table pointed to by r0+0x30.
+ * Each word is passed through sub_814E0B6 and stored to r1+0x24/0x28/0x2C.
+ * Like the original, this uses r12 to hold the return address (mov r12, lr;
+ * bx r12), so r12 must be set to the incoming LR before returning. */
+Next loadNextQueuedParams_814E190(void) {
+    R12 = LR;
+
+    u32 cursor = LD32(R1 + 0x40);
+    u32 index = LD8(cursor);          /* queue holds 8-bit entry numbers */
+    ST32(R1 + 0x40, cursor + 1);
+
+    u32 entry = LD32(R0 + 0x30) + index * 12;
+    R2 = entry;
+
+    R3 = LD32(entry + 0);
+    GUEST_CALL(sub_814E0B6);
+    ST32(R1 + 0x24, R3);
+
+    R3 = LD32(entry + 4);
+    GUEST_CALL(sub_814E0B6);
+    ST32(R1 + 0x28, R3);
+
+    R3 = LD32(entry + 8);
+    GUEST_CALL(sub_814E0B6);
+    ST32(R1 + 0x2C, R3);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObj_runUpdateAndSetActive_814E1C0 ── */
+/* battleObj_runUpdateAndSetActive_814E1C0: run sub_814E0D0's update for the object pointer in r1, then
+ * store the byte result it leaves in r3 at offset 0x12 and set the low two
+ * bits of the object's status byte (marking it active/updated).
+ * Returns to the caller; flags come from the final ORR. */
+Next battleObj_runUpdateAndSetActive_814E1C0(void) {
+    R12 = LR;                    /* the original returns through a saved copy of LR */
+
+    GUEST_CALL(sub_814E0D0);
+
+    {
+        u32 obj = R1;            /* object pointer, preserved by the callee */
+
+        ST8(obj + 0x12, R3);     /* result byte produced by the call */
+
+        R2 = 3;
+        R3 = LD8(obj) | R2;      /* set status bits 0-1 */
+        ST8(obj, R3);
+        SET_FLAGS_NZ(R3);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_moveYUp64AndMarkDirty_814E1D4 ── */
+/* sprite_moveYUp64AndMarkDirty_814E1D4: adjust an object's Y coordinate and mark it as changed.
+ * Calls sub_814E0D0 to compute a value (R1 = object pointer, R3 = value),
+ * stores value - 0x40 (shifted up 64 pixels/units) into the object's
+ * field at +0x14, then sets the low two bits of the object's byte at +0x00
+ * (its "dirty"/state flags) so the change is picked up.
+ * Returns via the saved LR in R12, as the original does with `bx r12`. */
+Next sprite_moveYUp64AndMarkDirty_814E1D4(void) {
+    R12 = LR;                     /* sub_814E0D0 clobbers LR; keep our return address */
+
+    GUEST_CALL(sub_814E0D0);      /* R1 = object ptr, R3 = computed value */
+
+    SET_FLAGS_CMP(R3, 0x40);      /* SUBS r3, #0x40 */
+    R3 -= 0x40;
+    ST8(R1 + 0x14, R3);
+
+    R2 = 3;
+    R3 = LD8(R1) | R2;            /* ORR r3, r2 sets N/Z only */
+    SET_FLAGS_NZ(R3);
+    ST8(R1, R3);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E1E8 ── */
+/* sub_814E1E8: run the check performed by sub_814E0D0, then record its
+ * outcome in the state struct whose address is left in r1:
+ *   - the status byte returned in r3, biased down by 0x40, is stored
+ *     as the result field at offset 0x0E;
+ *   - the flag bits 0x0C are set in the header byte at offset 0x00.
+ * Returns to the caller through r12, like the original. */
+Next sub_814E1E8(void) {
+    R12 = LR; /* the original branches back through r12 */
+
+    GUEST_CALL(sub_814E0D0);
+
+    /* store the callee's status byte, biased down by 0x40 */
+    u32 result = R3 - 0x40;
+    SET_FLAGS_CMP(R3, 0x40); /* SUB r3, #0x40 sets c/v for the caller */
+    ST8(R1 + 0xE, result);
+
+    /* set the 0x0C flag bits in the struct's header byte */
+    R2 = 0xC;
+    u32 header = LD8(R1) | R2;
+    SET_FLAGS_NZ(header); /* ORR is the original's last flag-setting op */
+    ST8(R1, header);
+    R3 = header;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E1FC ── */
+/* sub_814E1FC: finish some state update on the structure pointed to by r1.
+ * Calls sub_814E0D0 (which produces a status byte in r3), stores that byte at
+ * [r1+0xF], then sets the 0xC flag bits in the state byte at [r1].
+ * Preserves the caller's return address in r12, as the original does. */
+Next sub_814E1FC(void) {
+    u32 state = R1;
+
+    R12 = LR; /* mov r12, lr: keep the return address across the call */
+
+    GUEST_CALL(sub_814E0D0); /* leaves the new status byte in R3 */
+
+    ST8(state + 0xF, R3);
+
+    R3 = LD8(state) | 0xC;
+    R2 = 0xC;
+    SET_FLAGS_NZ(R3);
+    ST8(state, R3);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E210 ── */
+/* sub_814E210: wrapper around sub_814E0D0 — calls it, then stores the byte
+ * result it leaves in r3 at [r1 + 0x1B]. Everything else (including r0 and
+ * the flags left by the callee) passes through unchanged; returns to the
+ * caller's original return address, kept in r12 like the original does. */
+Next sub_814E210(void) {
+    R12 = LR;
+    GUEST_CALL(sub_814E0D0);
+    ST8(R1 + 0x1B, R3);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E21C ── */
+/* sub_814E21C:
+ * Calls sub_814E0D0 (which fills r1 with a record pointer and r3 with the
+ * record's current/new state value), then syncs the state byte at [r1+0x18]:
+ * if it differs from r3, the new value is written back and the low nibble of
+ * the byte at [r1] is set to 0xF (marking the record as "needs refresh").
+ * Flags are left as the last executed flag-setting instruction leaves them:
+ * CMP r0, r3 on the equal path, ORR on the update path. */
+Next sub_814E21C(void) {
+    R12 = LR;
+    GUEST_CALL(sub_814E0D0);
+
+    R0 = LD8(R1 + 0x18);
+    SET_FLAGS_CMP(R0, R3);
+    if (R0 != R3) {
+        ST8(R1 + 0x18, R3);
+        R2 = 0xF;
+        R3 = LD8(R1) | R2;
+        ST8(R1, R3);
+        SET_FLAGS_NZ(R3);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_PrintBuffer_WriteNextGlyph_814E234 ── */
+/* chatbox_PrintBuffer_WriteNextGlyph_814E234: emit one character into the print buffer at r1.
+ * Calls sub_814E0D0 to fetch the next glyph code (returned in r3),
+ * stores the adjusted glyph index (code - 0x40) at [r1+0xC], then sets
+ * bits 0x0C of the state byte at [r1] to mark that a glyph was written.
+ * Preserves r1 and r12 across the call; returns to the original caller. */
+Next chatbox_PrintBuffer_WriteNextGlyph_814E234(void) {
+    R12 = LR; /* original return address; handed back unchanged on exit */
+
+    GUEST_CALL(sub_814E0D0); /* -> R3 = glyph code */
+
+    /* SUBS r3, #0x40: adjust the code and keep its carry/overflow flags,
+     * since the ORR below only refreshes nz. */
+    SET_FLAGS_CMP(R3, 0x40);
+    R3 -= 0x40;
+    ST8(R1 + 0xC, R3);
+
+    /* set the "glyph written" flag bits in the state byte (r2 = 0xC,
+     * as the original writes the constant via r2) */
+    R2 = 0xC;
+    R3 = LD8(R1) | R2;
+    SET_FLAGS_NZ(R3);
+    ST8(R1, R3);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_crossfadeColorChannels_814E528 ── */
+/* Applies one channel of a color crossfade: multiply the source channel by a
+ * fixed-point factor (12.14), then saturate at 0xFF. Only values above 0xFF
+ * are clamped, matching the original. */
+static u32 fade_channel(u32 channel, u32 factor) {
+    u32 result = channel * factor;
+    result = (u32)((s32)result >> 14);
+    if (result > 0xFF)
+        result = 0xFF;
+    return result;
+}
+
+/* sprite_crossfadeColorChannels_814E528(r4 = destination color struct, r5 = source color struct):
+ * Crossfade the two color bytes at [r4+2]/[r4+3] toward the source bytes at
+ * [r5+0x10]/[r5+0x11]. The signed byte at [r4+0x14] is the fade position
+ * (-0x80..0x7F): the first channel fades in with (0x80 + pos), the second
+ * fades out with (0x7F - pos). The byte at [r4+0x12] scales both factors.
+ * Leaves r2 = the sign-extended fade position. */
+Next sprite_crossfadeColorChannels_814E528(void) {
+    u32 weight = LD8(R4 + 0x12);
+    u32 pos = (u32)(s8)LD8(R4 + 0x14);
+
+    /* Channel 1 rises as the fade position moves from -0x80 toward +0x7F. */
+    ST8(R4 + 2, fade_channel(LD8(R5 + 0x10), (0x80 + pos) * weight));
+
+    /* Channel 2 falls over the same range. */
+    ST8(R4 + 3, fade_channel(LD8(R5 + 0x11), (0x7F - pos) * weight));
+
+    R2 = pos;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E7A4 ── */
+/* sub_814E7A4(r1 = status struct ptr):
+ * Clear the two status bytes at +0x16 and +0x1A, then OR a mode flag into
+ * byte 0: 0xC if byte +0x18 is zero, 3 otherwise.
+ * Leaves r2 = mode flag, r3 = new byte 0.
+ * Flags: N/Z from the OR result; the final ORR leaves C and V alone, so
+ * they still hold what the "cmp r2, #0" left there (C set, V clear). */
+Next sub_814E7A4(void) {
+    ST8(R1 + 0x16, 0);
+    ST8(R1 + 0x1A, 0);
+
+    u32 delayByte = LD8(R1 + 0x18);
+    SET_FLAGS_CMP(delayByte, 0);    /* C=1 (no borrow), V=0, kept by the ORR */
+
+    u32 mode = (delayByte == 0) ? 0xC : 3;
+
+    u32 flags = LD8(R1) | mode;
+    ST8(R1, flags);
+
+    R2 = mode;
+    R3 = flags;
+    SET_FLAGS_NZ(flags);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── streamReadNextByte_814E7C0 ── */
+/* streamReadNextByte_814E7C0(r1 = stream state):
+ * Reads the next byte from a byte stream whose current position is stored at
+ * [r1+0x40], then advances the position. Outputs:
+ *   r2 = address the byte was read from (position before the increment)
+ *   r3 = the byte value itself. */
+Next streamReadNextByte_814E7C0(void) {
+    u32 stream = R1;
+    u32 pos = LD32(stream + 0x40);
+    ST32(stream + 0x40, pos + 1);
+    R2 = pos;
+    R3 = LD8(pos);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814E7CC ── */
+/* sub_814E7CC: tail of a getter/setter pair.
+ * Calls streamReadNextByte_814E7C0 (which returns a byte in r3 and a struct pointer in r1),
+ * stores the byte at [r1 + 0x19], and if it was zero also calls
+ * sub_814E7A4. r12 is kept as the original does (r12 = lr on entry). */
+Next sub_814E7CC(void) {
+    R12 = LR;
+
+    GUEST_CALL(streamReadNextByte_814E7C0);
+
+    ST8(R1 + 0x19, R3);
+    if (R3 == 0) {
+        /* Value was zero: run the extra fixup. Flags on this path are
+         * whatever sub_814E7A4 leaves behind. */
+        GUEST_CALL(sub_814E7A4);
+    } else {
+        /* Reproduce the `cmp r3, #0` for callers that branch on return. */
+        SET_FLAGS_CMP(R3, 0);
+    }
+
+    RETURN_TO_CALLER(); /* original returns via `bx r12` with r12 == lr */
+}
+
+/* ── sub_814E7E0 ── */
+/* sub_814E7E0: wrapper around streamReadNextByte_814E7C0.
+ * Calls streamReadNextByte_814E7C0, stores its byte result at [r1 + 0x17], and — when the
+ * result is zero — follows up with sub_814E7A4 before returning to the caller
+ * (the return address is kept in r12 across both calls). */
+Next sub_814E7E0(void) {
+    R12 = LR;                       /* mov r12, lr: remember where to return */
+
+    GUEST_CALL(streamReadNextByte_814E7C0);
+
+    ST8(R1 + 0x17, R3);             /* store the byte result into the struct */
+    SET_FLAGS_CMP(R3, 0);
+    if (R3 == 0)
+        GUEST_CALL(sub_814E7A4);    /* extra fixup only when result was zero */
+
+    RETURN_TO_CALLER();             /* bx r12 */
+}
+
+/* ── battle_smashFx_SetParams_814E87C ── */
+/* battle_smashFx_SetParams_814E87C(r0 = object, r1 = halfword value):
+ * If the object's field at +0x34 holds the magic ID 'Smsh' (0x68736D53),
+ * store the value (zero-extended to 16 bits) into fields +0x24 and +0x26
+ * and store 0x100 into field +0x28.
+ * The original pushes LR and pops it into r0 (`pop {r0}; bx r0`), so on
+ * exit R0 is the return address. Flags reflect the magic comparison (or,
+ * on the match path, the final `lsl r0, r0, #1`). */
+Next battle_smashFx_SetParams_814E87C(void) {
+    u32 return_address = LR; /* push {lr} ... pop {r0} */
+
+    R2 = R0;
+    R1 &= 0xFFFF; /* lsl #16 / lsr #16: keep only the low halfword */
+
+    R3 = LD32(R2 + 0x34);
+    R0 = 0x68736D53; /* 'Smsh' */
+    SET_FLAGS_CMP(R3, R0);
+
+    if (R3 == R0) {
+        ST16(R2 + 0x26, R1);
+        ST16(R2 + 0x24, R1);
+
+        R0 = 0x80 << 1; /* 0x100; lsl sets C from the pre-shift top bit */
+        cpu.c = 0;
+        SET_FLAGS_NZ(R0);
+        ST16(R2 + 0x28, R0);
+    }
+
+    R0 = return_address;
+    RETURN_TO_CALLER();
+}
+
+/* ── sound_tickAllMusicPlayers_814EA58 ── */
+/* sound_tickAllMusicPlayers_814EA58: walk the fixed music-player table gMPlayTable (0x20 entries,
+ * 12 bytes each, first word is the player info pointer) and call
+ * sub_814F1E8 on every entry. The entry count is a literal pool constant
+ * in the original, so its "count == 0" early-out can never be taken.
+ * On return r0 holds the return address: the original pops lr into r0
+ * and returns with "bx r0", leaving r0 = lr. */
+
+#define MPLAY_TABLE_COUNT      0x20u
+#define MPLAY_TABLE_ENTRY_SIZE 0xCu
+
+Next sound_tickAllMusicPlayers_814EA58(void) {
+    const u32 *entry = (const u32 *)A_gMPlayTable;
+
+    for (u32 i = MPLAY_TABLE_COUNT; i != 0; i--) {
+        R0 = LD32((u32)entry);
+        GUEST_CALL(sub_814F1E8);
+        entry = (const u32 *)((u32)entry + MPLAY_TABLE_ENTRY_SIZE);
+    }
+
+    /* Flags on exit come from the loop's final "cmp r4, #0"; the loop
+     * ends with the counter having just decremented to 0. */
+    SET_FLAGS_CMP(0, 0);
+    R0 = LR;
+    RETURN_TO_CALLER();
+}
+
+/* ── text_ReadNextChar_814FE34 ── */
+/* text_ReadNextChar_814FE34(r1 = text state):
+ * Read the next character of a text script: load the byte at the current
+ * read pointer, copy it to the state's current-character field, then advance
+ * the pointer past it.
+ * Returns r0 = advanced read pointer, r2 = the byte that was read;
+ * flags reflect the pointer increment (ADDS). */
+Next text_ReadNextChar_814FE34(void) {
+    u32 state = R1;
+
+    u32 readPos = LD32(state + 0x40);
+    u32 ch = LD8(readPos);
+    ST8(state + 0x1E, ch);
+
+    readPos = readPos + 1;
+    SET_FLAGS_ADD(readPos, 1);
+    ST32(state + 0x40, readPos);
+
+    R0 = readPos;
+    R2 = ch;
+    RETURN_TO_CALLER();
+}
+
+/* ── readNextStreamByte_814FE40 ── */
+/* readNextStreamByte_814FE40(r1 = record pointer):
+ * Copies the next byte of the data stream referenced by [r1+0x40] into the
+ * byte field at [r1+0x1F], then advances the stream pointer past it.
+ * Outputs: r0 = advanced stream pointer, r2 = the byte that was read;
+ * nz/c/v come from the pointer increment (ADDS r0, #1). */
+Next readNextStreamByte_814FE40(void) {
+    u32 streamPos = LD32(R1 + 0x40);
+    u8 value = LD8(streamPos);
+
+    ST8(R1 + 0x1F, value);
+
+    streamPos += 1;
+    ST32(R1 + 0x40, streamPos);
+
+    R0 = streamPos;
+    R2 = value;
+    SET_FLAGS_ADD(streamPos, 1);
+    RETURN_TO_CALLER();
+}

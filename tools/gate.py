@@ -17,6 +17,9 @@ Checks, each only when the commit touches what it checks:
            flag a callee leaves behind but does not return (R1-A21), unless the site carries a note
   golden   tools/lifter/golden.py check (about 40 s), when tools/lifter changes: the lifter still
            writes the recorded output, or the commit re-records it (`golden.py update`)
+  layout   tools/layout.py: cport/src/game is laid out (each function converted on its own in the
+           file of its bn6f source, parts self-contained: laying out the tree gives back the same
+           tree), and every symbols/db `readable_c:` names the file that holds its function
   wf       the tools/wf tests, when tools/wf changes
 
 It reads files and git only: no model calls, no builds, no lockstep. In hook mode it checks the
@@ -241,6 +244,40 @@ def check_symdb(hook: bool, changed: list[str]) -> Result:
     return res
 
 
+# ── layout ──
+
+LAYOUT = ("tools/layout.py", "tools/layout.txt")
+
+
+def check_layout(hook: bool, changed: list[str]) -> Result:
+    import layout
+    import stamps
+    import symdb
+    res = Result("layout")
+    files = layout.read_game(staged=hook)
+    p = layout.plan(files)
+    mine = set(changed)
+    rule_changed = not hook or bool(mine & set(LAYOUT))
+    for problem in p.problems:
+        (res.failures if rule_changed or any(f"{GAME}{n}" in problem for n in
+                                             {os.path.basename(c) for c in mine if c.startswith(GAME)})
+         else res.warnings).append(problem)
+    if p.files:
+        touched = sorted(n for n in p.files if f"{GAME}{n}" in mine)
+        text = (f"not laid out: {len(p.moves)} functions would move, {len(p.files)} files would change "
+                f"({', '.join(sorted(p.files)[:4])}{' ...' if len(p.files) > 4 else ''}); run tools/layout.py "
+                "(it moves the functions and updates symbols/db)")
+        (res.failures if rule_changed or touched else res.warnings).append(text)
+    tree = stamps.Tree(staged=hook, cache=stamps.Cache())
+    for entry, problem in layout.readable_c_mismatches(files, symdb.load(tree, tree.cache)):
+        holder = problem.rsplit(" is in ", 1)[-1]
+        (res.failures if not hook or entry in mine or holder in mine else res.warnings).append(f"{entry}: {problem}")
+    if not res.failures and not res.warnings:
+        res.notes.append(f"laid out ({len(layout.owned_names(layout.bn6f(), layout.read_table()) & set(files))} "
+                         "files by bn6f source)")
+    return res
+
+
 # ── tools/wf tests ──
 
 def check_wf(hook: bool) -> Result:
@@ -301,6 +338,8 @@ def main() -> int:
         jobs.append(("golden", lambda: check_golden(hook)))
     if touches("symbols/db/", GAME, "bn6f", "tools/lifter/", "tools/symdb.py", "tools/stamps.py"):
         jobs.append(("symdb", lambda: check_symdb(hook, changed)))
+    if touches(GAME, "symbols/db/", "bn6f", *LAYOUT):
+        jobs.append(("layout", lambda: check_layout(hook, changed)))
     if touches(WF):
         jobs.append(("wf", lambda: check_wf(hook)))
     results: list[Result] = [Result("?")] * len(jobs)

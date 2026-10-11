@@ -1,0 +1,1673 @@
+/*
+ * asm03_0_80299B6.c: readable functions of bn6f asm03_0.s, 0x080299B6-0x0802F2C8, in address order.
+ *
+ * Laid out by tools/layout.py: a function converted on its own (the model farm) lives in
+ * the file of the bn6f source that defines it, a big source in parts (tools/layout.txt).
+ * Each function's part starts at its `── NAME ──` line and holds what it needs.
+ */
+#include "game.h"
+#include "runtime.h"
+
+/* ── sub_8029D80 ── */
+/* sub_8029D80 (asm03_0.s:7860): fixed-argument wrapper around call_sub_3005EBA.
+ * It loads the constant argument set (0xF, 4, 3, 0, 7, 2) into r0-r5, makes the
+ * call, and returns. The callee's results in r1-r3 pass through to our caller,
+ * while r4/r5 — which the callee is free to clobber — are restored to the
+ * values sub_8029D80 itself received (the original does this via push/pop). */
+Next sub_8029D80(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    R0 = 0xF;
+    R1 = 4;
+    R2 = 3;
+    R3 = 0;
+    R4 = 7;
+    R5 = 2;
+
+    GUEST_CALL(call_sub_3005EBA);
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
+/* ── chipIDIs13f_8029FF4 ── */
+/* chipIDIs13f_8029FF4(r0 = chip ID): return 1 in r0 if the ID matches either
+ * entry of the two-word chip ID table at dword_802A02C, else 0.
+ * All other registers (r1-r7) are preserved. */
+Next chipIDIs13f_8029FF4(void) {
+    u32 chipID = R0;
+    /* r1-r7 must survive the call */
+    u32 inR1 = R1, inR2 = R2, inR3 = R3, inR4 = R4, inR5 = R5, inR6 = R6, inR7 = R7;
+
+    u32 table = A_dword_802A02C;
+    u32 isMatch = (chipID == LD32(table) || chipID == LD32(table + 4));
+
+    R0 = isMatch;
+    R1 = inR1;
+    R2 = inR2;
+    R3 = inR3;
+    R4 = inR4;
+    R5 = inR5;
+    R6 = inR6;
+    R7 = inR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802A00C ── */
+/* sub_802A00C(r0 = id):
+ * Returns r0 = 1 if the low 9 bits of r0 match either of the two words stored
+ * at dword_802A02C / dword_802A030 (both 0x13F in this build), else r0 = 0.
+ * All other registers are preserved.
+ * Flag note: the final "mov r0, r3" is the flag-setting Thumb encoding
+ * (LSLS r0, r3, #0): N/Z come from the result, and C/V end up 0. */
+Next sub_802A00C(void) {
+    u32 id = (R0 << 23) >> 23; /* keep only the low 9 bits */
+    u32 table = A_dword_802A02C;
+
+    u32 match = (id == LD32(table)) || (id == LD32(table + 4));
+
+    R0 = match;
+    SET_FLAGS_ADD(R0, 0); /* N/Z from result, C = 0, V = 0 */
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_ClearPendingEventFlag_802A0EC ── */
+/* battle_ClearPendingEventFlag_802A0EC: clear the byte flag at byte_20352CC (the battle-related flag in
+ * the eStruct2035280 work area), signalling that the pending event is done.
+ * Returns r1 = 0, r2 = 0x4C, and flags set from the MOV r2, #0x4C. */
+Next battle_ClearPendingEventFlag_802A0EC(void) {
+    R0 = A_eStruct2035280;
+    R1 = 0;
+    R2 = 0x4C; /* byte_20352CC - 0x2035280 */
+    SET_FLAGS_NZ(R2);
+    ST8(R0 + R2, R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_DispatchPendingEvent_802A0F8 ── */
+/* battle_DispatchPendingEvent_802A0F8: check for a pending battle event and dispatch it.
+ *
+ * Reads the pending-event byte at byte_20352CC (field 0x4C of eStruct2035280).
+ * If an event is pending, dispatches event flags 0x4000; afterwards the
+ * pending-event state is always cleared via battle_ClearPendingEventFlag. */
+Next battle_DispatchPendingEvent_802A0F8(void) {
+    R0 = A_eStruct2035280;
+    R1 = 0;
+    R2 = 0x4C;                      /* byte_20352CC - eStruct2035280 */
+    R1 = LD8(R0 + R2);              /* pending event byte */
+
+    if (R1 != 0) {
+        /* Event pending: dispatch it. Flags afterwards are whatever the
+         * dispatch routine leaves. */
+        R0 = 0x4000;
+        GUEST_CALL(dispatch_801DACC);
+    } else {
+        /* No event: nothing to dispatch. Leave the flags as the original's
+         * "tst r1, r1" (with r1 == 0) did. */
+        SET_FLAGS_NZ(R1);
+    }
+
+    /* Clear the pending-event state before returning. On the dispatch path
+     * R1/R2 hold whatever dispatch_801DACC left, exactly as in the original. */
+    GUEST_CALL(battle_ClearPendingEventFlag_802A0EC);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_setUnk20349A5Flag_802A210 ── */
+/* battle_setUnk20349A5Flag_802A210(r5 = battle state):
+ * If state->Unk_15 is nonzero, store 0xFF to the byte at dword_20349A0+5
+ * (byte_20349A5) and leave that address in r3. The flags left behind are
+ * those of the CMP of Unk_15 against 0 (the function's only flag-setting op). */
+Next battle_setUnk20349A5Flag_802A210(void) {
+    u32 unk15 = LD8(R5 + oBattleState_Unk_15);
+
+    SET_FLAGS_CMP(unk15, 0);
+    if (unk15 != 0) {
+        R3 = A_dword_20349A0;
+        ST8(R3 + 5, 0xFF);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── fadeScreenAndAdvanceState_802A2E8 ── */
+/* fadeScreenAndAdvanceState_802A2E8: (self: *S20364C0 in r5) -> ()
+ * Check some condition (chipSelect_selectedSlotChipHasAttr20_802A394); when it holds, start the 0x54/0x5C
+ * screen fade, clear the state byte at +13 and set the jump offset at +12
+ * to 4. Leaves N/Z from the final MOV (or from the initial comparison when
+ * nothing happened); C/V come from the last callee on the active path. */
+Next fadeScreenAndAdvanceState_802A2E8(void) {
+    GUEST_CALL(chipSelect_selectedSlotChipHasAttr20_802A394);
+
+    if (R0 != 0) {
+        R0 = 0x54;
+        R1 = 0xA;
+        GUEST_CALL(SetScreenFade);
+
+        R0 = 0x5C;
+        R1 = 0xA;
+        GUEST_CALL(loc_8006274);
+
+        ST8(R5 + oS20364C0_Unk_13, 0);
+
+        R0 = 4;
+        SET_FLAGS_NZ(R0);
+        ST8(R5 + oS20364C0_JumpOffset12, 4);
+    } else {
+        /* flags as left by the CMP r0, #0 before the branch */
+        SET_FLAGS_CMP(R0, 0);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── chipSelect_selectedSlotChipHasAttr20_802A394 ── */
+/* chipSelect_selectedSlotChipHasAttr20_802A394(r5 = chip menu/selection state):
+ * Only meaningful in specific menu modes (state byte at r5+1 == 0x18 or 4).
+ * In those modes, looks up the currently selected active-chip slot (index at
+ * r5+7); if that slot entry is empty, resolves the chip it references and
+ * tests its ChipData attribute byte for flag 0x20.
+ * Returns R0 = 1 if the flag is set, 0 otherwise.
+ * R1 on exit mirrors the original: the slot-busy byte, 0x20 on the flag-test
+ * path, or the incoming value when the mode check fails. */
+Next chipSelect_selectedSlotChipHasAttr20_802A394(void) {
+    u32 result = 0;
+
+    u32 state = LD8(R5 + 1);
+    if (state == 0x18 || state == 4) {
+        R0 = LD8(R5 + 7);
+        GUEST_CALL(getLocOfActiveChips_8027E1C);
+        u32 slot = R0;
+
+        R1 = LD8(slot);                 /* 0 = slot entry is empty */
+        if (R1 == 0) {
+            R0 = LD16(LD32(slot + 8));  /* chip reference from the entry */
+            GUEST_CALL(getChipID_802A54E);
+            u32 chipId = (R0 << 23) >> 23;  /* keep low 9 bits */
+
+            R0 = chipId;
+            GUEST_CALL(getChip8021DA8);
+            R1 = 0x20;
+            if (LD8(R0 + 9) & 0x20)     /* attribute flag 0x20 set */
+                result = 1;
+        }
+    }
+
+    R0 = result;
+    RETURN_TO_CALLER();
+}
+
+/* ── sound_playCrossTransformationJingle_802A3CC ── */
+/* sound_playCrossTransformationJingle_802A3CC: request the pair of sounds played when the Cross/Beast
+ * transformation sequence starts (jingle 0x1F, then roar 0x16).
+ * Both requests use the generic 0xFFFF/0x100 parameter pair.
+ * r4-r7, r10 pass through unchanged; c/v come from the sound dispatcher. */
+static void play_transformation_sound(u32 sound_id)
+{
+    R0 = sound_id;
+    R1 = 0xFFFF;
+    R2 = 0x80 + 0x80; /* 0x100 */
+    GUEST_CALL(sound_dispatchSoundRequest_8000642);
+}
+
+Next sound_playCrossTransformationJingle_802A3CC(void) {
+    play_transformation_sound(0x1F);
+    play_transformation_sound(0x16);
+    RETURN_TO_CALLER();
+}
+
+/* ── folder_tallyChipsByClass_802A4FC ── */
+/* folder_tallyChipsByClass_802A4FC: tally the chips listed in the current folder by class.
+ *
+ * The folder is stored as a 0xFFFF-terminated list of chip IDs starting
+ * 0x32 bytes into the record at byte_20366C0. For each entry, the chip's
+ * class (ChipData+7; 0 = standard, 1 = mega, 2 = giga) is looked up via
+ * getChip8021DA8 and the matching counter in dword_20367E0 is incremented.
+ * If byte_20366C0 is 0xFF (no folder loaded) the routine does nothing.
+ *
+ * On return the V flag (and N/Z) reflects the terminating CMP, matching
+ * the original's last flag-setting instruction on each exit path. */
+Next folder_tallyChipsByClass_802A4FC(void) {
+    /* The original pushes r4, r6 and r7 and pops them on the way out, so
+     * these registers must be unchanged afterwards no matter how we exit
+     * (the chip-data lookup may clobber them). */
+    u32 savedR4 = R4;
+    u32 savedR6 = R6;
+    u32 savedR7 = R7;
+
+    u32 folderLoaded = LD8(A_byte_20366C0);
+    SET_FLAGS_CMP(folderLoaded, 0xFF);
+    if (folderLoaded != 0xFF) {
+        u32 entry = A_byte_20366C0 + 0x32;   /* first folder slot (halfword) */
+        u32 counters = A_dword_20367E0;      /* per-class tally bytes */
+
+        for (;;) {
+            u32 entryValue = LD16(entry);
+            SET_FLAGS_CMP(entryValue, 0xFFFF);
+            if (entryValue == 0xFFFF)        /* end-of-folder sentinel */
+                break;
+
+            u32 chipIndex = entryValue & 0x1FF;   /* low 9 bits = chip ID */
+            R0 = chipIndex;
+            GUEST_CALL(getChip8021DA8);
+
+            u32 chipClass = LD8(R0 + 7);
+            SET_FLAGS_CMP(chipClass, 2);
+            if ((s32)chipClass <= 2)
+                ST8(counters + chipClass, LD8(counters + chipClass) + 1);
+
+            entry += 2;
+        }
+    }
+
+    R4 = savedR4;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_getActorEmotion_802A564 ── */
+/* battle_getActorEmotion_802A564: fetch the current battle emotion for the acting object.
+ * r10 = toolkit; r5 = battle object. Loads the battle state's "unk_0d" byte
+ * (the alliance/emotion selector) and dispatches on object field 0x15:
+ * when it is zero, resolve the emotion (transformation/mood/beast-out side
+ * outputs land in r0-r3); otherwise take the alternate lookup. Results are
+ * whatever the callee leaves in r0-r3. */
+Next battle_getActorEmotion_802A564(void) {
+    u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+
+    R0 = LD8(battleState + oBattleState_Unk_0d);
+    if (LD8(R5 + 0x15) == 0)
+        GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
+    else
+        GUEST_CALL(sub_8015B5C);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_isBeastOverEnabled_802A5A0 ── */
+/* battle_isBeastOverEnabled_802A5A0: check whether the "cross beast" state applies this battle.
+ * Returns 1 in r0 when all of the following hold:
+ *   - the byte at active-chip slot 8 is not 8,
+ *   - the battle mode is none of 1, 6, 7 or 9 (special modes),
+ *   - the navi stats byte 0x61 of the current battle state equals 1.
+ * r4 is preserved (saved/restored by the original), r6 and r10 untouched. */
+Next battle_isBeastOverEnabled_802A5A0(void) {
+    u32 result = 0;
+
+    R0 = 8;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    if (LD8(R0) != 8) {
+        GUEST_CALL(GetBattleMode);
+        u32 battleMode = R0;
+        if (battleMode != 1 && battleMode != 6 && battleMode != 7 && battleMode != 9) {
+            u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+            R0 = LD8(battleState + oBattleState_Unk_0d);
+            R1 = 0x61;
+            GUEST_CALL(GetBattleNaviStatsByte);
+            if (R0 == 1)
+                result = 1;
+        }
+    }
+
+    R0 = result;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_checkActiveSlot8NaviStatReady_802A5DA ── */
+/* battle_checkActiveSlot8NaviStatReady_802A5DA: check whether the currently selected chip in active slot 8
+ * triggers a special navi state. Returns 1 in r0 if so, 0 otherwise.
+ * The battle mode must be one of the regular battle modes (0, 5, 8, 10, 11),
+ * and navi stats byte 0x60 (indexed by battle state field 0x0d) must be 1. */
+Next battle_checkActiveSlot8NaviStatReady_802A5DA(void) {
+    u32 result = 0;
+
+    /* Pointer to active chip slot 8 */
+    R0 = 8;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+
+    /* Slot empty marker (0xFF-like value 8 at that offset) means "no" */
+    if (LD8(R0) != 8) {
+        R0 = 0;
+        GUEST_CALL(GetBattleMode);
+        u32 mode = R0;
+
+        if (mode == 0 || mode == 5 || mode == 8 || mode == 0xA || mode == 0xB) {
+            u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+            R0 = LD8(battleState + oBattleState_Unk_0d);
+            R1 = 0x60;
+            GUEST_CALL(GetBattleNaviStatsByte);
+
+            if (R0 == 1)
+                result = 1;
+        }
+    }
+
+    R0 = result;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802BDB4 ── */
+/* sub_802BDB4: tail work after battle_checkTimerWindowSubstate_802C97E -- store the value 4 into the
+ * word pointed to by r5 (likely a state/step counter being advanced). */
+Next sub_802BDB4(void) {
+    GUEST_CALL(battle_checkTimerWindowSubstate_802C97E);
+
+    R0 = 4;
+    ST32(R5, R0);
+    SET_FLAGS_NZ(R0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── objStepFinishSetState4_802BE0C ── */
+/* objStepFinishSetState4_802BE0C — finish step for the object in r5 (r10 = toolkit pointer):
+ * calls call_sub_3005EBA with the fixed argument set (0, 0, 3, 0, 6, 2),
+ * clears the render-info frame counter, calls sub_801E0A0(0, 0), then
+ * writes state 4 into the object's halfword field at +2.
+ * Preserves the entry values of r4 and r5 for the caller; exits with
+ * NZ flags from "MOV r0, #4" and r1/r2/r3/r10 as sub_801E0A0 left them. */
+Next objStepFinishSetState4_802BE0C(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+    u32 toolkit = R10;
+
+    /* call_sub_3005EBA(0, 0, 3, 0, 6, 2) */
+    R0 = 0;
+    R1 = 0;
+    R2 = 3;
+    R3 = 0;
+    R4 = 6;
+    R5 = 2;
+    GUEST_CALL(call_sub_3005EBA);
+
+    /* clear the render info frame counter: renderInfo = toolkit->renderInfo */
+    u32 renderInfo = LD32(toolkit + 8 /* oToolkit_RenderInfoPtr */);
+    ST16(renderInfo + oRenderInfo_Unk_18, 0);
+
+    /* sub_801E0A0(0, 0); r5 is live for the callee, so restore it first */
+    R0 = 0;
+    R1 = 0;
+    R5 = saved_r5;
+    GUEST_CALL(sub_801E0A0);
+
+    /* advance the object's state field to 4 (flags: N=0, Z=0) */
+    R0 = 4;
+    SET_FLAGS_NZ(4);
+    ST16(saved_r5 + 2, 4);
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
+/* ── custMenu_handleInputQueuePop_802BED4 ── */
+/* custMenu_handleInputQueuePop_802BED4(r5 = custom-menu object):
+ * Pop the next halfword from the menu input queue and act on it.
+ *  - Queue empty (value 0): run the "back out" path — set the jump offset
+ *    (r5+1) to 8, which routes the next state step to sub_8026BF4 via the
+ *    menu main handler, and clear the halfword at r5+2.
+ *  - Otherwise: store the popped value into Unk_10, choose the hold timer
+ *    for Unk_0b (1 frame when the byte at Unk_0c is set, otherwise 30
+ *    frames), and set the byte at r5+3 to 4 to advance the menu state.
+ * Final register/flag state (per path): R0 = 0 and nz=0 on the empty path,
+ * R0 = 4 and nz=4 on the consumed path; R1 holds the Unk_0c byte there and
+ * is left as queue_popHalfword_802C8D4 returned it otherwise. c/v untouched. */
+Next custMenu_handleInputQueuePop_802BED4(void) {
+    GUEST_CALL(queue_popHalfword_802C8D4);
+    u32 value = R0;
+
+    if (value == 0) {
+        /* nothing queued: hand control back to the state dispatcher */
+        ST8(R5 + 1, 8);         /* oS20364C0_JumpOffset01 */
+        ST16(R5 + 2, 0);        /* oS20364C0_Unk_02 */
+        R0 = 0;
+        SET_FLAGS_NZ(0);
+    } else {
+        ST16(R5 + oS20364C0_Unk_10, value);
+
+        /* short confirmation hold if Unk_0c says so, otherwise a long one */
+        R1 = LD8(R5 + oS20364C0_Unk_0c);
+        u32 hold = (R1 != 0) ? 1 : 0x1E;
+        ST8(R5 + oS20364C0_Unk_0b, hold);
+
+        R0 = 4;
+        ST8(R5 + 3, 4);         /* oS20364C0_Unk_03 */
+        SET_FLAGS_NZ(4);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── object_countdownTick_802BEFC ── */
+/* object_countdownTick_802BEFC(r5 = struct with a countdown byte at +0xB and a state byte at +3):
+ * decrement the countdown at [r5+0xB]; when it reaches zero, set [r5+3] to 8
+ * (advance to state 8). Leaves r0 = the decremented counter, or 8 if it expired,
+ * with flags from the corresponding last flag-setting instruction. */
+Next object_countdownTick_802BEFC(void) {
+    u32 count = LD8(R5 + 0xB);
+    u32 next  = count - 1;
+
+    ST8(R5 + 0xB, next);
+    SET_FLAGS_CMP(count, 1); /* flags of SUBS r0, #1 */
+
+    if (next != 0) {
+        R0 = next;           /* still counting down */
+        RETURN_TO_CALLER();
+    }
+
+    R0 = 8;                  /* timer expired */
+    SET_FLAGS_NZ(8);         /* flags of MOVS r0, #8 */
+    ST8(R5 + 3, 8);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_pickObjectAnimState_802BF0C ── */
+/* battle_pickObjectAnimState_802BF0C(r5 = battle object):
+ * Pick an animation/state index for the object and hand it to sub_802C810.
+ * If either of the two flag halfwords next to dword_2036820 has bit 0 set,
+ * the index comes from the object's byte at +0xC (capped: >1 becomes 0xC,
+ * otherwise 4) and is also stored into the object's halfword at +2.
+ * Otherwise the index alternates 0/1 with bit 3 of the current frame count.
+ * R7 passed to the callee is the flags base +8 on the first path, or the
+ * current-frame pointer on the second. R5 and R10 are preserved. */
+Next battle_pickObjectAnimState_802BF0C(void) {
+    u32 flagBits = LD16(A_dword_2036820 + 4);
+    flagBits |= LD16(A_dword_2036820 + 0xC);
+
+    if (flagBits & 1) {
+        u32 state = LD8(R5 + 0xC);
+        ST16(R5 + 2, state > 1 ? 0xC : 4);
+        R7 = A_dword_2036820 + 8;
+        R0 = 0;
+    } else {
+        R7 = LD32(R10 + oToolkit_CurFramePtr);
+        R0 = (LD16(R7) & 8) >> 3;
+    }
+
+    GUEST_CALL(sub_802C810);
+    RETURN_TO_CALLER();
+}
+
+/* ── runObjectStateHandler_802C1D4 ── */
+/* runObjectStateHandler_802C1D4: two-way handler dispatcher for the object in R5.
+ *
+ * The object carries a handler selector at offset +3: a byte offset into a
+ * two-entry table (0 selects the first handler, 4 the second). The selected
+ * handler is invoked with:
+ *   R0 = the selector byte (the handler's argument),
+ *   R1 = the raw table entry, i.e. the handler's own Thumb address,
+ *   LR = the address of the `pop {pc}` that follows the call, so the handler
+ *        returns straight through to this function's caller,
+ *   SP = four bytes lower than on entry (the pushed LR is visible at [SP] to
+ *        the handler's stack-relative addressing).
+ * R2-R12 and the flags pass through untouched, and whatever the handler
+ * leaves in the registers and flags becomes this function's result. */
+Next runObjectStateHandler_802C1D4(void) {
+    u32 selector = LD8(R5 + 3);
+    u32 handler  = LD32(A_off_802C1E8 + selector);
+
+    /* push {lr}: the handler runs with SP four below our entry SP. */
+    SP -= 4;
+    ST32(SP, LR);
+
+    R0 = selector;
+    R1 = handler;
+    if (selector < 4)
+        GUEST_CALL(initShuffledOrderTable42_802C1F0);
+    else
+        GUEST_CALL(sub_802C218);
+
+    /* Handler returned normally; undo the push (its slot was only ever
+     * reachable through SP while the handler ran). */
+    SP += 4;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── initShuffledOrderTable42_802C1F0 ── */
+/* initShuffledOrderTable42_802C1F0(r5 = state struct):
+ * Fill the 0x2A-byte table at unk_2035320 with 0..0x29, shuffle it with the
+ * primary RNG, then reset the progress fields of the struct r5 points to
+ * (r5[0xB] = 0, r5[3] = 4). Returns with NZ from the last constant stored. */
+Next initShuffledOrderTable42_802C1F0(void) {
+    u32 table = A_unk_2035320;
+
+    R7 = table;
+    for (u32 i = 0; i < 0x2A; i++)
+        ST8(table + i, i);
+
+    R0 = table;
+    R1 = 0x2A;
+    R2 = 0x2A;
+    GUEST_CALL(ShuffleByteList_PrimaryRNG);
+
+    ST8(R5 + 0xB, 0);
+    R0 = 4;
+    SET_FLAGS_NZ(R0);
+    ST8(R5 + 3, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802C348 ── */
+/* sub_802C348(r5 = struct pointer): clear the byte at offset 5 of the struct
+ * (e.g. reset a state/counter field to zero). Always returns r0 = 0 with
+ * zero flag set (the final "mov r0, #0" sets the flags callers branch on). */
+Next sub_802C348(void) {
+    R0 = 0;
+    ST8(R5 + 5, 0);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802C460 ── */
+/* sub_802C460 (r5 = object pointer):
+ * Reads two signed bytes from the object at offsets 6 and 7 (two positions
+ * along an axis). If they are equal there is nothing to do. Otherwise it
+ * computes the distance between them and a start position (the smaller
+ * value, offset by 0x18 when the byte at offset 6 is the smaller one) and
+ * asks sub_802C490(start, 2, distance, 0x12) to scan between them. If that
+ * scan reports a hit in r2, it calls call_sub_3005EBA(scan_result, 3, 0).
+ *
+ * r4/r5 are preserved around the calls; r1 ends up holding the byte at
+ * offset 7 on the early-out path, and whatever the callees leave otherwise.
+ * c/v are outputs: on the early-out path they come from the CMP of the two
+ * bytes; on the call paths they are whatever the callee left. */
+Next sub_802C460(void) {
+    u32 savedR4 = R4;
+    u32 savedR5 = R5;
+
+    s32 first = (s8)LD8(R5 + 6);
+    s32 second = (s8)LD8(R5 + 7);
+    R1 = second; /* original leaves the loaded byte in r1 */
+
+    /* CMP first, second — the last flag-setting op on the early-out path. */
+    SET_FLAGS_CMP(first, second);
+
+    if (first != second) {
+        u32 distance;
+        u32 start;
+
+        if (first < second) {
+            /* first is the lower position: start just past it. */
+            distance = second - first;
+            start = first + 0x18;
+        } else {
+            distance = first - second;
+            start = second;
+        }
+
+        R0 = start;
+        R1 = 2;
+        R4 = distance;
+        R5 = 0x12;
+        GUEST_CALL(sub_802C490); /* r2 = nonzero if something was found */
+
+        if (R2 != 0) {
+            R2 = 3;
+            R3 = 0;
+            GUEST_CALL(call_sub_3005EBA);
+        }
+
+        R4 = savedR4;
+        R5 = savedR5;
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── blitTileBlockToRowBuffer_802C4B6 ── */
+/* blitTileBlockToRowBuffer_802C4B6(r0 = x, r1 = y, r2 = source data, r3 = width, r4 = height):
+ * Blit a width×height block of halfwords into the 24-halfword-wide buffer at
+ * unk_2034B30, at offset (x + y*24) halfwords. Source rows are consecutive;
+ * destination rows advance by 0x30 bytes (24 halfwords) each time.
+ * Leaves r0 = width, r1 = height, r2 = one-past-the-end of the source data;
+ * flags reflect the final `cmp r1, r4` (i.e. last row counter == height).
+ * r5-r7 are pushed/popped by the original, so they end unchanged. */
+Next blitTileBlockToRowBuffer_802C4B6(void) {
+    u32 src = R2;
+    u32 dst = A_unk_2034B30 + (R0 + R1 * 0x18) * 2;
+
+    u32 row = 0;
+    do {
+        u32 dstRow = dst;
+        u32 col = 0;
+        do {
+            ST16(dstRow, LD16(src));
+            src += 2;
+            dstRow += 2;
+            col++;
+        } while (col != R3);
+        dst += 0x30; /* stride to the next buffer row */
+        row++;
+    } while (row != R4);
+
+    R0 = R3; /* column counter as the original leaves it */
+    R1 = R4; /* row counter as the original leaves it */
+    R2 = src;
+    SET_FLAGS_CMP(R1, R4);
+    RETURN_TO_CALLER();
+}
+
+/* ── decodePackedIdFields_802C54C ── */
+/* decodePackedIdFields_802C54C(r0 = packed id):
+ * Splits a packed id into its fields and returns them:
+ *   r0 = group (bits 14-15; 0xFF if the id is the 0xFFFF sentinel),
+ *   r1 = low field (bits 0-8 for group 0, bits 0-13 otherwise),
+ *   r2 = middle field (bits 9-13, only produced for group 0;
+ *        left untouched for other groups). */
+Next decodePackedIdFields_802C54C(void) {
+    u32 packed = R0;
+
+    if (packed == 0xFFFF) {
+        /* Sentinel id: report it as group 0xFF. */
+        R0 = 0xFF;
+        R1 = 0xFFFF;
+        RETURN_TO_CALLER();
+    }
+
+    u32 group = packed >> 14;
+    if (group == 0) {
+        R0 = 0;
+        R2 = packed >> 9;
+        R1 = packed & 0x1FF;
+    } else {
+        R0 = (group == 1) ? 1 : (group == 2) ? 2 : 3;
+        R1 = packed & 0x3FFF;
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802C588 ── */
+/* sub_802C588(r0 = destination address):
+ * Fill 0x2A halfwords at r0 with the consecutive values 0xC1E8..0xC211.
+ * Leaves r1 = 0xC212 (one past the last value written) and r2 = 0
+ * (loop counter after exhaustion); r0 points past the filled range. */
+Next sub_802C588(void) {
+    u32 dst   = R0;
+    u32 value = 0xC1E8;
+
+    for (u32 count = 0x2A; count != 0; count--) {
+        ST16(dst, (u16)value);
+        value++;
+        dst += 2;
+    }
+
+    R1 = value; /* 0xC212 */
+    R2 = 0;
+    R0 = dst;
+    RETURN_TO_CALLER();
+}
+
+/* ── chipFolder_ClearTilemapArea_802C59C ── */
+/* chipFolder_ClearTilemapArea_802C59C(r0 = destination):
+ * fill 0x2A halfwords with the value 0x90C6 (used to blank the chip folder
+ * screen's VRAM tilemap area). */
+Next chipFolder_ClearTilemapArea_802C59C(void) {
+    u32 dst = R0;
+    const u16 fill = 0x90C6;
+
+    for (u32 i = 0; i < 0x2A; i++, dst += 2)
+        ST16(dst, fill);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── textWindow_openDialog_802C5B0 ── */
+/* textWindow_openDialog_802C5B0(r0 = value to record):
+ * Opens the in-game dialog/upgrade window: remembers the caller's value in
+ * the toolkit's unk_200A220-backed state, renders the window's text
+ * graphics into VRAM, then queues the follow-up draw job (whose r1/r2
+ * results are returned to the caller). r4-r7 and r8/r9 are preserved. */
+Next textWindow_openDialog_802C5B0(void) {
+    u32 value = R0;
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    /* Reserve the original's 0x70-byte stack frame. Its address briefly
+     * lands in r6 and is spilled below SP across the calls, but the frame
+     * itself is never otherwise used. */
+    u32 frame = SP - 0x70;
+    SP = frame;
+    SP -= 4;
+    ST32(SP, frame);                    /* push {r6} */
+
+    /* Stash the caller's value in the state struct pointed to by the
+     * toolkit's oToolkit_Unk200a220_Ptr entry. */
+    u32 statePtr = LD32(R10 + oToolkit_Unk200a220_Ptr);
+    ST32(statePtr + 8, value);
+
+    /* renderTextGfx_8045F8C(script = TextScript8736D74, 5, tiles = unk_2035320,
+     * vram = 0x600BA80, 10, 1, palette = dword_86B7AE0, 8):
+     * blit the window's text graphics. */
+    R0 = A_text_8736D74;
+    R1 = 5;
+    R2 = A_unk_2035320;
+    R3 = 0x600BA80;
+    R4 = 0xA;
+    R5 = 1;
+    R6 = A_dword_86B7AE0;
+    R7 = 8;
+    GUEST_CALL(renderTextGfx_8045F8C);
+
+    /* blitTileBlockToRowBuffer_802C4B6(2, 12, byte_802C6C4, 10, 2): queue the window's
+     * tilemap/animation update; its r1/r2 are this function's result. */
+    R0 = 2;
+    R1 = 0xC;
+    R2 = A_byte_802C6C4;
+    R3 = 0xA;
+    R4 = 2;
+    GUEST_CALL(blitTileBlockToRowBuffer_802C4B6);
+
+    /* Tear down the frame and hand back the callee's r1/r2/r3, restoring
+     * the caller's r4-r7 as the original's pop {r4-r7,pc} does. */
+    SP += 4;                            /* pop {r6} (value unused) */
+    SP += 0x70;
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── queue_popHalfword_802C8D4 ── */
+/* queue_popHalfword_802C8D4(r5 = queue state): pop the next halfword from an in-struct queue.
+ * Layout at r5: +0xC = read index, +0xD = entry count, +0x14 = halfword entries.
+ * Returns the popped value in r0 (0 when the queue is exhausted), r1 = read index
+ * (incremented if an entry was popped), r2 = entry offset / count.
+ * Flags: c/v from the CMP when the queue is empty, from the index increment otherwise. */
+Next queue_popHalfword_802C8D4(void) {
+    u32 read = LD8(R5 + 0xC);
+    u32 count = LD8(R5 + 0xD);
+
+    if ((s32)read >= (s32)count) {
+        /* Queue exhausted: return 0 and leave the index untouched. */
+        R0 = 0;
+        R1 = read;
+        R2 = count;
+        SET_FLAGS_CMP(read, count);
+    } else {
+        /* Fetch the entry at read index and advance the index. */
+        u32 offset = 0x14 + read + read;
+        R0 = LD16(R5 + offset);
+        R1 = read + 1;
+        R2 = offset;
+        ST8(R5 + 0xC, R1);
+        SET_FLAGS_ADD(R1, 1);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_getStateTableEntryPtr_802C8EA ── */
+/* battle_getStateTableEntryPtr_802C8EA: select the 8-byte entry of the dword_2036820 table indexed by
+ * the battle state's current Unk_0d slot.
+ *   r10 = toolkit
+ *   out r0 = &dword_2036820[Unk_0d], r2 = Unk_0d * 8,
+ *   flags as left by the final address add. */
+Next battle_getStateTableEntryPtr_802C8EA(void) {
+    u32 battleState;
+
+    R1 = R10;
+    battleState = LD32(R1 + oToolkit_BattleStatePtr);
+    R2 = (u32)LD8(battleState + oBattleState_Unk_0d) * 8;
+    R0 = A_dword_2036820 + R2;
+    SET_FLAGS_ADD(A_dword_2036820, R2);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_checkTimerWindowSubstate_802C97E ── */
+/* battle_checkTimerWindowSubstate_802C97E(r5 = battle object, r10 = battle state context):
+ * Re-evaluates the object's sub-state byte at [r5+0x0E] based on the battle's
+ * state byte 0x0D. battle_findSpecificBossOnOpposingSide_802CA1E maps that state byte to an index into the
+ * frame-window tables (0xFF = no window for this state). For a valid index i
+ * the object's timer at [r5+0x1C] is compared against the u16 window bounds
+ * unk_20018C0[i] (window start) and unk_2000260[i] (window end):
+ *
+ *   timer <  start              -> [r5+0x0F] = 1, result 2 (window not reached)
+ *   start <= timer < end        -> [r5+0x0F] = 1, result 1 (inside the window)
+ *   timer >= end                -> result 0            (window finished)
+ *   no window (0xFF from call)  -> result 0
+ *
+ * Returns the result in r0 (also stored to [r5+0x0E]); r1/r2/r3 hold the last
+ * table base, table entry and timer value (battle_findSpecificBossOnOpposingSide_802CA1E's r1 in the 0xFF case).
+ * Flags are those of `adds r0, result, #0`. */
+Next battle_checkTimerWindowSubstate_802C97E(void) {
+    u32 savedR4 = R4;
+    u32 timer, windowStart, windowEnd, result;
+
+    R4 = 0;
+
+    /* state byte 0x0D -> sub-state index via battle_findSpecificBossOnOpposingSide_802CA1E (also returns r1) */
+    GUEST_CALL(battle_getStateByte0d_800A7E2);
+    GUEST_CALL(battle_findSpecificBossOnOpposingSide_802CA1E);
+
+    if (R0 == 0xFF) {
+        /* no active window: sub-state stays 0; r1 keeps battle_findSpecificBossOnOpposingSide_802CA1E's value,
+         * r2/r3 are left untouched */
+        result = 0;
+    } else {
+        u32 index = R0 + R0;    /* index into the u16 tables */
+
+        R1 = A_unk_20018C0;
+        R2 = windowStart = LD16(A_unk_20018C0 + index);
+        R3 = timer = LD32(R5 + 0x1C);
+
+        if ((s32)timer >= (s32)windowStart) {
+            R4 = 1;
+            R1 = A_unk_2000260;
+            R2 = windowEnd = LD16(A_unk_2000260 + index);
+            R3 = timer = LD32(R5 + 0x1C);
+
+            if ((s32)timer < (s32)windowEnd) {
+                ST8(R5 + 0xF, 1);   /* inside the window */
+                result = 1;
+            } else {
+                result = 0;         /* window already over */
+            }
+        } else {
+            ST8(R5 + 0xF, 1);       /* window not started yet */
+            result = 2;
+        }
+    }
+
+    R0 = result;
+    SET_FLAGS_ADD(result, 0);
+    ST8(R5 + 0xE, result);
+    R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_updateSlotBestRecords_802C9B8 ── */
+/* battle_updateSlotBestRecords_802C9B8: update the per-slot record tables with this battle's value.
+ *
+ * Reads the u32 at battle state +0x40 (the value to record), then asks
+ * battle_findSpecificBossOnOpposingSide_802CA1E which table slot the state's byte at +0x0D selects (0xFF =
+ * nothing to record).  unk_20018C0 tracks the best (lowest) value seen per
+ * slot and unk_2000260 the running value:
+ *   - value below the recorded one: overwrite both tables
+ *   - otherwise: lower the unk_2000260 entry if the value is below it
+ * Returns with the flags left as the original's last comparison set them
+ * (the v flag is an output; nz/c are free). */
+Next battle_updateSlotBestRecords_802C9B8(void) {
+    u32 savedR4 = R4;
+
+    /* R0 = value to record; the byte getter receives it in R0 as the
+     * original leaves it there between the two calls. */
+    GUEST_CALL(battle_getStateUnk40_800A704);
+    u32 value = R0;
+
+    GUEST_CALL(battle_getStateByte0d_800A7E2);
+
+    /* battle_findSpecificBossOnOpposingSide_802CA1E gets the state byte in r0 and the recorded value in r4. */
+    R4 = value;
+    GUEST_CALL(battle_findSpecificBossOnOpposingSide_802CA1E);
+    u32 slot = R0;
+    R4 = savedR4;
+
+    if (slot == 0xFF) {
+        SET_FLAGS_CMP(R0, 0xFF);
+        RETURN_TO_CALLER();
+    }
+
+    u32 offset = slot * 2;
+    u16 recorded = LD16(A_unk_20018C0 + offset);
+    u16 current = LD16(A_unk_2000260 + offset);
+
+    if ((s32)value < (s32)recorded) {
+        /* new best value: record it in both tables */
+        ST16(A_unk_20018C0 + offset, value);
+        ST16(A_unk_2000260 + offset, value);
+        SET_FLAGS_CMP(value, recorded);
+    } else if ((s32)value < (s32)current) {
+        /* below the running value: only lower that one */
+        ST16(A_unk_2000260 + offset, value);
+        SET_FLAGS_CMP(value, current);
+    } else {
+        SET_FLAGS_CMP(value, current);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_syncEffectSlotBetweenBuffers_802C9EA ── */
+/* battle_syncEffectSlotBetweenBuffers_802C9EA: keep the halfword at +8 of the two effect buffers
+ * (unk_2035260 / unk_203526C) in sync. Which buffer is source and which is
+ * destination depends on oBattleState_Unk_10 in the current battle state.
+ * If the value read from the source is 0xFFFF, it is replaced by the result
+ * of sub_80AABA4(byte at dst+1) before being written back. The whole thing
+ * only runs when GetBattleEffects() reports effect bit 3. */
+Next battle_syncEffectSlotBetweenBuffers_802C9EA(void) {
+    /* () -> effect bitmask in R0 (R10 = toolkit pointer) */
+    GUEST_CALL(GetBattleEffects);
+
+    R1 = 8;
+    if ((R0 & R1) != 0) {
+        /* Default direction: unk_203526C -> unk_2035260. */
+        R6 = A_unk_203526C;
+        R7 = A_unk_2035260;
+
+        u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+        if (LD8(battleState + oBattleState_Unk_10) != 0) {
+            /* Swapped direction: unk_2035260 -> unk_203526C. */
+            R6 = A_unk_2035260;
+            R7 = A_unk_203526C;
+        }
+
+        /* Copy the word over, then inspect the halfword copy. */
+        ST32(R7 + 8, LD32(R6 + 8));
+        u32 word = LD16(R6 + 8);
+
+        R1 = 0xFFFF;
+        SET_FLAGS_CMP(word, 0xFFFF);
+        if (word == 0xFFFF) {
+            /* Slot is empty: compute the value from the destination's byte. */
+            R0 = LD8(R7 + 1);
+            GUEST_CALL(sub_80AABA4);
+            ST16(R7 + 8, R0);
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_findSpecificBossOnOpposingSide_802CA1E ── */
+/* battle_findSpecificBossOnOpposingSide_802CA1E(r0 = side index (0 or 1), r10 = toolkit):
+ * Scan the four enemy slots of the side opposite to r0 in the battle state
+ * (each side's slots live at offset 0x4C, one 8-byte block per side, four
+ * u16 enemy indices each). For each index, look up its version/actor type/AI
+ * index; if it is a version-2 enemy of actor type 1 with AI index < 0x14,
+ * return its AI index minus 1. Otherwise return 0xFF.
+ * r1 on return is the last field compared, exactly as in the original
+ * (2 on success); callers of this function ignore it. */
+Next battle_findSpecificBossOnOpposingSide_802CA1E(void) {
+    u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
+    u32 slot = battle + (R0 ^ 1) * 8 + 0x4C;
+
+    for (u32 i = 0; i < 4; i++, slot += 2) {
+        R0 = LD16(slot);
+        GUEST_CALL(GetVerActorTyAndAIIdx_80182B4);
+        u32 info = R0;
+
+        R1 = LD8(info + 1);              /* actor type */
+        if (R1 != 1)
+            continue;
+        R1 = LD8(info + 2);              /* AI index */
+        if ((s32)R1 >= 0x14)
+            continue;
+        R1 = LD8(info);                  /* version */
+        if (R1 != 2)
+            continue;
+
+        R0 = LD8(info + 2) - 1;          /* matched: return AI index - 1 */
+        RETURN_TO_CALLER();
+    }
+
+    R0 = 0xFF;
+    RETURN_TO_CALLER();
+}
+
+/* ── sound_pushRequest_802CA5C ── */
+/* sound_pushRequest_802CA5C(r5 = sound request source):
+ * Pack the signed sound id stored at offset 6 of the struct in r5 into a
+ * FIFO record for the ARM7 sound handler and push it. The record value is
+ *
+ *     0x40000000 | (((id << 3) + 13) & 0x1FF) << 16 | 0x15
+ *
+ * i.e. bit 30 flags the record as a sound request, bits 16..24 carry the
+ * packed id (9 bits, as used by the ARM7 side), and the low byte 0x15
+ * selects the command. The remaining record words are the fixed tag/data
+ * pair 0xB200, 0, 0. R5 is only read; R4/R6/R7 are untouched. */
+Next sound_pushRequest_802CA5C(void) {
+    u32 id = (u32)(s32)(s8)LD8(R5 + 6);
+    u32 packed = ((id << 3) + 13) & 0x1FF;
+
+    R0 = 0x40000000 | (packed << 16) | 0x15;
+    R1 = 0xB200;
+    R2 = 0;
+    R3 = 0;
+    GUEST_CALL(fifo_pushRecord16_8009FF8);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── eStruct200A008_redrawOnDirtyFlags_802CA82 ── */
+/* eStruct200A008_redrawOnDirtyFlags_802CA82:
+ * Refresh handler for the eStruct at 0x200A008: whenever its unk04 field is
+ * non-zero, run the redraw pair decodePackedIdFields_802C54C + sub_802CAA6, then do the same
+ * for unk06. Both fields are checked independently (both may trigger).
+ * r4-r7 and everything else are passed through untouched. */
+Next eStruct200A008_redrawOnDirtyFlags_802CA82(void) {
+    GUEST_CALL(eStruct200A008_getUnk04);
+    if (R0 != 0) {
+        GUEST_CALL(decodePackedIdFields_802C54C);
+        GUEST_CALL(sub_802CAA6);
+    }
+
+    GUEST_CALL(eStruct200A008_getUnk06);
+    if (R0 != 0) {
+        GUEST_CALL(decodePackedIdFields_802C54C);
+        GUEST_CALL(sub_802CAA6);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_ClearAllianceTargetSlotIfSelf_802CDD0 ── */
+/* battle_ClearAllianceTargetSlotIfSelf_802CDD0(r5 = battle object):
+ * Clear this object's entry in the current-target slot of its alliance's
+ * table (dword_203CFB0: two 0xC-byte alliance records, target pointer at +8).
+ * Objects in the second alliance use the second record. Leaves the previous
+ * slot value in r1 (0 if it was cleared, i.e. if it pointed at this object). */
+Next battle_ClearAllianceTargetSlotIfSelf_802CDD0(void) {
+    u32 table = A_dword_203CFB0;
+
+    if (LD8(R5 + oBattleObject_Alliance) != 0)
+        table += 0xC;
+
+    R1 = LD32(table + 8);
+    if (R1 == R5) {
+        R1 = 0;
+        ST32(table + 8, R1);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── wrapCountersAt203CFB0ToU16_802CDFE ── */
+/* wrapCountersAt203CFB0ToU16_802CDFE: clear the upper halves of the two 32-bit counters at
+ * dword_203CFB0 and dword_203CFB0+0xC, keeping only the low 16 bits. */
+Next wrapCountersAt203CFB0ToU16_802CDFE(void) {
+    u32 counter = A_dword_203CFB0;
+
+    ST32(counter, LD32(counter) << 16);
+    ST32(counter + 0xC, LD32(counter + 0xC) << 16);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802CE10 ── */
+/* sub_802CE10(r0 = value, r5 = battle object):
+ * Updates one of the two battle side-counters for the object's alliance.
+ * If the object is the one currently tracked at (+8) of the counter block,
+ * its stored increment (+2) is added to r0; otherwise r0 acts as a new
+ * maximum and overwrites the counter (+0) when it is larger.
+ * Returns: r0 = updated value, r2 = the tracked object pointer. */
+Next sub_802CE10(void) {
+    u32 amount = R0;
+    u32 object = R5;
+
+    /* Player-side block, or the +0xC partner-side block for allied objects. */
+    u32 counters = A_dword_203CFB0;
+    if (LD8(object + oBattleObject_Alliance) != 0)
+        counters += 0xC;
+
+    R2 = LD32(counters + 8);
+    if (object == R2) {
+        /* This object owns the counter: accumulate its increment into r0. */
+        R0 = amount + LD16(counters + 2);
+    } else {
+        /* Raise the counter's recorded maximum if r0 exceeds it. */
+        if (amount > LD16(counters))
+            ST16(counters, amount);
+        R0 = amount;
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── zeroFill_802CE54 ── */
+/* zeroFill_802CE54: clear the 0x20-byte work buffer unk_2036720.
+ * Inputs: r2/r3 (preserved, forwarded unchanged). Flags on exit are
+ * whatever ZeroFillByWord leaves behind (callers branch on c/v). */
+Next zeroFill_802CE54(void) {
+    R0 = A_unk_2036720; /* memBlock: buffer to clear */
+    R1 = 0x20;          /* size in bytes */
+    GUEST_CALL(ZeroFillByWord);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802CE60 ── */
+/* sub_802CE60(r0 = index):
+ * Fetch one 16-byte entry from the table at unk_2036720. The index is
+ * scrambled by XORing it with the current battle state's shuffle key
+ * (oBattleState_Unk_0d) before scaling it to the entry size, so callers
+ * get a shuffled-but-deterministic entry for the current battle.
+ * Returns r0 = entry halfword at +0, r1 = entry word at +4,
+ *         r2 = entry halfword at +2. */
+Next sub_802CE60(void) {
+    u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+    u32 shuffleKey = LD8(battleState + oBattleState_Unk_0d);
+
+    u32 entry = A_unk_2036720 + ((R0 ^ shuffleKey) * 0x10);
+
+    R1 = LD32(entry + 4);
+    R2 = LD16(entry + 2);
+    R0 = LD16(entry);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── getTable2036720EntryFields_802CE78 ── */
+/* getTable2036720EntryFields_802CE78(r0 = entry index):
+ * Fetch a 16-byte record from the table at unk_2036720 and spread its fields
+ * across registers: r0 = halfword at +0, r1 = word at +4, r2 = halfword at +2,
+ * r3 = word at +8. The address computation sets c/v as the original ADDS does. */
+Next getTable2036720EntryFields_802CE78(void) {
+    u32 table = A_unk_2036720;
+    u32 offset = R0 * 0x10;             /* each record is 16 bytes */
+
+    SET_FLAGS_ADD(offset, table);       /* add r0, r0, r1 (sets c/v) */
+    u32 entry = offset + table;
+
+    R3 = LD32(entry + 8);
+    R1 = LD32(entry + 4);
+    R2 = LD16(entry + 2);
+    R0 = LD16(entry);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── runPendingHandlerForEntryPair_802CEC8 ── */
+/* runPendingHandlerForEntryPair_802CEC8: for each of the two entries in the table at unk_2036720
+ * (stride 0x10, entry pointer at +0x8), if the entry exists and its
+ * halfword flag at +0x24 is clear, call sub_802CEA6 with the byte value
+ * at +0x16 of that entry. r4 is left pointing at the second entry. */
+Next runPendingHandlerForEntryPair_802CEC8(void) {
+    u32 table = A_unk_2036720;
+
+    for (u32 i = 0; i < 2; i++) {
+        u32 entry = LD32(table + i * 0x10 + 8);
+
+        if (entry != 0 && LD16(entry + 0x24) == 0) {
+            R0 = LD8(entry + 0x16);
+            GUEST_CALL(sub_802CEA6);
+        }
+    }
+
+    R4 = table + 0x10;
+    RETURN_TO_CALLER();
+}
+
+/* ── getTableEntryPtr32_802D064 ── */
+/* getTableEntryPtr32_802D064(r0 = entry index) -> r0 = &byte_203C4A0[entry * 0x20]
+ *
+ * Address-of helper: computes the address of one 0x20-byte entry in the
+ * array at byte_203C4A0. In Thumb, the low-register "add r0, r0, r1" is
+ * always ADDS, so this last instruction (not the MUL) is what determines
+ * the flags returned to callers: N/Z from the sum, C from the carry out
+ * of the addition, V from the signed overflow. */
+Next getTableEntryPtr32_802D064(void) {
+    u32 product = R0 * 0x20;
+    u32 base = A_byte_203C4A0;
+
+    SET_FLAGS_ADD(product, base);  /* Thumb ADD r0, r0, r1 == ADDS */
+    R0 = product + base;
+    RETURN_TO_CALLER();
+}
+
+/* ── initStateCounters100_802D08C ── */
+/* initStateCounters100_802D08C(r0 = selector flag passed through to getTableEntryPtr32_802D064):
+ * Initialise a state struct: clear the byte at +0x10 and set the two
+ * bytes at +0xD and +0xF to 100. Returns the struct pointer in r0 and
+ * r1 = 100 (flags reflect r1). */
+Next initStateCounters100_802D08C(void) {
+    /* getTableEntryPtr32_802D064 resolves the struct to initialise and returns it in r0. */
+    GUEST_CALL(getTableEntryPtr32_802D064);
+    u32 state = R0;
+
+    ST8(state + 0x10, 0);
+    ST8(state + 0xD, 100);
+    ST8(state + 0xF, 100);
+
+    R0 = state;
+    R1 = 100;
+    SET_FLAGS_NZ(R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802D150 ── */
+/* sub_802D150: clear the 32-bit counter/flag at dword_2006740. */
+Next sub_802D150(void) {
+    ST32(A_dword_2006740, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetBattleModeFromBattleSettings ── */
+/* GetBattleModeFromBattleSettings(r0 = battle settings pointer):
+ * return the battle mode byte stored at offset 3 of the settings struct. */
+Next GetBattleModeFromBattleSettings(void) {
+    R0 = LD8(R0 + 3);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetBattleEffects ── */
+/* GetBattleEffects: 0802D246-0802D254 THUMB, bn6f asm03_0.s:14417
+ * Fetches the battle-effects bitmask for the current battle: load the
+ * battle state from the toolkit, its battle settings from the battle
+ * state, and delegate to GetBattleEffectsFromBattleSettings. */
+Next GetBattleEffects(void) {
+    u32 *battleState = (u32 *)LD32(R10 + oToolkit_BattleStatePtr);
+    R0 = LD32((u32)battleState + oBattleState_BattleSettings);
+    GUEST_CALL(GetBattleEffectsFromBattleSettings);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetBattleEffectsFromBattleSettings ── */
+/* GetBattleEffectsFromBattleSettings(r0 = battle settings ptr):
+ * returns the optional-effect settings word from the battle settings struct. */
+Next GetBattleEffectsFromBattleSettings(void) {
+    R0 = LD32(R0 + 8 /* oBattleSettings_UnkOptSettings */);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetBattleSettingsUnk01 ── */
+/* GetBattleSettingsUnk01():
+ * Return the settings field (Unk01) of the current battle's BattleSettings,
+ * fetched via GetBattleSettingsUnk01FromBattleSettings. */
+Next GetBattleSettingsUnk01(void) {
+    u32 battleSettings = LD32(LD32(R10 + oToolkit_BattleStatePtr) + oBattleState_BattleSettings);
+
+    R0 = battleSettings;
+    GUEST_CALL(GetBattleSettingsUnk01FromBattleSettings);
+    /* result already in R0 */
+    RETURN_TO_CALLER();
+}
+
+/* ── GetBattleSettingsUnk01FromBattleSettings ── */
+/* GetBattleSettingsUnk01FromBattleSettings(r0 = battle settings pointer):
+ * return the byte at offset 1 (unknown setting 01) of the battle settings struct. */
+Next GetBattleSettingsUnk01FromBattleSettings(void) {
+    R0 = LD8(R0 + 1);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetBattlePanelColumnPattern ── */
+/* GetBattlePanelColumnPattern:
+ * Returns the current battle panel column pattern, reading it from the
+ * battle settings of the battle state the toolkit (r10) points at. */
+Next GetBattlePanelColumnPattern(void) {
+    u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+    R0 = LD32(battleState + oBattleState_BattleSettings);
+    GUEST_CALL(GetBattlePanelColumnPatternFromBattleSettings);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetBattlePanelColumnPatternFromBattleSettings ── */
+/* GetBattlePanelColumnPatternFromBattleSettings(r0 = battle settings ptr):
+ * returns the panel column pattern byte (offset 6) from the battle settings. */
+Next GetBattlePanelColumnPatternFromBattleSettings(void) {
+    R0 = LD8(R0 + 6);
+    RETURN_TO_CALLER();
+}
+
+/* ── memBlock_ClearWorkArea_802D638 ── */
+/* memBlock_ClearWorkArea_802D638: clear the 0x20-byte work buffer at byte_2000070 (memBlock).
+ * Arguments in r2/r3 and those registers are passed through unchanged. */
+Next memBlock_ClearWorkArea_802D638(void) {
+    R0 = A_byte_2000070; /* memBlock */
+    R1 = 0x20;           /* size in bytes */
+    GUEST_CALL(ZeroFillByWord);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802D644 ── */
+/* sub_802D644(r0 = index into byte_2000070):
+ * Increment the counter byte at byte_2000070[index], clamped at 0xFF
+ * (0xFF stays 0xFF instead of wrapping). r2 = incremented (possibly
+ * clamped) value; flags reflect the comparison against 0xFF. */
+Next sub_802D644(void) {
+    u32 value = (u32)LD8(A_byte_2000070 + R0) + 1;
+
+    SET_FLAGS_CMP(value, 0xFF);
+    if ((s32)value <= 0xFF)
+        ST8(A_byte_2000070 + R0, value);
+
+    R2 = value;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_initPlayerTracker_802D6A0 ── */
+/* battle_initPlayerTracker_802D6A0: initialise the battle's player-tracking block (dword_203C970)
+ * at the start of a battle:
+ *   +0x0: counter, cleared
+ *   +0x4: flag, set to 1
+ *   +0x8: BattleObject pointer of the player's side   (alliance 0)
+ *   +0xC: BattleObject pointer of the enemy's side    (alliance 1)
+ * r4-r7/r10 are preserved; r0-r2 and flags are scratch. */
+Next battle_initPlayerTracker_802D6A0(void) {
+    u32 tracker = A_dword_203C970;
+
+    ST32(tracker, 0);
+
+    R0 = 0;                                  /* player's side */
+    GUEST_CALL(battle_findPlayer);
+    ST32(tracker + 8, R0);
+
+    R0 = 1;                                  /* enemy's side */
+    GUEST_CALL(battle_findPlayer);
+    ST32(tracker + 0xC, R0);
+
+    ST8(tracker + 4, 1);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── ai_CheckSpecialFlagPair_802DCEC ── */
+/* ai_CheckSpecialFlagPair_802DCEC(r0 = AI/battle parameter):
+ * Decides a special condition for the given parameter. Returns 0 if the
+ * parameter is 0; otherwise returns 1 if the AI data +0x48 flag has bit
+ * 0x1000 set or the AI data +0x44 flag has bit 0x4000000 set, else 0.
+ *
+ * Register notes: the original borrows r5 and r7 as scratch (r5 = parameter,
+ * r7 = running result) but pops both restored, so the caller sees its incoming
+ * r5/r7 unchanged. The flag getters are leaf calls that still read the live
+ * scratch state: the first is entered with r1 = incoming r1, r5 = parameter,
+ * r7 = 0; the second with r1 = 0x1000 (the =0x4000000 load happens only after
+ * that call returns), r5 = parameter, r7 = 0. r1 ends up holding the mask of
+ * the last flag tested (untouched on the parameter == 0 path), and r3 holds
+ * whatever the flag getters left there.
+ */
+Next ai_CheckSpecialFlagPair_802DCEC(void) {
+    u32 param = R0;
+    u32 savedR5 = R5, savedR7 = R7;
+
+    /* Scratch state live across the flag-getter calls */
+    R5 = param;
+    R7 = 0;
+
+    u32 result;
+    if (param == 0) {
+        /* "beq loc_802DD0C": parameter 0 short-circuits to "no" */
+        result = 0;
+    } else {
+        result = 1;
+
+        /* flag at AI data + 0x48: bit 0x1000 keeps the "yes" verdict */
+        GUEST_CALL(GetAIDataUnk0x48Flag);
+        R1 = 0x1000;
+        if ((R0 & 0x1000) == 0) {
+            /* flag at AI data + 0x44: bit 0x4000000 keeps the "yes" verdict */
+            GUEST_CALL(GetAIData_Unk_44_Flag); /* still called with r1 = 0x1000 */
+            R1 = A_LCDControl;
+            if ((R0 & A_LCDControl) == 0)
+                result = 0;
+        }
+    }
+
+    /* pop {r5,r7}: caller's values are restored */
+    R5 = savedR5;
+    R7 = savedR7;
+
+    R0 = result;
+    /* The closing "mov r0, r7" assembles to adds r0, r7, #0, the last
+     * flag-setting instruction on every path: it clears C and V. */
+    SET_FLAGS_ADD(R0, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802DD1E ── */
+/* sub_802DD1E: stub that always yields 0.
+ * The original clears r7, copies it into r0 (an "adds r0, r7, #0", which is why
+ * the flags come out as Z set / C, V clear) and immediately returns; the pushes
+ * of r5/r7 are undone by the pop, so both are preserved untouched.
+ *   inputs:  r0 (ignored)          outputs: r0 = 0, flags nz/c/v
+ *   preserved: r5 r7 */
+Next sub_802DD1E(void) {
+    R0 = 0;
+    SET_FLAGS_ADD(0, 0);   /* "adds r0, r7, #0" with r7 = 0: N=0, Z=1, C=0, V=0 */
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_isAllianceActiveAndAiFlag0x4000_802DD2A ── */
+/* battle_isAllianceActiveAndAiFlag0x4000_802DD2A(r0 = battle object):
+ * Returns 1 in r0 only if the battle object's navi-stats byte 0x29 is non-zero
+ * AND the AI-data flag word has bit 0x4000 set; otherwise returns 0.
+ * On the success path r1 ends as 0x2000 (constant left by the original),
+ * otherwise as the callees/test left it. The final "mov r0, r7" of the
+ * original is Thumb "adds r0, r7, #0", which is what sets the outgoing
+ * flags (N/Z from the result, C = 0, V = 0) on every path. */
+Next battle_isAllianceActiveAndAiFlag0x4000_802DD2A(void) {
+    u32 savedR7 = R7;
+    u32 result = 0;
+
+    R7 = 0;                     /* the callees are called with r7 = 0 */
+    R1 = 0x29;                  /* navi stats byte index */
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+
+    if ((s32)R0 != 0) {         /* cmp r0, #0; beq */
+        GUEST_CALL(GetAIDataUnk0x48Flag);
+        if (R0 & 0x4000) {      /* tst r0, r1 (bit 0x4000) */
+            R1 = 0x2000;
+            result = 1;
+        }
+    }
+
+    R7 = savedR7;
+    R0 = result;
+    /* mov r0, r7 == adds r0, r7, #0: sets N/Z from the result, C = 0, V = 0 */
+    SET_FLAGS_ADD(result, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802DE5C ── */
+/* sub_802DE5C: if test battle flag 0x40 is set, run sub_802E2C4 for
+ * indices 0 and 1. Otherwise do nothing. */
+Next sub_802DE5C(void) {
+    GUEST_CALL(TestBattleFlag_0x40); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) { /* the flag is set */
+        R0 = 0;
+        GUEST_CALL(sub_802E2C4);
+        R0 = 1;
+        GUEST_CALL(sub_802E2C4);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_setupAllianceEntryKind3_802DFC8 ── */
+/* battle_setupAllianceEntryKind3_802DFC8(r5 = battle object):
+ * Allocate (and zero-fill) a fresh entry in the shared entry pool for this
+ * object's alliance, then — if battle flag 0x40 is set — initialize it as an
+ * entry of kind 3 anchored at the object's panel x position, and notify
+ * sub_802E07C about the alliance.
+ * The entry pointer is also left in r4 for callers that inspect it. */
+Next battle_setupAllianceEntryKind3_802DFC8(void) {
+    u32 alliance = LD8(R5 + oBattleObject_Alliance);
+
+    R0 = alliance;
+    GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
+    u32 entry = R0;
+
+    /* Clear the whole 0x1D0-byte entry. */
+    R0 = entry;
+    R1 = 0xE8 + 0xE8; /* 0x1D0 bytes */
+    GUEST_CALL(ZeroFillByWord);
+
+    GUEST_CALL(battle_testFlag0x40_800A8F8); /* answers in Z; the original branches on it */
+    if (!ZERO_FLAG()) {
+        ST8(entry + 0x00, 1);            /* active */
+        ST8(entry + 0x0B, 0xFF);
+        ST8(entry + 0x10, 1);
+        ST8(entry + 0x11, LD8(R5 + oBattleObject_PanelX)); /* panel x */
+        ST8(entry + 0x0E, 3);            /* kind */
+
+        R0 = LD8(R5 + oBattleObject_Alliance);
+        GUEST_CALL(sub_802E07C);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_initWorkArea_802DFFC ── */
+/* battle_initWorkArea_802DFFC: initialize the battle work area.
+ * Zeroes the 0x3A0-byte battle work buffer, records the battle object table
+ * pointer in the battle state, and zeroes an allied structure. r2/r3/r4 are
+ * untouched throughout. */
+Next battle_initWorkArea_802DFFC(void) {
+    /* clear the whole battle work buffer: 0xE8 words = 0x3A0 bytes */
+    R0 = A_unk_2036120;
+    R1 = 0xE8 << 2;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* battle state's object-table pointer field = battle object 0 */
+    R0 = A_eT1BattleObject0_Flags;
+    ST32(A_unk_20362F0 + 0x44, R0); /* dword_2036334 */
+
+    GUEST_CALL(zeroFill_802E544);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── getEntryPtr_2036120_1D0_802E070 ── */
+/* getEntryPtr_2036120_1D0_802E070(r0 = entry index): return the address of entry `r0` in the
+ * array at unk_2036120, whose elements are 0x1D0 bytes each
+ * (0xE8 * 2). Leaves r0 = base + index*0x1D0 and r1 = base; flags are
+ * those of the final address addition. */
+Next getEntryPtr_2036120_1D0_802E070(void) {
+    u32 offset = R0 * (0xE8 + 0xE8);
+
+    R1 = A_unk_2036120;
+    R0 = offset + A_unk_2036120;
+    SET_FLAGS_ADD(offset, A_unk_2036120);
+    RETURN_TO_CALLER();
+}
+
+/* ── TestBattleFlag_0x40 ── */
+/* TestBattleFlag_0x40: test the 0x40 bit of the current battle flags.
+ * Returns the masked value in r0 (nonzero if the flag is set) and leaves
+ * the zero/negative flags reflecting it, so callers can branch directly. */
+Next TestBattleFlag_0x40(void) {
+    GUEST_CALL(battle_getFlags);   /* r0 = battle_getFlags() */
+
+    R1 = 0x40;
+    R0 = R0 & R1;
+    SET_FLAGS_NZ(R0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_DecrementAllianceTimer_802E1D8 ── */
+/* battle_DecrementAllianceTimer_802E1D8: tick down the timer field (+0x30) of the record that
+ * getEntryPtr_2036120_1D0_802E070 returns for the alliance of the battle object in r5.
+ * r1 = the timer's value after the update (0 if it was already 0). */
+Next battle_DecrementAllianceTimer_802E1D8(void) {
+    R0 = LD8(R5 + oBattleObject_Alliance);
+    GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
+
+    u32 timer = LD16(R0 + 0x30);
+    if (timer != 0) {
+        timer--;
+        ST16(R0 + 0x30, timer);
+    }
+    R1 = timer;
+    RETURN_TO_CALLER();
+}
+
+/* ── loadIndexedPaletteToBuffer_802E240 ── */
+/* loadIndexedPaletteToBuffer_802E240(r0 = palette index):
+ * Copies one 60-halfword palette (0x3C halfwords) into the buffer at unk_2008170.
+ * The source palette is picked from the word-sized table at off_802E260 by index. */
+Next loadIndexedPaletteToBuffer_802E240(void) {
+    u32 index = R0;
+
+    u32 src = LD32(A_off_802E260 + index * 4);
+    u32 dest = A_unk_2008170;
+
+    R0 = src;
+    R1 = dest;
+    R2 = 0x3C;
+    GUEST_CALL(CopyHalfwords); /* (u16 *src, u16 *dest, int halfwordCount) */
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_getAllianceEntryStatus_802E4B8 ── */
+/* battle_getAllianceEntryStatus_802E4B8(r5 = battle object):
+ * Fetch the alliance entry for the battle object's alliance slot and return its
+ * status code in r0: 9 if the byte at entry+0x50 is set, 13 if the byte at
+ * entry+0x54 is set, otherwise 1. r7 is only used as scratch internally and is
+ * restored on return (the original pushes/pops it). r1 = 0x54 is left behind on
+ * the paths that read the +0x54 flag byte. */
+Next battle_getAllianceEntryStatus_802E4B8(void) {
+    /* r0 = this object's alliance slot index */
+    R0 = LD8(R5 + oBattleObject_Alliance);
+    GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
+
+    u32 entry = R0;
+
+    if (LD8(entry + 0x50) != 0) {
+        R0 = 9;
+        RETURN_TO_CALLER();
+    }
+
+    R1 = 0x54;
+    R0 = (LD8(entry + 0x54) != 0) ? 0xD : 1;
+    RETURN_TO_CALLER();
+}
+
+/* ── zeroFill_802E544 ── */
+/* zeroFill_802E544: clear the 0x170-byte buffer at unk_20000A0.
+ * r2 is untouched: it is an input forwarded to ZeroFillByByte and must be preserved. */
+Next zeroFill_802E544(void) {
+    R0 = A_unk_20000A0;
+    R1 = 0x170; /* 0x71 + 0xFF as computed by the original */
+    GUEST_CALL(ZeroFillByByte);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802EF5C ── */
+/* sub_802EF5C: run a check (battle_testFlag0x40_800A8F8); if it reports "active", pump the
+ * sub_802EF74 state machine with argument 0 followed by argument 1.
+ * Flags/results are whatever the last executed call (or the zero check) left. */
+Next sub_802EF5C(void) {
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+
+    if (R0 == 0) {
+        /* cmp r0, #0 from the original is the last flag-setting op on this path */
+        SET_FLAGS_CMP(R0, 0);
+        RETURN_TO_CALLER();
+    }
+
+    R0 = 0;
+    GUEST_CALL(sub_802EF74);
+
+    R0 = 1;
+    GUEST_CALL(sub_802EF74);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── toolkit_ClearAllEventFlags_802F0C4 ── */
+/* toolkit_ClearAllEventFlags_802F0C4(r10 = toolkit):
+ * Clears the toolkit's event-flags array (630 halfword entries).
+ * r2 and r3 pass through unchanged. */
+Next toolkit_ClearAllEventFlags_802F0C4(void) {
+    R0 = LD32(R10 + oToolkit_EventFlagsPtr);
+    R1 = 630 * 2;
+    GUEST_CALL(ZeroFillByHalfword);
+    RETURN_TO_CALLER();
+}
+
+/* ── eventflags_ClearTwoHalfwordsAt2DE_802F0D8 ── */
+/* eventflags_ClearTwoHalfwordsAt2DE_802F0D8:
+ * Clears two halfwords of the event flags area (offset 0x2DE in the
+ * toolkit's event flags buffer). Common "reset a group of event bits"
+ * routine. r2/r3 are preserved; nothing meaningful is returned. */
+Next eventflags_ClearTwoHalfwordsAt2DE_802F0D8(void) {
+    u32 eventFlags = LD32(R10 + oToolkit_EventFlagsPtr);
+
+    R0 = eventFlags + 0x2DE;
+    R1 = 2;
+    GUEST_CALL(ZeroFillByHalfword);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── eventFlags_ClearRangeAt2C8_802F0F4 ── */
+/* eventFlags_ClearRangeAt2C8_802F0F4: clear a stretch of event flags.
+ * Zeroes 0x16 halfwords starting at toolkit->eventFlags + 0x2C8. */
+Next eventFlags_ClearRangeAt2C8_802F0F4(void) {
+    u32 flags = LD32(R10 + oToolkit_EventFlagsPtr);
+
+    R0 = flags + 0x2C8;
+    R1 = 0x16;
+    GUEST_CALL(ZeroFillByHalfword);
+
+    RETURN_TO_CALLER();
+}

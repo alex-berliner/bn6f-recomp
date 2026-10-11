@@ -1,0 +1,565 @@
+/*
+ * sprite.c: readable functions of bn6f sprite.s, up to 0x08002F2C, in address order.
+ *
+ * Laid out by tools/layout.py: a function converted on its own (the model farm) lives in
+ * the file of the bn6f source that defines it, a big source in parts (tools/layout.txt).
+ * Each function's part starts at its `── NAME ──` line and holds what it needs.
+ */
+#include "game.h"
+#include "runtime.h"
+
+/* ── sprite_loadAnimationData ── */
+/* sprite_loadAnimationData(r5 = object header, r4 = scratch):
+ * Loads the animation data for the sprite attached to an object header.
+ * The high nibble of the header's type/sprite-offset byte (at offset 2) is
+ * an offset in 16-byte units; r5 is advanced past the header to the sprite
+ * data and the shared animation loader is run on it. r4/r5 are preserved
+ * for the caller (the original saves them on the stack around the call);
+ * r0-r3 and the flags are whatever the loader leaves behind. */
+Next sprite_loadAnimationData(void) {
+    u32 savedR4 = R4;
+    u32 savedR5 = R5;
+
+    /* Skip past the object header to this sprite's data block:
+     * high nibble of the type/sprite-offset byte, times 16. */
+    u32 offset = (LD8(R5 + 2) >> 4) << 4;
+    R5 = savedR5 + offset;
+
+    /* Hand the loader its own entry address (Thumb bit set), exactly as the
+     * original computed-call does. */
+    R4 = (A__sprite_loadAnimationData | 1);
+
+    GUEST_CALL(_sprite_loadAnimationData);
+
+    /* Restore the caller's r4/r5, as the original's pop does. */
+    R4 = savedR4;
+    R5 = savedR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_loadAnimationData_spritePtrProvidedDirectly ── */
+/* sprite_loadAnimationData_spritePtrProvidedDirectly (0x080026B6):
+ * Thin trampoline around _sprite_loadAnimationData. The callee receives the
+ * caller's r4/r5 untouched and returns its results in r2/r3; this wrapper
+ * exists only so that r4 survives the call (the original pushes/pops r4
+ * around the branch). */
+Next sprite_loadAnimationData_spritePtrProvidedDirectly(void) {
+    u32 savedR4 = R4;
+
+    GUEST_CALL(_sprite_loadAnimationData);
+
+    R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_chatbox_80026D6 ── */
+/* sprite_chatbox_80026D6: trampoline that jumps to _sprite_update.
+ * The sprite update routine is entered with r4 holding its own address
+ * (thumb bit set) so it can find its data tables; this thunk sets that
+ * up, then on return restores the caller's r4 and returns straight to
+ * the caller (pop {r4,pc} uses the lr saved at entry). */
+Next sprite_chatbox_80026D6(void) {
+    u32 callerR4 = R4;
+
+    R4 = (A__sprite_update | 1);   /* ldr r4, =_sprite_update+1 */
+    GUEST_CALL(_sprite_update);    /* mov lr, pc; bx r4 */
+
+    R4 = callerR4;                 /* pop {r4} */
+    RETURN_TO_CALLER();            /* pop {pc} */
+}
+
+/* ── sprite_initialize ── */
+/* sprite_initialize(r0 = sprite resource id, r5 = sprite object):
+ * reset an object's sprite state. Stores r0+4 (the first resource slot
+ * used by the sprite) into Unk_18, zeroes all animation/position/timer
+ * fields, marks the current frame as "none" (Unk_28 = 0xFFFFFFFF) and
+ * sets the default 8x8 cell size in Unk_15/Unk_16.
+ * The opening ADDS is the last instruction that touches c/v, so those
+ * flags are outputs; later MOVs only change nz. */
+Next sprite_initialize(void) {
+    u32 obj = R5;
+
+    /* flags must come from ADDS r0, #4 */
+    u32 base = R0;
+    R0 = base + 4;
+    SET_FLAGS_ADD(base, 4);
+
+    ST32(obj + oObjectSprite_Unk_18, R0);
+
+    /* clear state, timers and coordinates */
+    ST8 (obj + 3, 0);
+    ST8 (obj + 0, 0);
+    ST32(obj + oObjectSprite_Unk_24, 0);
+    ST8 (obj + 4, 0);
+    ST16(obj + oObjectSprite_Unk_0a, 0);
+    ST16(obj + 6, 0);
+    ST32(obj + oObjectSprite_Unk_2c, 0);
+    ST16(obj + oObjectSprite_Unk_10, 0);
+    ST16(obj + oObjectSprite_Unk_12, 0);
+    ST8 (obj + oObjectSprite_Unk_14, 0);
+    ST8 (obj + 5, 0);
+    ST32(obj + oObjectSprite_Unk_30, 0);
+    ST32(obj + oObjectSprite_Unk_34, 0);
+
+    /* no active frame: all bits set */
+    ST32(obj + oObjectSprite_Unk_28, 0xFFFFFFFF);
+
+    /* default 8x8 sprite cell */
+    ST8 (obj + oObjectSprite_Unk_15, 8);
+    ST16(obj + oObjectSprite_Unk_16, 8);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── spriteLoadMugshot_800275A ── */
+/* spriteLoadMugshot_800275A(r0 = mugshot index, r5 = sprite struct):
+ * initialize the mugshot sprite for the given index and mark r5's
+ * halfword at +0x16 as 0x80 (sprite loaded). */
+Next spriteLoadMugshot_800275A(void) {
+    R0 = LD32(A_mugshotSpritePtrs + R0 * 4);
+    GUEST_CALL(sprite_initialize);
+    ST16(R5 + 0x16, 0x80);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80027B4 ── */
+/* sub_80027B4: set the flag at dword_200F350 (A_eS200F348_Size) to 1.
+ * Probably marks some sprite/resource table as loaded/available. */
+Next sub_80027B4(void) {
+    ST32(A_eS200F348_Size, 1);
+    RETURN_TO_CALLER();
+}
+
+/* ── palette_InitTransferState_80027D4 ── */
+/* palette_InitTransferState_80027D4: initialize the palette-transfer state at byte_20098A8.
+ * Sets the entry size to 4, the entry count to 10, and the halfword
+ * transfer length to 0x2FF for the upcoming palette DMA copy. */
+Next palette_InitTransferState_80027D4(void) {
+    u32 state = A_ePalette20097a0_21_Size;  /* = byte_20098A8 */
+
+    ST8(state + 1, 4);        /* byte_20098A9 = 4  */
+    ST8(state, 0xA);          /* byte_20098A8 = 10 */
+    ST16(state + 2, 0x2FF);   /* word_20098AA = 0x2FF */
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800286C ── */
+/* sub_800286C: clear the 32-bit global dword_200F340 to zero (some
+ * global counter/flag reset; no results, no flags). */
+Next sub_800286C(void) {
+    ST32(A_dword_200F340, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_loadAnimFrameTiles_8002874 ── */
+/* sprite_loadAnimFrameTiles_8002874(r5 = object animation state):
+ * Advances an object's graphics frame. Fields used:
+ *   +0x18  index of the current frame within the animation table
+ *   +0x1C  pointer to the animation table pointer
+ *   +0x24  pointer to the frame descriptor currently loaded in VRAM
+ *   +0x08  VRAM slot number (each slot holds one 8-word tile block)
+ * If the frame descriptor for the current index differs from the one already
+ * uploaded, store it and queue a transfer that copies its tile data
+ * (descriptor words, followed by the tiles) into vObjectTiles[slot].
+ * Flags: on the "unchanged" path they come from the frame comparison;
+ * on the "upload" path they come from QueueEightWordAlignedGFXTransfer. */
+Next sprite_loadAnimFrameTiles_8002874(void) {
+    u32 loadedFrame = LD32(R5 + 0x24);
+    u32 table = LD32(LD32(R5 + 0x1C));
+    u32 currentFrame = table + LD32(R5 + 0x18);
+
+    if (currentFrame == loadedFrame) {
+        /* Frame already in VRAM; nothing to do. */
+        SET_FLAGS_CMP(currentFrame, loadedFrame);
+        RETURN_TO_CALLER();
+    }
+
+    ST32(R5 + 0x24, currentFrame);
+
+    u32 tileCount = LD32(currentFrame);              /* first word: tile count */
+    u32 src = currentFrame + 4;                      /* tiles follow the header word */
+    u32 dest = A_vObjectTiles + ((u32)LD16(R5 + 8) << 5);
+
+    R0 = src;
+    R1 = dest;
+    R2 = tileCount;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_resetObjVars_800289C ── */
+/* sprite_resetObjVars_800289C:
+ * Reset the sprite object state: clear the counter at dword_20093A8, then
+ * fill the 0x388-word table at dword_200A890 with 0xFFFFFFFF via WordFill.
+ * Flags on return (including v) are those left by WordFill's last
+ * flag-setting instruction; r3 is untouched. */
+Next sprite_resetObjVars_800289C(void) {
+    ST32(A_dword_20093A8, 0);
+
+    R0 = A_dword_200A890;
+    R1 = 0x388;
+    R2 = 0xFFFFFFFF;
+    GUEST_CALL(WordFill);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── initUncompSpriteState_80028d4 ── */
+/* initUncompSpriteState_80028d4(r0 = sprite data pointer):
+ * Resets the uncompressed-sprite work block at byte_200DCA0 before a new
+ * sprite is decompressed into it:
+ *   - the whole 0x50-byte block is zeroed,
+ *   - the given data pointer is kept at byte_200DCEC (+0x4C),
+ *   - the 0x18-halfword table at +0x04 is filled with 0x7FFF,
+ *   - the 0x30-byte buffer at +0x1C is filled with 0xFF.
+ * Returns with r2 = 0xFF (last fill value) and the flags left by ByteFill;
+ * r3 and r5 are untouched as far as callers are concerned. */
+Next initUncompSpriteState_80028d4(void) {
+    u32 callerR5 = R5;   /* original pushes r5 and pops it back at the end */
+    u32 dataPtr = R0;    /* original spills r0 around the first fill call */
+    u32 block = A_byte_200DCA0;
+
+    /* zero the entire state block */
+    R0 = block;
+    R1 = 0x50;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* remember which sprite data this state belongs to */
+    ST32(block + 0x4C, dataPtr); /* dword_200DCEC */
+
+    /* clear the halfword table at +4 (0x80<<24 inverted, shifted = 0x7FFF) */
+    R0 = block + 4;
+    R1 = 0x18;
+    R2 = 0x7FFF;
+    GUEST_CALL(HalfwordFill);
+
+    /* clear the tile buffer at +0x1C */
+    R0 = block + 0x1C;
+    R1 = 0x30;
+    R2 = 0xFF;
+    GUEST_CALL(ByteFill);
+
+    R5 = callerR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── lookupValueForIdInTableAt_200DCA0_8002986 ── */
+/* lookupValueForIdInTableAt_200DCA0_8002986(r0 = id, r5 preserved):
+ * Search the 12-entry table rooted at byte_200DCA0. Each entry i has a
+ * u16 id at table+4+i*2 and a u32 payload at table+0x1C+i*4. Returns the
+ * payload of the entry whose id matches r0, or 0 if no entry matches.
+ * r1/r2 are scratch in the original; they are set to the same values the
+ * original leaves behind (last compared id / loop index) for exactness. */
+Next lookupValueForIdInTableAt_200DCA0_8002986(void) {
+    u32 table = A_byte_200DCA0;
+    u32 key = R0;
+    u32 result = 0;
+    u32 found = 0;
+    u32 lastId = 0;
+    u32 i;
+
+    for (i = 0; i < 12; i++) {
+        lastId = (u16)LD16(table + 4 + i * 2);
+        if (lastId == key) {
+            result = LD32(table + 0x1C + i * 4);
+            found = 1;
+            break;
+        }
+    }
+
+    if (found) {
+        R0 = result;
+        R1 = 0x1C + i * 4;      /* address offset used by the original's load */
+        R2 = i;
+    } else {
+        R0 = 0;
+        R1 = lastId;            /* id of the final (12th) entry */
+        R2 = 12;
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_setAlpha_8002c7a ── */
+/* sprite_setAlpha_8002c7a(r0 = alpha, r2 = -, r5 = sprite object, r7 = preserved,
+ *                         r10 = toolkit):
+ * Trampoline for the shared sprite effect setter: select effect mode 4
+ * (per-sprite blend/alpha mode in the object's sprite record) and tail-call
+ * sprite_setAlpha, which stores the mode into the object's sprite entry and
+ * reprograms the global blend block pointed at by the toolkit (blend mode
+ * bits cleared, coefficient A = alpha, coefficient B = 0x10 - alpha, first
+ * target bank emptied, second bank filled with 0x3F). All outputs
+ * (r0 = 0x3F, r1 = masked target byte, r2 = 0, r3 = blend block, nz/c/v)
+ * come from the callee; r5 and r10 pass through untouched and r7 is
+ * preserved by it. */
+Next sprite_setAlpha_8002c7a(void) {
+    R2 = 4;
+    GUEST_CALL(sprite_setAlpha);
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_getMosaicScalingParameters ── */
+/* sprite_getMosaicScalingParameters(r0 = object header, r10 = toolkit):
+ * Looks up the mosaic/scaling entry for the object's sprite.
+ *   r0 = parameter byte from toolkit->Unk2009740[2],
+ *   r2 = mosaic flag bits (mask 0x0C) from the sprite's Unk_11 field. */
+Next sprite_getMosaicScalingParameters(void) {
+    u32 obj = R0;
+
+    /* The high nibble of the header's type byte selects the sprite
+     * attached to the object, in 16-byte units from the header. */
+    u32 sprite = obj + (LD8(obj + 2) & 0xF0);
+
+    R2 = LD8(sprite + oObjectSprite_Unk_11) & 0xC;
+
+    u32 params = LD32(R10 + oToolkit_Unk2009740_Ptr);
+    R0 = LD8(params + 2);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_makeUnscalable ── */
+/* Offset of the type/sprite-offset byte in an object header (the disassembly
+ * reads it as [r5,#oObjectHeader_TypeAndSpriteOffset], i.e. byte 2). */
+#define oObjectHeader_TypeAndSpriteOffset 2
+
+/* sprite_makeUnscalable(r5 = object header):
+ * Mark the object's sprite as non-scalable. The sprite block lives 16 bytes
+ * per unit past the header, according to the high nibble of the header's
+ * type/sprite-offset byte; the body works through that pointer (r5 is
+ * temporarily redirected there, and the callee needs it), but the original
+ * saves/restores r5 around the call, so the header pointer is what survives.
+ * It then strips the "scalable" bits from the sprite state (Unk_11 bits 0-1,
+ * Unk_13 bits 1-5) and clears the matching bit in the sprite flag word.
+ * The Thumb `add r5, r5, r3` is an ADDS: it sets N/Z/C/V, and those C/V
+ * survive the TST on the early-exit path (the callee overwrites all flags
+ * on the normal path). NZ on the early-exit path comes from the TST. */
+Next sprite_makeUnscalable(void) {
+    u32 object = R5;
+
+    R3 = LD8(object + oObjectHeader_TypeAndSpriteOffset) & 0xF0;
+    SET_FLAGS_ADD(object, R3);          /* ADDS r5, r5, r3 */
+    u32 sprite = object + R3;
+    R5 = sprite;                        /* body and callee see the sprite block */
+
+    R1 = 3;
+    R0 = LD8(sprite + oObjectSprite_Unk_11);
+    if ((R0 & R1) == 0) {
+        SET_FLAGS_NZ(R0 & R1);          /* tst r1, r0: C/V stay from the ADDS */
+        R5 = object;                    /* pop {r5} restores the header pointer */
+        RETURN_TO_CALLER();
+    }
+
+    ST8(sprite + oObjectSprite_Unk_11, R0 & ~R1);
+
+    R0 = LD8(sprite + oObjectSprite_Unk_13);
+    R2 = R0;
+    R1 = 0x3E;
+    R0 = (R0 & R1) >> 1;                /* bit index within the flag word */
+    R2 &= ~R1;
+    ST8(sprite + oObjectSprite_Unk_13, R2);
+    GUEST_CALL(flags_clearFlagWordBit_802FE6A);
+
+    R5 = object;                        /* pop {r5} restores the header pointer */
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_getPalette ── */
+/* sprite_getPalette(r0 = object header pointer):
+ * The header's type byte (offset 2) holds the sprite's offset from the
+ * header in its high nibble (in units of 0x10 bytes). Add that to the
+ * header to find the sprite data, and return its palette byte at +4.
+ * Outputs: r0 = palette byte, r3 = sprite data pointer. */
+Next sprite_getPalette(void) {
+    u32 header = R0;
+
+    u32 spriteOffset = (LD8(header + 2 /* oObjectHeader_TypeAndSpriteOffset */) >> 4) << 4;
+    u32 spriteData = header + spriteOffset;
+
+    R3 = spriteData;
+    R0 = LD8(spriteData + 4 /* oObjectSprite_Unk_04 */);
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_setAnimation ── */
+/* sprite_setAnimation(r0 = animation index, r5 = object header):
+ * Select an animation for the object's sprite. The high nibble of the
+ * object's TypeAndSpriteOffset byte (offset 2) holds the sprite slot
+ * number; each slot is 16 bytes, so the slot's base is obj + (nibble << 4).
+ * The new animation index is written to that slot's first byte. */
+Next sprite_setAnimation(void) {
+    u32 obj = R5;
+
+    u32 slotOffset = LD8(obj + 2) & 0xF0;
+    ST8(obj + slotOffset, R0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_getFinalPalette ── */
+/* Sprite palette lookup helpers. The object header's TypeAndSpriteOffset
+ * byte is at offset 2; its upper nibble is the sprite's VRAM tile offset,
+ * which indexes the object's sprite record list. oObjectSprite_Unk_15 is
+ * the final palette byte of a sprite record. */
+#define oObjectHeader_TypeAndSpriteOffset 2
+
+/* sprite_getFinalPalette(r0 = object header pointer):
+ * Compute the palette used by an object's current sprite. The header's
+ * TypeAndSpriteOffset byte holds the sprite's VRAM offset (in 32-byte
+ * tiles) in its upper nibble; that offset locates the sprite's record,
+ * whose Unk_15 byte supplies the final palette index. Result: r1 = palette. */
+Next sprite_getFinalPalette(void) {
+    u32 spriteOffset = LD8(R0 + oObjectHeader_TypeAndSpriteOffset) & 0xF0;
+    u32 sprite = R0 + spriteOffset;
+
+    R1 = LD8(sprite + oObjectSprite_Unk_15) & 0xF0;
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_getFrameParameters ── */
+/* sprite_getFrameParameters(r5 = object header):
+ * Reads the sprite parameters of the object's current animation frame.
+ * Computes the sprite data address from the object's type/sprite-offset byte
+ * at header +2 (low nibble dropped, so the offset is a multiple of 0x10), then
+ * loads:
+ *   r0 = attribute byte at sprite +2 (with the 0xC0 flip bits masked off
+ *        when the byte at sprite +1 is nonzero),
+ *   r1 = r2 = frame index byte at sprite +0,
+ *   r3 = sprite data address.
+ * Flags: the CMP against #0 leaves c set and v clear, nz per the tested byte. */
+Next sprite_getFrameParameters(void) {
+    u32 sprite = R5 + (LD8(R5 + 2) & 0xF0);
+    u32 flipTest = LD8(sprite + 1);
+    u32 attrs = LD8(sprite + 2);
+
+    SET_FLAGS_CMP(flipTest, 0); /* c = 1, v = 0 regardless of the branch below */
+    if (flipTest != 0)
+        attrs &= ~0xC0u; /* clear the h/v flip bits */
+
+    R0 = attrs;
+    R1 = LD8(sprite);
+    R2 = R1; /* the original loads the same byte twice */
+    R3 = sprite;
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_hasShadow ── */
+/* Object struct offsets used here (from the disassembly; the shared header
+ * doesn't export them, so define them locally):
+ *   +2: type/sprite-select byte -- upper nibble picks which 0x10-byte sprite
+ *       struct belongs to this object
+ *   +3: sprite state byte within that struct */
+#define oObjectHeader_TypeAndSpriteOffset_sprite_hasShadow 2
+#define oObjectSprite_Unk_03              3
+
+/* sprite_hasShadow(r5 = object):
+ * Mark the object's current sprite as casting a shadow: set bit 0 and clear
+ * bit 2 of the sprite state byte.
+ * Leaves r0 = new state byte, r1 = 4, r3 = sprite struct address.
+ * Flags: N/Z come from the stored byte (the final BIC), while C/V come from
+ * the earlier ADDS that built the sprite address -- BIC/ORR leave C/V alone. */
+Next sprite_hasShadow(void) {
+    u32 select = (LD8(R5 + oObjectHeader_TypeAndSpriteOffset_sprite_hasShadow) >> 4) << 4;
+
+    /* adds r3, r3, r5: this is where C and V are established */
+    u32 sprite = select + R5;
+    SET_FLAGS_ADD(select, R5);
+
+    u32 state = LD8(sprite + oObjectSprite_Unk_03);
+    state |= 1;   /* has shadow */
+    state &= ~4;  /* clear the "no shadow" flag */
+    ST8(sprite + oObjectSprite_Unk_03, state);
+    /* bic only updates N/Z; C/V from the ADDS above must survive */
+    SET_FLAGS_NZ(state);
+
+    R0 = state;
+    R1 = 4;
+    R3 = sprite;
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_removeShadow ── */
+/* Offsets from the disassembly that game.h doesn't define. */
+#define oObjectHeader_TypeAndSpriteOffset_sprite_removeShadow 2 /* header byte: high nibble = sprite struct index */
+#define oObjectSprite_Unk_03_sprite_removeShadow              3 /* sprite status byte */
+
+/* sprite_removeShadow(r5 = object header):
+ * The high nibble of the header's type byte selects the object's sprite
+ * struct (scaled by 16 as the offset from the header). This clears the
+ * shadow bit (bit 0) and the bit-2 flag in that sprite's status byte.
+ * Leaves r0 = new status byte, r1 = 4, r3 = sprite struct address,
+ * nz from the status byte and c/v from the address add. */
+Next sprite_removeShadow(void) {
+    u32 spriteOffset = LD8(R5 + oObjectHeader_TypeAndSpriteOffset_sprite_removeShadow) & 0xF0;
+    u32 sprite = spriteOffset + R5;
+    SET_FLAGS_ADD(spriteOffset, R5); /* flags of the original ADDS r3, r3, r5 */
+
+    /* Drop the shadow flag and the bit-2 flag from the sprite status byte. */
+    u32 status = LD8(sprite + oObjectSprite_Unk_03_sprite_removeShadow) & ~0x05u;
+    SET_FLAGS_NZ(status);
+    ST8(sprite + oObjectSprite_Unk_03_sprite_removeShadow, status);
+
+    R0 = status;
+    R1 = 4;
+    R3 = sprite;
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_setColorShader ── */
+/* Field offsets used by sprite_setColorShader (not declared in game.h). */
+enum { oObjectHeader_TypeAndSpriteOffset_sprite_setColorShader = 2 };
+
+/* sprite_setColorShader(r0 = color shader id, r5 = object header):
+ * Pick the sprite block selected by the high nibble of the object's
+ * type/sprite-offset byte and store the color shader id into it.
+ * Returns r3 = address of that sprite block, with flags from the ADD. */
+Next sprite_setColorShader(void) {
+    u32 header = R5;
+    u32 shaderId = R0;
+
+    /* Sprite block base = header + (typeAndSpriteOffset high nibble << 4) */
+    u32 spriteBlock = header + (LD8(header + oObjectHeader_TypeAndSpriteOffset_sprite_setColorShader) & 0xF0);
+
+    ST16(spriteBlock + oObjectSprite_Unk_06, shaderId);
+
+    R3 = spriteBlock;
+    SET_FLAGS_ADD(spriteBlock, header); /* ADDS r3, r3, r5 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_getColorShader ── */
+/* sprite_getColorShader(r0 = object header pointer):
+ * Returns the color/palette shader halfword of the object's sprite. The sprite
+ * data starts at the address given by the high nibble of the header's
+ * TypeAndSpriteOffset field (a multiple-of-16 byte offset from the header),
+ * and the shader value lives at +6 within it. Result in r0. */
+Next sprite_getColorShader(void) {
+    u32 header = R0;
+
+    u32 spriteOffset = (LD8(header + 2) >> 4) << 4;
+    R0 = LD16(header + spriteOffset + 6);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_zeroColorShader ── */
+/* sprite_zeroColorShader(r5 = object header):
+ * Compute the address of the object's sprite data (the sprite index in the
+ * header's type/sprite byte selects which oObjectSprite struct follows the
+ * header) and clear the halfword at offset +6 of that struct, resetting the
+ * sprite's color shader / palette effect.
+ * Returns r3 = address of the sprite data; c/v reflect the final ADD. */
+Next sprite_zeroColorShader(void) {
+    /* The low byte at +2 holds the sprite index in its high nibble; the
+     * structs are 16 bytes apart, so shift left/right 4 to scale it. */
+    u32 sprite = R5 + ((LD8(R5 + 2) >> 4) << 4);
+
+    ST16(sprite + 6, 0);
+
+    R3 = sprite;
+    R0 = 0;
+    SET_FLAGS_ADD(sprite, R5);
+    RETURN_TO_CALLER();
+}

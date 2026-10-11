@@ -99,7 +99,7 @@ or comments (check exits 2 then).
 |---|---|
 | `tools/lifter/lift.py` | The lifter: bn6f (assembly + ELF) to C. Each function's header comment gives its register contract (`inputs`, `outputs`, `clobbers`). |
 | `cport/src/lifted/` | Generated lifted C (not committed). |
-| `cport/src/game/*.c` | Readable C. A `Next NAME(void)` here replaces the lifted function; the lifted original stays as `L_NAME` for testing. |
+| `cport/src/game/*.c` | Readable C. A `Next NAME(void)` here replaces the lifted function; the lifted original stays as `L_NAME` for testing. A subsystem converted as a whole has its own file (`npc_update.c`); a function converted on its own (the model farm) is in the file of the bn6f source that defines it (`object.c` for `bn6f/asm/object.s`; big sources in parts named by their first address, `asm00_2_8012BA2.c`), in address order. `tools/layout.py` lays the files out (the split addresses: `tools/layout.txt`), and the commit gate checks that laying out the tree gives back the same tree. |
 | `cport/include/game.h`, `cpu.h` | Macros readable code uses (below). `bn6f_syms.h`, `bn6f_equates.h`, `lifted.h` and (for the difftest) `lifted_originals.h` and `difftest_pairs.h` are generated. |
 | `cport/src/gba/` | Boot (`boot.c`), IRQ entry, debug (`rt_fatal` turns the screen magenta). |
 | `cport/src/runtime/swi.c` | BIOS services: the GBA build calls the **real BIOS**; the host test build uses C versions that follow the BIOS routines register for register. |
@@ -235,8 +235,9 @@ helpers (6, model-written), overworld object layers and interaction areas
 machine core. Each is listed with its evidence in `symbols/SYMBOLS.md`.
 Batch 3 of the model farm added 32 more (84 in all): NPC script plumbing
 (`npc_commands.c`), the object sprite API (`sprite_api.c`), and leaves
-grouped by bn6f file (`leaves_misc.c`, to be moved when their subsystems
-are converted).
+grouped by bn6f file. The farm's later groups (1,340 functions in
+`leaves_farm_*.c` and `leaves_misc.c` by 2026-10-10) were regrouped by
+bn6f source on 2026-10-10 (`tools/layout.py`, §2 Layout).
 
 ## 6. The symbol database and the disassembly
 
@@ -329,4 +330,5 @@ when asked. Its text:
 `python -m wf status` and the Burr UI show every run; `symbols/SYMBOLS.md`
 lists the readable functions with their evidence. Open: the NPC script
 actions no route runs, the lifter improvements in §4's results, and moving
-grouped small functions (`leaves_*.c`) into their subsystems.
+small functions from their bn6f-source files into subsystem files as whole
+subsystems are converted.
