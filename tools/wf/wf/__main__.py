@@ -6,7 +6,7 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
                        [--trials N]   # it says first what it will compare: no functions, no difftest or oracle
   python -m wf capture --function NAME... [--route NAME]... [--calls N]   # into build-snapshots/NAME
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] [--prompt typed|old] FUNCTION...
-  python -m wf queue   [--hours H] [--lane PROVIDER=WORKERS]... [--cap TOKENS] [--rounds N]   # every provider busy
+  python -m wf queue   [--hours H] [--lane PROVIDER=WORKERS]... [--cap TOKENS] [--rounds N] [--leave-alone FILE]...
   python -m wf queue   --stop | --status    # ask the running queue to finish its farm runs and end; its ledger
   python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--prompt old] [--jobs N] [FUNCTION...]   # entries for accepted candidates
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
@@ -92,6 +92,7 @@ class QueueCommand(BaseModel):
     cap: int
     rounds: int
     shift_hours: float
+    leave_alone: tuple[Path, ...]
     stop: bool
     status: bool
 
@@ -254,7 +255,7 @@ def start_queue(command: QueueCommand) -> None:
                       (spec.partition("=") for spec in command.lanes)) or LANES
         run_id, run_dir = new_run("queue")
         start = QueueState(run_dir=run_dir, snapshots=SnapshotDir(SNAPSHOTS), lanes=lanes, rounds=command.rounds,
-                           cap=command.cap, shift_hours=command.shift_hours,
+                           cap=command.cap, shift_hours=command.shift_hours, leave_alone=command.leave_alone,
                            until=time.time() + command.hours * 3600 if command.hours else None)
         try:
             print_outcome(queue_graph().start(start, run_id))
@@ -435,6 +436,8 @@ def parse_command() -> Command:
     work.add_argument("--cap", type=int, default=CAP, help="tokens a function's job may spend over all its models")
     work.add_argument("--rounds", type=int, default=1, help="repairs per model (then the next model)")
     work.add_argument("--shift-hours", type=float, default=3.0, help="rebuild the difftest and plan again this often")
+    work.add_argument("--leave-alone", type=Path, action="append", default=[],
+                      help="a file of functions (one per line) another driver will farm: never taken (re-read each plan)")
     work.add_argument("--stop", action="store_true", help="ask the running queue to finish its farm runs and end")
     work.add_argument("--status", action="store_true", help="the jobs' ledger: by state, band and next model")
 

@@ -84,6 +84,7 @@ class QueueState(BaseModel):
     cap: int = CAP                   # tokens per job over all its models
     shift_hours: float = 3.0
     until: float | None = None       # epoch seconds: take no new jobs after this (`wf queue --hours`)
+    leave_alone: tuple[Path, ...] = ()   # files listing functions another driver will farm (`--leave-alone`)
     difftest: Path | BuildFailure | None = None
     work: WorkPlan | None = None
     shifts: tuple[ShiftReport, ...] = ()
@@ -127,6 +128,7 @@ def build_difftest(given: BuildDifftestInput) -> BuildDifftestOutput:
 
 class PlanInput(Result):
     snapshots: SnapshotDir
+    leave_alone: tuple[Path, ...]
 
 
 class PlanOutput(Result):
@@ -136,7 +138,7 @@ class PlanOutput(Result):
 @queue.step
 def plan_work(given: PlanInput) -> PlanOutput:
     """Find the functions left to farm and give each a job (or keep its open one), with its route."""
-    order, changed, busy = _plan(given.snapshots)
+    order, changed, busy = _plan(given.snapshots, given.leave_alone)
     by_band: dict[str, int] = {}
     for job in order:
         label = f"{job.band.value} {job.version}"
@@ -148,11 +150,14 @@ def plan_work(given: PlanInput) -> PlanOutput:
         by_route=tuple(f"{label}: {count} open" for label, count in sorted(by_band.items()))))
 
 
-def _plan(snapshots: SnapshotDir) -> tuple[list[Job], list[Job], set[FunctionName]]:
+def _plan(snapshots: SnapshotDir, leave_alone: tuple[Path, ...]) -> tuple[list[Job], list[Job], set[FunctionName]]:
+    """(open jobs in order, jobs that changed, functions to leave alone now: other farms' and the listed)."""
     order, changed = plan(read_ledger(), leftovers(GAME, snapshots))
     if changed:
         _ = update_ledger(changed)
-    return order, changed, busy_elsewhere()
+    listed = {FunctionName(line.strip()) for path in leave_alone if path.exists()
+              for line in path.read_text().splitlines() if line.strip()}
+    return order, changed, busy_elsewhere() | listed
 
 
 class WorkInput(Result):
@@ -163,6 +168,7 @@ class WorkInput(Result):
     cap: int
     shift_hours: float
     until: float | None
+    leave_alone: tuple[Path, ...]
     difftest: Path
     shifts: tuple[ShiftReport, ...]
 
@@ -295,7 +301,7 @@ class _Board:
     def take(self, lane: Lane) -> tuple[Job, ModelSpec] | None:
         with self.lock:
             if time.time() - self.planned > REPLAN_SECONDS:
-                order, _, busy = _plan(self.given.snapshots)
+                order, _, busy = _plan(self.given.snapshots, self.given.leave_alone)
                 recent = recently_logged() - {name for name, ended in self.ours.items() if time.time() - ended < 900}
                 self.order, self.busy, self.planned = order, busy | recent, time.time()
             up = {other.provider for other in self.given.lanes if provider_up(other.provider)}
