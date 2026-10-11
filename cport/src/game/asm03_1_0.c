@@ -598,6 +598,39 @@ Next sub_8034C6E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── IsNotSlipRunningAndNotInCutscene ── */
+#define EVENT_IN_SLIPRUN_STATE 0x17
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool sliprun_flag_set(void) {
+    R0 = EVENT_IN_SLIPRUN_STATE;
+    R1 = 61;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();  /* Z clear → flag is set */
+}
+
+/* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
+static bool cutscene_script_non_null(void) {
+    GUEST_CALL(IsCutsceneScriptNonNull);
+    return !ZERO_FLAG();  /* Z clear → script is non-null */
+}
+
+/* Returns true unless the slip-run state flag is active or a cutscene is running. */
+static bool is_not_slip_running_and_not_in_cutscene(void) {
+    if (sliprun_flag_set())
+        return false;
+    if (cutscene_script_non_null())
+        return false;
+    return true;
+}
+
+/* IsNotSlipRunningAndNotInCutscene() -> r0 (TRUE=1/FALSE=0), nz */
+Next IsNotSlipRunningAndNotInCutscene(void) {
+    R0 = is_not_slip_running_and_not_in_cutscene();
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── tryStartNotificationCutscene_8035054 ── */
 /* tryStartNotificationCutscene_8035054: decide whether to start the "notification" cutscene.
  * Returns r0 = 0 if the cutscene was started, r0 = 1 if it was blocked. */
@@ -680,6 +713,40 @@ Next owPlayer_80350a8(void) {
     GUEST_CALL(camera_writeUnk03_14_80301b2);
 
     R5 = savedR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── enableGhostNavi_80351C8 ── */
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool test_event_flag(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG(); /* TestEventFlag: Z set if the flag is clear */
+}
+
+/* register form: calls SetEventFlag outside this file, which has no typed C interface yet */
+static void set_event_flag_enableGhostNavi_80351C8(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* Enable ghost navi events: for each (condition, target) pair in the table,
+ * if the condition event flag is already set, set the target event flag.
+ * Table is terminated by a 0x0000 condition entry. */
+static void enable_ghost_navi(void) {
+    u32 table = A_word_80351EC;
+    u16 condition;
+
+    while ((condition = LD16(table)) != 0) {
+        if (test_event_flag(condition))
+            set_event_flag_enableGhostNavi_80351C8(LD16(table + 2));
+        table += 4; /* one (condition, target) pair = 4 bytes */
+    }
+}
+
+/* enableGhostNavi_80351C8: r4-r7 preserved, clobbers r0-r3/lr/nz/c/v */
+Next enableGhostNavi_80351C8(void) {
+    enable_ghost_navi();
     RETURN_TO_CALLER();
 }
 

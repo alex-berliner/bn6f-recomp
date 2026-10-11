@@ -323,6 +323,73 @@ Next reqBBS_initRequestWorkArea_8046CC8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ShopControl ── */
+/* ShopControl: selects a shop-phase handler via byte_2011C10 (byte offset into
+ * the jump table at off_8046D1C) and dispatches to it, preserving r4-r7, r8-r9,
+ * r12 and lr across the call. The handler receives:
+ *   r0 = its own function pointer, r1 = state offset, r2 = caller r9,
+ *   r3 = caller r12, r5 = &byte_2011C10.
+ * After the handler returns, r0 and flags pass through; r1/r2/r3 are set to the
+ * caller's saved r8/r9/r12 (matching the original's push {r1-r3} / pop {r1-r3}). */
+
+/* register form: dispatches to the selected shop handler, saving and restoring
+ * r4-r7, r8-r9, r12, lr exactly as the original's push/pop pairs do */
+static u32 call_shop_handler(u32 handler_addr, u32 state_offset) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    u32 s8 = R8, s9 = R9, s12 = R12, slr = LR;
+
+    R0 = handler_addr;
+    R1 = state_offset;
+    R2 = s9;
+    R3 = s12;
+    R5 = A_byte_2011C10;
+
+    switch (state_offset) {
+    case 0:  GUEST_CALL(sub_8046D4C); break;
+    case 4:  GUEST_CALL(battle_objectAdvanceCounterToState8_8046DDC); break;
+    case 8:  GUEST_CALL(sub_8046DF8); break;
+    case 12: GUEST_CALL(sub_8046E06); break;
+    case 16: GUEST_CALL(sub_8046E48); break;
+    case 20: GUEST_CALL(sub_8046E84); break;
+    case 24: GUEST_CALL(sub_8046ED2); break;
+    case 28: GUEST_CALL(chatbox_stepContextScript_8047028); break;
+    case 32: GUEST_CALL(sub_8047050); break;
+    case 36: GUEST_CALL(sub_8047066); break;
+    case 40: GUEST_CALL(sub_804709C); break;
+    default: break;
+    }
+
+    /* Restore as original's pop {r1-r3}; mov r8/r9/r12; pop {r4-r7,pc}:
+     * r1 <- saved r8, r2 <- saved r9, r3 <- saved r12 */
+    R1 = s8;
+    R2 = s9;
+    R3 = s12;
+    R4 = s4;
+    R5 = s5;
+    R6 = s6;
+    R7 = s7;
+    R8 = s8;
+    R9 = s9;
+    R12 = s12;
+    LR = slr;
+
+    return R0;
+}
+
+/* Read the state byte, look up the handler address, and dispatch. */
+static u32 shop_execute(void) {
+    u32 offset = LD8(A_byte_2011C10);
+    u32 handler_addr = LD32(A_off_8046D1C + offset);
+    return call_shop_handler(handler_addr, offset);
+}
+
+/* ShopControl() -> r0 = handler result; r1/r2/r3 = caller's saved r8/r9/r12;
+ * r4-r7, r8-r9, r12, lr preserved; flags from handler. */
+Next ShopControl(void) {
+    R0 = shop_execute();
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectAdvanceCounterToState8_8046DDC ── */
 /* battle_objectAdvanceCounterToState8_8046DDC: advance the counter at (R5+8) by 2. Once it reaches 0x15,
  * clamp it there and move the object at R5 into state 8 (byte at R5+0).
@@ -424,6 +491,248 @@ static u32 handle_dialogue_unlock(u32 dialogue_ptr) {
 /* sub_8046E48(r5 = dialogue struct ptr) -> r0 */
 Next sub_8046E48(void) {
     R0 = handle_dialogue_unlock(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8046ED2 ── */
+/* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
+static void call_refresh_chatbox(void) {
+    GUEST_CALL(sub_8047134);
+}
+
+/* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
+static u32 chatbox_mask_flag(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return R0;
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound(u32 sound) {
+    R0 = sound;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls PlaySoundEffect with R7=0xFF (success path: "item acquired" marker,
+ * preserved across the call so the function returns with R7=0xFF) */
+static void play_sound_success(u32 sound) {
+    R7 = 0xFF;
+    R0 = sound;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls chatbox_GetState_8045F4C outside this file, which has no typed C interface yet */
+static u32 chatbox_get_state(void) {
+    GUEST_CALL(chatbox_GetState_8045F4C);
+    return R0;
+}
+
+/* register form: calls checkScrambledCounter_8047366 outside this file, which has no typed C interface yet.
+ * Inputs R0=counter R1=mult R2=cost; result in flags (Z=1 → check passed). */
+static bool scrambled_check_fails(u32 counter, u32 mult, u32 cost) {
+    R0 = counter; R1 = mult; R2 = cost;
+    GUEST_CALL(checkScrambledCounter_8047366);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_8047384 outside this file, which has no typed C interface yet.
+ * Inputs R0=code R1=param R7=item_ptr R8=remaining; result in flags (Z=1 → available). */
+static bool availability_fails(u32 code, u32 param, u32 item_ptr, u32 remaining) {
+    R0 = code; R1 = param; R7 = item_ptr; R8 = remaining;
+    GUEST_CALL(sub_8047384);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls GiveChips outside this file, which has no typed C interface yet.
+ * R0 (chip code) arrives from sub_8047384; R2=qty. Preserves R4,R5,R7,R8. */
+static u32 give_chips(u32 chip_code, u32 qty) {
+    R2 = qty;
+    GUEST_CALL(GiveChips);
+    return R0;
+}
+
+/* register form: calls GiveItem outside this file, which has no typed C interface yet */
+static u32 give_item_sub_8046ED2(u32 id, u32 qty) {
+    R0 = id; R1 = qty;
+    GUEST_CALL(GiveItem);
+    return R0;
+}
+
+/* register form: calls GiveNaviCustPrograms outside this file, which has no typed C interface yet */
+static u32 give_navicust(u32 prog, u32 qty) {
+    R0 = prog; R2 = qty;
+    GUEST_CALL(GiveNaviCustPrograms);
+    return R0;
+}
+
+/* register form: calls storeObfuscatedRandomToken_804733C outside this file, which has no typed C interface yet */
+static void store_obfuscated_token(u32 value) {
+    R0 = value;
+    GUEST_CALL(storeObfuscatedRandomToken_804733C);
+}
+
+/* register form: calls chatbox_runScript outside this file, which has no typed C interface yet */
+static void run_chatbox_script_sub_8046ED2(u32 archive, u32 script_idx) {
+    R0 = archive; R1 = script_idx;
+    GUEST_CALL(chatbox_runScript);
+}
+
+/* register form: calls sub_8048DAE outside this file, which has no typed C interface yet */
+static void record_purchase(u32 selected_idx, u32 kind, u32 code, u32 param, u32 type_val, u32 item_ptr) {
+    R0 = selected_idx; R1 = kind; R2 = code; R3 = param; R4 = type_val; R7 = item_ptr;
+    GUEST_CALL(sub_8048DAE);
+}
+
+/* register form: calls sub_8047B88 outside this file, which has no typed C interface yet.
+ * R7 = item_ptr is an input to sub_8047B88. */
+static u32 get_updated_code(u32 code, u32 item_ptr) {
+    R0 = code; R7 = item_ptr;
+    GUEST_CALL(sub_8047B88);
+    return R0;
+}
+
+/* register form: calls menu_clampListScrollAfterCountChange_8047CB6 outside this file, which has no typed C interface yet */
+static void menu_clamp_list(void) {
+    GUEST_CALL(menu_clampListScrollAfterCountChange_8047CB6);
+}
+
+/* Handle item/chip/navi-cust selection in the shop menu.
+ * ctx (r5) is the dialog-box state pointer. Returns 0 (always). */
+static u32 handle_item_selection(u32 ctx) {
+    call_refresh_chatbox();
+
+    /* If both confirm buttons are pressed, mark "pressed" and play unselect sound */
+    if (chatbox_mask_flag(0x20) && chatbox_mask_flag(0x100)) {
+        ST8(ctx + 7, 1);
+        play_sound(SOUND_UNSELECT_68);
+    }
+
+    /* Gate: flag 8 must be set to proceed */
+    if (!chatbox_mask_flag(8))
+        return 0;
+
+    /* If chatbox is busy displaying text */
+    if (chatbox_get_state() != 0) {
+        if (!LD8(ctx + 7))
+            play_sound(SOUND_UNSELECT_68);
+        run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 1);
+        ST8(ctx, 8);
+        return 0;
+    }
+
+    /* Compute adjusted cost: type 1 uses raw cost, others multiply by 100 */
+    u32 type_val = LD32(LD32(ctx + 0x1C));
+    u32 item_ptr = LD32(ctx + 0x20);
+    u32 raw_cost = LD16(item_ptr + 6);
+    u32 mult = (type_val == 1) ? 1 : 0x64;
+    u32 adjusted_cost = raw_cost * mult;
+
+    /* Verify scrambled counter allows the purchase */
+    u32 counter = LD32(ctx + 0x28);
+    if (scrambled_check_fails(counter, mult, adjusted_cost)) {
+        run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 8);
+        play_sound(SOUND_CANT_JACK_IN);
+        ST8(ctx, 0x1C);
+        return 0;
+    }
+
+    s32 remaining = (s32)(counter - adjusted_cost);
+    if (remaining < 0) {
+        run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 8);
+        play_sound(SOUND_CANT_JACK_IN);
+        ST8(ctx, 0x1C);
+        return 0;
+    }
+
+    /* Play select sound when browsing a "type 2" category */
+    if (type_val == 2)
+        play_sound(SOUND_SELECT_67);
+
+    /* Dispatch by item kind byte */
+    item_ptr = LD32(ctx + 0x20);
+    u32 kind = LD8(item_ptr);
+    u32 script_idx;
+
+    if (kind == 2) {
+        /* Chip */
+        if (type_val == 2) {
+            /* Special chip: store to 0x2C, set state 0x28, run script 6 */
+            ST32(ctx + 0x2C, (u32)remaining);
+            store_obfuscated_token((u32)remaining);
+            ST8(ctx, 0x28);
+            run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 6);
+            return 0;
+        }
+        u32 chip_code = LD16(item_ptr + 2);
+        if (availability_fails(chip_code, LD8(item_ptr + 4), item_ptr, (u32)remaining)) {
+            run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 1);
+            ST8(ctx, 8);
+            return 0;
+        }
+        if (give_chips(chip_code, 1) != 0) {
+            run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 9);
+            play_sound(SOUND_CANT_JACK_IN);
+            ST8(ctx, 0x1C);
+            return 0;
+        }
+        script_idx = 7;
+    } else if (kind == 1) {
+        /* Item */
+        u32 item_id = LD16(item_ptr + 2);
+        if (availability_fails(item_id, 0xFF, item_ptr, (u32)remaining)) {
+            run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 1);
+            ST8(ctx, 8);
+            return 0;
+        }
+        if (give_item_sub_8046ED2(item_id, 1) != 0) {
+            run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 9);
+            play_sound(SOUND_CANT_JACK_IN);
+            ST8(ctx, 0x1C);
+            return 0;
+        }
+        script_idx = 6;
+    } else {
+        /* Navi Cust Program */
+        u32 prog_code = LD16(item_ptr + 2);
+        if (availability_fails(prog_code, LD8(item_ptr + 4), item_ptr, (u32)remaining)) {
+            run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 1);
+            ST8(ctx, 8);
+            return 0;
+        }
+        if (give_navicust(prog_code + 0x90, 1) != 0) {
+            run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), 9);
+            play_sound(SOUND_CANT_JACK_IN);
+            ST8(ctx, 0x1C);
+            return 0;
+        }
+        script_idx = 0xC;
+    }
+
+    /* Success: update counter, record purchase, refresh menu list */
+    ST32(ctx + 0x28, (u32)remaining);
+    store_obfuscated_token((u32)remaining);
+
+    item_ptr = LD32(ctx + 0x20);
+    type_val = LD32(LD32(ctx + 0x1C));
+    record_purchase(LD8(ctx + 4), LD8(item_ptr), LD16(item_ptr + 2),
+                    LD8(item_ptr + 4), type_val, item_ptr);
+
+    /* Reload item_ptr and pass it as R7 input to sub_8047B88 */
+    item_ptr = LD32(ctx + 0x20);
+    ST16(ctx + 0x12, get_updated_code(LD16(item_ptr + 2), item_ptr));
+    menu_clamp_list();
+
+    ST8(ctx, 0x1C);
+    run_chatbox_script_sub_8046ED2(LD32(ctx + 0x24), script_idx);
+    ST8(ctx + 0xD, 0xFF);
+    play_sound_success(SOUND_UNK_73);
+    return 0;
+}
+
+/* sub_8046ED2(r5 = ctx) -> r0 = 0, nz/c/v from final R0 */
+Next sub_8046ED2(void) {
+    R0 = handle_item_selection(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
@@ -662,6 +971,39 @@ Next battleFindEntryByFieldByte_8047456(void) {
     }
 
     SET_FLAGS_NZ(notFound);
+    RETURN_TO_CALLER();
+}
+
+/* ── copyData_804747C ── */
+/* register form: calls ZeroFillGFX30025c0 outside this file, which has no typed C interface yet */
+static void call_zero_fill_gfx(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+static void call_init_sub_8046664(void) {
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
+static void call_decomp_and_copy_data(u32 table_addr) {
+    R0 = table_addr;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* Load game data into VRAM/work RAM: zero-fill GFX scratch buffers,
+ * run the per-object init pass, then walk the ROM data table at
+ * off_8047494 to decompress and copy all static graphics and data.
+ * All output registers and flags are set by the final callee. */
+static void load_game_data(void) {
+    call_zero_fill_gfx();
+    call_init_sub_8046664();
+    call_decomp_and_copy_data(A_off_8047494);
+}
+
+/* copyData_804747C: no computed outputs; callees leave r2-r7 and nz/c/v in place. */
+Next copyData_804747C(void) {
+    load_game_data();
     RETURN_TO_CALLER();
 }
 

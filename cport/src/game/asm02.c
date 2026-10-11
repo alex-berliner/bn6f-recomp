@@ -207,6 +207,77 @@ Next addChipsToChipPackOffset_8021b5a(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── GetChipCountOfCode ── */
+/* register form: calls sub_8006EA4 outside this file, which has no typed C interface yet */
+static bool chip_code_is_valid(u32 chip_idx, u32 search_item) {
+    R0 = chip_idx;
+    R1 = search_item;
+    GUEST_CALL(sub_8006EA4);
+    return ZERO_FLAG();          /* Z set ⇒ code is recognised; fall through to count path */
+}
+
+/* register form: calls getOffsetToQuantityOfChipCodeMaybe_8021c7c outside this file, which has no typed C interface yet */
+static u32 chip_code_quantity_addr(u32 chip_idx, u32 search_item, u32 off) {
+    R0 = chip_idx;
+    R1 = search_item;
+    R2 = off;
+    GUEST_CALL(getOffsetToQuantityOfChipCodeMaybe_8021c7c);
+    return R0;                   /* pointer to the quantity byte for this code */
+}
+
+/* Return the owned quantity of a chip code, or 0 if the code is unrecognised. */
+static u8 get_chip_count_of_code(u32 chip_idx, u32 search_item, u32 off) {
+    if (!chip_code_is_valid(chip_idx, search_item))
+        return 0;
+    u32 addr = chip_code_quantity_addr(chip_idx, search_item, off);
+    return (u8)LD8(addr);
+}
+
+/* GetChipCountOfCode(r0 = chip_idx, r1 = search_item, r2 = off) -> r0 */
+Next GetChipCountOfCode(void) {
+    R0 = get_chip_count_of_code(R0, R1, R2);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetTotalChipCount ── */
+/* register form: calls encryption_testPack_8006e84 outside this file, which has no typed C interface yet */
+static bool pack_test_passes(u32 chip_id) {
+    R0 = chip_id;
+    GUEST_CALL(encryption_testPack_8006e84);
+    return ZERO_FLAG();   /* Z=1 → test passed (bne not taken) */
+}
+
+typedef struct {
+    u32 count;      /* sum of 4 chip-count bytes */
+    u32 last_byte;  /* the final byte loaded (leftover in r1) */
+} ChipSum;
+
+/* Sum the 4 chip-count bytes for a given chip ID from the toolkit table. */
+static ChipSum compute_chip_count(u32 chip_id, u32 toolkit) {
+    if (!pack_test_passes(chip_id))
+        return (ChipSum){0, 0};
+
+    u32 base  = LD32(toolkit + oToolkit_Unk2002230_Ptr);
+    u32 entry = base + chip_id * 12;  /* 12 bytes per chip entry */
+
+    u32 b0 = LD8(entry);
+    u32 b1 = LD8(entry + 1);
+    u32 b2 = LD8(entry + 2);
+    u32 b3 = LD8(entry + 3);
+
+    return (ChipSum){b0 + b1 + b2 + b3, b3};
+}
+
+/* GetTotalChipCount: returns the sum of 4 count bytes for chip_id = r0.
+ * Calls encryption_testPack first; returns 0 if that test fails.
+ * r1 ends with the 4th byte (success) or 0 (failure – unused by callers). */
+Next GetTotalChipCount(void) {
+    ChipSum res = compute_chip_count(R0, R10);
+    R0 = res.count;
+    R1 = res.last_byte;
+    RETURN_TO_CALLER();
+}
+
 /* ── zeroFill_e2002230 ── */
 /* zeroFill_e2002230: clear the game's extra work-RAM block.
  * Reads the toolkit pointer from r10 and fills the 0xF00-byte block at
@@ -253,6 +324,65 @@ Next getOffsetToQuantityOfChipCodeMaybe_8021c7c(void) {
     R1 = offset;
     R2 = chipId;
     R3 = codeIndex;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8021CA8 ── */
+#define NUM_CHIPS           0x140
+#define SLOTS_PER_CHIP      4
+#define CHIP_TABLE_STRIDE   0xC
+#define CHIP_FLAGS_OFFSET   9
+#define CHIP_TYPE_OFFSET    7
+#define CHIP_EMPTY          0xFF
+#define CHIP_FLAGS_EXCLUDE  0x20
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_data(s32 chip_index) {
+    R0 = (u32)chip_index;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls encryption_testPack_8006e84 outside this file, which has no typed C interface yet */
+static bool chip_pack_eligible(s32 chip_index) {
+    R0 = (u32)chip_index;
+    GUEST_CALL(encryption_testPack_8006e84);
+    return ZERO_FLAG();          /* Z set (return 0) means the chip is eligible for counting */
+}
+
+/* Iterate all 320 chips; for each eligible one, sum the per-slot entry from the
+ * toolkit chip-count table (stride 12). Also accumulate a type-2 subtotal,
+ * but the original discards that (it lands in clobbered r1). Returns the grand total. */
+static s32 count_valid_chip_slots(u32 toolkit) {
+    u32 chip_table_base = LD32(toolkit + oToolkit_Unk2002230_Ptr);
+    s32 total = 0;
+    s32 type2_total = 0;
+
+    for (s32 idx = 0; idx < NUM_CHIPS; idx++) {
+        u32 chip = get_chip_data(idx);
+        if (!chip_pack_eligible(idx))
+            continue;
+
+        for (s32 slot = 0; slot < SLOTS_PER_CHIP; slot++) {
+            u8 slot_val = LD8(chip + slot);
+            if (slot_val == CHIP_EMPTY)
+                continue;
+            if (LD8(chip + CHIP_FLAGS_OFFSET) & CHIP_FLAGS_EXCLUDE)
+                continue;
+
+            u8 entry = *(u8 *)(chip_table_base + CHIP_TABLE_STRIDE * idx + slot);
+            total += entry;
+            if (LD8(chip + CHIP_TYPE_OFFSET) == 2)
+                type2_total += entry;
+        }
+    }
+    (void)type2_total;
+    return total;
+}
+
+/* sub_8021CA8(r10 = toolkit ptr) -> r0 = total chip-slot count */
+Next sub_8021CA8(void) {
+    R0 = (u32)count_valid_chip_slots(R10);
     RETURN_TO_CALLER();
 }
 

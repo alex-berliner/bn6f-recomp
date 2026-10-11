@@ -255,6 +255,26 @@ Next menu_onStartPressBeginTransition_802F7E8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802F994 ── */
+/* register form: calls sub_8001158 outside this file, which has no typed C interface yet */
+static void call_sub_8001158(u32 oam_data_ptr) {
+    R0 = oam_data_ptr;
+    GUEST_CALL(sub_8001158);
+}
+
+/* Look up a ROM OAM data pointer by index (0-2) and submit it for rendering.
+ * Table at off_802F9A8: [0] -> byte_802F9B4, [1]/[2] -> byte_802F9D0. */
+static void submit_oam_by_index(u32 index) {
+    u32 ptr = LD32(A_off_802F9A8 + index * 4);
+    call_sub_8001158(ptr);
+}
+
+/* sub_802F994(r0 = OAM data set index) -> r2, r3, c, v (left by callee) */
+Next sub_802F994(void) {
+    submit_oam_by_index(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── startScreen_playSoundIfFlagSet_802FB64 ── */
 /* startScreen_playSoundIfFlagSet_802FB64(self: *const StartScreen r5):
  * If the start screen's status halfword has bit 0x80 set, run the sound/data

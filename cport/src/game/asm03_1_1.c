@@ -41,6 +41,105 @@ Next keyItems_ResetInventoryAndGrantScenarioItems_803CD74(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── GiveItem ── */
+/* register form: callee may modify R6/R7/LR; preserved regs save/restored via guest stack */
+static void call_encryption_copy(u32 item_id, u32 quantity) {
+    u32 sp = SP;
+    SP -= 20;
+    ST32(SP, R4); ST32(SP + 4, R5); ST32(SP + 8, R6); ST32(SP + 12, R7); ST32(SP + 16, LR);
+    R0 = item_id;
+    R1 = quantity;
+    GUEST_CALL(encryption_copyByteXor6fToToolkitBuffer_8006e3c);
+    R4 = LD32(SP); R5 = LD32(SP + 4); R6 = LD32(SP + 8); R7 = LD32(SP + 12); LR = LD32(SP + 16);
+    SP = sp;
+}
+
+/* register form: reload callee needs R4/R6 as inputs and may clobber preserved regs */
+static void call_reload_navi(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r6) {
+    u32 sp = SP;
+    SP -= 20;
+    ST32(SP, R4); ST32(SP + 4, R5); ST32(SP + 8, R6); ST32(SP + 12, R7); ST32(SP + 16, LR);
+    R0 = r0; R1 = r1; R2 = r2; R3 = r3; R4 = r4; R6 = r6;
+    GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
+    R4 = LD32(SP); R5 = LD32(SP + 4); R6 = LD32(SP + 8); R7 = LD32(SP + 12); LR = LD32(SP + 16);
+    SP = sp;
+}
+
+/* register form: pet_add callee needs R4/R6 as inputs and may clobber preserved regs */
+static void call_pet_add(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r6) {
+    u32 sp = SP;
+    SP -= 20;
+    ST32(SP, R4); ST32(SP + 4, R5); ST32(SP + 8, R6); ST32(SP + 12, R7); ST32(SP + 16, LR);
+    R0 = r0; R1 = r1; R2 = r2; R3 = r3; R4 = r4; R6 = r6;
+    GUEST_CALL(pet_addCurNaviStat0x3ECapped_803CF3C);
+    R4 = LD32(SP); R5 = LD32(SP + 4); R6 = LD32(SP + 8); R7 = LD32(SP + 12); LR = LD32(SP + 16);
+    SP = sp;
+}
+
+/* register form: sub_803CFB0 callee may clobber preserved regs */
+static void call_post_item_hook(void) {
+    u32 sp = SP;
+    SP -= 20;
+    ST32(SP, R4); ST32(SP + 4, R5); ST32(SP + 8, R6); ST32(SP + 12, R7); ST32(SP + 16, LR);
+    GUEST_CALL(sub_803CFB0);
+    R4 = LD32(SP); R5 = LD32(SP + 4); R6 = LD32(SP + 8); R7 = LD32(SP + 12); LR = LD32(SP + 16);
+    SP = sp;
+}
+
+/* Add quantity of a key item to inventory, clamping to per-item maximum.
+ * Returns: 0 = normal add, 1 = already at max (no change), 2 = capped at max. */
+static u32 give_item_GiveItem(u32 item_id, u32 quantity, u32 toolkit) {
+    /* Copy/decrypt item data into toolkit working buffer (side-effect; R0/R1 restored after) */
+    call_encryption_copy(item_id, quantity);
+
+    u32 key_ptr = LD32(toolkit + oToolkit_KeyItemsPtr);
+
+    /* Determine maximum stack size for this item slot */
+    u32 max_count = 0xFF;
+    if ((s32)item_id >= (s32)0x80 && (s32)item_id <= (s32)0x85) {
+        max_count = LD8(key_ptr + 0x75);
+    } else if (item_id == 0x71) {
+        max_count = 2;
+    } else if ((s32)item_id >= (s32)0x90) {
+        max_count = 9;
+    }
+
+    /* Read current count and compute new count + result code */
+    u32 current = LD8(key_ptr + item_id);
+    u32 result;
+
+    if (current == max_count) {
+        result = 1;
+    } else {
+        result = 0;
+        u32 added = current + quantity;
+        if ((s32)added > (s32)max_count) {
+            result = 2;
+            added = max_count;
+        }
+        current = added;
+    }
+
+    ST8(key_ptr + item_id, current);
+
+    /* Reload Navi stat boosts when item 0x71 (the Navi) changes */
+    if (item_id == 0x71) {
+        call_reload_navi(item_id, quantity, key_ptr, result, current, max_count);
+    }
+
+    /* Update PET stat tracking and fire post-item hook */
+    call_pet_add(result, quantity, key_ptr, result, item_id, max_count);
+    call_post_item_hook();
+
+    return result;
+}
+
+/* GiveItem(r0 = item_id, r1 = quantity, r10 = toolkit_ptr) -> r0 = result_code */
+Next GiveItem(void) {
+    R0 = give_item_GiveItem(R0, R1, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── keyItems_RemoveFromInventoryAndGive_803CDF8 ── */
 /* keyItems_RemoveFromInventoryAndGive_803CDF8(r0 = key item slot index, r1 = passed through to GiveItem):
  * mark the given key item slot as empty (not owned) in the player's key
@@ -178,6 +277,59 @@ Next pet_addCurNaviStat0x3ECapped_803CF3C(void) {
     R5 = r5_in;
     R6 = r6_in;
     R7 = r7_in;
+    RETURN_TO_CALLER();
+}
+
+/* ── GiveZenny ── */
+#define MAX_ZENNY 999999u
+
+/* register form: calls encryption_zenny_8006f78 outside this file, which has no typed C interface yet */
+static bool zenny_encryption_valid(void) {
+    GUEST_CALL(encryption_zenny_8006f78);
+    return ZERO_FLAG();
+}
+
+/* register form: calls encryption_zenny_8006f54 outside this file, which has no typed C interface yet */
+static void zenny_encryption_update(u32 status, u32 new_zenny, u32 game_state, u32 max) {
+    u32 saved_r4 = R4;
+    R0 = status;
+    R1 = new_zenny;
+    R2 = game_state;
+    R3 = status;
+    R4 = max;
+    GUEST_CALL(encryption_zenny_8006f54);
+    R4 = saved_r4;  /* original preserves caller's r4 via push/pop */
+}
+
+/* Give zenny to the player, clamped to MAX_ZENNY.
+ * Returns 0 = added normally, 1 = already at max (or integrity check failed), 2 = clamped to max. */
+static u32 give_zenny(s32 amount, u32 toolkit) {
+    if (!zenny_encryption_valid())
+        return 1;
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 current    = LD32(game_state + oGameState_ProtectedZenny);
+
+    if ((s32)current == (s32)MAX_ZENNY)
+        return 1;
+
+    u32 new_zenny = current + (u32)amount;
+    u32 status    = 0;
+
+    if ((s32)new_zenny > (s32)MAX_ZENNY) {
+        status    = 2;
+        new_zenny = MAX_ZENNY;
+    }
+
+    ST32(game_state + oGameState_ProtectedZenny, new_zenny);
+    zenny_encryption_update(status, new_zenny, game_state, MAX_ZENNY);
+
+    return status;
+}
+
+/* GiveZenny(r0 = zenny amount, r10 = toolkit ptr) -> r0 = status */
+Next GiveZenny(void) {
+    R0 = give_zenny((s32)R0, R10);
     RETURN_TO_CALLER();
 }
 
@@ -338,6 +490,101 @@ Next logoScreen_dispatch_803D1CA(void) {
     R5 = savedR5;
     R6 = savedR6;
     R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803D1FC ── */
+/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+static void call_sub_80015FC(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_80015FC);
+}
+
+/* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
+static void call_SetRenderInfoLCDControl(u16 lcd_control, u32 fade_mode) {
+    R4 = fade_mode;
+    R0 = lcd_control;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* register form: calls renderInfo_8001788 outside this file, which has no typed C interface yet */
+static void call_renderInfo_8001788(void) {
+    GUEST_CALL(renderInfo_8001788);
+}
+
+/* register form: calls renderInfo_80017A0 outside this file, which has no typed C interface yet */
+static void call_renderInfo_80017A0(void) {
+    GUEST_CALL(renderInfo_80017A0);
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void call_SetScreenFade(s32 fade_mode, s32 level) {
+    R0 = fade_mode;
+    R1 = level;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* register form: calls resetAllGraphicsState_8005F40 outside this file, which has no typed C interface yet */
+static void call_resetAllGraphicsState_8005F40(u32 fade_mode) {
+    R4 = fade_mode;
+    GUEST_CALL(resetAllGraphicsState_8005F40);
+}
+
+/* register form: calls runSetupStepAndClearWorkArea_8005F6C outside this file, which has no typed C interface yet */
+static void call_runSetupStepAndClearWorkArea_8005F6C(void) {
+    GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
+}
+
+/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+static void call_sub_80027C4(void) {
+    GUEST_CALL(sub_80027C4);
+}
+
+/* register form: calls logoScreen_loadLogoTiles_803D2B8 outside this file, which has no typed C interface yet */
+static void call_logoScreen_loadLogoTiles_803D2B8(void) {
+    GUEST_CALL(logoScreen_loadLogoTiles_803D2B8);
+}
+
+/* register form: calls music_80005F2 outside this file, which has no typed C interface yet */
+static void call_music_80005F2(u8 bg_music_indicator) {
+    R0 = bg_music_indicator;
+    GUEST_CALL(music_80005F2);
+}
+
+/* Initialise the logo/title screen: configure LCD control, fade in, reset graphics,
+ * load logo tiles, start BGM, and advance the state machine to index 4.
+ * Returns the fade mode (r4): 4 when the transition flag is set, 0xC otherwise. */
+static u32 logoScreen_init(u32 state) {
+    call_sub_80015FC(0xe);
+
+    /* offset 5 flag selects fade mode and LCD bits */
+    u8 transition_flag = LD8(state + oLogoScreenState_Unk_05);
+    u32 fade_mode = (transition_flag != 0) ? 4 : 0xC;
+    u16 lcd_control = (transition_flag != 0) ? 0xC0 : 0x40;
+
+    call_SetRenderInfoLCDControl(lcd_control, fade_mode);
+    call_renderInfo_8001788();
+    call_renderInfo_80017A0();
+    call_SetScreenFade(fade_mode, 0xFF);
+    call_resetAllGraphicsState_8005F40(fade_mode);
+    call_runSetupStepAndClearWorkArea_8005F6C();
+    call_sub_80027C4();
+    call_logoScreen_loadLogoTiles_803D2B8();
+
+    /* Logo-screen BGM (indicator 0x63) */
+    call_music_80005F2(0x63);
+
+    /* Advance state to index 4 so logoScreen_dispatch_803D1CA triggers the next step */
+    ST8(state + oLogoScreenState_Index_00, 4);
+
+    return fade_mode;
+}
+
+/* sub_803D1FC(r5 = *LogoScreenState) -> r0=4, r4=fade_mode, nz/c/v */
+Next sub_803D1FC(void) {
+    R4 = logoScreen_init(R5);
+    R0 = 4;
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -949,6 +1196,55 @@ Next sub_803F560(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803F740 ── */
+#define MODE_TABLE_ADDR   0x0803F774u
+#define eLinkState_ADDR   0x20099D0u
+
+typedef struct { u32 selector; u32 callee_r2; } ModeSelResult;
+
+/* register form: calls link_getModeSelector_803DD30 outside this file, which has no typed C interface yet */
+static ModeSelResult get_mode_selector(u32 index) {
+    R0 = index;
+    GUEST_CALL(link_getModeSelector_803DD30);
+    /* Capture the callee's scratch r2; on the "invalid" path the original
+     * never overwrites r2, so whatever the callee left is the visible output. */
+    return (ModeSelResult){ R0, R2 };
+}
+
+typedef struct { u32 r0; u32 r1; u32 r2; u8 entry; } ModeLookupResult;
+
+/* Look up the mode-selector byte for a link-player index.
+ * If the table byte is 0xFF the slot is empty → r0=0, r1=1 (C set).
+ * Otherwise read eCamera fields from eLinkState → r0=unk_66, r1=0, r2=unk_60 (C clear).
+ * The original's 8*index+entry arithmetic is dead (r1 overwritten immediately after). */
+static ModeLookupResult mode_table_lookup(u32 index) {
+    ModeSelResult sel = get_mode_selector(index);
+    u8 entry = LD8(MODE_TABLE_ADDR + sel.selector);
+
+    ModeLookupResult res;
+    res.entry = entry;
+    if (entry == 0xFF) {
+        res.r0 = 0;
+        res.r1 = 1;
+        res.r2 = sel.callee_r2;
+    } else {
+        res.r0 = LD16(eLinkState_ADDR + 0x16);   /* eCamera.unk_66 */
+        res.r1 = 0;
+        res.r2 = LD16(eLinkState_ADDR + 0x10);   /* eCamera.unk_60 */
+    }
+    return res;
+}
+
+/* sub_803F740(r0 = link index) -> r0, r1, r2, c, v */
+Next sub_803F740(void) {
+    ModeLookupResult res = mode_table_lookup(R0);
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    SET_FLAGS_CMP(res.entry, 0xFF);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803F798 ── */
 /* sub_803F798: shared entry stub for a multi-entry routine.
  * It stores r1-r7 and lr on the stack exactly like `push {r1-r7,lr}`
@@ -1152,5 +1448,140 @@ Next save_CommitWorkBufferToGamePak_803FB04(void) {
     /* Restore the caller's registers (the original's pop {r0-r7,pc}). */
     R0 = inR0; R1 = inR1; R2 = inR2; R3 = inR3;
     R4 = inR4; R5 = inR5; R6 = inR6; R7 = inR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── cb_803FB3C ── */
+/* cb_803FB3C: Dispatch the S200F348 game-state callback.
+ * Reads the state index from the first byte of eS200F348, jumps to the
+ * matching handler (index 0 = init, 4 = playGameOver, 8 = update), then
+ * runs the common post-handler sub_803FC14.  r4-r7 are preserved (the
+ * original uses push/pop). */
+
+/* register form: calls sub_803FB64 outside this file, which has no typed C interface yet */
+static void call_state_init(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_803FB64);
+}
+
+/* register form: calls playGameOver_803FB9C outside this file, which has no typed C interface yet */
+static void call_play_game_over(u32 self) {
+    R5 = self;
+    GUEST_CALL(playGameOver_803FB9C);
+}
+
+/* register form: calls sub_803FBC2 outside this file, which has no typed C interface yet */
+static void call_state_update(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_803FBC2);
+}
+
+/* register form: calls sub_803FC14 outside this file, which has no typed C interface yet */
+static void call_post_dispatch(void) {
+    GUEST_CALL(sub_803FC14);
+}
+
+/* register form: GUEST_CALL callees modify preserved registers as side effects;
+ * the original's push {r4-r7} / pop {r4-r7} guarantees restoration, which plain
+ * C cannot express without reading/writing the register file directly. */
+static void dispatch_s200f348(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    u32 self = A_eS200F348;
+    u8 index = LD8(self + oS200F348_Index_00);
+
+    switch (index) {
+    case 0: call_state_init(self);       break;
+    case 4: call_play_game_over(self);   break;
+    case 8: call_state_update(self);     break;
+    default:                             break;
+    }
+
+    call_post_dispatch();
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+}
+
+Next cb_803FB3C(void) {
+    dispatch_s200f348();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803FB64 ── */
+/* register form: calls chatbox_8040818 outside this file, which has no typed C interface yet */
+static void call_show_chatbox(u32 context, u32 self) {
+    R1 = context;
+    R5 = self;
+    GUEST_CALL(chatbox_8040818);
+}
+
+/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+static void call_set_display_mode(u32 mode) {
+    R0 = mode;
+    GUEST_CALL(sub_80015FC);
+}
+
+/* register form: calls copyTileData_803FC64 outside this file, which has no typed C interface yet */
+static void call_copy_tile_data(void) {
+    GUEST_CALL(copyTileData_803FC64);
+}
+
+/* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
+static void call_set_lcd_mode(u16 control) {
+    R0 = control;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* register form: calls renderInfo_8001788 outside this file, which has no typed C interface yet */
+static void call_render_info_a(void) {
+    GUEST_CALL(renderInfo_8001788);
+}
+
+/* register form: calls renderInfo_80017A0 outside this file, which has no typed C interface yet */
+static void call_render_info_b(void) {
+    GUEST_CALL(renderInfo_80017A0);
+}
+
+/* register form: calls sub_803FBE8 outside this file, which has no typed C interface yet */
+static void call_scene_teardown(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_803FBE8);
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void call_screen_fade(u32 speed, u32 target) {
+    R0 = speed;
+    R1 = target;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* Trigger the game-over sequence: show chatbox, reset rendering, fade to black,
+ * then mark the scene as game-over (index=4) and start the countdown timer.
+ * Returns 0xB4 (the down-counter value, matching the final r0). */
+static u32 game_over_setup(u32 self, u32 context_r1) {
+    call_show_chatbox(context_r1, self);
+    call_set_display_mode(0xF);
+    call_copy_tile_data();
+    call_set_lcd_mode(0x1F40);
+    call_render_info_a();
+    call_render_info_b();
+    call_scene_teardown(self);
+    call_screen_fade(8, 0x20);
+
+    /* Mark this scene as "game over" */
+    ST8(self + oS200F348_Index_00, 4);
+    /* Start the post-game-over countdown (180 frames ≈ 3 seconds) */
+    ST16(self + oS200F348_DownCounter, 0xB4);
+
+    return 0xB4;
+}
+
+/* sub_803FB64(self: r5, context: r1) -> r0=0xB4 */
+Next sub_803FB64(void) {
+    R0 = game_over_setup(R5, R1);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }

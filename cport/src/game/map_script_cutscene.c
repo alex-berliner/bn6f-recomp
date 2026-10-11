@@ -83,6 +83,89 @@ Next MapScriptCutsceneCmd_jump_if_progress_in_range(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCutsceneCmd_jump_if_flag_set ── */
+/* register form: calls ReadMapScriptByte outside this file, which has no typed C interface yet */
+static u32 read_map_script_byte_MapScriptCutsceneCmd_jump_if_flag_set(void) {
+    R6 = 1;
+    GUEST_CALL(ReadMapScriptByte);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptHalfword outside this file, which has no typed C interface yet */
+static u32 read_map_script_halfword_MapScriptCutsceneCmd_jump_if_flag_set(void) {
+    R6 = 2;
+    GUEST_CALL(ReadMapScriptHalfword);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptWord outside this file, which has no typed C interface yet */
+static u32 read_map_script_word_MapScriptCutsceneCmd_jump_if_flag_set(void) {
+    R6 = 4;
+    GUEST_CALL(ReadMapScriptWord);
+    return R4;
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool event_flag_set(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();
+}
+
+/* Result of the cutscene jump-if-flag script command. */
+struct CutsceneJump {
+    u32 flag;         /* final R4: jump-target word (set) or event flag (skip) */
+    u32 position_out; /* final R7: jump target (set) or skip-ahead by 8 (not set) */
+};
+
+/*
+ * Decide whether the cutscene script jumps to a stored offset or skips the
+ * jump-target field.  Reads one byte (or halfword sentinel) from the script,
+ * resolves it against the 16-bit flag table, then either reads a 32-bit jump
+ * offset or advances the position past the target slot.
+ *
+ * flag_table (r5): base address of the halfword event-flag table.
+ * position   (r7): current script cursor (RAM address).
+ */
+static struct CutsceneJump cutscene_jump_if_flag(u32 flag_table, u32 position) {
+    struct CutsceneJump result;
+
+    /* Read the flag-selector byte from the script stream. */
+    u32 selector = read_map_script_byte_MapScriptCutsceneCmd_jump_if_flag_set();
+
+    if (selector == 0xFF) {
+        /* Sentinel: the event flag is encoded in the next halfword. */
+        selector = read_map_script_halfword_MapScriptCutsceneCmd_jump_if_flag_set();
+    } else {
+        /* Normal case: selector is a halfword offset into the flag table. */
+        selector = LD16(flag_table + selector);
+    }
+
+    if (event_flag_set(selector)) {
+        /* Flag is set – read the 32-bit jump offset and redirect the script. */
+        u32 jump_target = read_map_script_word_MapScriptCutsceneCmd_jump_if_flag_set();
+        result.flag = jump_target;
+        result.position_out = jump_target;
+    } else {
+        /* Flag is clear – skip the 8-byte (word) jump-target field. */
+        result.flag = selector;
+        result.position_out = position + 8;
+    }
+
+    return result;
+}
+
+/* MapScriptCutsceneCmd_jump_if_flag_set(r5 = flag_table, r7 = position)
+ * -> r0 = 1, r4 = jump-target/flag, r7 = new position, nzcv */
+Next MapScriptCutsceneCmd_jump_if_flag_set(void) {
+    struct CutsceneJump j = cutscene_jump_if_flag(R5, R7);
+    R0 = 1;
+    R4 = j.flag;
+    R7 = j.position_out;
+    SET_FLAGS_ADD(1, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── MapScriptCutsceneCmd_jump_if_flag_range_clear ── */
 /* MapScriptCutsceneCmd_jump_if_flag_range_clear:
  * Map script command "jump if a range of event flags is clear".
@@ -529,6 +612,48 @@ Next MapScriptCutsceneCmd_do_pet_effect(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── RunSecondaryContinuousMapScript ── */
+/* register form: the dispatch loop calls jumptable handlers at runtime-computed
+ * addresses (no single disassembly name per target), the handler advances the
+ * script cursor (r7) through the register file, and loop termination is determined
+ * by the handler's Z flag. None of these can be expressed through a typed C return
+ * value. The caller's r4-r7 and r12 are saved and restored in place of push/pop. */
+static void run_secondary_continuous_map_script_body(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7, saved_r12 = R12;
+
+    R5 = A_eMapScriptState_Unk_00;
+    R0 = LD32(R5 + oMapScriptState_SecondaryContinuousMapScriptPtr);
+
+    if (R0 != 0) {
+        R4 = saved_r12;                     /* mov r4, r12 — handler sees saved r12 */
+        R12 = A_map_script_cutscene;        /* ldr r6/jumptable; mov r12, r6 */
+        R7 = R0;                            /* mov r7, r0 — script cursor */
+
+        for (;;) {
+            R6 = R12;                       /* mov r6, r12 — reload table base */
+            R0 = LD8(R7) << 2;              /* ldrb r0,[r7]; lsl r0,r0,#2 */
+            R0 = LD32(R6 + R0);             /* ldr r0, [r6,r0] — handler address */
+            GUEST_CALL_ADDR(R0);            /* mov lr,pc; bx r0 — call handler */
+            if (ZERO_FLAG()) break;         /* bne: Z set → stop; Z clear → continue */
+        }
+    }
+    /* Null-script path: original tst r0,r0 sets Z (nz is clobbered by callers),
+     * and leaves c/v unchanged — no explicit flag setup needed here. */
+
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6;
+    R7 = saved_r7; R12 = saved_r12;         /* pop {r4}; mov r12,r4; pop {r4-r7,pc} */
+}
+
+/* RunSecondaryContinuousMapScript(): execute every command in the secondary
+ * continuous map script (eMapScriptState.SecondaryContinuousMapScriptPtr)
+ * through the MapScriptCommandJumptable until a handler returns zero (Z set)
+ * or the script pointer is null.  r4-r7 and r12 are preserved; r1-r3, r8-r11
+ * and condition flags c/v are set by the last handler executed. */
+Next RunSecondaryContinuousMapScript(void) {
+    run_secondary_continuous_map_script_body();
+    RETURN_TO_CALLER();
+}
+
 /* ── ReadMapScriptByte ── */
 /* ReadMapScriptByte: fetch the next byte of the map script.
  * The caller passes the script pointer in r7 and a byte offset in r6;
@@ -746,6 +871,39 @@ Next IsCutsceneScriptNonNull(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── TryCutsceneSkip ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool check_screen_fade(u32 *r1_out) {
+    GUEST_CALL(IsScreenFadeActive);
+    *r1_out = R1;
+    return ZERO_FLAG();          /* Z=1 ⇒ fade is NOT active (original takes beq) */
+}
+
+typedef struct { u32 r1; u32 nz_val; } CutsceneSkipResult;
+
+/* Determine whether the player can skip the current cutscene.
+ * Fade not running → r1 left by IsScreenFadeActive, Z=1 (nothing to skip).
+ * Fade running     → r1 = SELECT, NZ from (pressed & SELECT). */
+static CutsceneSkipResult cutscene_skip_test(u32 toolkit) {
+    u32 r1_fade;
+    if (check_screen_fade(&r1_fade)) {
+        CutsceneSkipResult skip_off = { r1_fade, 0 };
+        return skip_off;
+    }
+    u32 joypad  = LD32(toolkit + oToolkit_JoypadPtr);
+    u16 pressed = LD16(joypad  + oJoypad_Pressed);
+    CutsceneSkipResult skip_on = { JOYPAD_SELECT, (u32)(pressed & JOYPAD_SELECT) };
+    return skip_on;
+}
+
+/* TryCutsceneSkip(r10 = toolkit) -> r1, nz, c (r3/r4-r7 pass through) */
+Next TryCutsceneSkip(void) {
+    CutsceneSkipResult r = cutscene_skip_test(R10);
+    R1 = r.r1;
+    SET_FLAGS_NZ(r.nz_val);
+    RETURN_TO_CALLER();
+}
+
 /* ── SetCutsceneCameraScript ── */
 /* SetCutsceneCameraScript(r0 = script pointer):
  * Points the cutscene camera at a new script and clears its command timer
@@ -857,6 +1015,41 @@ Next ReadCutsceneCameraScriptSignedHalfword(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CutsceneCmd_end_for_map_reload_maybe_8037c64 ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_1741_is_set(void) {
+    R0 = 0x17;  /* movflag EVENT_1741: low byte */
+    R1 = 0x41;  /* movflag EVENT_1741: high byte */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();  /* Z set when the flag is clear */
+}
+
+/* register form: calls reloadCurNaviStatBoosts_813c3ac outside this file, which has no typed C interface yet */
+static void reload_navi_stat_boosts(void) {
+    GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
+}
+
+/* register form: calls cutscene_forceEndCurrent_8036EFE outside this file, which has no typed C interface yet */
+static void cutscene_force_end_current(void) {
+    GUEST_CALL(cutscene_forceEndCurrent_8036EFE);
+}
+
+/* If event flag 0x1741 is not set, reload the current Navi's stat boosts,
+ * then unconditionally force-end the active cutscene. Always returns 0. */
+static u32 end_cutscene_maybe_reload(void) {
+    if (!event_1741_is_set())
+        reload_navi_stat_boosts();
+    cutscene_force_end_current();
+    return 0;
+}
+
+/* CutsceneCmd_end_for_map_reload_maybe_8037c64: 080376C4-080376DC THUMB, map_script_cutscene.s:3857 */
+Next CutsceneCmd_end_for_map_reload_maybe_8037c64(void) {
+    R0 = end_cutscene_maybe_reload();
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCmd_wait_chatbox ── */
 /* CutsceneCmd_wait_chatbox (08037790):
  * Cutscene script command "wait for the chatbox". Reads one flag-byte operand
@@ -951,6 +1144,54 @@ Next CutsceneCmd_nop_80377d0(void) {
         SET_FLAGS_NZ(R0);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── CutsceneCmd_wait_screen_fade ── */
+struct FadeWaitResult {
+    u32 r0;
+    u32 r7;
+    u32 add_a;
+    u32 add_b;
+};
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static struct FadeWaitResult query_screen_fade(u32 r7_in) {
+    struct FadeWaitResult res;
+    GUEST_CALL(IsScreenFadeActive);
+
+    if (!ZERO_FLAG()) {
+        /* Fade still running: advance the script pointer, signal "not done" */
+        res.r0 = 1;
+        res.r7 = r7_in + 1;
+        res.add_a = r7_in;
+        res.add_b = 1;
+    } else {
+        /* Fade finished: leave script pointer, signal "done" */
+        res.r0 = 0;
+        res.r7 = r7_in;
+        /* C and V from IsScreenFadeActive are preserved; encode them
+         * as ADDS operands so SET_FLAGS_ADD reproduces them exactly. */
+        u32 c = cpu.c;
+        u32 v = cpu.v;
+        if (!c && !v)       { res.add_a = 0;          res.add_b = 0; }
+        else if (!c && v)   { res.add_a = 0x40000000; res.add_b = 0x40000000; }
+        else if (c && !v)   { res.add_a = 0xFFFFFFFF; res.add_b = 1; }
+        else                { res.add_a = 0x80000000; res.add_b = 0x80000000; }
+    }
+    return res;
+}
+
+/* CutsceneCmd_wait_screen_fade: blocks the script while a screen fade is active.
+ * While the fade runs, the script counter (r7) advances each frame and the
+ * command reports "continue" (r0 = 1).  Once the fade completes, the counter
+ * stays put and the command reports "done" (r0 = 0). */
+Next CutsceneCmd_wait_screen_fade(void) {
+    struct FadeWaitResult res = query_screen_fade(R7);
+    R0 = res.r0;
+    R7 = res.r7;
+    SET_FLAGS_ADD(res.add_a, res.add_b);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -1460,6 +1701,97 @@ Next CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac(void) {
     R7 = R7 + 4;
     R0 = 1;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player ── */
+/* register form: calls ReadOWPlayerObjectCoords outside this file, which has no typed C interface yet */
+static void read_ow_player_coords(u32 *x, u32 *y, u32 *z) {
+    GUEST_CALL(ReadOWPlayerObjectCoords);
+    *x = R0;
+    *y = R1;
+    *z = R2;
+}
+
+/* register form: calls ReadMapScriptHalfword outside this file, which has no typed C interface yet */
+static u32 read_map_script_halfword_MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(u32 offset) {
+    R6 = offset;
+    GUEST_CALL(ReadMapScriptHalfword);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptByte outside this file, which has no typed C interface yet */
+static u32 read_map_script_byte_MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(u32 offset) {
+    R6 = offset;
+    GUEST_CALL(ReadMapScriptByte);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptWord outside this file, which has no typed C interface yet */
+static u32 read_map_script_word_MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(u32 offset) {
+    R6 = offset;
+    GUEST_CALL(ReadMapScriptWord);
+    return R4;
+}
+
+/* register form: calls SpawnOverworldMapObject outside this file, which has no typed C interface yet.
+ * The callee returns the new object handle in r5 and clobbers it, so we save and restore
+ * the caller's r5 across the GUEST_CALL. */
+static u32 spawn_overworld_map_object(u32 obj_type, u32 x, u32 y, u32 z,
+                                      u32 slot_ptr, u32 caller_r5) {
+    R0 = obj_type;
+    R1 = x;
+    R2 = y;
+    R3 = z;
+    R6 = slot_ptr;
+    GUEST_CALL(SpawnOverworldMapObject);
+    u32 handle = R5;
+    R5 = caller_r5;
+    return handle;
+}
+
+/*
+ * Spawn an overworld map object at a position relative to the OW player.
+ *
+ * The script supplies three 16-bit signed offsets (x,y,z) that are shifted
+ * into the upper half of a 32-bit fixed-point value and added to the player's
+ * current coordinates.  A byte selects the object type and a word carries
+ * additional data.  After spawning, the returned handle is stored in the
+ * CutsceneState slot identified by the low nibble of the slot index.
+ */
+static u32 spawn_ow_map_object_relative(u32 slot_index, u32 base_addr) {
+    /* slot pointer = base + ((index & 0xF) * 4) + field offset */
+    u32 slot_ptr = base_addr + ((slot_index & 0xF) << 2)
+                              + oCutsceneState_owMapObjectPtrs_44;
+
+    u32 px, py, pz;
+    read_ow_player_coords(&px, &py, &pz);
+
+    /* relative offsets from script, placed in upper 16 bits (0x10 shift) */
+    u32 abs_x = px + (read_map_script_halfword_MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(3) << 16);
+    u32 abs_y = py + (read_map_script_halfword_MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(5) << 16);
+    u32 abs_z = pz + (read_map_script_halfword_MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(7) << 16);
+
+    u32 obj_type = read_map_script_byte_MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(2);
+    read_map_script_word_MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(9);
+
+    u32 handle = spawn_overworld_map_object(obj_type, abs_x, abs_y, abs_z,
+                                           slot_ptr, base_addr);
+    ST32(slot_ptr, handle);
+
+    return 1;
+}
+
+/*
+ * MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player
+ *   r4 = slot index (only low 4 bits used), r5 = CutsceneState base pointer
+ *   advances r7 by 0xD, returns 1 in r0, flags from r7+0xD
+ */
+Next MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player(void) {
+    u32 old_r7 = R7;
+    R0 = spawn_ow_map_object_relative(R4, R5);
+    R7 = old_r7 + 0xD;
+    SET_FLAGS_ADD(old_r7, 0xD);
     RETURN_TO_CALLER();
 }
 

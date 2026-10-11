@@ -163,6 +163,53 @@ Next chatbox_checkAdvanceTextPrint_8040154(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_804021C ── */
+/* ROM data tables for the chatbox OAM emitter */
+#define TILE_BASE          0xE2B8
+#define COL_STRIDE         0x20
+#define CHAR_TABLE_STRIDE  8
+
+/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+static void emit_oam(u32 attr01, u32 tile, u32 unused, u32 mode) {
+    R0 = attr01; R1 = tile; R2 = unused; R3 = mode;
+    GUEST_CALL(sub_802FE28);
+}
+
+/* Emit 3 rows × 6 columns of OAM sprite entries for the chatbox text grid.
+ * attr01 = (x << 16) | packed_y_attr | (row_pixel_offset + font_shift)
+ * tile   = TILE_BASE + per-cell char offset from the layout table */
+static void emit_chatbox_grid(u32 chatbox) {
+    u32 text_coord   = LD8(chatbox + oChatbox_TextScriptCharIdx);
+    u32 font_shift   = LD8(chatbox + oChatbox_Unk_19);
+    u32 y_table      = A_byte_8040314;
+    u32 char_table   = A_byte_8040324;
+    u32 row_off_tbl  = A_dword_8040340;
+
+    for (u32 row = 0; row < 3; row++) {
+        u32 y_attr = LD32(y_table + row * 4);
+        u32 r_off  = LD8(row_off_tbl + row) + font_shift;
+
+        for (u32 col = 0; col < 6; col++) {
+            u32 x      = COL_STRIDE * col + text_coord;
+            u32 attr01 = (x << 16) | y_attr | r_off;
+            u32 tile   = TILE_BASE + LD8(char_table + row * CHAR_TABLE_STRIDE + col);
+            emit_oam(attr01, tile, 0, 3);
+        }
+    }
+}
+
+/* chatbox_804021C(r5 = ChatBoxProperties*)
+ * Outputs r1 = input r12 (the epilogue pop sequence leaves r1 with the
+ * originally-pushed r12 value).  r2/r3 are whatever sub_802FE28 leaves
+ * in them after the last GUEST_CALL. */
+Next chatbox_804021C(void) {
+    u32 saved_r12 = R12;
+    emit_chatbox_grid(R5);
+    R1 = saved_r12;
+    SET_FLAGS_CMP(3, 3);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_CopyBackgroundTiles_8040344 ── */
 /* chatbox_CopyBackgroundTiles_8040344 (r5 = chatbox):
  * Redraws the chatbox background: pick the tile-id array matching the
@@ -209,6 +256,153 @@ Next chatbox_runTrainScript(void) {
     R0 = A_eTextScript2034A04;
     GUEST_CALL(chatbox_runScript);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_runScript ── */
+#define CHATBOX_SIZE                0x230
+#define FLAGS_3E_HIDE_CHATBOX_chatbox_runScript       0x100
+#define GFX_TRANSFER_SIZE           0x160
+#define TILE_COPY_SIZE              0x20
+#define CHATBOX_PAGE_STATE_IDX      0x9C
+#define CHATBOX_COPY_CHAR_OFFSET    0x94
+#define CHATBOX_TILE_GEOM_OFFSET    0x68
+
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill(u32 mem, u32 size) {
+    R0 = mem;
+    R1 = size;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls CopyHalfwords outside this file, which has no typed C interface yet */
+static void copy_halfwords(u32 src, u32 dest, u32 count) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    GUEST_CALL(CopyHalfwords);
+}
+
+/* register form: calls chatbox_set_eFlags2009F38 outside this file, which has no typed C interface yet */
+static void set_eflags_2009f38(u32 val, u32 flags_addr, u32 tile_width) {
+    R0 = val;
+    R1 = flags_addr;
+    R2 = tile_width;
+    GUEST_CALL(chatbox_set_eFlags2009F38);
+}
+
+/* register form: chatbox_resetAndClearBuffers reads R3 (page counter) and R5 (chatbox ptr) as context */
+static void reset_and_clear_buffers(u32 chatbox, u32 page_count) {
+    R2 = 0x1E;
+    R3 = page_count;
+    R5 = chatbox;
+    GUEST_CALL(chatbox_resetAndClearBuffers_8045F60);
+}
+
+/* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
+static void set_flags_3e(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_setflags_3e);
+}
+
+/* register form: QueueEightWordAlignedGFXTransfer reads R4/R6 as preserved context values */
+static void queue_gfx_transfer(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* register form: calls CopyByEightWords outside this file, which has no typed C interface yet */
+static void copy_by_eight_words(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(CopyByEightWords);
+}
+
+/* Reset the chatbox, load a script entry from a TextScriptArchive, configure display defaults,
+ * queue tilemap transfer, and copy tile/font data into work buffers. */
+static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
+    u32 chatbox = LD32(toolkit + oToolkit_ChatboxPtr);
+
+    /* Preserve four fields across the zero-fill that resets the rest of the struct. */
+    u32 saved_4C = LD32(chatbox + oChatbox_Unk_4C);
+    u32 saved_50 = LD32(chatbox + oChatbox_Unk_50);
+    u32 saved_54 = LD32(chatbox + oChatbox_Unk_54);
+    u32 saved_58 = LD32(chatbox + oChatbox_Unk_58);
+
+    zero_fill(chatbox, CHATBOX_SIZE);
+
+    ST32(chatbox + oChatbox_Unk_4C, saved_4C);
+    ST32(chatbox + oChatbox_Unk_50, saved_50);
+    ST32(chatbox + oChatbox_Unk_54, saved_54);
+    ST32(chatbox + oChatbox_Unk_58, saved_58);
+
+    /* Store the script archive pointer and selected index. */
+    ST32(chatbox + oChatbox_TextScriptPtr, archive);
+    ST8(chatbox + 1, script_idx);
+    ST8(chatbox + CHATBOX_PAGE_STATE_IDX, script_idx);
+
+    /* Resolve the per-script byte offset from the archive's u16 index table. */
+    u32 cursor = archive + LD16(archive + (script_idx << 1));
+    ST32(chatbox + oChatbox_TextScriptCursorPtr, cursor);
+    ST32(chatbox + oChatbox_CurrTextScriptPtr, cursor);
+
+    /* Configure initial display parameters. */
+    ST8(chatbox, 1);
+    ST8(chatbox + 8, 2);
+    ST32(chatbox + oChatbox_Unk_38, A_unk_200B2B0);
+    ST8(chatbox + oChatbox_BoxYX, 1);
+    ST32(chatbox + oChatbox_Unk_74, 1);
+    ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
+    ST32(chatbox + oChatbox_Unk_78, 4);
+
+    /* Copy the tile-geometry constants (8 halfwords from ROM) into the chatbox. */
+    copy_halfwords(A_byte_8040494, chatbox + CHATBOX_TILE_GEOM_OFFSET, 8);
+
+    /* Tile coordinate and cursor defaults. */
+    ST8(chatbox + oChatbox_CurTileYBlockPos, 0xC);
+    ST8(chatbox + oChatbox_CurTileWidth16, 0x1E);
+    ST8(chatbox + oChatbox_CurTileHeight16, 8);
+    ST8(chatbox + oChatbox_CursorIdx, 0xE2);
+    ST8(chatbox + oChatbox_Unk_1B, 0x8D);
+    ST8(chatbox + oChatbox_TextScriptCharIdx, 0x33);
+    ST8(chatbox + oChatbox_Unk_19, 0x6C);
+
+    /* Additional per-script state slots. */
+    ST32(chatbox + 0x84, 0x19);
+    ST32(chatbox + 0x88, 0x80);
+
+    /* Script-phase state bytes (idle pair values at 0x1F0..0x1F5). */
+    ST8(chatbox + 0x1F0, 2);
+    ST8(chatbox + 0x1F1, 2);
+    ST8(chatbox + 0x1F2, 0);
+    ST8(chatbox + 0x1F3, 0);
+    ST8(chatbox + 0x1F4, 3);
+    ST8(chatbox + 0x1F5, 3);
+
+    /* Clear the text-event flag word, mark it dirty, then reset buffers. */
+    ST32(A_eFlags2009F38, 0);
+    set_eflags_2009f38(0x80, A_eFlags2009F38, 0x1E);
+    reset_and_clear_buffers(chatbox, 8);
+    set_flags_3e(FLAGS_3E_HIDE_CHATBOX_chatbox_runScript);
+
+    /* Mirror the character index and set the page-transfer counter. */
+    ST8(chatbox + CHATBOX_COPY_CHAR_OFFSET, LD8(chatbox + oChatbox_TextScriptCharIdx));
+    ST32(chatbox + oChatbox_Unk_90, 0xD);
+
+    /* Queue the tilemap BG transfer and copy tile/font data. */
+    queue_gfx_transfer(A_dword_86BEB20, 0x600DC80, GFX_TRANSFER_SIZE);
+    copy_by_eight_words(A_byte_86BEC80, A_unk_3001B40, TILE_COPY_SIZE);
+    copy_by_eight_words(A_dword_86B7AC0, A_byte_3001710, TILE_COPY_SIZE);
+}
+
+/* chatbox_runScript(r0 = archive, r1 = script_idx, r10 = toolkit) -> void */
+Next chatbox_runScript(void) {
+    u32 sr4 = R4, sr5 = R5, sr6 = R6, sr7 = R7;
+    chatbox_runScript_impl(R10, R0, R1);
+    R4 = sr4; R5 = sr5; R6 = sr6; R7 = sr7;
     RETURN_TO_CALLER();
 }
 
@@ -339,6 +533,102 @@ Next chatbox_advanceNextState_8040C9C(void) {
 #undef CHATBOX_NEXT_STATE
 #undef CHATBOX_1F1
 #undef CHATBOX_1F2
+
+/* ── chatbox_E6_end ── */
+/* Flag constants for the chatbox E-flag system */
+#define FLAGS_3E_UNK_0001       1
+#define FLAGS_3E_UNK_0008       8
+#define FLAGS_3E_HIDE_CHATBOX_chatbox_E6_end   0x100
+#define FLAGS_3E_UNK_0002       2
+
+/* Chatbox struct field offsets */
+#define oChatbox_Unk_05_chatbox_E6_end           5
+#define oChatbox_Visible          0
+#define oChatbox_TextScriptState  4
+#define CHATBOX_SCRIPT_TABLE_BASE 0x140
+
+/* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
+static void chatbox_setflags_3e_helper(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_setflags_3e);
+}
+
+/* register form: calls chatbox_maskFlags_3e outside this file, which has no typed C interface yet.
+ * Returns true if the flag was present (Z clear after masking → bne path taken). */
+static bool chatbox_maskFlags_3e_helper(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_maskFlags_3e);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls chatbox_8041090 outside this file, which has no typed C interface yet */
+static s32 chatbox_8041090_helper(void) {
+    GUEST_CALL(chatbox_8041090);
+    return (s32)R0;
+}
+
+/* register form: calls chatbox_clear_eFlags2009F38 outside this file, which has no typed C interface yet */
+static void chatbox_clear_eFlags_helper(u32 a1) {
+    R0 = a1;
+    GUEST_CALL(chatbox_clear_eFlags2009F38);
+}
+
+/* Advance or hide the chatbox.
+ * Returns 1 if a pending message was dequeued, 0 otherwise.
+ * On the decrement path, sets R1/R2/R4 directly (see register-form note).
+ * On other paths, callees leave R1/R2/R4 via GUEST_CALL side-effects. */
+/* register form: the decrement path writes output registers r1/r2/r4 directly;
+ * no callee exists to set them and the adapter cannot branch to write them conditionally */
+static u32 chatbox_e6_end_impl(u32 self) {
+    u32 count = LD8(self + oChatbox_Unk_05_chatbox_E6_end);
+
+    if (count != 0) {
+        /* Dequeue next message: decrement counter, load script pointer */
+        count = count - 1;
+        u32 r2_val = 4 * count;
+        u32 r1_val = CHATBOX_SCRIPT_TABLE_BASE + r2_val;
+        u32 r4_val = LD32(self + r1_val);
+        ST8(self + oChatbox_Unk_05_chatbox_E6_end, count);
+        R1 = r1_val;
+        R2 = r2_val;
+        R4 = r4_val;
+        return 1;
+    }
+
+    /* Mark that a chatbox advance was requested */
+    chatbox_setflags_3e_helper(FLAGS_3E_UNK_0001);
+
+    if (chatbox_maskFlags_3e_helper(FLAGS_3E_HIDE_CHATBOX_chatbox_E6_end)) {
+        /* HIDE flag was set: check secondary flag 2 */
+        if (chatbox_maskFlags_3e_helper(FLAGS_3E_UNK_0002)) {
+            /* Flag 2 was set: mark pending and return 0 (no hide/clear) */
+            chatbox_setflags_3e_helper(FLAGS_3E_UNK_0008);
+        } else {
+            /* Flag 2 was not set (beq → loc_8040EDC): clear and hide */
+            chatbox_clear_eFlags_helper(0x80);
+            ST8(self + oChatbox_Visible, 0);
+            ST8(self + oChatbox_TextScriptState, 0);
+        }
+    } else {
+        /* HIDE flag was not set: try to advance dialog */
+        if (chatbox_8041090_helper() != 0) {
+            /* Cannot advance (bne → loc_8040EDC): clear and hide */
+            chatbox_clear_eFlags_helper(0x80);
+            ST8(self + oChatbox_Visible, 0);
+            ST8(self + oChatbox_TextScriptState, 0);
+        }
+        /* If advance returned 0, fall through (callee already left r0=0) */
+    }
+
+    return 0;
+}
+
+/* chatbox_E6_end(r5 = self) -> r0, nz/c/v/r1/r2/r3/r4/lr */
+Next chatbox_E6_end(void) {
+    R0 = chatbox_e6_end_impl(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
 
 /* ── chatbox_closeAndReset_80410F8 ── */
 /* chatbox_closeAndReset_80410F8(r5 = chatbox): clear the chatbox's text flags (mask 0x101:
@@ -614,6 +904,114 @@ Next chatbox_stepScriptEntry_80417A4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_8041818 ── */
+/* register form: calls GetChipCountOfCode outside this file, which has no typed C interface yet */
+static u32 chip_count_of_code(u32 code, u32 code_param) {
+    R0 = code; R1 = code_param;
+    GUEST_CALL(GetChipCountOfCode);
+    return R0;
+}
+
+/* register form: calls sub_8021C02 outside this file, which has no typed C interface yet */
+static u32 chip_limit_of_code(u32 code, u32 code_param) {
+    R0 = code; R1 = code_param;
+    GUEST_CALL(sub_8021C02);
+    return R0;
+}
+
+/* register form: calls GetTotalChipCount outside this file, which has no typed C interface yet */
+static u32 total_chip_count(u32 code) {
+    R0 = code;
+    GUEST_CALL(GetTotalChipCount);
+    return R0;
+}
+
+/* register form: calls chatbox_config_80408D0 outside this file, which has no typed C interface yet;
+ * the callee overwrites R1, R4, and leaves C/V flags that callers observe on return */
+static u32 trigger_script(u32 count_val, u32 script_id, u32 offset,
+                          u32 *r4_out, u32 *flag_a_out, u32 *flag_b_out) {
+    R0 = count_val; R1 = script_id; R2 = offset;
+    GUEST_CALL(chatbox_config_80408D0);
+    *r4_out = R4;
+    /* Encode callee C,V into (a,b) so that SET_FLAGS_ADD(a,b) reproduces them:
+     * c=1,v=0 → 0xFFFFFFFF+1; c=0,v=1 → 0x7FFFFFFF+1; c=1,v=1 → 0x80000000+0x80000001; c=0,v=0 → 0+0 */
+    u32 carry = CARRY_FLAG();
+    u32 over  = OVERFLOW_FLAG();
+    if (carry && over) { *flag_a_out = 0x80000000; *flag_b_out = 0x80000001; }
+    else if (carry)     { *flag_a_out = 0xFFFFFFFF; *flag_b_out = 1; }
+    else if (over)      { *flag_a_out = 0x7FFFFFFF; *flag_b_out = 1; }
+    else                { *flag_a_out = 0;          *flag_b_out = 0; }
+    return R1;
+}
+
+/* Three-way signed comparison index: 0=equal, 1=greater, 2=less */
+static u32 cmp_index(s32 a, s32 b) {
+    if (a == b) return 0;
+    if (a > b)  return 1;
+    return 2;
+}
+
+typedef struct {
+    u32 r1, r2, r4;
+    u32 flag_a, flag_b;
+} ChatboxRes;
+
+/* Evaluate a chatbox chip-condition script record at *ptr, advancing past it or triggering a script.
+ * Returns the new r1 (script ID or 0xFF), r2 (comparison offset), r4 (pointer advance),
+ * and (flag_a, flag_b) to feed SET_FLAGS_ADD for the correct C/V at return. */
+static ChatboxRes eval_chip_script(u32 ptr) {
+    ChatboxRes res;
+    u32 opcode = LD8(ptr + 1);
+    u32 code   = LD8(ptr + 2) | ((u32)LD8(ptr + 3) << 8);
+    u32 count, offset, step;
+
+    if (opcode == 0x2A) {
+        /* Total chip count vs threshold at [ptr+4] */
+        count  = total_chip_count(code);
+        offset = 5 + cmp_index((s32)count, (s32)LD8(ptr + 4));
+        step   = 8;
+    } else if (opcode == 9) {
+        /* Chip count minus per-code limit vs threshold at [ptr+5] */
+        u32 cp    = LD8(ptr + 4);
+        count     = chip_count_of_code(code, cp) - chip_limit_of_code(code, cp);
+        offset    = 6 + cmp_index((s32)count, (s32)LD8(ptr + 5));
+        step      = 9;
+    } else {
+        /* Chip count of code vs threshold at [ptr+5] */
+        u32 cp    = LD8(ptr + 4);
+        count     = chip_count_of_code(code, cp);
+        offset    = 6 + cmp_index((s32)count, (s32)LD8(ptr + 5));
+        step      = 9;
+    }
+
+    res.r2 = offset;
+    u32 script_byte = LD8(ptr + offset);
+
+    if (script_byte != 0xFF) {
+        /* Non-terminator: invoke the script handler, which may rewrite r4 */
+        res.r1 = trigger_script(count, script_byte, offset, &res.r4, &res.flag_a, &res.flag_b);
+    } else {
+        /* Terminator 0xFF: advance record pointer by step (ADDS sets C,V) */
+        res.r1      = 0xFF;
+        res.r4      = ptr + step;
+        res.flag_a  = ptr;
+        res.flag_b  = step;
+    }
+    return res;
+}
+
+/* chatbox_8041818(r4 = script record pointer) → r0=1, r1/r2/r4 updated, flags */
+Next chatbox_8041818(void) {
+    ChatboxRes res = eval_chip_script(R4);
+    R1 = res.r1;
+    R2 = res.r2;
+    R4 = res.r4;
+    SET_FLAGS_ADD(res.flag_a, res.flag_b);
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_startCurNaviScript_80419B4 ── */
 /* chatbox_startCurNaviScript_80419B4(r4 = chatbox work area, r2/r5/r10 = caller context):
  * Start the chatbox script belonging to the currently equipped PET navi.
@@ -756,6 +1154,142 @@ Next chatbox_F3_control(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_F5_mugshot ── */
+/* register form: calls chatbox_maskFlags_3e outside this file, which has no typed C interface yet */
+static bool chatbox_flag_3e_is_set(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_maskFlags_3e);
+    return !ZERO_FLAG();          /* Z=0 when (flags & mask) != 0, i.e. the flag is set */
+}
+
+/* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
+static void chatbox_flag_3e_set(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_setflags_3e);
+}
+
+/* register form: calls chatbox_clearFlags_3e outside this file, which has no typed C interface yet */
+static void chatbox_flag_3e_clear(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_clearFlags_3e);
+}
+
+/* register form: calls sub_8040B3A outside this file, which has no typed C interface yet.
+   After the call, R1/R2/R3/R7 hold the callee's output values; the adapter does not
+   rewrite them. */
+static void mugshot_refresh(u32 mugshot_id, u32 flag) {
+    R0 = mugshot_id;
+    R1 = flag;
+    GUEST_CALL(sub_8040B3A);
+}
+
+/* Process one chatbox F5 (mugshot) command.
+ * cmd points at the 3-byte command record, chatbox is the chatbox struct base.
+ * Returns the advanced command pointer.
+ * On the subcmd==3 and subcmd==4 paths the original explicitly leaves a register
+ * (r1 or r2) that is not produced by any callee; those are written here in
+ * register form because the thin adapter cannot branch to decide which output
+ * to write on the non-GUEST_CALL paths (on the default path the GUEST_CALL in
+ * mugshot_refresh already populates r1/r2/r3/r7 and must not be overwritten). */
+static u32 chatbox_process_mugshot(u32 cmd, u32 chatbox) {
+    u8 subcmd = LD8(cmd + 1);
+
+    if (subcmd == 1) {
+        /* Deactivate mugshot */
+        chatbox_flag_3e_clear(FLAGS_3E_MUGSHOT_ACTIVE);
+        return cmd + 2;
+    }
+    if (subcmd == 2) {
+        /* Set palette index directly */
+        ST8(chatbox + oChatbox_MugshotPaletteIdx, LD8(cmd + 2));
+        return cmd + 3;
+    }
+    if (subcmd == 3) {
+        /* Set face/eye override bytes at 0x1F0 and 0x1F1 */
+        u8 val = LD8(cmd + 2);
+        ST8(chatbox + 0x1F0, val);
+        ST8(chatbox + 0x1F1, val);
+        /* register form: r1 = 0x1f1 is a computed output of this path
+           (ldr r1, off_8041DB8 in the original); the adapter must not
+           unconditionally write r1 because on the default path r1 comes
+           from the callee GUEST_CALL and must not be clobbered. */
+        R1 = 0x1F1;
+        return cmd + 3;
+    }
+    if (subcmd == 4) {
+        /* Set mugshot ID as a 32-bit value at offset 0x90 */
+        ST32(chatbox + 0x90, (u32)LD8(cmd + 2));
+        /* register form: r2 = 0x90 is a computed output of this path
+           (mov r2, #0x90 in the original); same rationale as r1 above. */
+        R2 = 0x90;
+        return cmd + 3;
+    }
+
+    /* Default: activate and fully configure the mugshot */
+    if (!chatbox_flag_3e_is_set(FLAGS_3E_MUGSHOT_ACTIVE)) {
+        chatbox_flag_3e_set(FLAGS_3E_MUGSHOT_ACTIVE);
+        chatbox_flag_3e_set(FLAGS_3E_UNK_0004);
+        if (!chatbox_flag_3e_is_set(0x1000)) {
+            ST32(chatbox + oChatbox_MugshotColorFilter_40, 0x18C6);
+        }
+    }
+
+    u8 mugshot_id = LD8(cmd + 2);
+
+    /* Look up palette index in (id, palette) table terminated by 0xFF */
+    u8 palette_idx = 0;
+    {
+        u32 tbl = A_byte_8044244;
+        u8 entry;
+        while ((entry = LD8(tbl)) != 0xFF) {
+            if (entry == mugshot_id) {
+                palette_idx = LD8(tbl + 1);
+                break;
+            }
+            tbl += 2;
+        }
+    }
+    ST8(chatbox + oChatbox_MugshotPaletteIdx, palette_idx);
+
+    /* Display-state byte: keep 3 from field 0x1F0, otherwise 0 */
+    u8 unk_1f0 = LD8(chatbox + 0x1F0);
+    u8 extra_byte = (unk_1f0 == 3) ? unk_1f0 : 0;
+    u8 flag_byte = 1;
+
+    /* Look up display data in second (id, value) table terminated by 0xFF */
+    {
+        u32 tbl = A_byte_8044260;
+        u8 entry;
+        while ((entry = LD8(tbl)) != 0xFF) {
+            if (entry == mugshot_id) {
+                extra_byte = LD8(tbl + 1);
+                flag_byte = 0;
+                break;
+            }
+            tbl += 2;
+        }
+    }
+
+    ST8(chatbox + oChatbox_Unk_14, flag_byte);
+    ST8(chatbox + oChatbox_Unk_0A, extra_byte);
+    ST8(chatbox + 0x98, extra_byte);
+    ST8(chatbox + oChatbox_Unk_0B, 0xFF);
+
+    /* Trigger mugshot graphic refresh; callee sets R1/R2/R3/R7 as side effects */
+    mugshot_refresh(mugshot_id, flag_byte);
+
+    return cmd + 3;
+}
+
+/* chatbox_F5_mugshot(r4 = cmd, r5 = chatbox) -> r0=1, nz/c/v from final ADDS+MOV */
+Next chatbox_F5_mugshot(void) {
+    u32 old_r4 = R4;
+    R4 = chatbox_process_mugshot(R4, R5);
+    R0 = 1;
+    SET_FLAGS_ADD(old_r4, R4 - old_r4);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_cmd_playerFixedAnim_8041EE8 ── */
 /* owPlayer_RequestFixedAnimation_809E14C is not declared in the shared headers, so forward-declare it
  * here; it is a normal `Next ... (void)` game function. */
@@ -894,6 +1428,88 @@ Next chatbox_scriptStepSyncPlayerTextState_8041F44(void) {
 
     R0 = 0;
     SET_FLAGS_NZ(R0);     /* ...but N/Z come from "mov r0, #0" */
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_80420BC ── */
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u8 get_cur_pet_navi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (u8)R0;
+}
+
+/* register form: calls CopyBytes outside this file, which has no typed C interface yet */
+static void copy_bytes(u32 src, u32 dest, u32 count) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    GUEST_CALL(CopyBytes);
+}
+
+#define CHATBOX_SLOT_OFFSET     0x64
+#define CHATBOX_TEXT_BLOCK_SIZE 0x40
+#define CHATBOX_PTR_BASE        0x140
+
+typedef struct {
+    u32 dest;
+    u32 ptr_offset;
+    u32 slot_addr;
+} ChatboxResult;
+
+/* Queue one line of chat text: copy the speaking navi's text into the next
+ * slot in the buffer pool, advance the line counter and script pointer. */
+static ChatboxResult chatbox_load_text(u32 scriptPtr, u32 chatbox) {
+    /* Bump the per-chatbox line counter */
+    u8 counter = (u8)(LD8(chatbox + oChatbox_Unk_05) + 1);
+    ST8(chatbox + oChatbox_Unk_05, counter);
+
+    /* Identify which PET navi is speaking */
+    u8 naviId = get_cur_pet_navi();
+
+    /* Resolve the text source: table selector from command byte[2],
+     * then a u16 offset per navi within that table */
+    u32 selector   = LD8(scriptPtr + 2);
+    u32 nameTable  = LD32(A_off_8042118 + selector);
+    u32 textOffset = LD16(nameTable + (u32)naviId * 2);
+    u32 textSrc    = nameTable + textOffset;
+
+    /* Compute destination slot in the 64-byte-per-entry text pool */
+    u32 slotAddr = chatbox + CHATBOX_SLOT_OFFSET;
+    u16 slot     = LD16(slotAddr);
+    u32 dest     = A_byte_200AFA0 + ((u32)slot << 6);
+
+    /* Copy one block of text into the slot */
+    copy_bytes(textSrc, dest, CHATBOX_TEXT_BLOCK_SIZE);
+
+    /* Advance the slot index (re-read in case of aliasing) */
+    slot = LD16(slotAddr);
+    ST16(slotAddr, (u16)(slot + 1));
+
+    /* Point the chatbox at the newly loaded text */
+    ST32(chatbox + oChatbox_TextScriptCursorPtr, dest);
+
+    /* Advance past this 3-byte script command */
+    u32 newScript = scriptPtr + 3;
+    ST32(chatbox + oChatbox_Unk_44, newScript);
+
+    /* Store the script pointer at the per-line slot: base + (counter-1)*4 */
+    u32 addend     = ((u32)counter - 1) * 4;
+    u32 ptr_offset = CHATBOX_PTR_BASE + addend;
+    ST32(chatbox + ptr_offset, newScript);
+
+    ChatboxResult res = { dest, ptr_offset, slotAddr };
+    return res;
+}
+
+/* chatbox_80420BC(r4 = scriptPtr, r5 = chatbox) -> r0=1, r4=dest, r7=slotAddr */
+Next chatbox_80420BC(void) {
+    ChatboxResult res = chatbox_load_text(R4, R5);
+    R0 = 1;
+    R1 = res.ptr_offset;
+    R2 = 4;
+    R4 = res.dest;
+    R7 = res.slot_addr;
+    SET_FLAGS_ADD(0, 1);
     RETURN_TO_CALLER();
 }
 
@@ -1213,6 +1829,109 @@ Next sub_804293C(void) {
     R3 = out.nextCharX;
     R4 = out.scriptPtr + 3;
     SET_FLAGS_ADD(out.scriptPtr, 3);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_8042A14 ── */
+/* register form: calls memory_bcdConvert outside this file, which has no typed C interface yet.
+ * Callee clobbers R1; save and restore it to honour the preserved-r1 contract. */
+static u32 to_bcd(u32 value, u32 flags, u32 buf) {
+    u32 saved = R1;
+    R0 = value;
+    R1 = flags;
+    R2 = buf;
+    GUEST_CALL(memory_bcdConvert);
+    R1 = saved;
+    return R0;
+}
+
+/* register form: calls countHexDigits_8000C5C outside this file, which has no typed C interface yet.
+ * May clobber R1; restore to the caller's original. */
+static u32 hex_digit_count(u32 bcd) {
+    u32 saved = R1;
+    R0 = bcd;
+    GUEST_CALL(countHexDigits_8000C5C);
+    R1 = saved;
+    return R0;
+}
+
+/* Format a BCD number into a chatbox glyph string.
+ *   value  – integer to display (r0)
+ *   flags  – bit 0-3: minimum field width (0 → natural digit count)
+ *            bit 6:   1 = pad with glyph 1 (space), 0 = glyph 0 (blank)
+ *            bit 7:   1 = right-align (pad before digits), 0 = left-align (pad after)
+ *   buf    – write cursor destination (r2)
+ * Outputs r3 (padding remainder), r6 (fill glyph), r8 (BCD value). */
+static void format_chatbox_number(u32 value, u32 flags, u32 buf,
+                                  u32 *out_r3, u32 *out_r6, u32 *out_r8)
+{
+    u32 bcd    = to_bcd(value, flags, buf);
+    u32 digits = hex_digit_count(bcd);
+
+    /* Fill glyph: index 1 (space) when bit 6 set, index 0 otherwise */
+    u32 fill = (flags & 0x40) ? 1 : 0;
+
+    /* Desired minimum width from low nibble; 0 means "natural" */
+    u32 width = flags & 0xF;
+    if (width == 0)
+        width = digits;
+
+    /* Signed padding count: > 0 means pad needed, <= 0 means none */
+    s32 pad = (s32)width - (s32)digits;
+
+    /* Bit-shift to reach the most-significant BCD nibble */
+    s32 shift = (s32)((digits - 1) << 2);
+
+    bool right_align = (flags & 0x80) != 0;
+
+    if (!right_align) {
+        /* Left-aligned: write significant digits (MSB → LSB), then trailing pad */
+        do {
+            u32 nib = (bcd >> (u32)shift) & 0xF;
+            ST8(buf, nib + 1);   /* +1 = font glyph base offset */
+            buf++;
+            shift -= 4;
+        } while (shift >= 0);
+
+        while (pad > 0) {
+            ST8(buf, fill);
+            buf++;
+            pad--;
+        }
+    } else {
+        /* Right-aligned: write leading pad first, then digits */
+        while (pad > 0) {
+            ST8(buf, fill);
+            buf++;
+            pad--;
+        }
+
+        do {
+            u32 nib = (bcd >> (u32)shift) & 0xF;
+            ST8(buf, nib + 1);
+            buf++;
+            shift -= 4;
+        } while (shift >= 0);
+    }
+
+    /* Terminator: glyph 0xE6 followed by two 0x00 bytes */
+    ST8(buf, 0xE6);
+    ST8(buf + 1, 0);
+    ST8(buf + 2, 0);
+
+    *out_r3 = (u32)pad;   /* padding remainder (0 or negative-as-u32) */
+    *out_r6 = fill;
+    *out_r8 = bcd;
+}
+
+/* chatbox_8042A14(r0=value, r1=flags, r2=buffer) -> r3, r6, r7=0, r8; preserves r1,r4,r5 */
+Next chatbox_8042A14(void) {
+    u32 r3, r6, r8;
+    format_chatbox_number(R0, R1, R2, &r3, &r6, &r8);
+    R3 = r3;
+    R6 = r6;
+    R7 = 0;
+    R8 = r8;
     RETURN_TO_CALLER();
 }
 

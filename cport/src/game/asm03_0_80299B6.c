@@ -8,6 +8,31 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_8029AAA ── */
+/* Compute a status code for a battle object based on its mode byte (+7) and sub-state byte (+8).
+ * Mode 0 or 2 → depends on sub-state (1→9, else→14).
+ * Mode 10 → 16.
+ * Mode >2 (signed) → 0; otherwise → 22. */
+static u32 get_battle_object_status_code(u32 obj_ptr) {
+    u8 mode = (u8)LD8(obj_ptr + 7);
+    u8 sub_state = (u8)LD8(obj_ptr + 8);
+
+    if (mode == 0 || mode == 2)
+        return (sub_state == 1) ? 9 : 0xE;
+
+    if (mode == 0xA)
+        return 0x10;
+
+    /* mode is some other value: check if sub_state > 2 (signed) */
+    return ((s32)sub_state > 2) ? 0 : 0x16;
+}
+
+/* sub_8029AAA(r5 = battle object ptr) -> r0 */
+Next sub_8029AAA(void) {
+    R0 = get_battle_object_status_code(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8029B1C ── */
 /*
  * First-battle tutorial chatbox trigger (r5 = tutorial work struct):
@@ -86,6 +111,54 @@ static u32 tutorial_text_update(u32 work)
 
 Next sub_8029B1C(void) {
     R0 = tutorial_text_update(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8029D34 ── */
+/* register form: calls battle_IsBattleEnding_800A97A outside this file, which has no typed C interface yet */
+static bool is_battle_ending(void) {
+    GUEST_CALL(battle_IsBattleEnding_800A97A);
+    return R0 != 0;
+}
+
+/* register form: calls sub_8029D80 outside this file, which has no typed C interface yet */
+static void call_late_phase_bg_handler(void) {
+    /* R4, R5 hold the caller's battle-state and object pointers */
+    GUEST_CALL(sub_8029D80);
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_ending_bg_tiles(void) {
+    R0 = 0xF;   /* j (column count) */
+    R1 = 4;     /* i (row count) */
+    R2 = 3;     /* tile block 32x32 index */
+    R3 = A_byte_8029D64; /* pointer to tile ID data */
+    R4 = 7;     /* j_size (tiles per row group) */
+    R5 = 2;     /* i_size (rows) */
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* Update the background when a battle is ending.
+ * Reads phase field at offset 0x40 in the battle-state; late phases (>= 0x1C)
+ * use a different handler, earlier phases copy tile IDs for the ending BG.
+ * r5 is the battle-state pointer; r4 is passed through to the late-phase handler. */
+static void handle_ending_background(u32 r4, u32 battle_state) {
+    (void)r4; /* forwarded implicitly via register file to the late-phase handler */
+
+    if (!is_battle_ending())
+        return;
+
+    u32 phase = LD32(battle_state + 0x40) & 0x1F;
+
+    if (phase >= 0x1C) {
+        call_late_phase_bg_handler();
+    } else {
+        copy_ending_bg_tiles();
+    }
+}
+
+Next sub_8029D34(void) {
+    handle_ending_background(R4, R5);
     RETURN_TO_CALLER();
 }
 
@@ -1820,6 +1893,208 @@ Next runPendingHandlerForEntryPair_802CEC8(void) {
     }
 
     R4 = table + 0x10;
+    RETURN_TO_CALLER();
+}
+
+/* ── hiveBlockHappensHere_802CEF4 ── */
+/* hiveBlockHappensHere_802CEF4: evaluates whether a hive-blocked attack
+ * lands on a riskyhoney panel, fires the hive-up effect or marks AI data,
+ * and clears the collision damage buffer. */
+
+/* Bit masks used by the original's data references */
+#define FLAG_HIVE_UP         0x00200000u   /* riskyhoney hive-up */
+#define FLAG_HIVE_ACTIVE     0x00000800u   /* hive-block active */
+#define FLAG_AI44_DONE       0x00008200u   /* block already resolved */
+#define FLAG_HIGH_OBJ_BITS   0xFF800000u   /* high object-type bits */
+#define FLAG_HIVE_BROKEN     0x00000200u   /* set when hive broken */
+#define FLAG_HIVE_REBUILT    0x00008000u   /* set when hive rebuilt */
+#define FLAG_ANTISWORD       0x00000400u   /* AntiSword triggered */
+#define FLAG_SWORD_HIT       0x00002000u   /* sword collision */
+#define FLAG_HIVE_INTACT     0x00020000u   /* hive still standing */
+#define MASK_HIVE_PRESENT    0x00000040u   /* hive-present bit in collision flags */
+#define MASK_OBJ_FLAGS2_CLR  0x000301BEu   /* bits to clear in ObjectFlags2 */
+
+#define ALLIANCE_HIVE_BB     0xBB
+#define ALLIANCE_157         0x157
+#define ALLIANCE_ANTISWORD   0xBC
+
+/* ---- register-form helpers ---- */
+
+/* register form: calls GetAIDataUnk0x48Flag outside this file, which has no typed C interface yet */
+static u32 call_get_ai_flag_48(u32 collision, u32 object) {
+    u32 sr4 = R4, sr5 = R5;
+    R4 = collision; R5 = object;
+    GUEST_CALL(GetAIDataUnk0x48Flag);
+    R4 = sr4; R5 = sr5;
+    return R0;
+}
+
+/* register form: calls GetAIData_Unk_44_Flag outside this file, which has no typed C interface yet */
+static u32 call_get_ai_flag_44(u32 collision, u32 object) {
+    u32 sr4 = R4, sr5 = R5;
+    R4 = collision; R5 = object;
+    GUEST_CALL(GetAIData_Unk_44_Flag);
+    R4 = sr4; R5 = sr5;
+    return R0;
+}
+
+/* register form: calls SetAIData_Unk_44_Flag outside this file, which has no typed C interface yet */
+static void call_set_ai_flag_44(u32 flag, u32 collision, u32 object) {
+    u32 sr4 = R4, sr5 = R5, sr6 = R6, sr7 = R7;
+    R0 = flag; R4 = collision; R5 = object;
+    GUEST_CALL(SetAIData_Unk_44_Flag);
+    R4 = sr4; R5 = sr5; R6 = sr6; R7 = sr7;
+}
+
+/* register form: calls getTable2036720EntryFields outside this file; reads r2 after call */
+static u32 call_get_table_entry(u32 alliance, u32 collision, u32 object, u32 *out_r2) {
+    u32 sr4 = R4, sr5 = R5;
+    R0 = alliance; R4 = collision; R5 = object;
+    GUEST_CALL(getTable2036720EntryFields_802CE78);
+    *out_r2 = R2;
+    R4 = sr4; R5 = sr5;
+    return R0;
+}
+
+/* register form: calls PlaySoundEffect outside this file; r4/r5 set for callee context */
+static void call_play_sound_6e(u32 collision, u32 object) {
+    u32 sr4 = R4, sr5 = R5, sr6 = R6, sr7 = R7;
+    R0 = 0x6E; R4 = collision; R5 = object;
+    GUEST_CALL(PlaySoundEffect);
+    R4 = sr4; R5 = sr5; R6 = sr6; R7 = sr7;
+}
+
+/* ---- typed logic ---- */
+
+/* Clear panel-damage array, auxiliary collision fields, status bytes,
+ * and remove hive-present / object flags that mark this collision. */
+static void clear_collision_data(u32 c) {
+    u32 p = c + oCollisionData_PanelDamage1;
+    ST16(p, 0);
+    ST16(p + 2, 0);
+    ST16(p + 4, 0);
+    ST16(p + 6, 0);
+    ST16(p + 8, 0);
+
+    ST16(c + oCollisionData_Unk_8e, 0);
+    ST16(c + oCollisionData_Unk_90, 0);
+    ST16(c + oCollisionData_Unk_92, 0);
+    ST32(c + 0x74, 0);
+    ST8(c + oCollisionData_HitModifierFinal, 0);
+    ST8(c + oCollisionData_StatusEffectFinal, 0);
+    ST16(c + 0xA4, 0);
+    ST16(c + oCollisionData_Unk_1c, 0);
+    ST16(c + oCollisionData_Unk_2a, 0);
+    ST16(c + oCollisionData_Unk_2c, 0);
+
+    ST32(c + oCollisionData_FlagsFromCollision,
+         LD32(c + oCollisionData_FlagsFromCollision) & ~MASK_HIVE_PRESENT);
+    ST32(c + oCollisionData_ObjectFlags2,
+         LD32(c + oCollisionData_ObjectFlags2) & ~MASK_OBJ_FLAGS2_CLR);
+}
+
+/* OR-combine panel damages 1,3,4,5 (damage 2 known to be zero at call site). */
+static u32 or_panel_damages(u32 c) {
+    u32 p = c + oCollisionData_PanelDamage1;
+    return LD16(p) | LD16(p + 4) | LD16(p + 6) | LD16(p + 8);
+}
+
+/* Sum five half-words at offset 0x82 in collision data. */
+static u32 sum_damages_0x82(u32 c) {
+    u32 base = c + 0x82;
+    u32 s = LD16(base);
+    s += LD16(base + 2);
+    s += LD16(base + 4);
+    s += LD16(base + 6);
+    s += LD16(base + 8);
+    return s;
+}
+
+/* Evaluate the hive-block outcome.
+ * Returns the final r2 value; r3 is left by callees via GUEST_CALL. */
+static u32 hive_block(u32 r4_in, u32 object, u32 r6_in, u32 r7_in) {
+    (void)r4_in; (void)r6_in; (void)r7_in;
+    u32 c = LD32(object + oBattleObject_CollisionDataPtr);
+    u32 r2 = 0;
+
+    /* --- Hive-up fast path --- */
+    if (call_get_ai_flag_48(c, object) & FLAG_HIVE_UP) {
+        if (LD16(c + oCollisionData_PanelDamage2) == 0) {
+            r2 = or_panel_damages(c);
+            if (r2 != 0) {
+                /* Mark AI attack variable and play hive sound */
+                u32 ai = LD32(object + oBattleObject_AIDataPtr) + 0xA0;
+                ST32(ai + oAIAttackVars_Unk_30, 1);
+                call_play_sound_6e(c, object);
+                clear_collision_data(c);
+                return r2;
+            }
+            clear_collision_data(c);
+            return r2;  /* r2 == 0 here */
+        }
+    }
+
+    /* --- General hive-block path --- */
+    u32 threshold = 0xA;
+    u32 alliance = LD8(object + oBattleObject_Alliance);
+    u32 entry = call_get_table_entry(alliance, c, object, &r2);
+
+    u32 hive_type;
+    if (entry == ALLIANCE_HIVE_BB || entry == ALLIANCE_157) {
+        hive_type = entry;
+    } else {
+        /* Check if hive-block is active for this alliance type */
+        if (call_get_ai_flag_48(c, object) & FLAG_HIVE_ACTIVE) {
+            hive_type = ALLIANCE_HIVE_BB;
+            threshold = 1;
+        } else {
+            /* Non-hive path: only AntiSword (0xBC) continues */
+            if (entry != ALLIANCE_ANTISWORD)
+                return r2;
+            if (call_get_ai_flag_44(c, object) & FLAG_ANTISWORD) {
+                clear_collision_data(c);
+                return r2;
+            }
+            u32 col_flags = LD32(c + oCollisionData_FlagsFromCollision);
+            if (!(col_flags & FLAG_SWORD_HIT))
+                return r2;
+            if (col_flags & FLAG_HIVE_INTACT)
+                return r2;
+            call_set_ai_flag_44(FLAG_ANTISWORD, c, object);
+            clear_collision_data(c);
+            return r2;
+        }
+    }
+
+    /* Shared logic for hive_type paths */
+    if (call_get_ai_flag_44(c, object) & FLAG_AI44_DONE) {
+        clear_collision_data(c);
+        return r2;
+    }
+
+    if (!(LD32(c + oCollisionData_FlagsFromCollision) & FLAG_HIGH_OBJ_BITS))
+        return r2;
+
+    r2 = sum_damages_0x82(c);
+
+    if ((s32)r2 >= (s32)threshold) {
+        call_set_ai_flag_44(
+            hive_type == ALLIANCE_HIVE_BB ? FLAG_HIVE_BROKEN : FLAG_HIVE_REBUILT,
+            c, object);
+        clear_collision_data(c);
+        return r2;
+    }
+    if (threshold == 1) {
+        clear_collision_data(c);
+        return r2;
+    }
+    return r2;
+}
+
+/* ---- thin adapter ---- */
+
+Next hiveBlockHappensHere_802CEF4(void) {
+    R2 = hive_block(R4, R5, R6, R7);
     RETURN_TO_CALLER();
 }
 

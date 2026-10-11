@@ -2441,6 +2441,85 @@ Next battle_compactFolderChipList_802945A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80295C8 ── */
+/* Scans a chip/program u16 sequence in a battle buffer.
+ * First verifies `count` consecutive words all match the target at [data_ptr+4],
+ * then walks backwards through a trailing region validating a descending value
+ * pattern (0x1A is a wildcard, at most one allowed, value must not go negative).
+ * Returns field [data_ptr+2] and adjusted offset on success, or 0 on failure. */
+
+typedef struct {
+    u32 r0;       /* result: field from data_ptr+2 on success, 0 on failure */
+    u32 r1;       /* on success: r6-8; on failure: last r1 value from loop */
+    u32 flag_a;   /* left operand of the final CMP/SUBS for flags */
+    u32 flag_b;   /* right operand of the final CMP/SUBS for flags */
+    u32 nz_val;   /* value for the final MOVS (0 on failure, r1 on success) */
+} SeqScanResult;
+
+static SeqScanResult scan_chip_sequence(u32 count, u32 data_ptr, u32 offset, u32 base) {
+    u32 r6 = offset;
+    u32 target = LD16(data_ptr + 4);
+    u32 r0, r1 = target;
+
+    /* First pass: verify `count` consecutive u16s all equal target */
+    u32 remaining = count;
+    for (;;) {
+        r0 = LD16(base + r6);
+        if (r0 != target)
+            return (SeqScanResult){0, r1, r0, target, 0};
+        r6 += 2;
+        remaining--;
+        if (remaining == 0)
+            break;
+    }
+
+    /* Advance past matched block into the trailing descending region */
+    u32 wildcard_count = 0;
+    r6 += 8;
+    r0 = LD16(base + r6) + 1;
+
+    /* Second pass: walk `count` entries validating descending pattern */
+    u32 iterations = count;
+    for (;;) {
+        r1 = LD16(base + r6);
+        if (r1 == 0x1A) {
+            /* First wildcard at the boundary: re-derive expected from prior entry */
+            if (wildcard_count == 0 && r0 == 0x1B)
+                r0 = LD16(base + r6 - 2) + 2;
+            r1 = r0 - 1;
+            wildcard_count++;
+        }
+        r0--;
+        if (r0 != r1)
+            return (SeqScanResult){0, r1, r0, r1, 0};
+        r6 -= 2;
+        iterations--;
+        if (iterations == 0)
+            break;
+    }
+
+    /* Final constraints: at most one wildcard, value must not go below 0 */
+    if ((s32)wildcard_count > 1)
+        return (SeqScanResult){0, r1, wildcard_count, 1, 0};
+    if ((s32)r0 < 0)
+        return (SeqScanResult){0, r1, r0, 0, 0};
+
+    /* Success: return data field and adjusted scan position */
+    r0 = LD16(data_ptr + 2);
+    r1 = r6 - 8;
+    return (SeqScanResult){r0, r1, r6, 8, r1};
+}
+
+/* sub_80295C8(r2 = count, r3 = data_ptr, r6 = buffer_offset, r7 = buffer_base) -> r0 r1 nzcv */
+Next sub_80295C8(void) {
+    SeqScanResult res = scan_chip_sequence(R2, R3, R6, R7);
+    R0 = res.r0;
+    R1 = res.r1;
+    SET_FLAGS_CMP(res.flag_a, res.flag_b);
+    SET_FLAGS_NZ(res.nz_val);
+    RETURN_TO_CALLER();
+}
+
 /* ── matchHalfwordPatternEntry_802961A ── */
 /* matchHalfwordPatternEntry_802961A: compare a run of halfwords against a reference list.
  * r2 = number of halfwords to check, r3 = pointer to a reference record
