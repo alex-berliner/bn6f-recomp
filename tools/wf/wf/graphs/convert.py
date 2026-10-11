@@ -463,9 +463,9 @@ def commit_conversion(given: CommitInput) -> CommitOutput:
                     uninstall_file(given.file_name)
                     raise
                 queued = tuple(row.function for row in rows)
-                files = (*files, BASELINE, QUEUE) if rows else files
         where = (f"; laid out into {', '.join(path.name for path in files)} (tools/layout.py)"
                  if given.farm_model is not None else "")
+        files = (*files, BASELINE, QUEUE) if queued else files
         message = (f"Readable {given.subsystem} ({len(given.functions)} functions, written by {latest.model})\n\n"
                    f"{', '.join(given.functions)}.\nWritten by {latest.model} through the convert workflow "
                    f"(run {current_run_id()}, attempt {latest.number}){where}; quick test and full verify passed "

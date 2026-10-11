@@ -307,6 +307,7 @@ def test_an_old_prompt_farm_group_keeps_register_form_and_queues_it_for_retype(
     assert queued == [(FUNCTION,)] and filled == [((FUNCTION,), CommitHash("c0ffee0"))]
     assert world.committed_files[0][-3:] == (BASELINE, QUEUE, REPO / "cport/host/difftest.cfg")
     assert "written by hyper/cheap+old" in world.commits[0] and "queued for retype" in world.commits[0]
+    assert "laid out into asm03_0.c (tools/layout.py)" in world.commits[0]
     assert world.committed_files[1] == (QUEUE,)   # the install commit, filled in after the record
 
 
