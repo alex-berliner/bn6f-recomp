@@ -1,0 +1,82 @@
+name: sub_800C746
+address: '0x0800C746'
+kind: function
+status: confirmed
+summary: 'Per-frame battle update: advances 6 team state counters, resolves queued panel-encounter pair events,
+  and ticks the 6×3 field-grid cell timers while toggling alliance-visibility bits.'
+interface: 'void battle_updatePanels(void); /* in: none required (reads globals); out: r3 = last grid-cell visibility
+  flag, r2 = from callee; clobbers r0 r1 lr NZCV; preserves r4 r5 r6 r7 r10 */'
+details: 'Three sequential phases. Phase 1 (teams 1-6): calls sub_800C6F0 for each team, writes 4 bytes into the
+  team''s 8-byte record at unk_2034018 + team*8 (offsets +2..+5); if first byte is zero, clears the u16 timer at
+  +6; otherwise decrements the timer and sets a flag byte at +1 to 1 when it reaches zero. Phase 2 (event queue
+  at byte_203F6B0): walks 4-byte entries (id, step, count, aux) until a 0xFF terminator; for each entry it iterates
+  ''count'' panels stepping by ''step'', collects consecutive pairs where flag[4] equals value[5] and flag[1] is
+  set, then calls battle_getPanelEntry_800C8C2 and sub_800C81E to clear matched pairs. Phase 3 (6×3 grid via object_getPanelDataOffset):
+  copies Alliance byte to Unk_07, decrements u16 Unk_10 timer, and XORs bit-2 of the decremented timer into Unk_07
+  to toggle visibility. The final r3 (last cell''s visibility) is read back by callers.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-003942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 57' --file inbox_farm_57.c sub_800C746
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800C746
+
+    ./wf verify --function sub_800C746 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 295 out
+    of domain (verify run convert-20261011-003942-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800C746
+
+    ./wf verify --function sub_800C746 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-003942-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800C746
+
+    ./wf verify --function sub_800C746 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003942-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800c746 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp 35dfb62
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/object.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does sub_800C6F0 compute per team (AI schedule? HP tick?) – no typed interface yet.
+- 'What is the 4-byte event table''s origin: scripted encounters, NavCust, or random?'
+- Is the Unk_07 ↔ Alliance copy + XOR a visual fade/blink or a hidden-then-reveal mechanic?
+- Callers depend on r3 from the last grid cell – is this a 'any panel still visible' gate?
+sources:
+- tools/wf run convert-20261011-003942
+- recomp 35dfb62
