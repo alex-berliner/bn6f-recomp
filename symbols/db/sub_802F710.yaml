@@ -1,0 +1,90 @@
+name: sub_802F710
+address: '0x0802F710'
+kind: function
+status: confirmed
+summary: Per-frame update for the start/title screen; advances fade transition and triggers game-load via the render
+  dispatch table once the fade counter is non-zero, otherwise tears down and resets visuals/animation when the fade
+  has finished.
+interface: void sub_802F710(void *self /* r5 */); clobbers r0-r3, lr, N/Z/C/V
+details: "Operates on a *mut StartScreen passed in r5.  Offset 4 is a u16 fade-transition\ncounter; offset 0 is\
+  \ the startscreen render-dispatch/jump-table offset\n(oStartScreen_JumpTableOff_00).\nLogic:\n  - While the counter\
+  \ at +4 is non-zero, calls sub_802F8D8 each frame to step the fade.\n  - Always checks IsScreenFadeActive(); if\
+  \ the fade is no longer active the function returns.\n  - If the counter is still non-zero (fade in progress),\
+  \ writes 0x0C to +0 to mark the\n    dispatch table index that the next startscreen_render_802F544 call will pick\
+  \ up,\n    which routes execution to load_game_802F756.\n  - If the counter has reached 0 (fade just completed),\
+  \ performs a full visual/animation\n    reset: zero-fills the jump table at e20094c0, clears the BG palette at\
+  \ 0x20097a0,\n    calls display-reset call_803D1AC, resets the OBJ/OAM subsystem via sub_81440D8,\n    zero-fills\
+  \ OAM via zeroFill_813D960, clears render state at 0x200AD04, sets the\n    screen mode to 0 via sub_803F6B0,\
+  \ resets the animation runner via loc_803F512,\n    and re-initialises the eStartScreenAnimationControl200B1A0\
+  \ animation control.\n  - Saves only lr; preserves r4-r7.  Tail-clean tail-call to sub_802F8D8.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_802F710
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802F710
+
+    ./wf verify --function sub_802F710 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802F710
+
+    ./wf verify --function sub_802F710 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 2 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802F710
+
+    ./wf verify --function sub_802F710 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802f710 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact meaning of offset 4 — is it a "ticks remaining" countdown or a "frames pending" latch set by the previous
+  state?
+- Why the 0x0C dispatch offset only writes when fade is still active — does the renderer commit to load_game on
+  the next frame regardless of fade end?
+- sub_802F8D8's signature and what part of the fade it advances remain untyped.
+- The negative branch (counter == 0 + fade still active) being the heavy reset path suggests this is the exit-out-of-fade
+  transition; whether the same path runs on every "fade finished" or only on title-screen exit needs confirmation.
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25

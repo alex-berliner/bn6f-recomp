@@ -1,0 +1,85 @@
+name: sub_8026B04
+address: '0x08026B04'
+kind: function
+status: hypothesis
+summary: Drives the tile-animation/wipe state of a battle custom-menu object, scrolling tiles and the camera, then
+  transitions to either the wait-selection or trigger-selection phase.
+interface: void sub_8026B04(u32 self /* r5 */, u32 toolkit /* r10 */, u32 r4, u32 r6 /* forwarded into sub_8029C08
+  */); clobbers r0 r1 r2 r3 r8 r9 r11 r12 lr, flags
+details: 'Operates on an object whose base is in r5 (referencing fields `0x40`, `0x44`, `oS20364C0_Unk_02`, `oS20364C0_Unk_0c`,
+  `oS20364C0_JumpOffset01`); the toolkit `oToolkit_RenderInfoPtr`, `oToolkit_CameraPtr`, `oToolkit_BattleStatePtr`
+  are read via r10. On the first entry with `Unk_02 == 0`, it plays sound `SOUND_SELECT_79`, writes 0x78 into `RenderInfo+0x18`
+  and `self+0x40`, calls `sub_801E71C`, `dispatch_801DACC(0x80)`, `sub_801E0A0(0xF, 0)`, sets `self+0x44 = 0xF`,
+  and stashes 0x78 in `self+oS20364C0_Unk_02`. The render loop walks `((4 & progress) >> 2) + 1` rows worth of a
+  0x14-column tilemap (stride 0x1e) sourced from `unk_2035000`, writing each tile id via `bgmap_WriteTileIdAtBlock_800187C`.
+  When battle mode is not 1, it subtracts 0x18000 from `Camera+0x34`. On completion (`progress == 0`), if `BattleState+0x07
+  == 1` it calls `RetrieveAndRenderEnemyVirusNamesInBattle_801E574`, else it damages both players at 1 HP via `battle_damagePlayerLeave1HP_8013FD0`.
+  It then picks the next state: `Unk_0c == 0xFF` -> JUMP_OFFSET_WAIT_SEL (4); `Unk_0c != 5` -> JUMP_OFFSET_TRIGGER
+  (0x2C); `Unk_0c == 5` with `BattleState+7 >= 5` -> WAIT_SEL, otherwise TRIGGER. Ends by invoking `sub_8029C08`
+  and returning. Sub_8029C08 consumes r4/r6 (caller-saved), which is reflected in the interface.'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_8026B04
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8026B04
+
+    ./wf verify --function sub_8026B04 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8026B04
+
+    ./wf verify --function sub_8026B04 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8026B04
+
+    ./wf verify --function sub_8026B04 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08026b04 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact identity of the object type S20364C0 (a battle cut-in / custom-menu subcontroller?).
+- What `oS20364C0_Unk_0c == 0xFF` semantically represents (e.g., a parent script flag) and what the 5/0xFF branches
+  encode in this custom-menu flow.
+- Why the camera scroll is skipped only when `GetBattleMode() == 1` (which battle mode that is).
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25

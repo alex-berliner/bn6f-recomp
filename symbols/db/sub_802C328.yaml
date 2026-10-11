@@ -1,0 +1,80 @@
+name: sub_802C328
+address: '0x0802C328'
+kind: function
+status: confirmed
+summary: 'Advances a battle state object''s screen-fade: kicks off the fade if not yet started, polls liveness,
+  and parks the object in state 8 while the fade is still in progress.'
+interface: "void Next(u32* battle_obj /* r5 */);\n  // kicks SetScreenFade(0xC, 0x10) on first entry (byte @+3 ==\
+  \ 0),\n  // then on every call reads IsScreenFadeActive(); while Z clear\n  // (still fading) writes 8 to battle_obj[0]\
+  \ and yields 8, else\n  // yields whatever r0 the liveness check produced.\n"
+details: "- Operates on a small battle-state struct held in r5: byte at offset 3 is a\n  \"fade-started\" flag;\
+  \ word at offset 0 is the current state value.\n- First pass: byte @+3 == 0 -> call SetScreenFade(0xC, 0x10) (duration\
+  \ +\n  mode/target mask), then stash 4 into byte @+3 so the kickoff only runs once.\n- Every call: tail-calls\
+  \ IsScreenFadeActive and branches on its Z flag:\n    * Z clear -> fade still in progress -> store 8 into the\
+  \ word at @+0 and\n      leave r0 = 8 (per the disassembly's `mov r0,#8 / str r0,[r5]` path).\n    * Z set   ->\
+  \ fade finished -> return IsScreenFadeActive's r0 unchanged\n      to the caller.\n- r5 is preserved across the\
+  \ function (it points at the caller-owned object),\n  and it is also the only input that survives into the epilogue;\
+  \ lr is saved\n  on entry for a tail-call via `pop {pc}`.\n- SetScreenFade and IsScreenFadeActive are external\
+  \ (no in-file body), so\n  their semantics (10=toward-black screen wipe, Z meaning \"fade complete\")\n  are inferred\
+  \ from the BN6 fade library rather than verified here.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_802C328
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802C328
+
+    ./wf verify --function sub_802C328 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802C328
+
+    ./wf verify --function sub_802C328 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802C328
+
+    ./wf verify --function sub_802C328 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802c328 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Does r0 = 8 returned while fading carry a particular caller-side meaning (e.g. "stay in this step, poll again
+  next tick"), and what state code finally replaces it once the fade goes inactive?
+- Is the byte @+3 = 4 written here consumed only as a "kicked off" sentinel, or does some other code branch on the
+  value 4 specifically?
+- What does r0 hold when IsScreenFadeActive reports the fade done — does it return 0, the just-finished state, or
+  something dependent on mode 0x10?
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25

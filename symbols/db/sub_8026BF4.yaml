@@ -1,0 +1,117 @@
+name: sub_8026BF4
+address: '0x08026BF4'
+kind: function
+status: confirmed
+summary: Per-frame scroll-strip update — init gate, copy zero-tile columns, advance scroll, shift camera, and notify
+  the scroll subsystem.
+interface: void sub_8026BF4(struct S20364C0 *self /* r5 */, struct Toolkit *toolkit /* r10 */); /* clobbers r0-r3,r6-r9,r11-r12,nzcv;
+  preserves r5-r7 */
+details: 'Operates on a strip-scroll object at r5 (''S20364C0'') using toolkit at r10.
+
+  First-call init gated by self->Unk_02: zeros the two extra pointers
+
+  (offset 0x40 and 0x44), sets Unk_02=TRUE, dispatches a BG tile-stream
+
+  update via dispatch_801DACC(0x2000), calls sub_8029D80, and clears
+
+  BATTLE_STATE_UNK_11_FLAG_UNK_BIT_02 (0x4) through
+
+  clearBattleStateUnk11Flag_800A9D6.
+
+  Per frame: loads self->Extra_Unk_40, adds 0xC, derives an iteration
+
+  count (2 when bit 2 of scroll_pos is clear, 1 otherwise); loops that
+
+  many times incrementing self->Extra_Unk_44 and calling
+
+  CopyBackgroundTiles(j, i=0, tileBlock32x32=3,
+
+  tileIds=&byte_8026C88 (64 zeros), j_size=1, i_size=0x14).
+
+  Outside battle mode 1 (GetBattleMode()!=1), shifts camera+0x34 by
+
+  0x18000 (one tile block) using r10''s oToolkit_CameraPtr.
+
+  Writes the new scroll_pos back to self->Extra_Unk_40 and stores its
+
+  low half at render_info+0x18. Calls sub_801E71C(0x78 - scroll_pos,
+
+  scroll_pos). When scroll_pos reaches 0x78, copies self->B (offset 0xB)
+
+  into self->0x1 and zeros self->0x2 (strip wrap / loop reset).
+
+  Always tails in sub_8029C08(self) as the per-frame callback.
+
+  Quirks: r2/r3 must thread the camera pointer and 0x18000 constant
+
+  through to sub_8029C08 in mode 1 they hold CopyBackgroundTiles output;
+
+  a non-standard mixed ARM/Thumb-style argument pass.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_8026BF4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8026BF4
+
+    ./wf verify --function sub_8026BF4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8026BF4
+
+    ./wf verify --function sub_8026BF4 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8026BF4
+
+    ./wf verify --function sub_8026BF4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08026bf4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is S20364C0 used for (battle strip? virus/player select? presentation panel?)
+- Meaning of fields oS20364C0_Unk_02 / Extra_Unk_40 / Extra_Unk_44 / 0x0B / 0x01 / 0x02
+- Why the zero-tile copy (placeholder column fill for new scroll region?)
+- Exact role of dispatch_801DACC(0x2000) and sub_8029D80 / sub_8029C08 / sub_801E71C
+- Why camera Y is shifted and only when not in battle mode 1
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25

@@ -1,0 +1,115 @@
+name: sub_802A40C
+address: '0x0802A40C'
+kind: function
+status: confirmed
+summary: Computes the beast-transformation turn counter for the current Navi and stores it into the caller's buffer
+  at offset 6.
+interface: void sub_802A40C(u8* dest /* r5 */, const Toolkit* toolkit /* r10 */)
+details: 'Reads the battle mode via GetBattleMode; for link/cross modes (2,3,4,5,8) it
+
+  short-circuits and writes a fixed counter of 5 to [dest + 6].
+
+
+  Otherwise queries the BattleState alliance (offset 0x0d) and, via
+
+  callPossiblyGetBattleEmotion_8015B54, the current transformation state.
+
+  Transformations 0xA and 0x16 are treated as "beast forms" that bypass the
+
+  beast-over flow.
+
+
+  The base counter is BattleNaviStats stat 0xA + the global overflow byte at
+
+  0x20349B1 (dword_20349A0 + 0x11), clamped to a maximum of 8. Any amount
+
+  over 8 is split off as `overflow`.
+
+
+  If the Navi is NOT in a beast form and battle_isBeastOverEnabled_802A5A0
+
+  reports the beast-over mechanic active, the counter is forced to 0xA and
+
+  `overflow` is reloaded with the raw global byte.
+
+
+  Finally the Navi''s agitation stat (0x63) is fetched. When nonzero and the
+
+  damage tally at BattleState+0x07 already equals/exceeds it, `overflow` is
+
+  reduced by (damage - agitation + 1). If overflow goes negative, the counter
+
+  is decreased by |overflow| but is floored at 2 (never goes lower).
+
+
+  Writes the resulting counter byte to [dest + 6]. Preserves r4..r7 for its
+
+  caller.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_802A40C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802A40C
+
+    ./wf verify --function sub_802A40C --snapshots build-snapshots'
+  result: 'captured calls: 26 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802A40C
+
+    ./wf verify --function sub_802A40C --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802A40C
+
+    ./wf verify --function sub_802A40C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802a40c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- The destination buffer (r5) layout is not fully identified; only byte at offset 6 is touched here.
+- Exact meaning of BattleState + 0x07 (damage tally?) and the transformation IDs 0xA vs 0x16 (Mega/Beast/Giga forms)
+  needs cross-game verification.
+- The "beast-over" subsystem at 0x20349A0 is referenced as an overflow byte at +0x11; surrounding fields are unknown.
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25

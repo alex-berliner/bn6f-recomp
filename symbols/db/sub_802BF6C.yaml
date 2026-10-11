@@ -1,0 +1,85 @@
+name: sub_802BF6C
+address: '0x0802BF6C'
+kind: function
+status: confirmed
+summary: Refills and shuffles the 42-slot chip pool, then queues tile+palette image transfers for a chip or soul
+  preview based on the packed id stored in the caller struct.
+interface: 'void sub_802BF6C(u32 toolkit /* r5 */) -> /* r7: chip data ptr or pool base */; r0=4, NZ set'
+details: "Operates on a caller-supplied \"toolkit\" struct in r5. Initializes a 0x2A-byte\npool at unk_2035320 with\
+  \ sequential indices 0..41, then shuffles them via\nShuffleByteList_PrimaryRNG with the PrimaryRNG seed (count\
+  \ == swaps == 0x2A).\n\nReads a packed u16 ID at toolkit+0x10. If equal to 0xFFFF, falls back to the\ndefault\
+  \ chip tile palette pointer pair (dword_8733E74 / dword_87343B4).\nOtherwise it is decoded via decodePackedIdFields_802C54C\
+  \ into (type, sub_id)\nand the (image_src, extra_src) pointer pair is selected:\n  - type 0: real chip -- getChip8021DA8(sub_id)\
+  \ returns a ChipData*; image_src\n    and extra_src are loaded from +0x24 and +0x28 of that struct, and r7\n \
+  \   becomes the ChipData pointer.\n  - type 1: soul palette with two fixed table pointers.\n  - type 2: sub_id\
+  \ 0 picks the table at dword_8733914/dword_8733E54, else\n    dword_87333B4/dword_87338F4.\n  - type 3: sub_id\
+  \ 1..4 index steps of 0x20 bytes into dword_87343F4 /\n    dword_8734934 (a 4-entry image table).\n  - default:\
+  \ same fallback as the 0xFFFF branch.\n\nTwo QueueEightWordAlignedGFXTransfer calls then upload:\n  image_src\
+  \ (0xA80 = 0x2A<<6 bytes) -> 0x600BD00 (primary VRAM)\n  extra_src (0x20 bytes)           -> unk_3001AE0 (secondary/palette\
+  \ buffer)\n\nThe function clears toolkit+0xB (in-progress flag) and writes toolkit+3 = 4\n(state/phase 4 = \"\
+  done\"/\"loaded\"). Returns r7 (chip data ptr for type 0,\notherwise the pool base) to the caller. Preserved:\
+  \ r4, r5, r6.\n\n`are inferred offsets; no struct` is a recovered artifact, not real API: the\noffsets +0x24 and\
+  \ +0x28 on the ChipData blob and toolkit fields +0xB / +3\nare placeholders for the still-unnamed caller/NPC structures.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_802BF6C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802BF6C
+
+    ./wf verify --function sub_802BF6C --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 245 out of
+    domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802BF6C
+
+    ./wf verify --function sub_802BF6C --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802BF6C
+
+    ./wf verify --function sub_802BF6C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802bf6c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What struct does r5 actually point to? Only +0x10 (packed id), +0xB and +3 are exercised here; the rest of the
+  toolkit is owned by the caller.
+- The dword_87xxxxx tables are 32-bit constants whose uses suggest they are ROM tile/palette sources, but their
+  contents and labels need resolution (likely art asset tables indexed by chip code).
+- Sub_id semantics for type 3 only map 4 distinct values; values >4 still pick offset 0x60, so the upper bound is
+  unclear.
+- Why r7 is returned is unclear; the readable C treats it as an indirect chip data handle for the type 0 case, but
+  the value seems unused by the immediate callers observed in this function's register contract.
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25

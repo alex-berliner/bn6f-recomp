@@ -1,0 +1,89 @@
+name: sub_80466D8
+address: '0x080466D8'
+kind: function
+status: confirmed
+summary: Walks a battle object's hitbox entries, applies X/Y mirror flags, and updates the on-screen flag byte and
+  active-hitbox bitmask for that object.
+interface: "void sub_80466D8(struct BattleObject* r5 /* in */) ->\n    r3 (flags byte stored back at obj+3),\n \
+  \   r6 (mask-without-MSB in normal mode, or original Y in alternate mode),\n    r8 (X-mirror flag 0/1),\n    r9\
+  \ (Y-mirror flag 0/1),\n    r12 (original Y coordinate);\n    clobbers nz,cv r0,r1,r2,r4,r7; preserves r5; LR\
+  \ return.\n"
+details: "Operates on a battle object passed in r5. Reads:\n  - obj+0xC as s16: object X (base)\n  - obj+0xE as\
+  \ s16: object Y (base)\n  - obj+0x13 byte bits 0x10/0x20: X-mirror / Y-mirror flags (saved into r8/r9)\n  - obj+0x1C->+0xC:\
+  \ pointer to a \"hitbox table base\"\n  - obj+0x18: index/offset into that table\n  - obj+0x20[0]: 1-byte type\
+  \ id used to index that table at +((type<<2))\nEach hitbox entry is 5 bytes: byte 0 is the terminator 0xFF; bytes\
+  \ 1 and\n2 are signed X/Y offsets from the object origin. Offsets are negated when\nthe matching mirror flag is\
+  \ set. Each entry whose resulting screen position\nfalls within X in [-64, 305) and Y in [-32, 193) sets one bit\
+  \ in a\n32-bit activeMask (MSB corresponds to the first entry, walked down).\nAfter the scan:\n  - obj+0x3 (flags\
+  \ byte) is rewritten:\n      * If bit 2 (0x4) is set on entry: alternate mode; clear bits 1 and 3\n        (0xA)\
+  \ and set both only if activeMask is non-zero.\n      * Otherwise: clear bit 3 (0x8) and set it only if\n    \
+  \    (activeMask & ~0x80000000) is non-zero (the \"visible without MSB\"\n        mask), then clear bit 1 (0x2)\
+  \ and set it only if the full\n        activeMask is non-zero.\n  - obj+0x28 gets the full activeMask stored as\
+  \ a u32.\nThe function is a \"shadow\"/\"hitbox visibility\" scan used by battle object\nbookkeeping (likely related\
+  \ to shadow rendering and hit detection). Note the\nflag byte bit numbering in the C comments uses the host order\
+  \ (bits 1/3 =\n0x2/0x8); the assembly masks with 0x8 and 0x2 explicitly.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_80466D8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80466D8
+
+    ./wf verify --function sub_80466D8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80466D8
+
+    ./wf verify --function sub_80466D8 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 2 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80466D8
+
+    ./wf verify --function sub_80466D8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080466d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of the 0x4 mode flag at obj+3 (alternate behavior) — not confirmed which subsystem sets it.
+- Whether obj+0x28 is consumed elsewhere as a hitbox active mask or as a shadow-cache for the next frame.
+- Why the MSB entry is treated specially in normal mode but not in the alternate mode.
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25

@@ -1,0 +1,89 @@
+name: sub_8029032
+address: '0x08029032'
+kind: function
+status: confirmed
+summary: 'Handles the confirm/exit action on the custom-screen chip submenu: clears a pending jack-in if nothing
+  is selected, or pops the highlighted chip slot, redrawing tile data and updating the slot count, before exiting
+  the custom screen.'
+interface: void sub_8029032(u32 *state_ptr /* r5 */);
+details: "State struct (offsets in bytes):\n  +0x08: chip-slot selection index (read, decremented on pop)\n  +0x17:\
+  \ submenu flag byte cleared on the popped-chip path\n  +0x19: jack-in pending flag\n  +0x1a, +0x1b: pending-attribute\
+  \ index/counter\n  +0x47+idx: active-chip lookup index (passed to getLocOfActiveChips_8027E1C)\n  +0x55+pending_idx:\
+  \ pending jack-in attribute slot\nPer-chip struct (pointer returned by getLocOfActiveChips_8027E1C):\n  +0: chip\
+  \ kind (2 = unselectable slot, sentinel for immediate pop)\n  +4: flag byte, bits cleared with `& ~0x3E` after\
+  \ popping\n  +5: linked-slot index into the active-chips table (used to clear another chip's +7 byte)\n  +7: per-chip\
+  \ status byte, cleared at the end of the function\n  +8: pointer to chip data word; first halfword passed to sub_802A00C\n\
+  Flow:\n  \"- If selection count == 0 and jack-in pending flag == 0: play SOUND_CANT_JACK_IN and return.\"\n  -\
+  \ If selection count == 0 and jack-in pending flag set: clear attribute slot at +0x55+pending_idx,\n    reset\
+  \ +0x1a/+0x19, play SOUND_CONFIRM (0x1D2), call battle_ClearPendingEventFlag_802A0EC,\n    then fall through to\
+  \ the exit path.\n  - Otherwise fetch the active chip at +0x47+selection. If chip kind == 2, decrement slot count,\n\
+  \    redraw tiles (sprite_CopyObjTilesToVramSlot_80281D4 with slot 0x1FF), update display via\n    sub_8029CD4,\
+  \ clear pending event flag, play SOUND_EXIT_SUBMENU and SOUND_CONFIRM, clear +0x17.\n  - For non-kind-2 chips,\
+  \ call sub_802A00C on the chip's data halfword; on non-zero result play\n    the exit + confirm pair and clear\
+  \ the pending event flag, then pop the slot the same way.\n    If chip +5 (linked index) is non-zero, clear that\
+  \ linked chip's +7 byte and strip bits from\n    its +4 byte.\n  - Always clears chip +7 at the end, then calls\
+  \ customScreen_ExitSequence_8028E32, sub_8028476,\n    and plays SOUND_EXIT_SUBMENU before returning.\nQuirks:\
+  \ Two sound effects (SOUND_EXIT_SUBMENU and 0x1D2) are played back-to-back on several\npaths; the chip pop redraw\
+  \ uses the constant VRAM slot 0x1FF; the +0x55 attribute-clearing\npath uses a runtime offset add (`add r1, r1,\
+  \ r0`) instead of a fixed write.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_8029032
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8029032
+
+    ./wf verify --function sub_8029032 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8029032
+
+    ./wf verify --function sub_8029032 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8029032
+
+    ./wf verify --function sub_8029032 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, fuzz, maps, story2, story5, story6, story8, story9.'
+  reproduce: grep -l '^08029032 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- story2
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What exactly are the chip struct fields +4/+5/+7 (linked chip pair/team flag, active flag)?
+- What does sub_802A00C test against the chip data word to decide whether the confirm sound path runs?
+- What does sub_8029CD4 do with its two zero args (R1, R2) when invoked here?
+- Is the +0x17 clear related to the "chip-fold-in" substate of the custom screen?
+- Why are two distinct sound effects played in immediate succession on the confirm paths?
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25

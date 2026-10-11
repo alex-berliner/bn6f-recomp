@@ -1,0 +1,93 @@
+name: sub_8034C36
+address: '0x08034C36'
+kind: function
+status: confirmed
+summary: Gate check that returns true when the player is allowed to auto-advance one tile forward on the overworld
+  (no fade, no advance/sliprun event, no busy subsystem, no chatbox mask 0x80, no cutscene).
+interface: bool sub_8034C36(void); // r0 out = 1 allowed, 0 blocked; NZ flags from final MOV r0
+details: 'Calls in order: IsScreenFadeActive (skip -> false), TestEventFlagFromImmediate with
+
+  EVENT_1717_PLAYER_ADVANCE_FORWARD (set -> false), TestEventFlagFromImmediate with
+
+  EVENT_IN_SLIPRUN_STATE (set -> false), sub_809E462 (nonzero -> false),
+
+  chatbox_mask_eFlags2009F38 with bit 0x80 (nonzero -> false), IsCutsceneScriptNonNull
+
+  (non-null -> false). If every check passes, returns 1; otherwise 0. Globally named
+
+  event flag "EVENT_1717_PLAYER_ADVANCE_FORWARD" (group 0x17, bit 0x17) is the explicit
+
+  "advance one tile forward" trigger; the sliprun flag (group 0x17, bit 0x3D) gates
+
+  against dashing through the same logic.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_8034C36
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8034C36
+
+    ./wf verify --function sub_8034C36 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8034C36
+
+    ./wf verify --function sub_8034C36 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8034C36
+
+    ./wf verify --function sub_8034C36 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08034c36 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which overworld step function consumes this result (likely the auto-march tick that nudges the player forward
+  while a direction is held).
+- What sub_809E462 and chatbox_mask_eFlags2009F38(0x80) actually track (busy subsystems / dialog open respectively,
+  pending verification).
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
