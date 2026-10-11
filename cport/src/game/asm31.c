@@ -286,6 +286,131 @@ Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C3F00 ── */
+/* sub_80C3F00: initialize a battle object's sprite (panels, sprite, anim, palette, flip),
+ * set the state phase to CUR_STATE_UPDATE_sub_80C3F00, then tail-call sub_80C3F52. */
+
+#define CUR_STATE_UPDATE_sub_80C3F00 4
+
+/* register form: calls object_setPanelsFromCoordinates outside this file, which has no typed C interface yet */
+static void call_object_setPanelsFromCoordinates(void) {
+    GUEST_CALL(object_setPanelsFromCoordinates);
+}
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void call_sprite_load_sub_80C3F00(u32 bank, u32 a1, u32 a2) {
+    R0 = bank;
+    R1 = a1;
+    R2 = a2;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_sprite_loadAnimationData_sub_80C3F00(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void call_sprite_noShadow_sub_80C3F00(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_sprite_setAnimation_sub_80C3F00(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_getPalette outside this file, which has no typed C interface yet */
+static u32 call_sprite_getPalette(u32 obj) {
+    R0 = obj;
+    GUEST_CALL(sprite_getPalette);
+    return R0;
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void call_sprite_setPalette_sub_80C3F00(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls object_getFlip outside this file, which has no typed C interface yet */
+static u32 call_object_getFlip(void) {
+    GUEST_CALL(object_getFlip);
+    return R0;
+}
+
+/* register form: calls sprite_setFlip outside this file, which has no typed C interface yet */
+static void call_sprite_setFlip(u32 flip) {
+    R0 = flip;
+    GUEST_CALL(sprite_setFlip);
+}
+
+/* register form: calls sub_80C3F52 outside this file, which has no typed C interface yet.
+ * The original ends with `pop {r4-r7, pc}` whose loaded PC value is the SAVED lr pushed at
+ * entry (the caller's lr, not a within-function address). We model that: this function is
+ * tail-called by the adapter, which supplies the correct LR. */
+static u32 call_sub_80C3F52(void) {
+    GUEST_CALL(sub_80C3F52);
+    return R0;
+}
+
+/* Typed implementation. The original pops the caller-saved LR pushed at entry and jumps to it,
+ * so the visible outputs are whatever R0..R7 end up as after sub_80C3F52, plus the saved R4..R7
+ * and LR restored from the stack frame. Since the helpers above already preserve R4..R7 and we
+ * never touch them in typed code, only R0 matters here as a flag/source. */
+static u32 sub_80C3F00_typed(u32 obj_ptr) {
+    u32 obj = obj_ptr;
+
+    call_object_setPanelsFromCoordinates();
+
+    /* sprite_load(0x80, Param1, Param2) */
+    call_sprite_load_sub_80C3F00(0x80, LD8(obj + oBattleObject_Param1), LD8(obj + oBattleObject_Param2));
+
+    call_sprite_loadAnimationData_sub_80C3F00();
+    call_sprite_noShadow_sub_80C3F00();
+
+    /* OR 0x02 into object header flags. */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Animation id from ExtraVars[4]; store as current anim and call sprite_setAnimation. */
+    {
+        u32 anim = LD32(obj + oBattleObject_ExtraVars + 4);
+        ST8(obj + oBattleObject_CurAnim, anim);
+        ST8(obj + oBattleObject_CurAnimCopy, anim);
+        call_sprite_setAnimation_sub_80C3F00((u8)anim);
+    }
+
+    call_sprite_loadAnimationData_sub_80C3F00();
+
+    /* Palette: default to Param4; if Param3 == 0, inherit from RelatedObject1Ptr's palette. */
+    {
+        u32 param3 = LD8(obj + oBattleObject_Param3);
+        u32 palette;
+        if (param3 == 0) {
+            u32 related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+            palette = call_sprite_getPalette(related);
+        } else {
+            palette = LD8(obj + oBattleObject_Param4);
+        }
+        call_sprite_setPalette_sub_80C3F00(palette);
+    }
+
+    call_sprite_setFlip(call_object_getFlip());
+
+    /* Mark the object as being in the update phase, then tail-call sub_80C3F52. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE_sub_80C3F00);
+
+    return call_sub_80C3F52();
+}
+
+Next sub_80C3F00(void) {
+    u32 r0 = sub_80C3F00_typed(R5);
+    SET_FLAGS_NZ(r0);
+    R0 = r0;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_ResetObjectTimerTo8_80C4072 ── */
 /* battle_ResetObjectTimerTo8_80C4072(r0 = object pointer):
  * If the object exists, reset the field at offset +8 to 8 (likely a wait/counter).
@@ -305,6 +430,106 @@ Next battle_ResetObjectTimerTo8_80C4072(void) {
 Next battle_SetObjectExtraFlag14_80C4086(void) {
     if (R0 != 0)
         ST32(R0 + oBattleObject_ExtraVars + 0x14, 1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C4368 ── */
+/* CUR_STATE_UPDATE_sub_80C4368 is the value used by the original when priming the state machine. */
+#define CUR_STATE_UPDATE_sub_80C4368 4
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void sprite_load_guest(u8 sprite_id, u8 tile_id, u8 anim_id) {
+    R0 = sprite_id;
+    R1 = tile_id;
+    R2 = anim_id;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_loadAnimationData_guest(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_noShadow_guest(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_getPalette outside this file, which has no typed C interface yet */
+static u32 sprite_getPalette_guest(u32 related_object_ptr) {
+    R0 = related_object_ptr;
+    GUEST_CALL(sprite_getPalette);
+    return R0;
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void sprite_setPalette_guest(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_setAnimation_guest(u8 anim_id) {
+    R0 = anim_id;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static void sprite_update_guest(void) {
+    GUEST_CALL(sprite_update);
+}
+
+/* register form: calls sub_80C43C4 outside this file, which has no typed C interface yet */
+static void sub_80C43C4_guest(void) {
+    GUEST_CALL(sub_80C43C4);
+}
+
+/* Palette pass-through: if the object has no partner (Param2 == 0), use the related
+ * object's pointer as the palette; otherwise use palette 0 (the original's `mov r0, #0`). */
+static u32 pick_palette(u32 battle_object_ptr) {
+    if (LD8(battle_object_ptr + oBattleObject_Param2) == 0)
+        return LD32(battle_object_ptr + oBattleObject_RelatedObject1Ptr);
+    return 0;
+}
+
+/* Set up a battle object's sprite: collision data, sprite/animation data, palette,
+ * initial animation, then hand off to sub_80C43C4 to finish the state init. */
+static void battle_object_sprite_setup(u32 battle_object_ptr) {
+    u8 param1 = LD8(battle_object_ptr + oBattleObject_Param1);
+
+    /* Collision data table indexed by Param1. */
+    ST32(battle_object_ptr + oBattleObject_CollisionDataPtr,
+         LD32(A_off_80C42D4 + ((u32)param1 << 2)));
+
+    /* Sprite tile/anim ids from the per-Param1 entry table. */
+    u32 sprite_table_entry = A_byte_80C4320 + (u32)param1 * 2;
+    u8 tile_id  = LD8(sprite_table_entry);
+    u8 anim_raw = LD8(sprite_table_entry + 1);
+
+    sprite_load_guest(0x80, tile_id, anim_raw);
+    sprite_loadAnimationData_guest();
+    sprite_noShadow_guest();
+
+    /* Pick a palette: 0 by default, or the related object's pointer when Param2 == 0. */
+    u32 palette = pick_palette(battle_object_ptr);
+    if (LD8(battle_object_ptr + oBattleObject_Param2) == 0)
+        palette = sprite_getPalette_guest(palette);
+    sprite_setPalette_guest(palette);
+
+    /* Kick off the requested initial animation. */
+    u8 initial_anim = LD8(battle_object_ptr + oBattleObject_Param4);
+    ST16(battle_object_ptr + oBattleObject_CurAnimAndCurAnimCopy, initial_anim);
+    sprite_setAnimation_guest(initial_anim);
+    sprite_loadAnimationData_guest();
+    sprite_update_guest();
+
+    ST32(battle_object_ptr + oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+         CUR_STATE_UPDATE_sub_80C4368);
+    sub_80C43C4_guest();
+}
+
+Next sub_80C4368(void) {
+    battle_object_sprite_setup(R5);
     RETURN_TO_CALLER();
 }
 

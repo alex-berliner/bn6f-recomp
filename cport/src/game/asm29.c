@@ -851,6 +851,25 @@ Next sub_80A9C26(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80AA004 ── */
+/* Copy 16 bytes from the indexed entry in the oam-related table at byte_80AA01C
+ * into the chip/pet header buffer at byte_2001130. Index is the low nybble of r0;
+ * each entry is 16 bytes. */
+static void copy_oam_template(u32 index) {
+    /* register form: calls CopyBytes outside this file, which has no typed C interface yet */
+    R0 = A_byte_80AA01C + (index << 4);
+    R1 = A_byte_2001130;
+    R2 = 0x10;
+    GUEST_CALL(CopyBytes);
+}
+
+Next sub_80AA004(void) {
+    copy_oam_template(R0);
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── palette_copyTableRow_80AA104 ── */
 /* palette_copyTableRow_80AA104(r0 = row selector, 0..2):
  * Copies one 8-byte entry (a palette row: three colors plus terminator)
@@ -1254,6 +1273,29 @@ Next sub_80AA5F4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80AA6A4 ── */
+/* Jump-table dispatcher. Picks one of 12 handlers indexed by R0 from
+ * JumpTable80AA6B8, then tail-calls it. r2..r12/lr are forwarded to the
+ * handler and the handler's result comes back in r0 (the original lists
+ * r0 and r2..r12 as outputs; r1 is clobbered by the lookup+indirect call). */
+
+/* register form: calls an indexed game handler outside this file. The
+ * handler addresses live in the game's static jump table at A_JumpTable80AA6B8
+ * and each entry is a Thumb target (already includes the +1 thumb bit).
+ * We resolve the address here, set R0 to it, and tail-call via the address
+ * just like the original's `mov lr, pc; bx r0` followed by `pop {pc}`. */
+static void dispatch_handler(u32 index) {
+    u32 target = LD32(A_JumpTable80AA6B8 + (index << 2));
+    GUEST_CALL_ADDR(target);
+}
+
+/* sub_80AA6A4(r0 = handler index) -> r0 (handler's return value),
+ *                                    r2..r12 forwarded from handler */
+Next sub_80AA6A4(void) {
+    dispatch_handler(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── alwaysTrue_80AA6E8 ── */
 /* alwaysTrue_80AA6E8:
  * Trivial helper that always reports "true". Sets R0 = 1 and flags NZ for
@@ -1390,6 +1432,68 @@ Next sub_80AA8E0(void) {
 
     R0 = setupResult;
     R1 = battleFlag;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AAA98 ── */
+/* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */
+static u32 get_positive_signed_rng(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return R0;
+}
+
+/* Damage jitter for one hit.
+ *   param1     base/lookup index (r0)
+ *   bonus      signed value compared against (r2/8)*3 (r1)
+ *   raw_mag    drives the (r2/8)*3 cap (r2)
+ *   mode       0 = lookup+jitter+bonus, 1 = jitter+bonus, 2 = force jitter=2 then mode 0
+ * Returns the result left in r0 (the original's last ADDS path's final add). */
+static u32 damage_jitter(u32 param1, s32 bonus, u32 raw_mag, u32 mode) {
+    u32 cap = 0x14;
+    u32 mag_shifted = raw_mag >> 3;
+    u32 cmp_value = mag_shifted * 3;            /* (r2/8) + (r2/8) + (r2/8) */
+
+    /* cmp r1, r3 ; ble +2 ; mov r0,#0 — branch on signed */
+    if (bonus > (s32)cmp_value)
+        cap = 0;
+
+    u32 rng = get_positive_signed_rng();
+    u32 step = ((rng >> 8) & 1u) * 2u;          /* (rng>>8) & 1, then doubled */
+    u32 lookup = (rng >> 16) & 0xFu;           /* next byte & 0xF */
+
+    for (;;) {
+        switch (mode) {
+        case 0: {
+            u8 base = LD8(A_byte_8020B9C + (param1 << 4) + lookup);
+            /* original computes add,add,add (last is ADDS r0,r0,r1 -> r0 = base+step+cap) */
+            return (u32)(base + step + cap);
+        }
+        case 1: {
+            /* step + cap; the original's last op here is ADDS r0,r0,r1 */
+            return (u32)(step + cap);
+        }
+        case 2: {
+            step = 2;
+            mode = 0;
+            continue;
+        }
+        default:
+            /* original: b loc_80AAAFA (infinite loop on any other value) */
+            continue;
+        }
+    }
+}
+
+/* sub_80AAA98(r0=param1, r1=bonus, r2=raw_mag, r3=mode, r4=preserved) -> c v r0 r4 */
+Next sub_80AAA98(void) {
+    u32 out_r0 = damage_jitter(R0, (s32)R1, R2, R3);
+    R0 = out_r0;
+    /* Original's last flag-setting instruction on every exit path is
+     * ADD(S) r0, r0, r1 (the final step's bonus add). With r1=0 here
+     * (the prior add consumed the bonus into r0 then b exit), the flags
+     * equal those of ADD r0, #0. */
+    SET_FLAGS_ADD(R0, 0);
+    /* R4 preserved (typed function never touches it). */
     RETURN_TO_CALLER();
 }
 
