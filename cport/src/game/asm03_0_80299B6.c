@@ -8,6 +8,129 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_80299B6 ── */
+/* Returns the navi-cust battle preparation status for the given battle object pointer.
+ * r3_out reports the final r3 value the original leaves behind: unchanged (r3_in) on the
+ * early-exit paths, 0x48 after the mode-1 path, 0x49 after the mode-2+ path. */
+typedef struct { u8 status; u32 r3_out; } PrepResult;
+
+static PrepResult get_prep_status(u32 obj_ptr, u32 r3_in) {
+    PrepResult r;
+
+    u8 state = LD8(obj_ptr + 7);
+    if (state != 0xA) {
+        /* Early exit: only the first state byte was examined, r3 untouched. */
+        r.status = 0;
+        r.r3_out = r3_in;
+        return r;
+    }
+
+    u8 mode = LD8(obj_ptr + 8);
+    if (mode == 0) {
+        r.status = 8;
+        r.r3_out = r3_in;
+        return r;
+    }
+
+    if (mode == 1) {
+        /* Read the single slot byte at offset 0x48. */
+        r.r3_out = 0x48;
+        u8 slot0 = LD8(obj_ptr + 0x48);
+        r.status = (slot0 != 0) ? 8 : 0xD;
+        return r;
+    }
+
+    /* mode >= 2: read both slot bytes at 0x48 and 0x49. */
+    r.r3_out = 0x49;
+    u8 slot0 = LD8(obj_ptr + 0x48);
+    u8 slot1 = LD8(obj_ptr + 0x49);
+
+    if (slot0 == 0) {
+        /* (0, 1) -> 0, otherwise (0, !=1) -> 0xD */
+        r.status = (slot1 == 1) ? 0 : 0xD;
+    } else if (slot0 == 1 && slot1 == 0) {
+        r.status = 9;
+    } else {
+        r.status = 8;
+    }
+    return r;
+}
+
+/* sub_80299B6(r5 = battle object pointer) -> r0 = prep status, r3 = 0x48/0x49 read */
+Next sub_80299B6(void) {
+    PrepResult r = get_prep_status(R5, R3);
+    R0 = r.status;
+    R3 = r.r3_out;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8029A56 ── */
+/* register form: calls sub_8029AAA outside this file, which has no typed C interface yet */
+static u32 sub_8029AAA_register_form(void) {
+    GUEST_CALL(sub_8029AAA);
+    return R0;
+}
+
+/* register form: calls sub_8029ADA outside this file, which has no typed C interface yet */
+static u32 sub_8029ADA_register_form(void) {
+    GUEST_CALL(sub_8029ADA);
+    return R0;
+}
+
+/* register form: calls sub_8029B16 outside this file, which has no typed C interface yet */
+static u32 sub_8029B16_register_form(void) {
+    GUEST_CALL(sub_8029B16);
+    return R0;
+}
+
+/* register form: calls chatbox_runScript outside this file, which has no typed C interface yet */
+static void chatbox_runScript_register_form(u32 script_archive, u32 script_idx) {
+    R0 = script_archive;
+    R1 = script_idx;
+    GUEST_CALL(chatbox_runScript);
+}
+
+/* Drive one step of the first-battle tutorial chatbox.
+ * Reads the driver state at (obj + 0xC). When the state is 0/1/3, the matching
+ * predicate (sub_8029AAA/ADA/B16) is consulted; a non-zero result runs the
+ * tutorial script indexed by `state` from TextScriptFirstBattleTutorials, then
+ * stores the current chatbox state byte into offset 0xD, sets the new state to
+ * 0x34 and clears the timer at offset 0x2. */
+static void driver_step(u32 obj) {
+    u32 step = LD8(obj + 0xC);
+
+    /* 0xFF (idle) and any unhandled state: nothing to do. */
+    if (step == 0xFF)
+        return;
+
+    u32 next_step;
+    switch (step) {
+    case 0:  next_step = sub_8029AAA_register_form(); break;
+    case 1:  next_step = sub_8029ADA_register_form(); break;
+    case 3:  next_step = sub_8029B16_register_form(); break;
+    default: return;
+    }
+
+    if (next_step == 0)
+        return;
+
+    /* Look up the script archive pointer, then run the script. */
+    u32 archive_entry = LD32(A_TextScriptFirstBattleTutorials + (step << 2));
+    chatbox_runScript_register_form(archive_entry, next_step);
+
+    /* Snapshot the chatbox state byte, set new state to 0x34, clear timer. */
+    u8 prev_state = LD8(obj + 1);
+    ST8(obj + 0xD, prev_state);
+    ST8(obj + 1, 0x34);
+    ST16(obj + 2, 0);
+}
+
+Next sub_8029A56(void) {
+    driver_step(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8029AAA ── */
 /* Compute a status code for a battle object based on its mode byte (+7) and sub-state byte (+8).
  * Mode 0 or 2 → depends on sub-state (1→9, else→14).
@@ -30,6 +153,48 @@ static u32 get_battle_object_status_code(u32 obj_ptr) {
 /* sub_8029AAA(r5 = battle object ptr) -> r0 */
 Next sub_8029AAA(void) {
     R0 = get_battle_object_status_code(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8029ADA ── */
+/* Typed implementation of sub_8029ADA.
+ *
+ * Reads the entity's state byte at [r5+7] and sub-state byte at [r5+8], then
+ * maps them to one of the movement/action indices listed below. The
+ * "default" 0 case is used as a fall-through for any combination not
+ * explicitly enumerated (including 2 when the primary byte is anything
+ * other than 1).
+ *
+ * Primary state 0x00, sub-state 0x01 -> 5
+ * Primary state 0x01, sub-state 0x01 -> 6
+ * Primary state 0x01, sub-state 0x02 -> 10
+ * Primary state 0x0A               -> 15
+ * Primary state 0x00, sub-state <0x01
+ *         or anything else with sub-state <0x02 -> 7
+ * everything else (incl. sub-state >=0x02 outside the 0x01 primary case)
+ *         -> 0
+ */
+static u32 entity_state_lookup(u32 entity_ptr) {
+    u32 primary   = LD8(entity_ptr + 7);
+    u32 sub_state = LD8(entity_ptr + 8);
+
+    switch (primary) {
+    case 0x00:
+        return (sub_state == 0x01) ? 5u : 0u;
+    case 0x01:
+        if (sub_state == 0x01) return 6u;
+        if (sub_state == 0x02) return 10u;
+        return 0u;
+    case 0x0A:
+        return 15u;
+    default:
+        return (sub_state < 0x02) ? 7u : 0u;
+    }
+}
+
+Next sub_8029ADA(void) {
+    R0 = entity_state_lookup(R5);
+    SET_FLAGS_NZ((u8)R0);
     RETURN_TO_CALLER();
 }
 
@@ -596,6 +761,74 @@ Next sub_802A40C(void) {
     R5 = saved_r5;
     R6 = saved_r6;
     R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802A49C ── */
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls callPossiblyGetBattleEmotion_8015B54 outside this file,
+ * which has no typed C interface yet */
+static u32 get_battle_emotion(u8 alliance) {
+    R0 = alliance;
+    GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
+    return R1;
+}
+
+/* register form: calls sub_8015B5C outside this file, which has no typed C interface yet */
+static u32 sub_8015B5C_call(u8 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8015B5C);
+    return R1;
+}
+
+/* Tick the beast-out counter (clamped to 3) when the relevant enemy emotion is
+ * angry/yowling (5 or 0x11) under certain battle modes; reset it otherwise.
+ * Returns the address of the counter (dword_20349A0) which the caller expects
+ * to find left behind in r1. */
+static u32 update_beast_out_counter(u32 mode, u32 r5_obj, u32 toolkit) {
+    u32 emotion = 0;
+    u8 r5_10 = LD8(r5_obj + 0x10);
+    u8 r5_15 = LD8(r5_obj + 0x15);
+    u32 base = A_dword_20349A0;
+
+    if (mode == 2 || mode == 3 || mode == 4 || mode == 5 || mode == 8)
+        goto reset;
+    if (r5_10 != 0)
+        goto reset;
+
+    if (r5_10 == r5_15) {
+        u8 alliance = LD8(LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_Unk_0d);
+        emotion = get_battle_emotion(alliance);
+    } else {
+        u8 alliance = LD8(LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_Unk_0d);
+        emotion = sub_8015B5C_call(alliance);
+    }
+
+    if (emotion != 5 && emotion != 0x11)
+        goto reset;
+
+    {
+        u8 counter = LD8(base + 0x11) + 1;
+        if (counter > 3)
+            counter = 3;
+        ST8(base + 0x11, counter);
+    }
+    return base;
+
+reset:
+    ST8(base + 0x11, 0);
+    return base;
+}
+
+/* sub_802A49C(r4=r4, r5=r5, r6=r6, r10=r10, lr=lr) -> v r1 r2 r3 r4 r5 r6 */
+Next sub_802A49C(void) {
+    u32 mode = get_battle_mode();
+    R1 = update_beast_out_counter(mode, R5, R10);
     RETURN_TO_CALLER();
 }
 
