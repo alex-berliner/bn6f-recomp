@@ -229,6 +229,58 @@ Next nullsub_12(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── playerObject_main_80EA460 ── */
+/* Dispatch the player battle-object state machine.
+ * Reads CurState byte, calls the matching handler, then the shared
+ * post-state hook (sub_801BCF4).
+ *
+ * Jump table (off_80EA478, word-indexed by state byte):
+ *   state 0 → playerObject_init_80172F0
+ *   state 4 → playerObject_update_80EA484
+ *   state 8 → sub_8016C4E
+ */
+
+/* register form: calls playerObject_init_80172F0 outside this file, which has no typed C interface yet */
+static void call_player_init(u32 state) {
+    R0 = state;
+    GUEST_CALL(playerObject_init_80172F0);
+}
+
+/* register form: calls playerObject_update_80EA484 outside this file, which has no typed C interface yet */
+static void call_player_update(u32 state) {
+    R0 = state;
+    GUEST_CALL(playerObject_update_80EA484);
+}
+
+/* register form: calls sub_8016C4E outside this file, which has no typed C interface yet */
+static void call_sub_8016C4E(u32 state) {
+    R0 = state;
+    GUEST_CALL(sub_8016C4E);
+}
+
+/* register form: calls sub_801BCF4 outside this file, which has no typed C interface yet */
+static void call_post_state_update(void) {
+    GUEST_CALL(sub_801BCF4);
+}
+
+static void player_state_dispatch(u32 battle_obj) {
+    u32 state = LD8(battle_obj + oBattleObject_CurState);
+
+    switch (state) {
+        case 0: call_player_init(state);   break;
+        case 4: call_player_update(state); break;
+        case 8: call_sub_8016C4E(state);   break;
+    }
+
+    call_post_state_update();
+}
+
+/* playerObject_main_80EA460(r5 = player battle-object pointer) */
+Next playerObject_main_80EA460(void) {
+    player_state_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── aiAttack_stepStateMachine_80EB04C ── */
 /* aiAttack_stepStateMachine_80EB04C: run one step of the AI attack-state machine for the object in R7.
  *

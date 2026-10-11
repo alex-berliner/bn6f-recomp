@@ -50,6 +50,86 @@ Next sub_8123678(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chipFolder_initGfx_812386C ── */
+/* Register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+static u32 resolve_decomp_pointer(u32 source, u32 size) {
+    R0 = source;
+    R1 = size;
+    GUEST_CALL(sub_811FB84);
+    return R0;
+}
+
+/* Register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
+static void decompress_copy_data(u32 table) {
+    R0 = table;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* Register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+static void load_text_script_block(u32 table, u32 dest, u32 buffer) {
+    R0 = table;
+    R1 = dest;
+    R2 = buffer;
+    GUEST_CALL(sub_8123300);
+}
+
+/* Register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_background_tiles(u32 j, u32 i, u32 block, u32 tile_ids, u32 j_size, u32 i_size) {
+    R0 = j;
+    R1 = i;
+    R2 = block;
+    R3 = tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* Initialize the chip-folder PET screen: build a decompression descriptor table from a
+ * ROM source table, decompress tile/sprite/palette graphics, load folder-page text
+ * scripts, and copy background grid tiles into tile block 1. */
+static void chipFolder_initGfx(void) {
+    /* register form: save/restore caller registers preserved across GUEST_CALLs (original's push/pop of r4-r7) */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    u32 out_base = A_unk_20096E0;  /* scratch RAM for the descriptor table */
+    u32 tbl      = A_off_812391C;  /* ROM source table: {src, size, arg1, arg2} rows */
+    u32 out_off  = 0;
+    u32 in_off   = 0;
+
+    /* Resolve each compressed pointer and copy the two trailing args into a flat
+     * {resolved_ptr, arg1, arg2} triple per row (4 rows × 16 bytes = 0x40). */
+    for (int row = 0; row < 4; row++) {
+        u32 src = LD32(tbl + in_off);  in_off += 4;
+        u32 sz  = LD32(tbl + in_off);  in_off += 4;
+
+        ST32(out_base + out_off, resolve_decomp_pointer(src, sz));  out_off += 4;
+
+        ST32(out_base + out_off, LD32(tbl + in_off));  out_off += 4;  in_off += 4;
+        ST32(out_base + out_off, LD32(tbl + in_off));  out_off += 4;  in_off += 4;
+    }
+    ST32(out_base + out_off, 0);  /* null terminator for the descriptor list */
+
+    /* Decompress chip-folder GFX using the built table and a second static table */
+    decompress_copy_data(out_base);
+    decompress_copy_data(A_dword_8123964);
+
+    /* Load compressed text scripts for the folder page labels */
+    load_text_script_block(A_off_81238E4, A_eTextScript201C220, A_eDecompBuffer2013A00);
+
+    /* Copy background tile data for the folder grid (two regions in tile block 1) */
+    copy_background_tiles(0, 0, 1, A_eTextScript201BA20, 0x1E, 0x14);
+    copy_background_tiles(9, 6, 1, A_eTextScript201BF20, 0x14, 0xD);
+
+    /* register form: restore preserved caller registers (original's pop {r4-r7,pc}) */
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+}
+
+/* chipFolder_initGfx_812386C -> r2/r3 from last CopyBackgroundTiles, r4-r7 preserved */
+Next chipFolder_initGfx_812386C(void) {
+    chipFolder_initGfx();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8123BC0 ── */
 /* sub_8123BC0:
  * Passes a fixed argument set to sub_8123C20 and returns its result untouched.
@@ -178,6 +258,47 @@ Next submenu_subchip_8124134(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8124384 ── */
+/* Register-form call helpers for game functions outside this file */
+
+/* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
+static void zero_fill_by_byte(u32 addr, u32 num_bytes) {
+    R0 = addr;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByByte);
+}
+
+/* register form: calls CheckKeyItem outside this file, which has no typed C interface yet */
+static u32 check_key_item(u32 item_id) {
+    R0 = item_id;
+    GUEST_CALL(CheckKeyItem);
+    return R0;
+}
+
+/*
+ * Zero the 16-byte key-item status buffer at unk_201C400, then populate it
+ * with (item_id, CheckKeyItem result) byte-pairs for items 0x80 through 0x85.
+ */
+static void fill_key_item_table(void) {
+    u32 base = A_unk_201C400;
+    zero_fill_by_byte(base, 0x10);
+
+    u32 offset = 0;
+    for (u32 item = 0x80; item <= 0x85; item++) {
+        u32 owned = check_key_item(item);
+        ST8(base + offset, item);
+        offset++;
+        ST8(base + offset, owned);
+        offset++;
+    }
+}
+
+/* sub_8124384() — no meaningful args or return; preserves r2–r7 via push/pop. */
+Next sub_8124384(void) {
+    fill_key_item_table();
+    RETURN_TO_CALLER();
+}
+
 /* ── bg_CopyTileBlock2At2_6_8x12_81245BC ── */
 /* bg_CopyTileBlock2At2_6_8x12_81245BC: copy a 6x8 block of background tiles.
  *
@@ -220,6 +341,28 @@ Next chatbox_runScript201C100_812474C(void) {
     R0 = A_eTextScript201C100;
     GUEST_CALL(chatbox_runScript_803FD9C);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── HandleLibraryMenu8124B3C ── */
+/* register form: indirect dispatch through a 3-entry jump table indexed by a byte
+ * state variable at [R5+1]; GUEST_CALL requires a static target per case, and the
+ * callee receives R0 = its own thumb entry address and R1 = the state byte,
+ * matching the original ldr / bx sequence. Valid state values are 0, 4, 8. */
+static void dispatch_library_menu(void) {
+    u32 state = LD8(R5 + 1);
+    R1 = state;
+    switch (state) {
+        case 0: R0 = 0x08124B5D; GUEST_CALL(sub_8124B5C); break;
+        case 4: R0 = 0x08124C31; GUEST_CALL(sub_8124C30); break;
+        case 8: R0 = 0x08125255; GUEST_CALL(sub_8125254); break;
+    }
+}
+
+/* HandleLibraryMenu8124B3C: trampoline dispatching to one of three library-menu
+ * handlers based on the byte at [object + 1]. */
+Next HandleLibraryMenu8124B3C(void) {
+    dispatch_library_menu();
     RETURN_TO_CALLER();
 }
 
@@ -288,5 +431,123 @@ Next menu_confirmExitAndFade_812580C(void) {
 Next playSoundEffect_7A_81258E8(void) {
     R0 = 0x7A;
     GUEST_CALL(PlaySoundEffect);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8125E78 ── */
+/* Background tile drawing for the battle arena, dispatching on the object's
+ * alliance type (offset 0x60). Reads tile id at +0x2c and row at +0x74. */
+
+/* register form: calls sub_81261FC outside this file, which has no typed C interface yet */
+static void call_init_bg(u16 tile_id, u32 tileset) {
+    R0 = tile_id;
+    R1 = tileset;
+    GUEST_CALL(sub_81261FC);
+}
+
+/* register form: calls sub_812625C outside this file, which has no typed C interface yet */
+static void call_set_tile_block(u32 row, u32 width, u32 tileset, u32 tile) {
+    R0 = row;
+    R1 = width;
+    R2 = tileset;
+    R3 = tile;
+    GUEST_CALL(sub_812625C);
+}
+
+/* register form: sub_812626C takes 6 args (r0-r5); save caller's r4, r5 */
+static void call_place_tile(u16 tile_id, u32 map, u32 tileset,
+                            u32 x, u32 y, u32 tile_num) {
+    u32 saved_r4 = R4, saved_r5 = R5;
+    R0 = tile_id;
+    R1 = map;
+    R2 = tileset;
+    R3 = x;
+    R4 = y;
+    R5 = tile_num;
+    GUEST_CALL(sub_812626C);
+    R4 = saved_r4;
+    R5 = saved_r5;
+}
+
+/* register form: calls bg_drawTileStripTileBlock2_8126404 outside this file */
+static void call_draw_strip(u32 row, u32 width, u32 tileset, u32 tile) {
+    R0 = row;
+    R1 = width;
+    R2 = tileset;
+    R3 = tile;
+    GUEST_CALL(bg_drawTileStripTileBlock2_8126404);
+}
+
+/* register form: sub_8126430 takes 5 args (r0-r4); save caller's r4 */
+static void call_copy_tilemap(u16 tile_id, u32 map, u32 tileset,
+                              u32 src, u32 dst) {
+    u32 saved_r4 = R4;
+    R0 = tile_id;
+    R1 = map;
+    R2 = tileset;
+    R3 = src;
+    R4 = dst;
+    GUEST_CALL(sub_8126430);
+    R4 = saved_r4;
+}
+
+/* register form: calls bg_drawTileRegion2x14_8126484 outside this file */
+static void call_draw_region(u32 row, u32 width, u32 tileset) {
+    R0 = row;
+    R1 = width;
+    R2 = tileset;
+    GUEST_CALL(bg_drawTileRegion2x14_8126484);
+}
+
+/* register form: calls sub_8126494 outside this file, which has no typed C interface yet */
+static void call_update_map(u16 tile_id, u32 map, u32 tileset) {
+    R0 = tile_id;
+    R1 = map;
+    R2 = tileset;
+    GUEST_CALL(sub_8126494);
+}
+
+/* register form: calls bg_copyTilePatchBlock2_81264E4 outside this file */
+static void call_copy_patch(u32 row, u32 width, u32 tileset) {
+    R0 = row;
+    R1 = width;
+    R2 = tileset;
+    GUEST_CALL(bg_copyTilePatchBlock2_81264E4);
+}
+
+static void draw_arena_tiles(u32 obj) {
+    u32 alliance = LD32(obj + 0x60);
+    if (alliance == 0)
+        return;
+
+    u16 tile_id = (u16)LD16(obj + 0x2c);
+    u32 row = LD32(obj + 0x74) - 0x71;
+
+    if (alliance == 5) {
+        /* Dark Chip team layout */
+        call_init_bg(tile_id, A_byte_2017A00);
+        call_set_tile_block(row + 1, 4, A_byte_2017A00, 5);
+        call_place_tile(tile_id, A_dword_201EC20, A_byte_2017A00, 0xa, 0xb, 0x70);
+        call_draw_strip(row + 6, 4, A_byte_2017A00, 0xa);
+        call_copy_tilemap(tile_id, A_dword_201EC20, A_byte_2017A00,
+                          A_byte_8124A14, 0x6007400);
+        call_draw_region(row + 4, 4, A_byte_2017A00);
+        call_update_map(tile_id, A_dword_201EC20, A_byte_2017A00);
+        call_copy_patch(row + 0xe, 4, A_byte_2017A00);
+    } else {
+        /* Regular team layout */
+        call_place_tile(tile_id, A_dword_201EC20, A_byte_2017A00, 0xa, 0xb, 0x71);
+        call_draw_strip(row + 3, 4, A_byte_2017A00, 0xa);
+        call_copy_tilemap(tile_id, A_dword_201EC20, A_byte_2017A00,
+                          A_byte_8124A14, 0x6007400);
+        call_draw_region(row + 1, 4, A_byte_2017A00);
+        call_update_map(tile_id, A_dword_201EC20, A_byte_2017A00);
+        call_copy_patch(row + 0xb, 4, A_byte_2017A00);
+    }
+}
+
+/* sub_8125E78(r5 = arena object ptr) */
+Next sub_8125E78(void) {
+    draw_arena_tiles(R5);
     RETURN_TO_CALLER();
 }

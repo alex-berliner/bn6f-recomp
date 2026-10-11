@@ -294,6 +294,69 @@ Next sub_80FDF98(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FDFE4 ── */
+#define AI_TABLE_STRIDE 8
+#define AI_DAMAGE_BLOCK_OFFSET 0xA0
+
+/* register form: calls battle_aiGetVersionedTableEntry_800FE12 outside this file, which has no typed C interface yet */
+static u32 get_ai_table_entry(u32 entry_addr, u32 table_start, u32 stride) {
+    R0 = entry_addr;
+    R1 = table_start;
+    R2 = stride;
+    GUEST_CALL(battle_aiGetVersionedTableEntry_800FE12);
+    return R0;
+}
+
+/* Write the versioned 32-bit damage value (low 16 from damage table, high 16 from
+ * modifier table) into the BattleObject's AI attack data block.
+ * index: row into the per-version damage tables.
+ * battle_obj: pointer to the BattleObject (r5).
+ * Returns the damage sub-block pointer, which the original leaves in r3. */
+static u32 store_ai_damage(u32 index, u32 battle_obj) {
+    u32 dmg_lo = get_ai_table_entry(index * AI_TABLE_STRIDE + A_byte_80FE020,
+                                     A_byte_80FE020, AI_TABLE_STRIDE);
+    u32 dmg_hi = get_ai_table_entry(index * AI_TABLE_STRIDE + A_byte_80FE044,
+                                     A_byte_80FE044, AI_TABLE_STRIDE);
+    u32 combined = (dmg_hi << 16) | dmg_lo;
+
+    u32 ai_base = LD32(battle_obj + oBattleObject_AIDataPtr) + AI_DAMAGE_BLOCK_OFFSET;
+    ST32(ai_base + oAIAttackVars_Damage, combined);
+    return ai_base;
+}
+
+/* sub_80FDFE4(r0 = table index, r5 = BattleObject ptr) -> r3 = damage sub-block ptr; r2 from callee; r4,r6 preserved */
+Next sub_80FDFE4(void) {
+    R3 = store_ai_damage(R0, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FE0D4 ── */
+/* Register form: pure jump-table trampoline for AI attack-phase dispatch.
+ * The only "computation" is an indexed table load followed by a tail-call to one
+ * of four handlers that receive/return all guest registers; no typed C interface
+ * can express that flow. */
+static void ai_attack_phase_dispatch(u32 r7) {
+    u32 index = LD8(r7 + oAIAttackVars_Unk_00);
+    R0 = index;                                        /* byte the callee may inspect */
+    R1 = LD32(A_off_80FE0E8 + index);                  /* Thumb function-pointer from table */
+
+    switch (index) {
+    case 0:  GUEST_CALL(sub_80FE0F8);                       break;
+    case 4:  GUEST_CALL(sub_80FE130);                       break;
+    case 8:  GUEST_CALL(sub_80FE1B4);                       break;
+    case 12: GUEST_CALL(battle_aiTickAttackTimer_80FE1FE);  break;
+    }
+
+    R7 = r7;   /* original pop {r7,pc} restores the caller's r7 */
+}
+
+/* sub_80FE0D4 – dispatch one of four AI attack-phase handlers by jump table.
+ * r7 = AIAttackVars pointer; index byte read from oAIAttackVars_Unk_00. */
+Next sub_80FE0D4(void) {
+    ai_attack_phase_dispatch(R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiTickAttackTimer_80FE1FE ── */
 /* battle_aiTickAttackTimer_80FE1FE: AI attack driver for one oAIAttackVars block (r7).
  *
@@ -391,6 +454,43 @@ Next aiAttackDispatchHandler_80FE452(void) {
         GUEST_CALL(sub_80FE4AC);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_dispatch_8108F50 ── */
+/* Jump table at 0x08108F68 is indexed by the state byte directly (byte offsets 0, 4, 8
+ * into the 3-entry pointer array).  Each handler is called with the full register file
+ * intact, matching the original mov-lr / bx-r1 dispatch pattern. */
+
+/* register form: dispatches to the battle-state handler identified by its byte-offset
+ * in the 3-entry jump table (0 = sub_8016F56, 4 = battle_8108F74, 8 = sub_8016C4E). */
+static void call_battle_state_handler(u32 state) {
+    if (state == 0)
+        GUEST_CALL(sub_8016F56);
+    else if (state == 4)
+        GUEST_CALL(battle_8108F74);
+    else /* state == 8 */
+        GUEST_CALL(sub_8016C4E);
+}
+
+/* register form: calls sub_8016E64 outside this file, which has no typed C interface yet
+ * (post-dispatch update that drives enemy attack animations). */
+static void call_post_dispatch_update(void) {
+    GUEST_CALL(sub_8016E64);
+}
+
+/* Dispatch a battle object to the handler for its current state, then run the
+ * post-dispatch animation/processing step.  Both callees may modify the full
+ * register file, so results flow through R0–R12 and flags transparently. */
+static void battle_object_dispatch(u32 battle_obj) {
+    u32 state = LD8(battle_obj + oBattleObject_CurState);
+    call_battle_state_handler(state);
+    call_post_dispatch_update();
+}
+
+/* battleObject_dispatch_8108F50(r5 = BattleObject ptr) -> all regs + flags */
+Next battleObject_dispatch_8108F50(void) {
+    battle_object_dispatch(R5);
     RETURN_TO_CALLER();
 }
 

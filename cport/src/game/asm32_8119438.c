@@ -625,6 +625,168 @@ Next sprite_objectUpdateAnimation_811B284(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811B298 ── */
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_set_animation(u8 mode) {
+    R0 = mode;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_load_animation_data(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void call_no_shadow(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setCoordinates outside this file, which has no typed C interface yet */
+static void call_set_coordinates(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(sprite_setCoordinates);
+}
+
+/* Update a sprite's animation and position.
+ * sprite_ptr: address of the sprite object (R5 from caller).
+ *   offset 4  – sprite type (index into per-type data/coordinate tables)
+ *   offset 0xC – current animation index
+ * Returns the coordinate-table base for this type (left in R2 for the caller). */
+static u32 sprite_update_animation(u32 sprite_ptr) {
+    u8 type = (u8)LD8(sprite_ptr + 4);
+    u32 data_ptr = LD32(A_off_811B2E4 + type * 4);
+
+    /* Types other than the default may need their animation swapped */
+    if (type != 0) {
+        u8 target = (u8)LD8(data_ptr + 0xC);
+        if ((u8)LD8(sprite_ptr + 0xC) != target) {
+            ST8(sprite_ptr + 0xC, target);
+            /* Mode 2 = normal switch; mode 1 = reset (used when target index is 0) */
+            call_set_animation(target == 0 ? 1 : 2);
+            call_load_animation_data();
+            call_no_shadow();
+        }
+    }
+
+    /* Pick the x-coordinate from the type's table, indexed by the data struct's animation */
+    u32 coord_table = LD32(A_off_811B2F0 + type * 4);
+    u32 x = LD32(coord_table + (u8)LD8(data_ptr + 0xC) * 4);
+    call_set_coordinates(x, 0x20);
+
+    return coord_table;
+}
+
+/* sub_811B298(r5 = sprite ptr) -> r2 = coord table base */
+Next sub_811B298(void) {
+    R2 = sprite_update_animation(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811B414 ── */
+/* Register-form helpers for external game functions called during GUI sprite setup. */
+
+/* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
+static void call_initGuiSprite_sub_811B414(u32 sprite_id, u32 a2) {
+    R0 = sprite_id;
+    R1 = a2;
+    GUEST_CALL(initGuiSprite_8002770);
+}
+
+/* register form: calls sub_80101F8 outside this file, which has no typed C interface yet */
+static u32 call_getAnimationId(void) {
+    GUEST_CALL(sub_80101F8);
+    return R0;
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_setAnimation_sub_811B414(u32 anim_id) {
+    R0 = anim_id;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_loadAnimationData_sub_811B414(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void call_noShadow_sub_811B414(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void call_setPalette_sub_811B414(u32 pal) {
+    R0 = pal;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void call_setPriority_sub_811B414(u32 pri) {
+    R0 = pri;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void call_slotList_storeHalfword_sub_811B414(u32 value) {
+    R0 = value;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void call_setSubEntryPaletteBank(u32 bank) {
+    R0 = bank;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+}
+
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void call_setSubRecordFieldA_sub_811B414(u32 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: calls sprite_updateWrapper_811B45C outside this file, which has no typed C interface yet */
+static void call_updateWrapper(void) {
+    GUEST_CALL(sprite_updateWrapper_811B45C);
+}
+
+/* Initialize GUI sprite #0x2c (Navi panel element):
+ * set active flag, create sprite, load animation, configure palette/priority,
+ * write slot-list halfword, set sub-entry attributes, then update the wrapper. */
+static void init_guisprite_2c(u32 gui_arg, u32 state_ptr) {
+    /* Mark the slot active */
+    ST8(state_ptr, 1);
+
+    /* Create and configure the sprite */
+    call_initGuiSprite_sub_811B414(0x2c, gui_arg);
+    u32 anim = call_getAnimationId();
+    call_setAnimation_sub_811B414(anim);
+    call_loadAnimationData_sub_811B414();
+    call_noShadow_sub_811B414();
+    call_setPalette_sub_811B414(0);
+    call_setPriority_sub_811B414(2);
+
+    /* Store 0xc0 halfword in the OAM slot list */
+    call_slotList_storeHalfword_sub_811B414(0xc0);
+
+    /* Sub-entry palette bank = 6, record field = 4 */
+    call_setSubEntryPaletteBank(6);
+    call_setSubRecordFieldA_sub_811B414(4);
+
+    /* Mark sub-slot type in the state structure */
+    ST8(state_ptr + 8, 4);
+
+    /* Final sprite wrapper update (leaves r0 and flags in emulated regs) */
+    call_updateWrapper();
+}
+
+/* sub_811B414(r1 = gui_arg, r5 = state_ptr, r4/r6 preserved) -> r0 (from wrapper update), nzcv from callee */
+Next sub_811B414(void) {
+    init_guisprite_2c(R1, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_updateWrapper_811B45C ── */
 /* sprite_updateWrapper_811B45C: thin wrapper that simply performs a sprite update with the
  * arguments already set up by the caller; all results (r0-r3 and flags)

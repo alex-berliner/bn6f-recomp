@@ -452,6 +452,41 @@ Next sub_814E0B6(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ply_patt ── */
+/* register form: calls ply_goto outside this file, which has no typed C interface yet */
+static void call_ply_goto(u32 patt) {
+    R1 = patt;
+    GUEST_CALL(ply_goto);
+}
+
+/* register form: calls ply_fine outside this file, which has no typed C interface yet */
+static void call_ply_fine(u32 patt) {
+    R1 = patt;
+    GUEST_CALL(ply_fine);
+}
+
+/* Advance one pattern step: store the next note address into the step's
+ * slot and bump the step index, then hand off to ply_goto.
+ * If the step index is already 3 (pattern exhausted), hand off to ply_fine. */
+static void ply_patt_step(u32 patt) {
+    u32 step = LD8(patt + 2);
+    if (step >= 3) {
+        call_ply_fine(patt);
+        return;
+    }
+    u32 slot = patt + (step << 2);          /* slot at offset 4*step */
+    u32 next_addr = LD32(patt + 0x40) + 4;  /* advance the read pointer by one note */
+    ST32(slot + 0x44, next_addr);
+    ST8(patt + 2, step + 1);
+    call_ply_goto(patt);
+}
+
+/* ply_patt: 0814E0FC – advance pattern playback or signal completion. */
+Next ply_patt(void) {
+    ply_patt_step(R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── ply_pend ── */
 /* ply_pend(r1 = pending-entry list):
  * Pop the most recently queued entry and make it the current one. The list

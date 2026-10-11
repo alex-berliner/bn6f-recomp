@@ -96,6 +96,41 @@ Next SaveMenuUpdate8132C34(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── SaveMenuOpenUpdate8132C50 ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_SaveMenuOpenUpdate8132C50(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();   /* Z set → fade is not active */
+}
+
+/* register form: calls chatbox_clear_eFlags2009F38 outside this file, which has no typed C interface yet */
+static void clear_chatbox_flags(u32 eflags) {
+    R0 = eflags;
+    GUEST_CALL(chatbox_clear_eFlags2009F38);
+}
+
+/* register form: calls saveMenuTextGfx_8132F4C outside this file, which has no typed C interface yet */
+static void call_save_menu_text_gfx(void) {
+    GUEST_CALL(saveMenuTextGfx_8132F4C);
+}
+
+/* While the screen is fading, clear the chatbox eFlags and mark the save-menu
+ * state byte.  Always refresh the save-menu text graphics at the end.
+ * menu_ptr is the save-menu object (r5), preserved by every callee. */
+static void save_menu_open_update(u32 menu_ptr) {
+    if (screen_fade_active_SaveMenuOpenUpdate8132C50()) {
+        clear_chatbox_flags(0x40);
+        ST8(menu_ptr + 2, 4);   /* state = SAVE_MENU_FADING */
+    }
+    call_save_menu_text_gfx();
+}
+
+/* SaveMenuOpenUpdate8132C50(r5 = menu object ptr) → all regs/flags from saveMenuTextGfx */
+Next SaveMenuOpenUpdate8132C50(void) {
+    save_menu_open_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── SaveMenuUpdate8132C68 ── */
 /* SaveMenuUpdate8132C68: per-frame update of the save menu.
  * R5 points to the menu's state block; the byte at offset 1 holds the next
@@ -134,6 +169,122 @@ Next SaveMenuUpdate8132C68(void) {
     }
 
     GUEST_CALL(saveMenuTextGfx_8132F4C);
+    RETURN_TO_CALLER();
+}
+
+/* ── ExitSaveMenu8132CA0 ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_ExitSaveMenu8132CA0(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();       /* Z set means no fade is active */
+}
+
+/* register form: calls chatbox_set_eFlags2009F38 outside this file, which has no typed C interface yet */
+static void chatbox_set_eflags(void) {
+    R0 = 0x40;
+    GUEST_CALL(chatbox_set_eFlags2009F38);
+}
+
+/* register form: calls pet_menuExitToMap_811F708 outside this file, which has no typed C interface yet */
+static void pet_menu_exit_to_map(void) {
+    GUEST_CALL(pet_menuExitToMap_811F708);
+}
+
+/* register form: calls saveMenuTextGfx_8132F4C outside this file, which has no typed C interface yet */
+static void save_menu_text_gfx(void) {
+    GUEST_CALL(saveMenuTextGfx_8132F4C);
+}
+
+/* Exit the save menu: when a screen fade is in progress, reset chatbox e-flags and
+ * transition the PET menu back to the map; then refresh save-menu text graphics.
+ * All output registers and flags come from the final saveMenuTextGfx call. */
+static void exit_save_menu(void) {
+    if (screen_fade_active_ExitSaveMenu8132CA0()) {
+        chatbox_set_eflags();
+        pet_menu_exit_to_map();
+    }
+    save_menu_text_gfx();
+}
+
+/* ExitSaveMenu8132CA0: outputs r0-r3, r10-r12, lr, nz, c, v from saveMenuTextGfx_8132F4C */
+Next ExitSaveMenu8132CA0(void) {
+    exit_save_menu();
+    RETURN_TO_CALLER();
+}
+
+/* ── saveMenu_8132D9C ── */
+/* register form: calls renderTextGfx_8045F8C outside this file, which has no typed C interface yet.
+ * Saves/restores R4–R7 because the callee uses them as scratch after consuming them as parameters. */
+static void render_text(u32 script, u32 index, u32 dest, u32 tilemap,
+                        u32 width, u32 height, u32 font, u32 flag) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = script; R1 = index; R2 = dest; R3 = tilemap;
+    R4 = width;  R5 = height; R6 = font; R7 = flag;
+    GUEST_CALL(renderTextGfx_8045F8C);
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+}
+
+/* register form: calls sub_8132FB8 outside this file, which has no typed C interface yet */
+static void save_slot_update(u32 value, u32 data) {
+    R0 = value; R1 = data;
+    GUEST_CALL(sub_8132FB8);
+}
+
+/* register form: calls storeTableEntryIntoUnk200a220Field8_8132FC4 outside this file, which has no typed C interface yet */
+static void store_table_entry(u32 index, u32 data) {
+    R0 = index; R1 = data;
+    GUEST_CALL(storeTableEntryIntoUnk200a220Field8_8132FC4);
+}
+
+/* register form: calls sub_803D06C outside this file, which has no typed C interface yet */
+static u32 query_save_state(void) {
+    GUEST_CALL(sub_803D06C);
+    return R0;
+}
+
+/* Render all text elements of the save-game menu into tilemap 0x6004000–0x6005400.
+ * menu_ctx is the save-menu state pointer (r10): field 0x34 = per-slot data,
+ * field 0x38 = status-block pointer whose +8 receives the save-state query result. */
+static void saveMenu_render(u32 menu_ctx) {
+    u32 script  = A_eTextScript201BF00;
+    u32 font    = A_dword_86B7AE0;
+    u32 slot    = LD32(menu_ctx + 0x34);
+
+    /* Tile-name headers: 4 columns, 8×1 tiles each */
+    render_text(script, 0, A_byte_2017A00, 0x6004000, 8, 1, font, 0);
+    render_text(script, 1, A_unk_2017E00,  0x6004200, 8, 1, font, 0);
+    render_text(script, 2, A_unk_2018200,  0x6004400, 8, 1, font, 0);
+    render_text(script, 3, A_unk_2018600,  0x6004600, 8, 1, font, 0);
+
+    /* Three save-file name rows (3×1 tiles), each preceded by a slot update */
+    save_slot_update(0x0C, slot);
+    render_text(script, 7, A_unk_2018E00, 0x6004A00, 3, 1, font, 0);
+
+    save_slot_update(0x0E, slot);
+    render_text(script, 7, A_unk_2019200, 0x6004C00, 3, 1, font, 0);
+
+    save_slot_update(0x10, slot);
+    render_text(script, 7, A_unk_2019600, 0x6004E00, 3, 1, font, 0);
+
+    store_table_entry(0x14, slot);
+
+    /* Info line (7×1 tiles) */
+    render_text(script, 8, A_byte_2019A00, 0x6005000, 7, 1, font, 0);
+
+    /* Query save state and store result into the status block */
+    u32 state = query_save_state();
+    u32 status = LD32(menu_ctx + 0x38);
+    ST32(status + 8, state);
+
+    /* Footer lines */
+    render_text(script, 6, A_unk_2019E00, 0x6005200, 7, 1, font, 0);
+    render_text(script, 5, A_unk_201A200, 0x6005400, 5, 1, font, 0);
+}
+
+/* saveMenu_8132D9C(r10 = save-menu context pointer) – renders the entire save menu.
+ * R4–R9 are preserved; R0–R3, R10–R12, LR and flags are clobbered by callees. */
+Next saveMenu_8132D9C(void) {
+    saveMenu_render(R10);
     RETURN_TO_CALLER();
 }
 
@@ -227,6 +378,72 @@ Next storeTableEntryIntoUnk200a220Field8_8132FC4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8133400 ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_sub_8133400(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();  /* Z clear (return value non-zero) means a fade transition is running */
+}
+
+/* register form: calls sub_8134594 outside this file, which has no typed C interface yet */
+static void call_update_battle_logic(void) {
+    GUEST_CALL(sub_8134594);
+}
+
+/* register form: calls sub_8134538 outside this file, which has no typed C interface yet */
+static void call_update_animations(void) {
+    GUEST_CALL(sub_8134538);
+}
+
+/* register form: calls sub_81341A0 outside this file, which has no typed C interface yet */
+static void call_update_camera(void) {
+    GUEST_CALL(sub_81341A0);
+}
+
+/* register form: calls sub_81353DC outside this file, which has no typed C interface yet */
+static void call_reset_turn_state(void) {
+    GUEST_CALL(sub_81353DC);
+}
+
+/* register form: calls sub_81353F0 outside this file, which has no typed C interface yet */
+static u32 call_set_substate(u32 state, u32 param) {
+    R0 = state;
+    R1 = param;
+    GUEST_CALL(sub_81353F0);
+    return R0;
+}
+
+/*
+ * Main per-frame update for a battle object.
+ * If a screen fade is in progress, force the object's state byte to 4 and
+ * its timer byte to 0 so it idles until the fade finishes.  Then advance
+ * battle logic, animations, camera, reset the turn, and enter sub-state 5/0
+ * followed by 6/1 (the standard "idle / ready" transition pair).
+ *
+ * The outputs r0-r3, nz, c, v are whatever the final sub_81353F0 call leaves
+ * in the guest registers (callee pass-through); r4-r7 are preserved.
+ */
+static void battle_object_update(u32 object_ptr) {
+    if (screen_fade_active_sub_8133400()) {
+        ST8(object_ptr + 2, 4);  /* state → idle */
+        ST8(object_ptr + 3, 0);  /* timer  → clear */
+    }
+
+    call_update_battle_logic();
+    call_update_animations();
+    call_update_camera();
+    call_reset_turn_state();
+    call_set_substate(5, 0);
+    call_set_substate(6, 1);
+}
+
+/* sub_8133400(r4, r5=battle obj ptr, r6, r7, r10, lr) → r0 r1 r2 r3 nz c v */
+Next sub_8133400(void) {
+    battle_object_update(R5);
+    /* r0-r3, nz, c, v were set by the last GUEST_CALL in call_set_substate; nothing to write */
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_813399C ── */
 /* sub_813399C: virtual-method dispatch on the object at r5, followed by a
  * fixed tail call.
@@ -246,6 +463,127 @@ Next sub_813399C(void) {
     GUEST_CALL(sub_81339BC);
 
     GUEST_CALL(sub_8134490);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8133C58 ── */
+/* register form: calls IsButtonPressed outside this file, which has no typed C interface yet */
+static bool is_button_pressed(u32 button) {
+    R0 = button;
+    GUEST_CALL(IsButtonPressed);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_effect(u32 sound_id) {
+    R0 = sound_id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls submenu_isOpen_81355D8 outside this file, which has no typed C interface yet */
+static bool submenu_is_open(void) {
+    R4 = 0xC;
+    R6 = 0xA;
+    GUEST_CALL(submenu_isOpen_81355D8);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls chatbox_runScript_803FD9C_on_eTextScript2028A20 outside this file, which has no typed C interface yet */
+static void chatbox_run_script(u32 script_num) {
+    R0 = script_num;
+    R4 = 0xC;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript2028A20);
+}
+
+/* Handle SELECT press on the in-game menu.
+ * state_ptr (r5): pointer to the menu state block.
+ * Returns 1 if the script was dispatched, 0 if the press was rejected (drives nz). */
+static u32 sub_8133C58_logic(u32 state_ptr) {
+    /* Must have SELECT held down */
+    if (!is_button_pressed(JOYPAD_SELECT))
+        return 0;
+
+    /* Abort if a blocking flag is already set at state+0x44 */
+    if (LD8(state_ptr + 0x44) != 0)
+        return 0;
+
+    play_sound_effect(SOUND_MENU_SELECT);
+
+    /* Clear the "submenu active" byte */
+    ST8(state_ptr + 3, 0);
+
+    /* Script 0x1B if a submenu is open, otherwise 0xA */
+    u32 script = submenu_is_open() ? 0x1B : 0xA;
+    chatbox_run_script(script);
+
+    /* Mark state byte 2 as 0xC (confirmed selection) */
+    ST8(state_ptr + 2, 0xC);
+
+    /* Propagate byte 3 (possibly updated by the script) to byte 0xD */
+    ST8(state_ptr + 0xD, LD8(state_ptr + 3));
+
+    return 1;
+}
+
+/* sub_8133C58(r5 = menu state ptr) -> nz */
+Next sub_8133C58(void) {
+    R0 = sub_8133C58_logic(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── checkLeftRightInputForFolderEdit_8133E3C ── */
+#define oToolkit_JoypadPtr          4
+#define oJoypad_LowSensitivityHeld  4
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet.
+ * Saves/restores r4–r7 to mimic the original's push {r4-r7}/pop {r4-r7} frame. */
+static void play_buzzer(u32 sound_id, u32 held_buttons, u32 view_bit, u32 dir_mask) {
+    u32 sv_r4 = R4, sv_r5 = R5, sv_r6 = R6, sv_r7 = R7;
+    R0 = sound_id;
+    R2 = dir_mask;
+    R4 = held_buttons;
+    R6 = view_bit;
+    R7 = 0;
+    GUEST_CALL(PlaySoundEffect);
+    R4 = sv_r4; R5 = sv_r5; R6 = sv_r6; R7 = sv_r7;
+}
+
+/* Check left/right d-pad for folder-edit navigation.
+ * Returns 1 = direction accepted (switch view), 0 = denied (buzzer played),
+ * 2 = no direction pressed.
+ *   mode_offset: byte offset into the mode table (r0)
+ *   mode_base:   pointer to the mode table (r5)
+ *   toolkit:     pointer to the toolkit (r10) */
+static s32 check_folder_edit(u32 mode_offset, u32 mode_base, u32 toolkit) {
+    u32 joypad_ptr = LD32(toolkit + oToolkit_JoypadPtr);
+    u32 held = LD16(joypad_ptr + oJoypad_LowSensitivityHeld);
+    u32 view = LD8(mode_base + mode_offset) >> 2; /* bit 2: 0=folder, 1=pack */
+
+    s32 result = 2; /* no direction pressed */
+    u32 dir = JOYPAD_LEFT;
+
+    if (held & JOYPAD_LEFT) {
+        /* Left arrow: allowed in folder view, denied in pack view */
+        result = view ? 0 : 1;
+    } else {
+        dir = JOYPAD_RIGHT;
+        if (held & JOYPAD_RIGHT) {
+            /* Right arrow: allowed in pack view, denied in folder view */
+            result = view ? 1 : 0;
+        }
+    }
+
+    if (result == 0)
+        play_buzzer(0x7A, held, view, dir);
+
+    return result;
+}
+
+/* checkLeftRightInputForFolderEdit_8133E3C(r0=offset, r5=base, r10=toolkit) -> r0, nz */
+Next checkLeftRightInputForFolderEdit_8133E3C(void) {
+    R0 = check_folder_edit(R0, R5, R10);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -292,6 +630,65 @@ Next sub_81340DC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81340FC ── */
+/* Table entry size in bytes (0x20 per entry). */
+#define TABLE_ENTRY_SIZE 0x20
+
+/* Offset of the packed data field within a table entry. */
+#define ENTRY_DATA_OFFSET 0x1C
+
+/*
+ * Call setFieldsInThreeTableEntries_811980C with the extracted fields.
+ * The callee writes r1/r2/r3 and sets c/v; those remain in the guest
+ * registers after GUEST_CALL returns.
+ */
+/* register form: calls setFieldsInThreeTableEntries_811980C outside this file, which has no typed C interface yet */
+static void call_setFieldsInThreeTableEntries(u32 fieldHi, u32 fieldLo, u32 zero, u32 entryIdx) {
+    R0 = fieldHi;
+    R1 = fieldLo;
+    R2 = zero;
+    R3 = entryIdx;
+    GUEST_CALL(setFieldsInThreeTableEntries_811980C);
+}
+
+/*
+ * Select the appropriate battle-table entry for the object at @p obj,
+ * extract its packed fields, and forward them to the shared three-table
+ * setter (which writes r1/r2/r3 and sets c/v in the guest registers).
+ *
+ * If the flag byte at obj+0xE is set, use the "secondary" index fields
+ * (obj+0x2A + obj+0x2E) and the alternate table pointer unk_202A3E0;
+ * otherwise use (obj+0x20 + obj+0x24) and word_202A020.
+ */
+static void setBattleFieldsFromObject(u32 obj) {
+    u32 tableBase;
+    u32 entryIdx;
+
+    u8 secondaryFlag = LD8(obj + 0xE);
+    if (secondaryFlag != 0) {
+        tableBase = A_unk_202A3E0;
+        entryIdx  = LD16(obj + 0x2A) + LD16(obj + 0x2E);
+    } else {
+        tableBase = A_word_202A020;
+        entryIdx  = LD16(obj + 0x20) + LD16(obj + 0x24);
+    }
+
+    u32 packedData = LD32(tableBase + entryIdx * TABLE_ENTRY_SIZE + ENTRY_DATA_OFFSET);
+
+    /* Bits [15:7] of packedData — extracted via lsl #16 / lsr #23 in the original. */
+    u32 fieldHi = (packedData << 16) >> 23;
+    /* Bits [6:0] of packedData. */
+    u32 fieldLo = packedData & 0x7F;
+
+    call_setFieldsInThreeTableEntries(fieldHi, fieldLo, 0, entryIdx);
+}
+
+/* sub_81340FC(r5 = battle object ptr) -> c v r1 r2 r3 from callee */
+Next sub_81340FC(void) {
+    setBattleFieldsFromObject(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8134538 ── */
 /* sub_8134538: thin wrapper that invokes sub_8134558 with the fixed argument
  * set (226, 28, 30, 36); result and condition flags are whatever the callee
@@ -315,6 +712,78 @@ Next sub_8134548(void) {
     R2 = 0x28;
     R3 = 0x2E;
     GUEST_CALL(sub_8134558);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8134558 ── */
+/* Lookup constants baked into the original via literal-pool loads. */
+#define LOOKUP_TYPE       0x20002   /* passed as r1 to sub_811FA98 */
+#define LOOKUP_FIELD_ID   0xC24C    /* passed as r6 to sub_811FA98 */
+#define LOOKUP_COUNT      0x64      /* passed as r7 to sub_811FA98 */
+#define ENTRY_STRIDE_FLD  0x18      /* s16 field in the table entry (stride in 8-byte units) */
+#define ENTRY_TYPE_FLD    7         /* passed as r4 to sub_811FA98 */
+
+/* register form: calls sub_811FA98 outside this file, which has no typed C interface yet.
+ * Saves and restores r4-r7 so the outer function preserves them for its own callers
+ * (the original does this via push/pop). */
+static void call_811FA98(u32 arg0, u32 arg1, u32 arg2, u32 arg3,
+                         u32 arg4, u32 arg5, u32 arg6, u32 arg7) {
+    u32 saved4 = R4, saved5 = R5, saved6 = R6, saved7 = R7;
+    R0 = arg0; R1 = arg1; R2 = arg2; R3 = arg3;
+    R4 = arg4; R5 = arg5; R6 = arg6; R7 = arg7;
+    GUEST_CALL(sub_811FA98);
+    R4 = saved4; R5 = saved5; R6 = saved6; R7 = saved7;
+}
+
+/* Compute an object-lookup id from a table entry base and index, load two attributes
+ * from the entry, and delegate to sub_811FA98 to resolve or query the object.
+ *
+ * The id packs a row number (index minus stride × 8, scaled left by 16) with a
+ * caller-supplied sub-identifier.  The two attribute values are unsigned half-words
+ * read at offsets attr_a_off / attr_b_off inside the entry pointed to by table_ptr. */
+static void lookup_object_entry(u32 index, u32 table_ptr,
+                                u32 sub_id, u32 attr_a_off, u32 attr_b_off) {
+    /* Read the per-entry stride (signed 16-bit) and scale by 8-byte entry size. */
+    u32 stride_shifted = (u32)(s32)LDS16(table_ptr + ENTRY_STRIDE_FLD) << 3;
+
+    /* id = ((index - stride*8) << 16) | sub_id */
+    u32 obj_id = (((u32)index - stride_shifted) << 16) | sub_id;
+
+    /* Two unsigned attribute words at caller-chosen offsets within the entry. */
+    u32 attr_a = LD16(table_ptr + attr_a_off);
+    u32 attr_b = LD16(table_ptr + attr_b_off);
+
+    call_811FA98(obj_id, LOOKUP_TYPE, attr_a, attr_b,
+                 ENTRY_TYPE_FLD, table_ptr, LOOKUP_FIELD_ID, LOOKUP_COUNT);
+}
+
+/* sub_8134558(r0 = index, r1 = sub_id, r2 = attr_a_off, r3 = attr_b_off,
+ *             r5 = entry pointer;  r4 r6 r7 lr preserved) */
+Next sub_8134558(void) {
+    lookup_object_entry(R0, R5, R1, R2, R3);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81345B0 ── */
+/* register form: calls sub_813468C outside this file, which has no typed C interface yet */
+static void call_813468C(u32 arg0, u32 arg1, u32 arg2, u32 arg3, u32 ptr, u32 flag) {
+    /* Original pushes {r4-r7} before this call and pops them after, so we save/restore. */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    R0 = arg0; R1 = arg1; R2 = arg2; R3 = arg3; R4 = ptr; R6 = flag;
+    GUEST_CALL(sub_813468C);
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+}
+
+/* Invoke sub_813468C with fixed ROM-table parameters:
+ * r0=0xF3, r1=0x16, r2=0, r3=0x11, r4=&byte_81331EC, r6=0x10000000.
+ * r4-r7 are preserved (the original save/restores them via push/pop). */
+static void invoke_813468C(void) {
+    call_813468C(0xF3, 0x16, 0, 0x11, A_byte_81331EC, 0x10000000);
+}
+
+/* sub_81345B0: preserve r4-r7 and tail-call sub_813468C with fixed arguments. */
+Next sub_81345B0(void) {
+    invoke_813468C();
     RETURN_TO_CALLER();
 }
 
@@ -379,6 +848,59 @@ Next battle_spawnFixedArgEffect_wrapper_81345E8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81348DC ── */
+/* register form: calls sub_81171F4 outside this file, which has no typed C interface yet */
+static void call_set_valid_flag(u32 val, u32 flag_obj) {
+    R0 = val;
+    R1 = flag_obj;
+    GUEST_CALL(sub_81171F4);
+}
+
+/* register form: calls sub_81171D4 outside this file, which has no typed C interface yet */
+static void call_move_position(u32 x, u32 y, u32 flag_obj, u32 threshold, u32 row_off) {
+    u32 saved_r4 = R4;   /* preserve R4 across callee that may clobber it */
+    R0 = x; R1 = y; R2 = flag_obj; R3 = threshold; R4 = row_off;
+    GUEST_CALL(sub_81171D4);
+    R4 = saved_r4;
+}
+
+/* sub_81348DC: position/row alignment check for a battle object.
+ * gate bit-0 (obj+0x4C): 0 → early exit, 1 → verify diff is in [0, threshold]. */
+static void battle_align_check(u32 obj, u32 row_off, u32 cur_x, u32 cur_y,
+                               u32 flag_obj, u32 threshold) {
+    u32 gate = LD32(obj + 0x4C);
+
+    if (!(gate & 1)) {
+        /* register form: early-exit path has no callee; MOVS/TST set R0, R1, flags directly */
+        R0 = 1;
+        R1 = gate;
+        SET_FLAGS_NZ(gate & 1);
+        return;
+    }
+
+    s32 scroll = (s32)LDS16(obj + 0x18);
+    u32 adj_x  = cur_x - (u32)(scroll << 3);
+
+    u32 row_top = LD16(obj + 0x1C);
+    u32 row_idx = LD16(obj + row_off);
+    s32 diff    = (s32)(row_top - row_idx);
+
+    if (diff < 0 || diff > (s32)threshold) {
+        call_set_valid_flag(1, flag_obj);
+        return;
+    }
+
+    u32 adj_y = cur_y + ((u32)diff << 4);
+    call_move_position(adj_x, adj_y, flag_obj, threshold, row_off);
+    call_set_valid_flag(0, flag_obj);
+}
+
+/* sub_81348DC(r0=row_off r1=cur_x r2=cur_y r3=flag_obj r4=threshold r5=obj) */
+Next sub_81348DC(void) {
+    battle_align_check(R5, R0, R1, R2, R3, R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8134F78 ── */
 /* sub_8134F78: flag a result in the S2001c04 buffer (both bytes set to 0xFF).
  * r10 = toolkit pointer; returns 0xFF in r1. */
@@ -415,6 +937,47 @@ Next chatbox_clampScrollToTextEnd_813525C(void) {
         }
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813527C ── */
+/* Size of one data slot in bytes (toolkit/battle-state entry). */
+#define SLOT_SIZE 0x20
+
+/* register form: calls CopyByEightWords outside this file, which has no typed C interface yet */
+static void copy_by_eight_words(u32 src, u32 dst, u32 size) {
+    R0 = src;
+    R1 = dst;
+    R2 = size;
+    /* register form: original writes r3=#0x20 before the call; callee preserves r3,
+       so the value must appear in R3 as an output of this function */
+    R3 = SLOT_SIZE;
+    GUEST_CALL(CopyByEightWords);
+}
+
+/* register form: calls ZeroFillByEightWords outside this file, which has no typed C interface yet */
+static void zero_fill_by_eight_words(u32 addr, u32 size) {
+    R0 = addr;
+    R1 = size;
+    GUEST_CALL(ZeroFillByEightWords);
+}
+
+/* Copy 'count' slots of SLOT_SIZE bytes from src to dst, then zero-fill the
+ * next slot at dst + count*SLOT_SIZE.  If count is zero, only the zero-fill
+ * happens at dst (and r2/r3 are not written before the fill call). */
+static void copy_then_zero_fill(u32 src, u32 dst, u32 count) {
+    if (count != 0) {
+        u32 total_bytes = count * SLOT_SIZE;
+        copy_by_eight_words(src, dst, total_bytes);
+        dst += total_bytes;
+    }
+    zero_fill_by_eight_words(dst, SLOT_SIZE);
+}
+
+/* sub_813527C(r0=src, r1=dst, r2=slot_count) -> copies slots then zero-fills the next one;
+ * r4-r7 preserved via push/pop, r0/r1/lr/nz/c/v clobbered. */
+Next sub_813527C(void) {
+    copy_then_zero_fill(R0, R1, R2);
     RETURN_TO_CALLER();
 }
 

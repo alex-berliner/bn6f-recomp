@@ -254,6 +254,179 @@ Next object_destroyWrapper_80CB078(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CB0AE ── */
+#define COLLISION_REGION_TYPE    0x4050101u
+#define COLLISION_SPAWN_MODE     3u
+#define COLLISION_REGION_TIMER   5u
+
+/* register form: calls object_spawnCollisionRegion outside this file, which has no typed
+   C interface yet.  Saves/restores r4/r6/r7/lr across the guest call to replicate the
+   original's push {r4,r6,r7,lr} / pop {r4,r6,r7,pc} preservation, and writes the timer
+   (r1 = 5; strh [r0 + timer]) on success because those side-effects depend on the
+   callee's register result and must happen before the saved registers are restored. */
+static u32 spawn_collision_region_call(u8 panel_x, u8 panel_y, u8 element,
+                                       u32 obj, u32 dmg_disable) {
+    u32 save_r4 = R4, save_r6 = R6, save_r7 = R7, save_lr = LR;
+
+    R0 = panel_x;
+    R1 = panel_y;
+    R2 = element;
+    R3 = 0;
+    R4 = COLLISION_REGION_TYPE;
+    R5 = obj;
+    R6 = dmg_disable;
+    R7 = COLLISION_SPAWN_MODE;
+
+    GUEST_CALL(object_spawnCollisionRegion);
+
+    u32 region = R0;
+    if (region != 0) {
+        R1 = COLLISION_REGION_TIMER;
+        ST16(region + oBattleObject_Timer, COLLISION_REGION_TIMER);
+    }
+
+    R4 = save_r4;
+    R6 = save_r6;
+    R7 = save_r7;
+    LR = save_lr;
+
+    return region;
+}
+
+/* Read a battle object's panel coordinates, element, and damage-counter-disabler flag,
+   spawn its collision region, and set the region's timer to 5 on success.
+   Returns the new region's object pointer, or 0 if the spawn failed. */
+static u32 spawn_collision_for_object(u32 obj) {
+    u8 panel_x = LD8(obj + oBattleObject_PanelX);
+    u8 panel_y = LD8(obj + oBattleObject_PanelY);
+    u8 element = LD8(obj + oBattleObject_Element);
+    u32 dmg_disable = LD32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+
+    return spawn_collision_region_call(panel_x, panel_y, element, obj, dmg_disable);
+}
+
+/* sub_80CB0AE(r5 = battle object) -> c, v (region spawn + timer init) */
+Next sub_80CB0AE(void) {
+    u32 region = spawn_collision_for_object(R5);
+    SET_FLAGS_NZ(region);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80DA834 ── */
+struct U32Pair { u32 first, second; };
+
+/* register form: calls object_setCoordinatesFromPanels outside this file, which has no typed C interface yet */
+static void call_set_coords_from_panels(void) {
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+/* register form: calls sub_8011504 outside this file, which has no typed C interface yet */
+static u32 call_sub_8011504(u32 collision_a, u32 collision_b) {
+    R0 = collision_a;
+    R1 = collision_b;
+    GUEST_CALL(sub_8011504);
+    return R2;
+}
+
+/* register form: calls object_setCollisionHitEffect outside this file, which has no typed C interface yet */
+static void call_set_hit_effect(u32 col_desc) {
+    R0 = 0xFF;
+    R1 = 2;
+    R2 = col_desc;
+    GUEST_CALL(object_setCollisionHitEffect);
+}
+
+/* register form: calls object_presentCollisionData outside this file, which has no typed C interface yet */
+static void call_present_collision(void) {
+    /* R1 = 2, R2 = col_desc already in registers; callee updates them */
+    GUEST_CALL(object_presentCollisionData);
+}
+
+/* register form: calls sprite_setUnk0x2c outside this file, which has no typed C interface yet */
+static void call_sprite_palette(u32 color) {
+    R0 = color;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* register form: calls battle_getFlags outside this file, which has no typed C interface yet */
+static u32 call_battle_getFlags(void) {
+    /* R2 is preserved by the callee (already set from presentCollisionData) */
+    GUEST_CALL(battle_getFlags);
+    return R0;
+}
+
+/* register form: calls sub_80DA886 outside this file, which has no typed C interface yet */
+static void call_sub_80DA886(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(sub_80DA886);
+    /* R0-R2 and nz/c/v now hold this function's outputs */
+}
+
+/* Initialise a battle object from its spawn data.
+ * Sets position, Z=0, collision descriptor, active flag, HP=1, hit effect,
+ * collision geometry, sprite palette, state=UPDATE, then picks an initial
+ * action (0 or 4) based on battle flag bit 0. */
+static void init_battle_object(u32 obj) {
+    call_set_coords_from_panels();
+
+    /* zero the Z coordinate */
+    ST32(obj + oBattleObject_Z, 0);
+
+    /* build collision descriptor from fixed data */
+    u32 col_desc = call_sub_8011504(0x100100C, 0xE0F0300);
+
+    /* mark object active (set flag bit 2) */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* HP and MaxHP = 1 */
+    ST16(obj + oBattleObject_HP, 1);
+    ST16(obj + oBattleObject_MaxHP, 1);
+
+    /* hit-effect id 0xFF on collision */
+    call_set_hit_effect(col_desc);
+
+    /* present collision geometry (updates R1/R2 in-place) */
+    call_present_collision();
+
+    /* palette tint */
+    call_sprite_palette(0xFF80000);
+
+    /* enter UPDATE phase */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+
+    /* choose initial action from battle flags */
+    u32 battle_flags = call_battle_getFlags();
+    u32 action;
+    u32 arg_r0, arg_r1;
+
+    if (battle_flags & 1) {
+        /* bit 0 set: clear object flag bit 4, action = 4 */
+        u8 new_flags = (u8)(LD8(obj + oObjectHeader_Flags) & ~4);
+        ST8(obj + oObjectHeader_Flags, new_flags);
+        action  = 4;
+        arg_r0  = new_flags;
+        arg_r1  = 4;
+    } else {
+        /* bit 0 clear: keep flags, action = 0 */
+        action = 0;
+        arg_r0 = battle_flags;
+        arg_r1 = 1;
+    }
+
+    ST8(obj + oBattleObject_CurAction, action);
+
+    /* finalise the action state machine; outputs R0-R2 and flags */
+    call_sub_80DA886(arg_r0, arg_r1, action);
+}
+
+/* sub_80DA834(r5 = battle object) -> void (outputs R0-R2, flags from sub_80DA886) */
+Next sub_80DA834(void) {
+    init_battle_object(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectLingerThenDestroyPhase_80DA974 ── */
 /* battle_objectLingerThenDestroyPhase_80DA974 (r5 = battle object, r10 = toolkit):
  * Death phase of an object that lingers briefly before despawning.

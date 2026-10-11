@@ -74,6 +74,91 @@ Next toolkit_getUnk2004190EntryPtr_813B9FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813BC1C ── */
+#define ID_SLOTS     7
+#define ID_SENTINEL  0xFF
+
+/* register form: calls sub_813B9B4 outside this file, which has no typed C interface yet */
+static u32 get_random_id(u32 index, u32 count) {
+    R0 = index;
+    R1 = count;
+    GUEST_CALL(sub_813B9B4);
+    return R0;
+}
+
+/* register form: calls toolkit_getUnk2004190EntryPtr_813B9FC outside this file, which has no typed C interface yet */
+static u32 get_toolkit_entry_ptr(u32 entry_num) {
+    R0 = entry_num;
+    GUEST_CALL(toolkit_getUnk2004190EntryPtr_813B9FC);
+    return R0;
+}
+
+/* register form: calls sub_813B780 outside this file, which has no typed C interface yet */
+static u32 lookup_object_by_flag(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(sub_813B780);
+    return R0;
+}
+
+/* Categorize seven random IDs into two target arrays, skipping duplicates and
+ * zero entries.  byte_array_ptr indexes a per-ID occurrence counter that is
+ * incremented for type-1 objects. */
+static void process_categorized_ids(u32 byte_array_ptr) {
+    u32 seen_ids[ID_SLOTS];
+    for (int i = 0; i < ID_SLOTS; i++)
+        seen_ids[i] = ID_SENTINEL;
+
+    int slot = 0;
+    for (int idx = ID_SLOTS - 1; idx >= 0; idx--) {
+        u32 id = get_random_id(idx, 3);
+
+        /* Reject duplicates or zero IDs */
+        bool duplicate = false;
+        for (int i = 0; i < ID_SLOTS; i++) {
+            if (id == seen_ids[i]) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (duplicate || id == 0) {
+            slot++;
+            continue;
+        }
+
+        seen_ids[slot] = id;
+        slot++;
+
+        /* Look up the toolkit entry; skip if its flag word is zero */
+        u32 entry_ptr = get_toolkit_entry_ptr(id - 1);
+        u16 flag = LD16(entry_ptr);
+        if (flag == 0)
+            continue;
+
+        /* Classify the object by its type byte */
+        u32 obj_ptr = lookup_object_by_flag(flag);
+        u8 obj_type = LD8(obj_ptr + 1);
+        u32 target_addr;
+
+        if (obj_type == 1) {
+            u8 offset = LD8(obj_ptr + 4);
+            ST8(byte_array_ptr + offset, LD8(byte_array_ptr + offset) + 1);
+            target_addr = A_unk_2006CC0;
+        } else if (obj_type == 2) {
+            target_addr = A_unk_2006CC0;
+        } else {
+            target_addr = A_unk_2006CF8;
+        }
+
+        ST8(target_addr + idx, (u8)id);
+    }
+}
+
+/* sub_813BC1C(r0 = byte_array_ptr) */
+Next sub_813BC1C(void) {
+    process_categorized_ids(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── getWorkAreaPtr_2006CF8_813BD0C ── */
 /* getWorkAreaPtr_2006CF8_813BD0C: trivial getter -- loads the address of the work buffer
  * unk_2006CF8 into r7 and returns. */
@@ -121,6 +206,107 @@ Next eraseMem_ClearBuffer_813C324(void) {
     R1 = 8;
     GUEST_CALL(ZeroFillByByte);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── reloadCurNaviStatBoosts_813c3ac ── */
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u8 get_cur_pet_navi_reloadCurNaviStatBoosts_813c3ac(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (u8)R0;
+}
+
+/* register form: calls applyNaviStatsMaybe_813C458 outside this file, which has no typed C interface yet */
+static void apply_navi_stats_maybe(void) {
+    GUEST_CALL(applyNaviStatsMaybe_813C458);
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_reloadCurNaviStatBoosts_813c3ac(u8 page, u8 offset) {
+    R0 = page;
+    R1 = offset;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_8121154 outside this file, which has no typed C interface yet */
+static void call_sub_8121154(void) {
+    GUEST_CALL(sub_8121154);
+}
+
+/* register form: calls GetCurPETNaviStatsHword outside this file, which has no typed C interface yet */
+static u16 get_navi_stat(u8 navi, u8 stat) {
+    R0 = navi;
+    R1 = stat;
+    GUEST_CALL(GetCurPETNaviStatsHword);
+    return (u16)R0;
+}
+
+/* register form: calls SetCurPETNaviStatsHword outside this file, which has no typed C interface yet */
+static void set_navi_stat(u8 navi, u8 stat, u16 value) {
+    R0 = navi;
+    R1 = stat;
+    R2 = value;
+    GUEST_CALL(SetCurPETNaviStatsHword);
+}
+
+/* Reload current navi HP stats.
+ * Real world (map_group < 0x80): full-heal slot 0 and active navi if EVENT_PET_NAVI_ACTIVE.
+ * Internet (map_group >= 0x80): clamp CurHP to MaxHP for slot 0, then for the active navi.
+ */
+static void reload_cur_navi_stat_boosts(u32 toolkit) {
+    /* If no PET navi (GetCurPETNavi returns 0), apply navi stats and check EVENT_163 */
+    if (get_cur_pet_navi_reloadCurNaviStatBoosts_813c3ac() == 0) {
+        apply_navi_stats_maybe();
+        if (event_flag_set_reloadCurNaviStatBoosts_813c3ac(1, 0x63)) { /* EVENT_163 */
+            call_sub_8121154();
+        }
+    }
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u8 map_group = LD8(game_state + oGameState_MapGroup);
+
+    if ((s32)map_group < (s32)0x80) {
+        /* Real world: full heal if EVENT_PET_NAVI_ACTIVE is set */
+        if (!event_flag_set_reloadCurNaviStatBoosts_813c3ac(0x17, 0x1D)) { /* EVENT_PET_NAVI_ACTIVE */
+            return;
+        }
+
+        u16 max_hp = get_navi_stat(0, oNaviStats_MaxHP);
+        set_navi_stat(0, oNaviStats_CurHP, max_hp);
+
+        u8 navi = get_cur_pet_navi_reloadCurNaviStatBoosts_813c3ac();
+        max_hp = get_navi_stat(navi, oNaviStats_MaxHP);
+        navi = get_cur_pet_navi_reloadCurNaviStatBoosts_813c3ac();
+        set_navi_stat(navi, oNaviStats_CurHP, max_hp);
+    } else {
+        /* Internet: clamp CurHP down to MaxHP (never up) for slot 0 */
+        u16 max_hp = get_navi_stat(0, oNaviStats_MaxHP);
+        u16 cur_hp = get_navi_stat(0, oNaviStats_CurHP);
+        if ((s32)cur_hp > (s32)max_hp) {
+            set_navi_stat(0, oNaviStats_CurHP, max_hp);
+        }
+
+        /* Then clamp for the active navi */
+        u8 navi = get_cur_pet_navi_reloadCurNaviStatBoosts_813c3ac();
+        max_hp = get_navi_stat(navi, oNaviStats_MaxHP);
+        navi = get_cur_pet_navi_reloadCurNaviStatBoosts_813c3ac();
+        cur_hp = get_navi_stat(navi, oNaviStats_CurHP);
+
+        /* register form: the original's final `cmp r0, r4` / `ble .ret` leaves comparison
+         * flags in NZCV that callers branch on; no subsequent GUEST_CALL overwrites them
+         * on this path, and a plain C comparison cannot set guest CPU flags. */
+        SET_FLAGS_CMP(cur_hp, max_hp);
+        if ((s32)cur_hp > (s32)max_hp) {
+            navi = get_cur_pet_navi_reloadCurNaviStatBoosts_813c3ac();
+            set_navi_stat(navi, oNaviStats_CurHP, max_hp);
+        }
+    }
+}
+
+/* reloadCurNaviStatBoosts_813c3ac(r10 = toolkit ptr) -> all registers + flags */
+Next reloadCurNaviStatBoosts_813c3ac(void) {
+    reload_cur_navi_stat_boosts(R10);
     RETURN_TO_CALLER();
 }
 
@@ -194,6 +380,73 @@ Next checkCurPETNaviStats1FIsOne_813C490(void) {
 Next sub_813C678(void) {
     u32 ptr = LD32(R10 + oToolkit_Unk2004334_Ptr);
     ST16(ptr, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813CEA0 ── */
+/* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static u8 get_pet_navi_stat_sub_813CEA0(u32 a1, u32 a2) {
+    R0 = a1; R1 = a2;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (u8)R0;
+}
+
+/* register form: calls SetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static void set_pet_navi_stat_sub_813CEA0(u32 a1, u32 a2, u32 a3) {
+    R0 = a1; R1 = a2; R2 = a3;
+    GUEST_CALL(SetCurPETNaviStatsByte);
+}
+
+/* register form: calls split9BitsFromBitfield_8021AE0 then getChip8021DA8;
+ * returns chip data pointer in R0, leaves R2 set (high chip-ID part – the output) */
+static u32 decode_chip_from_bitfield(u32 bitfield) {
+    R0 = bitfield;
+    GUEST_CALL(split9BitsFromBitfield_8021AE0);
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/*
+ * Inspect the PET Navi's equipped chip slot.  If the chip's element level
+ * exceeds the Navi's own stat byte 9, the slot is marked as consumed (0xFF).
+ * `toolkit` is the Toolkit struct pointer (R10 at entry).
+ */
+static void check_chip_vs_navi_stat(u32 toolkit) {
+    /* stat 9: the Navi's threshold */
+    u32 navi_stat = get_pet_navi_stat_sub_813CEA0(0, 9);
+
+    /* stat 0x2D: index of the chip pack currently in use */
+    u32 chip_index = get_pet_navi_stat_sub_813CEA0(0, 0x2D);
+
+    /* slot = chip_index + 0x2E */
+    u32 slot_index = chip_index + 0x2E;
+
+    /* read the current slot value; 0xFF means already empty */
+    u32 slot_val = get_pet_navi_stat_sub_813CEA0(0, slot_index);
+    if (slot_val == 0xFF)
+        return;
+
+    /* locate the u16 chip-ID entry in the pack's data table */
+    u32 chip_table = LD32(toolkit + oToolkit_S_Chip_2002178_Ptr);
+    u32 entry_addr = (chip_index * 0x3C) + chip_table + (slot_val << 1);
+    u16 chip_bitfield = LD16(entry_addr);
+
+    /* split the 18-bit field into two 9-bit halves, fetch chip record */
+    u32 chip_ptr = decode_chip_from_bitfield(chip_bitfield);
+    u32 element_level = LD8(chip_ptr + 8);
+
+    /* if chip element <= navi stat, no action needed */
+    if (element_level <= navi_stat)
+        return;
+
+    /* clear the slot so the Navi can't use this chip */
+    set_pet_navi_stat_sub_813CEA0(0, slot_index, 0xFF);
+}
+
+/* sub_813CEA0(r4, r5, r6, r7, r10, lr) -> r2 */
+Next sub_813CEA0(void) {
+    check_chip_vs_navi_stat(R10);
+    /* R2 is set by decode_chip_from_bitfield's GUEST_CALL; left alone on early exits */
     RETURN_TO_CALLER();
 }
 
