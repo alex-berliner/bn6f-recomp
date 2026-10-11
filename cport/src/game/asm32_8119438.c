@@ -227,6 +227,82 @@ Next sub_8119438(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81196F0 ── */
+/* register form: path-dependent condition flag propagation — gate-pass inherits flags
+ * from sub_8119438 (opaque callee result) while gate-fail sets them from local CMP;
+ * a no-branch thin adapter cannot express both without overwriting callee flags. */
+static void sync_battle_state_regs(void) {
+    u32 obj = R5;                    /* r5 = battle object pointer (preserved by push/pop) */
+    u32 save_r4 = R4, save_r6 = R6;  /* r4-r7 saved/restored by push/pop originally */
+
+    GUEST_CALL(sub_8119880);         /* gate check: Z=1 means "backup stale" */
+
+    if (ZERO_FLAG()) {
+        /* Gate-fail: compare primary fields vs their backups. */
+        u16 cur_hp  = (u16)LD16(obj + 0x0E);
+        u8  cur_id  = (u8)LD8(obj + 0x0C);
+        u16 cur_pos = (u16)LD16(obj + 0x18);
+        u16 bk_pos  = (u16)LD16(obj + 0x1A);
+
+        R3 = cur_pos;
+        R1 = bk_pos;
+
+        SET_FLAGS_CMP(cur_pos, bk_pos);
+        if (cur_pos != bk_pos) {
+            goto do_writes;
+        }
+
+        u16 bk_hp = (u16)LD16(obj + 0x10);
+        SET_FLAGS_CMP(cur_hp, bk_hp);
+        if (cur_hp != bk_hp) {
+            goto do_writes;
+        }
+
+        u8 bk_id = (u8)LD8(obj + 0x0D);
+        SET_FLAGS_CMP((u32)cur_id, (u32)bk_id);
+        if (cur_id == bk_id) {
+            R0 = (u32)bk_id;         /* all match: r0 = backup ID, Z=1 flags kept */
+            goto restore;
+        }
+
+    do_writes:
+        ST16(obj + 0x1A, cur_pos);
+        ST16(obj + 0x10, cur_hp);
+        ST8(obj + 0x0D, cur_id);
+        R0 = 4;
+        ST8(obj + 0x09, 4);          /* state = 4 signals backup was stale */
+
+    restore:
+        R4 = save_r4;
+        R5 = obj;
+        R6 = save_r6;
+        /* r7, r8, r9 never touched by this path; r10-r12 untouched */
+        return;
+    }
+
+    /* Gate-pass: call frame update, then unconditional primary→backup copy. */
+    GUEST_CALL(sub_8119438);         /* flags now from callee */
+
+    /* ldrh/strh/ldrb/strb do not modify CPSR — callee flags survive. */
+    u16 hp = (u16)LD16(obj + 0x0E);
+    ST16(obj + 0x10, hp);
+    u8 id = (u8)LD8(obj + 0x0C);
+    ST8(obj + 0x0D, id);
+    u16 pos = (u16)LD16(obj + 0x18);
+    ST16(obj + 0x1A, pos);
+    R0 = pos;                        /* r1, r2, r3 and flags remain from sub_8119438 */
+
+    R4 = save_r4;
+    R5 = obj;
+    R6 = save_r6;
+}
+
+/* sub_81196F0(r5 = battle object) -> r0, r1, r3, flags */
+Next sub_81196F0(void) {
+    sync_battle_state_regs();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811974C ── */
 /* sub_811974C(r5 = state byte block):
  * Clear bit 1 of the byte at [r5] and write 0xC to the byte at [r5,#9].
@@ -386,6 +462,114 @@ Next sprite_setPositionForIdRange3_8119854(void) {
     SET_FLAGS_CMP(id, end);
 
     R5 = savedR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8119880 ── */
+/* register form: calls submenu_isOpen_81355D8 outside this file, which has no typed C interface yet */
+static bool submenu_is_open_sub_8119880(void) {
+    GUEST_CALL(submenu_isOpen_81355D8);
+    return !ZERO_FLAG();  /* callee sets Z=1 when submenu is NOT open */
+}
+
+/* register form: calls sub_81312F4 outside this file, which has no typed C interface yet */
+static u32 get_active_submenu(void) {
+    GUEST_CALL(sub_81312F4);
+    return R0;
+}
+
+/*
+ * Gate on the incoming Z flag (ldrb does not set flags in Thumb, so the beq
+ * at +0x08 tests whatever Z the caller left).  When Z is clear: r6 = &sSubmenu,
+ * probe whether a specific submenu is open (sub_81312F4 returns the active one),
+ * then compare the two status bytes at +0xE and +0xF via cmp.
+ * Returns (field_E - field_F) for SET_FLAGS_NZ; *out_r6 gets the submenu pointer.
+ */
+static u32 check_submenu_diff(u32 r5, u32 r6_in, bool incoming_z, u32 *out_r6) {
+    /* Perform the memory reads the original executes (values go to clobbered r0/r1) */
+    u32 idx = LD8(r5 + 5);
+    (void)LD8(A_byte_811935C + idx);
+
+    if (incoming_z) {
+        /* Early return: r6 passes through, flags pass through (Z=1 ⇒ N=0 ⇒ result 0) */
+        *out_r6 = r6_in;
+        return 0;
+    }
+
+    u32 submenu = A_sSubmenu;
+    if (submenu_is_open_sub_8119880()) {
+        submenu = get_active_submenu();
+    }
+    *out_r6 = submenu;
+
+    u32 field_e = LD8(submenu + 0xE);
+    u32 field_f = LD8(submenu + 0xF);
+    return field_e - field_f;
+}
+
+/* sub_8119880(r5 = context ptr, r6 = submenu ptr in/out, incoming nz) -> r6, nz */
+Next sub_8119880(void) {
+    u32 out_r6;
+    u32 result = check_submenu_diff(R5, R6, ZERO_FLAG(), &out_r6);
+    R6 = out_r6;
+    SET_FLAGS_NZ(result);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81198B0 ── */
+/* register form: calls submenu_isOpen_81355D8 outside this file, which has no typed C interface yet */
+static bool submenu_is_open_sub_81198B0(void) {
+    GUEST_CALL(submenu_isOpen_81355D8);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_81312F4 outside this file, which has no typed C interface yet */
+static u32 get_active_submenu_ptr(void) {
+    GUEST_CALL(sub_81312F4);
+    return R0;
+}
+
+/* Comparison result for the submenu state check. */
+typedef struct {
+    u32 r1_out;     /* value to write into r1 on return */
+    u32 left;       /* byte at +0xE of the active submenu */
+    u32 right;      /* byte at +0xF of the active submenu */
+} SubmenuCheckResult;
+
+/* Check whether the submenu state at [r5+5] is 1..5 (meaning "skip comparison").
+ * If not, determine the active submenu pointer (sub_81312F4 if the popup is open,
+ * otherwise the global sSubmenu) and compare the byte pair at +0xE / +0xF.
+ * r1_in is passed through unchanged on the "skip" path. */
+static SubmenuCheckResult check_submenu_state(u32 submenu_ptr, u32 r1_in) {
+    SubmenuCheckResult res;
+    u32 state = LD8(submenu_ptr + 5);
+
+    /* States 1–5: "always different" sentinel (original: tst 1,1 → Z=0). */
+    if (state >= 1 && state <= 5) {
+        res.left = 1;
+        res.right = 0;
+        res.r1_out = r1_in;
+        return res;
+    }
+
+    /* Pick the submenu structure whose state bytes we compare. */
+    u32 target;
+    if (submenu_is_open_sub_81198B0())
+        target = get_active_submenu_ptr();
+    else
+        target = A_sSubmenu;
+
+    res.left = LD8(target + 0xE);
+    res.right = LD8(target + 0xF);
+    res.r1_out = res.right;
+    return res;
+}
+
+/* sub_81198B0(r5 = submenu ptr, lr) → nz, c, v, r1, lr */
+Next sub_81198B0(void) {
+    SubmenuCheckResult res = check_submenu_state(R5, R1);
+    R1 = res.r1_out;
+    SET_FLAGS_CMP(res.left, res.right);
     RETURN_TO_CALLER();
 }
 
@@ -566,6 +750,30 @@ Next object_runTypeUpdateThenSpriteUpdate_811A0A4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811A0CC ── */
+/* Jump table base at 0x0811A0E0; entries are 4-byte-aligned, so the state byte
+ * at object offset 9 is pre-multiplied (0, 4, 8, 12, 16). */
+
+/* register form: dispatches to the handler chosen by the state byte at obj+9.
+ * The target is one of five game functions selected at runtime from a jump table;
+ * none has a typed C interface. All registers and flags pass through to/from the
+ * callee unchanged. */
+static void dispatch_state_handler(u32 obj) {
+    switch (LD8(obj + 9)) {
+    case 0:  GUEST_CALL(sub_811A0F4);                              break;
+    case 4:  GUEST_CALL(battle_initScalableSpriteObject_811A11C);   break;
+    case 8:  GUEST_CALL(npc_ClearBusyFlagAndResetState_811A138);    break;
+    case 12: GUEST_CALL(stateObj_advanceToState0x10_811A148);       break;
+    case 16: GUEST_CALL(sprite_scaleShrinkStep_811A160);            break;
+    }
+}
+
+/* sub_811A0CC(r5 = state-object ptr) -> everything the chosen handler returns */
+Next sub_811A0CC(void) {
+    dispatch_state_handler(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_initScalableSpriteObject_811A11C ── */
 /* battle_initScalableSpriteObject_811A11C(r5 = battle object):
  * Give the object's sprite (number 0x90) scaling support, program its
@@ -671,6 +879,115 @@ Next object_runUpdateDispatch_811A190(void) {
     GUEST_CALL(sub_811A29C);
     GUEST_CALL(sub_811A2EC);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A1B0 ── */
+#define oCursorByte         0x0C   /* u8  current cursor byte */
+#define oCursorByteBak      0x0D   /* u8  backup cursor byte */
+#define oChipIndex          0x0E   /* u16 selected chip id */
+#define oChipIndexBak       0x10   /* u16 backup chip id */
+#define oFlagsPtr           0x14   /* u32 ptr to gate-flags byte */
+#define oChipData_Palette   0x07   /* u8  palette field inside ChipData */
+
+/* register form: calls submenu_compareCursorBytes_811A24C outside this file,
+ * which has no typed C interface yet. Z is set when the two byte sequences match. */
+static bool cursor_bytes_match(void) {
+    GUEST_CALL(submenu_compareCursorBytes_811A24C);
+    return ZERO_FLAG();
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C
+ * interface yet. Preserves r4, r5, r6 across the call. */
+static u32 get_chip_ptr(u32 chip_index) {
+    R0 = chip_index;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed
+ * C interface yet. Preserves r1, r4, r5, r6; clobbers r0, r2, r3, lr.
+ * After the call cpu.nz/c/v hold the callee's flags. */
+static u32 sprite_set_palette(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+    return R0;
+}
+
+/* Result struct for the chip-preview handler. */
+struct ChipPreviewResult {
+    u32 r0;
+    u32 r1;
+    u32 r4;
+    u32 r6;
+    u32 nz_val;   /* passed to SET_FLAGS_NZ in the adapter */
+};
+
+/*
+ * One per-line chip-preview routine.
+ *
+ * If the two cursor byte sequences match AND gate-bit-1 of the flags byte
+ * is set, we bail early: r0/r1 hold the loaded values, r4/r6 pass through
+ * from the callee, and the adapter sets N,Z from the TST result (C,V
+ * stay from submenu_compareCursorBytes).
+ *
+ * Otherwise we load the selected chip index and cursor byte, look up the
+ * chip's palette, remap it through the ROM constant table at
+ * byte_811A1E0, call sprite_setPalette, and save the current selection
+ * as the new backup.
+ */
+static struct ChipPreviewResult chip_preview(u32 menu, u32 r4_in, u32 r6_in) {
+    struct ChipPreviewResult res;
+    res.r4 = r4_in;
+    res.r6 = r6_in;
+
+    if (cursor_bytes_match()) {
+        u32 flags_byte = LD8(LD32(menu + oFlagsPtr));
+        u32 tst = flags_byte & 2;
+        if (tst != 0) {
+            /* Gate bit set – skip preview, return early. */
+            res.r0  = flags_byte;
+            res.r1  = 2;
+            res.nz_val = tst;
+            return res;
+        }
+    }
+
+    /* Normal preview path. */
+    u16 chip_idx = LD16(menu + oChipIndex);
+    u8  cur_byte = LD8(menu + oCursorByte);
+    res.r4 = chip_idx;
+    res.r6 = cur_byte;
+
+    u32 chip_ptr = get_chip_ptr(chip_idx);
+    u8  raw_pal  = LD8(chip_ptr + oChipData_Palette);
+    u8  mapped   = LD8(A_byte_811A1E0 + raw_pal);
+
+    /* Load remap table address into r1 (preserved by sprite_setPalette). */
+    res.r1 = A_byte_811A1E0;
+
+    u32 r0 = sprite_set_palette(mapped);
+    res.r0     = r0;
+    res.nz_val = r0;   /* sprite_setPalette flags approximate sign/zero of r0 */
+
+    /* Stash current values so the next comparison detects changes. */
+    ST16(menu + oChipIndexBak, chip_idx);
+    ST8(menu + oCursorByteBak, cur_byte);
+
+    return res;
+}
+
+/* sub_811A1B0(r5 = cursor-line struct ptr, lr = return addr)
+ * outputs: nz c v r0 r1 r2 r3 r4 r6 lr
+ * r2, r3, lr are only ever left behind by callees (GUEST_CALLs);
+ * the adapter writes only what chip_preview computes. */
+Next sub_811A1B0(void) {
+    struct ChipPreviewResult res = chip_preview(R5, R4, R6);
+    R0 = res.r0;
+    R1 = res.r1;
+    R4 = res.r4;
+    R6 = res.r6;
+    SET_FLAGS_NZ(res.nz_val);
     RETURN_TO_CALLER();
 }
 
