@@ -201,6 +201,30 @@ static void gen_script_list_8001158(Cpu *in, u32 (*rnd)(void)) {
     in->r[0] = list;
 }
 
+/* dispatchBattleObjectBehavior_802BF4C: a selector its table has (as kJumpTables gives the others), and
+ * for its handler sub_802C044 row numbers the game has: that handler reads a halfword of its 0x74-byte
+ * stack buffer at 4 + 2 * unk_2035320[[r5+0xB]], and a random byte reads past the buffer into its own
+ * pushed return address, which is the original's return point in the dispatcher on one side and the
+ * caller's on the port's (GUEST_CALL keeps LR). */
+static void gen_dispatch_behavior_802BF4C(Cpu *in, u32 (*rnd)(void)) {
+    u32 area = 0x02010000u + (rnd() % 0x1000) * 4;
+    in->r[5] = area;
+    U8(area + 3) = (u8)((rnd() % 3) * 4);
+    for (u32 i = 0; i < 0x2A; i++)
+        U8(0x02035320u + i) = (u8)(rnd() % 0x38);
+}
+
+/* sprite_repackAndQueueTiles_811F5DC copies r3 tiles' rows from r0 to r1 and queues the copy for VRAM
+ * (r2): a random count runs the copy up through IWRAM into the original's own frame, where its loop
+ * counters live and change, so it stops, while the port's counters are C locals. Real callers pass a
+ * few tiles and buffers in EWRAM. */
+static void gen_repack_tiles_811F5DC(Cpu *in, u32 (*rnd)(void)) {
+    in->r[0] = 0x02020000u + (rnd() % 0x400) * 4;
+    in->r[1] = 0x02030000u + (rnd() % 0x400) * 4;
+    in->r[2] = 0x06010000u + (rnd() % 0x200) * 0x20;
+    in->r[3] = 1 + rnd() % 8;
+}
+
 GenFn difftest_snap_mutator(const char *name) {
     if (!strcmp(name, "npc_runSecondaryScriptMaybe_809ebf8")) return mut_npc_secondary;
     if (!strcmp(name, "sprite_queueFramePieces")) return mut_sprite_pieces;
@@ -215,6 +239,8 @@ GenFn difftest_generator(const char *name) {
     if (!strcmp(name, "menu_moveCursor_811FA36")) return gen_cursor_body;
     if (!strcmp(name, "dispatchStateHandler_81179AE")) return gen_state_handler_81179AE;
     if (!strcmp(name, "scriptListRun_8001158")) return gen_script_list_8001158;
+    if (!strcmp(name, "dispatchBattleObjectBehavior_802BF4C")) return gen_dispatch_behavior_802BF4C;
+    if (!strcmp(name, "sprite_repackAndQueueTiles_811F5DC")) return gen_repack_tiles_811F5DC;
     for (size_t i = 0; i < sizeof kJumpTables / sizeof kJumpTables[0]; i++)
         if (!strcmp(name, kJumpTables[i].name)) {
             g_jump_table = &kJumpTables[i];
