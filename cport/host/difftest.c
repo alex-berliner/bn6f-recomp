@@ -506,7 +506,8 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
 
 /* -G DIR: ground truth. Each snap_NNNN.bin (a function's entry state in the
  * original game) is run through the lifted code and the result compared with
- * snap_NNNN.exit.bin (the original's state when that call returned). Memory
+ * snap_NNNN.exit.bin (the original's state when that call returned), the
+ * return target included (the entry LR, where the original returned). Memory
  * below the final SP and the IWRAM block holding the original's code copies
  * are not compared; interrupts that ran during the call show up as extra
  * differences (sound state, frame counters). */
@@ -590,6 +591,12 @@ static int ground_truth(const char *dir) {
         for (int r = 0; r < 16; r++)
             if (r != 15 && (!ct || (r < 13 && (ct->mask >> r & 1))) && res->cpu.r[r] != exp.r[r] && diffs++ < 20)
                 printf("  %s: r%d lifted %#x original %#x\n", files[t] + strlen(dir) + 1, r, res->cpu.r[r], exp.r[r]);
+        /* The original returned to its entry LR (mgba_run writes an exit only then): the port must
+         * too. Lockstep cannot see a wrong return target on a direct call (the lifted caller goes
+         * on after the call either way); before 2026-10-11 the oracle did not look either. */
+        if (res->cpu.ret != (in.r[14] & ~1u) && diffs++ < 20)
+            printf("  %s: return target lifted %#x original %#x\n", files[t] + strlen(dir) + 1, res->cpu.ret,
+                   in.r[14] & ~1u);
         if (ct) {
             int nz_bad = ((s32)res->cpu.nz < 0) != ((s32)exp.nz < 0) || (res->cpu.nz == 0) != (exp.nz == 0);
             if (((ct->flags & 1) && nz_bad) || ((ct->flags & 2) && (res->cpu.c & 1) != (exp.c & 1)) ||
