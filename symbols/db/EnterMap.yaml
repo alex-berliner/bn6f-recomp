@@ -1,0 +1,100 @@
+name: EnterMap
+address: '0x08005148'
+kind: function
+status: confirmed
+summary: map-entry gamestate routine that prepares the overworld (resets graphics/object/cutscene/scenario state,
+  clears mode event flags, loads the destination map's graphics/tables, starts the fade-in, and hands control to
+  the on-map update subsystem); returns immediately if a screen fade is still active.
+interface: "void enterMap_8005148(void) /* r10 = toolkit */\n  // inputs : r10 = toolkit, r4-r9/r11/r12/lr from\
+  \ caller\n  // outputs: r0 = 4, r1 = 0; flags from movs r0,#4 (N clear, Z clear)\n  //         on the fade-active\
+  \ early return, preserves IsScreenFadeActive's\n  //         r0/r1/Z (Z set, N clear)\n  // clobbers: r0, r1,\
+  \ r2, r3, r4, r5, r6, r7, lr; flags N,Z,C,V\n"
+details: 'Returns immediately when IsScreenFadeActive reports a fade in progress, leaving its callee''s r0/r1 and
+  Z flag untouched.; Map-entry setup order (all unconditional on the non-fade path): resetAllGraphicsState_8005F40,
+  runSetupStepAndClearWorkArea_8005F6C, sub_80027C4.; InitializeOverworldMapObjectStructs, copy_8002668, zeroFill_80024A2.;
+  scenario_initEffectState_8003962, zeroFill_8003AB2.; eventflags_ClearTwoHalfwordsAt2DE_802F0D8, eventFlags_ClearRangeAt2C8_802F0F4.;
+  cutscene_forceEndCurrent_8036EFE, clearCutsceneScriptPosIfMagicValue0x1_8036F24, sub_809F90C.; Clears the named
+  mode/event flags: EVENT_"1731", EVENT_1719, EVENT_NPC_OBJECTS_DISABLED (label `EVENT_NPC_OBJECTS_DISABLED` on
+  flag 0x1701), EVENT_NON_NPC_ANIMATION_LOCKED (0x1702), EVENT_1700, EVENT_PET_DISABLED (0x1707), EVENT_1739, EVENT_1732,
+  EVENT_1BB (0x01BB), EVENT_IN_SLIPRUN_STATE (0x173D), EVENT_173E, EVENT_173F.; sub_803F6B0(0); sub_803F500(); RandomizeExtraToolkitPointers;
+  reloadCurNaviStatBoosts_813c3ac only if NOT EVENT_1741.; Reads r10->oToolkit_GameStatePtr into r5 to obtain the
+  game state; then sub_8000FAC, sub_80355EC, sub_8001172(0).; Zeroes four interaction/coordination leftovers on
+  the game state: oGameState_Unk_15 (byte), oGameState_CoordInteractionValue (byte), field at offset 3 ("oGameState_Unk_03"),
+  oGameState_Unk_68 (word).; triggerSomeUpdateForInternetOrRealWorld_8033948, SetRenderInfoLCDControl(0x1740).;
+  Loads destination map resources three ways from r5->oGameState_MapGroup / oGameState_MapNumber (re-read before
+  each call): LoadGFXAnimsForMapGroup, map_lookupMapIdByGroupAndNumber_8001708, map_8034B4C; then EnterMap_RunMapGroupAsmFunction_8030A00
+  using only the map group.; Starts fade-in from the saved parameters in oGameState_EnterMapFadeParam1/2, then resets
+  them to constants 8 and 0x10.; Clears byte at *(oToolkit_Warp2011bb0_Ptr + oWarp2011bb0_Unk_10) and sets oGameState_SubsystemIndex
+  to 4 to dispatch the on-map update subsystem `gamestate_OnMapUpdate_8005268` (via cbGameState_80050EC).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261011-013440);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 71' --file inbox_farm_71.c EnterMap
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function EnterMap
+
+    ./wf verify --function EnterMap --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-013440-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function EnterMap
+
+    ./wf verify --function EnterMap --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 0 out of domain (verify run convert-20261011-013440-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function EnterMap
+
+    ./wf verify --function EnterMap --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013440-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08005148 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 53a1df4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact semantics of the named event flags (many are placeholders, e.g. EVENT_1731/1732/1739/173E/173F and the byte
+  at oWarp2011bb0_Unk_10).
+- What IsScreenFadeActive/resetAllGraphicsState_8005F40/runSetupStepAndClearWorkArea_8005F6C/sub_80027C4/sub_8002668/scenario_initEffectState_8003962/sub_803F6B0/sub_803F500/sub_8000FAC/sub_80355EC/sub_8001172/SetRenderInfoLCDControl
+  actually do.
+- Which map subsystem table `gamestate_OnMapUpdate_8005268` indexes with the value 4.
+- Why EVENT_1741 suppresses the reloadCurNaviStatBoosts path (likely "navi stats boost field is current" vs "force
+  re-read").
+sources:
+- tools/wf run convert-20261011-013440
+- recomp 53a1df4
