@@ -1756,3 +1756,170 @@ Next npc_StateModeDispatcher_8119364(void) {
 
     RETURN_TO_CALLER();
 }
+
+/* ── sub_8119384 ── */
+/*
+ * sub_8119384: Initialize a battle sprite object from its character/team indices.
+ *
+ * Reads char_idx [obj+4] and team_idx [obj+5].  Clears bit 0x10 ("forced")
+ * from char_idx if present and marks [obj+0xA].  Writes a sprite-type byte
+ * (0x23 for Net.EXE, 0x83 otherwise) to [obj].  If char_idx==0, invokes a
+ * special handler.  Then populates the GUI sprite with base graphic, pointer,
+ * animation, palette, priority, slot halfword, sub-entry palette bank, and
+ * sub-record field A looked up from per-team/per-char tables.  Finally sets
+ * object state fields and calls the sprite-finalize tail.
+ */
+
+/* register form: calls sub_81195E4 outside this file, which has no typed C interface yet */
+static void zero_char_handler(u32 sprite_type) {
+    R0 = sprite_type;
+    GUEST_CALL(sub_81195E4);
+}
+
+/* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
+static void init_gui_sprite(u8 base_graphic, u32 sprite_ptr, u8 char_idx) {
+    R0 = base_graphic;
+    R1 = sprite_ptr;
+    R4 = char_idx;
+    GUEST_CALL(initGuiSprite_8002770);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void set_animation(u8 anim_id) {
+    R0 = anim_id;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void load_animation_data(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void disable_shadow(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void set_palette(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void set_priority(u8 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void store_slot_halfword(u32 value) {
+    R0 = value;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void set_sub_palette_bank(u8 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+}
+
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void set_sub_record_field_a(u8 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: calls object_writeSubstructField30_8002FEC outside this file, which has no typed C interface yet */
+static void write_substruct_field30(u32 ptr) {
+    R0 = ptr;
+    GUEST_CALL(object_writeSubstructField30_8002FEC);
+}
+
+/* register form: calls sub_81196A0 outside this file, which has no typed C interface yet */
+static void finalize_sprite(void) {
+    R0 = 0;
+    GUEST_CALL(sub_81196A0);
+}
+
+/* --- typed implementation --- */
+
+static void init_battle_sprite_sub_8119384(u32 obj) {
+    /* Read character index; clear the "forced" bit (0x10) if set */
+    u8 char_idx = LD8(obj + 4);
+    if (char_idx & 0x10) {
+        char_idx &= (u8)~0x10;
+        ST8(obj + 4, char_idx);
+        ST8(obj + 0xA, 1);
+    }
+
+    /* Sprite-type byte: 0x23 for Net.EXE (char 1), 0x83 otherwise */
+    u8 sprite_type = (char_idx == 1) ? 0x23 : 0x83;
+    ST8(obj, sprite_type);
+
+    /* Character 0 triggers a special initial handler */
+    if (char_idx == 0)
+        zero_char_handler(sprite_type);
+
+    /* Team index used for all per-team table lookups */
+    u8 team_idx = LD8(obj + 5);
+
+    /* Look up sprite pointer: off_81191B4[team] -> row, row[char] -> ptr */
+    u32 team_row   = LD32(A_off_81191B4 + (team_idx << 2));
+    u32 sprite_ptr = LD32(team_row + (char_idx << 2));
+
+    /* Initialize GUI sprite with base graphic and pointer */
+    u8 base_graphic = LD8(A_dword_8119624 + char_idx);
+    init_gui_sprite(base_graphic, sprite_ptr, char_idx);
+
+    /* Set animation, load data, disable shadow, zero palette */
+    u8 anim_id = LD8(A_dword_811963C + char_idx);
+    set_animation(anim_id);
+    load_animation_data();
+    disable_shadow();
+    set_palette(0);
+
+    /* Display priority from team/char table */
+    u32 prio_table = LD32(A_off_8119208 + (team_idx << 2));
+    u8 priority    = LD8(prio_table + char_idx);
+    set_priority(priority);
+
+    /* Slot-list halfword from team/char table (stride 4) */
+    u32 slot_table = LD32(A_off_8119128 + (team_idx << 2));
+    u32 slot_value = LD32(slot_table + (char_idx << 2));
+    store_slot_halfword(slot_value);
+
+    /* Sub-entry palette bank from team/char table */
+    u32 pal_table = LD32(A_off_8119170 + (team_idx << 2));
+    u8 pal_bank   = LD8(pal_table + char_idx);
+    set_sub_palette_bank(pal_bank);
+
+    /* Sub-record field A from team/char table */
+    u32 fld_table = LD32(A_off_8119228 + (team_idx << 2));
+    u8 field_a    = LD8(fld_table + char_idx);
+    set_sub_record_field_a(field_a);
+
+    /* Character 0 also writes to the battle-object substruct */
+    if (char_idx == 0) {
+        u32 sub_ptr = LD32(A_off_811924C + (team_idx << 2));
+        write_substruct_field30(sub_ptr);
+    }
+
+    /* Set final object state fields.
+     * The original does mov r0,#0xFF then strh r0,[r5,#0x10]: THUMB strh
+     * stores only the low 16 bits (0x00FF), not 0xFFFF. */
+    ST8(obj + 0x08, 4);
+    ST16(obj + 0x10, 0x00FF);
+    ST8(obj + 0x0D, 0xFF);
+    ST16(obj + 0x1A, 0x00FF);
+    ST8(obj + 0x13, 0);
+
+    /* Tail: finalize */
+    finalize_sprite();
+}
+
+/* sub_8119384(r5 = battle sprite object pointer) -> r0-r5, lr, nz/c/v via callee */
+Next sub_8119384(void) {
+    init_battle_sprite_sub_8119384(R5);
+    RETURN_TO_CALLER();
+}

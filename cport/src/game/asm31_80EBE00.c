@@ -161,6 +161,36 @@ Next sub_80EBE54(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80EBF10 ── */
+/* Dispatches an AI attack step through a 3-entry jump table indexed by the
+ * attack-type byte at oAIAttackVars_Unk_00 (offset 0) within the vars block.
+ * Sets r0 = type, r1 = handler address (table entry), lr = return point,
+ * then calls the handler. All other registers pass through to the callee. */
+
+/* register form: looks up AI attack jump table and calls the selected handler */
+static void call_ai_attack_handler(u32 vars_ptr) {
+    u32 attack_type = (u32)LD8(vars_ptr + oAIAttackVars_Unk_00);
+    u32 handler = LD32(A_off_80EBF24 + attack_type);
+    R0 = attack_type;
+    R1 = handler;
+    LR = 0x080EBF1C;
+    if (attack_type == 0)
+        GUEST_CALL(aiAttack_genericSpawnAndCountdown_80EBF30);
+    else if (attack_type == 4)
+        GUEST_CALL(sub_80EBF6E);
+    else
+        GUEST_CALL(battle_aiWindRackAttackStep_80EBFF4);
+}
+
+/* sub_80EBF10(r7 = AI attack vars ptr, lr = caller return addr)
+ * Preserves all caller registers except those the handler modifies. */
+Next sub_80EBF10(void) {
+    u32 saved_lr = LR;
+    call_ai_attack_handler(R7);
+    LR = saved_lr;
+    RETURN_TO_CALLER();
+}
+
 /* ── aiAttack_genericSpawnAndCountdown_80EBF30 ── */
 /* aiAttack_genericSpawnAndCountdown_80EBF30: per-tick update of an AI-driven attack (r4 = owning battle
  * object, r7 = oAIAttackVars state block). On the first tick (Unk_01 == 0)
@@ -348,6 +378,36 @@ Next aiAttack_tickTimerAndExitWhenDone_80ECA0C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80ED13E ── */
+/* register form: calls sub_80ED154 outside this file, which has no typed C interface yet */
+static void call_attack_type_handler(u32 idx, u32 target, u32 ai_vars,
+                                     u32 r2, u32 r3, u32 r4, u32 r5, u32 r6,
+                                     u32 r8, u32 r9, u32 r10, u32 r11, u32 r12) {
+    R0  = idx;
+    R1  = target;
+    R7  = ai_vars;
+    R2  = r2;  R3  = r3;  R4  = r4;  R5  = r5;  R6  = r6;
+    R8  = r8;  R9  = r9;  R10 = r10; R11 = r11; R12 = r12;
+    GUEST_CALL(sub_80ED154);
+}
+
+/* Read the AI attack-type index from the attack variables and dispatch to the
+ * matching handler via the single-entry jump table at off_80ED150. */
+static void ai_attack_dispatch_sub_80ED13E(u32 ai_vars,
+                               u32 r2, u32 r3, u32 r4, u32 r5, u32 r6,
+                               u32 r8, u32 r9, u32 r10, u32 r11, u32 r12) {
+    u32 idx = LD8(ai_vars + oAIAttackVars_Unk_00);
+    u32 target = LD32(A_off_80ED150 + idx);
+    call_attack_type_handler(idx, target, ai_vars,
+                             r2, r3, r4, r5, r6, r8, r9, r10, r11, r12);
+}
+
+/* sub_80ED13E(r7 = AI attack variables, r2..r6/r8..r12 = context) -> all regs */
+Next sub_80ED13E(void) {
+    ai_attack_dispatch_sub_80ED13E(R7, R2, R3, R4, R5, R6, R8, R9, R10, R11, R12);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_EndRelatedObject2Anim_80F06CE ── */
 /* battle_EndRelatedObject2Anim_80F06CE(r4, r5 = battle object):
  * If the battle object has a secondary ("related object 2") sprite attached,
@@ -491,6 +551,57 @@ Next battle_aiTickAttackTimer_80FE1FE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FE21E ── */
+/* register form: calls sub_80FE240, AI attack phase 0 handler */
+static void call_attack_phase0(u32 state, u32 entry, u32 vars) {
+    R0 = state; R1 = entry; R7 = vars;
+    GUEST_CALL(sub_80FE240);
+    R7 = vars;                       /* original restores r7 via pop {r7,pc} */
+}
+
+/* register form: calls battle_aiAttackWindupTick_80FE284, AI attack phase 1 handler */
+static void call_attack_phase1(u32 state, u32 entry, u32 vars) {
+    R0 = state; R1 = entry; R7 = vars;
+    GUEST_CALL(battle_aiAttackWindupTick_80FE284);
+    R7 = vars;
+}
+
+/* register form: calls sub_80FE2A8, AI attack phase 2 handler */
+static void call_attack_phase2(u32 state, u32 entry, u32 vars) {
+    R0 = state; R1 = entry; R7 = vars;
+    GUEST_CALL(sub_80FE2A8);
+    R7 = vars;
+}
+
+/* register form: calls sub_80FE30C, AI attack phase 3 handler */
+static void call_attack_phase3(u32 state, u32 entry, u32 vars) {
+    R0 = state; R1 = entry; R7 = vars;
+    GUEST_CALL(sub_80FE30C);
+    R7 = vars;
+}
+
+/* Tail-dispatch to the current AI attack phase handler.
+ * The state byte at [vars+oAIAttackVars_Unk_00] is the table offset (0,4,8,12);
+ * it indexes off_80FE230 to pick one of four handlers, each receiving the state
+ * in r0 and its own entry address in r1. */
+static void ai_attack_dispatch_sub_80FE21E(u32 vars) {
+    u32 state = LD8(vars + oAIAttackVars_Unk_00);
+    u32 entry = LD32(A_off_80FE230 + state);
+
+    switch (state) {
+        case 0:  call_attack_phase0(state, entry, vars); break;
+        case 4:  call_attack_phase1(state, entry, vars); break;
+        case 8:  call_attack_phase2(state, entry, vars); break;
+        case 12: call_attack_phase3(state, entry, vars); break;
+        default: break;
+    }
+}
+
+Next sub_80FE21E(void) {
+    ai_attack_dispatch_sub_80FE21E(R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiAttackWindupTick_80FE284 ── */
 /* battle_aiAttackWindupTick_80FE284: AI attack state machine tick.
  * r5 = battle object, r7 = AI attack vars.
@@ -554,6 +665,247 @@ Next aiAttackDispatchHandler_80FE452(void) {
         GUEST_CALL(sub_80FE4AC);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FE4D0 ── */
+/* Register contract:
+ *   inputs:  r0 r2 r3 r4 r5 r6 r7 lr
+ *   outputs: nz c v r0 r1 r2 r3 r4 r5 r6 r7 lr
+ *   clobbers: -
+ *   preserved: r4 r5 r6 r7
+ */
+
+/* Direction offsets (signed byte pairs) at byte_80FE594 in ROM:
+ * left (-1,0), up (0,-1), right (1,0), down (0,1) */
+#define OFFSET_TABLE_ADDR  A_byte_80FE594
+
+/* register form: calls object_checkPanelParameters outside this file, which has no typed C interface yet */
+static u32 check_panel_params(u32 px, u32 py, u32 arg_x, u32 arg_y) {
+    R0 = px; R1 = py; R2 = arg_x; R3 = arg_y;
+    GUEST_CALL(object_checkPanelParameters);
+    return R0;
+}
+
+/* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */
+static u32 get_positive_rng(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return R0;
+}
+
+/* register form: calls GBA BIOS Divide (SWI 6) outside this file, which has no typed C interface yet */
+static u32 bios_mod(u32 dividend, u32 divisor) {
+    R0 = dividend; R1 = divisor;
+    swi_call(6);
+    return R1;
+}
+
+/* Result of the neighbour-panel scan. */
+struct PanelResult {
+    u32 x;         /* low nibble of chosen packed byte (truncated to 3 bits by original) */
+    u32 y;         /* high nibble of chosen packed byte */
+    u32 flag_val;  /* value whose NZ the final flag-setting instruction produces */
+};
+
+/* Scan four cardinal neighbours of the battle object; choose randomly among
+ * valid panels that are not on the object's special row, falling back to
+ * panels on that row, or to the object's own panel if none are valid. */
+static struct PanelResult find_neighbor_panel(u32 ptr, u32 arg_x, u32 arg_y,
+                                              u32 battle_obj, u32 cur_packed) {
+    u32 cur_x = cur_packed & 0xF;
+    u32 cur_y = cur_packed >> 4;
+
+    u32 obj_x = LD8(battle_obj + oBattleObject_PanelX);
+    u32 obj_y = LD8(battle_obj + oBattleObject_PanelY);
+
+    /* Two candidate lists: packed as (y<<4)|x in 4 bytes each. */
+    u8 valid_list[4];
+    u8 special_list[4];
+    u32 valid_count = 0;
+    u32 special_count = 0;
+
+    for (u32 i = 0; i < 4; i++) {
+        s8 dx = (s8)LD8(OFFSET_TABLE_ADDR + i * 2);
+        s8 dy = (s8)LD8(OFFSET_TABLE_ADDR + i * 2 + 1);
+        u32 tx = (u32)((s32)dx + obj_x);
+        u32 ty = (u32)((s32)dy + obj_y);
+
+        if (!check_panel_params(tx, ty, arg_x, arg_y))
+            continue;
+
+        /* Skip the panel we're already standing on. */
+        if (tx == cur_x && ty == cur_y)
+            continue;
+
+        /* Classify by the object's field_13 (special row). */
+        u8 packed = (u8)((ty << 4) | tx);
+        if (ty != LD8(ptr + 0x13))
+            valid_list[valid_count++] = packed;
+        else
+            special_list[special_count++] = packed;
+    }
+
+    struct PanelResult res;
+
+    if (valid_count > 0) {
+        u32 idx = bios_mod(get_positive_rng(), valid_count);
+        u32 byte = valid_list[idx];
+        res.y = byte >> 4;
+        res.x = (byte << 29) >> 29;   /* original truncates to 3 bits */
+        res.flag_val = res.x;
+    } else if (special_count > 0) {
+        u32 idx = bios_mod(get_positive_rng(), special_count);
+        u32 byte = special_list[idx];
+        res.y = byte >> 4;
+        res.x = (byte << 29) >> 29;
+        res.flag_val = res.x;
+    } else {
+        u32 callee_ret = check_panel_params(cur_x, cur_y, arg_x, arg_y);
+        res.flag_val = callee_ret;
+        if (callee_ret) {
+            res.x = cur_x;
+            res.y = cur_y;
+        } else {
+            res.x = 0;
+            res.y = cur_y;
+        }
+    }
+
+    return res;
+}
+
+/* sub_80FE4D0(r0=ptr, r2=arg_x, r3=arg_y, r5=battle_obj, r6=cur_packed) -> r0,r1 */
+Next sub_80FE4D0(void) {
+    struct PanelResult r = find_neighbor_panel(R0, R2, R3, R5, R6);
+    R0 = r.x;
+    R1 = r.y;
+    SET_FLAGS_NZ(r.flag_val);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FE5EE ── */
+/* register form: calls object_checkPanelParameters outside this file,
+ * which has no typed C interface yet */
+static u32 check_panel(u32 x, u32 y, u32 b1, u32 b2) {
+    R0 = x; R1 = y; R2 = b1; R3 = b2;
+    GUEST_CALL(object_checkPanelParameters);
+    return R0;
+}
+
+/* register form: calls object_getPanelsIgnoreRowFiltered outside this file,
+ * which has no typed C interface yet; r7 = candidate buffer, callee may clobber it */
+static void get_panels_filtered(u32 x, u32 y, u32 b1, u32 b2, u32 buf,
+                                u32 *out_count, u32 *out_r1) {
+    u32 saved_r7 = R7;
+    R0 = x; R1 = y; R2 = b1; R3 = b2; R7 = buf;
+    GUEST_CALL(object_getPanelsIgnoreRowFiltered);
+    *out_count = R0;
+    *out_r1 = R1;
+    R7 = saved_r7;
+}
+
+/* register form: calls GetPositiveSignedRNG outside this file,
+ * which has no typed C interface yet */
+static u32 positive_rng(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return R0;
+}
+
+/* register form: calls swi_call(6) (ARM_DivMod) for BIOS; returns remainder */
+static u32 divmod_remainder(u32 dividend, u32 divisor) {
+    R0 = dividend; R1 = divisor;
+    swi_call(6);
+    return R1;
+}
+
+/* Alliance-boundary table: each entry is two u32s at byte_80FE6B8 + alliance*8 */
+#define oPanel_XCoord      0x12
+#define oPanel_YCoord      0x13
+
+/* Cardinal directions: left, up, right, down (s8 dx/dy pairs from byte_80FE6AC) */
+static const s8 NEIGHBOR_DX[4] = {-1,  0,  1,  0};
+static const s8 NEIGHBOR_DY[4] = { 0, -1,  0,  1};
+
+/* Select a random walkable panel adjacent to the current tile.
+ * Returns the chosen (x, y) packed into *out_x, *out_y.
+ * On the fallback-empty path, *out_x = 0 and *out_y carries the callee's r1. */
+static void select_panel(u32 target_x, u32 target_y, u32 panel_ptr, u32 battle_obj,
+                         u32 *out_x, u32 *out_y) {
+    u32 panel_x = LD8(panel_ptr + oPanel_XCoord);
+    u32 panel_y = LD8(panel_ptr + oPanel_YCoord);
+
+    u32 alliance = LD8(battle_obj + oBattleObject_Alliance);
+    u32 table = A_byte_80FE6B8 + (alliance << 3);
+    u32 bound1 = LD32(table);
+    u32 bound2 = LD32(table + 4);
+
+    /* register form: stack buffer whose guest address is passed to callees (r7) */
+    SP -= 0x30;
+    u32 buf = SP + 0x18;
+
+    /* If the target tile differs from the current one, verify the current
+     * panel is still passable; if so, stay here. */
+    if (target_x != panel_x || target_y != panel_y) {
+        if (check_panel(panel_x, panel_y, bound1, bound2) != 0) {
+            *out_x = panel_x;
+            *out_y = panel_y;
+            SP += 0x30;
+            return;
+        }
+    }
+
+    /* Collect up to 4 valid cardinal neighbours into the candidate buffer */
+    u32 count = 0;
+    for (u32 dir = 0; dir < 4; dir++) {
+        u32 nx = (u32)((s32)NEIGHBOR_DX[dir] + (s32)panel_x);
+        u32 ny = (u32)((s32)NEIGHBOR_DY[dir] + (s32)panel_y);
+
+        /* Skip if this neighbour is the destination (no need to walk there) */
+        if (nx == target_x && ny == target_y)
+            continue;
+
+        if (check_panel(nx, ny, bound1, bound2) == 0)
+            continue;
+
+        /* Pack: low 5 bits = x, upper bits = y (y shifted left 4) */
+        ST8(buf + count, nx | (ny << 4));
+        count++;
+    }
+
+    /* Fallback: ask the row-filtered panel list when no neighbour qualified */
+    if (count == 0) {
+        u32 callee_r1;
+        /* r1 is panel_y + 1, carried from the last loop iteration (dir 3, dy +1) */
+        count = 0;
+        get_panels_filtered(target_x, panel_y + 1, bound1, bound2, buf,
+                            &count, &callee_r1);
+        if (count == 0) {
+            /* No valid panels at all; return (0, callee_r1) matching the original */
+            *out_x = 0;
+            *out_y = callee_r1;
+            SP += 0x30;
+            return;
+        }
+    }
+
+    /* Randomly select one candidate: index = RNG % count */
+    u32 rng = positive_rng();
+    u32 idx = divmod_remainder(rng, count);
+
+    u32 packed = LD8(buf + idx);
+    *out_x = (packed << 29) >> 29;   /* packed & 7 – low bits of x */
+    *out_y = packed >> 4;
+
+    SP += 0x30;
+}
+
+/* sub_80FE5EE(r0=target_x, r1=target_y, r2=panel_ptr, r5=battle_obj) -> r0,r1
+ * Outputs r3, r5, r7: r3 is left by callees/SWI; r5 and r7 are preserved. */
+Next sub_80FE5EE(void) {
+    u32 x, y;
+    select_panel(R0, R1, R2, R5, &x, &y);
+    R0 = x;
+    R1 = y;
     RETURN_TO_CALLER();
 }
 
@@ -789,6 +1141,54 @@ Next battle_attackTimerTick_8109CBC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8109D98 ── */
+/* register form: calls object_clearFlag outside this file, which has no typed C interface yet */
+static void call_object_clear_flag(u32 bitfield) {
+    R0 = bitfield;
+    GUEST_CALL(object_clearFlag);
+}
+
+/* register form: calls object_setFlag1 outside this file, which has no typed C interface yet */
+static void call_object_set_flag1(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(object_setFlag1);
+}
+
+/* register form: sets SUBS flags for the countdown decrement; typed C cannot express
+   cpu flags, and the callee path below will overwrite them via GUEST_CALL if taken. */
+static void set_subs_flags_for_decrement(u32 loaded) {
+    SET_FLAGS_CMP(loaded, 1);
+}
+
+/* Decrement the AI-attack timer at Unk_10.
+ * When it reaches zero, mark the object as currently-moving (clear idle flag 0x40,
+ * set OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT), reload the timer from Unk_18,
+ * and advance the phase at Unk_00 to 0xC.
+ * Sets SUBS flags for the non-zero path; on the zero path the callee flags
+ * (from GUEST_CALL) overwrite them, which matches the original. */
+static u32 ai_attack_countdown(u32 vars) {
+    u32 loaded = LD16(vars + oAIAttackVars_Unk_10);
+    u32 counter = loaded - 1;
+    ST16(vars + oAIAttackVars_Unk_10, counter);
+    set_subs_flags_for_decrement(loaded);
+
+    if (counter != 0)
+        return counter;
+
+    call_object_clear_flag(0x40);
+    call_object_set_flag1(1u << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT);
+
+    ST16(vars + oAIAttackVars_Unk_10, LD16(vars + oAIAttackVars_Unk_18));
+    ST16(vars + oAIAttackVars_Unk_00, 0xC);
+    return 0xC;
+}
+
+/* sub_8109D98(r7 = AIAttackVars) -> r0, nzcv, r1, r2, lr */
+Next sub_8109D98(void) {
+    R0 = ai_attack_countdown(R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_attackTickDown_timerEndExit_8109DBA ── */
 /* ai_attackTickDown_timerEndExit_8109DBA (r5 = battle object, r7 = AI attack vars):
  * Tick down the attack timer at oAIAttackVars_Unk_10; the decremented
@@ -813,6 +1213,97 @@ Next ai_attackTickDown_timerEndExit_8109DBA(void) {
     R0 = 1;
     GUEST_CALL(object_exitAttackState);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8109DD2 ── */
+/* AI attack dispatch: selects one of two handlers using the attack-var type
+ * byte stored at the head of the AIAttackVars struct referenced by self. */
+
+/* register form: full-register virtual dispatch — both handlers (sub_8109DEC
+ * and sub_8109E4A) receive and return every CPU register, so C parameter
+ * passing cannot express the call. */
+static void ai_attack_dispatch_sub_8109DD2(u32 self) {
+    u8 idx = LD8(self + oAIAttackVars_Unk_00);
+    u32 handler_addr = LD32(A_off_8109DE4 + idx);
+    R0 = idx;
+    R1 = handler_addr;
+    u32 saved_r6 = R6;
+    if (idx == 0)
+        GUEST_CALL(sub_8109DEC);
+    else
+        GUEST_CALL(sub_8109E4A);
+    R6 = saved_r6;
+}
+
+Next sub_8109DD2(void) {
+    ai_attack_dispatch_sub_8109DD2(R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8109E4A ── */
+/* register form: calls sub_800AA40 outside this file, which has no typed C interface yet */
+static void ai_recalc(u32 extra_vars) {
+    R0 = extra_vars;
+    GUEST_CALL(sub_800AA40);
+}
+
+/* register form: calls list_tryAddUniqueEntry_800AA1A outside this file, which has no typed C interface yet */
+static void ai_add_unique(u32 extra_vars) {
+    R0 = extra_vars;
+    GUEST_CALL(list_tryAddUniqueEntry_800AA1A);
+}
+
+/* register form: calls object_exitAttackState outside this file, which has no typed C interface yet */
+static u32 ai_exit_attack(u32 r0_val, u32 r1_val) {
+    R0 = r0_val;
+    R1 = r1_val;
+    GUEST_CALL(object_exitAttackState);
+    return R0;
+}
+
+#define oAIAttackVars_Unk_01 0x01
+#define oAIAttackVars_Unk_10_sub_8109E4A 0x10
+#define oAIAttackVars_Unk_30_sub_8109E4A 0x30
+#define AI_ATTACK_TIMER_INIT 0x28
+
+/* Tick one AI attack countdown.
+ * Initialises the timer on first call; decrements each frame.
+ * When the timer reaches zero the attack is cleaned up: the extra-vars list
+ * is recalculated and updated, the attack pointer is cleared, and the object
+ * exits its attack state.
+ * Returns the post-decrement timer (path 1) or the callee's r0 (path 2). */
+static u32 tick_ai_attack_timer(u32 r5, u32 r7) {
+    if (LD8(r7 + oAIAttackVars_Unk_01) == 0) {
+        ST8(r7 + oAIAttackVars_Unk_01, 1);
+        ST16(r7 + oAIAttackVars_Unk_10_sub_8109E4A, AI_ATTACK_TIMER_INIT);
+    }
+
+    u32 timer = LD16(r7 + oAIAttackVars_Unk_10_sub_8109E4A);
+    u32 remaining = timer - 1;
+    ST16(r7 + oAIAttackVars_Unk_10_sub_8109E4A, remaining);
+
+    if (remaining != 0)
+        return remaining;
+
+    /* Timer expired – tear down the attack. */
+    u32 extra = LD32(r5 + oBattleObject_ExtraVars + 4);
+    ai_recalc(extra);
+
+    extra = LD32(r5 + oBattleObject_ExtraVars + 4);
+    ai_add_unique(extra);
+
+    u32 attack_ptr = LD32(r7 + oAIAttackVars_Unk_30_sub_8109E4A);
+    ST32(attack_ptr, 0);
+
+    u32 callee_r0 = ai_exit_attack(0, attack_ptr);
+    return callee_r0;
+}
+
+/* sub_8109E4A(r4, r5, r6, r7, lr) -> nz c v r0 r1 r2 r3 r4 r6 r7 lr */
+Next sub_8109E4A(void) {
+    R0 = tick_ai_attack_timer(R5, R7);
+    SET_FLAGS_CMP(R0 + 1, 1);
     RETURN_TO_CALLER();
 }
 

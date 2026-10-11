@@ -8,6 +8,225 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_8119438 ── */
+/* Chip graphics & description rendering for the menu/selection panel.
+ * Reads the chip ID from the panel object, blits the chip's tile graphic and
+ * palettes into VRAM, queues DMA, fills the special-effect region, and renders
+ * the text description. */
+
+/* Chip panel object field offsets */
+#define oChipPanel_VisualSet      0x05
+#define oChipPanel_PowerFlag      0x0A
+#define oChipPanel_AttrIndex      0x0C
+#define oChipPanel_ChipId         0x0E
+
+/* ChipData struct field offsets */
+#define oChipData_AttrByte        0x06
+#define oChipData_GfxFlags        0x09
+#define oChipData_AttackPower     0x1A
+#define oChipData_CustomGfxPtr    0x24
+#define oChipData_CustomPalPtr    0x28
+
+/* VRAM / palette constants */
+#define TILE_VRAM_BASE            A_vObjectTiles          /* 0x6010000 */
+#define TILESET_BYTE_SIZE         0x800
+#define GFX_SRC_ROW_BYTES         0xE0
+#define GFX_VRAM_ROW_STRIDE       0x100
+#define GFX_NUM_ROWS              6
+#define PAL_SET_BYTES             0x20
+#define ATTR_PAL_BYTES            0x40
+#define CUSTOM_PAL_BYTES          0x80
+#define FX_REGION_OFFSET          0x8C0
+#define FX_REGION_SIZE            0x100
+#define FX_FILL_PATTERN           0xAAAA
+#define CHIP_FX_HIGH_POWER_THRESH 1000  /* 0x3E8 */
+
+/* Text rendering constants */
+#define TEXT_LINE_LEN             0x0A
+#define TEXT_MODE                 3
+
+/* Submenu state check values */
+#define SUBMENU_PAGE_CHIPS        0x18
+#define SUBMENU_SUB_CHIPS         0x1C
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 fetch_chip_data(u16 chip_id) {
+    R0 = chip_id;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls sub_81195E4 outside this file, which has no typed C interface yet */
+static void draw_chip_placeholder(void) {
+    R0 = 0;
+    GUEST_CALL(sub_81195E4);
+}
+
+/* register form: calls ZeroFillByEightWords outside this file, which has no typed C interface yet */
+static void zero_fill_vram(u32 dest, u32 size) {
+    R0 = dest;
+    R1 = size;
+    GUEST_CALL(ZeroFillByEightWords);
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_tile_dma(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_palette_data(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls sub_8010CE0 outside this file, which has no typed C interface yet */
+static u32 get_chip_filler_high_power(u16 chip_id) {
+    R0 = chip_id;
+    GUEST_CALL(sub_8010CE0);
+    return R0;
+}
+
+/* register form: calls sub_8010C76 outside this file, which has no typed C interface yet */
+static u32 get_chip_filler_low_power(u16 chip_id) {
+    R0 = chip_id;
+    GUEST_CALL(sub_8010C76);
+    return R0;
+}
+
+/* register form: calls sub_8119594 outside this file, which has no typed C interface yet */
+static void fill_chip_fx_region(u32 pattern, u32 vram_dest) {
+    R0 = pattern;
+    R1 = vram_dest;
+    GUEST_CALL(sub_8119594);
+}
+
+/* register form: calls renderTextGfx_8045F8C outside this file, which has no typed C interface yet */
+static void render_chip_description(u32 script, u32 chip_num, u32 desc_ptr,
+                                    u32 text_vram, u32 line_len, u32 mode, u32 color) {
+    R0 = script;
+    R1 = chip_num;
+    R2 = desc_ptr;
+    R3 = text_vram;
+    R4 = line_len;
+    R5 = mode;
+    R6 = color;
+    R7 = 0;
+    GUEST_CALL(renderTextGfx_8045F8C);
+}
+
+static void render_chip_gfx_and_text(u32 panel) {
+    u16 chip_id = LD16(panel + oChipPanel_ChipId);
+    u8  vis_set = LD8(panel + oChipPanel_VisualSet);
+
+    /* No chip selected or custom graphic missing: draw placeholder and stop. */
+    if (chip_id == 0) {
+        draw_chip_placeholder();
+        return;
+    }
+
+    u32 chip_data = fetch_chip_data(chip_id);
+    u32 custom_gfx_src = LD32(chip_data + oChipData_CustomGfxPtr);
+    if (custom_gfx_src == 0) {
+        draw_chip_placeholder();
+        return;
+    }
+
+    /* Determine VRAM destination from the visual-set pointer table. */
+    u32 tile_entry = LD32(A_off_8119128 + (u32)vis_set * 4);
+    u32 vram_dest = (LD32(tile_entry) << 5) + TILE_VRAM_BASE;
+
+    /* Zero-fill the entire tileset area, then DMA the 6 rows of chip art. */
+    zero_fill_vram(vram_dest, TILESET_BYTE_SIZE);
+
+    u32 src_row = custom_gfx_src;
+    u32 dst_row = vram_dest;
+    for (u32 row = 0; row < GFX_NUM_ROWS; row++) {
+        queue_tile_dma(src_row, dst_row, GFX_SRC_ROW_BYTES);
+        src_row += GFX_SRC_ROW_BYTES;
+        dst_row += GFX_VRAM_ROW_STRIDE;
+    }
+
+    /* Copy the chip's custom palette into work-RAM then DMA it to VRAM. */
+    u32 pal_entry = LD32(A_off_8119170 + (u32)vis_set * 4);
+    u32 pal_dst = A_byte_3001550 + ((u32)LD8(pal_entry) << 5);
+    copy_palette_data(LD32(chip_data + oChipData_CustomPalPtr), pal_dst, PAL_SET_BYTES);
+
+    u8 attr_idx = LD8(panel + oChipPanel_AttrIndex);
+    u32 attr_pal_src = A_dword_86E2E98 + (u32)attr_idx * ATTR_PAL_BYTES;
+    queue_tile_dma(attr_pal_src, vram_dest + TILESET_BYTE_SIZE, ATTR_PAL_BYTES);
+
+    /* Copy and DMA the secondary palette set (from off_8119304). */
+    u32 pal2_entry = LD32(A_off_8119304 + (u32)vis_set * 4);
+    u32 pal2_dst = A_byte_3001550 + ((u32)LD8(pal2_entry) << 5);
+    copy_palette_data(A_byte_86E587C, pal2_dst, PAL_SET_BYTES);
+
+    /* Copy and DMA the attribute-indexed palette (0x80 bytes). */
+    u8 attr_byte = LD8(chip_data + oChipData_AttrByte);
+    u32 attr_pfx_src = A_dword_86E3B9C + (u32)attr_byte * CUSTOM_PAL_BYTES;
+    queue_tile_dma(attr_pfx_src, vram_dest + 0x840, CUSTOM_PAL_BYTES);
+
+    /* Copy and DMA the third palette set (from off_8119330). */
+    u32 pal3_entry = LD32(A_off_8119330 + (u32)vis_set * 4);
+    u32 pal3_dst = A_byte_3001550 + ((u32)LD8(pal3_entry) << 5);
+    copy_palette_data(A_dword_86E43DC, pal3_dst, PAL_SET_BYTES);
+
+    /* Fill the special-effects region based on chip graphics flags. */
+    u8 gfx_flags = LD8(chip_data + oChipData_GfxFlags);
+    u16 attack_power = LD16(chip_data + oChipData_AttackPower);
+
+    if (gfx_flags & 0x10) {
+        /* Bit 4: fill with 0xAAAA pattern. */
+        fill_chip_fx_region(FX_FILL_PATTERN, vram_dest);
+    } else if (gfx_flags & 0x02) {
+        /* Bit 1: power-dependent fill. */
+        u32 fill_val;
+        if ((s32)attack_power <= (s32)CHIP_FX_HIGH_POWER_THRESH) {
+            fill_val = attack_power;
+        } else {
+            /* High power: consult submenu context for the fill value. */
+            u8 power_flag = LD8(panel + oChipPanel_PowerFlag);
+            if (power_flag != 0 &&
+                LD8(A_sSubmenu) == SUBMENU_PAGE_CHIPS &&
+                LD8(A_sSubmenu + 1) == SUBMENU_SUB_CHIPS) {
+                fill_val = get_chip_filler_high_power(chip_id);
+            } else {
+                fill_val = get_chip_filler_low_power(chip_id);
+            }
+        }
+        fill_chip_fx_region(fill_val, vram_dest);
+    } else {
+        /* Neither flag: clear the FX region. */
+        zero_fill_vram(vram_dest + FX_REGION_OFFSET, FX_REGION_SIZE);
+    }
+
+    /* Render the chip description text into the tileset VRAM. */
+    u32 text_script = A_TextScriptChipDesc1;
+    if ((s32)chip_id <= 0xFF)
+        text_script = A_TextScriptChipDescriptions0;
+
+    u32 desc_data = LD32(A_dword_811919C + (u32)vis_set * 4);
+    u32 text_entry = LD32(A_off_8119128 + (u32)vis_set * 4);
+    u32 text_bg = (LD32(text_entry + 8) << 5) + TILE_VRAM_BASE;
+
+    render_chip_description(text_script, (u32)chip_id & 0xFF, desc_data,
+                            text_bg, TEXT_LINE_LEN, TEXT_MODE, A_dword_86A5D60);
+}
+
+/* sub_8119438(r5 = chip_panel_ptr) -> outputs r1 r2 r3 + flags from callees;
+ * r4-r7 are preserved (original restores them via push/pop). */
+Next sub_8119438(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    render_chip_gfx_and_text(R5);
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811974C ── */
 /* sub_811974C(r5 = state byte block):
  * Clear bit 1 of the byte at [r5] and write 0xC to the byte at [r5,#9].
