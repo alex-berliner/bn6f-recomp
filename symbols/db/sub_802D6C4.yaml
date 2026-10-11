@@ -1,0 +1,81 @@
+name: sub_802D6C4
+address: '0x0802D6C4'
+kind: function
+status: hypothesis
+summary: Ticks a two-slot state machine stored at dword_203C970, advancing or polling its two child objects and
+  returning the state byte at offset +4.
+interface: void tick_stateMachine_802D6C4(void) /* returns u8 state in r0; NZ flags reflect that byte */
+details: "Uses the global struct pointed to by dword_203C970 as a base:\n  +0x3 : gate byte. If 0, the function\
+  \ runs a \"kick-off\" pass over both child slots; any\n         other value means it polls them.\n  +0x4 : status\
+  \ byte returned in r0 (the \"state\").\n  +0x8  : pointer to child object A (passed to sub_802DD1E / sub_802DD10\
+  \ or sub_802DD4A).\n  +0xC  : pointer to child object B (same treatment).\n\nKick-off branch (gate == 0): for\
+  \ each of the two child pointers, calls sub_802DD1E; if that\nreturns nonzero, calls sub_802DD10 on the same pointer.\
+  \ Then writes 4 to the gate byte,\nmeaning the next call enters the polling branch.\n\nPoll branch (gate != 0):\
+  \ calls sub_802DD4A on each child pointer. If either returns nonzero\nthe function returns early with the current\
+  \ +4 status byte. Only when BOTH return zero does\nit clear the +4 status byte to 0 before falling through to\
+  \ return it.\n\nThe function ends with `ldrb r0, [r5,#0x4]; pop {r5,pc}` so the returned status byte is the\n\
+  sole output and the NZ flags reflect that load. r5/r7 are preserved by the contract but only\nr5 is actually saved\
+  \ here (r7 was never clobbered).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-011328);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 63' --file inbox_farm_63.c sub_802D6C4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802D6C4
+
+    ./wf verify --function sub_802D6C4 --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-011328-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802D6C4
+
+    ./wf verify --function sub_802D6C4 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-011328-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802D6C4
+
+    ./wf verify --function sub_802D6C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011328-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, fuzz, menus2, story2, story5, story6, story7, story9.'
+  reproduce: grep -l '^0802d6c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 6b6a13d
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+- story5
+- story6
+- story7
+- story9
+open_questions:
+- What sub_802DD1E / sub_802DD10 / sub_802DD4A actually do (test/finalize/active?) and what kind of object the two
+  child pointers represent — their names suggest a try/finalize and a polling predicate, possibly over animation
+  or effect handles.
+- Whether the +3 "gate" value of 4 written here is interpreted by the callees or by this function itself on the
+  next entry.
+- What the +4 "state" byte semantically represents (e.g., which of several effect chains is running, or a result
+  code).
+sources:
+- tools/wf run convert-20261011-011328
+- recomp 6b6a13d
