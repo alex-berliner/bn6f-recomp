@@ -1,0 +1,69 @@
+name: sub_811A0CC
+address: '0x0811A0CC'
+kind: function
+status: confirmed
+summary: state-object dispatcher that routes to one of five handlers based on the state byte at obj+9
+interface: void sub_811A0CC(void /* r5 = state object */)
+details: "Trivial state-machine dispatcher for a small per-object controller struct anchored at r5.\nReads the state\
+  \ byte at offset 9 of the r5 object and uses it as an index into a 5-entry\nthumb-ARM jump table at 0x0811A0E0.\
+  \ Because each table entry is a 4-byte address, the state\nbyte is treated as already pre-multiplied (valid values\
+  \ 0, 4, 8, 12, 16 → states 0..4).\nSelected targets:\n  - state 0  (0x0811A0F4) — generic handler\n  - state 1\
+  \  (battle_initScalableSpriteObject_811A11C)\n  - state 2  (npc_ClearBusyFlagAndResetState_811A138)\n  - state\
+  \ 3  (stateObj_advanceToState0x10_811A148)\n  - state 4  (sprite_scaleShrinkStep_811A160)\nThe dispatcher itself\
+  \ does not modify r5, r10 or any flags; the chosen handler runs with\nthe caller's full register context (r0–r4,\
+  \ r6–r9, r12, NZCV free; r5/r10/lr are the live\nones it sees). On return, control comes back via `pop {pc}`,\
+  \ so it tail-pops lr as the\nreturn address and the caller regains its original r5/r10 unchanged.\nTouched globals:\
+  \ the jump table at 0x0811A0E0 (5 word entries); field at `obj+9` is the\nstate selector.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-001230);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 54' --file inbox_farm_54.c sub_811A0CC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811A0CC
+
+    ./wf verify --function sub_811A0CC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261011-001230-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811A0CC
+
+    ./wf verify --function sub_811A0CC --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 9 out of domain (verify run convert-20261011-001230-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811A0CC
+
+    ./wf verify --function sub_811A0CC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001230-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^0811a0cc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp a045c21
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- story2
+open_questions:
+- What object type is r5 here? The mix of handlers (NPC busy-flag reset, scalable battle sprite init, state 0x10
+  advance, shrink step) suggests a battle-side controller struct rather than a generic NPC, but no field offsets
+  other than +9 are referenced by this function itself.
+- Why is the state byte stored pre-multiplied by 4? Likely a convention used by the subsystem that owns this object
+  so the same byte can be reused for both branch-on-state and array indexing without a shift.
+- The `pop {pc}` return path bypasses the normal `bx lr`; safe only because every caller enters with `push {lr}`
+  (lr holds the real return), but unusual and worth flagging.
+sources:
+- tools/wf run convert-20261011-001230
+- recomp a045c21

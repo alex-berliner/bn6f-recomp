@@ -1,0 +1,78 @@
+name: sub_81196F0
+address: '0x081196F0'
+kind: function
+status: hypothesis
+summary: Battle-object state sync/rollback stub — copies primary HP/ID/position fields to their backups, or rolls
+  the backup forward to current values when the gate (sub_8119880) flags them stale, marking state=4.
+interface: void sub_81196F0(u32 *battleObj /* r5 */) -> preserves r4-r9, returns current pos in r0 and sub_8119438's
+  flags; clobbers r0-r3, r12, lr.
+details: "Acts on a battle-object struct at *r5 with fields:\n  +0x09 state byte (set to 4 when backup is stale\
+  \ and rewritten)\n  +0x0C current unit ID (byte)\n  +0x0D backup unit ID (byte)\n  +0x0E current HP (u16)\n  +0x10\
+  \ backup HP (u16)\n  +0x18 current position (u16)\n  +0x1A backup position (u16)\nTwo paths:\n  • sub_8119880\
+  \ returns Z=0 (gate pass): runs sub_8119438 (frame tick), then unconditionally\n    mirrors 0x0E→0x10, 0x0C→0x0D,\
+  \ 0x18→0x1A and returns the current position in r0.\n  • sub_8119880 returns Z=1 (gate fail): compares current\
+  \ HP/ID/pos against their\n    backups; on any mismatch, copies current→backup and writes state=4. If all three\n\
+  \    match, returns the backup ID in r0 with Z=1 preserved.\nFlag handling is the read non-obvious point: the\
+  \ gate-fail path uses local CMPs to\nbuild its own Z sequence (pos→hp→id), so the final Z reflects the ID comparison\n\
+  (or the most recent mismatching CMP). CPSR survives the ldrh/strh/ldrb/strb copies in\nboth paths. Pushes r4-r7,lr;\
+  \ preserves r4-r9."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-001230);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 54' --file inbox_farm_54.c sub_81196F0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81196F0
+
+    ./wf verify --function sub_81196F0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-001230-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81196F0
+
+    ./wf verify --function sub_81196F0 --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261011-001230-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81196F0
+
+    ./wf verify --function sub_81196F0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001230-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story2, story4, story6, story8, story9.'
+  reproduce: grep -l '^081196f0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp a045c21
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+related:
+- sub_8119880
+open_questions:
+- Identity/purpose of sub_8119880 (gate predicate) and sub_8119438 (per-frame updater).
+- Exact meaning of state=4 at +0x09 — likely a "backup-just-overwritten" sentinel consumed elsewhere.
+- Whether the gate-fail path is the rollback direction or a one-shot promotion to backup.
+- Caller relationship that requires r4-r7 preservation (push/pop) but only r5/r10 are contract inputs.
+sources:
+- tools/wf run convert-20261011-001230
+- recomp a045c21

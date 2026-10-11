@@ -1,0 +1,107 @@
+name: sub_8119880
+address: '0x08119880'
+kind: function
+status: hypothesis
+summary: Compares two status bytes (+0xE, +0xF) on the active submenu struct, returning their difference with flags
+  set NZ; only runs when the caller's incoming Z flag was clear.
+interface: 'bool sub_8119880(u32 r5 /* ctx */, u32 *r6 /* in/out: submenu ptr */);
+
+  // input also gates on caller-supplied Z flag (early-exit path)
+
+  // returns the difference (field_E - field_F) with N/Z flags set
+
+  '
+details: 'Reads r5+5 as an index into the small lookup table byte_811935C. The actual
+
+  value is unused — it is just loaded into r0/r1 which are then clobbered, and
+
+  the beq tests the caller''s incoming Z flag (a Thumb ldrb does not set flags),
+
+  so this is a flag-based gate, not a data test.
+
+
+  When Z=1 (incoming): early return — r6 passes through, flags pass through
+
+  (taken-branch path preserves N/Z; in practice this returns NZ=0 since Z=1).
+
+
+  When Z=0: loads the global sSubmenu pointer into r6. If
+
+  submenu_isOpen_81355D8 returns "not open" (Z=1 from that callee), keeps
+
+  sSubmenu; otherwise calls sub_81312F4 to obtain the currently active submenu
+
+  struct and stores that in r6 instead. Finally compares bytes at +0xE and +0xF
+
+  of that struct and returns their difference (field_E - field_F) via SET_FLAGS_NZ.
+
+
+  Appears to be a per-frame status check that decides whether the submenu has
+
+  transitioned (e.g. one field becoming equal to/less than the other), gating
+
+  some downstream behavior. The two bytes at +0xE/+0xF are not yet identified
+
+  — likely selection index vs. item count, or current/previous state.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-001230);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 54' --file inbox_farm_54.c sub_8119880
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8119880
+
+    ./wf verify --function sub_8119880 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261011-001230-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8119880
+
+    ./wf verify --function sub_8119880 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261011-001230-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8119880
+
+    ./wf verify --function sub_8119880 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001230-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story2, story4, story6, story8, story9.'
+  reproduce: grep -l '^08119880 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp a045c21
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+related:
+- sub_81196F0
+open_questions:
+- What do the bytes at submenu+0xE and submenu+0xF represent (selection / count / state)?
+- What is the byte_811935C table, and is r5+5 a flag or mode selector being indexed into it?
+- Why does the function return (field_E - field_F) as the flags result rather than just a bool?
+- Who supplies the incoming Z flag, and what does Z=1 vs Z=0 semantically mean at the call sites?
+sources:
+- tools/wf run convert-20261011-001230
+- recomp a045c21
