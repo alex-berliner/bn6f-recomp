@@ -1368,6 +1368,57 @@ Next map_lookupMapIdByGroupAndNumber_8001708(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── render_800172C ── */
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void call_copy_words(u32 src, u32 dest, u32 count) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls CopyHalfwords outside this file, which has no typed C interface yet */
+static void call_copy_halfwords(u32 src, u32 dest, u32 count) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    GUEST_CALL(CopyHalfwords);
+}
+
+/* Copy display-registers data from the toolkit's cached tables into hardware I/O.
+ * Returns the render_info pointer so the adapter can reproduce the ADDS flag. */
+static u32 render_display_registers(u32 tk) {
+    /* RenderInfo holds the cached DISPCNT, BG0CTL, mosaic, etc. */
+    u32 ri = LD32(tk + oToolkit_RenderInfoPtr);
+
+    /* Mosaic size (halfword at RenderInfo+2) -> MOSAIC register */
+    ST16(A_MosaicSize, LD16(ri + oRenderInfo_Unk_02));
+
+    /* BG0 control block: 0x38 bytes starting at RenderInfo+4 */
+    call_copy_words(ri + 4, A_BG0Control, 0x38);
+
+    /* Window0 horizontal dimensions: 12 halfwords from toolkit's window table */
+    call_copy_halfwords(LD32(tk + oToolkit_Unk200f3a0_Ptr),
+                        A_Window0HorizontalDimensions, 0xc);
+
+    /* Color-special-effects selection: word + halfword fade coefficient */
+    u32 fx = LD32(tk + oToolkit_Unk2009740_Ptr);
+    ST32(A_ColorSpecialEffectsSelection,     LD32(fx));
+    ST16(A_ColorSpecialEffectsSelection + 4, LD16(fx + 4));
+
+    /* DISPCNT low halfword from the render-info header */
+    ST16(A_LCDControl, LD16(ri));
+
+    return ri;
+}
+
+/* render_800172C(r10 = Toolkit) -> v from (render_info + 4) */
+Next render_800172C(void) {
+    u32 ri = render_display_registers(R10);
+    SET_FLAGS_ADD(ri, 4);
+    RETURN_TO_CALLER();
+}
+
 /* ── SetRenderInfoLCDControl ── */
 /* SetRenderInfoLCDControl(r0 = LCD control value, r10 = toolkit):
  * store the halfword into the render info's LCD control field.
@@ -1828,6 +1879,83 @@ Next sprite_QueueAnimFrameGfxUpload_8001C44(void) {
     R2 = gfxSize;
     GUEST_CALL(QueueEightWordAlignedGFXTransfer);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8001C94 ── */
+/* register form: dispatches to the per-frame GFX handler (sub_8001D64/sub_8001D86/sub_8001EAE/sub_8001ED0) */
+static void dispatch_frame_handler(u32 handler_idx, u32 data_off, u32 tbl_off,
+                                   u32 byte_off, u32 frame_ptr, u32 ewram_ptr, u32 src_data) {
+    R1 = data_off;
+    R2 = tbl_off;
+    R3 = byte_off;
+    R4 = frame_ptr;
+    R5 = ewram_ptr;
+    R6 = src_data;
+    if (handler_idx == 0)      GUEST_CALL(sub_8001D64);
+    else if (handler_idx == 1) GUEST_CALL(sub_8001D86);
+    else if (handler_idx == 2) GUEST_CALL(sub_8001EAE);
+    else                       GUEST_CALL(sub_8001ED0);
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer, preserving r4/r5/r6 in the ABI-saved slots */
+static void queue_gfx_transfer_sub_8001C94(u32 src, u32 dest, u32 size,
+                               u32 orig_r4, u32 ewram_final, u32 src_data) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    R4 = orig_r4;
+    R5 = ewram_final;
+    R6 = src_data;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* Process all frames in a GFX animation sequence and queue the DMA transfer.
+ * Returns the final ewram write pointer via *ewram_out and the source data pointer via *src_out. */
+static void process_gfx_animation(u32 anim_data, u32 anim_state,
+                                  u32 orig_r4, u32 *ewram_out, u32 *src_out) {
+    /* The "next" field of GFXAnimData points to the array of 16-bit frame entries */
+    u32 frame_data = LD32(anim_data);
+
+    /* EWRAM staging buffer base for this animation slot */
+    u32 param3 = LD8(anim_state + oGFXAnimState_Param3);
+    u32 ewram_base = LD32(A_off_8001AB8 + (param3 << 2));
+
+    /* Destination sprite sheet buffer */
+    u32 dest_base = LD32(anim_state + oGFXAnimState_Param0);
+
+    u32 frame_count = LD8(anim_state + oGFXAnimState_Param2);
+    u32 ewram_ptr = ewram_base;
+    u32 data_offset = 0;
+
+    /* Iterate through each 16-bit frame descriptor */
+    for (u32 i = 0; i < frame_count; i++) {
+        u16 entry = LD16(frame_data + data_offset);
+        u32 byte_off = (entry & 0x3FF) << 5;       /* offset within the 8x8 frame buffer */
+        u32 handler_idx = entry >> 10;              /* bits 10-11 select the jump-table entry */
+
+        dispatch_frame_handler(handler_idx, data_offset, handler_idx << 2,
+                               byte_off, dest_base + byte_off, ewram_ptr, frame_data);
+
+        ewram_ptr += 0x20;  /* advance to next 32-byte tile slot */
+        data_offset += 2;   /* next 16-bit entry */
+    }
+
+    /* Queue the DMA: copy the assembled tile buffer to the animation's display destination */
+    u32 dest = LD32(anim_state + oGFXAnimState_Param1);
+    u32 size = frame_count << 5;
+    queue_gfx_transfer_sub_8001C94(ewram_base, dest, size, orig_r4, ewram_ptr, frame_data);
+
+    *ewram_out = ewram_ptr;
+    *src_out = frame_data;
+}
+
+/* sub_8001C94(r0=*GFXAnimData, r4, r7=*GFXAnimState, r8-r12, lr) -> r0-r12, lr, flags */
+Next sub_8001C94(void) {
+    u32 ewram_final, src_data;
+    process_gfx_animation(R0, R7, R4, &ewram_final, &src_data);
+    R5 = ewram_final;
+    R6 = src_data;
     RETURN_TO_CALLER();
 }
 
