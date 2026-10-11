@@ -1,0 +1,64 @@
+name: sub_80CAE94
+address: '0x080CAE94'
+kind: function
+status: confirmed
+summary: Applies horizontal velocity to a battle object, refreshes its collision panels, and sets it to CUR_STATE_DESTROY
+  if it collided or left the valid panel area.
+interface: 'u32 battle_applyXMove(BattleObject* r5) -> r0 (CUR_STATE_DESTROY or panel-validity value); flags: nz'
+details: Adds oBattleObject_XVelocity to oBattleObject_X, then calls object_setPanelsFromCoordinates and object_updateCollisionPanels
+  (both via r5). Reads oBattleObject_CollisionDataPtr -> oCollisionData_FlagsFromCollision; if nonzero the object
+  collided and is destroyed. Otherwise calls object_isCurrentPanelValid; if it returns zero the panel is invalid
+  and the object is destroyed. Destruction path calls object_clearCollisionRegion and writes CUR_STATE_DESTROY (8)
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized. r4 and r6 are only saved/restored; r3 is listed as
+  input but unused in the body.
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-000425);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 46' --file inbox_farm_46.c sub_80CAE94
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CAE94
+
+    ./wf verify --function sub_80CAE94 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-000425-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CAE94
+
+    ./wf verify --function sub_80CAE94 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-000425-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CAE94
+
+    ./wf verify --function sub_80CAE94 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000425-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080cae94 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a07b7d8
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- What do callers supply in r3 and r4? They are not read here but the register contract lists them as inputs.
+- Does the panel-validity return value (r0 on the alive path) propagate usefully to the caller's state machine?
+- Are there separate X-velocity vs Y-velocity update functions, or is this the only per-frame movement step?
+sources:
+- tools/wf run convert-20261011-000425
+- recomp a07b7d8
