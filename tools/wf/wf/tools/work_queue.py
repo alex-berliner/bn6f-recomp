@@ -27,7 +27,7 @@ from pydantic import BaseModel, TypeAdapter
 from wf.repo import CPORT, SNAPSHOTS, STATE_DIR
 from wf.tools.budgets import Band, PromptVersion, renames, size_of
 from wf.tools.locks import held
-from wf.tools.models import ACCEPTED_DIR, LOG_DIR, PromptKind, base_model, prompt_version
+from wf.tools.models import ACCEPTED_DIR, LOG_DIR, PromptKind, base_model, prompt_version, with_prompt
 from wf.tools.sources import provider
 from wf.types import FunctionName, ModelSpec, Result
 
@@ -159,7 +159,8 @@ class Leftover(Result):
     """A function no candidate has passed for, with captured calls to test one against."""
     function: FunctionName
     lines: int
-    attempts: int   # (function, model, prompt) pairs the farm has logged for it, under any name
+    attempts: int                  # (function, model, prompt) pairs the farm has logged for it, under any name
+    logs: tuple[Path, ...] = ()    # those pairs' logs (tools/convert/log/NAME.MODEL[+old].jsonl)
 
 
 def installed_functions(game: Path) -> set[FunctionName]:
@@ -179,10 +180,9 @@ def leftovers(game: Path, snapshots: Path = SNAPSHOTS, accepted_dir: Path = ACCE
         return current.get(FunctionName(name), FunctionName(name))
 
     done = installed_functions(game) | {today(path.name.split(".", 1)[0]) for path in accepted_dir.glob("*.c")}
-    attempts: dict[FunctionName, int] = {}
+    logs: dict[FunctionName, list[Path]] = {}
     for path in log_dir.glob("*.jsonl"):
-        name = today(path.name.split(".", 1)[0])
-        attempts[name] = attempts.get(name, 0) + 1
+        logs.setdefault(today(path.name.split(".", 1)[0]), []).append(path)
     found: list[Leftover] = []
     for folder in snapshots.iterdir():
         name = FunctionName(folder.name)
@@ -191,14 +191,55 @@ def leftovers(game: Path, snapshots: Path = SNAPSHOTS, accepted_dir: Path = ACCE
         lines = size_of(name)
         if lines is None or not any(folder.iterdir()):
             continue
-        found.append(Leftover(function=name, lines=lines, attempts=attempts.get(name, 0)))
+        found.append(Leftover(function=name, lines=lines, attempts=len(logs.get(name, [])),
+                              logs=tuple(logs.get(name, []))))
     return sorted(found, key=lambda leftover: (leftover.attempts, leftover.lines, leftover.function))
 
 
 def new_job(leftover: Leftover, routes: dict[Band, Route] = ROUTES) -> Job:
     route = routes[Band.of(leftover.lines)]
-    return Job(function=leftover.function, prompt=route.prompt, version=PromptVersion(prompt_version(route.prompt)),
-               lines=leftover.lines, models=route.models, began=now(), updated=now())
+    version = PromptVersion(prompt_version(route.prompt))
+    tried = tried_in_logs(leftover.logs, route.models, route.prompt, version)
+    return Job(function=leftover.function, prompt=route.prompt, version=version, lines=leftover.lines,
+               models=route.models, tried=tried, began=now(), updated=now(),
+               state=JobState.OPEN if set(route.models) - set(tried) else JobState.EVERY_MODEL_TRIED)
+
+
+def tried_in_logs(logs: Iterable[Path], models: Iterable[ModelSpec], prompt: PromptKind,
+                  version: PromptVersion) -> tuple[ModelSpec, ...]:
+    """The models of a route that some farm run (any process: `wf farm` batches too) has already asked about
+    the function under this prompt version: a logged round that is not a provider failure."""
+    by_file = {path.name.split(".", 1)[1].removesuffix(".jsonl"): path for path in logs}
+    found: list[ModelSpec] = []
+    for model in models:
+        path = by_file.get(str(with_prompt(model, prompt)).replace("/", "_", 1))
+        if path is None:
+            continue
+        for row in _rows(path):
+            report = row.get("report")
+            if isinstance(report, str) and report.startswith("model error"):
+                continue
+            logged = row.get("prompt_version")
+            if prompt is PromptKind.OLD or logged == version:   # an old-prompt log holds only old-prompt rounds
+                found.append(model)
+                break
+    return tuple(found)
+
+
+def _rows(path: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    try:
+        lines = path.read_text(errors="replace").splitlines()
+    except OSError:
+        return rows
+    for line in lines:
+        try:
+            row = cast(object, json.loads(line))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(cast(dict[str, object], row))
+    return rows
 
 
 def plan(ledger: Ledger, found: list[Leftover], routes: dict[Band, Route] = ROUTES) -> tuple[list[Job], list[Job]]:
@@ -216,7 +257,14 @@ def plan(ledger: Ledger, found: list[Leftover], routes: dict[Band, Route] = ROUT
         if job is None or job.state not in (JobState.OPEN, JobState.ACCEPTED) and job.version != today:
             job = new_job(leftover, routes)
             changed.append(job)
-        if job.state is JobState.OPEN:
+        elif job.state is JobState.OPEN:   # other farms may have asked some of its models since
+            elsewhere = tried_in_logs(leftover.logs, job.remaining(), job.prompt, job.version)
+            if elsewhere:
+                job = job.model_copy(update={"tried": (*job.tried, *elsewhere), "updated": now()})
+                if not job.remaining():
+                    job = job.model_copy(update={"state": JobState.EVERY_MODEL_TRIED})
+                changed.append(job)
+        if job.state is JobState.OPEN and job.remaining():
             order.append(job)
     return order, changed
 

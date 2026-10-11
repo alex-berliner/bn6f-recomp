@@ -176,3 +176,19 @@ def test_the_queue_stops_when_the_difftest_does_not_build(monkeypatch: pytest.Mo
                                   tracked=False)
 
     assert isinstance(outcome, Finished) and farm.runs == []
+
+
+def test_a_job_counts_the_models_other_farms_asked_under_its_prompt_version(tmp_path: Path) -> None:
+    (tmp_path / "f.minimax_MiniMax-M3+old.jsonl").write_text('{"round": 0, "ok": false, "report": "compile"}\n')
+    (tmp_path / "f.hyper_glm-5.3-flash+old.jsonl").write_text('{"round": 0, "report": "model error: HTTP 429"}\n')
+    (tmp_path / "f.hyper_qwen3.8-flash.jsonl").write_text('{"round": 0, "prompt_version": "typed-0"}\n')
+    logs = tuple(tmp_path.glob("*.jsonl"))
+    found = Leftover(function=FunctionName("f"), lines=15, attempts=3, logs=logs)
+    routes = {band: Route(prompt=PromptKind.OLD, models=(M3, GLM, QWEN)) for band in Band}
+
+    order, _ = plan({}, [found], routes)
+
+    assert order[0].tried == (M3,)   # glm's only round was an outage; qwen's was another prompt
+    later = order[0].model_copy(update={"tried": ()})
+    order, changed = plan({later.function: later}, [found], routes)
+    assert order[0].tried == (M3,) and changed == [order[0]]
