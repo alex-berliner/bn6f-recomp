@@ -22,7 +22,7 @@ from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.graphs.farm import FarmOutcome, FarmState, farm_graph
 from wf.tools.build import build_host_difftest, committed_tree
 from wf.tools.models import USAGE_LOG
-from wf.tools.sources import down_until
+from wf.tools.sources import down_until, is_source_failure
 from wf.tools.work_queue import (CAP, GAME, LANES, STOP, Job, JobState, Lane, Ledger, after_run, busy_elsewhere,
                                  leftovers, pick, plan, read_ledger, recently_logged, tokens_spent, update_ledger,
                                  usage_offset)
@@ -332,8 +332,9 @@ class _Board:
                     self.in_flight.discard(job.function)
                     self.ours[job.function] = time.time()
 
-    def run(self, job: Job, model: ModelSpec) -> tuple[FarmOutcome, Path | None, int, int]:
-        """One farm run: (outcome, the accepted file, runaway rounds, tokens spent)."""
+    def run(self, job: Job, model: ModelSpec) -> tuple[FarmOutcome, Path | None, int, int, bool]:
+        """One farm run: (outcome, the accepted file, runaway rounds, tokens spent, whether it ended on a
+        provider outage)."""
         offset = usage_offset(USAGE_LOG)
         run_id = f"{self.run_id}-{self.runs}-{job.function}-{model.replace('/', '_')}"
         start = FarmState(function=job.function, model=model, snapshots=self.given.snapshots,
@@ -341,16 +342,19 @@ class _Board:
         outcome = farm_graph().start(start, run_id)
         if not isinstance(outcome, Finished) or outcome.state.outcome is None:
             raise RuntimeError(f"farm run {run_id} did not finish")
-        runaways = sum(1 for attempt in outcome.state.attempts
-                       if attempt.reply.candidate is None and attempt.reply.error is None)
+        attempts = outcome.state.attempts
+        runaways = sum(1 for attempt in attempts if attempt.reply.candidate is None and attempt.reply.error is None)
+        last_error = attempts[-1].reply.error if attempts else None
         return (outcome.state.outcome, outcome.state.accepted, runaways,
-                tokens_spent(USAGE_LOG, offset, job.function, model))
+                tokens_spent(USAGE_LOG, offset, job.function, model),
+                last_error is not None and is_source_failure(last_error))
 
     def record(self, lane: Lane, job: Job, model: ModelSpec, outcome: FarmOutcome, accepted: Path | None,
-               runaways: int, tokens: int) -> None:
+               runaways: int, tokens: int, outage: bool = False) -> None:
         failed = outcome in (FarmOutcome.MODEL_ERROR, FarmOutcome.SOURCES_OUT)
         updated = after_run(job, model, accepted, provider_failed=failed, spent=tokens,
-                            nothing_to_convert=outcome is FarmOutcome.NOTHING_TO_CONVERT, cap=self.given.cap)
+                            nothing_to_convert=outcome is FarmOutcome.NOTHING_TO_CONVERT, cap=self.given.cap,
+                            outage=outage or outcome is FarmOutcome.SOURCES_OUT)
         _ = update_ledger([updated])
         with self.lock:
             self.order = [updated if other.function == job.function else other for other in self.order

@@ -81,8 +81,14 @@ def test_what_a_farm_run_does_to_its_job() -> None:
     assert failed.state is JobState.OPEN and failed.tried == (M3,) and failed.spent == 5000
     assert after_run(failed, GLM, None, False, 5000).state is JobState.EVERY_MODEL_TRIED
     assert after_run(start, M3, None, False, 70_000, cap=60_000).state is JobState.OVER_CAP
-    outage = after_run(start, M3, None, True, 0)
-    assert outage.state is JobState.OPEN and outage.tried == () and outage.errors == 1
+    broken = after_run(start, M3, None, True, 0)
+    assert broken.state is JobState.OPEN and broken.tried == () and broken.errors == 1
+    for _ in range(5):   # Hyper's hourly limit, again and again: never counts against the job
+        start = after_run(start, M3, None, True, 0, outage=True)
+    assert start.tried == () and start.errors == 0
+    for _ in range(3):   # a model error of another kind, three times: the model is passed over
+        broken = after_run(broken, M3, None, True, 0) if broken.errors < 3 else broken
+    assert broken.tried == (M3,)
 
 
 def test_tokens_spent_counts_the_function_and_models_calls(tmp_path: Path) -> None:

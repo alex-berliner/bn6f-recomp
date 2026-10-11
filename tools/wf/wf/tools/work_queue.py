@@ -325,11 +325,13 @@ def pick(order: list[Job], lane: str, in_flight: set[FunctionName], busy: set[Fu
 
 
 def after_run(job: Job, model: ModelSpec, accepted: Path | None, provider_failed: bool, spent: int,
-              nothing_to_convert: bool = False, cap: int = CAP) -> Job:
-    """The job once MODEL's farm run on it is over."""
+              nothing_to_convert: bool = False, cap: int = CAP, outage: bool = False) -> Job:
+    """The job once MODEL's farm run on it is over. PROVIDER_FAILED: the run ended on a provider error, so the
+    model has not had its try; OUTAGE: that error was the provider's quota or availability (wf/tools/sources.py
+    is_source_failure), which does not count against the job."""
     tried = job.tried if provider_failed else (*job.tried, model)
-    errors = job.errors + 1 if provider_failed else job.errors
-    if provider_failed and errors % 3 == 0:
+    errors = job.errors + 1 if provider_failed and not outage else job.errors
+    if provider_failed and not outage and errors % 3 == 0:
         tried = (*tried, model)   # a model that keeps failing on this job (not a quota outage) is passed over
     updated = job.model_copy(update={"tried": tried, "errors": errors, "spent": job.spent + spent, "updated": now()})
     if accepted is not None:
