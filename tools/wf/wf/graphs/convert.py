@@ -38,7 +38,7 @@ from wf.tools.locks import MAIN_TREE, held
 from wf.tools.install import (DIFFTEST_CFG, game_file, install_file, lay_out_group, layout_conflicts, names_taken,
                               placed, restore_game_files, uninstall_file)
 from wf.tools.models import ConversionContext, PromptKind, conversion_context, other_entries, prompt_hash, prompt_of
-from wf.tools.retype import BASELINE, QUEUE, fill_install_commit, queue_install
+from wf.tools.retype import BASELINE, QUEUE, fill_install_commit, leftover_reads, queue_install
 from wf.tools.registers import RegisterCheck, check_register_use
 from wf.tools.sources import TIERS, Tier, first_up, is_source_failure
 from wf.tools.subsystem import (FileReply, FileTest, TokenUse, ask_model_for_file, candidate_from_file, repair_prompt,
@@ -323,7 +323,8 @@ class QuickTestOutput(Result):
 @workflow.step
 def quick_test(given: QuickTestInput) -> QuickTestOutput:
     """Each function of the file against its lifted original on the captured calls and random inputs; a
-    farm group's functions must also fit the laid-out files they go to (tools/layout.py)."""
+    farm group's functions must also fit the laid-out files they go to (tools/layout.py), and an old-prompt
+    group's must not read registers a callee leaves behind (tools/abi/leftovers.py, which the gate runs)."""
     latest = given.attempts[-1]
     test = test_candidate_file(given.contexts, latest.reply, given.snapshots, given.difftest)
     if given.farm_model is not None and given.tree is not None and latest.reply.file is not None:
@@ -333,6 +334,11 @@ def quick_test(given: QuickTestInput) -> QuickTestOutput:
         if conflicts:
             lines = "\n".join(f"layout: {function}: {why}" for function, why in conflicts.items())
             test = test.model_copy(update={"passed": False, "report": ToolMessage(f"{test.report}\n{lines}")})
+        if prompt_of(given.farm_model) is PromptKind.OLD:   # register form reads leftovers the gate refuses
+            reads = leftover_reads(latest.reply.file, given.file_name)
+            if reads:
+                lines = "\n".join(f"leftovers: {function}: {why}" for function, why in reads.items())
+                test = test.model_copy(update={"passed": False, "report": ToolMessage(f"{test.report}\n{lines}")})
     return QuickTestOutput(attempts=(*given.attempts[:-1], latest.model_copy(update={"test": test})))
 
 
@@ -737,6 +743,9 @@ def failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
             laid = re.match(r"layout: (\w+): (.*)", line)
             if laid:
                 failing[FunctionName(laid[1])] = f"does not fit the laid-out files: {laid[2]}"[:300]
+            leftover = re.match(r"leftovers: (\w+): (.*)", line)
+            if leftover:
+                failing[FunctionName(leftover[1])] = f"leftover read: {leftover[2]}"[:300]
             undrafted = re.match(r"no ```yaml entry for: (.*)", line)
             for function in undrafted[1].split(", ") if undrafted else ():
                 failing[FunctionName(function)] = "no drafted symbols/db entry yet"

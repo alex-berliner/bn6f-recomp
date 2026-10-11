@@ -319,6 +319,7 @@ class DropKind(Enum):
     DEFINED_TWICE = "defined twice"
     NO_DRAFT = "no drafted entry"
     NO_CALLS = "no captured calls"
+    LEFTOVERS = "leftover read"           # an old-prompt group: reads a register a callee leaves behind
     OTHER = "other"
 
 
@@ -327,7 +328,8 @@ _DROP_KINDS = ((r"^set aside", DropKind.LOCKSTEP), (r"CPU oracle", DropKind.ORAC
                (r"^does not compile", DropKind.COMPILE), (r"^the full build failed", DropKind.BUILD),
                (r"^taken out at review", DropKind.REVIEW), (r"other entries the farm did not write", DropKind.OTHER_ENTRIES),
                (r"must be defined exactly once|also defines", DropKind.DEFINED_TWICE),
-               (r"no drafted", DropKind.NO_DRAFT), (r"no captured calls", DropKind.NO_CALLS))
+               (r"no drafted", DropKind.NO_DRAFT), (r"no captured calls", DropKind.NO_CALLS),
+               (r"^leftover read", DropKind.LEFTOVERS))
 
 
 class Drop(Result):

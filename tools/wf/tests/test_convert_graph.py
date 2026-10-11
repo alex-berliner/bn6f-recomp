@@ -286,12 +286,20 @@ def test_an_old_prompt_farm_group_keeps_register_form_and_queues_it_for_retype(
                              exception=None, violation=True)
         return RegisterCheck(violations=(bad,), exceptions=(), report="registers")
 
+    def leftover_reads(code: str, file_name: str) -> dict[FunctionName, str]:   # OTHER's, until it is dropped
+        return {OTHER: "reads r0 after TestEventFlag, which does not return it (site)"} if not world.verified \
+            and len(world.assembled) == 1 else {}
+
     monkeypatch.setattr(convert, "queue_install", queue_install)
     monkeypatch.setattr(convert, "fill_install_commit", fill_install_commit)
     monkeypatch.setattr(convert, "check_register_use", register_form)
+    monkeypatch.setattr(convert, "leftover_reads", leftover_reads)
+    world.quick_tests = [True, True]
     paused = start(world, monkeypatch, tmp_path, run_id="convert-farm-old", farm_model=ModelSpec("hyper/cheap+old"),
-                   functions=(FUNCTION,), register_check_faked=True)
+                   functions=(FUNCTION, OTHER), register_check_faked=True)
     assert isinstance(paused, Paused) and isinstance(paused.request, ReviewRequest)
+    assert [(each.function, each.reason) for each in paused.request.dropped] == \
+        [(OTHER, "leftover read: reads r0 after TestEventFlag, which does not return it (site)")]
 
     finished = convert_graph().resume("convert-farm-old", APPROVE)
 

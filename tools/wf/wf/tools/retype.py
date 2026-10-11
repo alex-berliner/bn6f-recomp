@@ -12,6 +12,7 @@ import csv
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from pydantic import TypeAdapter
@@ -23,6 +24,7 @@ from wf.types import CommitHash, FunctionName, ModelSpec, Result
 QUEUE = REPO / "tools/abi/retype_queue.tsv"
 BASELINE = REPO / "tools/abi/lint_baseline.json"
 LINT = REPO / "tools/abi/lint.py"
+LEFTOVERS = REPO / "tools/abi/leftovers.py"
 COLUMNS = ("function", "lint_keys", "prompt_hash", "model", "install_run", "install_commit", "why")
 HEADER = ("# tools/abi/retype_queue.tsv: functions installed in register form from the farm's old prompt, waiting "
           "to be typed (tools/wf/wf/tools/retype.py says how rows come and go; tools/gate.py lets the lint baseline "
@@ -158,6 +160,41 @@ def fill_install_commit(functions: tuple[FunctionName, ...], commit: CommitHash)
     if changed:
         write_queue(rows)
     return changed
+
+
+class LeftoverSite(Result):
+    """A read of a register or flag a callee leaves behind but does not return (tools/abi/leftovers.py)."""
+    line: int
+    function: str
+    callee: str
+    reg: str
+    kind: str
+    noted: bool
+
+
+class _LeftoverReport(Result):
+    sites: tuple[LeftoverSite, ...]
+
+
+def leftover_reads(code: str, file_name: str) -> dict[FunctionName, str]:
+    """The functions of an assembled farm file with a leftover read the gate would refuse (unnoted, not the
+    r0-for-Z kind), and the first one's description. Register-form code mirrors the original's registers, so
+    it reads them more often than typed code does."""
+    with tempfile.TemporaryDirectory(prefix="wf-leftovers-") as scratch:
+        path = Path(scratch) / file_name
+        _ = path.write_text(code)
+        done = subprocess.run([sys.executable, str(LEFTOVERS), "--quiet", str(path)], capture_output=True, text=True,
+                              check=False)
+    if not done.stdout.strip():
+        raise RuntimeError(f"tools/abi/leftovers.py failed: {done.stderr.strip()[-500:]}")
+    found: dict[FunctionName, str] = {}
+    for site in _LeftoverReport.model_validate_json(done.stdout).sites:
+        owner = function_at_line(code, site.line)
+        if site.noted or site.kind == "zflag" or owner is None:
+            continue
+        _ = found.setdefault(owner, f"reads {site.reg} after {site.callee}, which does not return it ({site.kind}; "
+                                    f"line {site.line}, tools/abi/leftovers.py)")
+    return found
 
 
 def queued() -> frozenset[FunctionName]:

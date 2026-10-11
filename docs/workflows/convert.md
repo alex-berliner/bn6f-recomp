@@ -72,7 +72,8 @@ Guest registers only in thin `Next` adapters, or where a `register form` note sa
 ### `quick_test` (step)
 
 Each function of the file against its lifted original on the captured calls and random inputs; a
-farm group's functions must also fit the laid-out files they go to (tools/layout.py).
+farm group's functions must also fit the laid-out files they go to (tools/layout.py), and an old-prompt
+group's must not read registers a callee leaves behind (tools/abi/leftovers.py, which the gate runs).
 
 - reads: `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `difftest: Path`, `attempts: tuple[Attempt, ...]`, `file_name: str`, `farm_model: typing.Optional[ModelSpec]`, `tree: Path | None`
 - produces: `attempts: tuple[Attempt, ...]`
