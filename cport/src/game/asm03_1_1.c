@@ -1168,6 +1168,84 @@ Next logoScreen_loadLogoTiles_803D2B8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803DCE8 ── */
+/* Camera/screen state. Offsets are taken straight from the disassembly so the typed
+ * function matches the original byte-for-byte; the field names follow the original
+ * comments (eCamera.unk_*) since they are internal camera state. */
+#define oCamera_unk_50   0x00
+#define oCamera_unk_51   0x01
+#define oCamera_unk_52   0x02
+#define oCamera_unk_53   0x03
+#define oCamera_unk_55   0x05
+#define oCamera_unk_58   0x08
+#define oCamera_unk_60   0x10
+#define oCamera_unk_62   0x12
+#define oCamera_unk_64   0x14
+#define oCamera_unk_66   0x16
+#define oCamera_unk_68   0x18
+#define oCamera_unk_70   0x20
+#define oCamera_unk_74   0x24
+#define oCamera_unk_84   0x34
+#define oCamera_unk_88   0x38
+#define oCamera_unk_8C   0x3C
+
+/* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
+static void zero_fill_by_byte(void *dst, u32 num_bytes) {
+    R0 = (u32)dst;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByByte);
+}
+
+/* Initialise the camera/screen state block pointed at by eLinkState.
+ *   ptr       -> eCamera.unk_70 / .unk_74 (destination pointer)
+ *   layout_ix <<= 4 picks a config record from off_803DC78:
+ *                [0]   -> .unk_84
+ *                [4]   -> .unk_88  (zero-fill target #1)
+ *                [8]   -> .unk_8C  (zero-fill target #2)
+ *                [0xC]  -> .unk_50 / .unk_51 (also written to 5/8/0x18 as 0 and
+ *                          to 0x10/0x12/0x14/0x16 as 0xFFFF).
+ *   r2 -> .unk_53 (u8), r3 -> .unk_52 (u8). */
+static void camera_init(u32 ptr, u32 layout_ix, u32 r2, u32 r3) {
+    u32 cam = A_eCameraEnd;
+
+    ST32(cam + oCamera_unk_70, ptr);
+    ST32(cam + oCamera_unk_74, ptr);
+    ST8 (cam + oCamera_unk_53, r2);
+    ST8 (cam + oCamera_unk_52, r3);
+
+    {
+        u32 cfg = A_off_803DC78 + (layout_ix << 4);
+        u32 v;
+
+        v = LD32(cfg + 0);  ST32(cam + oCamera_unk_84, v);
+        v = LD32(cfg + 4);  ST32(cam + oCamera_unk_88, v);
+        v = LD32(cfg + 8);  ST32(cam + oCamera_unk_8C, v);
+        v = LD8 (cfg + 0xC);
+        ST8(cam + oCamera_unk_50, v);
+        ST8(cam + oCamera_unk_51, v);
+    }
+
+    ST8 (cam + oCamera_unk_55, 0);
+    ST8 (cam + oCamera_unk_58, 0);
+    ST16(cam + oCamera_unk_68, 0);
+
+    {
+        u16 all_ones = (u16)~0;
+        ST16(cam + oCamera_unk_60, all_ones);
+        ST16(cam + oCamera_unk_62, all_ones);
+        ST16(cam + oCamera_unk_64, all_ones);
+        ST16(cam + oCamera_unk_66, all_ones);
+    }
+
+    zero_fill_by_byte((void *)LD32(cam + oCamera_unk_88), LD32(cam + oCamera_unk_74));
+    zero_fill_by_byte((void *)LD32(cam + oCamera_unk_8C), LD32(cam + oCamera_unk_74));
+}
+
+Next sub_803DCE8(void) {
+    camera_init(R0, R1, R2, R3);
+    RETURN_TO_CALLER();
+}
+
 /* ── link_getModeSelector_803DD30 ── */
 /* link_getModeSelector_803DD30: derive a small "link state" selector and return it in R0
  * (zero flag set iff the result is 0).
@@ -2058,5 +2136,135 @@ static u32 game_over_setup(u32 self, u32 context_r1) {
 Next sub_803FB64(void) {
     R0 = game_over_setup(R5, R1);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803FBC2 ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return ZERO_FLAG();          /* IsScreenFadeActive: Z set if a screen fade is active */
+}
+
+/* register form: calls sub_8006910 outside this file, which has no typed C interface yet */
+static void call_sub_8006910(void) {
+    GUEST_CALL(sub_8006910);
+}
+
+/* register form: calls startScreen_init_802F530 outside this file, which has no typed C interface yet */
+static void call_startScreen_init(void) {
+    GUEST_CALL(startScreen_init_802F530);
+}
+
+/* register form: calls clear_e200AD04 outside this file, which has no typed C interface yet */
+static void call_clear_e200AD04(void) {
+    GUEST_CALL(clear_e200AD04);
+}
+
+/* register form: calls init_eStartScreenAnimationControl200B1A0_2 outside this file, which has no typed C interface yet */
+static void call_init_startScreenAnimationControl(void) {
+    GUEST_CALL(init_eStartScreenAnimationControl200B1A0_2);
+}
+
+/* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
+static void set_render_info_lcd_control(u16 val) {
+    R0 = val;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* If a screen fade is in progress, do nothing. Otherwise run the start-screen reset
+ * sequence (subsystem reinit, clear start-screen control, init animation control)
+ * and set the LCD control to 0x40. */
+static void maybe_reset_start_screen(void) {
+    if (screen_fade_active())
+        return;
+    call_sub_8006910();
+    call_startScreen_init();
+    call_clear_e200AD04();
+    call_init_startScreenAnimationControl();
+    set_render_info_lcd_control(0x40);
+}
+
+/* sub_803FBC2: THUMB, 0803FBC2 */
+Next sub_803FBC2(void) {
+    maybe_reset_start_screen();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803FC14 ── */
+typedef struct {
+    u32 r0, r1, r2, r3;
+    u32 cmp_a, cmp_b;
+} Sub803FC14Out;
+
+/* sub_803FC14: refresh the OAM attribute buffer for one frame.
+ *
+ * Decrements the toolkit's render-info vertical offset (at offset 0x10)
+ * by 4 and stores it back, then writes that offset into the decomp
+ * buffer at eDecompBuffer2013A00: first four halfwords, then loads
+ * the next halfword, subtracts a per-cell delta from byte_803FC50,
+ * and writes that into the next eight halfwords, repeating. Exits
+ * when either the 0x140-byte buffer is full (bge) or 0x14 cells have
+ * been processed (ble). The output register values and the operands
+ * of the final comparison (for flag setup) are returned. */
+static Sub803FC14Out apply_vram_offset(u32 toolkit_ptr, u32 r1_in) {
+    Sub803FC14Out out;
+    u32 render_info_ptr = LD32(toolkit_ptr + oToolkit_RenderInfoPtr);
+    u32 decomp = A_eDecompBuffer2013A00;
+    u32 end = 0x140;
+    u32 offset = LD16(render_info_ptr + 0x10) - 4;
+    u32 r1_val = r1_in;
+    u32 inner = 4;
+    u32 pos = 0;
+    u32 cell = 0;
+
+    /* Save the new vertical offset back into the toolkit. */
+    ST16(render_info_ptr + 0x10, (u16)offset);
+    out.r2 = 0x140;
+    out.r3 = decomp;
+
+    for (;;) {
+        /* Inner loop: store `offset` into `inner` consecutive halfwords,
+         * then either loop back (bgt) or fall through to the outer step. */
+        do {
+            ST16(decomp + pos, (u16)offset);
+            pos += 2;
+            if ((s32)pos >= (s32)end) {
+                /* Buffer full: exit via bge on `cmp pos, 0x140`. */
+                out.r0 = offset;
+                out.r1 = r1_val;
+                out.cmp_a = pos;
+                out.cmp_b = end;
+                return out;
+            }
+            inner--;
+        } while ((s32)inner > 0);
+
+        /* Outer step: load the next halfword, subtract this row's delta
+         * from byte_803FC50, then prepare to write it into the next 8
+         * cells. The ble on `cmp cell+1, 0x14` decides whether to loop. */
+        offset = LD16(decomp + pos) - LD8(A_byte_803FC50 + cell);
+        r1_val = LD8(A_byte_803FC50 + cell);
+        inner = 8;
+        cell++;
+        out.r0 = offset;
+        out.r1 = r1_val;
+        out.cmp_a = cell;
+        out.cmp_b = 0x14;
+        if ((s32)cell > 0x14) {
+            /* 0x14 cells processed: exit via ble failure. */
+            return out;
+        }
+    }
+}
+
+Next sub_803FC14(void) {
+    Sub803FC14Out out = apply_vram_offset(R10, R1);
+
+    R0 = out.r0;
+    R1 = out.r1;
+    R2 = out.r2;
+    R3 = out.r3;
+    SET_FLAGS_CMP(out.cmp_a, out.cmp_b);
     RETURN_TO_CALLER();
 }

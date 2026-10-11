@@ -406,6 +406,131 @@ Next chatbox_runScript(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_config_80408D0 ── */
+/* register form: calls chatbox_resetAndClearBuffers_8045F60 outside this file, which has no typed C interface yet */
+static void chatbox_reset_buffers(u32 chatbox) {
+    R0 = chatbox;
+    GUEST_CALL(chatbox_resetAndClearBuffers_8045F60);
+}
+
+/* register form: calls chatbox_clearFlags_3e outside this file, which has no typed C interface yet */
+static void chatbox_clear_flags_3e(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_clearFlags_3e);
+}
+
+/* Configure the chatbox state for the given text script index.
+ * Returns the script pointer (r4) and the flag value loaded into r1 just before the ORR. */
+static u32 chatbox_config(u32 chatbox, u32 script_idx, u32 *out_r1) {
+    /* Record the requested script entry. */
+    ST8(chatbox + oChatbox_TextScriptIdx, (u8)script_idx);
+
+    /* Resolve the script cursor from the array of u16 offsets at TextScriptPtr. */
+    u32 script_array = LD32(chatbox + oChatbox_TextScriptPtr);
+    u16 rel = LD16(script_array + script_idx * 2);
+    u32 script_ptr = script_array + rel;
+
+    ST32(chatbox + oChatbox_TextScriptCursorPtr, script_ptr);
+    ST32(chatbox + oChatbox_CurrTextScriptPtr, script_ptr);
+
+    /* Clear the small script-state fields. */
+    ST8(chatbox + oChatbox_TextScriptState_04, 0);
+    ST32(chatbox + oChatbox_Unk_64, 0);
+    ST8(chatbox + oChatbox_Unk_12, 0);
+    ST8(chatbox + oChatbox_CurrLine, 0);
+    ST8(chatbox + oChatbox_Unk_17, 0);
+    ST8(chatbox + 0x3D, 0);
+    ST32(chatbox + 0x80, 0);
+
+    /* Set jump-table offset / Unk_74 to 1. */
+    ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
+    ST32(chatbox + oChatbox_Unk_74, 1);
+
+    /* Mirror the current text-coordinate into unk_94. */
+    u32 text_coord = LD8(chatbox + oChatbox_TextScriptCharIdx);
+    ST8(chatbox + 0x94, (u8)text_coord);
+
+    /* Reset the chatbox's internal buffers. */
+    chatbox_reset_buffers(chatbox);
+
+    /* Clear the two unrelated chatbox flags. */
+    u32 mask = FLAGS_3E_UNK_0400 | FLAGS_3E_UNK_0800;
+    chatbox_clear_flags_3e(mask);
+
+    /* r1 holds the second flag constant at the moment of the final ORR; r4 holds script_ptr. */
+    *out_r1 = FLAGS_3E_UNK_0800;
+    return script_ptr;
+}
+
+Next chatbox_config_80408D0(void) {
+    u32 r1_out;
+    R4 = chatbox_config(R5, R1, &r1_out);
+    R1 = r1_out;
+    /* Final flag-setter is `orr r0, r1` with the OR'd mask: sets N/Z only (no C/V effect).
+     * C/V are unchanged by ORR; the original carries whatever state they had before.
+     * Match the original by performing the same ORR: NZ reflect the result. */
+    SET_FLAGS_NZ(FLAGS_3E_UNK_0400 | FLAGS_3E_UNK_0800);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_ED_select_8040944 ── */
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_eight_word_aligned_gfx_transfer(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+static void call_sub_802FE28(u32 a1, u32 a2, u32 not_used, u32 a4) {
+    R0 = a1;
+    R1 = a2;
+    R2 = not_used;
+    R3 = a4;
+    GUEST_CALL(sub_802FE28);
+}
+
+/* Drives one frame of the chatbox ED-select animation: streams a tile row into VRAM,
+ * advances the frame index (wrapping to 1 at end), and queues the OAM DMA. */
+static void chatbox_ed_select_load_frame(u32 chatbox) {
+    u32 src_idx = LD8(chatbox + oChatbox_Unk_16);
+    u32 src = ((u32)LD8(A_dword_80409B2 + src_idx) << 7) + A_byte_86A48C0;
+    queue_eight_word_aligned_gfx_transfer(src, 0x6017F80u, 0x80u);
+
+    u32 row_index = LD8(chatbox + 0x94);
+    u32 x_origin = (u32)(LD32(chatbox + oChatbox_Unk_70) + row_index - 6);
+    u32 y_origin = (u32)LD8(chatbox + oChatbox_BoxGfxLoadState_0F) * 0xEu
+                 + (u32)LD8(chatbox + oChatbox_Unk_19) - 1u;
+
+    /* Advance the frame counter; if the next table entry is 0xFF, wrap to slot 1
+     * and pull the tile id from slot 0. Otherwise use the looked-up tile id. */
+    u32 frame = LD8(chatbox + oChatbox_Unk_16);
+    u32 next_frame = frame + 1u;
+    u32 frame_to_store = next_frame;
+    u32 tile_id;
+    if (LD8(A_dword_80409B2 + next_frame) == 0xFFu) {
+        frame_to_store = 1u;
+        tile_id = (u32)LD16(A_dword_80409B2);
+    } else {
+        tile_id = LD8(A_dword_80409B2 + next_frame);
+    }
+    ST8(chatbox + oChatbox_Unk_16, (u8)frame_to_store);
+
+    /* Build OAM attr0 (y in bits 16..23) and attr1 (tile id in bits 0..11 + affine bit
+     * merged in via the 0x40000000 OR on attr0 to set the affine flag). */
+    u32 attr01 = (x_origin << 16) | y_origin;
+    attr01 |= 0x40000000u;
+    u16 attr2 = (u16)(0xE3FCu | (0u << 10));
+    call_sub_802FE28(attr01, attr2, 0u, 4u);
+    (void)tile_id;
+}
+
+Next chatbox_ED_select_8040944(void) {
+    chatbox_ed_select_load_frame(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8040B3A ── */
 /* The chatbox object (r5 on entry) keeps the sprite it displays in a
  * sub-structure this far into the object. */
@@ -626,6 +751,136 @@ static u32 chatbox_e6_end_impl(u32 self) {
 /* chatbox_E6_end(r5 = self) -> r0, nz/c/v/r1/r2/r3/r4/lr */
 Next chatbox_E6_end(void) {
     R0 = chatbox_e6_end_impl(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_804103E ── */
+/* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
+static void call_setflags_3e(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_setflags_3e);
+}
+
+/* register form: calls chatbox_clearFlags_3e outside this file, which has no typed C interface yet */
+static void call_clearflags_3e(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_clearFlags_3e);
+}
+
+/* register form: calls chatbox_maskFlags_3e outside this file, which has no typed C interface yet.
+ * chatbox_maskFlags_3e leaves Z set when the masked flag is already clear; this helper
+ * returns true in that case so the typed function need not read guest flags. */
+static bool call_maskflags_3e_zero(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_maskFlags_3e);
+    return ZERO_FLAG();
+}
+
+#define FLAGS_3E_UNK_0001_chatbox_804103E  1u
+#define FLAGS_3E_UNK_0100  0x100u
+
+typedef struct {
+    u32 r0;
+    u32 r1;
+    u32 r2;
+} ChatboxStepOut;
+
+/* Advance the chatbox open animation by one tick.
+ *
+ * The chatbox ticks through OpenState (0 -> 1 -> 2 -> 3). OpenState 3 means
+ * the box is fully open; intermediate states may also tick BoxY down. The
+ * flag mask 0x04 is the "fully open" sentinel and mask 0x01 is the per-tick
+ * trigger cleared on completion.
+ *
+ * Outputs match the original assembly exactly:
+ *   - r0: 0 if the animation is still in progress, 1 if it just finished.
+ *   - r1: input value on the OpenState==3 fast path; BoxY-1 while scrolling;
+ *     0 once BoxY has been drained (the original zeroes r1 via ldrb/mov).
+ *   - r2: input value on paths that do not touch r2; 3 after the "mov r2,#3"
+ *     that precedes the OpenState==3 check on the drain path.
+ *
+ * Flags: the original's last flag-setting instruction on every path is a
+ * `mov r0, #X`, which only updates N/Z. The adapter therefore uses
+ * SET_FLAGS_NZ; C/V are left as in the guest. */
+static ChatboxStepOut chatbox_step_animation(u32 r1_in, u32 r2_in, u32 r5) {
+    ChatboxStepOut out;
+    out.r1 = r1_in;
+    out.r2 = r2_in;
+
+    /* Always set the per-tick trigger flag first. */
+    call_setflags_3e(FLAGS_3E_UNK_0001_chatbox_804103E);
+
+    u8 open_state = LD8(r5 + oChatbox_OpenState_10);
+
+    if (open_state == 3) {
+        /* Fast path: OpenState already 3. The original branches straight to
+         * the maskFlags/finish sequence. */
+        bool mask_zero = call_maskflags_3e_zero(4);
+        if (!mask_zero) {
+            /* mask result non-zero: bne loc_8041076 -> mov r0,#0; pop. */
+            out.r0 = 0;
+        } else {
+            /* mask result zero: clear the trigger flag, return 1. */
+            call_clearflags_3e(FLAGS_3E_UNK_0001_chatbox_804103E);
+            out.r0 = 1;
+        }
+        /* r1, r2 untouched on this fast path. */
+        return out;
+    }
+
+    /* OpenState != 3: drop the high byte of the flag word, then either
+     * tick BoxY down or advance OpenState. */
+    call_clearflags_3e(FLAGS_3E_UNK_0100);
+
+    u8 box_y = LD8(r5 + oChatbox_BoxY);
+    if (box_y != 0) {
+        /* Still scrolling: decrement BoxY and report not-done. */
+        ST8(r5 + oChatbox_BoxY, box_y - 1);
+        out.r0 = 0;
+        out.r1 = box_y - 1;
+        /* r2 unchanged. */
+        return out;
+    }
+
+    /* BoxY has reached zero: advance OpenState. The original guards a
+     * redundant reload with cmp #0 / beq, but the loaded OpenState is the
+     * same value either way. */
+    u8 new_open_state = (u8)(open_state + 1);
+    ST8(r5 + oChatbox_OpenState_10, new_open_state);
+
+    /* The original does `mov r2, #3` before comparing new_open_state against 3,
+     * so r2 holds 3 from here on this drain path. */
+    out.r2 = 3;
+
+    if (new_open_state == 3) {
+        /* Reached OpenState 3 on this tick: same finish sequence as the
+         * fast path, but r1 has been clobbered to 0 by the earlier ldrb of
+         * BoxY (and r2 is 3 from above). */
+        bool mask_zero = call_maskflags_3e_zero(4);
+        if (!mask_zero) {
+            out.r0 = 0;
+        } else {
+            call_clearflags_3e(FLAGS_3E_UNK_0001_chatbox_804103E);
+            out.r0 = 1;
+        }
+        out.r1 = 0;
+        return out;
+    }
+
+    /* Settled into a non-final state: reset BoxY and report not-done. */
+    ST8(r5 + oChatbox_BoxY, 0);
+    out.r0 = 0;
+    out.r1 = 0;
+    /* out.r2 already 3. */
+    return out;
+}
+
+Next chatbox_804103E(void) {
+    ChatboxStepOut out = chatbox_step_animation(R1, R2, R5);
+    R0 = out.r0;
+    R1 = out.r1;
+    R2 = out.r2;
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
