@@ -963,6 +963,25 @@ Next battle_checkActiveSlot8NaviStatReady_802A5DA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802A646 ── */
+/* If the battle-state flag at offset 0x44 is set and the counter at offset 0x45
+ * is strictly less than the byte at r5+6, clear the flag. */
+static void expire_battle_flag(u32 battle_state_ptr, u32 source) {
+    if (LD8(battle_state_ptr + 0x44) == 0)
+        return;
+    if ((s32)LD8(battle_state_ptr + 0x45) >= (s32)LD8(source + 6))
+        return;
+    ST8(battle_state_ptr + 0x44, 0);
+}
+
+/* register form: r5, r10 and lr arrive in guest registers; the body dereferences
+ * a guest struct pointer (battle state) and a guest object, which has no typed
+ * C interface, so the typed helper takes raw guest addresses. */
+Next sub_802A646(void) {
+    expire_battle_flag(LD32(R10 + oToolkit_BattleStatePtr), R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_802BDB4 ── */
 /* sub_802BDB4: tail work after battle_checkTimerWindowSubstate_802C97E -- store the value 4 into the
  * word pointed to by r5 (likely a state/step counter being advanced). */
@@ -2331,6 +2350,59 @@ Next hiveBlockHappensHere_802CEF4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802CFF8 ── */
+/* Returns true if the battle object has the 0x40 bit set in its collision
+ * data field at offset 0x76 (the "shockwave / impact" trigger flag). */
+static bool has_impact_flag(u32 battle_object) {
+    u32 collision_data = LD32(battle_object + oBattleObject_CollisionDataPtr);
+    u8 flags = LD8(collision_data + 0x76);
+    return (flags & 0x40) != 0;
+}
+
+/* register form: calls getTable2036720EntryFields_802CE78 outside this file,
+ * which has no typed C interface yet */
+static u32 get_table_entry_fields(u8 alliance) {
+    R0 = alliance;
+    GUEST_CALL(getTable2036720EntryFields_802CE78);
+    return R0;
+}
+
+/* register form: calls sub_802CEA6 outside this file, which has no typed C
+ * interface yet */
+static void apply_impact_to_table(u8 alliance) {
+    R0 = alliance;
+    GUEST_CALL(sub_802CEA6);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed
+ * C interface yet */
+static void play_sound_effect(u32 effect_id) {
+    R0 = effect_id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* Handle the "impact" reaction for a battle object: if the impact flag in its
+ * collision data is set, look up its alliance in the table; if an entry is
+ * found, apply the impact effect and play the impact sound. */
+static void handle_battle_object_impact(u32 battle_object) {
+    if (!has_impact_flag(battle_object))
+        return;
+
+    u8 alliance = LD8(battle_object + oBattleObject_Alliance);
+    if (get_table_entry_fields(alliance) == 0)
+        return;
+
+    apply_impact_to_table(alliance);
+    play_sound_effect(0x8E);
+}
+
+Next sub_802CFF8(void) {
+    handle_battle_object_impact(R5);
+    /* Original's final instruction is a function epilogue (pop {r4,pc}); it
+     * leaves flags from PlaySoundEffect (c/v) and leaves R2 untouched. */
+    RETURN_TO_CALLER();
+}
+
 /* ── getTableEntryPtr32_802D064 ── */
 /* getTableEntryPtr32_802D064(r0 = entry index) -> r0 = &byte_203C4A0[entry * 0x20]
  *
@@ -2492,6 +2564,64 @@ Next battle_initPlayerTracker_802D6A0(void) {
 
     ST8(tracker + 4, 1);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802D6C4 ── */
+/* register form: calls sub_802DD1E outside this file, which has no typed C interface yet */
+static u32 sub_802DD1E_typed(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_802DD1E);
+    return R0;
+}
+
+/* register form: calls sub_802DD10 outside this file, which has no typed C interface yet */
+static void sub_802DD10_typed(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_802DD10);
+}
+
+/* register form: calls sub_802DD4A outside this file, which has no typed C interface yet */
+static u32 sub_802DD4A_typed(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_802DD4A);
+    return R0;
+}
+
+/* tick drive on the two A_dword_203C970-state objects.
+ * If the state byte at +3 is 0, run sub_802DD1E on each of the two pointers (base+8, base+0xC),
+ * calling sub_802DD10 on whichever returns nonzero, then mark the gate byte +3 with 4.
+ * Otherwise poll both with sub_802DD4A; if both return zero, clear byte +4 to 0.
+ * Returns byte_203C974 (state at base+4) in r0, with NZ set as for a plain load. */
+static u32 tick_state(u32 base) {
+    u8 gate = LD8(base + 3);
+
+    if (gate == 0) {
+        u32 a = LD32(base + 8);
+        if (sub_802DD1E_typed(a) != 0)
+            sub_802DD10_typed(a);
+
+        u32 b = LD32(base + 0xC);
+        if (sub_802DD1E_typed(b) != 0)
+            sub_802DD10_typed(b);
+
+        ST8(base + 3, 4);
+    } else {
+        u32 a = LD32(base + 8);
+        if (sub_802DD4A_typed(a) != 0)
+            return LD8(base + 4);
+        u32 c = LD32(base + 0xC);
+        if (sub_802DD4A_typed(c) != 0)
+            return LD8(base + 4);
+        ST8(base + 4, 0);
+    }
+    return LD8(base + 4);
+}
+
+Next sub_802D6C4(void) {
+    u32 result = tick_state(A_dword_203C970);
+    R0 = result;
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
