@@ -8,6 +8,77 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_809D75E ── */
+/* Offsets within the animation/event struct at eStruct200ace0 (0x200ACE0). */
+#define oAnimState_TransitionFlag      0x01
+#define oAnimState_PendingAnimation    0x1C
+#define PENDING_ANIM_NONE              0xFF
+
+/* register form: computed dispatch to player action handler via jump table;
+ * the handler modifies caller-visible registers r0-r6 and r8-r12 */
+static void ow_player_dispatch_action(u32 player_obj) {
+    u32 idx = LD8(player_obj + oOWPlayerObject_Unk_0a);
+    R5 = player_obj;
+    switch (idx) {
+        case 0: GUEST_CALL(sub_809D7A8); break;
+        case 4: GUEST_CALL(ow_player_setCounterTalkStateAfterNpcInteract_809D7C8); break;
+        case 8: GUEST_CALL(sub_809D7D8); break;
+    }
+}
+
+/* register form: calls sub_809DF28 outside this file, which has no typed C interface yet */
+static u32 call_scene_transition_check(void) {
+    R0 = PENDING_ANIM_NONE;
+    R7 = A_eStruct200ace0;
+    GUEST_CALL(sub_809DF28);
+    /* Original next instruction: tst r0,r0 (sets N,Z; C,V unchanged from callee) */
+    SET_FLAGS_NZ(R0);
+    return R0;
+}
+
+/* register form: calls owPlayer_setJumptableIndex09AndOthers_809e004 outside this file */
+static u32 call_set_jumptable(u32 index, u32 game_state) {
+    R0 = index;
+    R7 = game_state;
+    GUEST_CALL(owPlayer_setJumptableIndex09AndOthers_809e004);
+    return R0;
+}
+
+/* Process one player overworld action: dispatch the type-specific handler,
+ * consume any pending animation it requested, then attempt a scene transition. */
+static u32 ow_player_process_action(u32 player_obj, u32 toolkit) {
+    /* Run the action handler (dispatch via jump table) */
+    ow_player_dispatch_action(player_obj);
+
+    /* Consume pending animation written by the handler, if any */
+    u32 anim_struct = A_eStruct200ace0;
+    u32 pending = LD8(anim_struct + oAnimState_PendingAnimation);
+    if (pending != PENDING_ANIM_NONE) {
+        ST8(player_obj + oOWPlayerObject_AnimationSelect, pending);
+        ST8(anim_struct + oAnimState_PendingAnimation, PENDING_ANIM_NONE);
+    }
+
+    /* Check whether a scene transition should begin */
+    u32 transition = call_scene_transition_check();
+    if (transition == 0)
+        return 0;
+
+    /* Begin scene transition: set flag, clear state, queue jumptable */
+    ST8(anim_struct + oAnimState_TransitionFlag, 2);
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    ST8(game_state + oGameState_Unk_10, 0);
+    ST8(player_obj + oOWPlayerObject_Unk_07, 0);
+
+    return call_set_jumptable(0x10, game_state);
+}
+
+/* sub_809D75E(r5 = player object, r10 = toolkit) -> r0, nz, c, v */
+Next sub_809D75E(void) {
+    R0 = ow_player_process_action(R5, R10);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── ow_player_setCounterTalkStateAfterNpcInteract_809D7C8 ── */
 /* ow_player_setCounterTalkStateAfterNpcInteract_809D7C8: the player object (r5) just finished interacting with an NPC.
  * Read the NPC's movement flag; if it is 4, store 8 into the player's
@@ -330,6 +401,42 @@ Next owPlayer_lockPlayerForNonNPCDialogue_809E0B0(void) {
     /* and forbid free movement until the dialogue releases the player */
     GUEST_CALL(ClearPlayerCanMoveEventFlag);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── owPlayer_809E0C8 ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_owPlayer_809E0C8(u16 flag) {
+    R0 = (u8)(flag >> 8);   /* page */
+    R1 = (u8)(flag & 0xFF); /* offset within page */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();  /* Z clear means the flag IS set */
+}
+
+/* Synchronize overworld player position into the shared struct at 0x200ACE0.
+ * Also writes the player's facing direction (low 3 bits) into the animation-select
+ * field, but only when event flag 0x1719 has NOT been set yet. */
+static void owPlayer_sync_to_shared_struct(u32 toolkit) {
+    u32 shared = A_eStruct200ace0;
+
+    /* Toolkit → game state → overworld player object */
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 player_obj = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+
+    /* Copy position (X, Y, Z) */
+    ST32(shared + oS200ace0_PlayerX, LD32(player_obj + oOWPlayerObject_X));
+    ST32(shared + oS200ace0_PlayerY, LD32(player_obj + oOWPlayerObject_Y));
+    ST32(shared + oS200ace0_PlayerZ, LD32(player_obj + oOWPlayerObject_Z));
+
+    /* Facing direction is only mirrored when event 0x1719 is still clear */
+    if (!event_flag_set_owPlayer_809E0C8(0x1719)) {
+        u8 facing = (u8)LD8(player_obj + oOWPlayerObject_FacingDirection) & 7;
+        ST8(shared + oS200ace0_owPlayerFixedAnimationSelect_02, facing);
+    }
+}
+
+Next owPlayer_809E0C8(void) {
+    owPlayer_sync_to_shared_struct(R10);
     RETURN_TO_CALLER();
 }
 

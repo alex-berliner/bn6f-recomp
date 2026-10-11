@@ -8,6 +8,168 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── npc_updateHopMovement_809e916 ── */
+/* register form: calls checkZCoordModifiers_8031612 outside this file, which has no typed C interface yet */
+static u32 get_ground_z(u32 coords_addr) {
+    R0 = coords_addr;
+    GUEST_CALL(checkZCoordModifiers_8031612);
+    return R0;
+}
+
+/* register form: calls npc_enableScript0x19_809f516 outside this file, which has no typed C interface yet */
+static u32 fire_hop_completion(u32 npc_ptr) {
+    R0 = 0;
+    GUEST_CALL(npc_enableScript0x19_809f516);
+    return R0;
+}
+
+/* HopResult: exit register values for the non-finished path.
+ * For the finished path, r0 comes from the callee, r1/r2 are the same as here. */
+typedef struct {
+    u32 r0;          /* non-finished: new_z;  finished: callee return */
+    u32 r1;          /* current Z (same both paths) */
+    u32 r2;          /* ground_scaled (same both paths) */
+    u32 cmp_a;       /* for SET_FLAGS_CMP */
+    u32 cmp_b;
+} HopResult;
+
+/* Advance one hop-movement frame for the NPC at npc_ptr.
+ * Accumulates hopDelta into hopDeltaCompounded, adds to Z.
+ * If new Z is below ground (signed <), the hop lands: Z snaps to ground,
+ * interaction is unlocked, and the completion script fires.
+ * Otherwise Z is simply stored for the next frame. */
+static HopResult hop_advance(u32 npc_ptr) {
+    /* Ground-level Z scaled into the NPC's fixed-point coordinate space */
+    u32 ground_scaled = get_ground_z(npc_ptr + oOverworldNPCObject_Coords) << 16;
+
+    /* Compound the per-frame delta into the running total */
+    u32 hop_compounded = LD32(npc_ptr + oOverworldNPCObject_HopDeltaCompounded)
+                       + LD32(npc_ptr + oOverworldNPCObject_HopDelta);
+    ST32(npc_ptr + oOverworldNPCObject_HopDeltaCompounded, hop_compounded);
+
+    /* Apply compounded delta to the current Z */
+    u32 current_z = LD32(npc_ptr + oOverworldNPCObject_Z);
+    u32 new_z = hop_compounded + current_z;
+
+    HopResult res;
+    res.r1 = current_z;
+    res.r2 = ground_scaled;
+    res.cmp_a = new_z;
+    res.cmp_b = ground_scaled;
+
+    if ((s32)(new_z - ground_scaled) < 0) {
+        /* Hop finished: snap Z to ground, unlock interaction, fire script */
+        ST32(npc_ptr + oOverworldNPCObject_Z, ground_scaled);
+        ST8(npc_ptr + oOverworldNPCObject_InteractionLocked, 0);
+        res.r0 = fire_hop_completion(npc_ptr);
+    } else {
+        /* Hop continues: store intermediate Z */
+        ST32(npc_ptr + oOverworldNPCObject_Z, new_z);
+        res.r0 = new_z;
+    }
+
+    return res;
+}
+
+/* npc_updateHopMovement_809e916(r5 = NPC object pointer) -> r0 r1 r2 nzcv */
+Next npc_updateHopMovement_809e916(void) {
+    HopResult r = hop_advance(R5);
+    R0 = r.r0;
+    R1 = r.r1;
+    R2 = r.r2;
+    SET_FLAGS_CMP(r.cmp_a, r.cmp_b);
+    RETURN_TO_CALLER();
+}
+
+/* ── npc_waitMysteryDataTaken_809eaa0 ── */
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool event_flag_set_npc_waitMysteryDataTaken_809eaa0(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();          /* TestEventFlag: Z set if the flag is clear */
+}
+
+/* register form: calls npc_enableScript0x19_809f516 outside this file, which has no typed C interface yet */
+static void npc_enable_script19(void) {
+    GUEST_CALL(npc_enableScript0x19_809f516);
+}
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void call_sprite_load(u32 tileset, u32 attr, u32 anim) {
+    R0 = tileset; R1 = attr; R2 = anim;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_sprite_load_anim(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls FreeOverworldNPCObject outside this file, which has no typed C interface yet */
+static void call_free_overworld_npc(void) {
+    GUEST_CALL(FreeOverworldNPCObject);
+}
+
+/* register form: calls npc_disableScript0x19_809f51e outside this file, which has no typed C interface yet */
+static void npc_disable_script19(void) {
+    GUEST_CALL(npc_disableScript0x19_809f51e);
+}
+
+/* Holds register outputs from npc_runSecondaryScriptMaybe_809ebf8 */
+typedef struct {
+    u32 r0, r1, r2, r5, lr;
+} ScriptResult;
+
+/* register form: calls npc_runSecondaryScriptMaybe_809ebf8 outside this file, which has no typed C interface yet */
+static ScriptResult run_secondary_script_maybe(void) {
+    ScriptResult res;
+    GUEST_CALL(npc_runSecondaryScriptMaybe_809ebf8);
+    res.r0 = R0; res.r1 = R1; res.r2 = R2; res.r5 = R5; res.lr = LR;
+    return res;
+}
+
+/* Overworld NPC handler: if the MysteryData event flag is taken, disable the NPC
+ * interaction, swap its sprite, free it, and toggle its script. Then always
+ * run the secondary script pass. The final register/flag state comes from
+ * npc_runSecondaryScriptMaybe. */
+static ScriptResult mystery_data_taken_logic(u32 npc) {
+    u32 mystery_id = LD32(npc + oOverworldNPCObject_MysteryDataId);
+
+    if (event_flag_set_npc_waitMysteryDataTaken_809eaa0(mystery_id)) {
+        /* Mystery data collected – retire this NPC from the overworld. */
+        npc_enable_script19();
+
+        /* Mark interaction as disabled. */
+        u32 unk_flags = LD32(npc + oOverworldNPCObject_UnkFlags_60);
+        ST32(npc + oOverworldNPCObject_UnkFlags_60,
+             unk_flags | OW_NPC_UNK_FLAGS_60_DISABLE_INTERACTION);
+
+        /* Flag the object as active (needed for the sprite swap/free sequence). */
+        ST8(npc + oObjectHeader_Flags, OBJECT_FLAG_ACTIVE);
+
+        /* Load replacement sprite (tileset 0x80, attr 0x1C, anim 0xA0). */
+        call_sprite_load(0x80, 0x1C, 0xA0);
+        call_sprite_load_anim();
+        call_free_overworld_npc();
+
+        npc_disable_script19();
+    }
+
+    /* Both paths end with the secondary-script check. */
+    return run_secondary_script_maybe();
+}
+
+/* npc_waitMysteryDataTaken_809eaa0(r5 = NPC object ptr) -> r0 r1 r2 r5 lr, flags */
+Next npc_waitMysteryDataTaken_809eaa0(void) {
+    ScriptResult res = mystery_data_taken_logic(R5);
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R5 = res.r5;
+    LR = res.lr;
+    RETURN_TO_CALLER();
+}
+
 /* ── npc_inChatbox_809EADA ── */
 /* npc_inChatbox_809EADA(self: r5 = OverworldNPCObject):
  * Overworld NPC state handler for an NPC standing in a chatbox. Runs the
@@ -36,6 +198,238 @@ Next npc_inChatbox_809EADA(void) {
         /* leave NZ as the TST r0, r1 left them (C/V untouched) */
         SET_FLAGS_NZ(R0 & R1);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── npc_inChatbox_curAction_init_809EB20 ── */
+/* register form: calls calcAngle_800117C outside this file, which has no typed C interface yet */
+static s32 call_calc_angle(s32 dy, s32 dx) {
+    R0 = (u32)dy; R1 = (u32)dx;
+    GUEST_CALL(calcAngle_800117C);
+    return (s32)R0;
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_sprite_set_animation(u8 dir) {
+    R0 = dir;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file; clobbers r0 and r3 */
+static void call_load_animation_data(u32 *out_r0, u32 *out_r3) {
+    GUEST_CALL(sprite_loadAnimationData);
+    *out_r0 = R0; *out_r3 = R3;
+}
+
+/* register form: calls sub_809FC96 outside this file; passes r0 and r7, returns r0/r1/r2/r3 */
+static void call_mystery_setup(u32 chatbox_data, u32 chatbox_ptr,
+                               u32 *out_r0, u32 *out_r1, u32 *out_r2, u32 *out_r3) {
+    R0 = chatbox_data; R7 = chatbox_ptr;
+    GUEST_CALL(sub_809FC96);
+    *out_r0 = R0; *out_r1 = R1; *out_r2 = R2; *out_r3 = R3;
+}
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u8 call_get_cur_pet_navi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (u8)R0;
+}
+
+/* register form: calls chatbox_runScript outside this file, which has no typed C interface yet */
+static void call_chatbox_run_script(u32 archive, u8 idx, u32 npc_ptr) {
+    R0 = archive; R1 = idx; R5 = npc_ptr;
+    GUEST_CALL(chatbox_runScript);
+}
+
+/* register form: calls chatbox_runScript_202da04 outside this file, which has no typed C interface yet */
+static void call_run_map_script(u8 script_id, u32 npc_ptr) {
+    R0 = script_id; R5 = npc_ptr;
+    GUEST_CALL(chatbox_runScript_202da04);
+}
+
+/* register form: calls npc_inChatbox_curAction_waitClose_809EBBC outside this file;
+ * its GUEST_CALL sets the final r0/r1/r2/r3/r7 and flags for this function */
+static void call_wait_close(void) {
+    GUEST_CALL(npc_inChatbox_curAction_waitClose_809EBBC);
+}
+
+/* Select the NPC's facing animation, choose which text script to run, set movement to "wait",
+ * and transition into the wait-close state.  The last call (waitClose) produces the function's
+ * register and flag outputs. */
+static void chatbox_cur_action_init(u32 npc_ptr, u32 toolkit_ptr, u32 r3) {
+    /* ---- face the player if the NPC hasn't already turned ---- */
+    u32 flags = LD32(npc_ptr + oOverworldNPCObject_UnkFlags_60);
+    u32 cur_r0 = flags; /* r0 carries the flag value when we skip the face-player block */
+
+    if (!(flags & OW_NPC_UNK_FLAGS_60_FACE_PLAYER_WHEN_INTERACTED)) {
+        u32 gs = LD32(toolkit_ptr + oToolkit_GameStatePtr);
+        u32 pl = LD32(gs + oGameState_OverworldPlayerObjectPtr);
+
+        s32 dy = (s32)LD32(pl + oOWPlayerObject_Y) - (s32)LD32(npc_ptr + oOverworldNPCObject_Y);
+        s32 dx = (s32)LD32(pl + oOWPlayerObject_X) - (s32)LD32(npc_ptr + oOverworldNPCObject_X);
+
+        u32 angle = (u32)call_calc_angle(dy, dx);
+
+        /* map angle to 8-direction sprite animation index (1,3,5,7) */
+        u8 dir = (u8)((((angle + 0x20) & 0xC0) >> 6) * 2 + 1);
+        call_sprite_set_animation(dir);
+
+        /* this callee clobbers r0 and r3; r3 feeds the later HP-memory check */
+        u32 anim_r0, anim_r3;
+        call_load_animation_data(&anim_r0, &anim_r3);
+        cur_r0 = anim_r0;
+        r3 = anim_r3;
+    }
+
+    /* ---- choose and run the appropriate text script ---- */
+    flags = LD32(npc_ptr + oOverworldNPCObject_UnkFlags_60);
+
+    bool run_npc_script = false;
+
+    if (flags & OW_NPC_UNK_FLAGS_60_CHATBOX_FLAG_0x400) {
+        /* NPC has an in-memory chatbox script */
+
+        if (flags & OW_NPC_UNK_FLAGS_60_CHATBOX_FLAG_0x800) {
+            /* mystery-data path: set up the chatbox and extract script info */
+            u32 chatbox_ptr = LD32(toolkit_ptr + oToolkit_ChatboxPtr);
+            u32 cb_data = LD32(npc_ptr + oOverworldNPCObject_Chatbox_90);
+            ST32(chatbox_ptr + oChatbox_Unk_4C, cb_data);
+
+            u32 mys_r0, mys_r1, mys_r2, mys_r3;
+            call_mystery_setup(cb_data, chatbox_ptr, &mys_r0, &mys_r1, &mys_r2, &mys_r3);
+            ST32(chatbox_ptr + 0x54, mys_r0);
+            ST32(chatbox_ptr + 0x58, mys_r1);
+            ST8(npc_ptr + oOverworldNPCObject_TextScriptIndex, (u8)mys_r2);
+            cur_r0 = mys_r0;
+            r3 = mys_r3;
+        }
+
+        /* HP-memory special case: script type 8 and sub-type 0x70 with a live PET navi */
+        if (r3 == 8 && cur_r0 == 0x70) {
+            u8 navi = call_get_cur_pet_navi();
+            if (navi != 0) {
+                u32 archive = LD32(npc_ptr + oOverworldNPCObject_TextScriptPtr);
+                call_chatbox_run_script(archive, 0x78, npc_ptr);
+                goto done;
+            }
+        }
+
+        /* normal NPC chatbox script */
+        u32 archive = LD32(npc_ptr + oOverworldNPCObject_TextScriptPtr);
+        u8 idx = LD8(npc_ptr + oOverworldNPCObject_TextScriptIndex);
+        call_chatbox_run_script(archive, idx, npc_ptr);
+    } else {
+        /* map-loaded text script */
+        u8 sid = LD8(npc_ptr + oOverworldNPCObject_TextScriptIndex);
+        call_run_map_script(sid, npc_ptr);
+    }
+
+done:
+    ST8(npc_ptr + oOverworldNPCObject_MovementFlag_0a, 4);
+    call_wait_close();
+}
+
+/* npc_inChatbox_curAction_init_809EB20(r5 = NPC ptr, r10 = toolkit ptr, r3 = script type) */
+Next npc_inChatbox_curAction_init_809EB20(void) {
+    chatbox_cur_action_init(R5, R10, R3);
+    RETURN_TO_CALLER();
+}
+
+/* ── npc_inChatbox_curAction_waitClose_809EBBC ── */
+#define EVENT_CUR_DIR_LOCKED_PRIMARY 0x17u
+#define EVENT_CUR_DIR_LOCKED_SUB     0x15u
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool test_event_cur_dir_locked(void) {
+    R0 = EVENT_CUR_DIR_LOCKED_PRIMARY;
+    R1 = EVENT_CUR_DIR_LOCKED_SUB;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();  /* bne taken when Z is clear, i.e. flag is set */
+}
+
+/* register form: calls npc_resetToStandardState_809F612 outside this file, which has no typed C interface yet.
+ * Sets R0=0 (the original's mov r0,#0) and R7=game_state_ptr before the call. */
+static void npc_reset_to_standard(u32 game_state_ptr) {
+    R0 = 0;
+    R7 = game_state_ptr;
+    GUEST_CALL(npc_resetToStandardState_809F612);
+}
+
+/* register form: the guest tst r0,r0 writes R0 and flags simultaneously,
+ * which the typed C function cannot express; adapter is branch-free. */
+static void emit_tst_r0(u32 val) {
+    R0 = val;
+    SET_FLAGS_NZ(val);
+}
+
+/* Wait-close action for an in-chatbox overworld NPC.
+ * Returns the game-state pointer (R7 output); R0 and flags are produced
+ * by the helpers (callee on paths 1 & 3, emit_tst_r0 on path 2). */
+static u32 npc_wait_close(u32 npc_ptr, u32 toolkit_ptr, u32 r7_in) {
+    /* Path 1: direction-lock event is set → early return, callee's R0-R3/flags stand. */
+    if (test_event_cur_dir_locked())
+        return r7_in;
+
+    /* Path 2/3: read the close-animation gate from the game state. */
+    u32 game_state_ptr = LD32(toolkit_ptr + oToolkit_GameStatePtr);
+    u8 anim_state = LD8(game_state_ptr + oGameState_Unk_10);
+
+    if (anim_state != 0) {
+        emit_tst_r0((u32)anim_state);
+        return game_state_ptr;
+    }
+
+    /* Path 3: animation finished – clear NPC sub-state byte and reset to standard. */
+    ST8(npc_ptr + oOverworldNPCObject_Unk_07, 0);
+    npc_reset_to_standard(game_state_ptr);
+    return game_state_ptr;
+}
+
+/* npc_inChatbox_curAction_waitClose_809EBBC(r5 = npc, r10 = toolkit) → r7 */
+Next npc_inChatbox_curAction_waitClose_809EBBC(void) {
+    R7 = npc_wait_close(R5, R10, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── NPCCommand_jump_if_flag_clear ── */
+/* register form: calls ReadNPCScriptHalfword outside this file, which has no typed C interface yet */
+static u16 read_npc_script_halfword(u32 addr) {
+    R0 = addr;
+    GUEST_CALL(ReadNPCScriptHalfword);
+    return (u16)R0;
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool test_event_flag(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG(); /* Z set when the flag is clear */
+}
+
+/* register form: calls ReadNPCScriptWord outside this file, which has no typed C interface yet */
+static u32 read_npc_script_word(u32 addr) {
+    R0 = addr;
+    GUEST_CALL(ReadNPCScriptWord);
+    return R0;
+}
+
+/*
+ * Jump-or-skip on an NPC-script event flag.
+ * Script layout (7 bytes): [opcode] [event-flag u16] [jump-target u32].
+ * If the flag is clear the interpreter jumps to the target;
+ * if set it simply advances past this instruction.
+ */
+static u32 npc_jump_if_flag_clear(u32 script_ptr) {
+    u16 flag = read_npc_script_halfword(script_ptr + 1);
+    if (test_event_flag(flag))
+        return script_ptr + 7; /* flag is set – skip the 7-byte instruction */
+    return read_npc_script_word(script_ptr + 3); /* flag is clear – jump to target */
+}
+
+/* NPCCommand_jump_if_flag_clear(r6 = script_ptr, r10, lr) -> r6 */
+Next NPCCommand_jump_if_flag_clear(void) {
+    R6 = npc_jump_if_flag_clear(R6);
+    SET_FLAGS_NZ(R6);
     RETURN_TO_CALLER();
 }
 
