@@ -1,0 +1,98 @@
+name: sub_80429D8
+address: '0x080429D8'
+kind: function
+status: hypothesis
+summary: Advances the chatbox's script cursor by a row-aligned half-width offset, bumps an internal data pointer
+  by an 8-byte aligned slot, and steps the caller's row iterator forward by 3; returns 1.
+interface: void sub_80429D8(u8* r4_rowIter, ChatboxState* r5_chatbox); /* returns 1 in r0, nz/c/v clobbered, r6/r7
+  preserved; passes r2=step, r3=half+cursor, r4+=3, r8=half */
+details: 'Operates entirely on a chatbox-state struct passed in r5. Reads the 0-based
+
+  line index from [r4+2]-1 and uses a hard-coded vertical region of 0xAC
+
+  (built up as 0x79+0x33) to compute a half-remainder offset `(0xAC -
+
+  row*0xB - 16) >> 1` saved in r8. The current text-script char index at
+
+  `oChatbox_TextScriptCharIdx` is then added to that half and stored to a
+
+  one-byte field at chatbox+0x94 (the "next slot script cursor"). A separate
+
+  working pointer at `oChatbox_Unk_7C` is advanced by `((half>>1)<<1)<<2`,
+
+  i.e. `floor(half/2)*8`, an 8-byte aligned slot bump whose size depends on
+
+  the row position. The caller-provided iterator in r4 is post-incremented
+
+  by 3 (three u8 rows: presumably idx, count, and a padding byte). Always
+
+  returns 1 in r0 with the NZ flags set. Used in chatbox script/line layout
+
+  setup; the exact meaning of chatbox+0x94 vs `oChatbox_TextScriptCharIdx`
+
+  (mirrored script cursor vs active cursor) and of `oChatbox_Unk_7C`
+
+  (likely a sprite/oam or per-row descriptor table pointer) is not fully
+
+  pinned down by this function alone.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file inbox_farm_old_2.c
+    sub_80429D8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80429D8
+
+    ./wf verify --function sub_80429D8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 258 out of
+    domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80429D8
+
+    ./wf verify --function sub_80429D8 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 21 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80429D8
+
+    ./wf verify --function sub_80429D8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: fuzz, menus3.'
+  reproduce: grep -l '^080429d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- fuzz
+- menus3
+open_questions:
+- What is the precise meaning of chatbox+0x94 vs oChatbox_TextScriptCharIdx; are they two views of the same cursor
+  or distinct fields (active vs next line)?
+- What does oChatbox_Unk_7C point at (sprite slots, OAM entries, per-row data) such that a floor(half/2)*8 byte
+  stride makes sense?
+- Why does r4 advance by exactly 3 each call — is the caller iterating a fixed-stride record (idx, row, attr/u8)
+  over a chatbox build script?
+- How is the 0xAC region constant (0x79+0x33) derived — total chatbox height, line count, or screen-box pixel budget?
+- Is sub_80429D8 specific to one chatbox mode (battle vs overworld) or shared, given the hard-coded constants?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c

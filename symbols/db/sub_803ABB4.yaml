@@ -1,0 +1,72 @@
+name: sub_803ABB4
+address: '0x0803ABB4'
+kind: function
+status: confirmed
+summary: 'Shop/buy-menu confirm handler: plays the menu-select sound and runs the purchase callbacks when a shop
+  slot is chosen, otherwise delegates to a sibling handler.'
+interface: 'void sub_803ABB4(void); /* inputs: r2, r5 (object ptr), lr; outputs/clobbers: r10 preserved, nz/c/v
+  trashed, r0/r1/lr clobbered */'
+details: "Operates on a menu/shop object in r5 with three fields:\n  +0x10 : u8  current cursor index\n  +0x13 :\
+  \ u8  flag/state byte (cleared to 0 on confirm)\n  +0x24 : u16 total slot count\nBranches on `cursor < totalSlots`\
+  \ (signed, bge). When true it plays\n`SOUND_MENU_SELECT` (0x15) via PlaySoundEffect, zeroes the +0x13 flag,\n\
+  invokes `sub_803BF70(0x10, 0x30)` and `sub_803A85C()` — the menu-flow\ncallbacks that advance the buy screen into\
+  \ the next phase.\nWhen the cursor has reached/exceeded the stored count, control falls\nthrough to `sub_803ABDC`,\
+  \ presumably the sibling \"cursor at end-of-list\"\nor \"back/exit\" handler.\nRestores {r4-r7, pc} on return;\
+  \ r10 is preserved per caller's contract.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798,\
+  \ register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file inbox_farm_old_2.c
+    sub_803ABB4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803ABB4
+
+    ./wf verify --function sub_803ABB4 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 294 out of
+    domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803ABB4
+
+    ./wf verify --function sub_803ABB4 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803ABB4
+
+    ./wf verify --function sub_803ABB4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803abb4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+related:
+- sub_803BF70
+open_questions:
+- Exact role of field +0x13 (cleared here) and +0x24 (compared against cursor).
+- What sub_803ABDC does on the "no more slots" branch and how it pairs with sub_803A85C/sub_803BF70.
+- Whether the r2 input is meaningful or merely scratch space preserved by the caller.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c

@@ -1,0 +1,83 @@
+name: sub_803C248
+address: '0x0803C248'
+kind: function
+status: hypothesis
+summary: Tests whether a range of 2-byte table slots starting at (base+index) contains only empty/placeholder entries,
+  walking until a 0xE6 terminator.
+interface: bool isSlotRangeEmpty_803C248(const void *base, u32 index); // r0=base, r5=index (bytes), returns r4=1
+  if empty / 0 if occupied, sets nz from r4, r5 preserved
+details: 'Computes cursor = R0 + R5, then walks the table in 2-byte strides, examining only the first byte of each
+  entry.
+
+  0xE6 is the end-of-range terminator (stop, return current result).
+
+  0xE5 and 0x00 are treated as "empty" slot markers and skipped.
+
+  Any other byte means the slot is occupied; result is set to 0 and the scan terminates.
+
+  R4/R5 are preserved per the calling convention (they appear in the preserved set and are not used as locals across
+  the loop boundary; the loop body just re-reads R3/R0/R4).
+
+  Likely used to check free/occupied status in some packed 2-byte-per-entry table (slot id in the high byte, status/flag
+  in the low byte, with 0xE5/0x00 as vacant/cleared markers and 0xE6 as end-of-list).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file inbox_farm_old_2.c
+    sub_803C248
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803C248
+
+    ./wf verify --function sub_803C248 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 200 out of
+    domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803C248
+
+    ./wf verify --function sub_803C248 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803C248
+
+    ./wf verify --function sub_803C248 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803c248 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+related:
+- sub_803AAA0
+- sub_803AD80
+open_questions:
+- Which subsystem owns this table (chip/mystery data, folder, link table, etc.)?
+- Is the meaningful byte the one being scanned or its pair (i.e. does the adjacent byte encode something else)?
+- Why are 0xE5 and 0x00 both treated as empty rather than 0x00 alone?
+- Why is R5 passed as an index rather than R0 alone carrying the cursor?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c

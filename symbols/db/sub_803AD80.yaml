@@ -1,0 +1,82 @@
+name: sub_803AD80
+address: '0x0803AD80'
+kind: function
+status: confirmed
+summary: Menu input handler that attempts action 0x90 and branches to a confirm (0x34) or deny (0x38) sub-state
+  with matching SFX.
+interface: void handleMenuAction90_803AD80(uint32_t r2, struct* r4, struct* r5, void* r10, lr) -> void (r10 preserved);
+  clobbers r0/r1/r2/r3/lr and nz/c/v
+details: 'Calls sub_803C248 with command id 0x90 and tests its return for zero (BNE branches on failure).
+
+  On success (zero flag set): plays SOUND_MENU_SELECT, fires menu command 0x17 via sub_803BB2C,
+
+  then calls sub_803C0F6 with sub-menu coordinates (0x90, 0xD0, 0x20), and writes the next menu
+
+  phase byte 0x34 at r5[1].
+
+  On failure (non-zero): plays SOUND_CANT_JACK_IN, fires menu command 0x15 via sub_803BB2C,
+
+  and writes 0x38 at r5[1].
+
+  r5 is a menu-state struct whose byte 1 is the current phase index; r10 is preserved across the
+
+  call (likely the active menu/battle context pointer the callers care about). The two
+
+  sub_803BB2C invocations with 0x17/0x15 are paired menu "confirm"/"cancel" style hooks.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file inbox_farm_old_2.c
+    sub_803AD80
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803AD80
+
+    ./wf verify --function sub_803AD80 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803AD80
+
+    ./wf verify --function sub_803AD80 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 4 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803AD80
+
+    ./wf verify --function sub_803AD80 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0803ad80 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- menus3
+related:
+- sub_803C248
+open_questions:
+- What struct r5 points to and the meaning of r5[1] as a state/phase selector.
+- What r2 and r4 are used for in this function (not referenced in the body).
+- Exact semantics of sub_803C248's 0x90 command and why a non-zero return is treated as "can't jack in".
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c

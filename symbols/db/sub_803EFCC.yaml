@@ -1,0 +1,69 @@
+name: sub_803EFCC
+address: '0x0803EFCC'
+kind: function
+status: confirmed
+summary: Zeros four battle scratch/working buffers (0x20, 0x40, and two 0x200-byte blocks) via ZeroFillByWord.
+interface: void battle_clearScratchBuffers_803EFCC(void) /* no inputs; preserves r2, r3, C, V; clobbers r0, r1,
+  N, Z */
+details: 'Called with no arguments (lr-only). It clears four EWRAM scratch regions used by the battle subsystem:
+  byte_200AC20 (0x20 bytes), unk_2009AC0 (0x40 bytes), byte_200BC70 (0x200 bytes), and word_200A010 (0x200 bytes).
+  Each is zeroed by calling the standard ZeroFillByWord helper with a pointer in r0 and a size in r1. Implemented
+  as push {lr} / pop {pc} so no stack frame is reserved. Because ZeroFillByWord leaves r2/r3 and C/V untouched,
+  the last zeroing call is the last flag-affecting one, leaving c/v/r2/r3 preserved for callers as the register
+  contract advertises.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file inbox_farm_old_2.c
+    sub_803EFCC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803EFCC
+
+    ./wf verify --function sub_803EFCC --snapshots build-snapshots'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803EFCC
+
+    ./wf verify --function sub_803EFCC --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803EFCC
+
+    ./wf verify --function sub_803EFCC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0803efcc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- menus3
+open_questions:
+- Which specific battle state machine owns each of the four buffers (e.g. is unk_2009AC0 the chip-slot array, byte_200BC70
+  the panel/effect list, etc.)?
+- Is this called once at battle init, or also on battle reset / panel-change transitions?
+- Are any of these buffers intentionally zeroed here because they are scratch space (vs. state that should persist
+  across battles)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c
