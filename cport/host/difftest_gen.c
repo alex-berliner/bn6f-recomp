@@ -225,6 +225,36 @@ static void gen_repack_tiles_811F5DC(Cpu *in, u32 (*rnd)(void)) {
     in->r[3] = 1 + rnd() % 8;
 }
 
+/* loadEntryPairTable_812B1DC walks 4-byte records from r0 up to one whose first byte is 0xFF (real
+ * calls pass a short ROM table, byte_812913C). Random memory can hold no such record for thousands of
+ * bytes: from r0 = 0x03006734 the walk ran through the stack, where it read the original's pushed
+ * registers on one side and the port's frames (which are not the original's) on the other. Give it a
+ * table in EWRAM: a first record, one to eight more, and the end mark. */
+static void gen_entry_pair_table_812B1DC(Cpu *in, u32 (*rnd)(void)) {
+    u32 table = 0x02030000u + (rnd() % 0x400) * 4;
+    u32 records = 2 + rnd() % 8;
+    for (u32 i = 0; i < records; i++) {
+        U8(table + 4 * i) = (u8)(rnd() % 0xFF);
+        U8(table + 4 * i + 1) = (u8)rnd();
+        U16(table + 4 * i + 2) = (u16)rnd();
+    }
+    U8(table + 4 * records) = 0xFF;
+    in->r[0] = table;
+}
+
+/* CutsceneCmd_ow_player_sprite_special_with_arg jumps through word [script + 1] of its six-entry
+ * table off_8037B9C: as with kJumpTables, a random selector byte indexes past it (0xA0 once jumped
+ * through code that returned, which the readable C does not call). Give the script command a selector
+ * the table has, a value code (0xFF: the value is the next byte; else a variable at r5 + code), and r5
+ * a variable area in EWRAM. */
+static void gen_ow_player_sprite_special_8037B6C(Cpu *in, u32 (*rnd)(void)) {
+    u32 script = 0x02030000u + rnd() % 0x1000;
+    U8(script + 1) = (u8)((rnd() % 6) * 4);
+    U8(script + 2) = (rnd() & 1) ? 0xFF : (u8)rnd();
+    in->r[7] = script;
+    in->r[5] = 0x02020000u + (rnd() % 0x400) * 4;
+}
+
 GenFn difftest_snap_mutator(const char *name) {
     if (!strcmp(name, "npc_runSecondaryScriptMaybe_809ebf8")) return mut_npc_secondary;
     if (!strcmp(name, "sprite_queueFramePieces")) return mut_sprite_pieces;
@@ -241,6 +271,8 @@ GenFn difftest_generator(const char *name) {
     if (!strcmp(name, "scriptListRun_8001158")) return gen_script_list_8001158;
     if (!strcmp(name, "dispatchBattleObjectBehavior_802BF4C")) return gen_dispatch_behavior_802BF4C;
     if (!strcmp(name, "sprite_repackAndQueueTiles_811F5DC")) return gen_repack_tiles_811F5DC;
+    if (!strcmp(name, "loadEntryPairTable_812B1DC")) return gen_entry_pair_table_812B1DC;
+    if (!strcmp(name, "CutsceneCmd_ow_player_sprite_special_with_arg")) return gen_ow_player_sprite_special_8037B6C;
     for (size_t i = 0; i < sizeof kJumpTables / sizeof kJumpTables[0]; i++)
         if (!strcmp(name, kJumpTables[i].name)) {
             g_jump_table = &kJumpTables[i];
