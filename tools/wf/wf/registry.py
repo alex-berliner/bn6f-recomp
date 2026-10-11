@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from types import ModuleType
 
 from wf.burr_typed import GraphView
-from wf.graphs import capture, convert, drafts, farm, record, verify
+from wf.graphs import capture, convert, drafts, farm, queue, record, verify
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ WORKFLOWS: tuple[WorkflowEntry, ...] = (
     WorkflowEntry("capture", capture.PROJECT, capture.capture_graph, capture),
     WorkflowEntry("farm", farm.PROJECT, farm.farm_graph, farm),
     WorkflowEntry("farm-batch", farm.PROJECT, farm.farm_batch_graph, farm),
+    WorkflowEntry("queue", queue.PROJECT, queue.queue_graph, queue),
     WorkflowEntry("drafts", drafts.PROJECT, drafts.drafts_graph, drafts),
     WorkflowEntry("convert", convert.PROJECT, convert.convert_graph, convert),
     WorkflowEntry("record", record.PROJECT, record.record_graph, record),

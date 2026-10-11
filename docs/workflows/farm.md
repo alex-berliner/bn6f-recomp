@@ -34,7 +34,7 @@ Ask the model (or the first source of a tier that is up) for readable C. The typ
 the best attempt so far (another model's, or one of this run's) with every problem its test found and a
 history line of the others; the old prompt shows the last failure and its code.
 
-- reads: `context: ConversionContext`, `model: ModelSpec`, `prompt: PromptKind`, `earlier: tuple[Tried, ...]`, `attempts: tuple[Attempt, ...]`
+- reads: `context: ConversionContext`, `model: ModelSpec`, `prompt: PromptKind`, `source_wait: float`, `earlier: tuple[Tried, ...]`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`
 - then: `test_reply` when `the_model_answered`; `give_up` when `the_model_failed`
 

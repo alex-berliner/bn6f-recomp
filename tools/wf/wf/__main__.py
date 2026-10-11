@@ -6,6 +6,8 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
                        [--trials N]   # it says first what it will compare: no functions, no difftest or oracle
   python -m wf capture --function NAME... [--route NAME]... [--calls N]   # into build-snapshots/NAME
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] [--prompt typed|old] FUNCTION...
+  python -m wf queue   [--hours H] [--lane PROVIDER=WORKERS]... [--cap TOKENS] [--rounds N]   # every provider busy
+  python -m wf queue   --stop | --status    # ask the running queue to finish its farm runs and end; its ledger
   python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--prompt old] [--jobs N] [FUNCTION...]   # entries for accepted candidates
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
@@ -29,6 +31,7 @@ freeze) is in build-wf-state.
 """
 import argparse
 import json
+import signal
 import time
 from pathlib import Path
 from typing import Literal
@@ -41,6 +44,7 @@ from wf.graphs.capture import CaptureState, run_capture
 from wf.graphs.drafts import DraftsState, run_drafts
 from wf.graphs.convert import DEFAULT_MODELS, PENDING_RENAMES, ConvertState, ReviewRequest, convert_graph, review_sheet
 from wf.graphs.farm import FarmBatchState, farm_batch_graph
+from wf.graphs.queue import QueueState, ledger_summary, queue_graph, request_stop
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify, what_it_checks
 from wf.repo import REPO, RUNS, SNAPSHOTS
@@ -48,6 +52,7 @@ from wf.tools.archive import ARCHIVE, archive_cited_runs
 from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
 from wf.tools.models import PromptKind, with_prompt
 from wf.tools.sources import models_for
+from wf.tools.work_queue import CAP, LANES, STOP, Lane, only_one_queue, read_ledger
 from wf.routes import ALL_ROUTES, route_named
 from wf.status import all_runs, workflow_of_run
 from wf.types import FunctionName, ModelSpec, Rename, Route, RouteName, SnapshotDir, SymbolName
@@ -78,6 +83,17 @@ class FarmCommand(BaseModel):
     rounds: int
     jobs: int
     prompt: PromptKind
+
+
+class QueueCommand(BaseModel):
+    command: Literal["queue"]
+    hours: float | None
+    lanes: tuple[str, ...] = Field(alias="lane")
+    cap: int
+    rounds: int
+    shift_hours: float
+    stop: bool
+    status: bool
 
 
 class DraftsCommand(BaseModel):
@@ -151,7 +167,7 @@ class DocsCommand(BaseModel):
     out_dir: Path
 
 
-Command = (VerifyCommand | CaptureCommand | FarmCommand | DraftsCommand | ConvertCommand | RecordCommand
+Command = (VerifyCommand | CaptureCommand | FarmCommand | QueueCommand | DraftsCommand | ConvertCommand | RecordCommand
            | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
            | ArchiveCommand | DocsCommand)
 
@@ -165,6 +181,8 @@ def main() -> None:
             start_capture(command)
         case FarmCommand():
             start_farm(command)
+        case QueueCommand():
+            start_queue(command)
         case DraftsCommand():
             start_drafts(command)
         case ConvertCommand():
@@ -218,6 +236,30 @@ def start_farm(command: FarmCommand) -> None:
                            snapshots=command.snapshots, rounds=command.rounds, jobs=command.jobs,
                            prompt=command.prompt)
     print_outcome(farm_batch_graph().start(start, run_id))
+
+
+def start_queue(command: QueueCommand) -> None:
+    if command.status:
+        print("\n".join(ledger_summary(read_ledger())))
+        return
+    if command.stop:
+        STOP.parent.mkdir(parents=True, exist_ok=True)
+        STOP.touch()
+        print(f"asked the queue to stop ({STOP}): it takes no new jobs and ends once its farm runs have finished")
+        return
+    with only_one_queue():
+        STOP.unlink(missing_ok=True)
+        _ = signal.signal(signal.SIGTERM, lambda number, frame: request_stop())
+        lanes = tuple(Lane(provider=name, workers=int(workers)) for name, _, workers in
+                      (spec.partition("=") for spec in command.lanes)) or LANES
+        run_id, run_dir = new_run("queue")
+        start = QueueState(run_dir=run_dir, snapshots=SnapshotDir(SNAPSHOTS), lanes=lanes, rounds=command.rounds,
+                           cap=command.cap, shift_hours=command.shift_hours,
+                           until=time.time() + command.hours * 3600 if command.hours else None)
+        try:
+            print_outcome(queue_graph().start(start, run_id))
+        finally:
+            STOP.unlink(missing_ok=True)
 
 
 def start_drafts(command: DraftsCommand) -> None:
@@ -303,7 +345,7 @@ def print_outcome(outcome: Finished[BaseModel] | Paused) -> None:
         print(f"Answer with `python -m wf answer {outcome.run_id} ANSWER.json`, where ANSWER.json matches:")
         print(json.dumps(outcome.answer_type.model_json_schema(), indent=2))
         return
-    results = outcome.state.model_dump(mode="json", include={"report", "commit", "tallies", "pairs", "outcome", "renames"})
+    results = outcome.state.model_dump(mode="json", include={"report", "commit", "tallies", "pairs", "outcome", "renames", "totals", "shifts"})
     print(f"{outcome.run_id} finished:")
     print(json.dumps(results, indent=2))
 
@@ -385,6 +427,16 @@ def parse_command() -> Command:
     farm.add_argument("--prompt", choices=[kind.value for kind in PromptKind], default=PromptKind.TYPED.value,
                       help="typed (default): typed C with thin adapters, register check on; old: the prompt before "
                            "it (register-form C, no register check; installs are queued for retype)")
+
+    work = commands.add_parser("queue", help="one queue keeps every provider with quota busy on what is left to farm")
+    work.add_argument("--hours", type=float, help="take no new jobs after this many hours (default: until stopped)")
+    work.add_argument("--lane", action="append", default=[],
+                      help="PROVIDER=WORKERS, repeatable (default: hyper=16 minimax=4 zai=2 opencode=2)")
+    work.add_argument("--cap", type=int, default=CAP, help="tokens a function's job may spend over all its models")
+    work.add_argument("--rounds", type=int, default=1, help="repairs per model (then the next model)")
+    work.add_argument("--shift-hours", type=float, default=3.0, help="rebuild the difftest and plan again this often")
+    work.add_argument("--stop", action="store_true", help="ask the running queue to finish its farm runs and end")
+    work.add_argument("--status", action="store_true", help="the jobs' ledger: by state, band and next model")
 
     drafts = commands.add_parser("drafts", help="a farm model drafts symbol entries for its accepted candidates")
     drafts.add_argument("functions", nargs="*")
