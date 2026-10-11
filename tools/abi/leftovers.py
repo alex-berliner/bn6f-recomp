@@ -293,10 +293,11 @@ class Body:
 class Scanner:
     """Follows the registers and flags one call leaves, through one readable body."""
 
-    def __init__(self, body: Body, contracts: Contracts, caller_unit: Contract | None):
+    def __init__(self, body: Body, contracts: Contracts, caller_unit: Contract | None, deep: bool = False):
         self.b = body
         self.c = contracts
         self.caller_unit = caller_unit
+        self.deep = deep              # --deep: also the reads in a `return` expression
         # the flags this function leaves reach a caller that reads them
         self.flags_out = caller_unit is not None and "nz" in caller_unit.outputs
 
@@ -443,6 +444,16 @@ class Scanner:
                                 for r in sorted(nxt.inputs):
                                     if live(r):
                                         self._hit(r, i, callee, reads, pending, into=t[i + 1])
+                        elif self.deep:                 # `return R0 != 0;` reads before the path ends
+                            for k in range(i + 1, self.b.statement_end(i)):
+                                x = t[k]
+                                if REG_TOKEN.match(x) and live(x.lower()):
+                                    self._hit(x.lower(), k, callee, reads, pending)
+                                elif x in FLAG_READS and live(FLAG_READS[x]):
+                                    self._hit(FLAG_READS[x], k, callee, reads, pending)
+                                elif x == "cpu" and k + 2 < len(t) and t[k + 1] == "." and t[k + 2] in FLAGS \
+                                        and live(t[k + 2]):
+                                    self._hit(t[k + 2], k, callee, reads, pending)
                     return
             elif tok == "goto" and not branching():
                 return
@@ -520,8 +531,24 @@ class Site:
     noted: bool
 
 
-def scan(paths: list[str], contracts: Contracts) -> list[Site]:
-    """Every leftover read in the readable code under PATHS."""
+# the `── NAME ──` line tools/layout.py starts each function's part with
+PART_RE = re.compile(r"^/\* ── (\w+) ── \*/", re.M)
+
+
+def part_unit(contracts: Contracts, parts: list[tuple[int, str]], at: int) -> Contract | None:
+    """For a helper (no lifted unit of its own): the unit of the entry whose part holds it, whose
+    original made the calls the helper now makes (layout keeps a helper in the part that uses it)."""
+    name = None
+    for start, entry in parts:
+        if start <= at:
+            name = entry
+    return contracts.of(name) if name else None
+
+
+def scan(paths: list[str], contracts: Contracts, deep: bool = False) -> list[Site]:
+    """Every leftover read in the readable code under PATHS. DEEP (--deep): helpers are read with
+    the original of the entry whose part holds them (site liveness, the zflag rule), and reads in
+    a `return` expression count (`GUEST_CALL(F); return R0 != 0;`, a helper's TestEventFlag bug)."""
     files: list[str] = []
     for p in paths:
         files += sorted(glob.glob(os.path.join(p, "*.c"))) if os.path.isdir(p) else [p]
@@ -531,6 +558,7 @@ def scan(paths: list[str], contracts: Contracts) -> list[Site]:
         if os.path.basename(path) == "abi_thunks.c" or lint.GENERATED_RE.search("\n".join(raw.split("\n")[:3])):
             continue
         _, comments = lint.strip(raw)
+        parts = [(m.start(), m.group(1)) for m in PART_RE.finditer(raw)]
         prev_end = 0
         for f in lint.scan_file(os.path.basename(path), raw):
             if f.kind == "file":
@@ -540,7 +568,8 @@ def scan(paths: list[str], contracts: Contracts) -> list[Site]:
             prev_end = f.body[1] + 1
             accepted = notes_of(note_text)
             body = Body(f.text, f.body_line)
-            sc = Scanner(body, contracts, contracts.of(f.name))
+            unit = contracts.of(f.name) or (part_unit(contracts, parts, f.body[0]) if deep else None)
+            sc = Scanner(body, contracts, unit, deep)
             for call_at, start, callee in sc.calls():
                 for r in sc.follow(call_at, start, callee):
                     sites.append(Site(os.path.relpath(path, ROOT), r.line, f.name, body.lines[call_at], callee,
@@ -595,6 +624,10 @@ def main() -> int:
     ap.add_argument("--graph", default=DEFAULT_GRAPH, help="lift.py --export-abi output (per site liveness)")
     ap.add_argument("--check", action="store_true", help="exit 1 on a read without a note (zflag: listed only)")
     ap.add_argument("--quiet", action="store_true", help="no summary on stderr")
+    ap.add_argument("--deep", action="store_true",
+                    help="also helpers (with their part's original) and `return` expressions: catches a helper's "
+                         "`return R0 != 0` after TestEventFlag (the mutation survey, docs/reviews/2026-10-11-"
+                         "mutation-survey.md); not the gate's default until its open sites are triaged")
     ap.add_argument("--reads", metavar="FUNCTION",
                     help="only list what FUNCTION reads after each of its calls (JSON: callee -> registers)")
     args = ap.parse_args()
@@ -607,7 +640,7 @@ def main() -> int:
         json.dump({c: sorted(r, key=lambda x: (len(x), x)) for c, r in reads.items()}, sys.stdout, indent=1)
         print()
         return 0
-    sites = scan(args.paths, contracts)
+    sites = scan(args.paths, contracts, args.deep)
     open_sites = [s for s in sites if not s.noted]
     failing = [s for s in open_sites if s.kind != "zflag"]
     totals = {k: sum(s.kind == k for s in open_sites) for k in ("contract", "site", "passed", "zflag")}
