@@ -140,7 +140,11 @@ functions, normalised to C types).
 - **3.8** `python3 tools/abi/lint.py [--check]`: register-level code per function (typed,
   `Next` body, thin adapter, `register form:` exception) as JSON; `--check` fails only on
   hits beyond `tools/abi/lint_baseline.json` (1,456 functions today). The convert
-  workflow runs it on each candidate file (`check_registers`); not in `make`.
+  workflow runs it on each candidate file (`check_registers`); not in `make`. The commit
+  gate lets the baseline only go down, with one exemption (plan B after the prompt
+  benchmark, 2026-10-10): installs of the farm's old-prompt candidates (`wf farm --prompt
+  old`, register form allowed) add their hits in their install commit and queue the
+  functions for retype in `tools/abi/retype_queue.tsv` (tools/wf/wf/tools/retype.py).
 - **Refined contracts in the lifted headers** (review item R1-A7, 2026-10-10): every lift runs the
   export's final model (`abi_export.REFINED`: edges from the committed
   `tools/traces/coverage/*.edges`, BIOS calls, per-site liveness, saves pass through) and writes
