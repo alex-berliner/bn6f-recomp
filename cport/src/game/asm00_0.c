@@ -1083,36 +1083,6 @@ Next GetMaxAndCurHPForCurPETNavi_80010D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── scriptListRun_8001158 ── */
-/* scriptListRun_8001158(r0 = list ptr):
- * Walk an array of {cmd_id, arg} pairs (terminated by cmd_id == 0) and dispatch
- * each entry to sub_802FE28(cmd_id, arg, 0, 0). */
-Next scriptListRun_8001158(void) {
-    u32 entry = R0;
-    u32 cmd = LD32(entry);
-    /* tst r0, r0 — sets NZ from cmd, leaves CV untouched. */
-    SET_FLAGS_NZ(cmd);
-
-    while (cmd != 0) {
-        /* Dispatch one {cmd, arg} pair. */
-        R0 = cmd;
-        R1 = LD32(entry + 4);
-        R2 = 0;
-        R3 = 0;
-        GUEST_CALL(sub_802FE28);
-
-        /* add r7, #8 (ADDS) — flags reflect the pointer advance. */
-        entry += 8;
-        SET_FLAGS_ADD(entry - 8, 8);
-
-        /* Next iteration: load cmd, tst it. */
-        cmd = LD32(entry);
-        SET_FLAGS_NZ(cmd);
-    }
-
-    RETURN_TO_CALLER();
-}
-
 /* ── sub_8001172 ── */
 /* sub_8001172(r0 = value, r10 = toolkit):
  * Store the byte value into the game state at offset 9 (field after
