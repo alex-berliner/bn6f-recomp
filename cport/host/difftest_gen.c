@@ -255,6 +255,19 @@ static void gen_ow_player_sprite_special_8037B6C(Cpu *in, u32 (*rnd)(void)) {
     in->r[5] = 0x02020000u + (rnd() % 0x400) * 4;
 }
 
+/* blitTileBlockToRowBuffer_802C4B6 copies an r3 x r4 block of halfwords from r2 into the 0x18-wide
+ * buffer unk_2034B30 at column r0, row r1. Real calls copy blocks of 1x1 up to 7x6. Random counts
+ * (62 x 103 from r2 = 0x03004BE4) read on up through the stack, where the original's own pushed
+ * registers lie on one side and nothing of the port's on the other. Give it a block of up to 8 x 8
+ * from a source in EWRAM. */
+static void gen_blit_tile_block_802C4B6(Cpu *in, u32 (*rnd)(void)) {
+    in->r[3] = 1 + rnd() % 8;
+    in->r[4] = 1 + rnd() % 8;
+    in->r[0] = rnd() % (0x18 - in->r[3] + 1);
+    in->r[1] = rnd() % 0x18;
+    in->r[2] = 0x02020000u + (rnd() % 0x400) * 2;
+}
+
 GenFn difftest_snap_mutator(const char *name) {
     if (!strcmp(name, "npc_runSecondaryScriptMaybe_809ebf8")) return mut_npc_secondary;
     if (!strcmp(name, "sprite_queueFramePieces")) return mut_sprite_pieces;
@@ -272,6 +285,7 @@ GenFn difftest_generator(const char *name) {
     if (!strcmp(name, "dispatchBattleObjectBehavior_802BF4C")) return gen_dispatch_behavior_802BF4C;
     if (!strcmp(name, "sprite_repackAndQueueTiles_811F5DC")) return gen_repack_tiles_811F5DC;
     if (!strcmp(name, "loadEntryPairTable_812B1DC")) return gen_entry_pair_table_812B1DC;
+    if (!strcmp(name, "blitTileBlockToRowBuffer_802C4B6")) return gen_blit_tile_block_802C4B6;
     if (!strcmp(name, "CutsceneCmd_ow_player_sprite_special_with_arg")) return gen_ow_player_sprite_special_8037B6C;
     for (size_t i = 0; i < sizeof kJumpTables / sizeof kJumpTables[0]; i++)
         if (!strcmp(name, kJumpTables[i].name)) {
