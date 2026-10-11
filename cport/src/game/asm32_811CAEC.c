@@ -380,6 +380,64 @@ Next sub_811EC68(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811EE98 ── */
+/* Floor value for the battle countdown (loaded as a 32-bit constant 0xFFFFFFE0 = -32). */
+#define COUNTDOWN_FLOOR (-32)
+
+/* register form: calls IsGFXAnimActive outside this file, which has no typed C interface yet */
+static bool gfx_anim_active(u32 anim_id) {
+    R0 = anim_id;
+    GUEST_CALL(IsGFXAnimActive);
+    return !ZERO_FLAG();  /* Z set => anim not active */
+}
+
+/* register form: calls sub_811F0C8 outside this file, which has no typed C interface yet */
+static void call_sub_811F0C8_sub_811EE98(void) {
+    GUEST_CALL(sub_811F0C8);
+}
+
+/* register form: calls sub_811F11C outside this file, which has no typed C interface yet */
+static void call_sub_811F11C_sub_811EE98(void) {
+    GUEST_CALL(sub_811F11C);
+}
+
+/* register form: calls CopyBackgroundTiles_PET_811EF70 outside this file, which has no typed C interface yet */
+static void call_copy_bg_pet(void) {
+    GUEST_CALL(CopyBackgroundTiles_PET_811EF70);
+}
+
+/* register form: calls CopyBackgroundTiles_onNaviSelect_811F54C outside this file, which has no typed C interface yet */
+static void call_copy_bg_navi_select(void) {
+    GUEST_CALL(CopyBackgroundTiles_onNaviSelect_811F54C);
+}
+
+/* Decrement the battle countdown by 4 each tick.  If it reaches the floor (-32),
+ * clamp it and—provided the PET animation (0x10) is no longer playing—flag the
+ * state byte at [state] = 0xC (timeout / defeat).  Then refresh background tiles. */
+static void process_battle_state_tick(u32 state) {
+    s32 countdown = LDS16(state + 0x10) - 4;
+    ST16(state + 0x10, countdown);
+
+    if (countdown <= COUNTDOWN_FLOOR) {
+        ST16(state + 0x10, (u16)COUNTDOWN_FLOOR);
+        if (!gfx_anim_active(0x10)) {
+            ST8(state, 0xC);
+        }
+    }
+
+    call_sub_811F0C8_sub_811EE98();
+    call_sub_811F11C_sub_811EE98();
+    call_copy_bg_pet();
+    call_copy_bg_navi_select();
+}
+
+/* sub_811EE98(r5 = battle state ptr) -> void
+ * Output r0-r3 / nz / c / v are left by CopyBackgroundTiles_onNaviSelect via GUEST_CALL. */
+Next sub_811EE98(void) {
+    process_battle_state_tick(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── naviSelect_SetupBackgrounds_811EF0C ── */
 /* naviSelect_SetupBackgrounds_811EF0C: rebuild the PET/cyberworld background for the navi select screen.
  * Runs the individual background setup passes, then copies the tile graphics
