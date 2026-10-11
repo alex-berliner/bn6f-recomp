@@ -1,0 +1,96 @@
+name: MapScriptCutsceneCmd_jump_if_flag_set
+address: '0x08035962'
+kind: function
+status: confirmed
+summary: Map-script cutscene command that branches the script cursor to a stored 32-bit offset when the selected
+  16-bit event flag is set, otherwise skips past the 8-byte target slot.
+interface: "/* r5 = flag_table (base of 16-bit event-flag table),\n * r7 = position (current script cursor),\n *\
+  \ lr = return address */\nvoid MapScriptCutsceneCmd_jump_if_flag_set(u32 flag_table /* r5 */, u32 position /*\
+  \ r7 */);\n/* -> r0 = 1 (always),\n *    r4 = jump-target word when flag set, else the resolved event flag value,\n\
+  \ *    r7 = new script cursor (jump target when set, position+8 when clear),\n *    flags NZ (NZ set), C/V undefined\
+  \ from pop {pc} */\n/* clobbers r0, r1, r3, r4, r6, r7, lr */\n"
+details: "Implements one opcode of the map/cutscene script interpreter's conditional-jump handler.\n\n- Reads a\
+  \ flag-selector byte from the script stream via ReadMapScriptByte (sentinel\n  value R6 = 1 marks the call). If\
+  \ the byte is 0xFF (the .immediateEventFlag\n  branch), it instead reads a halfword (R6 = 2) that is the event\
+  \ flag itself.\n- Otherwise treats the byte as an index into the halfword event-flag table\n  pointed to by r5\
+  \ and loads the 16-bit flag with ldrh r4, [r5, r4].\n- Calls TestEventFlag (u16 flag in r0 -> !ZF) to test the\
+  \ flag.\n- If the flag is set: reads a 32-bit jump offset from the script\n  (ReadMapScriptWord, R6 = 4), stores\
+  \ it in both r4 and r7 so the script\n  cursor jumps to that absolute address.\n- If the flag is clear: skips\
+  \ the 8-byte (32-bit word) jump-target slot by\n  adding 8 to r7; r4 keeps the resolved flag value.\n- Returns\
+  \ r0 = 1 in both branches (opcode \"consumed one instruction\"), uses\n  pop {pc} for tail return so lr is clobbered.\n\
+  \nQuirks:\n- The \"skip ahead\" amount is 8 bytes, not 4, even though the immediate\n  halfword flag path consumes\
+  \ only 2 bytes after the 0xFF byte -- this\n  suggests the script layout reserves a fixed-size jump slot (1 byte\
+  \ cmd +\n  1 byte selector + 2 bytes flag-or-pad + 4 bytes target = 8).\n- r1 is clobbered but never written by\
+  \ the visible code; likely set inside\n  ReadMapScriptByte/Halfword/Word which is not in this snippet.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c MapScriptCutsceneCmd_jump_if_flag_set
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_flag_set
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_flag_set --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_flag_set
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_flag_set --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_flag_set
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_flag_set --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08035962 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What structure backs the halfword event-flag table at r5? (Likely the save/event flag bit-array used by the rest
+  of the game.)
+- Why does the skip path add 8 when only 1 (selector) + 2 (immediate flag) bytes have actually been consumed? Probably
+  to keep the layout uniform with the non-immediate path, but worth confirming against other mapScriptCutsceneCmd_*
+  siblings.
+- Are r6's tag values (1/2/4) consumed by ReadMapScriptByte/Halfword/Word as a "byte-width" indicator, or are they
+  used elsewhere too?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

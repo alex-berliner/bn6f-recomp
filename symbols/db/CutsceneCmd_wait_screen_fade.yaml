@@ -1,0 +1,94 @@
+name: CutsceneCmd_wait_screen_fade
+address: '0x080377E4'
+kind: function
+status: confirmed
+summary: Cutscene script command that blocks until an active screen fade finishes, reporting done/not-done and ticking
+  the script pointer.
+interface: 'void CutsceneCmd_wait_screen_fade(void)  /* in: r7=script ptr; out: r0=done flag, r7=script ptr; clobbers
+  r0,r3,lr,c,v,n,z */ /* wait — r1 is also an output per the lifter contract */'
+details: 'Polls IsScreenFadeActive(); while it returns nonzero (fade still running) the
+
+  function advances the caller-supplied cutscene script pointer (r7 += 1) and
+
+  returns r0 = 1 to keep the script engine looping. Once the fade finishes it
+
+  leaves r7 untouched and returns r0 = 0 to mark the command complete. The Z flag
+
+  is set from r0; the C/V flags come straight from IsScreenFadeActive (the second
+
+  path is encoded as a synthetic ADDS just to thread those flags through the
+
+  readable C — there is no real arithmetic on the "done" branch). Lives in the
+
+  cutscene script-command dispatcher; r7 is the per-frame instruction pointer for
+
+  the active cutscene, and the returned r0 is the standard "keep waiting" flag
+
+  consumed by the script runner.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c CutsceneCmd_wait_screen_fade
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_wait_screen_fade
+
+    ./wf verify --function CutsceneCmd_wait_screen_fade --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_wait_screen_fade
+
+    ./wf verify --function CutsceneCmd_wait_screen_fade --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_wait_screen_fade
+
+    ./wf verify --function CutsceneCmd_wait_screen_fade --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6,
+    story7, story8, story9, wander.'
+  reproduce: grep -l '^080377e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Why is r1 listed as an output by the lifter — this function never writes r1 in the shown assembly; likely a caller-analysis
+  artifact from r1 being live across one of the call sites.
+- Exact encoding of 'done' (r0=0) vs 'continue' (r0=1) — assumed from convention; should be cross-checked against
+  the cutscene opcode-table / script-runner.
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

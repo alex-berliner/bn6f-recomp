@@ -1,0 +1,91 @@
+name: TryCutsceneSkip
+address: '0x08036F84'
+kind: function
+status: confirmed
+summary: Returns true (with SELECT button bit set) when a fade is in progress and the player presses SELECT, letting
+  a cutscene be skipped.
+interface: bool TryCutsceneSkip(void /* r10 = toolkit */) -> r1 (carry preserved), Z reflects the skip eligibility
+  (Z=1 = not eligible because no fade), NZ otherwise reflects (pressed & SELECT)
+details: 'Reads the joypad pointed to by r10''s toolkit (toolkit->joypad->pressed). Polls IsScreenFadeActive
+
+  first: if the Z flag comes back set (meaning the screen fade is NOT active), it returns
+
+  immediately with the r1 value IsScreenFadeActive left behind (treated here as "no skip
+
+  possible", Z=1). Otherwise (fade is running) it tests (pressed & JOYPAD_SELECT) and
+
+  returns the SELECT bit in r1 with NZ reflecting whether the bit was held that frame; C is
+
+  preserved from the tst. r3 and r4-r7 are pass-through (r4-r7 explicitly preserved via
+
+  {r4-r7,lr}/{r4-r7,pc}).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c TryCutsceneSkip
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function TryCutsceneSkip
+
+    ./wf verify --function TryCutsceneSkip --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function TryCutsceneSkip
+
+    ./wf verify --function TryCutsceneSkip --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function TryCutsceneSkip
+
+    ./wf verify --function TryCutsceneSkip --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08036f84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does IsScreenFadeActive's r1 actually mean when Z=1, and does any caller rely on that value being placed
+  into r1 here?
+- Which cutscene scripts (likely EventScript / cutscene controllers) gate their update on this SELECT-during-fade
+  check?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

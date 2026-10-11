@@ -1,0 +1,110 @@
+name: RunSecondaryContinuousMapScript
+address: '0x08036064'
+kind: function
+status: confirmed
+summary: Runs the secondary continuous map script by dispatching each op byte through MapScriptCommandJumptable
+  until a handler returns zero.
+interface: "void runSecondaryContinuousMapScript_8036064(void)\n  // inputs (from caller / loop entry): r1, r2,\
+  \ r3, r8, r9, r10, r11, lr\n  // outputs to caller (after last handler): r1, r2, r9, r10, r11\n  // clobbers:\
+  \ r0, r3, r8, lr, flags N/Z/C/V\n  // preserved across the function: r4, r5, r6, r7, r12\n  // per-iteration loop\
+  \ exit: handler bx-target returns Z-set → break; Z-clear → continue\n"
+details: 'Reads eMapScriptState.SecondaryContinuousMapScriptPtr (offset loaded as
+
+  `oMapScriptState_SecondaryContinuousMapScriptPtr` against dword_2011E70 /
+
+  base 0x2011E60). If the pointer is null, returns immediately. Otherwise
+
+  the pointer becomes the script cursor in r7 and the MapScriptCommandJumptable
+
+  base sits in r12 (loaded via r6 from off_803608C). Each iteration reads a
+
+  command byte from [r7], multiplies by 4, indexes the jumptable, and `bx`s
+
+  the resulting handler with lr=pc (tail-style dispatch, not a normal call,
+
+  so loop continuation depends on the handler''s bx target returning to
+
+  0x8036078). The handler is expected to advance the cursor and set Z to
+
+  signal "stop" or clear Z to "continue"; no explicit flag is set on the
+
+  null-pointer path because the `tst r0,r0` already produces Z=1 there.
+
+  r4-r7 and r12 are saved/restored manually (push/pop pair with r12 shuttled
+
+  through r4), matching the readable C contract; preserved callee-saved regs
+
+  are not pushed to the stack by callee-side handlers but by this frame.
+
+  off_803608C → MapScriptCommandJumptable, off_8036090 → eMapScriptState.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c RunSecondaryContinuousMapScript
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function RunSecondaryContinuousMapScript
+
+    ./wf verify --function RunSecondaryContinuousMapScript --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function RunSecondaryContinuousMapScript
+
+    ./wf verify --function RunSecondaryContinuousMapScript --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function RunSecondaryContinuousMapScript
+
+    ./wf verify --function RunSecondaryContinuousMapScript --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08036064 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which subset of MapScriptCommandJumptable handlers is legal in the secondary-continuous stream (vs. the primary
+  continuous script)?
+- Is the Z-flag convention per-handler, or do some handlers signal stop via cursor nulling?
+- Where is SecondaryContinuousMapScriptPtr installed and torn down (the paired setter/clearer is not in this function)?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

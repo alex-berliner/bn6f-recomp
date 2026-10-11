@@ -1,0 +1,132 @@
+name: chatbox_runScript
+address: '0x08040384'
+kind: function
+status: confirmed
+summary: Resets the chatbox, loads a script entry from a TextScriptArchive by index, configures all display/tile
+  defaults, and queues the chatbox tilemap and font data for transfer
+interface: void chatbox_runScript(const TextScriptArchive *archive /*r0*/, u8 script_idx /*r1*/); reads toolkit
+  via r10; preserves r4-r7; clobbers nz cv r0-r3 lr
+details: 'Obtains the ChatBox structure pointer from toolkit (r10) at oToolkit_ChatboxPtr.
+
+  Preserves four fields (oChatbox_Unk_4C..oChatbox_Unk_58) across a full 0x230-byte
+
+  ZeroFillByWord reset of the entire ChatBoxPropreties struct, then restores them.
+
+
+  Stores the archive pointer into oChatbox_TextScriptPtr, the script index into
+
+  oChatbox_TextScriptIdx and chatPageState+0x98, and resolves the per-script byte
+
+  offset from the archive''s u16 index table (archive + (idx << 1)) to set
+
+  oChatbox_TextScriptCursorPtr and oChatbox_CurrTextScriptPtr.
+
+
+  Configures initial display state: visible=1, printSpeed=2, unk_38=unk_200B2B0,
+
+  BoxYX=1, unk_74=1, bxoff_11=1, unk_78=4. Copies 8 halfwords of tile-geometry
+
+  constants from ROM (byte_8040494: {0x65,0x68,0x66,0x67}) into ChatBox+0x68.
+
+  Sets tile coordinate defaults (CurTileYBlockPos=0xC, CurTileWidth16=0x1E,
+
+  CurTileHeight16=8, CursorIdx=0xE2, unk_1B=0x8D, textCoord=0x33, unk_19=0x6C)
+
+  and per-script state slots (unk_84=0x19, unk_88=0x80).
+
+
+  Initialises idle-phase bytes at 0x1F0..0x1F5 to {2,2,0,0,3,3}. Clears the global
+
+  text-event flag word eFlags2009F38 to 0, then marks it dirty via
+
+  chatbox_set_eFlags2009F38(0x80). Calls chatbox_resetAndClearBuffers (reading R3
+
+  as page-count 8 and R5 as the chatbox pointer). Sets FLAGS_3E_HIDE_CHATBOX so the
+
+  box is initially hidden until the script''s first command reveals it.
+
+
+  Mirrors textCoord into ChatBox+0x94, sets the page-transfer counter
+
+  (oChatbox_Unk_90=0xD). Finally queues an eight-word-aligned BG tilemap DMA
+
+  transfer (0x160 bytes from dword_86BEB20 to 0x600DC80) and copies 0x20 bytes
+
+  each of tile and font data into work RAM (byte_86BEC80→unk_3001B40,
+
+  dword_86B7AC0→byte_3001710).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c chatbox_runScript
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_runScript
+
+    ./wf verify --function chatbox_runScript --snapshots build-snapshots'
+  result: 'captured calls: 39 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_runScript
+
+    ./wf verify --function chatbox_runScript --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_runScript
+
+    ./wf verify --function chatbox_runScript --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08040384 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+related:
+- sub_8046ED2
+open_questions:
+- What are the semantics of the four preserved fields (unk_4C..58)? They survive the reset—likely persistent across
+  scripts (e.g., scroll history or page-count state).
+- chatbox_set_eFlags2009F38 is called with (0x80, eFlags2009F38_addr, 0x1E); what does the 0x1E third parameter
+  represent (tile-width-based bit layout)?
+- The FLAGS_3E_HIDE_CHATBOX mask (0x100) is set here but cleared by whom—presumably the first chat command in the
+  script?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

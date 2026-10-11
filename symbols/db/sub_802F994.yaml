@@ -1,0 +1,82 @@
+name: sub_802F994
+address: '0x0802F994'
+kind: function
+status: confirmed
+summary: Selects one of three ROM OAM sprite data sets by index and passes it to the sprite rendering routine for
+  on-screen submission.
+interface: 'void sprite_submitOamSet_802F994(u32 index /*0-2*/); // clobbers: r0, r1, c, v; preserves r4-r7'
+details: 'Shifts the index in r0 left by 2 and uses it to dereference a 3-entry pointer table at off_802F9A8. The
+  table maps: [0] -> byte_802F9B4 (palette/priority attr 0x30), [1] -> byte_802F9D0 (attr 0x40), [2] -> byte_802F9D0
+  (same as [1]). Each target is a small block of GBA OAM entries (3 sprites × 8 bytes + padding). The resolved pointer
+  is handed to sub_8001158, an external sprite/OAM rendering helper whose full interface is not yet typed. Flags
+  (C, V) and registers r2-r7 are left as-is from the callee and may be inspected by the caller. r4-r7 are merely
+  stack-saved across the call; the function''s own logic only depends on r0.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c sub_802F994
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802F994
+
+    ./wf verify --function sub_802F994 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 291 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802F994
+
+    ./wf verify --function sub_802F994 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802F994
+
+    ./wf verify --function sub_802F994 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802f994 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What sprite or game object do the OAM entries at byte_802F9B4 / byte_802F9D0 draw (positions 0x58/0x70, 0x78/0x70,
+  0x98/0x0 with tiles 0x4023, 0x402B, 0x4033)?
+- What does sub_8001158 do exactly—DMA copy, OAM write, or a multi-step render pipeline?
+- Why are indices 1 and 2 identical; is one a placeholder for a future variant?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

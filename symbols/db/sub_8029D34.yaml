@@ -1,0 +1,92 @@
+name: sub_8029D34
+address: '0x08029D34'
+kind: function
+status: confirmed
+summary: While a battle is ending, swaps the background tile block 3 strip for the ending sequence, or delegates
+  to a late-phase handler past phase 0x1C.
+interface: void battle_endingBgUpdate_8029D34(void) // r5=battle_state (phase @ +0x40, &0x1F), r4 forwarded to sub_8029D80;
+  clobbers r0-r3, preserves r4-r7; NZCVV undefined
+details: 'Guards on battle_IsBattleEnding_800A97A; returns immediately if the battle is not ending.
+
+  Reads the ending-phase counter from [r5+0x40] masked to 5 bits (&0x1F).
+
+  If phase >= 0x1C: calls sub_8029D80 (late-phase ending handler; r4/r5 still hold caller''s
+
+  battle-state and object pointers at entry to that callee).
+
+  Otherwise: calls CopyBackgroundTiles to write a 7x2-tile strip into tile block 32x32 index 3
+
+  at grid origin (col 0xF, row 4). The tile-ID table (byte_8029D64) holds 28 u16 entries whose
+
+  low bytes form the sequence 8D,8E,8F,90,91,92,93,94,95,96,97,98,99,9A interleaved with 0x90
+
+  filler, producing a horizontal background band used during the earlier ending phases.
+
+  r6, r7, r10 are passed through from the caller but not inspected here.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c sub_8029D34
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8029D34
+
+    ./wf verify --function sub_8029D34 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8029D34
+
+    ./wf verify --function sub_8029D34 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8029D34
+
+    ./wf verify --function sub_8029D34 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08029d34 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly does sub_8029D80 do for the late-ending phase (>=0x1C)?
+- Are the 0x90 filler bytes a blank/transparent tile, or a specific colour?
+- Which field at r5+0x40 is this — a battle-end step counter, a frame timer, or something else?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

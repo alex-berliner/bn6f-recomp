@@ -1,0 +1,71 @@
+name: sub_803FB64
+address: '0x0803FB64'
+kind: function
+status: confirmed
+summary: 'Transitions to the game-over screen: renders a chatbox message, resets the display pipeline, tears down
+  the active scene, fades to black, then marks state index 4 and starts a ~3 s countdown.'
+interface: void scene_gameOverSetup(S200F348* self /*r5*/, u32 context /*r1*/) -> r0 = 0xB4 (down-counter value);
+  flags nz reflect r0; r2-r4,r7,lr may change
+details: 'Called when the player''s game ends. Sequence: (1) chatbox_8040818 displays the game-over dialogue (context
+  passed in r1). (2) sub_80015FC(0xF) switches to text-mode display. (3) copyTileData_803FC64 uploads background
+  tiles. (4) SetRenderInfoLCDControl(0x1F40) reconfigures the LCD registers for the static game-over background.
+  (5) renderInfo_8001788 and renderInfo_80017A0 flush the two render-info buffers to VRAM. (6) sub_803FBE8 tears
+  down the active scene''s objects/state. (7) SetScreenFade(8, 0x20) begins a fade-to-black at speed 8 with target
+  0x20. (8) S200F348.Index_00 (byte at offset 0) is set to 4, which the per-frame callback cb_803FB3C reads to dispatch
+  playGameOver_803FB9C. (9) S200F348.DownCounter (halfword) is set to 0xB4 (180 frames ≈ 3 s at 60 Hz), gating the
+  transition to the game-over menu. The function is a leaf that does not return meaningful data to the caller beyond
+  leaving r0 = 0xB4.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c sub_803FB64
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803FB64
+
+    ./wf verify --function sub_803FB64 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803FB64
+
+    ./wf verify --function sub_803FB64 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803FB64
+
+    ./wf verify --function sub_803FB64 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz.'
+  reproduce: grep -l '^0803fb64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- Does the byte value 4 in Index_00 correspond to a named enum (e.g. STATE_GAMEOVER) documented elsewhere, or is
+  it purely positional?
+- What is the exact role of sub_803FBE8 beyond teardown – does it free sprites, clear NPC state, or reset the player
+  HP flag?
+- Is the fade target 0x20 a specific palette index or a fixed black intensity threshold?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

@@ -1,0 +1,73 @@
+name: GetChipCountOfCode
+address: '0x08021BC0'
+kind: function
+status: confirmed
+summary: Returns the quantity owned of a chip given its code index and search-bag index, or 0 if the code is not
+  recognised.
+interface: 'u8 GetChipCountOfCode(u32 chip_idx /*r0*/, u32 search_item /*r1*/, u32 off /*r2*/) -> r0
+
+  '
+details: 'Validates the (chip_idx, search_item) pair via sub_8006EA4; if that pair is not in the
+
+  registry it returns 0 immediately. Otherwise it asks
+
+  getOffsetToQuantityOfChipCodeMaybe_8021c7c for the address of the quantity byte for
+
+  that code and returns the byte read there. Inputs r0=chip_idx, r1=search_item, r2=off
+
+  are forwarded into both helpers; r0 holds the result (clobbering nz/cv from the
+
+  first helper, then plain r0 read on return).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c GetChipCountOfCode
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function GetChipCountOfCode
+
+    ./wf verify --function GetChipCountOfCode --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function GetChipCountOfCode
+
+    ./wf verify --function GetChipCountOfCode --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function GetChipCountOfCode
+
+    ./wf verify --function GetChipCountOfCode --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story2.'
+  reproduce: grep -l '^08021bc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm02.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm02.c
+coverage:
+- battles2
+- story2
+related:
+- chatbox_8041818
+open_questions:
+- Exact meaning of r2 'off' (offset within the search-bag data) — only the addressed-bytes helper knows.
+- Does the first helper also use r10/lr as inputs per the contract, or are they callee-save artifacts of the lifter?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

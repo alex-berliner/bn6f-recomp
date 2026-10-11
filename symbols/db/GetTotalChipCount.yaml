@@ -1,0 +1,85 @@
+name: GetTotalChipCount
+address: '0x08021BD8'
+kind: function
+status: confirmed
+summary: Returns the total owned count of a chip (sum of its 4 count bytes) from the toolkit's chip table, after
+  passing encryption_testPack validation.
+interface: '/* in: r0 = chip_id, r10 = toolkit pointer */
+
+  /* out: r0 = total count (sum of 4 bytes), r1 = last byte (4th) or 0 */
+
+  /* clobbers: r1, lr; nz/c/v from encryption_testPack */
+
+  u32 getChipCountSum_8021BD8(void);
+
+  '
+details: 'Validates the chip_id via encryption_testPack_8006e84 (Z set means valid).
+
+  On failure, returns 0 in both r0 and r1.
+
+  On success, loads the chip-entry base from oToolkit_Unk2002230_Ptr in the
+
+  toolkit struct (r10-derived), indexes by chip_id * 12 (each entry is 12
+
+  bytes), then sums bytes [0..3] of that entry as the total owned count
+
+  (likely Normal/Paper/.../MB counts packed into the first four bytes).
+
+  Only the first 4 bytes of the 12-byte entry are read; the remaining 8
+
+  bytes are untouched. The 4th byte is left in r1 as a side effect
+
+  (callers ignore it per the register contract).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c GetTotalChipCount
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function GetTotalChipCount
+
+    ./wf verify --function GetTotalChipCount --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function GetTotalChipCount
+
+    ./wf verify --function GetTotalChipCount --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function GetTotalChipCount
+
+    ./wf verify --function GetTotalChipCount --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^08021bd8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm02.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm02.c
+coverage:
+- story2
+related:
+- chatbox_8041818
+open_questions:
+- Meaning of the other 8 bytes in each 12-byte chip entry.
+- What fields the 4 summed bytes correspond to (slot1/2/3/4? normal/rare?).
+- Why r1 is intentionally left holding the last byte (vestigial from the inline asm accumulation loop).
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

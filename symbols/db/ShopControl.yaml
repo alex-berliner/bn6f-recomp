@@ -1,0 +1,71 @@
+name: ShopControl
+address: '0x08046CF8'
+kind: function
+status: confirmed
+summary: State-machine dispatcher for the shop system; reads a phase byte from byte_2011C10, indexes an 11-entry
+  jump table, and branches into the corresponding shop-phase handler while preserving caller registers.
+interface: 'Next ShopControl(void) -> r0 = handler return value; flags from handler; r1-r3 restored to caller''s
+  saved r8-r9-r12; r4-r7, r8-r9, r12, lr preserved. Inputs: byte_2011C10 (u8 phase offset, 0-40 step 4). Globals
+  touched: byte_2011C10, off_8046D1C (jump table).'
+details: 'Pushes r4-r7,lr then r8,r9,r12 to stack. Loads byte_2011C10 (shop phase offset), uses it as a byte index
+  into the 11-entry jump table at off_8046D1C (entries at +0,+4,+8,...,+40), loads the handler pointer, and dispatches
+  via ''mov lr,pc; bx r0''. After return, pops saved r8/r9/r12 into r1/r2/r3 then restores r4-r7,pc. The jump table
+  covers: initialization (sub_8046D4C), a battle-object counter advance (battle_objectAdvanceCounterToState8_8046DDC),
+  several unidentified shop-flow handlers (sub_8046DF8 through sub_8046ED2), a chatbox/context-script step (chatbox_stepContextScript_8047028),
+  and three more handlers (sub_8047050, sub_8047066, sub_804709C). The presence of both battle and chatbox entries
+  confirms the shop state machine orchestrates dialogue, item browsing, and battle-transitions as phases.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c ShopControl
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ShopControl
+
+    ./wf verify --function ShopControl --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ShopControl
+
+    ./wf verify --function ShopControl --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ShopControl
+
+    ./wf verify --function ShopControl --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^08046cf8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- What is the initial/default phase written to byte_2011C10 and where is it set?
+- What do the unidentified entries (sub_8046D4C, sub_8046DF8..sub_8046ED2, sub_8047050..sub_804709C) do specifically
+  (menu draw, purchase confirm, chip shop, etc.)?
+- Why does the table index by byte offset (0-40) rather than a plain state number, and is there a state-clearing
+  routine that resets byte_2011C10?
+- How does the battle_objectAdvanceCounterToState8 entry interact with the overworld-to-battle transition inside
+  the shop?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

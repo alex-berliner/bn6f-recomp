@@ -1,0 +1,67 @@
+name: copyData_804747C
+address: '0x0804747C'
+kind: function
+status: confirmed
+summary: 'Loads a batch of stage/battle graphics and data: zeros GFX scratch buffers, runs an object-init pass,
+  then walks a ROM table to decompress and copy tile sheets, palettes, BG maps, and misc work-RAM blobs.'
+interface: "void battle_loadStageAssets_804747C(void) {\n  // r2-r7, r10, lr: caller context; passed through to\
+  \ callees\n  // Outputs: nz, c, v, r2-r7 set by final callee (decompAndCopyData)\n  // Clobbers: r0, r1, lr\n\
+  \  call_zeroFillGFX30025c0();\n  call_sub_8046664();\n  call_decompAndCopyData(&off_8047494);\n}\n"
+details: 'Sequential loader with no branching. 1) ZeroFillGFX30025c0 clears a 0x25C0-byte scratch buffer at 0x30025C0
+  (likely a temporary tile/pixel staging area). 2) sub_8046664 performs an unnamed init pass (possibly resetting
+  object/animation slots). 3) decompAndCopyData walks a null-terminated table of (source, dest, size) triples at
+  off_8047494; entries with COMPRESSED_PTR_FLAG in the high bit are LZ-decompressed before copy. The table loads:
+  BG tile sheet -> 0x6000020 (0x20 bytes palette-adjacent at 0x3001960), sprite tiles -> 0x6000800 (palette at 0x3001980,
+  0xC0 bytes), a BG map at 0x6010040 (0x180 bytes) and 0x60101C0 (0x80 bytes), plus numerous work-RAM data blobs
+  (text archive, misc buffers). All raw-copy and compressed-copy entries target specific VRAM or EWRM addresses.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c copyData_804747C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function copyData_804747C
+
+    ./wf verify --function copyData_804747C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function copyData_804747C
+
+    ./wf verify --function copyData_804747C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function copyData_804747C
+
+    ./wf verify --function copyData_804747C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^0804747c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- Which specific battle stage or scene does this asset table correspond to?
+- What does sub_8046664 initialize (object slots, tile animation state)?
+- What are the uncompressed entries byte_87F0340 and byte_87F05A4 (raw tile vs palette blocks)?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

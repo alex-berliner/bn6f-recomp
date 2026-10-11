@@ -1,0 +1,69 @@
+name: enableGhostNavi_80351C8
+address: '0x080351C8'
+kind: function
+status: confirmed
+summary: 'Propagates ghost-navi event flags: for each (prerequisite, target) pair in a static table, sets the target
+  flag if the prerequisite flag is already set.'
+interface: void enableGhostNavi(void); /* preserves r4-r7; clobbers r0-r3, lr, flags */
+details: 'Walks a 4-byte-stride table at word_80351EC of (u16 condition_flag, u16 target_flag) pairs until a 0x0000
+  condition terminates it. For each pair it calls TestEventFlag(condition); if that returns non-zero (flag is set)
+  it calls SetEventFlag(target). The table encodes ghost-navi (Cybeast-related) story gating: condition flags in
+  the 0x343–0x367 and 0x21A–0x221 ranges map to target flags 0x104–0x10A and 0x212–0x222. The last two entries share
+  condition 0x221 with targets 0x219 and 0x222, suggesting a branch-merge gate. Registers r4-r7 and r10 are caller-saved
+  in but the function only actually uses r4 and r5 internally (r4 walks the table pointer, r5 holds lr via push);
+  the broader register contract reflects the caller sites rather than true internal use.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c enableGhostNavi_80351C8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function enableGhostNavi_80351C8
+
+    ./wf verify --function enableGhostNavi_80351C8 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function enableGhostNavi_80351C8
+
+    ./wf verify --function enableGhostNavi_80351C8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function enableGhostNavi_80351C8
+
+    ./wf verify --function enableGhostNavi_80351C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, menus2, story2, story4, story7, story8, story9.'
+  reproduce: grep -l '^080351c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- maps
+- menus2
+- story2
+- story4
+- story7
+- story8
+- story9
+open_questions:
+- Which in-game NPC or event script calls this and at what story point?
+- Do the 0x34x/0x35x/0x36x condition flags correspond to specific Cybeast encounters, and the 0x10x targets to ghost-navi
+  availability in specific cities?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

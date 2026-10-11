@@ -1,0 +1,86 @@
+name: IsNotSlipRunningAndNotInCutscene
+address: '0x08034C9C'
+kind: function
+status: confirmed
+summary: Returns true when neither the slip-run state flag (EVENT_IN_SLIPRUN_STATE) is set nor a cutscene script
+  is active
+interface: bool IsNotSlipRunningAndNotInCutscene(void) -> r0 (1=TRUE, 0=FALSE), nz
+details: 'Tests the event flag EVENT_IN_SLIPRUN_STATE (immediate 0x17) via TestEventFlagFromImmediate;
+
+  if set, returns FALSE. Otherwise calls IsCutsceneScriptNonNull; if a cutscene script is
+
+  active, returns FALSE. Otherwise returns TRUE. Preserves r4-r7, clobbers r0/r1/lr plus
+
+  c/v (only nz documented as output). Used as a gate to allow player input/actions outside
+
+  slip-run and cutscene contexts.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c IsNotSlipRunningAndNotInCutscene
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function IsNotSlipRunningAndNotInCutscene
+
+    ./wf verify --function IsNotSlipRunningAndNotInCutscene --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function IsNotSlipRunningAndNotInCutscene
+
+    ./wf verify --function IsNotSlipRunningAndNotInCutscene --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function IsNotSlipRunningAndNotInCutscene
+
+    ./wf verify --function IsNotSlipRunningAndNotInCutscene --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08034c9c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact call sites that gate on this (likely movement/input handlers).
+- Whether EVENT_IN_SLIPRUN_STATE 0x17 is the slip-run (dash while slipping) state vs. generic slip status; the readable
+  C labels it "slip-run state".
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

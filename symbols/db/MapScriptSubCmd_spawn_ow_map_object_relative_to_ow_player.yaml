@@ -1,0 +1,78 @@
+name: MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player
+address: '0x08037E96'
+kind: function
+status: confirmed
+summary: Map-script subcommand that spawns an overworld map object at a position relative to the OW player and stores
+  the handle in a CutsceneState slot.
+interface: r4 (slot index, low nibble used), r5 (CutsceneState base ptr) → r0=1 (success), r7 advanced by 0xD, NZCV
+  from r7+0xD; r5 preserved; clobbers r1 r2 r3 r6 r0 r7 lr; reads [r5+offset] as input, writes [slot_ptr] as output
+details: Computes a slot pointer as r5 + ((r4 & 0xF)<<2) + oCutsceneState_owMapObjectPtrs_44. Calls ReadOWPlayerObjectCoords
+  to get the player's current 32-bit fixed-point X/Y/Z (returned in r0/r1/r2), saved on a 0xC-byte stack frame.
+  Reads three signed 16-bit halfwords from the map script at offsets 3, 5, 7 (the relative offsets), shifts each
+  left by 16 to form upper-half fixed-point values, then adds them to the player coords to produce absolute spawn
+  positions. Reads a byte at script offset 2 as the object type and a word at offset 9 as additional data (passed
+  through r0 to SpawnOverworldMapObject, though the C stub shows obj_type via r0 and the word is read but not explicitly
+  passed—likely consumed inside the spawn routine via the script pointer). Calls SpawnOverworldMapObject (r0=type,
+  r1=x, r2=y, r3=z, r6=slot_ptr); the new object handle comes back in r5, which is stored into the CutsceneState
+  slot. Script pointer r7 is advanced by 0xD (the command's total size) and r0 is set to 1. The caller's r5 is pushed/popped
+  to protect it across the SpawnOverworldMapObject call.
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_player --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, maps, menus2, story1, story2, story4, story5, story8, story9.'
+  reproduce: grep -l '^08037e96 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battles1
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story8
+- story9
+open_questions:
+- What does the 32-bit word read at script offset 9 represent? It is loaded into r4 but the C stub passes it through
+  SpawnOverworldMapObject; its semantic meaning (object subtype? parameters? event id?) is unclear.
+- 'Is the lsl #16 on the halfword offsets confirming a 16.16 fixed-point coordinate system for OW objects, or does
+  SpawnOverworldMapObject reinterpret the lower bits differently?'
+- Which CutsceneState field (oCutsceneState_owMapObjectPtrs_44) and how many slots does it contain—does the 0xF
+  mask limit slots to 16?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

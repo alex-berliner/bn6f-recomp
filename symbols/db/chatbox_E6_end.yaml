@@ -1,0 +1,94 @@
+name: chatbox_E6_end
+address: '0x08040E98'
+kind: function
+status: confirmed
+summary: Advances or closes the chatbox on script opcode 0xE6, dequeuing the next pending script entry or clearing/hiding
+  the chatbox when nothing is queued.
+interface: 'void chatbox_advanceOrHide_E6End_8040E98(Chatbox *self) -> u32 r0 (1 if a queued script was dequeued
+  into r4, 0 otherwise);
+
+  preserves: r3; clobbers: r0, r1, r2, r4, lr, nzcv
+
+  '
+details: "Triggered on chatbox script opcode 0xE6 (\"end\"). Reads the pending-queue counter at self+0x05.\nIf non-zero,\
+  \ decrements it, indexes a 4-entry-per-slot table starting at offset 0x140 into the\nchatbox struct to pull the\
+  \ next script pointer into r4, stores the decremented count back to\nself+0x05, and returns 1 (caller will then\
+  \ jump into the dequeued script in r4).\nIf the counter is zero, sets flag \"FLAGS_3E_UNK_0001\" via chatbox_setflags_3e\
+  \ to record that an\nend-of-script was hit. Then masks \"FLAGS_3E_HIDE_CHATBOX\":\n  - If HIDE was already set:\
+  \ also masks bit 2. If bit 2 is set, sets \"FLAGS_3E_UNK_0008\"\n    (something is still pending — leave the chatbox\
+  \ intact) and returns 0. If bit 2 is clear,\n    fall through to close the chatbox.\n  - If HIDE was not set:\
+  \ calls chatbox_8041090 (advance-dialog check). If that returns\n    non-zero (cannot advance), fall through to\
+  \ close the chatbox. If it returns 0, the chatbox\n    is already cleared by the callee and we simply return 0.\n\
+  Closing path clears eflag 0x80 via chatbox_clear_eFlags2009F38, zeroes self+0x00\n(oChatbox_Visible) and self+0x04\
+  \ (oChatbox_TextScriptState), then returns 0.\nQuirk: on the dequeue path the function writes r1/r2/r4 by hand\
+  \ (no callee) — this matches\nthe register-form contract (outputs include r1, r2, r4 alongside r0).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c chatbox_E6_end
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_E6_end
+
+    ./wf verify --function chatbox_E6_end --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_E6_end
+
+    ./wf verify --function chatbox_E6_end --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_E6_end
+
+    ./wf verify --function chatbox_E6_end --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08040e98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Identity of chatbox_8041090 — what "advance dialog to next message" actually checks.
+- Meaning of "FLAGS_3E_UNK_0001" / "FLAGS_3E_UNK_0008" (pending-end markers vs. other state).
+- Why the dequeue table lives at offset 0x140 with 4 bytes per slot — likely a cross-struct pointer table or absolute-script-entry
+  list, layout unconfirmed.
+- Whether the HIDE+bit2 path is reachable in normal play or only via debug/script edge cases.
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

@@ -1,0 +1,91 @@
+name: chatbox_F5_mugshot
+address: '0x08041CF4'
+kind: function
+status: confirmed
+summary: 'Executes the chatbox F5 (mugshot) scripting command: activates/deactivates the character portrait, sets
+  its palette and facial-expression overrides, or looks up display data from id-to-value tables and triggers a graphic
+  refresh.'
+interface: u32 chatbox_processF5Mugshot_08041cf4(u8* r4_cmd, Chatbox* r5_chatbox) -> r0=1, r4 advanced by cmd size,
+  NZCV from pointer-add; r5 preserved; r1/r2/r3/r7/flag-3e clobbered by callees
+details: 'Reads the 1-byte sub-command at r4+1. Sub-cmd 1 clears FLAGS_3E_MUGSHOT_ACTIVE and advances r4 by 2. Sub-cmd
+  2 writes the palette-index byte from r4+2 into oChatbox_MugshotPaletteIdx. Sub-cmd 3 writes the same byte to offsets
+  0x1F0 and 0x1F1 (face/eye override). Sub-cmd 4 stores the byte as a 32-bit mugshot-ID at offset 0x90. The default
+  path (sub-cmd 0 or other): if the mugshot flag is not yet active it sets FLAGS_3E_MUGSHOT_ACTIVE and FLAGS_3E_UNK_0004,
+  and if flag 0x1000 is not set it writes color-filter 0x18C6 into oChatbox_MugshotColorFilter_40 (offset 0x40).
+  Then it linear-scans a (mugshotId, paletteIdx) table at byte_8044244 (0xFF-terminated) to store the palette, reads
+  the 0x1F0 field to decide whether the display-state is kept (==3) or zeroed, linear-scans a second (mugshotId,
+  extraVal) table at byte_8044260 to obtain the extra display byte and the flag_byte (1 by default, 0 on table hit),
+  writes those into oChatbox_Unk_14, oChatbox_Unk_0A, 0x98, and oChatbox_Unk_0B=0xFF, then calls sub_8040B3A (mugshot
+  graphic refresh) which clobbers r1/r2/r3/r7. Returns r0=1.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c chatbox_F5_mugshot
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_F5_mugshot
+
+    ./wf verify --function chatbox_F5_mugshot --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 267 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_F5_mugshot
+
+    ./wf verify --function chatbox_F5_mugshot --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_F5_mugshot
+
+    ./wf verify --function chatbox_F5_mugshot --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08041cf4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What exactly does flag 0x1000 gate (it suppresses the default 0x18C6 color filter)? Likely a 'player already chose
+  a custom palette' flag.
+- Semantics of oChatbox_Unk_0A, oChatbox_Unk_0B, oChatbox_Unk_14, and offset 0x98 – they appear to be per-portrait
+  display/expression state consumed by the renderer.
+- What does sub_8040B3A do with r0 (mugshot id) and r1 (flag_byte) – presumably rebuilds the OAM tilemap for the
+  portrait sprite.
+- Why does sub-cmd 1 advance r4 by only 2 while every other path advances by 3 (extra operand byte skipped)?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

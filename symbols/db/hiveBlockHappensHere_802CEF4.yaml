@@ -1,0 +1,89 @@
+name: hiveBlockHappensHere_802CEF4
+address: '0x0802CEF4'
+kind: function
+status: confirmed
+summary: 'Evaluates the outcome of an attack hitting RiskyHoney''s hive block: nullifies damage, breaks/rebuilds
+  the hive shield based on accumulated damage, triggers AntiSword, and clears the collision buffer.'
+interface: void battle_evalHiveBlockCollision(BattleObject *self /*r5*/, CollisionData *col /*r4->CollisionDataPtr*/)
+  /* clobbers r0 r1 r2 r3; preserves r4 r5 r6 r7 r10 lr; NZCV clobbered */
+details: "r5 holds the BattleObject pointer; r4 is loaded from it as the CollisionData pointer.\nr6, r7, r10 are\
+  \ caller-set context preserved across calls.\n\nHive-up fast path (RiskyHoney's 0x200000 flag via GetAIDataUnk0x48Flag):\n\
+  \  If PanelDamage2 is 0 (no direct panel hit), OR-combines PanelDamage 1/3/4/5.\n  If any residual damage exists,\
+  \ sets AIAttackVars+0xA0 field 0x30 to 1 and\n  plays SFX 0x6E (hive-up sound), then falls through to collision\
+  \ cleanup.\n\nGeneral hive-block path:\n  Loads alliance byte (r5+Alliance) and queries getTable2036720EntryFields_802CE78\n\
+  \  with r6=10 (damage threshold). Entry 0xBB or 0x157 marks hive-type alliances.\n  If not a hive alliance, checks\
+  \ 0x800 flag (active hive-block); if set, forces\n  type 0xBB and threshold 1. Otherwise only 0xBC (AntiSword)\
+  \ continues.\n\n  AntiSword sub-path: checks sword-hit flag 0x2000 and hive-intact flag 0x20000\n  in FlagsFromCollision;\
+  \ on a valid hit with no intact hive, sets 0x400 in\n  AIData+0x44 via SetAIData_Unk_44_Flag.\n\nShared hive resolution:\n\
+  \  Aborts if 0x8200 already set in AIData+0x44 (block resolved).\n  Requires high object-type bits (0xff800000)\
+  \ in FlagsFromCollision.\n  Sums five half-words at col+0x82; if sum >= threshold, sets hive-broken (0x200)\n\
+  \  or hive-rebuilt (0x8000) depending on alliance type in AIData+0x44.\n\nCleanup (loc_802CFB8): zeroes PanelDamage1–5,\
+  \ fields at 0x8E/0x90/0x92/0x74,\nHitModifierFinal, StatusEffectFinal, 0xA4, 0x1C, 0x2A, 0x2C; clears bit 0x40\n\
+  (hive-present) from FlagsFromCollision and bits 0x301BE from ObjectFlags2.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c hiveBlockHappensHere_802CEF4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function hiveBlockHappensHere_802CEF4
+
+    ./wf verify --function hiveBlockHappensHere_802CEF4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function hiveBlockHappensHere_802CEF4
+
+    ./wf verify --function hiveBlockHappensHere_802CEF4 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function hiveBlockHappensHere_802CEF4
+
+    ./wf verify --function hiveBlockHappensHere_802CEF4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0802cef4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does SFX 0x6E represent in-game? Likely RiskyHoney's hive-raise cue.
+- Meaning of AIData+0x44 flags 0x200 (hive broken) vs 0x8000 (hive rebuilt) — does 'rebuilt' mean the next hive-up
+  attempt?
+- What alliance IDs 0xBB and 0x157 correspond to (which specific hivetop enemies or variants)?
+- Purpose of threshold value 10 vs 1 (normal hive-block vs active hive-block). What does the threshold actually
+  gate — number of panel hits to break the hive?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

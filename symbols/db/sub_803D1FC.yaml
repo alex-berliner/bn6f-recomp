@@ -1,0 +1,82 @@
+name: sub_803D1FC
+address: '0x0803D1FC'
+kind: function
+status: confirmed
+summary: 'Initialises the title/logo screen: configures LCD and fade mode, resets graphics, loads logo tiles, starts
+  logo BGM, and advances the state machine to index 4.'
+interface: logoScreen_init(*mut LogoScreenState r5) -> r0 = 4, r4 = fade_mode (4 or 0xC); flags nz/c/v clobbered;
+  r5-r7/r10 preserved
+details: 'Checks bit/byte at LogoScreenState + offset 5 (Unk_05): if non-zero uses fade mode 4 and LCD control 0xC0
+  (fast/short fade, extra LCD bits), otherwise fade mode 0xC and LCD control 0x40. Calls sub_80015FC(0xE) as a preliminary
+  step (purpose unknown). Sets render-info LCD control, flushes render info (0x8001788, 0x80017A0), starts a full-brightness
+  screen fade (SetScreenFade(mode, 0xFF)), resets all graphics state, runs a one-shot setup step and clears the
+  work area, calls sub_80027C4, loads the logo tile data (logoScreen_loadLogoTiles_803D2B8), starts logo-screen
+  BGM track 0x63 (music_80005F2), and writes state index 4 to LogoScreenState + offset 0 so that logoScreen_dispatch_803D1CA
+  will execute the next sub-step (sub_803D24C) on the following frame. Returns 4 in r0 and the fade mode in r4.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c sub_803D1FC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803D1FC
+
+    ./wf verify --function sub_803D1FC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803D1FC
+
+    ./wf verify --function sub_803D1FC --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803D1FC
+
+    ./wf verify --function sub_803D1FC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, chips, fuzz, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0803d1fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does sub_80015FC(0xE) do—likely a sound/ROM header or save-state check?
+- What does sub_80027C4 initialise?
+- Does Unk_05 (offset 5) indicate a 're-init after a transition' flag (e.g. from a demo or a mid-game return)?
+- Is LCD control 0xC0 vs 0xC just extra window/overlay bits or a different fade-layer mode?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3

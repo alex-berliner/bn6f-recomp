@@ -1,0 +1,91 @@
+name: GiveItem
+address: '0x0803CD98'
+kind: function
+status: confirmed
+summary: Adds a quantity of a key item (or Navi/PET stat) to the toolkit's save buffer, clamping to the per-slot
+  maximum, and returns whether the add was normal/already-max/capped.
+interface: 'u32 GiveItem(u32 item_id /* r0 */, u32 quantity /* r1 */, void *toolkit /* r10 */); flags: nz,c,v clobbered'
+details: "Pushes {r0,r1} and calls encryption_copyByteXor6fToToolkitBuffer_8006e3c as a side-effect decrypt/copy\
+  \ of item data into a toolkit working buffer (r0/r1 restored via pop). Loads the key-items pointer from `*(r10\
+  \ + oToolkit_KeyItemsPtr)` into r2.\n\nPicks a per-item maximum stack size in r6:\n  * item_id in [0x80..0x85]:\
+  \ max = the byte at `key_ptr + 0x75` (i.e. a secondary max table slot).\n  * item_id == 0x71:         max = 2\
+  \ (the player's Navi; only two are ever owned).\n  * item_id >= 0x90:         max = 9 (PET-related stat slots,\
+  \ perhaps SoulWeapons/bugFrags range).\n  * otherwise:               max = 0xFF (treat as unbounded counter).\n\
+  \nReads the current byte `key_ptr[item_id]` into r4, then in r3 sets a return code:\n  * 1 = already at max (no\
+  \ write needed),\n  * 0 = current + quantity <= max,\n  * 2 = would overflow, so write is clamped to max.\n\n\
+  Stores the (possibly clamped) new count back to `key_ptr[item_id]`. If item_id == 0x71 (the Navi changed), it\
+  \ calls reloadCurNaviStatBoosts_813c3ac to refresh derived Navi stats/bonuses. Then unconditionally calls pet_addCurNaviStat0x3ECapped_803CF3C\
+  \ (passes through the result code in r0) and the post-item hook sub_803CFB0. Final r0 = result code returned to\
+  \ caller.\n\nPreserved across the call: r4/r5/r6/r7 (saved/restored manually on the guest stack around each callee);\
+  \ clobbers nzcv, r0-r3, and lr.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c GiveItem
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function GiveItem
+
+    ./wf verify --function GiveItem --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function GiveItem
+
+    ./wf verify --function GiveItem --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function GiveItem
+
+    ./wf verify --function GiveItem --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0803cd98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+related:
+- sub_8046ED2
+open_questions:
+- Exact semantics/identity of item ranges [0x80..0x85] and >=0x90 (key items vs. PET stats vs. Zenny/sub-chips).
+- What the byte at `key_ptr + 0x75` represents (a per-item secondary cap reused across the 0x80..0x85 range).
+- What pet_addCurNaviStat0x3ECapped_803CF3C and sub_803CFB0 actually track/notify (likely PET happiness and a "item
+  received" script hook).
+- Whether r10 is the standard toolkit save-block pointer used everywhere, or a caller-local one.
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3
