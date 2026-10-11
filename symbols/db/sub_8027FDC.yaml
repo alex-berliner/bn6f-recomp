@@ -1,0 +1,97 @@
+name: sub_8027FDC
+address: '0x08027FDC'
+kind: function
+status: hypothesis
+summary: Per-frame update for the chip-select screen's "currently selected/active" chip pointer (state[3]), using
+  a small id-indexed lookup table.
+interface: 'void sub_8027FDC(void);
+
+  // inputs:  r6 = chip id (0..0xB), r7 -> state struct (u8[?])
+
+  // outputs: r6 unchanged; state[3] rewritten (clobbers the caller''s ''active chip'' byte)
+
+  // clobbers: r0, r1, flags N/Z/C/V; preserves r4, r6, r7, lr
+
+  '
+details: "Reads state[3], calls getLocOfActiveChips_8027E1C(state[3]) to get the\nactive-chip record, and checks\
+  \ its byte 0. Only the values 0xA and 0xB are\nconsidered \"active\" -- for everything else the function returns\
+  \ with\nstate[3] untouched and r1 left as 0xFF (the \"no active chip\" sentinel).\n\nFor the active case it picks\
+  \ one of two base addresses:\n  * 0x802A817 (default for id==0xA, or id<5, or state[0] not in {4,8})\n  * 0x802A81F\
+  \ (used when id != 0xA, id >= 5, and state[0] is 8 or 4)\nand on the second base it bumps the id by +1.\n\nThen\
+  \ it indexes the 12-byte table at 0x08028028 by the (possibly bumped)\nid and calls sub_8028034(base + table[id]).\
+  \ If the returned byte equals\nthe id it stores 0xFF into state[3], else it stores the returned byte.\nEffect:\
+  \ when the lookup matches the current id it clears the \"active chip\"\nslot; otherwise it advances to the next\
+  \ entry in the table chain for that\nid. The table values (1,2,3,5,7 / 1,2,3,4,5) read like next-slot offsets\n\
+  walked by sub_8028034 until a non-match lands on 0xFF or a real value.\n\nQuirks: r1's final value is 0xFF on\
+  \ the early-return path and state[0] on\nthe main path; that asymmetry mirrors the assembly exactly but callers\
+  \ are\nnot expected to use r1, only state[3].\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-001226);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 48' --file inbox_farm_48.c sub_8027FDC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8027FDC
+
+    ./wf verify --function sub_8027FDC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261011-001226-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8027FDC
+
+    ./wf verify --function sub_8027FDC --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261011-001226-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8027FDC
+
+    ./wf verify --function sub_8027FDC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001226-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08027fdc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp a6b6c1a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the full layout of the state struct pointed to by r7? Only [0] and [3] are touched here; other fields
+  are unknown.
+- Why are 0xA and 0xB treated specially as the only "valid" active-chip codes? Looks like Mega/Regal chip sentinels
+  but unverified.
+- What does sub_8028034 do with (base + index)? Presumably walks a chip-id linked list in chip data and returns
+  a code / next id, but unverified.
+- Which callers actually depend on state[3] being 0xFF vs. the advanced id, and does the +1 bump + base switch encode
+  a "cursor in row 2" mode for the chip select?
+sources:
+- tools/wf run convert-20261011-001226
+- recomp a6b6c1a

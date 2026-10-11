@@ -1,0 +1,81 @@
+name: sub_80200A4
+address: '0x080200A4'
+kind: function
+status: hypothesis
+summary: Sets a byte in the chip-use queue/selector struct (eStruct203F7D8+3) and marks it dirty by OR-ing 1 into
+  its flags byte (eStruct203F7D8+2).
+interface: void sub_80200A4(u8 r0=value); // r1 := 1, r3 := A_eStruct203F7D8, NZ clobbered
+details: "Writes the input byte (r0) into byte offset 3 of the engine struct eStruct203F7D8,\nthen reads byte offset\
+  \ 2, OR-s in 1, and stores it back. The single-bit flag at\noffset 2 likely signals \"dirty/needs refresh\" for\
+  \ whatever value sits at offset 3.\nOn exit r1 = 1 (success/ack) and r3 holds the struct base pointer (eStruct203F7D8).\n\
+  The data block immediately following the function is a pool of 8 packed pointer/\nliteral entries (eStruct203F7D8\
+  \ / eStruct2036780 / dword_203F4A0 / 0x200 / \ndword_203CBE0 / 0x100 / unk_20399F0 / unk_2039A00 / unk_2036120\
+  \ / dword_203F5A0\n/ unk_20362F0) — probably an adjacent table consumed by callers of this helper.\nTentative\
+  \ identification as a chip-slot setter; the prefix is kept light because\nthe struct's role is not confirmed beyond\
+  \ its name.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-001226);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm01.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 48' --file inbox_farm_48.c sub_80200A4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80200A4
+
+    ./wf verify --function sub_80200A4 --snapshots build-snapshots'
+  result: 'captured calls: 28 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-001226-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80200A4
+
+    ./wf verify --function sub_80200A4 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-001226-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80200A4
+
+    ./wf verify --function sub_80200A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001226-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080200a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm01.c
+  where: recomp a6b6c1a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm01.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What game object eStruct203F7D8 actually represents (chip queue, cursor state, menu slot?).
+- Meaning of byte 2 bit 0 (dirty flag) and whether it is cleared elsewhere on read.
+- Why r1 = 1 is returned/required by callers and whether it implies a status code.
+- Purpose of the embedded pointer/literal table (0x28–0x130 region).
+sources:
+- tools/wf run convert-20261011-001226
+- recomp a6b6c1a
