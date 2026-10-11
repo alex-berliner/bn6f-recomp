@@ -702,6 +702,154 @@ Next sub_801CA80(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801CB38 ── */
+/* Object animation state-machine offsets */
+#define OBJ_PREV_FRAME       0x0D
+#define OBJ_FRAME            0x0E
+#define OBJ_ANIM_STATE       0x10
+#define OBJ_PREV_ANIM_STATE  0x11
+#define OBJ_ANIM_COUNTER     0x13
+#define OBJ_ANIM_LOCKED      0x14
+#define OBJ_FLAG_16          0x16
+#define OBJ_FLAG_17          0x17
+#define OBJ_BUSY_FLAG        0x4C
+
+/* VRAM and buffer addresses */
+#define VRAM_OBJ_TILE        0x6017680u
+#define VRAM_OBJ_TILE_ALT    0x6017780u
+#define TILE_BANK_SIZE       0x100u
+#define TILE_ROW_SIZE        0x80u
+#define PATTERN_SIZE         0x20u
+
+/* register form: calls sub_801E6A8 outside this file, which has no typed C interface yet */
+static void compute_advance_frame(u32 *state, u32 *frame) {
+    GUEST_CALL(sub_801E6A8);
+    *state = R0;
+    *frame = R1;
+}
+
+/* register form: calls sub_801E69C outside this file, which has no typed C interface yet */
+static void compute_hold_frame(u32 *state, u32 *frame) {
+    GUEST_CALL(sub_801E69C);
+    *state = R0;
+    *frame = R1;
+}
+
+/* register form: calls sub_801D814 outside this file, which has no typed C interface yet */
+static bool gfx_transfer_done(void) {
+    GUEST_CALL(sub_801D814);
+    return R0 != 0;
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx_transfer_sub_801CB38(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/*
+ * Advance the sprite/animation state of a battle object pointed to by obj,
+ * then queue the corresponding tile-bitmap and pattern transfers to VRAM.
+ *
+ * The state machine tracks: anim_state (which animation), frame (which cell),
+ * and a countdown counter that gates frame changes.  When the counter's bit 1
+ * is set, alternate prev/prev_frame fields are consulted.
+ */
+static void update_object_animation(u32 obj) {
+    u32 state, frame;
+    u32 counter_at_check = 0; /* mirrors r7: snapshot of counter used for frame selection */
+
+    u8 counter = LD8(obj + OBJ_ANIM_COUNTER);
+
+    if (counter == 0xFF) {
+        /* Uninitialised: reset and seed a fresh animation sequence */
+        ST8(obj + OBJ_ANIM_COUNTER, 0);
+        compute_advance_frame(&state, &frame);
+        ST8(obj + OBJ_ANIM_STATE, state);
+        ST8(obj + OBJ_PREV_ANIM_STATE, state);
+        ST8(obj + OBJ_FRAME, frame);
+        ST8(obj + OBJ_PREV_FRAME, frame);
+    } else if (LD8(obj + OBJ_BUSY_FLAG) != 0) {
+        /* Busy flag active: hold current stored animation */
+        state = LD8(obj + OBJ_BUSY_FLAG);
+        frame = LD8(obj + OBJ_FRAME);
+    } else {
+        /* Normal update: pick next state from sub-state info */
+        if (LD8(obj + OBJ_FLAG_17) == 0 || LD8(obj + OBJ_FLAG_16) != 0) {
+            compute_hold_frame(&state, &frame);
+        } else {
+            compute_advance_frame(&state, &frame);
+        }
+
+        if (LD8(obj + OBJ_ANIM_LOCKED) != 0) {
+            ST8(obj + OBJ_ANIM_STATE, state);
+        } else {
+            u8 prev_state = LD8(obj + OBJ_ANIM_STATE);
+            if (state != prev_state) {
+                ST8(obj + OBJ_PREV_ANIM_STATE, prev_state);
+                ST8(obj + OBJ_PREV_FRAME, LD8(obj + OBJ_FRAME));
+                ST8(obj + OBJ_ANIM_STATE, state);
+                ST8(obj + OBJ_FRAME, frame);
+                ST8(obj + OBJ_ANIM_COUNTER, 0xC);
+            } else if (frame != LD8(obj + OBJ_FRAME)) {
+                ST8(obj + OBJ_PREV_FRAME, LD8(obj + OBJ_FRAME));
+                ST8(obj + OBJ_FRAME, frame);
+            }
+        }
+    }
+
+    /* Countdown and alternate-state selection (skipped for terminal states 3,5+) */
+    if ((s32)state < 5 && state != 3) {
+        counter = LD8(obj + OBJ_ANIM_COUNTER);
+        counter_at_check = counter;
+        if (counter != 0) {
+            ST8(obj + OBJ_ANIM_COUNTER, counter - 1);
+            if (counter & 2) {
+                state = LD8(obj + OBJ_PREV_ANIM_STATE);
+            }
+        }
+    }
+
+    /* Transfer state tile-sheet to VRAM at 0x6017680 */
+    u32 tile_src = LD32(A_off_801CD08 + (state << 2));
+    queue_gfx_transfer_sub_801CB38(tile_src, VRAM_OBJ_TILE, TILE_BANK_SIZE);
+
+    /* Transfer cell-pattern tile to VRAM at 0x6017780 */
+    if (gfx_transfer_done()) {
+        u32 cell = LD8(obj + OBJ_FRAME);
+        if (counter_at_check & 2) {
+            cell = LD8(obj + OBJ_PREV_FRAME);
+        }
+        u32 src = A_dword_872E994 + (0xA - cell) * TILE_ROW_SIZE;
+        queue_gfx_transfer_sub_801CB38(src, VRAM_OBJ_TILE_ALT, TILE_ROW_SIZE);
+    } else {
+        queue_gfx_transfer_sub_801CB38(A_dword_872D914, VRAM_OBJ_TILE_ALT, TILE_ROW_SIZE);
+    }
+
+    /* Transfer character/pattern row to SRAM work buffer (0x30016D0) */
+    u32 pattern_src = A_dword_872F114 + (state << 5);
+    if (LD8(obj + OBJ_ANIM_STATE) == 3) {
+        u8 c = LD8(obj + OBJ_ANIM_COUNTER);
+        if (c != 0) {
+            ST8(obj + OBJ_ANIM_COUNTER, c - 1);
+            if (c & 2) {
+                pattern_src = A_byte_801CD80;
+            }
+        }
+    }
+    queue_gfx_transfer_sub_801CB38(pattern_src, A_byte_30016D0, PATTERN_SIZE);
+}
+
+/* sub_801CB38(obj: r5) -- updates animation state and queues GFX transfers */
+Next sub_801CB38(void) {
+    u32 saved_r0 = R0;
+    update_object_animation(R5);
+    R0 = saved_r0;
+    RETURN_TO_CALLER();
+}
+
 /* ── palette_QueueObjectPalettePair_801CDEC ── */
 /* Palette-transfer destination descriptors. The object's byte at +0x12 is
  * shifted into bits 16-23, filling the low half of each descriptor and thus
@@ -1207,6 +1355,50 @@ Next sub_801DDD8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801DDF6 ── */
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx_transfer_sub_801DDF6(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_bg_tiles(u32 j, u32 i, u32 block, u32 tile_ids, u32 j_size, u32 i_size) {
+    R0 = j;
+    R1 = i;
+    R2 = block;
+    R3 = tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* register form: calls flagSetBits_eStruct2035280_801BEB8 outside this file, which has no typed C interface yet */
+static void set_flag_bits(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(flagSetBits_eStruct2035280_801BEB8);
+}
+
+/* Load a 32-byte GFX chunk into VRAM, stamp background tiles, and enable flag bit 4. */
+static void setup_battle_background(void) {
+    queue_gfx_transfer_sub_801DDF6(A_dword_86E1C78, A_unk_3001A80, 0x20);
+    copy_bg_tiles(6, 0, 3, A_word_801ED6C, 0x12, 2);
+    set_flag_bits(0x10); /* 1 << 4 */
+}
+
+/* sub_801DDF6: transfers GFX, copies BG tiles, sets flag bit 4.
+ * Preserves r4, r5 (clobbered by callees), plus r6, r7. */
+Next sub_801DDF6(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+    setup_battle_background();
+    R4 = saved_r4;
+    R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── custGauge_Init_801DED0 ── */
 /* custGauge_Init_801DED0: reset the custom gauge and reload its graphics.
  * Clears the gauge state, queues the gauge tiles from ROM into VRAM,
@@ -1688,6 +1880,131 @@ Next setByteFieldCapped99_801E828(void) {
 
     GUEST_CALL(sub_801E838);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801E838 ── */
+#define TILE_SIZE              0x20
+#define VRAM_OBJ_TILE_BASE     0x6016E00
+#define VRAM_SCORE_DIGIT_BASE  0x6017300
+#define OBJ_TILE_STRIDE        0x80
+#define BG_TILE_SIZE           0x20
+
+/* Battle state field offsets (pointer r5) */
+#define BS_SCORE_DATA          4   /* u16: tile-data offset for score graphic */
+#define BS_DISPLAY_MODE        8   /* u8:  1 = show score digits */
+#define BS_BCD_SCORE           9   /* u8:  packed-BCD score (tens<<4 | ones) */
+
+/* External data symbols */
+#define NULL_TILE_MARKER       A_byte_801FDC0
+#define DIGIT_TILE_TABLE       A_off_801FD64
+#define FIXED_BG_SRC           A_byte_86F2900
+#define FIXED_BG_DST           A_byte_30016B0
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx_transfer_sub_801E838(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* register form: calls memory_bcdConvert outside this file, which has no typed C interface yet */
+static u32 bcd_to_binary(u8 bcd) {
+    R0 = bcd;
+    GUEST_CALL(memory_bcdConvert);
+    return R0;
+}
+
+/* Queue OBJ tile transfers from a source list, optionally draw a 2-digit BCD
+ * score at the score-digit VRAM region, and always copy a fixed background tile.
+ *
+ * tile_list   – pointer to an array of u32 source tile pointers (terminated by
+ *               the null-tile marker; read from tile_list+4 onward).
+ * battle_state – pointer to the per-battle state block (score, mode, BCD value).
+ *
+ * Registers r0-r3 and NZCV flags on return are whatever the final
+ * QueueEightWordAlignedGFXTransfer call leaves behind. */
+static void queue_tile_and_score(u32 tile_list, u32 battle_state) {
+    /* --- 5 groups × 4 tiles = 20 tile-pair transfers ---------------- */
+    u32 list_cursor = tile_list + 4;          /* r7: next entry in source list */
+    s32 groups_remaining = 5;                  /* r4 */
+    u32 vram = VRAM_OBJ_TILE_BASE;            /* r1: OBJ tile VRAM write position */
+    const u32 null_tile = NULL_TILE_MARKER;
+
+    while (groups_remaining > 0) {
+        s32 tiles_in_group = 4;                /* r6 */
+
+        while (tiles_in_group > 0) {
+            u32 src = LD32(list_cursor);
+
+            /* If the entry is not the null marker, advance the list cursor.
+             * (Null entries are "used in place" – cursor stays.) */
+            if (src != null_tile)
+                list_cursor += 4;
+
+            /* First row of the 8×8 tile (32 bytes) */
+            queue_gfx_transfer_sub_801E838(src, vram, TILE_SIZE);
+
+            /* Second row: source + 0x20, dest + 0x80 */
+            queue_gfx_transfer_sub_801E838(src + TILE_SIZE, vram + OBJ_TILE_STRIDE, TILE_SIZE);
+
+            /* Advance VRAM by one tile-row slot (0x20) */
+            vram += TILE_SIZE;
+            tiles_in_group--;
+        }
+
+        /* Jump VRAM past the current group */
+        vram += OBJ_TILE_STRIDE;
+        groups_remaining--;
+    }
+
+    /* --- Optional 2-digit score display (mode == 1) ------------------ */
+    if (LD8(battle_state + BS_DISPLAY_MODE) == 1) {
+        u32 entry = LD32(list_cursor);
+
+        /* Skip the null marker if the tile list ended here */
+        if (entry == null_tile)
+            list_cursor += 4;
+
+        /* Store a 16-bit score-data word into the battle state */
+        ST16(battle_state + BS_SCORE_DATA, LD16(list_cursor));
+
+        /* Convert the BCD score byte to binary, split into decimal digits */
+        u32 binary_score = bcd_to_binary(LD8(battle_state + BS_BCD_SCORE));
+        u32 ones  = binary_score & 0xF;
+        u32 tens  = binary_score >> 4;
+
+        if (tens == 0) {
+            /* Single-digit score: show "0" for tens, shift graphic left by 4 px */
+            tens = 10;                         /* digit table index 10 → blank/zero tile */
+            u8 lo = LD8(battle_state + BS_SCORE_DATA);
+            ST8(battle_state + BS_SCORE_DATA, lo - 4);
+        }
+
+        /* Look up tile-source pointers from the digit table (u32 array) */
+        u32 tens_src = LD32(DIGIT_TILE_TABLE + tens * 4);
+        u32 ones_src = LD32(DIGIT_TILE_TABLE + ones * 4);
+
+        /* Queue 4 transfers: tens row0, ones row0, tens row1, ones row1 */
+        u32 dv = VRAM_SCORE_DIGIT_BASE;
+        queue_gfx_transfer_sub_801E838(tens_src,                dv, TILE_SIZE);
+        dv += TILE_SIZE;
+        queue_gfx_transfer_sub_801E838(ones_src,                dv, TILE_SIZE);
+        dv += TILE_SIZE;
+        queue_gfx_transfer_sub_801E838(tens_src + TILE_SIZE,    dv, TILE_SIZE);
+        dv += TILE_SIZE;
+        queue_gfx_transfer_sub_801E838(ones_src + TILE_SIZE,    dv, TILE_SIZE);
+    }
+
+    /* --- Fixed background tile (always queued) ----------------------- */
+    queue_gfx_transfer_sub_801E838(FIXED_BG_SRC, FIXED_BG_DST, BG_TILE_SIZE);
+}
+
+/* sub_801E838(r4 = tile_list, r5 = battle_state)
+ * Preserves r4–r7; outputs r0–r3 and flags from the last GFX transfer call. */
+Next sub_801E838(void) {
+    queue_tile_and_score(R4, R5);
     RETURN_TO_CALLER();
 }
 

@@ -8,6 +8,27 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_802F2C8 ── */
+/* register form: calls ByteFill outside this file, which has no typed C interface yet */
+static void byte_fill(u32 mem, u32 byteCount, u32 fillValue) {
+    R0 = mem;
+    R1 = byteCount;
+    R2 = fillValue;
+    GUEST_CALL(ByteFill);
+}
+
+/* Fill the palette scratch buffer at byte_2006530 with 0x80 (blank) and clear dword_2001140. */
+static void reset_palette_scratch(u32 paletteBuf, u32 dwordSlot) {
+    byte_fill(paletteBuf, 0x80, 0x80);
+    ST32(dwordSlot, 0);
+}
+
+/* sub_802F2C8() -> c/v left by ByteFill */
+Next sub_802F2C8(void) {
+    reset_palette_scratch(A_byte_2006530, A_dword_2001140);
+    RETURN_TO_CALLER();
+}
+
 /* ── startScreen_RunStateHandler_802F63C ── */
 /* startScreen_RunStateHandler_802F63C(self: *StartScreen in r5) -> ():
  * Start screen state dispatcher. Reads the screen's state byte and calls the
@@ -94,6 +115,102 @@ Next startScreen_init_802F668(void) {
 Next startScreen_UpdateAndRenderFrame_802F704(void) {
     GUEST_CALL(sub_802F81C);
     GUEST_CALL(sub_802F8D8);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802F710 ── */
+/* register form: calls sub_802F8D8 outside this file, which has no typed C interface yet */
+static void start_screen_step(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_802F8D8);
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool is_screen_fade_active_sub_802F710(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();  /* Z set when fade is complete (not active) */
+}
+
+/* register form: calls zeroFill_e20094C0 outside this file, which has no typed C interface yet */
+static void zero_fill_jump_table(void) {
+    GUEST_CALL(zeroFill_e20094C0);
+}
+
+/* register form: calls palette_clearEPalette20097a0_80023A8 outside this file, which has no typed C interface yet */
+static void clear_palette_20097a0(void) {
+    GUEST_CALL(palette_clearEPalette20097a0_80023A8);
+}
+
+/* register form: calls call_803D1AC outside this file, which has no typed C interface yet */
+static void reset_display_803D1AC(void) {
+    GUEST_CALL(call_803D1AC);
+}
+
+/* register form: calls sub_81440D8 outside this file, which has no typed C interface yet */
+static void reset_obj_81440D8(void) {
+    GUEST_CALL(sub_81440D8);
+}
+
+/* register form: calls zeroFill_813D960 outside this file, which has no typed C interface yet */
+static void zero_fill_oam(void) {
+    GUEST_CALL(zeroFill_813D960);
+}
+
+/* register form: calls clear_e200AD04 outside this file, which has no typed C interface yet */
+static void clear_render_state_200AD04(void) {
+    GUEST_CALL(clear_e200AD04);
+}
+
+/* register form: calls sub_803F6B0 outside this file, which has no typed C interface yet */
+static void set_screen_mode(u32 mode) {
+    R0 = mode;
+    GUEST_CALL(sub_803F6B0);
+}
+
+/* register form: calls loc_803F512 outside this file, which has no typed C interface yet */
+static void reset_animation_803F512(void) {
+    GUEST_CALL(loc_803F512);
+}
+
+/* register form: calls init_eStartScreenAnimationControl200B1A0_1 outside this file, which has no typed C interface yet */
+static void init_start_screen_anim(void) {
+    GUEST_CALL(init_eStartScreenAnimationControl200B1A0_1);
+}
+
+/* Advance the start-screen fade: one step per frame while the counter is non-zero.
+ * If the fade has completed and the counter is still non-zero, trigger a game-load
+ * via the jump-table offset.  If the counter reached zero, tear down all rendering
+ * and animation state (full reset back to the title). */
+static void start_screen_update(u32 self) {
+    /* offset 4: fade-transition pending counter (u16, zero-extended) */
+    if (LD16(self + 4) != 0)
+        start_screen_step(self);
+
+    /* Abort if the screen is no longer mid-fade. */
+    if (!is_screen_fade_active_sub_802F710())
+        return;
+
+    if (LD16(self + 4) != 0) {
+        /* Counter still running: set jump-table offset to 0x0C
+         * so the next render dispatch loads the game. */
+        ST16(self + oStartScreen_JumpTableOff_00, 0xC);
+    } else {
+        /* Counter exhausted: full reset of visuals and animation. */
+        zero_fill_jump_table();
+        clear_palette_20097a0();
+        reset_display_803D1AC();
+        reset_obj_81440D8();
+        zero_fill_oam();
+        clear_render_state_200AD04();
+        set_screen_mode(0);
+        reset_animation_803F512();
+        init_start_screen_anim();
+    }
+}
+
+/* sub_802F710(self: *mut StartScreen r5) -> (clobbers r0-r3 + flags) */
+Next sub_802F710(void) {
+    start_screen_update(R5);
     RETURN_TO_CALLER();
 }
 
@@ -916,6 +1033,120 @@ Next npc_spawnObjectThenSetUnk10_TempAnimScriptPtr_8030a8c(void) {
     R1 = whichScript;
     R2 = animScriptPtr;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8030CAC ── */
+/* Field offsets in OWObjectCoords used by the Bresenham line routine */
+#define OW_CUR_X   2
+#define OW_CUR_Y   6
+#define OW_TGT_X   0xE
+#define OW_TGT_Y   0x12
+
+/* register form: calls sub_8030DA2 outside this file, which has no typed C interface yet.
+ * Passes the full register state the original had at each call site. */
+static void draw_tile(u32 r0, u32 r1, u32 r2, u32 r3,
+                      u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0; R1 = r1; R2 = r2; R3 = r3;
+    R4 = r4; R5 = r5; R6 = r6; R7 = r7;
+    GUEST_CALL(sub_8030DA2);
+}
+
+/* Bresenham line-draw on OWObjectCoords: draws from target to current position.
+ * Returns the step_x value that ends up in R3 for the caller. */
+static u32 ow_line_draw(u32 obj, u32 ctx) {
+    /* First draw at the "next" position. */
+    s32 next_x = (s16)LDS16(obj + oOWObjectCoords_NextX);
+    s32 next_y = (s16)LDS16(obj + oOWObjectCoords_NextY);
+    draw_tile(obj, 0, 0, 0, (u32)next_x, ctx, 0, (u32)next_y);
+
+    /* Deltas from current (offset 2/6) to target (offset 0xE/0x12). */
+    s32 dx = (s16)LDS16(obj + OW_CUR_X) - (s16)LDS16(obj + OW_TGT_X);
+    s32 dy = (s16)LDS16(obj + OW_CUR_Y) - (s16)LDS16(obj + OW_TGT_Y);
+
+    s32 adx = dx < 0 ? -dx : dx;
+    s32 ady = dy < 0 ? -dy : dy;
+
+    if (adx > ady) {
+        /* X-dominant: step along x, conditionally adjust y. */
+        s32 x = (s16)LDS16(obj + OW_TGT_X);
+        s32 end_x = (s16)LDS16(obj + OW_CUR_X);
+        s32 y = (s16)LDS16(obj + OW_TGT_Y);
+        s32 sx = (dx < 0) ? -1 : 1;
+        s32 sy = (dy < 0) ? -1 : 1;
+        s32 err = -adx - 1;   /* mvn r1 after making adx positive */
+
+        for (;;) {
+            x += sx;
+            if (x == end_x) break;
+            err += 2 * ady;
+            if (err >= adx) { y += sy; err -= 2 * adx; }
+            draw_tile((u32)sy, (u32)adx, (u32)ady, (u32)sx,
+                      (u32)x, (u32)err, (u32)end_x, (u32)y);
+        }
+
+        /* Final draw at cur position. */
+        draw_tile(obj, (u32)adx, (u32)ady, (u32)sx,
+                  (u32)end_x, ctx, (u32)end_x, (u32)(s16)LDS16(obj + OW_CUR_Y));
+        return (u32)sx;
+
+    } else if (adx < ady) {
+        /* Y-dominant: step along y, conditionally adjust x. */
+        s32 x = (s16)LDS16(obj + OW_TGT_X);
+        s32 y = (s16)LDS16(obj + OW_TGT_Y);
+        s32 end_y = (s16)LDS16(obj + OW_CUR_Y);
+        s32 sx = (dx < 0) ? -1 : 1;
+        s32 sy = (dy < 0) ? -1 : 1;
+        s32 err = -ady - 1;   /* mvn r2 after making ady positive */
+
+        for (;;) {
+            y += sy;
+            if (y == end_y) break;
+            err += 2 * adx;
+            if (err >= ady) { x += sx; err -= 2 * ady; }
+            draw_tile((u32)sy, (u32)adx, (u32)ady, (u32)sx,
+                      (u32)x, (u32)err, (u32)end_y, (u32)y);
+        }
+
+        draw_tile(obj, (u32)adx, (u32)ady, (u32)sx,
+                  (u32)(s16)LDS16(obj + OW_CUR_X), ctx,
+                  (u32)end_y, (u32)(s16)LDS16(obj + OW_CUR_Y));
+        return (u32)sx;
+
+    } else if (dx != 0) {
+        /* |dx| == |dy|, diagonal: step both axes every iteration. */
+        s32 x = (s16)LDS16(obj + OW_TGT_X);
+        s32 y = (s16)LDS16(obj + OW_TGT_Y);
+        s32 end_y = (s16)LDS16(obj + OW_CUR_Y);
+        s32 sx = (dx < 0) ? -1 : 1;
+        s32 sy = (dy < 0) ? -1 : 1;
+
+        for (;;) {
+            y += sy;
+            if (y == end_y) break;
+            x += sx;
+            draw_tile((u32)sy, (u32)adx, (u32)ady, (u32)sx,
+                      (u32)x, ctx, (u32)end_y, (u32)y);
+        }
+
+        draw_tile(obj, (u32)adx, (u32)ady, (u32)sx,
+                  (u32)(s16)LDS16(obj + OW_CUR_X), ctx,
+                  (u32)end_y, (u32)(s16)LDS16(obj + OW_CUR_Y));
+        return (u32)sx;
+
+    } else {
+        /* Degenerate: dx == 0 and dy == 0, no line to draw. */
+        s32 tgt_y = (s16)LDS16(obj + OW_TGT_Y);
+        draw_tile(obj, 0, 0, (u32)tgt_y,
+                  (u32)(s16)LDS16(obj + OW_CUR_X), ctx, 0,
+                  (u32)(s16)LDS16(obj + OW_CUR_Y));
+        return (u32)tgt_y;
+    }
+}
+
+/* sub_8030CAC(r0 = OWObjectCoords*, r5 = draw context) -> r0, r3, r5, r7, r8 */
+Next sub_8030CAC(void) {
+    R3 = ow_line_draw(R0, R5);
     RETURN_TO_CALLER();
 }
 

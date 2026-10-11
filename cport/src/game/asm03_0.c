@@ -75,6 +75,294 @@ Next object_runFrameUpdate_8026A6C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8026B04 ── */
+/* Number of tile entries per animation row */
+#define TILEMAP_COLS       0x14
+/* Byte stride between successive tilemap columns */
+#define TILEMAP_STRIDE     0x1E
+/* Total animation countdown value */
+#define TILE_ANIM_TOTAL    0x78
+/* Tile rows per animation frame */
+#define TILE_ROW_COUNT     0xF
+/* Camera scroll step (dword_8026CC8) */
+#define CAMERA_SCROLL_STEP 0x18000
+/* Jump offset for the trigger-selection state */
+#define JUMP_OFFSET_TRIGGER   0x2C
+/* Jump offset for wait-selection state */
+#define JUMP_OFFSET_WAIT_SEL  4
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_effect(u32 sound_id) {
+    R0 = sound_id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls sub_801E71C outside this file, which has no typed C interface yet */
+static void bg_scroll_apply(u32 scroll_delta, u32 progress) {
+    R0 = scroll_delta;
+    R1 = progress;
+    GUEST_CALL(sub_801E71C);
+}
+
+/* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
+static void dispatch_bg_flags(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(dispatch_801DACC);
+}
+
+/* register form: calls sub_801E0A0 outside this file, which has no typed C interface yet */
+static void tile_bg_setup(u32 rows, u32 start) {
+    R0 = rows;
+    R1 = start;
+    GUEST_CALL(sub_801E0A0);
+}
+
+/* register form: calls bgmap_WriteTileIdAtBlock_800187C outside this file, which has no typed C interface yet */
+static void write_bg_tile(u32 row, u32 col, u32 bg_index, u16 tile_id) {
+    R0 = row;
+    R1 = col;
+    R2 = bg_index;
+    R3 = tile_id;
+    GUEST_CALL(bgmap_WriteTileIdAtBlock_800187C);
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode_sub_8026B04(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls RetrieveAndRenderEnemyVirusNamesInBattle_801E574 outside this file, which has no typed C interface yet */
+static void render_enemy_virus_names(void) {
+    GUEST_CALL(RetrieveAndRenderEnemyVirusNamesInBattle_801E574);
+}
+
+/* register form: calls battle_damagePlayerLeave1HP_8013FD0 outside this file, which has no typed C interface yet */
+static void damage_player_leave_1hp(u32 player_index) {
+    R0 = player_index;
+    GUEST_CALL(battle_damagePlayerLeave1HP_8013FD0);
+}
+
+/* register form: sub_8029C08 reads r2-r7 as object method state carried across the
+ * entire function's register flow (camera ptr in r2, scroll const in r3, etc.).
+ * Typed C cannot express "value lives in a specific guest register across multiple calls." */
+static void s20364c0_finalize(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8029C08);
+}
+
+/* Update the tile-scrolling battle object (S20364C0).
+ * self:    pointer to the state struct (r5)
+ * toolkit: global toolkit pointer (r10)
+ * r4, r6:  caller-saved values that sub_8029C08 reads via those registers.
+ * R2/R3 are written as guest registers inside the camera path because the game
+ * passes them forward through multiple GUEST_CALLs to sub_8029C08. */
+static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
+    /* --- Initialization (only when state flag is zero) --- */
+    if (LD8(self + oS20364C0_Unk_02) == 0) {
+        play_sound_effect(SOUND_SELECT_79);
+
+        u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
+        ST16(render_info + 0x18, TILE_ANIM_TOTAL);
+
+        bg_scroll_apply(0, render_info);
+        dispatch_bg_flags(0x80);
+        tile_bg_setup(TILE_ROW_COUNT, 0);
+
+        ST32(self + 0x44, TILE_ROW_COUNT);
+        ST32(self + 0x40, TILE_ANIM_TOTAL);
+        ST8(self + oS20364C0_Unk_02, TILE_ANIM_TOTAL);
+    }
+
+    /* --- Tile-rendering loop --- */
+    u32 progress = LD32(self + 0x40) - 0xc;
+    u32 rows = ((4 & progress) >> 2) + 1;
+
+    for (u32 row_iter = 0; row_iter < rows; row_iter++) {
+        u32 tile_index = LD32(self + 0x44) - 1;
+        ST32(self + 0x44, tile_index);
+        u32 tilemap_ptr = A_unk_2035000 + tile_index * 2;
+
+        for (u32 col = 0; col < TILEMAP_COLS; col++) {
+            u16 tile_id = LD16(tilemap_ptr);
+            write_bg_tile(tile_index, col, 3, tile_id);
+            tilemap_ptr += TILEMAP_STRIDE;
+        }
+    }
+
+    /* --- Camera adjustment: if not in battle mode 1, scroll camera up --- */
+    if (get_battle_mode_sub_8026B04() != 1) {
+        u32 camera = LD32(toolkit + oToolkit_CameraPtr);
+        ST32(camera + 0x34, LD32(camera + 0x34) - CAMERA_SCROLL_STEP);
+        /* register form: sub_8029C08 reads r2/r3 as accumulated register state; C locals
+         * cannot flow into those guest registers through the intervening GUEST_CALLs */
+        R2 = camera;
+        R3 = CAMERA_SCROLL_STEP;
+    }
+
+    /* --- Write back progress and scroll position --- */
+    ST32(self + 0x40, progress);
+    u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render_info + 0x18, progress);
+    bg_scroll_apply(TILE_ANIM_TOTAL - progress, progress);
+
+    /* --- When animation completes (progress reached zero): resolve outcome --- */
+    if (progress == 0) {
+        u32 battle_state = LD32(toolkit + oToolkit_BattleStatePtr);
+
+        if (LD8(battle_state + oBattleState_Unk_07) == 1) {
+            render_enemy_virus_names();
+        } else {
+            damage_player_leave_1hp(0);
+            damage_player_leave_1hp(1);
+        }
+
+        /* Choose next state based on the mode byte in self */
+        u8 mode = LD8(self + oS20364C0_Unk_0c);
+        bool go_wait;
+
+        if (mode == 0xFF) {
+            go_wait = true;
+        } else if (mode != 5) {
+            go_wait = false;
+        } else {
+            u32 bs = LD32(toolkit + oToolkit_BattleStatePtr);
+            go_wait = (LD8(bs + 7) >= 5);
+        }
+
+        if (go_wait) {
+            ST8(self + oS20364C0_JumpOffset01, JUMP_OFFSET_WAIT_SEL);
+        } else {
+            ST8(self + oS20364C0_JumpOffset01, JUMP_OFFSET_TRIGGER);
+        }
+        ST16(self + oS20364C0_Unk_02, 0);
+    }
+
+    /* --- Finalize: call object method that produces this function's return registers --- */
+    s20364c0_finalize(self);
+}
+
+/* sub_8026B04(r5=self, r10=toolkit, r4, r6=state for sub_8029C08) -> all regs + flags */
+Next sub_8026B04(void) {
+    s20364c0_update(R5, R10, R4, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8026BF4 ── */
+/* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
+static void call_dispatch_801DACC(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(dispatch_801DACC);
+}
+
+/* register form: calls sub_8029D80 outside this file, which has no typed C interface yet */
+static void call_sub_8029D80(void) {
+    GUEST_CALL(sub_8029D80);
+}
+
+/* register form: calls clearBattleStateUnk11Flag_800A9D6 outside this file, which has no typed C interface yet */
+static void call_clear_battle_state_unk11_flag(u32 bit) {
+    R0 = bit;
+    GUEST_CALL(clearBattleStateUnk11Flag_800A9D6);
+}
+
+/* register form: CopyBackgroundTiles takes 6 args in R0-R5 and clobbers R4-R7
+ * which hold the loop's saved self/scroll state; R1-R3 output values flow into
+ * the subsequent sub_8029C08 call as register arguments. */
+static void call_copy_bg_tiles(u32 j, u32 i, u32 block, u32 tile_ids, u32 j_size, u32 i_size) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    R0 = j; R1 = i; R2 = block; R3 = tile_ids; R4 = j_size; R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 call_get_battle_mode(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls sub_801E71C outside this file, which has no typed C interface yet */
+static void call_sub_801E71C(u32 delta, u32 value) {
+    R0 = delta;
+    R1 = value;
+    GUEST_CALL(sub_801E71C);
+}
+
+/* register form: sub_8029C08 takes R2-R7 as register context. R2/R3 carry either
+ * the camera pointer + scroll constant (mode != 1) or opaque CopyBackgroundTiles
+ * output (mode 1), which can only live in guest registers between the calls. */
+static void call_sub_8029C08(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8029C08);
+}
+
+#define TILE_BLOCK_ALL_ZERO  ((u32)0x08026C88)
+
+/* Background-scroll state update (S20364C0 object in r5, toolkit in r10):
+ *  - one-shot init (zero extra pointers, dispatch BG update, clear a battle flag)
+ *  - scroll the tile map one column (or two) and copy background tiles
+ *  - shift camera by one tile-block unless in battle mode 1
+ *  - publish scroll position to state object and render-info
+ *  - notify scroll subsystem; wrap at end of strip
+ *  - per-frame update callback                                    */
+static void sub_8026BF4_impl(u32 self, u32 toolkit) {
+    /* First-run init: set the gate flag, clear extra pointers, dispatch
+     * a BG update, and clear battle-state bit 2 of unk11. */
+    if (LD8(self + oS20364C0_Unk_02) == FALSE) {
+        ST32(self + oS20364C0_Extra_Unk_44, 0);
+        ST32(self + oS20364C0_Extra_Unk_40, 0);
+        ST8(self + oS20364C0_Unk_02, TRUE);
+        call_dispatch_801DACC(0x2000);
+        call_sub_8029D80();
+        call_clear_battle_state_unk11_flag(4);
+    }
+
+    /* Compute the new scroll position and how many tile columns to copy
+     * (2 if bit-2 of scroll_pos is clear, else 1). */
+    u32 scroll_pos = LD32(self + oS20364C0_Extra_Unk_40) + 0xC;
+    u32 iterations = (((4u & scroll_pos) >> 2) ^ 1u) + 1u;
+
+    /* Increment the tile counter and copy one column of BG tiles per pass. */
+    for (u32 n = iterations; n != 0; n--) {
+        u32 j = LD32(self + oS20364C0_Extra_Unk_44);
+        ST32(self + oS20364C0_Extra_Unk_44, j + 1);
+        call_copy_bg_tiles(j, 0, 3, TILE_BLOCK_ALL_ZERO, 1, 0x14);
+    }
+
+    /* Outside battle mode 1, shift the camera Y by one tile-block (0x18000).
+     * R2/R3 must hold the camera pointer and constant as register arguments
+     * for the sub_8029C08 call that follows. */
+    if (call_get_battle_mode() != 1) {
+        u32 camera = LD32(toolkit + oToolkit_CameraPtr);
+        ST32(camera + 0x34, LD32(camera + 0x34) + 0x18000);
+        /* register form: R2/R3 are register args consumed by sub_8029C08 below */
+        R2 = camera;
+        R3 = 0x18000;
+    }
+
+    /* Publish the new scroll position to the state object and render-info. */
+    ST32(self + oS20364C0_Extra_Unk_40, scroll_pos);
+    u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render_info + 0x18, scroll_pos);
+
+    /* Notify the scrolling subsystem; wrap the strip when fully scrolled. */
+    call_sub_801E71C(0x78 - scroll_pos, scroll_pos);
+    if (scroll_pos == 0x78) {
+        ST8(self + 0x1, LD8(self + 0xB));
+        ST8(self + 0x2, 0);
+    }
+
+    /* Per-frame update callback. */
+    call_sub_8029C08(self);
+}
+
+/* sub_8026BF4(self: * S20364C0 $r5, toolkit: * $r10) */
+Next sub_8026BF4(void) {
+    sub_8026BF4_impl(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── custMenuUpdateWaitSelectionState_8026CCC ── */
 /* custMenuUpdateWaitSelectionState_8026CCC — per-frame update of the S20364C0 custom-menu object (self in R5).
  *
@@ -1126,6 +1414,222 @@ Next battle_updateExtraSlotChipKeepFlag_8028F84(void) {
     }
 
     ST8(slot + 7, keep);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8029032 ── */
+#define TILE_VRAM_SLOT    0x1FF
+#define SOUND_CONFIRM     0x1D2  /* 0xd3 + 0xff */
+#define CHIP_ATTR_OFFSET  0x55   /* base offset for pending-jack-in attribute */
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_sub_8029032(u32 sound_id) {
+    R0 = sound_id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls battle_ClearPendingEventFlag_802A0EC outside this file, which has no typed C interface yet */
+static void clear_pending_event_flag(void) {
+    GUEST_CALL(battle_ClearPendingEventFlag_802A0EC);
+}
+
+/* register form: calls getLocOfActiveChips_8027E1C outside this file, which has no typed C interface yet */
+static u32 get_active_chips_loc(u32 index) {
+    R0 = index;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    return R0;
+}
+
+/* register form: calls sprite_CopyObjTilesToVramSlot_80281D4 outside this file, which has no typed C interface yet */
+static void copy_obj_tiles(u32 slot, u32 counter, u32 chip_ptr) {
+    R0 = slot;
+    R1 = counter;
+    R4 = chip_ptr;
+    GUEST_CALL(sprite_CopyObjTilesToVramSlot_80281D4);
+}
+
+/* register form: calls sub_8029CD4 outside this file, which has no typed C interface yet */
+static void update_chip_display(u32 count) {
+    R0 = count; R1 = 0; R2 = 0;
+    GUEST_CALL(sub_8029CD4);
+}
+
+/* register form: calls sub_802A00C outside this file, which has no typed C interface yet */
+static u32 check_chip_condition(u32 value, u32 chip_ptr) {
+    R0 = value;
+    R4 = chip_ptr;
+    GUEST_CALL(sub_802A00C);
+    return R0;
+}
+
+/* register form: calls customScreen_ExitSequence_8028E32 outside this file, which has no typed C interface yet */
+static void exit_custom_screen(void) {
+    GUEST_CALL(customScreen_ExitSequence_8028E32);
+}
+
+/* register form: calls sub_8028476 outside this file, which has no typed C interface yet */
+static void post_exit_cleanup(void) {
+    GUEST_CALL(sub_8028476);
+}
+
+/* Handle the confirm/exit action on the custom battle-screen chip submenu.
+ * state_ptr points to screen state: byte at +8 = selection count,
+ * +0x19 = jack-in pending flag, +0x1a/+0x1b/+0x55+idx = pending attribute slots. */
+static void custom_screen_exit_action(u32 state_ptr) {
+    u8 selection = LD8(state_ptr + 8);
+
+    if (selection == 0) {
+        if (LD8(state_ptr + 0x19) == 0) {
+            play_sound_sub_8029032(SOUND_CANT_JACK_IN);
+            return;
+        }
+        u8 pending_idx = LD8(state_ptr + 0x1b);
+        ST8(state_ptr + CHIP_ATTR_OFFSET + pending_idx, 0);
+        ST8(state_ptr + 0x1a, 0);
+        ST8(state_ptr + 0x19, 0);
+        play_sound_sub_8029032(SOUND_CONFIRM);
+        clear_pending_event_flag();
+    } else {
+        u32 chip_ptr = get_active_chips_loc(LD8(state_ptr + selection + 0x47));
+
+        if (LD8(chip_ptr) == 2) {
+            u8 new_sel = LD8(state_ptr + 8) - 1;
+            ST8(state_ptr + 8, new_sel);
+            copy_obj_tiles(TILE_VRAM_SLOT, new_sel, chip_ptr);
+            update_chip_display(new_sel);
+            clear_pending_event_flag();
+            play_sound_sub_8029032(SOUND_EXIT_SUBMENU);
+            play_sound_sub_8029032(SOUND_CONFIRM);
+            ST8(state_ptr + 0x17, 0);
+        } else {
+            u16 chip_data = LD16(LD32(chip_ptr + 8));
+            if (check_chip_condition(chip_data, chip_ptr) != 0) {
+                play_sound_sub_8029032(SOUND_EXIT_SUBMENU);
+                play_sound_sub_8029032(SOUND_CONFIRM);
+                clear_pending_event_flag();
+            }
+            u8 new_sel = LD8(state_ptr + 8) - 1;
+            ST8(state_ptr + 8, new_sel);
+            copy_obj_tiles(TILE_VRAM_SLOT, new_sel, chip_ptr);
+            update_chip_display(new_sel);
+
+            if (LD8(chip_ptr + 5) != 0) {
+                u8 extra = LD8(chip_ptr + 5);
+                ST8(chip_ptr + 5, 0);
+                ST8(chip_ptr + 4, LD8(chip_ptr + 4) & ~0x3E);
+                u32 extra_loc = get_active_chips_loc(extra);
+                ST8(extra_loc + 7, 0);
+            }
+        }
+        ST8(chip_ptr + 7, 0);
+    }
+    exit_custom_screen();
+    post_exit_cleanup();
+    play_sound_sub_8029032(SOUND_EXIT_SUBMENU);
+}
+
+/* sub_8029032(r5 = screen state ptr) -> outputs r2 r3 r5 r6 r7 r8 r9 r10 r11 r12; preserves r4 r7 */
+Next sub_8029032(void) {
+    u32 saved_r4 = R4;
+    custom_screen_exit_action(R5);
+    R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8029224 ── */
+/* Chip command queue base in work RAM. */
+#define CHIP_QUEUE_BASE 0x2033000
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_data_sub_8029224(u32 chip_id) {
+    R0 = chip_id;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* Walk the chip-use command queue at CHIP_QUEUE_BASE, processing opcode slots.
+ *
+ * Each slot holds a s16 opcode; the preceding u16 is the chip index.
+ * Recognised opcodes (0xB8, 0xB9, 0xC0, 0xC1, 0xC3) are validated against the
+ * chip's attribute byte (offset 9 of ChipData).  On success the side-effect is
+ * applied, a status bit from the target object is merged, and the entry is
+ * removed by shifting all following slots down until the 0xFFFF sentinel.
+ * The scanner then re-reads the same slot to pick up the shifted-in entry.
+ *
+ * NOTE: r3 (the target object for the merge) is clobbered by the shift loop,
+ * exactly as in the original — subsequent iterations use the stale pointer.  */
+static void process_chip_command_queue(u32 target_obj) {
+    u32 r3 = target_obj;
+    u32 pos = CHIP_QUEUE_BASE + 2;
+
+    for (;;) {
+        s16 code = LDS16(pos);
+        if (code == -1)
+            break;
+
+        /* ---- dispatch: required / forbidden attribute masks ---- */
+        u32 need_mask, forbid_mask;
+        switch (code) {
+        case 0xC0: case 0xC3: case 0xB8:
+            need_mask = 2;  forbid_mask = 0; break;
+        case 0xC1:
+            need_mask = 4;  forbid_mask = 0; break;
+        case 0xB9:
+            need_mask = 2;  forbid_mask = 1; break;
+        default:
+            pos += 2;
+            continue;
+        }
+
+        /* ---- look up chip data for the index stored just before the opcode ---- */
+        u32 chip_base = pos - 2;
+        u32 chip = get_chip_data_sub_8029224(LD16(chip_base));
+        u8 attr = LD8(chip + 9);
+
+        if ((attr & need_mask) == 0 || (attr & forbid_mask) != 0) {
+            pos += 2;
+            continue;
+        }
+
+        /* ---- per-command side effect on the queue entry ---- */
+        code = LDS16(pos);  /* reload; original does a second ldrsh here */
+        if (code == 0xB8) {
+            ST16(chip_base + 0x3C, LD16(chip_base + 0x3C) | 2);
+        } else if (code == 0xB9) {
+            ST16(chip_base + 0x3C, LD16(chip_base + 0x3C) | 4);
+        } else {
+            /* 0xC0 / 0xC1 / 0xC3: accumulate field +0xC into +0x16 */
+            ST16(pos + 0x16, LD16(pos + 0x16) + LD16(pos + 0xC));
+        }
+
+        /* ---- merge bit 0 of r3+0x3C into r3+0x3A ---- */
+        u16 bit0 = LD16(r3 + 0x3C) & 1;
+        ST16(r3 + 0x3A, LD16(r3 + 0x3A) | bit0);
+
+        /* ---- shift every following slot down by 2 bytes until sentinel ---- */
+        u32 dst = pos;
+        r3 = pos + 2;  /* src — this overwrites the caller's r3 (clobbered) */
+
+        for (;;) {
+            ST16(dst + 0x3C, LD16(r3 + 0x3C));
+            ST16(dst + 0x0C, LD16(r3 + 0x0C));
+            ST16(dst + 0x24, LD16(r3 + 0x24));
+            s16 moved = LDS16(r3);
+            ST16(dst, moved);
+            r3 += 2;
+            dst += 2;
+            if (moved == -1)
+                break;
+        }
+
+        pos -= 2;  /* back up so the +2 below keeps us on the same slot */
+        pos += 2;  /* net no-op: re-examine the slot that now holds the shifted-in entry */
+    }
+}
+
+/* sub_8029224(r3 = target object) — no outputs, clobbers r0–r3, flags, lr */
+Next sub_8029224(void) {
+    process_chip_command_queue(R3);
     RETURN_TO_CALLER();
 }
 

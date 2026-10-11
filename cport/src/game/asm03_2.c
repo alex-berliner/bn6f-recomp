@@ -178,6 +178,93 @@ Next getStructFrom2008450(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80466D8 ── */
+/* sub_80466D8: walks a battle-object's hitbox list and marks which entries
+ * fall inside the screen bounds (with mirror adjustments), then updates
+ * the object's on-screen / collision flags byte and bitmask. */
+
+typedef struct {
+    u32 flags;     /* r3: updated flags byte (written back to [obj+3]) */
+    u32 r6;        /* r6: on-screen-subset mask, or original Y */
+    u32 mirrorX;   /* r8: X-mirror active (0 or 1) */
+    u32 mirrorY;   /* r9: Y-mirror active (0 or 1) */
+    u32 r12;       /* r12: original Y coordinate */
+} HitboxScanResult;
+
+static HitboxScanResult scan_hitboxes(u32 obj) {
+    s32 x = LDS16(obj + 0xC);
+    s32 y = LDS16(obj + 0xE);
+
+    u32 mirrorX = (LD8(obj + 0x13) & 0x10) ? 1 : 0;
+    u32 mirrorY = (LD8(obj + 0x13) & 0x20) ? 1 : 0;
+
+    /* Resolve the hitbox entry pointer for this object's type */
+    u32 typeData  = LD32(obj + 0x20);
+    u32 typeOff   = (u32)LD8(typeData) << 2;
+    u32 tableBase = LD32(LD32(obj + 0x1C) + 0xC);
+    u32 entryBase = LD32(obj + 0x18) + tableBase;
+    u32 cur       = LD32(entryBase + typeOff) + entryBase;
+
+    /* Walk the 5-byte-per-entry hitbox list; build a 32-bit mask of entries
+     * whose offset lands inside the visible screen area. */
+    u32 activeMask = 0;
+    u32 bit        = 0x80000000;
+
+    while (LD8(cur) != 0xFF) {
+        s32 dx = (s8)LD8(cur + 1);
+        if (mirrorX) dx = -dx;
+        dx += x;
+
+        s32 dy = (s8)LD8(cur + 2);
+        if (mirrorY) dy = -dy;
+        dy += y;
+
+        /* Screen bounds: x in [-64, 305), y in [-32, 193) */
+        if (dx >= -64 && dx < 305 && dy >= -32 && dy < 193) {
+            activeMask |= bit;
+        }
+
+        bit >>= 1;
+        cur  += 5;
+    }
+
+    /* Update the object's flags byte and produce the r6 output */
+    u32 flags = LD8(obj + 3);
+    u32 outR6;
+
+    if (flags & 4) {
+        /* Alternate mode: bits 1 and 3 together reflect the full mask */
+        outR6 = (u32)y;
+        flags &= ~0xA;
+        if (activeMask) flags |= 0xA;
+    } else {
+        /* Normal mode: bit 3 tracks mask minus the MSB entry,
+         * bit 1 tracks the full mask */
+        outR6 = activeMask & ~0x80000000;
+        flags &= ~8;
+        if (outR6) flags |= 8;
+        flags &= ~2;
+        if (activeMask) flags |= 2;
+    }
+
+    ST8(obj + 3, flags);
+    ST32(obj + 0x28, activeMask);
+
+    HitboxScanResult result = { flags, outR6, mirrorX, mirrorY, (u32)y };
+    return result;
+}
+
+/* sub_80466D8(r5 = battle object pointer) -> r3, r6, r8, r9, r12 */
+Next sub_80466D8(void) {
+    HitboxScanResult res = scan_hitboxes(R5);
+    R3  = res.flags;
+    R6  = res.r6;
+    R8  = res.mirrorX;
+    R9  = res.mirrorY;
+    R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── initWorkArea5Entries_80467D8 ── */
 /* initWorkArea5Entries_80467D8: clear the 0x1B8-byte work block at byte_2011860, then set up
  * its five 0x58-byte entries: byte 2 = 0x20 (entry "alive"/default value),
@@ -265,6 +352,78 @@ Next sub_8046DF8(void) {
     GUEST_CALL(sub_8047134);
 
     R0 = 0;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8046E48 ── */
+/* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
+static void sub_8047134_call(void) {
+    GUEST_CALL(sub_8047134);
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool is_screen_fade_active_sub_8046E48(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return ZERO_FLAG();  /* beq taken (Z=1) when a fade transition is in progress */
+}
+
+/* register form: calls checkScrambledCounter_8047366 outside this file, which has no typed C interface yet */
+static bool scrambled_counter_valid(u32 counter) {
+    R0 = counter;
+    R1 = counter;
+    GUEST_CALL(checkScrambledCounter_8047366);
+    return ZERO_FLAG();  /* bne taken (Z=0) when the scramble check fails */
+}
+
+/* register form: calls sub_803D0B4 outside this file, which has no typed C interface yet */
+static void apply_counter_normal(u32 counter) {
+    R0 = counter;
+    GUEST_CALL(sub_803D0B4);
+}
+
+/* register form: calls sub_803D02C outside this file, which has no typed C interface yet */
+static void apply_counter_default(u32 counter) {
+    R0 = counter;
+    GUEST_CALL(sub_803D02C);
+}
+
+/* register form: calls owPlayer_unlockPlayerAfterNonNPCDialogue_809E122 outside this file, which has no typed C interface yet */
+static void unlock_player_after_dialogue(void) {
+    GUEST_CALL(owPlayer_unlockPlayerAfterNonNPCDialogue_809E122);
+}
+
+/* register form: calls sub_8005F84 outside this file, which has no typed C interface yet */
+static void sub_8005F84_call(void) {
+    GUEST_CALL(sub_8005F84);
+}
+
+/* Attempt to unlock the player after a non-NPC overworld dialogue ends.
+ * Returns 1 on success, 0 if skipped (fade active or scramble check failed). */
+static u32 handle_dialogue_unlock(u32 dialogue_ptr) {
+    sub_8047134_call();
+
+    if (is_screen_fade_active_sub_8046E48())
+        return 0;
+
+    u32 counter = LD32(dialogue_ptr + 0x28);
+    if (!scrambled_counter_valid(counter))
+        return 0;
+
+    u32 state = LD32(LD32(dialogue_ptr + 0x1C));
+    if (state == 1)
+        apply_counter_normal(counter);
+    else
+        apply_counter_default(counter);
+
+    unlock_player_after_dialogue();
+    sub_8005F84_call();
+    return 1;
+}
+
+/* sub_8046E48(r5 = dialogue struct ptr) -> r0 */
+Next sub_8046E48(void) {
+    R0 = handle_dialogue_unlock(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
@@ -539,6 +698,196 @@ Next background_LoadAreaTiles_8047800(void) {
     R5 = state;
     R6 = savedR6;
     R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8047950 ── */
+/* Menu input handler for BN6 battle-menu navigation.
+ * Manages a 2D cursor (column/page) over a selectable list, responding to
+ * A/B presses and held d-pad / shoulder buttons. Marks the display dirty
+ * when the cursor or selection state changes. */
+
+/* Menu struct offsets */
+#define oMenu_SelectState     0x05   /* u8: 0xFF = selected, 0 = unselected */
+#define oMenu_DirtyFlag       0x0D   /* u8: 0xFF requests redraw */
+#define oMenu_ItemCount       0x12   /* u16: number of selectable items */
+#define oMenu_CursorCol       0x14   /* u16: current column index */
+#define oMenu_PrevCol         0x16   /* u16: column at frame start */
+#define oMenu_CursorPage      0x18   /* u16: current page index */
+#define oMenu_PrevPage        0x1A   /* u16: page at frame start */
+#define oMenu_LinkedPtr       0x1C   /* u32: pointer to linked-state word */
+#define oMenu_ScriptArchive   0x24   /* u32: pointer to TextScriptArchive */
+
+/* Joypad struct offsets */
+#define oJoypad_Pressed       0x02   /* u16: one-frame press bits */
+#define oJoypad_Held          0x04   /* u16: sustained hold bits */
+
+/* Button bits (GBA KEYINPUT layout) */
+#define BTN_A         0x001u
+#define BTN_B         0x002u
+#define BTN_UP        0x040u
+#define BTN_DOWN      0x080u
+#define BTN_R         0x100u
+#define BTN_L         0x200u
+
+#define PAGE_SIZE     5
+#define LINKED_EXTENDED 2
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_sub_8047950(u32 sound) {
+    R0 = sound;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls menu_showDialogOnUnselect_8047A80 outside this file, which has no typed C interface yet */
+static void show_dialog_on_unselect(u32 linked, u32 joypad) {
+    R4 = linked;
+    R7 = joypad;
+    GUEST_CALL(menu_showDialogOnUnselect_8047A80);
+}
+
+/* register form: calls sub_8047A96 outside this file, which has no typed C interface yet */
+static void confirm_selection(u32 linked, u32 joypad) {
+    R4 = linked;
+    R7 = joypad;
+    GUEST_CALL(sub_8047A96);
+}
+
+/* register form: calls chatbox_runScript outside this file, which has no typed C interface yet */
+static void run_chatbox_script(u32 archive, u32 idx) {
+    R0 = archive;
+    R1 = idx;
+    GUEST_CALL(chatbox_runScript);
+}
+
+/* register form: calls sub_80478B8 outside this file, which has no typed C interface yet */
+static void after_toggle_off(void) {
+    GUEST_CALL(sub_80478B8);
+}
+
+/* Toggle the selection byte, play a sound, and run the "deselect" script when turned off. */
+static void toggle_select(u32 menu) {
+    play_sound_sub_8047950(SOUND_UNK_66);
+    u8 new_val = (u8)(LD8(menu + oMenu_SelectState) ^ 0xFF);
+    ST8(menu + oMenu_SelectState, new_val);
+    if (new_val == 0) {
+        run_chatbox_script(LD32(menu + oMenu_ScriptArchive), 1);
+        after_toggle_off();
+    }
+    ST8(menu + oMenu_DirtyFlag, 0xFF);
+}
+
+/* Process held-button navigation: UP/DOWN for column, L/R for page (extended layout). */
+static void navigate_cursor(u32 menu, u32 linked, u32 held) {
+    /* UP: decrement column; on underflow, decrement page */
+    if (held & BTN_UP) {
+        u32 col = LD16(menu + oMenu_CursorCol);
+        ST16(menu + oMenu_CursorCol, (u16)(col - 1));
+        if (col != 0) return;
+        ST16(menu + oMenu_CursorCol, 0);
+
+        u32 page = LD16(menu + oMenu_CursorPage);
+        ST16(menu + oMenu_CursorPage, (u16)(page - 1));
+        if (page != 0) return;
+        ST16(menu + oMenu_CursorPage, 0);
+        return;
+    }
+
+    u32 items = LD16(menu + oMenu_ItemCount);
+
+    /* L (page back): only in extended layout with more than PAGE_SIZE items */
+    if (items > PAGE_SIZE && linked == LINKED_EXTENDED && (held & BTN_L)) {
+        u32 page = LD16(menu + oMenu_CursorPage);
+        ST16(menu + oMenu_CursorPage, (u16)(page - PAGE_SIZE));
+        if (page >= PAGE_SIZE) return;
+        ST16(menu + oMenu_CursorPage, 0);
+        return;
+    }
+
+    /* DOWN: increment column; wrap to next page on overflow */
+    if (held & BTN_DOWN) {
+        u32 col = LD16(menu + oMenu_CursorCol) + 1;
+        ST16(menu + oMenu_CursorCol, (u16)col);
+
+        u32 max_col = (items < PAGE_SIZE) ? items : PAGE_SIZE;
+        if ((s32)col < (s32)max_col) return;
+        col = max_col - 1;
+        ST16(menu + oMenu_CursorCol, (u16)col);
+
+        u32 page = LD16(menu + oMenu_CursorPage) + 1;
+        ST16(menu + oMenu_CursorPage, (u16)page);
+
+        u32 max_page = items - col;
+        if ((s32)page < (s32)max_page) return;
+        page = max_page - 1;
+        ST16(menu + oMenu_CursorPage, (u16)page);
+        return;
+    }
+
+    /* R (page forward): only in extended layout with more than PAGE_SIZE items */
+    if (items > PAGE_SIZE && linked == LINKED_EXTENDED && (held & BTN_R)) {
+        u32 page = LD16(menu + oMenu_CursorPage) + PAGE_SIZE;
+        ST16(menu + oMenu_CursorPage, (u16)page);
+
+        u32 max_page = items - PAGE_SIZE;
+        if ((s32)page < (s32)max_page) return;
+        ST16(menu + oMenu_CursorPage, (u16)max_page);
+    }
+}
+
+/* Handle A-press confirm/toggle, or fall through to held-button navigation. */
+static void handle_confirm_or_navigate(u32 menu, u32 linked, u32 joypad, u32 pressed) {
+    if (pressed & BTN_A) {
+        if (LD8(menu + oMenu_SelectState) != 0) {
+            toggle_select(menu);
+        } else {
+            confirm_selection(linked, joypad);
+        }
+    } else {
+        navigate_cursor(menu, linked, LD16(joypad + oJoypad_Held));
+    }
+}
+
+/*
+ * Process one frame of menu input. If the cursor position changed since
+ * the start of this frame, play the move sound and mark the display dirty.
+ */
+static void menu_navigate(u32 menu, u32 toolkit) {
+    /* Snapshot current cursor as "previous" for the dirty check at the end */
+    ST16(menu + oMenu_PrevPage, LD16(menu + oMenu_CursorPage));
+    ST16(menu + oMenu_PrevCol,  LD16(menu + oMenu_CursorCol));
+
+    u32 linked = LD32(LD32(menu + oMenu_LinkedPtr));
+    u32 joypad = LD32(toolkit + oToolkit_JoypadPtr);
+    u32 pressed = LD16(joypad + oJoypad_Pressed);
+
+    if (pressed & BTN_B) {
+        /* B pressed: deselect if selected, otherwise show "unselect" dialog */
+        if (LD8(menu + oMenu_SelectState) != 0) {
+            toggle_select(menu);
+        } else {
+            show_dialog_on_unselect(linked, joypad);
+        }
+    } else if (LD16(menu + oMenu_ItemCount) != 0) {
+        if (linked != LINKED_EXTENDED && (pressed & BTN_R)) {
+            /* R pressed in basic layout: toggle selection */
+            toggle_select(menu);
+        } else {
+            handle_confirm_or_navigate(menu, linked, joypad, pressed);
+        }
+    }
+
+    /* If cursor moved this frame, play sound and flag for redraw */
+    if (LD16(menu + oMenu_CursorCol) != LD16(menu + oMenu_PrevCol) ||
+        LD16(menu + oMenu_CursorPage) != LD16(menu + oMenu_PrevPage)) {
+        play_sound_sub_8047950(SOUND_UNK_66);
+        ST8(menu + oMenu_DirtyFlag, 0xFF);
+    }
+}
+
+/* sub_8047950(r5 = menu ptr, r10 = toolkit ptr) */
+Next sub_8047950(void) {
+    menu_navigate(R5, R10);
     RETURN_TO_CALLER();
 }
 

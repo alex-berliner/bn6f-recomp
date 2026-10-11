@@ -32,6 +32,127 @@ Next sub_8029D80(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8029EC8 ── */
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet.
+ * Returns whether the flag is set (Z clear) and captures the r3 the callee leaves behind,
+ * because the original reads that r3 when the beq path is taken. */
+static bool test_event_flag_sub_8029EC8(u32 flag, u32 *out_r3) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    *out_r3 = R3;
+    return !ZERO_FLAG();  /* Z set → flag is clear */
+}
+
+/* Result of scanning 5 event flags against a bitmask word. */
+typedef struct {
+    u32 count;     /* number of set flags whose bit is absent from the mask */
+    u32 final_r3;  /* r3 value at function exit (AND result or TestEventFlag leftover) */
+} FlagScanResult;
+
+/* Scan 5 event-flag indices from the table at byte_8029F4C.  For each flag that is
+ * "set" in-game, check whether the corresponding bit (index + 5) is clear in the mask
+ * word pointed to by *(dword_20349A0).  Count those that are clear (set-but-unmasked).
+ *
+ * r3 at exit = result of the AND in the last flag-set iteration, or whatever
+ * TestEventFlag left in r3 if the last iteration took the beq (flag-not-set) path. */
+static FlagScanResult scan_event_flags(void) {
+    u32 count = 0;
+    u32 final_r3 = 0;
+
+    for (u32 i = 0; i < 5; i++) {
+        u32 flag = LD32(A_byte_8029F4C + i * 4);
+        u32 callee_r3;
+
+        if (!test_event_flag_sub_8029EC8(flag, &callee_r3)) {
+            /* Flag not set: original jumps to loop tail with r3 = callee's r3. */
+            final_r3 = callee_r3;
+            continue;
+        }
+
+        /* Flag is set – test whether bit (i + 5) is absent from the mask. */
+        u32 mask_val = LD32(LD32(A_dword_20349A0));
+        u32 bit = (1u << i) << 5;
+        final_r3 = mask_val & bit;
+
+        if (final_r3 == 0)
+            count++;
+    }
+    return (FlagScanResult){ .count = count, .final_r3 = final_r3 };
+}
+
+/* sub_8029EC8() -> r0 (count), r3 (last AND / TestEventFlag leftover) */
+Next sub_8029EC8(void) {
+    FlagScanResult res = scan_event_flags();
+    R0 = res.count;
+    R3 = res.final_r3;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8029FB4 ── */
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode_sub_8029FB4(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_sub_8029FB4(u32 group, u32 index) {
+    R0 = group;
+    R1 = index;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* Z clear means the event flag IS set */
+}
+
+/* register form: calls TestBattleFlag_0x40 outside this file, which has no typed C interface yet */
+static bool battle_flag_0x40_set(void) {
+    GUEST_CALL(TestBattleFlag_0x40);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 get_battle_effects_sub_8029FB4(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+#define EFFECT_BIT_0x200000 0x200000
+
+/* Decide whether an overworld event gate is open during a battle.
+ * Returns 1 if the battle is in mode 5 (scripted), or if all of:
+ *   - the byte at battle-state+0x10 is zero (no active sub-state),
+ *   - EVENT_163 is NOT set,
+ *   - battle flag 0x40 is NOT set,
+ *   - no 0x200000 effect is active,
+ *   - EVENT_E0 IS set.
+ * Returns 0 otherwise. */
+static u32 check_event_gate(u32 battle_state_ptr) {
+    if (get_battle_mode_sub_8029FB4() == 5)
+        return 1;
+
+    if (LD8(battle_state_ptr + 0x10) != 0)
+        return 0;
+
+    if (event_flag_set_sub_8029FB4(1, 0x63))          /* EVENT_163 */
+        return 0;
+
+    if (battle_flag_0x40_set())
+        return 0;
+
+    if (get_battle_effects_sub_8029FB4() & EFFECT_BIT_0x200000)
+        return 0;
+
+    if (!event_flag_set_sub_8029FB4(0, 0xE0))         /* EVENT_E0 */
+        return 0;
+
+    return 1;
+}
+
+/* sub_8029FB4(r5 = battle state pointer) -> r0 = gate open? */
+Next sub_8029FB4(void) {
+    R0 = check_event_gate(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── chipIDIs13f_8029FF4 ── */
 /* chipIDIs13f_8029FF4(r0 = chip ID): return 1 in r0 if the ID matches either
  * entry of the two-word chip ID table at dword_802A02C, else 0.
@@ -215,6 +336,112 @@ static void play_transformation_sound(u32 sound_id)
 Next sound_playCrossTransformationJingle_802A3CC(void) {
     play_transformation_sound(0x1F);
     play_transformation_sound(0x16);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802A40C ── */
+/* sub_802A40C: compute the beast-out counter and store it to dest+6.
+ * Reads battle mode, Navi stats, and global overflow to decide how many
+ * turns the current Navi has left before a beast transformation expires. */
+
+#define ADDR_BEAST_OVERFLOW_BYTE 0x20349B1u
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 guest_get_battle_mode(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls callPossiblyGetBattleEmotion_8015B54 outside this file, which has no typed C interface yet */
+static u8 guest_get_transformation(u8 alliance, u32 battle_state) {
+    R0 = alliance;
+    R6 = battle_state;
+    GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
+    return (u8)R1;
+}
+
+/* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+static u8 guest_get_battle_navi_stats_byte(u8 alliance, u16 stat_id) {
+    R0 = alliance;
+    R1 = stat_id;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return (u8)R0;
+}
+
+/* register form: calls battle_isBeastOverEnabled_802A5A0 outside this file, which has no typed C interface yet */
+static bool guest_is_beast_over_enabled(void) {
+    R4 = 0;
+    GUEST_CALL(battle_isBeastOverEnabled_802A5A0);
+    return R0 != 0;
+}
+
+/* Compute the beast-out counter byte and write it to [dest + 6].
+ * toolkit: pointer to the Toolkit struct (contains BattleStatePtr).
+ * dest:    pointer whose byte at offset 6 receives the computed counter. */
+static void beast_update_out_counter(u32 toolkit, u32 dest) {
+    u32 battle_state = LD32(toolkit + oToolkit_BattleStatePtr);
+
+    /* Link/cross-fade modes (2,3,4,5,8): counter is always 5. */
+    u32 mode = guest_get_battle_mode();
+    if (mode == 2 || mode == 3 || mode == 4 || mode == 5 || mode == 8) {
+        ST8(dest + 6, 5);
+        return;
+    }
+
+    u8 alliance = LD8(battle_state + oBattleState_Unk_0d);
+
+    /* Beast/transform forms 0xA and 0x16 bypass the "beast over" override. */
+    u8 transformation = guest_get_transformation(alliance, battle_state);
+    bool is_beast_form = (transformation == 0xA || transformation == 0x16);
+
+    /* Base counter: Navi stat slot 0xA plus global overflow byte, clamped at 8. */
+    u8 stats_a = guest_get_battle_navi_stats_byte(alliance, 0xA);
+    u8 overflow_byte = LD8(ADDR_BEAST_OVERFLOW_BYTE);
+    u32 total = stats_a + overflow_byte;
+
+    u8 counter;
+    s32 overflow;
+    if ((s32)total > 8) {
+        overflow = (s32)(total - 8);
+        counter  = 8;
+    } else {
+        overflow = 0;
+        counter  = (u8)total;
+    }
+
+    /* Non-beast form and beast-over mode active: force counter to 0xA,
+     * reset overflow to the raw global byte. */
+    if (!is_beast_form && guest_is_beast_over_enabled()) {
+        counter  = 0xA;
+        overflow = (s32)LD8(ADDR_BEAST_OVERFLOW_BYTE);
+    }
+
+    /* Mood-based drain: if Navi's agitation (stat 0x63) is nonzero and
+     * damage taken >= agitation, shave remaining overflow from the counter. */
+    u8 mood = guest_get_battle_navi_stats_byte(alliance, 0x63);
+    if (mood != 0) {
+        u8 damage = LD8(battle_state + oBattleState_Unk_07);
+        if ((s32)damage >= (s32)mood) {
+            s32 reduction = (s32)damage - (s32)mood + 1;
+            overflow -= reduction;
+            if (overflow < 0) {
+                s32 adjusted = (s32)counter + overflow;
+                counter = (adjusted < 2) ? 2 : (u8)adjusted;
+            }
+        }
+    }
+
+    ST8(dest + 6, counter);
+}
+
+/* sub_802A40C(r5 = dest, r10 = toolkit) -> writes dest[6]; r4/r5/r6/r7 preserved */
+Next sub_802A40C(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    beast_update_out_counter(R10, saved_r5);
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
     RETURN_TO_CALLER();
 }
 
@@ -490,6 +717,149 @@ Next battle_pickObjectAnimState_802BF0C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802BF4C ── */
+/* register form: calls one of three behavior handlers outside this file via a
+ * 3-entry Thumb function-pointer table indexed by the byte at [object+3].
+ * The callee receives R0=selector, R1=its own function pointer, and a stack
+ * frame offset by 4 (from the push {lr}), so SP must be decremented first.
+ * The if/else picks the handler; GUEST_CALL cannot do dynamic dispatch. */
+static void dispatch_behavior_vtable(void) {
+    u32 selector = LD8(R5 + 3);
+    R0 = selector;
+    R1 = LD32(A_off_802BF60 + selector);
+
+    /* register form: push {lr} – callee builds its frame relative to SP;
+     * without this the returned stack-pointer values in r2/r6 are offset by 4 */
+    SP -= 4; ST32(SP, LR);
+
+    if (selector == 0)
+        GUEST_CALL(sub_802BF6C);
+    else if (selector == 4)
+        GUEST_CALL(sub_802C044);
+    else
+        GUEST_CALL(sub_802C0A4);
+
+    /* register form: pop {pc} – undo the push so SP is restored */
+    SP += 4;
+}
+
+/* sub_802BF4C: vtable tail-dispatch to a battle-object behavior handler */
+Next sub_802BF4C(void) {
+    dispatch_behavior_vtable();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802BF6C ── */
+#define CHIP_LIST_SIZE 0x2A
+#define GFX_VRAM_PRIMARY 0x600BD00
+#define GFX_PRIMARY_SIZE (CHIP_LIST_SIZE << 6)   /* 0xA80 */
+#define GFX_EXTRA_SIZE 0x20
+
+/* register form: calls ShuffleByteList_PrimaryRNG outside this file, which has no typed C interface yet */
+static void shuffle_byte_list(u32 list_ptr, u32 count, u32 swaps) {
+    R0 = list_ptr; R1 = count; R2 = swaps;
+    GUEST_CALL(ShuffleByteList_PrimaryRNG);
+}
+
+/* register form: calls decodePackedIdFields_802C54C outside this file, which has no typed C interface yet */
+static void decode_packed_id(u32 packed, u32 *type, u32 *sub_id) {
+    R0 = packed;
+    GUEST_CALL(decodePackedIdFields_802C54C);
+    *type = R0;
+    *sub_id = R1;
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_data_sub_802BF6C(u32 chip_id) {
+    R0 = chip_id;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx_transfer_sub_802BF6C(u32 src, u32 dest, u32 size) {
+    R0 = src; R1 = dest; R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* Prepare the chip/soul visual: shuffle the chip pool, select image and palette
+ * sources based on the packed ID at toolkit+0x10, queue two GFX transfers to VRAM,
+ * and mark the operation as "complete, mode 4".
+ * Returns the final R7 (chip data pointer for type 0, otherwise the pool base). */
+static u32 setup_chip_soul_visual(u32 toolkit) {
+    /* Fill the chip pool with sequential indices 0..41, then shuffle them */
+    u32 pool = A_unk_2035320;
+    for (u32 i = 0; i < CHIP_LIST_SIZE; i++)
+        ST8(pool + i, i);
+    shuffle_byte_list(pool, CHIP_LIST_SIZE, CHIP_LIST_SIZE);
+
+    /* Decode the packed chip/soul ID to choose image sources */
+    u32 packed_id = LD16(toolkit + 0x10);
+    u32 image_src, extra_src;
+    u32 r7_val = pool;
+
+    if (packed_id == 0xFFFF) {
+        image_src = A_dword_8733E74;
+        extra_src = A_dword_87343B4;
+    } else {
+        u32 type, sub_id;
+        decode_packed_id(packed_id, &type, &sub_id);
+
+        switch (type) {
+        case 0:
+            r7_val = get_chip_data_sub_802BF6C(sub_id);
+            image_src = LD32(r7_val + 0x24);
+            extra_src = LD32(r7_val + 0x28);
+            break;
+        case 1:
+            image_src = A_dword_8732E54;
+            extra_src = A_dword_8733394;
+            break;
+        case 2:
+            if (sub_id != 0) {
+                image_src = A_dword_87333B4;
+                extra_src = A_dword_87338F4;
+            } else {
+                image_src = A_dword_8733914;
+                extra_src = A_dword_8733E54;
+            }
+            break;
+        case 3: {
+            u32 offset;
+            if ((s32)sub_id <= 1)      offset = 0;
+            else if ((s32)sub_id <= 2) offset = 0x20;
+            else if ((s32)sub_id <= 3) offset = 0x40;
+            else                       offset = 0x60;
+            image_src = A_dword_87343F4;
+            extra_src = A_dword_8734934 + offset;
+            break;
+        }
+        default:
+            image_src = A_dword_8733E74;
+            extra_src = A_dword_87343B4;
+            break;
+        }
+    }
+
+    /* Queue image transfer to VRAM, then extra data (palette/tiles) transfer */
+    queue_gfx_transfer_sub_802BF6C(image_src, GFX_VRAM_PRIMARY, GFX_PRIMARY_SIZE);
+    queue_gfx_transfer_sub_802BF6C(extra_src, A_unk_3001AE0, GFX_EXTRA_SIZE);
+
+    /* Mark operation: clear "in-progress" byte, set mode = 4 (complete) */
+    ST8(toolkit + 0xB, 0);
+    ST8(toolkit + 3, 4);
+
+    return r7_val;
+}
+
+/* sub_802BF6C(r5 = toolkit ptr) -> r7, flags; r0=4 */
+Next sub_802BF6C(void) {
+    R7 = setup_chip_soul_visual(R5);
+    R0 = 4;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── runObjectStateHandler_802C1D4 ── */
 /* runObjectStateHandler_802C1D4: two-way handler dispatcher for the object in R5.
  *
@@ -550,6 +920,61 @@ Next initShuffledOrderTable42_802C1F0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802C328 ── */
+/* sub_802C328: 0802C328-0802C348 THUMB, bn6f asm03_0.s:12588 */
+/*   inputs:  r5 lr
+ *   outputs: nz c v r0 r1 r2 r3 r5 lr
+ *   clobbers (unused by callers): -
+ *   preserved: r5 */
+
+#define FADE_INIT_DURATION  0xC
+#define FADE_INIT_MODE      0x10
+#define FADE_INIT_FLAG      4      /* byte at battle_state+3: marks fade as started */
+#define FADE_ACTIVE_STATE   8      /* word at battle_state: state when fade still running */
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void call_set_screen_fade(u32 duration, u32 mode) {
+    R0 = duration;
+    R1 = mode;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static u32 call_is_screen_fade_active_sub_802C328(bool *out_active) {
+    GUEST_CALL(IsScreenFadeActive);
+    *out_active = !ZERO_FLAG();   /* Z=1 → fade complete (inactive); Z=0 → still fading */
+    return R0;
+}
+
+/*
+ * Advance the battle screen-fade state machine.
+ * If fade hasn't been initiated yet (byte flag == 0), start it and mark flag.
+ * Then poll whether the fade is still in progress; if so, write state 8 to the
+ * battle-object word and return 8.  Otherwise return IsScreenFadeActive's r0.
+ * Flags (nz/c/v) and r1–r3 are left untouched by IsScreenFadeActive's GUEST_CALL.
+ */
+static u32 advance_battle_fade(u32 battle_state) {
+    if (LD8(battle_state + 3) == 0) {
+        call_set_screen_fade(FADE_INIT_DURATION, FADE_INIT_MODE);
+        ST8(battle_state + 3, FADE_INIT_FLAG);
+    }
+
+    bool fade_still_running;
+    u32 fade_r0 = call_is_screen_fade_active_sub_802C328(&fade_still_running);
+
+    if (fade_still_running) {
+        ST32(battle_state, FADE_ACTIVE_STATE);
+        return FADE_ACTIVE_STATE;
+    }
+
+    return fade_r0;
+}
+
+Next sub_802C328(void) {
+    R0 = advance_battle_fade(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_802C348 ── */
 /* sub_802C348(r5 = struct pointer): clear the byte at offset 5 of the struct
  * (e.g. reset a state/counter field to zero). Always returns r0 = 0 with
@@ -558,6 +983,138 @@ Next sub_802C348(void) {
     R0 = 0;
     ST8(R5 + 5, 0);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802C34E ── */
+/* ── Data-table addresses (ROM-side literal-pool entries) ─────────────────── */
+#define NAVI_DISPLAY_BASE   0x20364C0u  /* eS20364C0 – 32-byte navi display struct in EWRAM */
+#define PORTRAIT_TABLE      0x0802C3FCu /* 3 × (src, VRAM dest, size) for navi portraits */
+#define TILE_SRC_TABLE      0x0802C434u /* 3 × tile-sheet source pointer, one per navi type */
+#define BG_XFER_ENTRY       0x0802C424u /* (src, dest, size) for the background tile */
+#define EXTRA_XFER_ENTRY    0x0802C448u /* (src, dest, size) for the extra tile sheet */
+#define TILE_STAGING_BUF    0x2034B30u  /* unk_2034B30 – EWRAM staging for copied tile sheet */
+#define PET_CHIP_VRAM       0x06014000u /* VRAM destination for 80h chip data */
+#define PERMUTED_REC_DEST   0x030016B0u /* byte_30016B0 – WRAM dest for permuted record */
+
+#define NAVI_ENTRY_SIZE   12            /* bytes per entry in the indexed attribute array */
+#define NAVI_DISPLAY_SIZE 0x20          /* bytes to clear in the display struct */
+#define TILE_SHEET_BYTES  (0x36 * 16)   /* 0x360 – size of one navi tile sheet */
+#define BATTLEDISPLAY_FLAG 0xE2u        /* "displayed" sentinel written to +6 */
+
+/* ── Register-form helpers (game functions without a typed C interface) ───── */
+
+/* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
+static void zero_fill(u32 dest, u32 count) {
+    R0 = dest; R1 = count;
+    GUEST_CALL(ZeroFillByByte);
+}
+
+/* register form: calls eStruct200A008_setUnk04 outside this file, which has no typed C interface yet */
+static void navi_struct_set_field4(u16 value) {
+    R0 = value;
+    GUEST_CALL(eStruct200A008_setUnk04);
+}
+
+/* register form: calls eStruct200A008_setUnk06 outside this file, which has no typed C interface yet */
+static void navi_struct_set_field6(u16 value) {
+    R0 = value;
+    GUEST_CALL(eStruct200A008_setUnk06);
+}
+
+/* register form: calls CopyByEightWords outside this file, which has no typed C interface yet */
+static void copy8(u32 src, u32 dest, u32 size) {
+    R0 = src; R1 = dest; R2 = size;
+    GUEST_CALL(CopyByEightWords);
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx(u32 src, u32 dest, u32 size) {
+    R0 = src; R1 = dest; R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u32 cur_pet_navi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return R0;
+}
+
+/* register form: calls getIndexed80hRecordPtr_8028164 outside this file, which has no typed C interface yet */
+static u32 indexed80h_record(u32 navi) {
+    R0 = navi;
+    GUEST_CALL(getIndexed80hRecordPtr_8028164);
+    return R0;
+}
+
+/* register form: calls getPermutedRecord32_8028172 outside this file, which has no typed C interface yet */
+static u32 permuted_record(u32 navi) {
+    R0 = navi;
+    GUEST_CALL(getPermutedRecord32_8028172);
+    return R0;
+}
+
+/* ── Typed implementation ─────────────────────────────────────────────────── */
+
+/* Build the per-navi display struct at eS20364C0 from the battle-attribute
+ * entry selected by the current battle-state navi slot, then queue every
+ * associated GFX transfer (portrait, tile sheet, background, extra sheet,
+ * and the two PET-chip records).
+ *
+ *   attr_base : start of the 12-byte-per-entry navi-attribute array (caller's r0)
+ *   toolkit   : pointer to the game Toolkit struct (caller's r10) */
+static void setup_navi_display(u32 attr_base, u32 toolkit) {
+    /* Select the attribute entry: slot = battle state byte +0xD */
+    u32 bstate = LD32(toolkit + oToolkit_BattleStatePtr);
+    u32 slot   = LD8(bstate + oBattleState_Unk_0d);
+    u32 entry  = attr_base + slot * NAVI_ENTRY_SIZE;
+
+    /* Clear the 32-byte display struct and copy relevant fields */
+    u32 disp = NAVI_DISPLAY_BASE;
+    zero_fill(disp, NAVI_DISPLAY_SIZE);
+
+    ST8(disp + 0x04, LD8(entry));        /* navi sprite-selector byte */
+    ST8(disp + 0x08, LD8(entry + 1));    /* palette / sub-type byte */
+    ST8(disp + 0x0D, LD8(entry + 3));    /* flag byte */
+    ST32(disp + 0x1C, LD32(entry + 4));  /* tile-data word 0 */
+    ST32(disp + 0x14, LD32(entry + 8));  /* tile-data word 1 */
+
+    /* Push the two halfwords of tile-data word 1 into the navi display object */
+    navi_struct_set_field4((u16)LD16(disp + 0x14));
+    navi_struct_set_field6((u16)LD16(disp + 0x16));
+
+    /* Mark the struct as active */
+    ST8(disp + 0x06, BATTLEDISPLAY_FLAG);
+
+    /* Copy the type-specific tile sheet into the VRAM staging buffer */
+    u32 type = LD8(disp + 0x04);
+    u32 tile_src = LD32(TILE_SRC_TABLE + type * 4);
+    copy8(tile_src, TILE_STAGING_BUF, TILE_SHEET_BYTES);
+
+    /* Queue portrait transfer (3-entry table indexed by type, 12 bytes each) */
+    u32 pidx = PORTRAIT_TABLE + type * NAVI_ENTRY_SIZE;
+    queue_gfx(LD32(pidx), LD32(pidx + 4), LD32(pidx + 8));
+
+    /* Queue background tile transfer (single fixed entry; loop index is always 0) */
+    queue_gfx(LD32(BG_XFER_ENTRY), LD32(BG_XFER_ENTRY + 4), LD32(BG_XFER_ENTRY + 8));
+
+    /* Queue extra tile-sheet transfer (fixed entry → VRAM 0x6009400, 0x5E0 bytes) */
+    queue_gfx(LD32(EXTRA_XFER_ENTRY), LD32(EXTRA_XFER_ENTRY + 4), LD32(EXTRA_XFER_ENTRY + 8));
+
+    /* Queue 80h chip GFX for the current PET navi → VRAM 0x6014000 */
+    u32 chip = indexed80h_record(cur_pet_navi());
+    queue_gfx(chip, PET_CHIP_VRAM, 0x80);
+
+    /* Queue permuted record for the current PET navi → WRAM 0x30016B0 */
+    u32 perm = permuted_record(cur_pet_navi());
+    queue_gfx(perm, PERMUTED_REC_DEST, 0x20);
+}
+
+/* ── Thin adapter ─────────────────────────────────────────────────────────── */
+
+/* sub_802C34E(r0 = navi-attribute base, r10 = toolkit) → (r4-r7 preserved) */
+Next sub_802C34E(void) {
+    setup_navi_display(R0, R10);
     RETURN_TO_CALLER();
 }
 

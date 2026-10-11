@@ -181,6 +181,109 @@ Next pet_addCurNaviStat0x3ECapped_803CF3C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803D02C ── */
+/* register form: calls encryption_zenny_8006f78 outside this file, which has no typed C interface yet */
+static bool call_encryption_78(u32 arg0, u32 arg1, u32 arg2, u32 arg3,
+                               u32 arg4, u32 arg5, u32 arg6, u32 arg7,
+                               u32 toolkit) {
+    R0 = arg0; R1 = arg1; R2 = arg2; R3 = arg3;
+    R4 = arg4; R5 = arg5; R6 = arg6; R7 = arg7;
+    R10 = toolkit;
+    GUEST_CALL(encryption_zenny_8006f78);
+    return !ZERO_FLAG();   /* true ⇒ bne taken, check failed */
+}
+
+/* register form: calls encryption_zenny_8006f54 outside this file, which has no typed C interface yet */
+static void call_encryption_54(u32 arg0, u32 arg1, u32 arg2, u32 arg3,
+                               u32 arg4, u32 arg5, u32 arg6, u32 arg7,
+                               u32 toolkit) {
+    R0 = arg0; R1 = arg1; R2 = arg2; R3 = arg3;
+    R4 = arg4; R5 = arg5; R6 = arg6; R7 = arg7;
+    R10 = toolkit;
+    GUEST_CALL(encryption_zenny_8006f54);
+}
+
+/* Write arg0 into ProtectedZenny and re-encrypt, but only when the
+ * zenny integrity check (encryption_zenny_8006f78) signals success. */
+static void protect_zenny(u32 arg0, u32 arg1, u32 arg2, u32 arg3,
+                          u32 arg4, u32 arg5, u32 arg6, u32 arg7,
+                          u32 toolkit) {
+    if (call_encryption_78(arg0, arg1, arg2, arg3,
+                           arg4, arg5, arg6, arg7, toolkit))
+        return;
+
+    /* R0 still holds arg0 (encryption_78 preserves it) */
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    ST32(game_state + oGameState_ProtectedZenny, arg0);
+    call_encryption_54(arg0, game_state, arg2, arg3,
+                       arg4, arg5, arg6, arg7, toolkit);
+}
+
+/* sub_803D02C(r0..r7 = caller state, r10 = Toolkit)
+ *   -> r0..r7 preserved, r1 = last callee result, nz/c/v from callee */
+Next sub_803D02C(void) {
+    protect_zenny(R0, R1, R2, R3, R4, R5, R6, R7, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803D06C ── */
+/* register form: calls encryption_zenny_8006f78 outside this file, which has no typed C interface yet */
+static bool encrypted_zenny_check_failed(u32 zenny, u32 arg1, u32 toolkit) {
+    R0 = zenny; R1 = arg1; R10 = toolkit;
+    GUEST_CALL(encryption_zenny_8006f78);
+    return !ZERO_FLAG();          /* non-zero result → BNE taken → check failed */
+}
+
+/* Return the protected zenny (via toolkit → game state) when the encryption
+ * check passes, or 0 when it fails.  Overwrites R1 with the game-state pointer
+ * on the success path, matching the original's MOV/LDR sequence. */
+static u32 protected_zenny_or_zero(u32 zenny, u32 arg1, u32 toolkit) {
+    if (encrypted_zenny_check_failed(zenny, arg1, toolkit))
+        return 0;
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    /* register form: the original overwrites r1 with the game-state pointer
+       before using it to load the protected zenny */
+    R1 = game_state;
+    return LD32(game_state + oGameState_ProtectedZenny);
+}
+
+/* sub_803D06C(r0 = zenny, r1 = arg1, r10 = toolkit) -> r0 = protected zenny or 0 */
+Next sub_803D06C(void) {
+    R0 = protected_zenny_or_zero(R0, R1, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803D0F4 ── */
+/* register form: calls encryption_bugfrags_8006fd0 outside this file, which has no typed C interface yet */
+static bool encryption_bugfrags_succeeded(u32 arg0, u32 arg1) {
+    R0 = arg0;
+    R1 = arg1;
+    GUEST_CALL(encryption_bugfrags_8006fd0);
+    return !ZERO_FLAG();  /* Z clear → non-zero return → encryption active */
+}
+
+typedef struct {
+    u32 bugfrags;  /* r0: protected bugfrags count, or 0 if encryption active */
+    u32 state_ptr; /* r1: game-state pointer (unchanged on the 0 path) */
+} BugfragsCheck;
+
+/* Return the protected-bugfrags value from the game state, or 0 if encryption is active. */
+static BugfragsCheck get_protected_bugfrags(u32 arg0, u32 arg1, u32 toolkit) {
+    if (encryption_bugfrags_succeeded(arg0, arg1))
+        return (BugfragsCheck){ 0, arg1 };
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    return (BugfragsCheck){ LD32(game_state + oGameState_ProtectedBugfrags), game_state };
+}
+
+/* sub_803D0F4(r0, r1, r10 = toolkit) -> r0 (bugfrags or 0), r1 (game state ptr) */
+Next sub_803D0F4(void) {
+    BugfragsCheck res = get_protected_bugfrags(R0, R1, R10);
+    R0 = res.bugfrags;
+    R1 = res.state_ptr;
+    RETURN_TO_CALLER();
+}
+
 /* ── logoScreen_dispatch_803D1CA ── */
 /* logoScreen_dispatch_803D1CA:
  * Logo screen state machine tick. Reads the current state from
@@ -238,6 +341,94 @@ Next logoScreen_dispatch_803D1CA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803D274 ── */
+/* LogoScreenState field offsets */
+#define oLogoScreenState_Index_00_sub_803D274   0   /* u8: dispatch state index */
+#define oLogoScreenState_Counter    4   /* u8: fade countdown */
+
+#define FADE_NEXT_DURATION  0xC
+#define FADE_NEXT_STRENGTH  0x10
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool fade_not_active(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return ZERO_FLAG();              /* Z=1 → fade not active, beq would be taken */
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void start_next_fade(void) {
+    R0 = FADE_NEXT_DURATION;
+    R1 = FADE_NEXT_STRENGTH;
+    GUEST_CALL(SetScreenFade);
+}
+
+/*
+ * Tick the logo-screen fade countdown.
+ *
+ * If the screen fade is not active, or the decremented counter is still
+ * positive, the countdown simply stops.  Otherwise the next fade is
+ * started and the dispatch index is advanced.
+ *
+ * Returns the final R0 value for the caller:
+ *   – 0x00 on "fade not active" (pass through IsScreenFadeActive's R0;
+ *     the helper's GUEST_CALL already set r1-r3 / c / v).
+ *   – the decremented counter (1..254) on "still counting" (r1-r3 / c / v
+ *     remain from IsScreenFadeActive's GUEST_CALL).
+ *   – 0x0C on "countdown expired" (r1-r3 / c / v remain from
+ *     SetScreenFade's GUEST_CALL; flags are callee-owned).
+ */
+static u32 logo_fade_tick(u32 state) {
+    if (fade_not_active())
+        return 0;
+
+    /* Decrement the u8 countdown at state+4. */
+    u32 counter = LD8(state + oLogoScreenState_Counter) - 1;
+    ST8(state + oLogoScreenState_Counter, counter);
+
+    if ((s32)counter > 0)            /* still counting – stop here */
+        return counter;
+
+    /* Countdown expired: chain the next fade stage. */
+    start_next_fade();
+    ST8(state + oLogoScreenState_Index_00_sub_803D274, FADE_NEXT_DURATION);
+
+    return FADE_NEXT_DURATION;       /* 0x0C */
+}
+
+/* sub_803D274(r5 = LogoScreenState*) -> (r0, nz c v, r1 r2 r3, lr) */
+Next sub_803D274(void) {
+    u32 r0 = logo_fade_tick(R5);
+    R0 = r0;
+    SET_FLAGS_NZ(r0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803D298 ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static u32 call_is_screen_fade_active_sub_803D298(bool *fade_active) {
+    GUEST_CALL(IsScreenFadeActive);
+    *fade_active = ZERO_FLAG();
+    return R0;
+}
+
+/* Skip the logo-finish trigger while a screen fade is running.
+ * When the fade is active, return IsScreenFadeActive's r0 unchanged (the beq path).
+ * Otherwise write 0x10 into the logo-screen index to queue logoScreen_finish. */
+static u32 logo_screen_update(u32 self) {
+    bool fade_active;
+    u32 r0 = call_is_screen_fade_active_sub_803D298(&fade_active);
+    if (fade_active)
+        return r0;
+    ST8(self + oLogoScreenState_Index_00, 0x10);
+    return 0x10;
+}
+
+/* sub_803D298(r5 = LogoScreenState ptr) -> r0 r1 r3 lr, nz c v */
+Next sub_803D298(void) {
+    R0 = logo_screen_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── logoScreen_finish_803D2A6 ── */
 /* logoScreen_finish_803D2A6(self: r5 = *const LogoScreenState):
  * Called when the logo screen finishes: switch the LCD back to the normal
@@ -280,6 +471,26 @@ Next link_getModeSelector_803DD30(void) {
 /* sub_803DE5C: set unk_200A284 (a boolean flag) to 1. */
 Next sub_803DE5C(void) {
     ST32(A_unk_200A284, 1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803DE72 ── */
+/* register form: calls sub_81445F8 outside this file, which has no typed C interface yet;
+   the game function reads r0 (handler pointer) and writes back r0–r3 plus condition flags. */
+static void check_and_call_handler(void) {
+    u32 handler = LD32(A_unk_200A284);
+    R0 = handler;
+    if (handler != 0) {
+        GUEST_CALL(sub_81445F8);
+    } else {
+        SET_FLAGS_NZ(0);   /* replicates tst r0,r0 with r0==0: Z set, N/C/V clear */
+    }
+}
+
+/* sub_803DE72: if the global handler at unk_200A284 is non-null, invoke sub_81445F8
+ * (which reads r0 = that handler); otherwise return with r0 = 0 and flags from tst. */
+Next sub_803DE72(void) {
+    check_and_call_handler();
     RETURN_TO_CALLER();
 }
 

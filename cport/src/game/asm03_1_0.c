@@ -161,6 +161,145 @@ Next doPETEffect_8033fc0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8033FDC ── */
+/* register form: calls reloadCurNaviStatBoosts_813c3ac outside this file, which has no typed C interface yet */
+static void reload_navi_stat_boosts(void) {
+    GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
+}
+
+/* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void clear_event_flag_sub_8033FDC(u32 entry, u32 byte_idx) {
+    R0 = entry; R1 = byte_idx;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+/* register form: calls SetEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void set_event_flag_sub_8033FDC(u32 entry, u32 byte_idx) {
+    R0 = entry; R1 = byte_idx;
+    GUEST_CALL(SetEventFlagFromImmediate);
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool test_event_flag_sub_8033FDC(u32 entry, u32 byte_idx) {
+    R0 = entry; R1 = byte_idx;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG(); /* Z clear → flag is set */
+}
+
+/* register form: calls ClearEventFlagRangeFromImmediate outside this file, which has no typed C interface yet */
+static void clear_event_flag_range(u32 entry, u32 byte_idx, u32 count) {
+    R0 = entry; R1 = byte_idx; R2 = count;
+    GUEST_CALL(ClearEventFlagRangeFromImmediate);
+}
+
+/* register form: calls SetEventFlagRangeFromImmediate outside this file, which has no typed C interface yet */
+static void set_event_flag_range(u32 entry, u32 byte_idx, u32 count) {
+    R0 = entry; R1 = byte_idx; R2 = count;
+    GUEST_CALL(SetEventFlagRangeFromImmediate);
+}
+
+/* register form: calls sub_809F9DC outside this file, which has no typed C interface yet */
+static void call_sub_809F9DC(void) {
+    GUEST_CALL(sub_809F9DC);
+}
+
+/* register form: calls SetCurNaviHPToFull outside this file, which has no typed C interface yet */
+static void set_cur_navi_hp_full(void) {
+    GUEST_CALL(SetCurNaviHPToFull);
+}
+
+/* register form: calls SetBeastOutCounterTo3 outside this file, which has no typed C interface yet */
+static void set_beast_out_counter_3(void) {
+    GUEST_CALL(SetBeastOutCounterTo3);
+}
+
+/* register form: calls ZeroAllNaviStatsMood outside this file, which has no typed C interface yet */
+static void zero_all_navi_stats_mood(void) {
+    GUEST_CALL(ZeroAllNaviStatsMood);
+}
+
+/* register form: calls sub_800A908 outside this file, which has no typed C interface yet */
+static void call_sub_800A908(void) {
+    GUEST_CALL(sub_800A908);
+}
+
+/* register form: calls sub_8001172 outside this file, which has no typed C interface yet */
+static void call_sub_8001172(u32 arg0) {
+    R0 = arg0;
+    GUEST_CALL(sub_8001172);
+}
+
+/* Fully reset the PET Nav state: heal, reload boosts, clear all "active" flags,
+ * reset stats/mood/Beast counter, zero toolkit S2001c04 sub-fields,
+ * and adjust story flags depending on EVENT_224 and EVENT_1008. */
+static void reset_pet_navi_setup(u32 toolkit) {
+    /* Reload stat boosts, then mark PET Nav as no longer active */
+    reload_navi_stat_boosts();
+    clear_event_flag_sub_8033FDC(0x17, 0x1D); /* EVENT_PET_NAVI_ACTIVE */
+    clear_event_flag_sub_8033FDC(0x17, 0x03); /* EVENT_1703 */
+    clear_event_flag_sub_8033FDC(0x01, 0x27); /* EVENT_127 */
+    clear_event_flag_sub_8033FDC(0x17, 0x21); /* EVENT_1721 */
+
+    /* Restore HP and adjust navi state */
+    call_sub_809F9DC();
+    set_cur_navi_hp_full();
+    set_event_flag_sub_8033FDC(0x17, 0x24);   /* EVENT_1724 */
+    clear_event_flag_sub_8033FDC(0x05, 0xDF); /* EVENT_5DF */
+    set_event_flag_sub_8033FDC(0x06, 0x8E);   /* EVENT_68E */
+    clear_event_flag_sub_8033FDC(0x06, 0x8F); /* EVENT_68F */
+    set_event_flag_sub_8033FDC(0x07, 0x40);   /* EVENT_740 */
+    clear_event_flag_sub_8033FDC(0x02, 0x25); /* EVENT_225 */
+
+    /* Beast flags: set them if EVENT_224 is set, otherwise clear */
+    if (test_event_flag_sub_8033FDC(0x02, 0x24)) { /* EVENT_224 */
+        set_event_flag_range(0x01, 0x8E, 9); /* EVENT_18E */
+    } else {
+        clear_event_flag_range(0x01, 0x2A, 0xA); /* EVENT_12A range */
+        clear_event_flag_range(0x01, 0x8E, 9);   /* EVENT_18E range */
+    }
+
+    /* Reset Beast counter, navi stats, and mood */
+    set_beast_out_counter_3();
+    zero_all_navi_stats_mood();
+    call_sub_800A908();
+
+    /* Clear PET Nav session flag */
+    clear_event_flag_sub_8033FDC(0x17, 0x00); /* EVENT_1700 */
+
+    /* Zero two halfword fields in the S2001c04 sub-structure */
+    u32 s2001c04 = LD32(toolkit + oToolkit_S2001c04_Ptr);
+    ST16(s2001c04 + 0x12, 0);
+    ST16(s2001c04 + 0x14, 0);
+
+    /* Reset navi data via sub_8001172 */
+    call_sub_8001172(0);
+
+    /* Set "navi initialized" flag and clear session-state flags */
+    set_event_flag_sub_8033FDC(0x00, 0x79);     /* EVENT_79 */
+    clear_event_flag_sub_8033FDC(0x10, 0x06);   /* EVENT_1006 */
+    clear_event_flag_sub_8033FDC(0x10, 0x09);   /* EVENT_1009 */
+    clear_event_flag_sub_8033FDC(0x10, 0x0A);   /* EVENT_100A */
+    clear_event_flag_sub_8033FDC(0x10, 0x1C);   /* EVENT_101C */
+
+    /* Clear/set flag ranges for quest/state tracking */
+    clear_event_flag_range(0x01, 0xBC, 0xC); /* EVENT_1BC range */
+    clear_event_flag_range(0x01, 0xC8, 6);   /* EVENT_1C8 range */
+    set_event_flag_range(0x01, 0xCE, 6);     /* EVENT_1CE range */
+
+    /* If EVENT_1008 is set, swap 1C8/1CE ranges and re-set 101C */
+    if (test_event_flag_sub_8033FDC(0x10, 0x08)) { /* EVENT_1008 */
+        set_event_flag_sub_8033FDC(0x10, 0x1C);             /* EVENT_101C */
+        set_event_flag_range(0x01, 0xC8, 6);    /* EVENT_1C8 range */
+        clear_event_flag_range(0x01, 0xCE, 6);  /* EVENT_1CE range */
+    }
+}
+
+/* sub_8033FDC(r10 = toolkit ptr) — resets PET Nav and clears related event flags */
+Next sub_8033FDC(void) {
+    reset_pet_navi_setup(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── clearWorkBuffer_2011A40_80341AA ── */
 /* clearWorkBuffer_2011A40_80341AA: clear the 12-byte work buffer at byte_2011A40 (0x2011A40). */
 Next clearWorkBuffer_2011A40_80341AA(void) {
@@ -236,6 +375,54 @@ Next map_setupEnterMapAfterWarp_803423C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80342A4 ── */
+/* Offset within the screen-fade state structure (pointed to by R5) */
+#define FADE_PHASE    1
+#define FADE_TIMER    4
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_sub_80342A4(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();              /* Z set → no fade active */
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void set_screen_fade(u32 phase, u32 intensity) {
+    R0 = phase;
+    R1 = intensity;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* register form: calls sub_80343B0 outside this file, which has no typed C interface yet */
+static void post_fade_update(void) {
+    GUEST_CALL(sub_80343B0);
+}
+
+/* Advance the fade countdown for one frame.
+ * If a fade is active, decrement its timer; when the timer reaches zero,
+ * start the next fade phase at intensity 0x10 and mark the structure
+ * phase byte as 8.  Always runs the post-update routine at the end. */
+static void fade_timer_tick(u32 fade_state) {
+    if (screen_fade_active_sub_80342A4()) {
+        u32 timer = LD16(fade_state + FADE_TIMER);
+        timer -= 1;
+        ST16(fade_state + FADE_TIMER, (u16)timer);
+
+        if ((s32)timer <= 0) {
+            set_screen_fade(4, 0x10);
+            ST8(fade_state + FADE_PHASE, 8);
+        }
+    }
+
+    post_fade_update();               /* final callee sets r0-r3 and flags */
+}
+
+/* sub_80342A4 (r5 = fade state ptr) → void */
+Next sub_80342A4(void) {
+    fade_timer_tick(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80342DC ── */
 /* sub_80342DC(r5 = state byte to set):
  * Write 4 (phase "4") to the byte pointed at by r5; r0 = 4 and flags report a
@@ -290,6 +477,124 @@ Next map_beginEnterMapOnWarpStep4_80342EC(void) {
     R0 = gameState;
     GUEST_CALL(navi_80340F6);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8034C36 ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_sub_8034C36(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();          /* Z set when fade is NOT active */
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_sub_8034C36(u32 group, u32 flag) {
+    R0 = group;
+    R1 = flag;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* Z set when flag is NOT set */
+}
+
+/* register form: calls sub_809E462 outside this file, which has no typed C interface yet */
+static bool func_809E462_nonzero(void) {
+    GUEST_CALL(sub_809E462);
+    return !ZERO_FLAG();          /* Z set when result is 0 */
+}
+
+/* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
+static s32 chatbox_mask_flag(s32 flag) {
+    R0 = (u32)flag;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (s32)R0;
+}
+
+/* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
+static bool cutscene_script_nonnull(void) {
+    GUEST_CALL(IsCutsceneScriptNonNull);
+    return !ZERO_FLAG();          /* Z set when script IS null */
+}
+
+/* Gate check for player movement: returns true only when the screen is fading,
+ * neither the advance-forward nor sliprun event flags are set, sub_809E462
+ * returns zero, chatbox mask 0x80 is clear, and no cutscene script is loaded. */
+static bool player_advance_allowed(void) {
+    if (!screen_fade_active_sub_8034C36())
+        return false;
+    if (event_flag_set_sub_8034C36(0x17, 0x17))       /* EVENT_1717_PLAYER_ADVANCE_FORWARD */
+        return false;
+    if (event_flag_set_sub_8034C36(0x17, 0x3D))       /* EVENT_IN_SLIPRUN_STATE */
+        return false;
+    if (func_809E462_nonzero())
+        return false;
+    if (chatbox_mask_flag(0x80) != 0)
+        return false;
+    if (cutscene_script_nonnull())
+        return false;
+    return true;
+}
+
+/* sub_8034C36() -> r0 (0 or 1), flags from final MOV */
+Next sub_8034C36(void) {
+    R0 = (u32)player_advance_allowed();
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8034C6E ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_sub_8034C6E(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();   /* Z set → fade not active */
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_sub_8034C6E(u8 page, u8 bit) {
+    R0 = page;
+    R1 = bit;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();   /* Z set → flag is clear */
+}
+
+/* register form: calls sub_809E462 outside this file, which has no typed C interface yet */
+static bool sub_809E462_nonzero(void) {
+    GUEST_CALL(sub_809E462);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
+static bool chatbox_mask_active(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
+static bool cutscene_script_present(void) {
+    GUEST_CALL(IsCutsceneScriptNonNull);
+    return !ZERO_FLAG();   /* Z set → script is null */
+}
+
+/* Return 1 if all conditions for player forward-advance are met:
+ * screen fade active, advance flag clear, no blocking state. */
+static u32 can_player_advance_forward(void) {
+    if (!screen_fade_active_sub_8034C6E())
+        return 0;
+    /* EVENT_1717_PLAYER_ADVANCE_FORWARD: page 0x17, bit 0x17 */
+    if (event_flag_set_sub_8034C6E(0x17, 0x17))
+        return 0;
+    if (sub_809E462_nonzero())
+        return 0;
+    if (chatbox_mask_active(0x80))
+        return 0;
+    if (cutscene_script_present())
+        return 0;
+    return 1;
+}
+
+/* sub_8034C6E() -> r0 (1 or 0), flags nz */
+Next sub_8034C6E(void) {
+    R0 = can_player_advance_forward();
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -401,6 +706,42 @@ Next initGameProgressBuffer_803532c(void) {
     ST8(gameState + 6 /* oGameState_GameProgress */, 0);
 
     R3 = i; /* 0x19 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8035424 ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_28_active(void) {
+    R0 = 0;
+    R1 = 0x28;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* Z set ⇒ flag not set */
+}
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static s32 get_battle_effects_sub_8035424(void) {
+    GUEST_CALL(GetBattleEffects);
+    return (s32)R0;
+}
+
+/* register form: calls LoadGFXAnims outside this file, which has no typed C interface yet */
+static void load_gfx_anims(u32 gfx_anim_data) {
+    R0 = gfx_anim_data;
+    GUEST_CALL(LoadGFXAnims);
+}
+
+/* Load death-animation GFX scripts only when EVENT_28 is active
+ * and no battle-effect flag bit 3 (value 8) is set. */
+static void gate_load_death_gfx_anims(void) {
+    if (!event_28_active())
+        return;
+    if (get_battle_effects_sub_8035424() & 8)
+        return;
+    load_gfx_anims(A_off_8035448);
+}
+
+Next sub_8035424(void) {
+    gate_load_death_gfx_anims();
     RETURN_TO_CALLER();
 }
 
