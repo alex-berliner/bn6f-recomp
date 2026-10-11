@@ -226,7 +226,7 @@ captures, small functions lose most of that advantage (69%).
    mutants instead of 0%. On the tree it found nothing new at d73a473 or at ca6189b.
 3. **96 oracle states instead of 24** for installs and the re-review. It killed 34 of the 383 survivors
    (9%), mostly offset, store and boundary. It costs about 4× the oracle's time (a median of 10 s → 40 s).
-4. **`leftovers.py --deep` as the default,** after triaging its 22 open sites (most are helpers'
+4. **`leftovers.py --deep` as the default,** after triaging its 21 open sites at ca6189b (most are helpers'
    unused `return R0;`). TestEventFlag-style mutants killed by the cheap checks: 55% → 94%. This is the
    one bug class that has already reached the game.
 5. **A new-warning check with `-Wextra` (review 1 A23).** It killed 23 survivors, mostly dropped
@@ -249,7 +249,7 @@ captures, small functions lose most of that advantage (69%).
 - The lockstep probe pass (`lockstep --probe`): which routes run a surviving statement. Written, not
   run.
 - More random trials. Not run, for the reason above.
-- The 22 open `--deep` sites. Listed by `tools/abi/leftovers.py --deep`, not triaged.
+- The 21 open `--deep` sites (ca6189b). Listed by `tools/abi/leftovers.py --deep`, not triaged.
 - Linking the 245 renamed functions' captures: not done, because it changes what other workstreams'
   verifies check. Measured only.
 
