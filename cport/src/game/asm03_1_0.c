@@ -137,6 +137,203 @@ Next onUpdateInInternet_8033B1E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8033B80 ── */
+/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+static void call_sub_802FE28_sub_8033B80(u32 a1, u16 a2, int a3, int a4) {
+    R0 = a1;
+    R1 = a2;
+    R2 = a3;
+    R3 = a4;
+    GUEST_CALL(sub_802FE28);
+}
+
+/* Address of the per-index offset table in guest ROM. Indexed at runtime by
+ * (state byte at r5+5) + r0*0x18, so it must be loaded as raw guest memory. */
+#define A_byte_8033BB8 0x08033BB8u
+
+/* Apply the per-index offset and advance the state frame counter.
+ * The byte at (byte_8033BB8 + state_byte + r0*0x18) is shifted left 16 and added
+ * to a fixed base, forming the routine address handed to sub_802FE28.
+ * The state's frame counter (byte at state+5) is then incremented and wrapped at 0x18. */
+static void apply_offset_and_tick(u32 index, u32 state_ptr) {
+    u32 state_byte = LD8(state_ptr + 5);
+    u32 table_index = state_byte + index * 0x18u;
+    u32 offset = LD8(A_byte_8033BB8 + table_index);
+    u32 routine_addr = 0x80028003u + (offset << 16);
+    u32 frame = state_byte + 1;
+
+    call_sub_802FE28_sub_8033B80(routine_addr, 0xC790, 1, 0);
+
+    if (frame >= 0x18)
+        frame = 0;
+    ST8(state_ptr + 5, (u8)frame);
+}
+
+Next sub_8033B80(void) {
+    apply_offset_and_tick(R0, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8033C68 ── */
+/* register form: calls QueueWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_word_aligned_gfx_transfer(const void *src, u32 dest, u32 size) {
+    R0 = (u32)src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueWordAlignedGFXTransfer);
+}
+
+/* register form: calls gfxTransfer_8033DA0 outside this file, which has no typed C interface yet */
+static void gfx_transfer_8033DA0(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(gfxTransfer_8033DA0);
+}
+
+/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+static void call_sub_802FE28_sub_8033C68(u32 a0, u16 a1, int a2, int a3) {
+    R0 = a0;
+    R1 = a1;
+    R2 = a2;
+    R3 = a3;
+    GUEST_CALL(sub_802FE28);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_effect(u32 effect) {
+    R0 = effect;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* Per-frame chip-slot GFX animation.
+ *
+ * state (r5) holds:
+ *   state[6] : current slot index, cycles 0..0x11
+ *   state[7] : spin SFX cooldown timer
+ *
+ * Each call queues a 0x100-byte VRAM tile transfer from the slot's entry in the
+ * per-frame pointer table at A_off_8033D2C into VRAM 0x06017400, dispatches a
+ * small secondary GFX transfer keyed by A_byte_8033CC4[slot], advances the slot
+ * (wrapping at 0x12), triggers two window/HBlank DMA setups via sub_802FE28,
+ * then either decrements the spin timer or plays the spin SFX (0x9A) and
+ * reloads the timer to 0x60.
+ *
+ * Returns the value left in r0 and the value that was in the SUBS at 0x08033CAA,
+ * so the adapter can reproduce the original's final flag state (the SUBS is the
+ * last op to set CV; a subsequent MOV r0, #0x60 may overwrite NZ). */
+typedef struct {
+    u32 r0;          /* final r0 on exit */
+    u32 subs_input;  /* value passed to SUBS r0, #1 (i.e. the pre-decrement timer) */
+} ChipGfxResult;
+
+static ChipGfxResult update_chip_gfx(void *state) {
+    u32 base = (u32)state;
+
+    /* Queue 0x100 bytes from the slot's gfx source into VRAM 0x06017400. */
+    u32 slot = LD8(base + 6);
+    const u32 *src = (const u32 *)LD32(A_off_8033D2C + (slot << 2));
+    queue_word_aligned_gfx_transfer(src, 0x06017400, 0x100);
+
+    /* Dispatch the secondary GFX transfer for this slot. */
+    u32 dispatch = LD8(A_byte_8033CC4 + LD8(base + 6));
+    gfx_transfer_8033DA0(dispatch);
+
+    /* Advance the slot, wrapping from 0x12 back to 0. */
+    u32 next_slot = LD8(base + 6) + 1;
+    if ((s32)next_slot >= 0x12)
+        next_slot = 0;
+    ST8(base + 6, (u8)next_slot);
+
+    /* Two window/HBlank-related DMA setups. */
+    call_sub_802FE28_sub_8033C68(0x801740FD, 0xC7A0, 1, 0);
+    call_sub_802FE28_sub_8033C68(0xA017400D, 0xC7A0, 1, 0);
+
+    /* Decrement the spin timer; play the SFX and reload when it hits zero. */
+    ChipGfxResult res;
+    u32 timer = LD8(base + 7);
+    res.subs_input = timer;
+    u32 decremented = timer - 1;
+    if ((s32)decremented > 0) {
+        ST8(base + 7, (u8)decremented);
+        res.r0 = decremented;
+    } else {
+        play_sound_effect(0x9A);
+        ST8(base + 7, 0x60);
+        res.r0 = 0x60;
+    }
+    return res;
+}
+
+Next sub_8033C68(void) {
+    ChipGfxResult res = update_chip_gfx((void *)R5);
+    R0 = res.r0;
+    /* The SUBS r0, #1 at 0x08033CAA is the last op to set CV. On the sound
+     * path a following MOV r0, #0x60 overwrites NZ with (N=0, Z=0) while
+     * leaving CV; on the decrement path the SUBS flags are final. CMP sets
+     * NZCV like SUBS, and SET_FLAGS_NZ (modelling MOV) sets NZ from its
+     * operand while leaving CV, so this pair reproduces both exit states. */
+    SET_FLAGS_CMP(res.subs_input, 1);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── gfxTransfer_8033DA0 ── */
+/* event flag 0x0163 controls which GFX transfer table entry to use for the current PET/Navi. */
+#define EVENT_163_gfxTransfer_8033DA0 0x0163
+
+/* GFX source addresses per PetNavi index, conditional on event_163 + eByte200AD04. */
+static const u32 GFX_SRC_TABLE[0xD] = {
+    0x086C18A0, 0x086C18E0, 0x086C1920, 0x086C1960,
+    0x086C19A0, 0x086C19E0, 0x086C18E0, 0x086C1920,
+    0x086C1960, 0x086C19A0, 0x086C19E0, 0x086C1A60,
+    0x086C1A20,
+};
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u32 get_cur_pet_navi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return R0 & 0xFF;
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_163_set(void) {
+    R0 = 1;
+    R1 = EVENT_163_gfxTransfer_8033DA0;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls notZero_eByte200AD04 outside this file, which has no typed C interface yet */
+static bool eByte200AD04_nonzero(void) {
+    GUEST_CALL(notZero_eByte200AD04);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_eight_word_aligned_gfx_transfer(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* Pick a GFX source address based on the current PET/Navi and the EVENT_163_gfxTransfer_8033DA0 flag. */
+static u32 pick_gfx_source(u32 navi_index) {
+    /* If event 0x163 is set AND eByte200AD04 is non-zero, override the index to 0xC. */
+    if (event_flag_163_set() && eByte200AD04_nonzero()) {
+        navi_index = 0xC;
+    }
+    return GFX_SRC_TABLE[navi_index];
+}
+
+/* gfxTransfer_8033DA0: queue a 0x20-byte aligned GFX block for the current PET/Navi,
+ * offset by the caller's r0 (a per-frame or per-state tile offset). */
+Next gfxTransfer_8033DA0(void) {
+    u32 offset = R0;
+    u32 src = pick_gfx_source(get_cur_pet_navi()) + offset;
+    queue_eight_word_aligned_gfx_transfer(src, 0x030016D0, 0x20);
+    RETURN_TO_CALLER();
+}
+
 /* ── doPETEffect_8033fc0 ── */
 /* doPETEffect_8033fc0(r0 = PET effect index):
  * Records the requested PET effect in the eS2011E30 state block and
@@ -297,6 +494,145 @@ static void reset_pet_navi_setup(u32 toolkit) {
 /* sub_8033FDC(r10 = toolkit ptr) — resets PET Nav and clears related event flags */
 Next sub_8033FDC(void) {
     reset_pet_navi_setup(R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── navi_80340F6 ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool test_event_flag_navi_80340F6(u32 group, u32 bit) {
+    R0 = group;
+    R1 = bit;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls SetEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void set_event_flag_navi_80340F6(u32 group, u32 bit) {
+    R0 = group;
+    R1 = bit;
+    GUEST_CALL(SetEventFlagFromImmediate);
+}
+
+/* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void clear_event_flag_navi_80340F6(u32 group, u32 bit) {
+    R0 = group;
+    R1 = bit;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+/* register form: calls writeCurPETNaviToS2001c04_Unk07_80010c6 outside this file, which has no typed C interface yet */
+static void write_cur_pet_navi_to_s2001c04(void) {
+    GUEST_CALL(writeCurPETNaviToS2001c04_Unk07_80010c6);
+}
+
+/* register form: calls SetCurPETNavi outside this file, which has no typed C interface yet */
+static void set_cur_pet_navi(u32 slot) {
+    R0 = slot;
+    GUEST_CALL(SetCurPETNavi);
+}
+
+/* register form: calls reloadCurNaviBaseStats_8120df0 outside this file, which has no typed C interface yet */
+static void reload_cur_navi_base_stats(void) {
+    GUEST_CALL(reloadCurNaviBaseStats_8120df0);
+}
+
+/* register form: calls reloadCurNaviStatBoosts_813c3ac outside this file, which has no typed C interface yet */
+static void reload_cur_navi_stat_boosts(void) {
+    GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
+}
+
+/* register form: calls SetCurNaviHPToFull outside this file, which has no typed C interface yet */
+static void set_cur_navi_hp_to_full(void) {
+    GUEST_CALL(SetCurNaviHPToFull);
+}
+
+/* register form: calls enableGhostNavi_80351C8 outside this file, which has no typed C interface yet */
+static void enable_ghost_navi_navi_80340F6(void) {
+    GUEST_CALL(enableGhostNavi_80351C8);
+}
+
+/* register form: calls SetBeastOutCounterTo3 outside this file, which has no typed C interface yet */
+static void set_beast_out_counter_to_3(void) {
+    GUEST_CALL(SetBeastOutCounterTo3);
+}
+
+/* register form: calls ZeroAllNaviStatsMood outside this file, which has no typed C interface yet */
+static void zero_all_navi_stats_mood_navi_80340F6(void) {
+    GUEST_CALL(ZeroAllNaviStatsMood);
+}
+
+/* register form: calls sub_800A908 outside this file, which has no typed C interface yet */
+static void sub_800a908_call(void) {
+    GUEST_CALL(sub_800A908);
+}
+
+/* register form: calls loadGameProgressFromGameProgressBuffer_8035354 outside this file, which has no typed C interface yet */
+static void load_game_progress_from_buffer(u32 slot) {
+    R0 = slot;
+    GUEST_CALL(loadGameProgressFromGameProgressBuffer_8035354);
+}
+
+/* End-of-section Navi setup tail. Called by the adapter so that sub_800A908's
+ * GUEST_CALL leaves the final R0..R3 (and nz/c/v flags) that navi_80340F6
+ * returns to its caller -- per the convention, the registers the helper's
+ * callee left behind stay there as the function's outputs. */
+static void navi_tail(void) {
+    zero_all_navi_stats_mood_navi_80340F6();
+    sub_800a908_call();
+}
+
+/* End-of-section Navi setup. Optionally reloads the chapter save slot, fully
+ * reloads the active PET Navi (or just refreshes stat boosts if no swap is
+ * required), makes sure the "PET navi active" flag is set, refills the navi's
+ * HP, clears a batch of transient event flags, enables the ghost Navi, and
+ * zeroes a few scratch fields in the S2001c04 Navi struct. The mood-zero
+ * and the post-setup routine follow in navi_tail from the adapter. */
+static void navi_80340F6_impl(u32 toolkit_ptr) {
+    u32 gs_ptr = LD32(toolkit_ptr + oToolkit_GameStatePtr);
+    if (LD8(gs_ptr + oGameState_GameProgress) == 0x80)
+        load_game_progress_from_buffer(0);
+
+    if (!test_event_flag_navi_80340F6(0x01, 0x63)) {         /* EVENT 0x01.0x63 (EVENT_163) */
+        write_cur_pet_navi_to_s2001c04();
+        set_cur_pet_navi(0);
+        reload_cur_navi_base_stats();
+        reload_cur_navi_stat_boosts();
+        write_cur_pet_navi_to_s2001c04();
+    } else {
+        reload_cur_navi_stat_boosts();
+    }
+
+    if (!test_event_flag_navi_80340F6(0x17, 0x2A))          /* EVENT_172A */
+        set_event_flag_navi_80340F6(0x17, 0x1D);             /* EVENT_PET_NAVI_ACTIVE */
+
+    set_cur_navi_hp_to_full();
+
+    u32 navi = LD32(toolkit_ptr + oToolkit_S2001c04_Ptr);
+    ST32(navi + 0x24, 0);
+    ST32(navi + 0x28, 0);
+
+    clear_event_flag_navi_80340F6(0x17, 0x0A);               /* EVENT_170A */
+    clear_event_flag_navi_80340F6(0x17, 0x0B);               /* EVENT_170B */
+    clear_event_flag_navi_80340F6(0x17, 0x09);               /* EVENT_1709 */
+    clear_event_flag_navi_80340F6(0x04, 0xE9);               /* EVENT_4E9 */
+    clear_event_flag_navi_80340F6(0x05, 0xF2);               /* EVENT_5F2 */
+    set_event_flag_navi_80340F6  (0x05, 0xDF);               /* EVENT_5DF */
+
+    enable_ghost_navi_navi_80340F6();
+
+    clear_event_flag_navi_80340F6(0x17, 0x21);               /* EVENT_1721 */
+    clear_event_flag_navi_80340F6(0x17, 0x00);               /* EVENT_1700 */
+
+    u32 navi2 = LD32(toolkit_ptr + oToolkit_S2001c04_Ptr);
+    ST16(navi2 + 0x12, 0);
+    ST16(navi2 + 0x14, 0);
+
+    set_beast_out_counter_to_3();
+}
+
+Next navi_80340F6(void) {
+    navi_80340F6_impl((u32)R10);
+    navi_tail();
     RETURN_TO_CALLER();
 }
 
@@ -631,6 +967,74 @@ Next IsNotSlipRunningAndNotInCutscene(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8034F68 ── */
+/* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
+static bool cutscene_script_non_null_sub_8034F68(void) {
+    GUEST_CALL(IsCutsceneScriptNonNull);
+    return !ZERO_FLAG();          /* IsCutsceneScriptNonNull: Z clear if non-null */
+}
+
+/* register form: calls checkCoordinateTrigger_8031a7a outside this file, which has no typed C interface yet.
+ * Writes its trigger-id result into *out_id (game semantics: the second return register). */
+static void check_coordinate_trigger_sub_8034F68(u32 coords, u32 *out_id) {
+    R0 = coords;
+    GUEST_CALL(checkCoordinateTrigger_8031a7a);
+    *out_id = R1;
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool event_flag_set(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();          /* TestEventFlag: Z set if the flag is clear */
+}
+
+/* register form: calls StartCutscene outside this file, which has no typed C interface yet */
+static void start_cutscene_sub_8034F68(u32 script_addr, u32 param) {
+    R0 = script_addr;
+    R1 = param;
+    GUEST_CALL(StartCutscene);
+}
+
+/* Door-entrance cutscene trigger: when the player's overworld position sits on a door,
+ * if the per-door event flag is set and the door's slot is enabled, start the entrance
+ * cutscene script for that door (slot id 1..15). */
+static void maybe_start_entrance_cutscene(u32 toolkit_r10, u32 saved_r2) {
+    (void)saved_r2;               /* caller-preserved; original never wrote r2 here */
+
+    if (cutscene_script_non_null_sub_8034F68())
+        return;
+
+    u32 game_state = LD32(toolkit_r10 + oToolkit_GameStatePtr);
+    u32 player_obj = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+    u32 coords = player_obj + 0x1C;
+
+    u32 trigger_id;
+    check_coordinate_trigger_sub_8034F68(coords, &trigger_id);
+
+    if ((s32)trigger_id < 1 || (s32)trigger_id > 0xF)
+        return;
+
+    u32 flag = 0x16F0 + trigger_id;
+    if (!event_flag_set(flag))
+        return;
+
+    u32 slot_addr = A_unk_2011EA0 + trigger_id * 4;
+    if (LD8(slot_addr) == 0)
+        return;
+
+    start_cutscene_sub_8034F68(A_CutsceneScriptEntranceInteract_8098384, LD32(slot_addr));
+}
+
+Next sub_8034F68(void) {
+    /* inputs: r4..r12, lr; outputs: r2, r4..r12 */
+    u32 r2_in = R2;
+    u32 r10_in = R10;
+    R2 = r2_in;     /* caller-preserved on this path; original leaves r2 unchanged */
+    maybe_start_entrance_cutscene(r10_in, r2_in);
+    RETURN_TO_CALLER();
+}
+
 /* ── tryStartNotificationCutscene_8035054 ── */
 /* tryStartNotificationCutscene_8035054: decide whether to start the "notification" cutscene.
  * Returns r0 = 0 if the cutscene was started, r0 = 1 if it was blocked. */
@@ -747,6 +1151,39 @@ static void enable_ghost_navi(void) {
 /* enableGhostNavi_80351C8: r4-r7 preserved, clobbers r0-r3/lr/nz/c/v */
 Next enableGhostNavi_80351C8(void) {
     enable_ghost_navi();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803522E ── */
+/* register form: calls SetEventFlag outside this file, which has no typed C interface yet */
+static void set_event_flag_sub_803522E(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* Scan the drive-out event table in guest RAM and set the flag whose trigger
+ * matches `event`. The table at A_word_8035250 is a flat array of {trigger,
+ * flag} u16 pairs, terminated by a 0xFFFF trigger entry.
+ * Returns the final r1 value left in the guest register: the 0xFFFF sentinel
+ * that was loaded on the iteration which took the branch to return. */
+static u16 handle_drive_out_events(u32 event) {
+    u32 p = A_word_8035250;
+    u16 r1;
+    for (;;) {
+        r1 = (u16)LD16(p);
+        if (r1 == 0xFF) break;
+        if (event == r1) {
+            set_event_flag_sub_803522E((u16)LD16(p + 2));
+        }
+        p += 4;
+    }
+    return r1;
+}
+
+Next sub_803522E(void) {
+    u16 r1 = handle_drive_out_events(R0);
+    R1 = r1;
+    SET_FLAGS_CMP(r1, 0xFF);
     RETURN_TO_CALLER();
 }
 

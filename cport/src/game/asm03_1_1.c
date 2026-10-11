@@ -8,6 +8,55 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_803C352 ── */
+/* Clear the 0x48-byte state block at A_word_2006770, fill two 0x20-byte regions with
+ * 0xE5E5 halfwords, write the terminator byte 0xE6 after each region, then call
+ * sub_802D150. */
+
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word(void *dst, u32 num_bytes) {
+    R0 = (u32)dst;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls HalfwordFill outside this file, which has no typed C interface yet */
+static void halfword_fill(void *dst, u32 num_halfwords, u32 pattern) {
+    R0 = (u32)dst;
+    R1 = num_halfwords;
+    R2 = pattern & 0xFFFF;
+    GUEST_CALL(HalfwordFill);
+}
+
+/* register form: calls sub_802D150 outside this file, which has no typed C interface yet */
+static void call_sub_802D150(void) {
+    GUEST_CALL(sub_802D150);
+}
+
+/* Initialize the state block: zero it, fill two halfword regions, write terminator
+ * bytes, then invoke sub_802D150 via the register-form helper. */
+static void init_state_block(void) {
+    void *block = (void *)A_word_2006770;
+    void *region_a = (u8 *)block + 0x08;
+    void *region_b = (u8 *)block + 0x28;
+
+    zero_fill_by_word(block, 0x48);
+    halfword_fill(region_a, 0x20, 0xE5E5);
+    ST8((u32)region_a + 0x10, 0xE6);
+    halfword_fill(region_b, 0x20, 0xE5E5);
+    ST8((u32)region_b + 0x16, 0xE6);
+
+    call_sub_802D150();
+}
+
+/* sub_803C352: clear & prefill the state block at A_word_2006770, then call sub_802D150.
+ * The original's pop {pc} returns directly to the caller, so the C/V outputs are
+ * whatever sub_802D150 leaves behind. */
+Next sub_803C352(void) {
+    init_state_block();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803C3E0 ── */
 /* sub_803C3E0: test the flag byte at word_2006770+2 and return it.
  * r0 = flag byte; Z set when it is zero, N set when bit 7 is set. */

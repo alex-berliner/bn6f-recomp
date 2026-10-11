@@ -275,6 +275,23 @@ Next sub_802F994(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802FB10 ── */
+/* register form: calls sub_8001158 outside this file, which has no typed C interface yet */
+static void call_sub_8001158_sub_802FB10(u32 data) {
+    R0 = data;
+    GUEST_CALL(sub_8001158);
+}
+
+/* Load the title-screen VRAM blob through the game's loader. */
+static void load_title_blob(void) {
+    call_sub_8001158_sub_802FB10(A_byte_802FB20);
+}
+
+Next sub_802FB10(void) {
+    load_title_blob();
+    RETURN_TO_CALLER();
+}
+
 /* ── startScreen_playSoundIfFlagSet_802FB64 ── */
 /* startScreen_playSoundIfFlagSet_802FB64(self: *const StartScreen r5):
  * If the start screen's status halfword has bit 0x80 set, run the sound/data
@@ -434,6 +451,35 @@ Next startScreen_runTriggerHandler_802FC9C(void) {
         R0 = A_byte_802FCB4;
         GUEST_CALL(sub_8001158);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── startScreen_initGfx_802FCC0 ── */
+/* register form: calls zeroFillVRAM outside this file, which has no typed C interface yet */
+static void zero_fill_vram(void) {
+    GUEST_CALL(zeroFillVRAM);
+}
+
+/* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
+static void decomp_and_copy_data(const u32 *init_refs) {
+    R0 = (u32)init_refs;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* register form: calls ZeroFillGFX30025c0 outside this file, which has no typed C interface yet */
+static void zero_fill_gfx_30025c0(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+/* Decompress and copy the title-screen graphics tables, then clear the GFX region. */
+static void start_screen_init_gfx(const u32 *init_refs) {
+    zero_fill_vram();
+    decomp_and_copy_data(init_refs);
+    zero_fill_gfx_30025c0();
+}
+
+Next startScreen_initGfx_802FCC0(void) {
+    start_screen_init_gfx((const u32 *)A_initRefs_802FCD8);
     RETURN_TO_CALLER();
 }
 
@@ -1257,6 +1303,114 @@ Next sub_8031122(void) {
     R6 = stateObj;
     GUEST_CALL(sprite_worldToScreenPos_80310EC);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80311F4 ── */
+/* register form: calls sub_8031122 with current R0,R1,R2; no typed C interface yet */
+static void call_8031122(void) {
+    GUEST_CALL(sub_8031122);
+}
+
+/* register form: calls sub_8031570(r2=0,r3=0x20,r4=0x20,r5=0); no typed C interface yet */
+static u32 call_8031570(void) {
+    R2 = 0; R4 = 0x20; R3 = 0x20; R5 = 0;
+    GUEST_CALL(sub_8031570);
+    return R0;
+}
+
+/* register form: calls sub_80311B6 with current R0,R5; no typed C interface yet */
+static void call_80311B6(void) {
+    GUEST_CALL(sub_80311B6);
+}
+
+/* register form: calls sub_8030E14(r2=0,r3=0x20,r4=0x20,r5=0,r6=1); no typed C interface yet */
+static void call_8030E14(void) {
+    R2 = 0; R4 = 0x20; R3 = 0x20; R5 = 0; R6 = 1;
+    GUEST_CALL(sub_8030E14);
+}
+
+/* register form: calls camera_moveByDelta_80310B0; no typed C interface yet */
+static void call_camera_moveByDelta(s32 dx, s32 dy) {
+    R0 = (u32)dx; R1 = (u32)dy;
+    GUEST_CALL(camera_moveByDelta_80310B0);
+}
+
+/* "neg ; lsr #1 ; neg" on a signed value, matching the original's bit pattern. */
+static s32 neg_lsr1_neg(s32 v) {
+    u32 a = 0u - (u32)v;
+    a >>= 1;
+    return (s32)(0u - a);
+}
+
+typedef struct {
+    u32 r0, r1, r2, r5, r12;
+} S119F4Out;
+
+/* register form: the callees (notably sub_80311B6, and sub_8031122) write through
+ * their R0 pointer into the saved {r0-r2,r5} stack frame, so we must use the real
+ * guest stack to reproduce the exact memory writes and the final popped values
+ * of R0/R1/R2/R5. R12 is intentionally not pushed, matching the original. */
+static S119F4Out sub_80311F4_body(void) {
+    /* push {lr}; push {r0-r2,r5} */
+    SP -= 4;
+    ST32(SP, LR);
+    SP -= 16;
+    ST32(SP,     R0);
+    ST32(SP + 4, R1);
+    ST32(SP + 8, R2);
+    ST32(SP + 12, R5);
+
+    call_8031122();
+
+    call_8031570();
+    R3 = 0;
+    SET_FLAGS_CMP(R0, 0u);
+    if (!ZERO_FLAG()) {
+        /* pop {r0-r2,r5}, then push {r0-r2,r5} again (net SP unchanged;
+         * the frame sits in the same memory so callee writes through R0
+         * land in it, matching the original). */
+        R0 = LD32(SP);
+        R1 = LD32(SP + 4);
+        R2 = LD32(SP + 8);
+        R5 = LD32(SP + 12);
+        SP += 16;
+        SP -= 16;
+        ST32(SP,     R0);
+        ST32(SP + 4, R1);
+        ST32(SP + 8, R2);
+        ST32(SP + 12, R5);
+
+        call_80311B6();
+        call_8030E14();
+        s32 dx = neg_lsr1_neg((s32)R0);
+        s32 dy = neg_lsr1_neg((s32)R1);
+        call_camera_moveByDelta(dx, dy);
+    }
+
+    /* loc_8031234: mov r0,r12 ; mov r1,#3 ; orr r0,r1 ; mov r12,r0
+     * (ORR sets NZ from r12|3; POP right after doesn't touch flags). */
+    R12 |= 3;
+
+    /* pop {r0-r2,r5,pc} */
+    R0 = LD32(SP);
+    R1 = LD32(SP + 4);
+    R2 = LD32(SP + 8);
+    R5 = LD32(SP + 12);
+    LR = LD32(SP + 16);
+    SP += 20;
+
+    return (S119F4Out){ R0, R1, R2, R5, R12 };
+}
+
+Next sub_80311F4(void) {
+    S119F4Out o = sub_80311F4_body();
+    R0 = o.r0;
+    R1 = o.r1;
+    R2 = o.r2;
+    R5 = o.r5;
+    R12 = o.r12;
+    SET_FLAGS_NZ(o.r12);
     RETURN_TO_CALLER();
 }
 

@@ -949,6 +949,111 @@ Next cutsceneCamera_focusCameraOnPlayerMaybe_8036faa(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CutsceneCameraCmd_simple_scroll ── */
+/* register form: calls ReadCutsceneCameraScriptHalfword outside this file, which has no typed C interface yet */
+static u16 read_script_halfword(u32 offset, u32 script_ptr) {
+    R0 = offset;
+    R1 = script_ptr;
+    GUEST_CALL(ReadCutsceneCameraScriptHalfword);
+    return (u16)R0;
+}
+
+/* register form: calls ReadCutsceneCameraScriptSignedHalfword outside this file, which has no typed C interface yet */
+static s16 read_script_signed_halfword(u32 offset, u32 script_ptr) {
+    R0 = offset;
+    R1 = script_ptr;
+    GUEST_CALL(ReadCutsceneCameraScriptSignedHalfword);
+    return (s16)R0;
+}
+
+/* Result of one cutscene "simple scroll" command: the values it leaves in the
+ * guest output registers, plus operands for a single ADDS that reproduces
+ * the path's CPSR (the original's last flag-setting instruction). */
+typedef struct {
+    u32 r0;
+    u32 r1;
+    u32 r3;
+    u32 r6;
+    u32 add_a;
+    u32 add_b;
+} SimpleScrollResult;
+
+/* Read a signed 8.8 fixed-point delta from script[script_offset], add it to
+ * the u32 camera field at `field_offset`, and return the field's pre-scroll
+ * value (the last call's return is the Z one the original leaves in r3). */
+static u32 scroll_axis(u32 camera, u32 field_offset, u32 script_offset, u32 script_ptr) {
+    s16 delta = read_script_signed_halfword(script_offset, script_ptr);
+    u32 prev = LD32(camera + field_offset);
+    ST32(camera + field_offset, (u32)((s32)delta << 8) + prev);
+    return prev;
+}
+
+/* Cutscene camera "simple scroll" command.
+ *   - First tick (CommandInitialized==0): mark live, load the tick count from
+ *     script halfword at offset 1.
+ *   - Every tick: read signed 8.8 fixed-point deltas from offsets 3/5/7 and add
+ *     them into the camera's X/Y/Z (u32 add in-place).
+ *   - Decrement the timer. When it reaches zero or below, clear the initialised
+ *     flag and advance the script cursor by 9 bytes (1 cmd + 8 data); otherwise
+ *     leave the cursor alone.
+ *   - Always returns r0=1. */
+static SimpleScrollResult cutscene_camera_simple_scroll(u32 r1_in, u32 info_ptr, u32 toolkit_ptr) {
+    if (LD8(info_ptr + oCutsceneCameraInfo_CommandInitialized) == 0) {
+        ST8(info_ptr + oCutsceneCameraInfo_CommandInitialized, TRUE);
+        ST16(info_ptr + oCutsceneCameraInfo_Timer, read_script_halfword(1, r1_in));
+    }
+
+    u32 camera = LD32(toolkit_ptr + oToolkit_CameraPtr);
+    scroll_axis(camera, oCamera_X, 3, r1_in);
+    scroll_axis(camera, oCamera_Y, 5, r1_in);
+    u32 z_pre = scroll_axis(camera, oCamera_Z, 7, r1_in);
+
+    /* u16 timer stored zero-extended; the original does a 32-bit sub so the
+     * subsequent signed CMP #0 sees the full 32-bit result. */
+    u32 timer = LD16(info_ptr + oCutsceneCameraInfo_Timer) - 1;
+    ST16(info_ptr + oCutsceneCameraInfo_Timer, (u16)timer);
+    bool done = ((s32)timer <= 0);
+
+    if (done) {
+        ST8(info_ptr + oCutsceneCameraInfo_CommandInitialized, FALSE);
+    }
+
+    SimpleScrollResult r;
+    r.r0 = 1;
+    r.r1 = done ? (r1_in + 9) : r1_in;
+    r.r3 = z_pre;
+    r.r6 = camera;
+    if (done) {
+        /* Last flag-setter on this path: ADDS r1, r1, #9 (r1 is the input r1,
+         * untouched by the preceding mov r0,#0 / strb r0,...). */
+        r.add_a = r1_in;
+        r.add_b = 9;
+    } else {
+        /* Last flag-setter is the CMP r0, #0 just before the not-taken BGT
+         * (the trailing MOV r0, #1 is a plain MOV and does not change flags).
+         * With timer_after > 0 that CMP leaves N=0, Z=0, C=1, V=0.
+         * ADDS(2, 0xFFFFFFFF) = 0x00000001 with carry-out 1, signed overflow
+         * +2 + (-1) = +1 -> no overflow: C=1, V=0, N=0, Z=0 -- the same CPSR. */
+        r.add_a = 2;
+        r.add_b = 0xFFFFFFFFu;
+    }
+    return r;
+}
+
+Next CutsceneCameraCmd_simple_scroll(void) {
+    /* inputs: r1 r2 r3 r5 r10 lr
+     * outputs: nz c v r0 r1 r2 r3 r6 lr
+     * clobbers: -
+     * preserved: r2 */
+    SimpleScrollResult r = cutscene_camera_simple_scroll(R1, R5, R10);
+    R0 = r.r0;
+    R1 = r.r1;
+    R3 = r.r3;
+    R6 = r.r6;
+    SET_FLAGS_ADD(r.add_a, r.add_b);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCameraCmd_end ── */
 /* CutsceneCameraCmd_end:
  * "end" camera script command: finish the current camera command and signal
