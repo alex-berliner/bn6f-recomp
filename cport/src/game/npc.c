@@ -1387,3 +1387,27 @@ Next ReadNPCScriptHalfword(void) {
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
+
+/* ── sub_809F90C ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_1708_set(void) {
+    R0 = 0x17;  /* EVENT_1708 byte index */
+    R1 = 0x08;  /* EVENT_1708 bit index  */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();  /* Z set if flag is clear, so !Z means flag is set */
+}
+
+/* Reset the state variable at byte_2000210 (u8 at +0, u32 at +8)
+ * if event flag 0x1708 has NOT yet been triggered. */
+static void clear_battle_state_if_pending(void) {
+    if (event_1708_set())
+        return;  /* flag already set – nothing to reset */
+    ST8(A_byte_2000210, 0);
+    ST32(A_byte_2000210 + 8, 0);
+}
+
+/* sub_809F90C() – clobbers r0, r1, nz; outputs c, v, r3 (left by GUEST_CALL) */
+Next sub_809F90C(void) {
+    clear_battle_state_if_pending();
+    RETURN_TO_CALLER();
+}

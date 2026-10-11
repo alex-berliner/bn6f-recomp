@@ -8,6 +8,197 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── t1_0x5_tempAttackObject_80B8CD8 ── */
+/* register form: tail-dispatch to the temp-attack object's state handler.
+ * sub_80B8CF8 / sub_80B8DA6 / object_freeMemory have no typed C interface yet. */
+static void call_temp_attack_handler(u32 state, u32 handler_addr, u32 obj_ptr) {
+    R0 = state;
+    R1 = handler_addr;
+    R5 = obj_ptr;
+    switch (state) {
+    case 0: GUEST_CALL(sub_80B8CF8);      break;
+    case 4: GUEST_CALL(sub_80B8DA6);      break;
+    case 8: GUEST_CALL(object_freeMemory); break;
+    }
+}
+
+/* Jump-table dispatch: look up the handler for the object's current state
+ * and tail-call it, passing state in r0 and handler address in r1. */
+static void temp_attack_dispatch(u32 obj_ptr) {
+    u32 state = (u32)LD8(obj_ptr + oBattleObject_CurState);
+    u32 handler_addr = LD32(A_off_80B8CEC + state);
+    call_temp_attack_handler(state, handler_addr, obj_ptr);
+}
+
+Next t1_0x5_tempAttackObject_80B8CD8(void) {
+    temp_attack_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80B8CF8 ── */
+/* Navi/battle-sprite spawn table: each entry is 5 bytes.
+ * [0] sprite tile ID, [1] animation data, [2] palette base,
+ * [3] transform sprite ID, [4] arm-position index. */
+#define NAVI_SPRITE_TABLE       A_byte_80B8BD4
+#define SPRITE_POOL_DEFAULT     0x80
+#define PARAM_GLIDE             0xF
+#define NAMEID_ROLL_FIRST       0x1AC
+#define NAMEID_ROLL_LAST        0x1B5
+#define TRANSFORM_SPRITE_ID     0xF8
+#define NAMEID_GLIDE_NO_ARM     0x1A0
+#define NAMEID_GLIDE_ARM_A      0x1B6
+
+/* ------------------------------------------------------------------ */
+
+/* register form: sprite_load is called with R4 = table entry in the original;
+ * the callee may read R4 internally, and the caller's R4 is protected by push/pop. */
+static void call_sprite_load(u32 pool, u32 tileID, u32 animData, u32 tableEntry) {
+    R0 = pool;
+    R1 = tileID;
+    R2 = animData;
+    R4 = tableEntry;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_sprite_loadAnimationData(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void call_sprite_noShadow(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+static u8 call_GetBattleNaviStatsByte(u8 alliance, u32 statOffset) {
+    R0 = alliance;
+    R1 = statOffset;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return (u8)R0;
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_sprite_setAnimation(u32 animID) {
+    R0 = animID;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void call_sprite_setPalette(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: original passes arm-index from [r4,#4] and table ptr in R4
+ * to getBattleArmPositionMaybe_8018810, which returns X in R0, Y in R1 */
+static void call_get_arm_position(u32 tableEntry, u32 nameID, u32 armIdx,
+                                  u8 alliance, u8 dirFlip,
+                                  u32 *outX, u32 *outY) {
+    R0 = nameID;
+    R1 = armIdx;
+    R2 = alliance;
+    R3 = dirFlip;
+    R4 = tableEntry;
+    GUEST_CALL(getBattleArmPositionMaybe_8018810);
+    *outX = R0;
+    *outY = R1;
+}
+
+/* register form: sub_80B8DA6 reads R4 (table entry) internally; original keeps R4
+ * = table entry until after the pop restores the caller's value */
+static void call_post_init_sub_80B8DA6(u32 tableEntry) {
+    R4 = tableEntry;
+    GUEST_CALL(sub_80B8DA6);
+}
+
+/* ------------------------------------------------------------------ */
+
+/* Spawn and initialise a battle-navi sprite from the per-Param1 entry in the
+ * navi-sprite table, set animation, palette, arm/velocity offset, and state. */
+static void init_battle_navi_sprite(u32 obj) {
+    u32 param1 = LD8(obj + oBattleObject_Param1);
+    u32 entry  = NAVI_SPRITE_TABLE + param1 * 5;
+
+    /* Load sprite, animation data, disable shadow. */
+    call_sprite_load(SPRITE_POOL_DEFAULT, LD8(entry), LD8(entry + 1), entry);
+    call_sprite_loadAnimationData();
+    call_sprite_noShadow();
+
+    /* Determine sprite ID: roll-family navis that are currently transformed
+     * get a fixed override (0xF8); otherwise use the table's byte [3]. */
+    u32 related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+    u32 nameID  = LD16(related + oBattleObject_NameID);
+
+    u8 sprId = LD8(entry + 3);
+    if (nameID >= NAMEID_ROLL_FIRST && nameID <= NAMEID_ROLL_LAST) {
+        u8 alliance  = LD8(obj + oBattleObject_Alliance);
+        u8 transform = call_GetBattleNaviStatsByte(alliance, oNaviStats_Transformation);
+        if (transform)
+            sprId = TRANSFORM_SPRITE_ID;
+    }
+    ST8(obj + oBattleObject_Unk_0c, sprId);
+
+    /* Set initial animation from Param2. */
+    u8 anim = LD8(obj + oBattleObject_Param2);
+    ST8(obj + oBattleObject_CurAnim, anim);
+    ST8(obj + oBattleObject_CurAnimCopy, anim);
+    call_sprite_setAnimation(anim);
+    call_sprite_loadAnimationData();
+
+    /* Mark object as visible (flag bit 1). */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Palette: table base + per-object Param4 offset. */
+    call_sprite_setPalette(LD8(entry + 2) + LD8(obj + oBattleObject_Param4));
+
+    /* Reset velocities, then compute arm/velocity offset (16.16 fixed-point). */
+    ST32(obj + oBattleObject_XVelocity, 0);
+    ST32(obj + oBattleObject_ZVelocity, 0);
+
+    if (param1 == PARAM_GLIDE) {
+        /* Glide-type spawn: hard-coded offsets per related navi nameID. */
+        if (nameID != NAMEID_GLIDE_NO_ARM) {
+            u32 ax, az;
+            if (nameID == NAMEID_GLIDE_ARM_A) {
+                ax = 0xB;
+                az = (u32)(s32)(-7);
+            } else {
+                ax = 0;
+                az = 0xD;
+            }
+            ST32(obj + oBattleObject_XVelocity, ax << 16);
+            ST32(obj + oBattleObject_ZVelocity, az << 16);
+        }
+    } else {
+        /* Normal spawn: arm index from table byte [4] drives position lookup. */
+        u8 armIdx = LD8(entry + 4);
+        if (armIdx != 0) {
+            u32 ax, az;
+            call_get_arm_position(entry, nameID, armIdx,
+                                  LD8(obj + oBattleObject_Alliance),
+                                  LD8(obj + oBattleObject_DirectionFlip),
+                                  &ax, &az);
+            ST32(obj + oBattleObject_XVelocity, ax << 16);
+            ST32(obj + oBattleObject_ZVelocity, az << 16);
+        }
+    }
+
+    /* Transition into the update state and run post-init. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+    call_post_init_sub_80B8DA6(entry);
+}
+
+/* ------------------------------------------------------------------ */
+
+/* sub_80B8CF8(obj = R5) -> r0-r3 (from sub_80B8DA6), nzcv; preserves caller's r4. */
+Next sub_80B8CF8(void) {
+    u32 saved_r4 = R4;
+    init_battle_navi_sprite(R5);
+    R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
 /* ── spawn_t1_0x5_tempAttackObject_80B8E30 ── */
 /* register form: calls object_spawnType1 outside this file, which has no typed C interface yet */
 static u32 call_spawn_type1(u32 x, u32 y, u32 z, u32 params, u32 *leftover_r2) {
@@ -286,6 +477,171 @@ Next battle_stateEnter_loadSprite0x80_80C4B48(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C4B84 ── */
+/* sub_80C4B84: refresh a battle object – update its animation, alliance gate,
+ * mirror related-object state (extra vars, direction/sprite flip), and
+ * handle emotion data before freeing memory. */
+
+#define ANIM_ACTIVE     0x02u
+#define ANIM_CLEAR_MASK 0xFDu  /* ~ANIM_ACTIVE */
+#define REL_FLAG_4      0x04u
+#define EXTRA_VARS_OFF  0x34u
+
+/* register form: calls sub_80C4C52 outside this file, which has no typed C interface yet */
+static u32 get_new_anim(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(sub_80C4C52);
+    return R1;
+}
+
+/* register form: calls sub_800EB6C outside this file, which has no typed C interface yet */
+static u32 check_alliance_valid(u32 alliance) {
+    R0 = alliance;
+    GUEST_CALL(sub_800EB6C);
+    return R0;
+}
+
+/* register form: calls nullsub_10 outside this file, which has no typed C interface yet */
+static void call_nullsub_10(void) {
+    GUEST_CALL(nullsub_10);
+}
+
+/* register form: calls object_getFlag outside this file, which has no typed C interface yet */
+static u32 object_flag(u32 related) {
+    R5 = related;
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+/* register form: calls object_getFlip outside this file, which has no typed C interface yet */
+static u32 object_flip(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_getFlip);
+    return R0;
+}
+
+/* register form: calls sprite_setFlip outside this file, which has no typed C interface yet */
+static void call_sprite_set_flip(u32 obj, u32 flip) {
+    R5 = obj;
+    R0 = flip;
+    GUEST_CALL(sprite_setFlip);
+}
+
+/* register form: calls callPossiblyGetBattleEmotion_8015B54 outside this file, which has no typed C interface yet */
+static u32 get_battle_emotion(u32 obj, u32 alliance, u32 related) {
+    R0 = alliance;
+    R4 = related;
+    R5 = obj;
+    GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
+    return R0;
+}
+
+/* register form: calls object_freeMemory outside this file, which has no typed C interface yet */
+static void call_object_free_memory(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_freeMemory);
+}
+
+/* register form: replicates the original's final "cmp r0, #2" flag state on the emotion==2 early-return path */
+static void set_flags_emotion_eq2(void) {
+    SET_FLAGS_CMP(2, 2);
+}
+
+/* Mark this object as active, then gate on alliance validity. */
+static void update_active_flag(u32 obj) {
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | ANIM_ACTIVE);
+
+    u32 valid = check_alliance_valid(LD8(obj + oBattleObject_Alliance));
+
+    if (valid == 0) {
+        ST8(obj + oObjectHeader_Flags,
+            LD8(obj + oObjectHeader_Flags) & ANIM_CLEAR_MASK);
+    } else {
+        ST8(obj + oObjectHeader_Flags,
+            LD8(obj + oObjectHeader_Flags) | ANIM_ACTIVE);
+
+        if (LD8(obj + oBattleObject_Unk_0c) == 0) {
+            ST8(obj + oObjectHeader_Flags,
+                LD8(obj + oObjectHeader_Flags) & ANIM_CLEAR_MASK);
+        }
+    }
+}
+
+/* Mirror related-object properties into this object. Returns the related pointer (R4). */
+static u32 mirror_related(u32 obj) {
+    u32 related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+
+    /* Clear active flag if the related object carries the hidden bit. */
+    if (object_flag(related) & REL_FLAG_4) {
+        ST8(obj + oObjectHeader_Flags,
+            LD8(obj + oObjectHeader_Flags) & ANIM_CLEAR_MASK);
+    }
+
+    related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+
+    /* Copy three extra-variable words from related → obj. */
+    ST32(obj + EXTRA_VARS_OFF,       LD32(related + EXTRA_VARS_OFF));
+    ST32(obj + EXTRA_VARS_OFF + 4,   LD32(related + EXTRA_VARS_OFF + 4));
+    ST32(obj + EXTRA_VARS_OFF + 8,   LD32(related + EXTRA_VARS_OFF + 8));
+
+    /* Sync direction flip byte. */
+    ST8(obj + oBattleObject_DirectionFlip,
+        LD8(related + oBattleObject_DirectionFlip));
+
+    /* Sync sprite horizontal flip. */
+    call_sprite_set_flip(obj, object_flip(obj));
+
+    return related;
+}
+
+/* If the emotion pointer is set, query battle emotion; otherwise fall through to free.
+ * Returns 0 on all paths (the only difference is whether freeMemory was called).
+ * Flags and R0–R3 are left in the global register file by the helpers. */
+static void process_emotion(u32 obj, u32 related) {
+    u32 emotion_data = LD32(LD32(obj + oBattleObject_ExtraVars + 4));
+
+    if (emotion_data != 0) {
+        u32 alliance = LD8(obj + oBattleObject_Alliance);
+        u32 emotion = get_battle_emotion(obj, alliance, related);
+
+        if (emotion == 2) {
+            set_flags_emotion_eq2();
+            return;
+        }
+
+        /* Clear the emotion pointer. */
+        ST32(LD32(obj + oBattleObject_ExtraVars + 4), 0);
+    }
+
+    call_object_free_memory(obj);
+}
+
+/* Main body: returns the related-object pointer (becomes R4 for the caller). */
+static u32 sub_80C4B84_body(u32 obj) {
+    /* Update current animation slot. */
+    u32 anim = get_new_anim(obj);
+    ST8(obj + oBattleObject_CurAnim, anim);
+
+    /* Alliance-gated active flag. */
+    update_active_flag(obj);
+
+    call_nullsub_10();
+
+    /* Mirror related-object state. */
+    u32 related = mirror_related(obj);
+
+    /* Emotion / free-memory handling. */
+    process_emotion(obj, related);
+
+    return related;
+}
+
+/* sub_80C4B84(r5 = battle object) -> r4 = related object; r0–r3/flags from last callee */
+Next sub_80C4B84(void) {
+    R4 = sub_80C4B84_body(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── SpawnCounterPinkRingMaybe_80C4C12 ── */
 /* OBJECT_FLAG_PAUSE_UPDATE: bit in oObjectHeader_Flags that suspends an
  * object's normal update until something clears it. */
@@ -327,6 +683,235 @@ Next SpawnCounterPinkRingMaybe_80C4C12(void) {
         ST8(ring, LD8(ring) | R2);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C4F02 ── */
+/* Collision phase handler for a battle object.
+ * Processes the object's collision data, advances its panel-movement timer,
+ * reacts to solid/breakable/crackable panel hits, and either re-presents
+ * collision data or destroys the object. */
+
+#define CUR_STATE_DESTROY_sub_80C4F02  8
+
+/* register form: calls object_removeCollisionData outside this file, which has no typed C interface yet */
+static void remove_collision_data_sub_80C4F02(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_removeCollisionData);
+}
+
+/* register form: calls object_spawnCollisionEffect outside this file, which has no typed C interface yet */
+static void spawn_collision_effect_sub_80C4F02(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_spawnCollisionEffect);
+}
+
+/* register form: calls battle_isBattleOver outside this file, which has no typed C interface yet */
+static bool is_battle_over(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(battle_isBattleOver);
+    return R0 != 0;
+}
+
+/* register form: calls object_getFrontDirection outside this file, which has no typed C interface yet */
+static s32 get_front_direction(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_getFrontDirection);
+    return (s32)R0;
+}
+
+/* register form: calls object_isValidPanel outside this file, which has no typed C interface yet */
+static bool is_valid_panel(u32 x, u32 y) {
+    R0 = x; R1 = y;
+    GUEST_CALL(object_isValidPanel);
+    return R0 != 0;
+}
+
+/* register form: calls sub_80C5014 outside this file, which has no typed C interface yet */
+static void sub_80c5014(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(sub_80C5014);
+}
+
+/* register form: calls object_setCoordinatesFromPanels outside this file, which has no typed C interface yet */
+static void set_coords_from_panels(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+/* register form: calls battle_objectStepUpOntoElevatedPanel_80C5090 outside this file, which has no typed C interface yet */
+static void step_up_elevated_panel(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(battle_objectStepUpOntoElevatedPanel_80C5090);
+}
+
+/* register form: calls object_updateCollisionPanels outside this file, which has no typed C interface yet */
+static void update_collision_panels(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_updateCollisionPanels);
+}
+
+/* register form: calls sub_80C5050 outside this file, which has no typed C interface yet */
+static void sub_80c5050(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(sub_80C5050);
+}
+
+/* register form: calls object_crackPanel outside this file, which has no typed C interface yet */
+static void crack_panel(u32 x, u32 y) {
+    R0 = x; R1 = y;
+    GUEST_CALL(object_crackPanel);
+}
+
+/* register form: calls object_breakPanel_dup2 outside this file, which has no typed C interface yet */
+static void break_panel(u32 x, u32 y) {
+    R0 = x; R1 = y;
+    GUEST_CALL(object_breakPanel_dup2);
+}
+
+/* register form: calls object_isPanelSolid outside this file, which has no typed C interface yet */
+static bool is_panel_solid(u32 x, u32 y) {
+    R0 = x; R1 = y;
+    GUEST_CALL(object_isPanelSolid);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls object_setPanelType outside this file, which has no typed C interface yet */
+static void set_panel_type(u32 x, u32 y, u32 type) {
+    R0 = x; R1 = y; R2 = type;
+    GUEST_CALL(object_setPanelType);
+}
+
+/* register form: calls object_clearCollisionRegion outside this file, which has no typed C interface yet */
+static void clear_collision_region_sub_80C4F02(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_clearCollisionRegion);
+}
+
+/* register form: calls object_presentCollisionData outside this file, which has no typed C interface yet */
+static u32 present_collision_data_sub_80C4F02(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_presentCollisionData);
+    return R0;
+}
+
+/* Mark the object as destroyed: clear its collision region and set the destroy state. */
+static void destroy_object(u32 obj) {
+    clear_collision_region_sub_80C4F02(obj);
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY_sub_80C4F02);
+}
+
+/* Handle the case where the object has NOT been hit (no collision flags).
+ * Advances the panel-movement timer and shifts the object one panel per tick. */
+static u32 handle_no_collision(u32 obj) {
+    /* Initialize the phase timer on first entry */
+    if (LD8(obj + oBattleObject_PhaseInitialized) == 0) {
+        ST16(obj + oBattleObject_Timer, LD16(obj + oBattleObject_Timer2));
+        ST8(obj + oBattleObject_PhaseInitialized, 4);
+    }
+
+    /* Decrement timer; if still counting, re-present collision data and return */
+    s32 timer = (s32)(LD16(obj + oBattleObject_Timer) - 1);
+    ST16(obj + oBattleObject_Timer, (u32)timer);
+    if (timer >= 0)
+        return present_collision_data_sub_80C4F02(obj);
+
+    /* Timer expired: move the object forward one panel */
+    s32 dir = get_front_direction(obj);
+    u32 new_x = (u32)dir + LD8(obj + oBattleObject_PanelX);
+    ST8(obj + oBattleObject_PanelX, new_x);
+
+    s8 y_shift = (s8)LD8(obj + oBattleObject_Param2);
+    u32 new_y = LD8(obj + oBattleObject_PanelY) + y_shift;
+    ST8(obj + oBattleObject_PanelY, new_y);
+    ST8(obj + oBattleObject_Param2, 0);
+
+    if (is_valid_panel(new_x, new_y)) {
+        /* Successfully stepped onto a valid panel */
+        set_coords_from_panels(obj);
+        step_up_elevated_panel(obj);
+        update_collision_panels(obj);
+        ST8(obj + oBattleObject_PhaseInitialized, 0);
+        return present_collision_data_sub_80C4F02(obj);
+    }
+
+    /* Invalid panel: special handling for Param1 == 0xC */
+    if (LD8(obj + oBattleObject_Param1) == 0xC)
+        sub_80c5014(obj);
+
+    destroy_object(obj);
+    return present_collision_data_sub_80C4F02(obj);
+}
+
+/* Handle the case where the object HAS been hit (collision flags set).
+ * Reacts based on Param1 (the panel/object type that was contacted). */
+static u32 handle_collision(u32 obj) {
+    u32 param1 = LD8(obj + oBattleObject_Param1);
+
+    if (param1 == 0xC)
+        sub_80c5050(obj);
+
+    u32 x = LD8(obj + oBattleObject_PanelX);
+    u32 y = LD8(obj + oBattleObject_PanelY);
+
+    if (param1 == 7 || param1 == 0x15) {
+        /* Crackable panel types */
+        crack_panel(x, y);
+    } else if (param1 == 0x16) {
+        /* Breakable panel */
+        break_panel(x, y);
+    } else if (param1 == 0x22) {
+        /* Solid panel: set to type 0xC (NPC) or keep related object's state (Player) */
+        if (is_panel_solid(x, y)) {
+            u32 related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+            u32 type = LD8(related + oBattleObject_CurState);
+            if (LD8(obj + oBattleObject_Alliance) != 0)
+                type = 0xC;
+            set_panel_type(x, y, type);
+        }
+    } else if (param1 == 0x24) {
+        /* Solid panel: set to type 0xB (NPC) or keep related object's state (Player) */
+        if (is_panel_solid(x, y)) {
+            u32 related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+            u32 type = LD8(related + oBattleObject_CurState);
+            if (LD8(obj + oBattleObject_Alliance) != 0)
+                type = 0xB;
+            set_panel_type(x, y, type);
+        }
+    } else {
+        /* Default solid panel: use related object's state unless it is 0xFF */
+        if (is_panel_solid(x, y)) {
+            u32 related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+            u32 type = LD8(related + oBattleObject_CurState);
+            if (type != 0xFF)
+                set_panel_type(x, y, type);
+        }
+    }
+
+    destroy_object(obj);
+    return present_collision_data_sub_80C4F02(obj);
+}
+
+/* Main collision-phase routine for a battle object (object pointer in obj). */
+static u32 process_collision_phase(u32 obj) {
+    remove_collision_data_sub_80C4F02(obj);
+    spawn_collision_effect_sub_80C4F02(obj);
+
+    if (is_battle_over(obj)) {
+        destroy_object(obj);
+        return present_collision_data_sub_80C4F02(obj);
+    }
+
+    u32 coll_data = LD32(obj + oBattleObject_CollisionDataPtr);
+    if (LD32(coll_data + oCollisionData_FlagsFromCollision) != 0)
+        return handle_collision(obj);
+
+    return handle_no_collision(obj);
+}
+
+/* sub_80C4F02(r5 = obj) -> r0, r1, r2, r3, nz, c, v */
+Next sub_80C4F02(void) {
+    R0 = process_collision_phase(R5);
     RETURN_TO_CALLER();
 }
 
@@ -695,6 +1280,32 @@ Next battle_stepObjectXByVelocityAndDestroyIfInvalidPanel_80C6A08(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C6A34 ── */
+/* register form: calls the phase handler by name; the target is a function pointer
+ * read from a table indexed by CurPhase, so no single typed C interface covers it. */
+static void dispatch_phase_handler(u32 phase, u32 handler_addr) {
+    R0 = phase;
+    R1 = handler_addr;
+    if (phase == 0)
+        GUEST_CALL(sub_80C6A50);
+    else
+        GUEST_CALL(battle_object_destroy_80C6AAC);
+}
+
+/* Dispatch a battle object's per-frame update through its current-phase handler table. */
+static void battle_object_phase_update(u32 battle_obj) {
+    u32 phase  = LD8(battle_obj + oBattleObject_CurPhase);
+    u32 handler = LD32(A_off_80C6A48 + phase);
+    dispatch_phase_handler(phase, handler);
+}
+
+/* sub_80C6A34(r5 = BattleObject*) -> r0, r1, nzcv
+ * Looks up CurPhase in the two-entry handler table and tail-calls the result. */
+Next sub_80C6A34(void) {
+    battle_object_phase_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_object_destroy_80C6AAC ── */
 /* battle_object_destroy_80C6AAC(r5 = battle object):
  * Destroy this battle object: clear its collision region, then switch it to
@@ -788,6 +1399,191 @@ Next t3_0x16_80C6B40(void) {
     /* The state handler has returned; refresh the sprite. */
     GUEST_CALL(object_updateSprite);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C6B64 ── */
+#define TABLE_ENTRY_SIZE 4
+#define PANEL_TYPE_FLAG  0x10
+#define OBJ_FLAG_HAS_SPRITE 2
+#define CUR_STATE_UPDATE_sub_80C6B64 4
+#define NO_TARGET 0xFF
+#define SPAWN_SFX 0xA6
+
+/* register form: calls object_isCurrentPanelValid outside this file, which has no typed C interface yet */
+static u32 guest_is_current_panel_valid(void) {
+    GUEST_CALL(object_isCurrentPanelValid);
+    return R0;
+}
+
+/* register form: calls object_getPanelParameters outside this file, which has no typed C interface yet */
+static u32 guest_get_panel_params(u32 x, u32 y) {
+    R0 = x; R1 = y;
+    GUEST_CALL(object_getPanelParameters);
+    return R0;
+}
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void guest_sprite_load(u32 gfx, u32 mode, u32 id, u32 entry) {
+    R0 = gfx; R1 = mode; R2 = id; R4 = entry;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void guest_sprite_no_shadow(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void guest_sprite_set_animation(u32 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void guest_load_animation_data(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void guest_set_palette(u32 pal) {
+    R0 = pal;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls object_getFlip outside this file, which has no typed C interface yet */
+static u32 guest_get_flip(void) {
+    GUEST_CALL(object_getFlip);
+    return R0;
+}
+
+/* register form: calls sprite_setFlip outside this file, which has no typed C interface yet */
+static void guest_set_flip(u32 flip) {
+    R0 = flip;
+    GUEST_CALL(sprite_setFlip);
+}
+
+/* register form: calls battle_objectDispatchPanelChange_80C6CFC outside this file, which has no typed C interface yet */
+static void guest_dispatch_panel_change(u32 x, u32 y, u32 target) {
+    R0 = x; R1 = y; R2 = target;
+    GUEST_CALL(battle_objectDispatchPanelChange_80C6CFC);
+}
+
+/* register form: calls object_setCoordinatesFromPanels outside this file, which has no typed C interface yet */
+static void guest_set_coords_from_panels(void) {
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+/* register form: calls object_createCollisionData outside this file, which has no typed C interface yet */
+static u32 guest_create_collision(void) {
+    GUEST_CALL(object_createCollisionData);
+    return R0;
+}
+
+/* register form: calls object_setupCollisionData outside this file, which has no typed C interface yet */
+static void guest_setup_collision(u32 col, u32 width, u32 height, u32 flag) {
+    R0 = col; R1 = width; R2 = height; R3 = flag; R7 = col;
+    GUEST_CALL(object_setupCollisionData);
+}
+
+/* register form: calls object_setCollisionHitEffect outside this file, which has no typed C interface yet */
+static void guest_set_hit_effect(u32 effect) {
+    R0 = effect; R1 = 1;
+    GUEST_CALL(object_setCollisionHitEffect);
+}
+
+/* register form: calls object_presentCollisionData outside this file, which has no typed C interface yet */
+static void guest_present_collision(void) {
+    GUEST_CALL(object_presentCollisionData);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void guest_play_sound(u32 sfx) {
+    R0 = sfx;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls object_freeMemory outside this file, which has no typed C interface yet */
+static u32 guest_free_object(void) {
+    GUEST_CALL(object_freeMemory);
+    return R0;
+}
+
+/* Spawn a battle object from the per-Param1 sprite table (byte_80C6B00).
+ * Validates panel, loads sprite/animation/palette, sets up collision with
+ * width depending on movement target, plays spawn SFX, and enters the
+ * update phase. Returns CUR_STATE_UPDATE_sub_80C6B64 on success or object_freeMemory's
+ * result on any early-exit path. */
+static u32 init_object_from_table(u32 obj) {
+    if (guest_is_current_panel_valid() == 0)
+        return guest_free_object();
+
+    /* Panel must carry the spawnable-type bit */
+    u32 px = LD8(obj + oBattleObject_PanelX);
+    u32 py = LD8(obj + oBattleObject_PanelY);
+    if ((guest_get_panel_params(px, py) & PANEL_TYPE_FLAG) == 0)
+        return guest_free_object();
+
+    /* Table entry (4 bytes): [0]=gfx id, [1]=anim, [2]=timer, [3]=target panel */
+    u32 entry = A_byte_80C6B00 + LD8(obj + oBattleObject_Param1) * TABLE_ENTRY_SIZE;
+    ST32(obj + oBattleObject_ExtraVars, entry);
+
+    /* Load sprite from the table entry's graphic ID */
+    guest_sprite_load(0x80, 0x10, LD8(entry), entry);
+    guest_sprite_no_shadow();
+
+    /* Mark object as having a sprite, set animation from table */
+    ST8(obj + oObjectHeader_Flags, (u8)(LD8(obj + oObjectHeader_Flags) | OBJ_FLAG_HAS_SPRITE));
+    u32 anim = LD8(entry + 1);
+    ST8(obj + oBattleObject_CurAnim, anim);
+    ST8(obj + oBattleObject_CurAnimCopy, anim);
+    guest_sprite_set_animation(anim);
+    guest_load_animation_data();
+
+    /* Initialize frame timers and palette */
+    ST16(obj + oBattleObject_Timer, LD8(entry + 2));
+    ST16(obj + oBattleObject_Timer2, 4);
+    guest_set_palette(0);
+
+    /* Apply the object's current horizontal flip */
+    guest_set_flip(guest_get_flip());
+
+    /* Dispatch toward the target panel and place at panel coordinates */
+    u32 target = LD8(entry + 3);
+    guest_dispatch_panel_change(
+        LD8(obj + oBattleObject_PanelX),
+        LD8(obj + oBattleObject_PanelY),
+        target);
+    guest_set_coords_from_panels();
+
+    /* Allocate collision data; abort on failure */
+    u32 col = guest_create_collision();
+    if (col == 0)
+        return guest_free_object();
+
+    /* Fixed objects (target 0xFF) get 4-wide collision; others get 10 */
+    u32 width = (target == NO_TARGET) ? 4 : 0xA;
+    guest_setup_collision(col, width, 5, 3);
+
+    /* Activate collision, set generic hit effect, and present */
+    ST8(col + 1, 1);
+    guest_set_hit_effect(0xFF);
+    guest_present_collision();
+
+    /* Spawn sound and transition to update phase */
+    guest_play_sound(SPAWN_SFX);
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE_sub_80C6B64);
+    return CUR_STATE_UPDATE_sub_80C6B64;
+}
+
+/* sub_80C6B64(r5 = battle object ptr) -> r0, flags from last callee */
+/* register form: original saves r4/r7 via push/pop; helpers pass args through R4/R7
+ * which remain modified after callee returns, so restore them here */
+Next sub_80C6B64(void) {
+    u32 saved_r4 = R4, saved_r7 = R7;
+    R0 = init_object_from_table(R5);
+    R4 = saved_r4;
+    R7 = saved_r7;
     RETURN_TO_CALLER();
 }
 

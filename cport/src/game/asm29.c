@@ -45,6 +45,42 @@ Next ho_80A4984(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A4A98 ── */
+/* register form: calls battle_objectEnterState4LatchTilePos_80A4AB8 outside this file,
+ * which has no typed C interface yet */
+static void call_latch_tile_pos(void) {
+    GUEST_CALL(battle_objectEnterState4LatchTilePos_80A4AB8);
+}
+
+/* register form: calls sub_80A4ACC outside this file, which has no typed C interface yet */
+static void call_state_handler_4acc(void) {
+    GUEST_CALL(sub_80A4ACC);
+}
+
+/* register form: calls sub_80A4BD4 outside this file, which has no typed C interface yet */
+static void call_state_handler_4bd4(void) {
+    GUEST_CALL(sub_80A4BD4);
+}
+
+/* Dispatch to the battle-object state handler selected by the byte at [r5+8].
+ * The table at 0x080A4AAC has 3 word entries at offsets 0, 4, 8; the byte
+ * stored in the object is used directly as the offset into the table. */
+static void dispatch_battle_state(u32 r5) {
+    u8 state_offset = LD8(r5 + 8);
+    if (state_offset == 0)
+        call_latch_tile_pos();
+    else if (state_offset == 4)
+        call_state_handler_4acc();
+    else
+        call_state_handler_4bd4();
+}
+
+/* sub_80A4A98(r5 = battle object ptr) -> all registers, flags (passed through / set by callee) */
+Next sub_80A4A98(void) {
+    dispatch_battle_state(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectEnterState4LatchTilePos_80A4AB8 ── */
 /* battle_objectEnterState4LatchTilePos_80A4AB8 (r5 = battle object):
  * Put the object into state 4 and latch its current tile coordinates
@@ -185,6 +221,43 @@ Next palette_copyTableRow_80AA104(void) {
 
     R0 = 0;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AA2D8 ── */
+/* Byte offset in the battle-object struct that selects the sprite-state-3 handler. */
+#define oSpriteState3_Sel 8
+
+/* register form: calls object_initSpriteState3 outside this file, which has no typed C interface yet */
+static void call_init_sprite_state3(void) {
+    GUEST_CALL(object_initSpriteState3_80AA2F8);
+}
+
+/* register form: calls sub_80AA322 outside this file, which has no typed C interface yet */
+static void call_sprite_state3_update(void) {
+    GUEST_CALL(sub_80AA322);
+}
+
+/* register form: calls sub_80AA36C outside this file, which has no typed C interface yet */
+static void call_sprite_state3_done(void) {
+    GUEST_CALL(sub_80AA36C);
+}
+
+/* Jump-table dispatch for sprite-state-3: pick the handler from the selector byte
+ * at [obj + oSpriteState3_Sel] (0 = init, 4 = update, 8 = done) and call it. */
+static void dispatch_sprite_state3(u32 obj) {
+    u32 sel = LD8(obj + oSpriteState3_Sel);
+    if (sel == 0)
+        call_init_sprite_state3();
+    else if (sel == 4)
+        call_sprite_state3_update();
+    else if (sel == 8)
+        call_sprite_state3_done();
+}
+
+/* sub_80AA2D8(r5 = battle object) -> tail-dispatch to a sprite-state-3 handler */
+Next sub_80AA2D8(void) {
+    dispatch_sprite_state3(R5);
     RETURN_TO_CALLER();
 }
 
@@ -422,6 +495,117 @@ Next sub_80AA4C0(void) {
     try_encounter(R10, R1, R2, &r0, &r1, &r2, &r3);
     R0 = r0; R1 = r1; R2 = r2; R3 = r3;
     SET_FLAGS_NZ(r0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AA5F4 ── */
+#define SETTINGS_MAX 29
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_sub_80AA5F4(u32 bank, u32 flag) {
+    R0 = bank; R1 = flag;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_80AA6A4 outside this file, which has no typed C interface yet */
+static u32 entry_condition_ok(u32 cond) {
+    R0 = cond;
+    GUEST_CALL(sub_80AA6A4);
+    return R0;
+}
+
+/* register form: calls sub_80AA824 outside this file, which has no typed C interface yet */
+static u32 entry_filter_mask(u32 entry) {
+    R0 = entry;
+    GUEST_CALL(sub_80AA824);
+    return R0;
+}
+
+struct SettingsResult {
+    u32 entry;
+    u32 r1_val;
+    u32 cmp_a;
+    u32 cmp_b;
+};
+
+/*
+ * Pick a random battle-settings entry from the area's entry list, filtered
+ * by a bitmask and validated by sub_80AA6A4.  The area-specific table is
+ * chosen by three event-flag tests (bank 6).  Selection uses iCurrFrame
+ * modulo the match count for round-robin cycling.
+ */
+static struct SettingsResult get_battle_settings(u32 filter, u32 toolkit) {
+    struct SettingsResult res;
+
+    /* Select settings-table pointer via event flags (bank 6, 0x7F/0x80/0x81) */
+    u32 table_addr;
+    if (event_flag_set_sub_80AA5F4(6, 0x7F))
+        table_addr = A_off_8020178;
+    else if (event_flag_set_sub_80AA5F4(6, 0x80))
+        table_addr = A_off_8020180;
+    else if (event_flag_set_sub_80AA5F4(6, 0x81))
+        table_addr = A_off_8020188;
+    else
+        table_addr = A_off_8020170;
+
+    /* Read current map location from the game state */
+    u32 gs = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 map_group = LD8(gs + oGameState_MapGroup);
+    u32 map_number = LD8(gs + oGameState_MapNumber);
+
+    /* Bit 7 of the map group selects the alternate table column */
+    if (map_group >= 0x80) {
+        map_group -= 0x80;
+        table_addr += 4;
+    }
+
+    /* Two-level dereference: table_addr -> row -> entry-list pointer */
+    u32 table = LD32(table_addr);
+    u32 row = LD32(table + map_group * 4);
+    u32 list = LD32(row + map_number * 4);
+
+    /* Walk 0x10-byte entries; terminator is 0xFF at offset 0 */
+    struct { u16 used; u32 pad; u32 ptr; } buf[SETTINGS_MAX];
+    u32 count = 0;
+
+    while ((u8)LD8(list) != 0xFF) {
+        if (entry_condition_ok((u8)LD8(list + 7))) {
+            u32 mask = entry_filter_mask(list);
+            if (mask & filter) {
+                buf[count].ptr = list;
+                count++;
+            }
+        }
+        list += 0x10;
+    }
+
+    if (count == 0) {
+        /* No matching entries; original exits with CMP 0xFF,0xFF flags (C=1,V=0) */
+        res.entry = 0;
+        res.r1_val = 0xFF;
+        res.cmp_a = 0xFF;
+        res.cmp_b = 0xFF;
+    } else {
+        /* Round-robin: frame % count picks which entry to return */
+        u32 frame = LD16(A_iCurrFrame);
+        u32 idx = frame % count;
+        res.entry = buf[idx].ptr;
+        /* Original's last flag-op was SUBS 0-1 in the scan loop (C=0,V=0) */
+        res.r1_val = 0xFFFFFFFF;
+        res.cmp_a = 0;
+        res.cmp_b = 1;
+    }
+
+    return res;
+}
+
+/* sub_80AA5F4(r2=filter, r10=toolkit) -> r0=entry, r1, c, v; r2/r3 left by callees */
+Next sub_80AA5F4(void) {
+    struct SettingsResult r = get_battle_settings(R2, R10);
+    R0 = r.entry;
+    R1 = r.r1_val;
+    SET_FLAGS_CMP(r.cmp_a, r.cmp_b);
     RETURN_TO_CALLER();
 }
 

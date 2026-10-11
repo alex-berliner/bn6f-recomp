@@ -23,6 +23,175 @@ Next zeroFill_e2004348(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809F9DC ── */
+/* register form: calls sub_809FD70 outside this file, which has no typed C interface yet */
+static void call_sub_809FD70(u32 r12_val) {
+    R4 = r12_val;
+    GUEST_CALL(sub_809FD70);
+}
+
+/* register form: calls ByteFill outside this file, which has no typed C interface yet */
+static void call_byte_fill(u32 mem, int count, u8 fill) {
+    R0 = mem;
+    R1 = (u32)count;
+    R2 = (u32)fill;
+    GUEST_CALL(ByteFill);
+}
+
+/* register form: calls mysteryData_resolveMapGroupEntry_809FBF2 outside this file */
+static u32 call_resolve_map_group(u32 entry_type, u32 param) {
+    R0 = entry_type;
+    R1 = param;
+    GUEST_CALL(mysteryData_resolveMapGroupEntry_809FBF2);
+    return R0;
+}
+
+/* register form: calls sub_809FA68 outside this file, which has no typed C interface yet */
+static void call_sub_809FA68(u32 entry_off4, u32 resolved, u32 buf_addr,
+                             u32 *out_r0, u32 *out_r1) {
+    R0 = entry_off4;
+    R1 = resolved;
+    R2 = buf_addr;
+    GUEST_CALL(sub_809FA68);
+    *out_r0 = R0;
+    *out_r1 = R1;
+}
+
+/* register form: calls sub_809FACE outside this file, which has no typed C interface yet */
+static void call_sub_809FACE(u32 r0_val, u32 r1_val, u32 r2_val, u32 r5_val) {
+    R0 = r0_val;
+    R1 = r1_val;
+    R2 = r2_val;
+    R5 = r5_val;
+    GUEST_CALL(sub_809FACE);
+}
+
+/* register form: calls ClearEventFlag outside this file, which has no typed C interface yet */
+static void call_clear_event_flag(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(ClearEventFlag);
+}
+
+/* register form: calls record_writeU16IfIdMatches_809FDCE outside this file */
+static u32 call_record_write(u32 group_type, u32 slots, u32 match_count) {
+    R0 = group_type;
+    R1 = slots;
+    R2 = match_count;
+    GUEST_CALL(record_writeU16IfIdMatches_809FDCE);
+    return R1;
+}
+
+/* register form: calls sub_809FDE0 outside this file, which has no typed C interface yet.
+   Sets R4/R6/R7/R12 as inputs; restores R4-R7/R12 (original uses pop to preserve them). */
+static void call_sub_809FDE0(u32 r4_in, u32 r6_in, u32 r7_in, u32 r12_in,
+                             u32 orig_r4, u32 orig_r5, u32 orig_r6, u32 orig_r7, u32 orig_r12) {
+    R4 = r4_in;
+    R6 = r6_in;
+    R7 = r7_in;
+    R12 = r12_in;
+    GUEST_CALL(sub_809FDE0);
+    R4 = orig_r4;
+    R5 = orig_r5;
+    R6 = orig_r6;
+    R7 = orig_r7;
+    R12 = orig_r12;
+}
+
+/* Walk the InternetMysteryDataMapGroupEntries table.  For each valid group, iterate its
+ * list of 12-byte entry blocks; resolve type-5 entries, accumulate results in a 16-byte
+ * scratch buffer on the guest stack, clear their event flags, and record per-group
+ * statistics.  Terminates on a group whose type field is 1, calling sub_809FDE0 for
+ * final output (r1/r2/r3/flags pass through from that callee). */
+static void process_mystery_data_map_groups(void) {
+    u32 orig_r4 = R4, orig_r5 = R5, orig_r6 = R6, orig_r7 = R7, orig_r12 = R12;
+
+    /* sub_809FD70 is called with the caller's r12 in r4 (original: mov r4,r12; push r4; bl) */
+    call_sub_809FD70(orig_r12);
+
+    u32 group_ptr = A_InternetMysteryDataMapGroupEntries;
+    u32 r6 = 0;       /* group type / list pointer, varies by path */
+    u32 r7 = orig_r7; /* entry block cursor */
+    u32 r12 = orig_r12; /* type-5 match counter; initialized to caller's r12 (original keeps it) */
+
+    for (;;) {
+        r6 = LD32(group_ptr);
+
+        /* type 1 = sentinel: finalize and return */
+        if (r6 == 1) {
+            call_sub_809FDE0(group_ptr, r6, r7, r12,
+                             orig_r4, orig_r5, orig_r6, orig_r7, orig_r12);
+            return;
+        }
+
+        /* type 0 = skip this group */
+        if (r6 == 0) {
+            group_ptr += 8;
+            continue;
+        }
+
+        /* valid group: r6 = pointer to list of 4-byte entry-block pointers */
+        r6 = LD32(group_ptr + 4);
+        u32 list_base = r6;
+
+        while (LD32(r6) != 0) {
+            r7 = LD32(r6);
+
+            r12 = 0;
+
+            /* allocate 16-byte scratch buffer on the guest stack */
+            SP -= 0x10;
+            u32 buf = SP;
+            u32 write_pos = buf;
+
+            /* register form: ByteFill needs guest-stack address (SP) as mem */
+            call_byte_fill(buf, 0x10, 0xFF);
+
+            /* walk 12-byte entries until type byte is 0 */
+            while (LD8(r7) != 0) {
+                u32 type = LD8(r7);
+
+                if (type == 5) {
+                    u32 param = LD32(r7 + 8);
+                    u32 resolved = call_resolve_map_group(type, param);
+
+                    u32 off4 = LD32(r7 + 4);
+                    u32 sub_r0, sub_r1;
+                    call_sub_809FA68(off4, resolved, buf, &sub_r0, &sub_r1);
+
+                    /* store resolved id byte into scratch buffer */
+                    ST8(write_pos, sub_r1);
+                    write_pos += 1;
+
+                    u32 flag = (u32)LD16(r7 + 2);
+                    call_sub_809FACE(flag, sub_r0, sub_r1, write_pos);
+
+                    call_clear_event_flag(flag);
+
+                    r12++;
+                }
+
+                r7 += 0xC;
+            }
+
+            SP += 0x10;
+
+            /* record per-block statistics: how many list slots consumed so far */
+            u32 slots = (r6 - list_base) >> 2;
+            call_record_write(LD32(group_ptr), slots, r12);
+
+            r6 += 4;
+        }
+
+        group_ptr += 8;
+    }
+}
+
+/* sub_809F9DC() -> c v r1 r2 r3 (all from sub_809FDE0 via GUEST_CALL) */
+Next sub_809F9DC(void) {
+    process_mystery_data_map_groups();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_809FADE ── */
 /* sub_809FADE(r0 = offset within some data area, r10 = toolkit):
  * Look up the pointer stored in the toolkit at oToolkit_Unk2004348_Ptr
@@ -77,6 +246,178 @@ Next mysteryData_resolveMapGroupEntry_809FBF2(void) {
         R0 = base;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809FC96 ── */
+/* sub_809FC96: 0809FC96-0809FD70 THUMB */
+/*   inputs:  r0 r4 r5 r6 r7 r10 r12 lr
+ *   outputs: c v r0 r1 r2 r3 r4 r5 r6 r7 r12 lr
+ *   clobbers (unused by callers): nz
+ *   preserved: r4 r5 r6 r7 r12 */
+
+typedef struct { u32 r0, r1, r2, r3, cmp_val; } MysteryDataResult;
+typedef struct { u32 out_index, out_base; } GoldEntryPair;
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+/* register form: callee may clobber r12 (not in its sync-check set); save/restore preserved r12 */
+static u32 get_cur_pet_navi(void) {
+    u32 save_r12 = R12;
+    GUEST_CALL(GetCurPETNavi);
+    u32 result = R0;
+    R12 = save_r12;
+    return result;
+}
+
+/* register form: calls GetNaviStatsByte outside this file, which has no typed C interface yet */
+/* register form: callee may clobber r12; save/restore preserved r12 */
+static u32 get_navi_stats_byte(u32 pet_id, u32 byte_index) {
+    u32 save_r12 = R12;
+    R0 = pet_id; R1 = byte_index;
+    GUEST_CALL(GetNaviStatsByte);
+    u32 result = R0;
+    R12 = save_r12;
+    return result;
+}
+
+/* register form: calls sub_809FADE outside this file, which has no typed C interface yet */
+/* register form: callee may clobber r12; save/restore preserved r12 */
+static u32 pet_resolve_lookup(u32 navi_id) {
+    u32 save_r12 = R12;
+    R0 = navi_id;
+    GUEST_CALL(sub_809FADE);
+    u32 result = R0;
+    R12 = save_r12;
+    return result;
+}
+
+/* register form: calls mysteryData_resolveMapGroupEntry_809FBF2 outside this file, which has no typed C interface yet */
+/* register form: arguments passed in r4-r7 which are preserved by this function's contract; restore after call */
+static u32 resolve_map_group_entry(u32 type, u32 data_ptr, u32 entry_ptr,
+                                   u32 special, u32 navi_id, u32 pet_info) {
+    u32 save_r4 = R4, save_r5 = R5, save_r6 = R6, save_r7 = R7;
+    R0 = type; R1 = data_ptr; R4 = entry_ptr;
+    R5 = special; R6 = navi_id; R7 = pet_info;
+    GUEST_CALL(mysteryData_resolveMapGroupEntry_809FBF2);
+    u32 result = R0;
+    R4 = save_r4; R5 = save_r5; R6 = save_r6; R7 = save_r7;
+    return result;
+}
+
+/* register form: calls goldMysteryData_GetEntryDataIfIdMatches_809FE44 outside this file, which has no typed C interface yet */
+/* register form: r4 passed as base-pointer argument and modified by callee (output); restore preserved r4 after capturing result */
+static GoldEntryPair gold_get_entry(u32 navi_id, u32 index, u32 base_ptr) {
+    u32 save_r4 = R4;
+    R0 = navi_id; R3 = index; R4 = base_ptr;
+    GUEST_CALL(goldMysteryData_GetEntryDataIfIdMatches_809FE44);
+    GoldEntryPair r;
+    r.out_index = R3;
+    r.out_base = R4;
+    R4 = save_r4;
+    return r;
+}
+
+/* Extract the four output fields from a resolved 8-byte gold-data entry.
+ * cmp_val reproduces the SUBS (r2, #1) that sets c,v before return. */
+static MysteryDataResult extract_gold_output(u32 entry_addr, u32 mystery_type) {
+    MysteryDataResult res;
+    res.r0 = LD32(entry_addr + 4);
+    res.r1 = LD8(entry_addr + 3);
+    u32 gold_type = LD8(entry_addr);
+    res.cmp_val = (gold_type - 1) * 10 + mystery_type;
+    res.r2 = res.cmp_val - 1;
+    res.r3 = gold_type;
+    return res;
+}
+
+/* Cyclically scan 8 gold entries (stride 8) for the (remaining_count+1)-th
+ * entry whose type byte is 3 or 7.  Wraps around indefinitely until found. */
+static u32 scan_gold_cyclic(u32 base, u32 remaining_count) {
+    u32 idx = 0;
+    for (;;) {
+        u32 pos = base + idx * 8;
+        u32 t = LD8(pos);
+        if (t == 3 || t == 7) {
+            if ((s32)remaining_count - 1 < 0)
+                return pos;
+            remaining_count -= 1;
+        }
+        idx++;
+        if (idx >= 8)
+            idx = 0;
+    }
+}
+
+/* Look up mystery-data output for the given Navi ID.
+ * toolkit_ptr is the caller's r10 (game toolkit struct).
+ * Returns four 0xFF values with C=1 if the ID is absent. */
+static MysteryDataResult lookup_mystery_data(u32 navi_id, u32 toolkit_ptr) {
+    /* Check whether the current PET Navi has stat byte 0x33 == 1 ("special"). */
+    u32 pet_id = get_cur_pet_navi();
+    u32 special = (get_navi_stats_byte(pet_id, 0x33) == 1) ? 1 : 0;
+
+    /* Resolve current map location to the appropriate mystery-data table. */
+    u32 game_state = LD32(toolkit_ptr + oToolkit_GameStatePtr);
+    u32 map_group  = LD8(game_state + oGameState_MapGroup);
+    u32 map_number = LD8(game_state + oGameState_MapNumber);
+
+    u32 table;
+    if (map_group >= 0x80) {
+        map_group -= 0x80;
+        table = A_InternetMysteryDataMapGroupEntries;
+    } else {
+        table = A_RealWorldMysteryDataMapGroupEntries;
+    }
+
+    /* Two-level index: group table (8-byte entries, word at +4 = sub-list ptr)
+     * then sub-list of 4-byte map-number entries. */
+    u32 group_entry = LD32(table + map_group * 8 + 4);
+    u32 entry_addr  = LD32(group_entry + map_number * 4);
+
+    /* Linear search (stride 0xC) for the entry whose u16 Navi ID at +2 matches. */
+    while (LD8(entry_addr) != 0) {
+        if (LD16(entry_addr + 2) == navi_id)
+            break;
+        entry_addr += 0xC;
+    }
+
+    if (LD8(entry_addr) == 0) {
+        /* Not found: return 0xFF sentinel (C=1, V=0 from CMP 0,0). */
+        MysteryDataResult res = { 0xFF, 0xFF, 0xFF, 0xFF, 1 };
+        return res;
+    }
+
+    /* Found: resolve PET info and mystery-group entry data. */
+    u32 pet_info     = pet_resolve_lookup(navi_id);
+    u32 mystery_type = LD8(entry_addr);
+    u32 data_ptr     = LD32(entry_addr + 8);
+
+    u32 resolved = resolve_map_group_entry(mystery_type, data_ptr, entry_addr,
+                                           special, navi_id, pet_info);
+
+    u32 skip_index = LD8(pet_info + 1);
+
+    if (mystery_type == 5 && special) {
+        /* Type-5 with special Navi: cyclic scan through gold entries. */
+        GoldEntryPair gp = gold_get_entry(navi_id, skip_index, resolved);
+        u32 found = scan_gold_cyclic(gp.out_base, gp.out_index);
+        return extract_gold_output(found, mystery_type);
+    }
+
+    /* Normal path: direct index into the gold-entry array. */
+    GoldEntryPair gp = gold_get_entry(navi_id, skip_index, resolved);
+    u32 target = gp.out_base + gp.out_index * 8;
+    return extract_gold_output(target, mystery_type);
+}
+
+/* sub_809FC96(r0 = navi_id, r10 = toolkit_ptr) -> r0-r3, c, v */
+Next sub_809FC96(void) {
+    MysteryDataResult res = lookup_mystery_data(R0, R10);
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
+    SET_FLAGS_CMP(res.cmp_val, 1);
     RETURN_TO_CALLER();
 }
 

@@ -601,6 +601,65 @@ Next battle_spawnTypeD3ObjectWithPanelElementAndDamage_80DFF84(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E05C4 ── */
+/* sub_80E05C4: Battle-object timer tick – decrement timer, possibly destroy, update sprite. */
+
+#define CUR_STATE_DESTROY_sub_80E05C4 8
+#define oBattleObject_FrameData 0x20  /* signed per-frame data, offset from battle-object base */
+
+/* register form: calls battle_MirrorRelatedObjectFlag1_80E0616 outside this file, which has no typed C interface yet */
+static void check_mirror_related_flag(u32 object) {
+    R5 = object;
+    GUEST_CALL(battle_MirrorRelatedObjectFlag1_80E0616);
+}
+
+/* register form: calls sprite_getFrameParameters outside this file, which has no typed C interface yet */
+static u32 get_frame_parameters(u32 object) {
+    R5 = object;
+    GUEST_CALL(sprite_getFrameParameters);
+    return R0;
+}
+
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static void call_sprite_update(u32 object) {
+    R5 = object;
+    GUEST_CALL(sprite_update);
+}
+
+/* Tick the object's countdown timer.  If it expires, or if the current frame
+ * carries bit 7 while the frame-data word is non-positive, destroy the object.
+ * Always finish with sprite_update (whose outputs become ours). */
+static void battle_object_timer_update(u32 object) {
+    u16 new_timer = (u16)(LD16(object + oBattleObject_Timer) - 1);
+    ST16(object + oBattleObject_Timer, new_timer);
+
+    bool destroy = (new_timer == 0);
+
+    if (!destroy) {
+        check_mirror_related_flag(object);
+        u32 frame_params = get_frame_parameters(object);
+        if (frame_params & 0x80) {
+            s16 frame_data = LDS16(object + oBattleObject_FrameData);
+            if (frame_data <= 0)
+                destroy = true;
+        }
+    }
+
+    if (destroy) {
+        u8 flags = LD8(object + oObjectHeader_Flags) & ~2u;
+        ST8(object + oObjectHeader_Flags, flags);
+        ST32(object + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY_sub_80E05C4);
+    }
+
+    call_sprite_update(object);
+}
+
+Next sub_80E05C4(void) {
+    battle_object_timer_update(R5);
+    /* sprite_update's GUEST_CALL already left r0–r3, nz, c, v in place */
+    RETURN_TO_CALLER();
+}
+
 /* ── spawn_t1_0x0_EffectObject ── */
 /* spawn_t1_0x0_EffectObject: spawn a type-4 battle object with effect type 0.
  * The remaining arguments (r1-r3) and the r5 context pointer are passed

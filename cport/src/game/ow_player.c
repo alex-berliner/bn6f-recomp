@@ -142,6 +142,54 @@ Next event_TestPlayerAdvanceForward_809DB50(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809DBC4 ── */
+/* register form: calls createOWObjectInteractionArea_80037ac outside this file,
+ * which has no typed C interface yet */
+static void call_create_ow_interaction_area(s32 world_x, s32 world_y, s32 world_z,
+                                            u32 radius, u32 flags_10, u32 flags_14,
+                                            u32 output_handle, u32 area_struct) {
+    u32 saved_r5 = R5;  /* player-object pointer must survive; original pops it after the call */
+    R0 = (u32)world_x;
+    R1 = (u32)world_y;
+    R2 = (u32)world_z;
+    R3 = radius;
+    R4 = flags_10;
+    R5 = flags_14;
+    R6 = output_handle;
+    R7 = area_struct;
+    GUEST_CALL(createOWObjectInteractionArea_80037ac);
+    R5 = saved_r5;
+}
+
+/* Offset the player's world position by the interaction-area's local offsets,
+ * clear the caller's output handle, then create the area. */
+static void setup_ow_player_interaction_area(u32 area_ptr, u32 output_ptr,
+                                             u32 player_obj_ptr) {
+    ST32(output_ptr, 0);
+
+    s32 world_x = (s32)LD32(player_obj_ptr + oOWPlayerObject_X)
+                + (s32)LD32(area_ptr + oOWPlayerInteractionArea_XOffset);
+    s32 world_y = (s32)LD32(player_obj_ptr + oOWPlayerObject_Y)
+                + (s32)LD32(area_ptr + oOWPlayerInteractionArea_YOffset);
+    s32 world_z = (s32)LD32(player_obj_ptr + oOWPlayerObject_Z)
+                + (s32)LD32(area_ptr + oOWPlayerInteractionArea_ZOffset);
+
+    u32 radius   = LD32(area_ptr + oOWPlayerInteractionArea_Radius_ZReachAmount);
+    u32 flags_10 = LD32(area_ptr + oOWPlayerInteractionArea_Flags_10);
+    u32 flags_14 = LD32(area_ptr + oOWPlayerInteractionArea_Flags_14);
+
+    call_create_ow_interaction_area(world_x, world_y, world_z,
+                                    radius, flags_10, flags_14,
+                                    output_ptr, area_ptr);
+}
+
+/* sub_809DBC4(r0 = interaction-area struct, r1 = output handle ptr, r5 = player object) */
+Next sub_809DBC4(void) {
+    setup_ow_player_interaction_area(R0, R1, R5);
+    /* r1, r2, r4, r6, r7, c, v left in registers by the callee's GUEST_CALL; r5 preserved */
+    RETURN_TO_CALLER();
+}
+
 /* ── owPlayer_TickCountdownOrWait_809DDCC ── */
 /* owPlayer_TickCountdownOrWait_809DDCC(r5 = overworld player object):
  * Tick the object's Unk_18 countdown timer. While it is still counting down,
@@ -166,6 +214,176 @@ Next owPlayer_TickCountdownOrWait_809DDCC(void) {
         R2 = 0xC00000;
         R0 = (blocking != 0) ? 0 : 1;
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809DDF0 ── */
+/* Event flags (page 0x17) used by this routine */
+#define FLAG_PAGE_sub_809DDF0                  0x17
+#define FLAG_EVENT_1716            0x16
+#define FLAG_EVENT_IN_SLIPRUN      0x3D
+#define FLAG_EVENT_173E            0x3E
+#define FLAG_EVENT_173F            0x3F
+
+/* Bit mask indicating the player's slip-run state is still active */
+#define SLIPRUN_ACTIVE_MASK        0xC00000u
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_sub_809DDF0(u32 page, u32 index) {
+    R0 = page;
+    R1 = index;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void event_flag_clear(u32 page, u32 index) {
+    R0 = page;
+    R1 = index;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+/* register form: calls SetEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void event_flag_set_now(u32 page, u32 index) {
+    R0 = page;
+    R1 = index;
+    GUEST_CALL(SetEventFlagFromImmediate);
+}
+
+/* register form: calls sub_809DE60 outside this file (leaf handler, no typed C interface yet) */
+static void run_sliprun_transition(void) {
+    GUEST_CALL(sub_809DE60);
+}
+
+/* register form: equivalent of "ldr r1,[r5,#o..]; ldr r2,=0xC00000; tst r2,r1" —
+ * sets R1, R2, N, Z exactly as the TST does; C and V are preserved. */
+static bool sliprun_bit_active(u32 player) {
+    R1 = LD32(player + oOWPlayerObject_Unk_50);
+    R2 = SLIPRUN_ACTIVE_MASK;
+    u32 masked = R1 & R2;
+    SET_FLAGS_NZ(masked);
+    return masked != 0;
+}
+
+/* If the player is in a slip-run state (and the relevant event flags are set),
+ * exit it: clear the slip-run and 173E flags, set 173F, and run the transition handler. */
+static void sliprun_state_exit(u32 player) {
+    if (!event_flag_set_sub_809DDF0(FLAG_PAGE_sub_809DDF0, FLAG_EVENT_1716))
+        return;
+    if (!event_flag_set_sub_809DDF0(FLAG_PAGE_sub_809DDF0, FLAG_EVENT_IN_SLIPRUN))
+        return;
+    if (!sliprun_bit_active(player))
+        return;
+
+    event_flag_clear(FLAG_PAGE_sub_809DDF0, FLAG_EVENT_IN_SLIPRUN);
+    event_flag_clear(FLAG_PAGE_sub_809DDF0, FLAG_EVENT_173E);
+    event_flag_set_now(FLAG_PAGE_sub_809DDF0, FLAG_EVENT_173F);
+    run_sliprun_transition();
+}
+
+/* sub_809DDF0(r5 = player object) → r0-r3, r6, r7, nz, c, v, lr */
+Next sub_809DDF0(void) {
+    sliprun_state_exit(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809DE30 ── */
+/* Event-flag page byte used by all four flags in this routine */
+#define FLAG_PAGE_sub_809DE30           0x17u
+#define EVENT_1716_BYTE     0x16u   /* gate: must be set to proceed */
+#define EVENT_IN_SLIPRUN    0x3Du   /* player is currently slip-running */
+#define EVENT_173F_BYTE     0x3Fu   /* set on slip-run exit */
+#define EVENT_173E_BYTE     0x3Eu   /* cleared on slip-run exit */
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool flag_test(u16 page, u16 byte) {
+    R0 = page;
+    R1 = byte;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* TestEventFlagFromImmediate: Z set ⇒ flag clear */
+}
+
+/* register form: calls SetEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void flag_set(u16 page, u16 byte) {
+    R0 = page;
+    R1 = byte;
+    GUEST_CALL(SetEventFlagFromImmediate);
+}
+
+/* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void flag_clear(u16 page, u16 byte) {
+    R0 = page;
+    R1 = byte;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+/* End slip-run state if the EVENT_1716 gate is active.
+ * If the player is mid slip-run, mark the exit event, then clear both the
+ * slip-run state and the transition flag.  Output registers/flags are left
+ * by the callee on whichever path is taken. */
+static void end_sliprun_state(void) {
+    if (!flag_test(FLAG_PAGE_sub_809DE30, EVENT_1716_BYTE))
+        return;                   /* gate not set – early exit (locret) */
+
+    if (flag_test(FLAG_PAGE_sub_809DE30, EVENT_IN_SLIPRUN))
+        flag_set(FLAG_PAGE_sub_809DE30, EVENT_173F_BYTE);
+
+    flag_clear(FLAG_PAGE_sub_809DE30, EVENT_IN_SLIPRUN);
+    flag_clear(FLAG_PAGE_sub_809DE30, EVENT_173E_BYTE);
+}
+
+Next sub_809DE30(void) {
+    end_sliprun_state();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809DED4 ── */
+/* register form: calls TestPETMenuDataFlag outside this file, which has no typed C interface yet */
+static bool pet_menu_data_flag_set(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestPETMenuDataFlag);
+    return !ZERO_FLAG();   /* returns non-zero (Z clear) when the flag is active */
+}
+
+/* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
+static bool cutscene_script_is_null(void) {
+    GUEST_CALL(IsCutsceneScriptNonNull);
+    return ZERO_FLAG();    /* Z set means the script pointer is null (no cutscene) */
+}
+
+/* register form: calls ow_tryTileInteraction_809DF00 outside this file, which has no typed C interface yet */
+static u32 ow_try_tile_interaction(u32 arg0, u32 player_obj) {
+    R0 = arg0;
+    R5 = player_obj;
+    GUEST_CALL(ow_tryTileInteraction_809DF00);
+    return R0;
+}
+
+/*
+ * Gate a pending overworld tile-interaction request.
+ *
+ * If the PET-menu data flag is set or a cutscene is playing, the pending
+ * action byte (oOWPlayerObject_Unk_07) is cleared and no dispatch occurs.
+ * Otherwise the byte indexes a single-entry jump table (off_809DEF8) that
+ * dispatches to ow_tryTileInteraction_809DF00.
+ *
+ * Returns the resulting r0: 0 on the suppressed path, or the callee's value.
+ */
+static u32 ow_gate_tile_interaction(u32 player_obj) {
+    if (pet_menu_data_flag_set(1) || !cutscene_script_is_null()) {
+        /* Interaction suppressed – clear the pending action byte */
+        ST8(player_obj + oOWPlayerObject_Unk_07, 0);
+        return 0;
+    }
+
+    /* Dispatch via the jump table (only entry → ow_tryTileInteraction). */
+    u32 table_offset = (u32)LD8(player_obj + oOWPlayerObject_Unk_07) << 2;
+    return ow_try_tile_interaction(table_offset, player_obj);
+}
+
+/* sub_809DED4(r5 = player-object pointer) -> r0; flags left by callees */
+Next sub_809DED4(void) {
+    R0 = ow_gate_tile_interaction(R5);
     RETURN_TO_CALLER();
 }
 
