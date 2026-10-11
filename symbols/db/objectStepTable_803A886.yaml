@@ -1,0 +1,86 @@
+name: objectStepTable_803A886
+address: '0x0803A886'
+kind: function
+status: confirmed
+summary: Ticks a per-object countdown/step counter and advances through a table of {flags, duration} pairs
+  at off_803A910, clearing both fields when the table ends.
+interface: void sub_803A886(u8* stepIndexField /* r0 offset from r5 */, u8* countdownField /* r1 offset
+  from r5 */, void* object /* r5 */);
+details: 'Object base is passed in r5. r0/r1 are byte offsets relative to r5 selecting two fields in an
+  object struct: a step index and a countdown timer. Step 0 is a no-op (sequence not started). Otherwise
+  the countdown is decremented; when it underflows from 0 to 0xFF or expires from 1 to 0, the step index
+  is incremented and the next entry is loaded from a table at off_803A910 indexed by the new step value,
+  each entry being 8 bytes (a u32 control flag, then a u32 whose low byte is the new countdown). If the
+  control word is zero, both fields are cleared (sequence finished). Each tick is one call; the caller
+  is expected to invoke this per frame from an object update routine. The 0xFF special case handles the
+  explicit "delay 0" sentinel encoded as a duration of 0xFF.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed;
+  tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file
+    inbox_farm_old_2.c sub_803A886
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803A886
+
+    ./wf verify --function sub_803A886 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    260 out of domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803A886
+
+    ./wf verify --function sub_803A886 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803A886
+
+    ./wf verify --function sub_803A886 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803a886 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_803A886 -> objectStepTable_803A886
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- Which object/struct types use this routine (caller-specific offset choices for step index and countdown
+  fields)?
+- What is the layout/significance of the first u32 in each table entry at off_803A910 (it's only tested
+  for zero, not otherwise used here)?
+- Are there sibling tables or is off_803A910 the only one?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c
+previous_names:
+- sub_803A886

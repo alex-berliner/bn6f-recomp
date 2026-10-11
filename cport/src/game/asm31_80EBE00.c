@@ -13,7 +13,7 @@
  *
  * Reads the phase byte at offset 0 of the AI attack state (r7) and tail-calls
  * the corresponding charge shot attack routine through the table off_80EBE14:
- *   +0 -> sub_80EBE20, +4 -> sub_80EBE54, +8 -> sub_80EBEB2
+ *   +0 -> sub_80EBE20, +4 -> battle_aiBusterAttackTick_80EBE54, +8 -> sub_80EBEB2
  *
  * Note the original indexes the table with the raw byte (`ldr r1, [r1, r0]`),
  * so the stored phase values are byte offsets (0, 4, 8), not entry indices.
@@ -38,8 +38,8 @@ Next megamanChargeShotAiAttack_80EBE00(void) {
         break;
     case 4:
         R0 = phase;
-        R1 = LD32(CHARGE_ATTACK_TABLE + 4); /* sub_80EBE54 (thumb) */
-        GUEST_CALL(sub_80EBE54);
+        R1 = LD32(CHARGE_ATTACK_TABLE + 4); /* battle_aiBusterAttackTick_80EBE54 (thumb) */
+        GUEST_CALL(battle_aiBusterAttackTick_80EBE54);
         break;
     case 8:
         R0 = phase;
@@ -61,7 +61,7 @@ Next megamanChargeShotAiAttack_80EBE00(void) {
 
 #undef CHARGE_ATTACK_TABLE
 
-/* ── sub_80EBE54 ── */
+/* ── battle_aiBusterAttackTick_80EBE54 ── */
 /* register form: calls object_setAnimation outside this file, which has no typed C interface yet */
 static void set_object_animation(u32 animation) {
     R0 = animation;
@@ -151,17 +151,17 @@ static u32 ai_buster_attack_tick(u32 atk, u32 r4_in, u32 r5) {
     return ticks;
 }
 
-/* sub_80EBE54(r7 = AI attack vars, r4/r5 = caller context used by the spawn helper) -> r0
+/* battle_aiBusterAttackTick_80EBE54(r7 = AI attack vars, r4/r5 = caller context used by the spawn helper) -> r0
  * The final flags always come from "cmp <counter>, #4" (the mov r0,#8 on the reset path
  * only overwrites n/z, which cmp already leaves as 0/non-zero for counter > 4), so a
  * single CMP of the returned r0 reproduces n/c/v on every path. */
-Next sub_80EBE54(void) {
+Next battle_aiBusterAttackTick_80EBE54(void) {
     R0 = ai_buster_attack_tick(R7, R4, R5);
     SET_FLAGS_CMP(R0, 4);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EBF10 ── */
+/* ── battle_aiAttackHandlerDispatch_80EBF10 ── */
 /* Dispatches an AI attack step through a 3-entry jump table indexed by the
  * attack-type byte at oAIAttackVars_Unk_00 (offset 0) within the vars block.
  * Sets r0 = type, r1 = handler address (table entry), lr = return point,
@@ -182,9 +182,9 @@ static void call_ai_attack_handler(u32 vars_ptr) {
         GUEST_CALL(battle_aiWindRackAttackStep_80EBFF4);
 }
 
-/* sub_80EBF10(r7 = AI attack vars ptr, lr = caller return addr)
+/* battle_aiAttackHandlerDispatch_80EBF10(r7 = AI attack vars ptr, lr = caller return addr)
  * Preserves all caller registers except those the handler modifies. */
-Next sub_80EBF10(void) {
+Next battle_aiAttackHandlerDispatch_80EBF10(void) {
     u32 saved_lr = LR;
     call_ai_attack_handler(R7);
     LR = saved_lr;
@@ -469,7 +469,7 @@ Next sub_80ECAA4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80ED13E ── */
+/* ── ai_attack_dispatch_80ED13E ── */
 /* register form: calls sub_80ED154 outside this file, which has no typed C interface yet */
 static void call_attack_type_handler(u32 idx, u32 target, u32 ai_vars,
                                      u32 r2, u32 r3, u32 r4, u32 r5, u32 r6,
@@ -493,8 +493,8 @@ static void ai_attack_dispatch_sub_80ED13E(u32 ai_vars,
                              r2, r3, r4, r5, r6, r8, r9, r10, r11, r12);
 }
 
-/* sub_80ED13E(r7 = AI attack variables, r2..r6/r8..r12 = context) -> all regs */
-Next sub_80ED13E(void) {
+/* ai_attack_dispatch_80ED13E(r7 = AI attack variables, r2..r6/r8..r12 = context) -> all regs */
+Next ai_attack_dispatch_80ED13E(void) {
     ai_attack_dispatch_sub_80ED13E(R7, R2, R3, R4, R5, R6, R8, R9, R10, R11, R12);
     RETURN_TO_CALLER();
 }
@@ -801,7 +801,7 @@ Next sub_80FDF98(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FDFE4 ── */
+/* ── battle_setAIAttackDamage_80FDFE4 ── */
 #define AI_TABLE_STRIDE 8
 #define AI_DAMAGE_BLOCK_OFFSET 0xA0
 
@@ -831,13 +831,13 @@ static u32 store_ai_damage(u32 index, u32 battle_obj) {
     return ai_base;
 }
 
-/* sub_80FDFE4(r0 = table index, r5 = BattleObject ptr) -> r3 = damage sub-block ptr; r2 from callee; r4,r6 preserved */
-Next sub_80FDFE4(void) {
+/* battle_setAIAttackDamage_80FDFE4(r0 = table index, r5 = BattleObject ptr) -> r3 = damage sub-block ptr; r2 from callee; r4,r6 preserved */
+Next battle_setAIAttackDamage_80FDFE4(void) {
     R3 = store_ai_damage(R0, R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FE0D4 ── */
+/* ── battle_aiDispatchAttackPhase_80FE0D4 ── */
 /* Register form: pure jump-table trampoline for AI attack-phase dispatch.
  * The only "computation" is an indexed table load followed by a tail-call to one
  * of four handlers that receive/return all guest registers; no typed C interface
@@ -850,21 +850,21 @@ static void ai_attack_phase_dispatch(u32 r7) {
     switch (index) {
     case 0:  GUEST_CALL(sub_80FE0F8);                       break;
     case 4:  GUEST_CALL(sub_80FE130);                       break;
-    case 8:  GUEST_CALL(sub_80FE1B4);                       break;
+    case 8:  GUEST_CALL(battle_aiAttack_stepGlide_80FE1B4);                       break;
     case 12: GUEST_CALL(battle_aiTickAttackTimer_80FE1FE);  break;
     }
 
     R7 = r7;   /* original pop {r7,pc} restores the caller's r7 */
 }
 
-/* sub_80FE0D4 – dispatch one of four AI attack-phase handlers by jump table.
+/* battle_aiDispatchAttackPhase_80FE0D4 – dispatch one of four AI attack-phase handlers by jump table.
  * r7 = AIAttackVars pointer; index byte read from oAIAttackVars_Unk_00. */
-Next sub_80FE0D4(void) {
+Next battle_aiDispatchAttackPhase_80FE0D4(void) {
     ai_attack_phase_dispatch(R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FE1B4 ── */
+/* ── battle_aiAttack_stepGlide_80FE1B4 ── */
 /* register form: calls object_setPanelsFromCoordinates outside this file, which has no typed C interface yet */
 static void call_object_setPanelsFromCoordinates(u32 r0_val, u32 r1_val) {
     R0 = r0_val;
@@ -970,7 +970,7 @@ static MotionStepResult step_battle_object_motion(u32 object, u32 ai_vars) {
     return (MotionStepResult){ next_state, 1u, 0u };
 }
 
-Next sub_80FE1B4(void) {
+Next battle_aiAttack_stepGlide_80FE1B4(void) {
     MotionStepResult s = step_battle_object_motion(R5, R7);
     R0 = s.r0;
     SET_FLAGS_ADD(s.add_a, s.add_b);
@@ -1011,7 +1011,7 @@ Next battle_aiTickAttackTimer_80FE1FE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FE21E ── */
+/* ── battle_aiAttackPhaseDispatch_80FE21E ── */
 /* register form: calls sub_80FE240, AI attack phase 0 handler */
 static void call_attack_phase0(u32 state, u32 entry, u32 vars) {
     R0 = state; R1 = entry; R7 = vars;
@@ -1033,10 +1033,10 @@ static void call_attack_phase2(u32 state, u32 entry, u32 vars) {
     R7 = vars;
 }
 
-/* register form: calls sub_80FE30C, AI attack phase 3 handler */
+/* register form: calls battle_aiAttackCountdownTick_80FE30C, AI attack phase 3 handler */
 static void call_attack_phase3(u32 state, u32 entry, u32 vars) {
     R0 = state; R1 = entry; R7 = vars;
-    GUEST_CALL(sub_80FE30C);
+    GUEST_CALL(battle_aiAttackCountdownTick_80FE30C);
     R7 = vars;
 }
 
@@ -1057,7 +1057,7 @@ static void ai_attack_dispatch_sub_80FE21E(u32 vars) {
     }
 }
 
-Next sub_80FE21E(void) {
+Next battle_aiAttackPhaseDispatch_80FE21E(void) {
     ai_attack_dispatch_sub_80FE21E(R7);
     RETURN_TO_CALLER();
 }
@@ -1096,7 +1096,7 @@ Next battle_aiAttackWindupTick_80FE284(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FE30C ── */
+/* ── battle_aiAttackCountdownTick_80FE30C ── */
 /* Countdown phase: when first entered, copy Unk_18 to Unk_10 and start the timer.
  * Each subsequent tick decrements Unk_10; when it reaches zero, clear the attack
  * animation and exit the attack state.
@@ -1118,7 +1118,7 @@ static void ai_attack_countdown_tick(u32 battle_object, u32 ai_attack_vars) {
     GUEST_CALL(object_exitAttackState);
 }
 
-Next sub_80FE30C(void) {
+Next battle_aiAttackCountdownTick_80FE30C(void) {
     ai_attack_countdown_tick(R5, R7);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -1130,7 +1130,7 @@ Next sub_80FE30C(void) {
  * r7 points to the AI attack state block. The byte at offset 0
  * (oAIAttackVars_Unk_00) indexes the handler table at off_80FE464:
  *     entry 0 -> sub_80FE46C
- *     entry 1 -> sub_80FE4AC
+ *     entry 1 -> aiAttackState_tickTimer_sub_80FE4AC
  * Note the original indexes with the raw byte (ldr r1, [r1, r0]), so a
  * selector of 4 selects the second entry; in practice the field only ever
  * holds one of those two values.
@@ -1149,15 +1149,15 @@ Next aiAttackDispatchHandler_80FE452(void) {
         R1 = LD32(A_off_80FE464);        /* .word sub_80FE46C+1 */
         GUEST_CALL(sub_80FE46C);
     } else {
-        R1 = LD32(A_off_80FE464 + 4);    /* .word sub_80FE4AC+1 */
-        GUEST_CALL(sub_80FE4AC);
+        R1 = LD32(A_off_80FE464 + 4);    /* .word aiAttackState_tickTimer_sub_80FE4AC+1 */
+        GUEST_CALL(aiAttackState_tickTimer_sub_80FE4AC);
     }
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FE4AC ── */
-/* sub_80FE4AC: AI attack-state tick.
+/* ── aiAttackState_tickTimer_sub_80FE4AC ── */
+/* aiAttackState_tickTimer_sub_80FE4AC: AI attack-state tick.
  *
  * Inputs:  r5 = BattleObject*, r6/r7 = AI attack vars / context, lr = return address.
  * Outputs: r1.
@@ -1167,7 +1167,7 @@ Next aiAttackDispatchHandler_80FE452(void) {
  * into the timer Unk_10). Subsequent calls tick the timer and, when it reaches
  * zero, exit the attack state via object_exitAttackState.
  */
-Next sub_80FE4AC(void) {
+Next aiAttackState_tickTimer_sub_80FE4AC(void) {
     if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
         /* First-time initialization. */
         ST8(R7 + oAIAttackVars_Unk_01, 4);
@@ -1186,7 +1186,7 @@ Next sub_80FE4AC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FE5C0 ── */
+/* ── battleObject_panelToPixelOffset_80FE5C0 ── */
 /* register form: BIOS SVC 6: scale (R0) by fixed-point count (R1). Returns R0. */
 static u32 bios_svc6_scale(u32 scale, u32 count) {
     R0 = scale;
@@ -1223,7 +1223,7 @@ static void panel_to_pixel_offset(u32 in_r0, u32 in_r1, u32 in_r2, u32 obj_addr,
     *out_r2 = bios_svc6_scale(scale, in_r2);
 }
 
-Next sub_80FE5C0(void) {
+Next battleObject_panelToPixelOffset_80FE5C0(void) {
     u32 in_r0 = R0, in_r1 = R1, in_r2 = R2, in_r5 = R5;
     u32 out_r0, out_r1, out_r2, out_r3;
 
@@ -1237,7 +1237,7 @@ Next sub_80FE5C0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FE5EE ── */
+/* ── nav_pickAdjacentPanel_80FE5EE ── */
 /* register form: calls object_checkPanelParameters outside this file,
  * which has no typed C interface yet */
 static u32 check_panel(u32 x, u32 y, u32 b1, u32 b2) {
@@ -1353,9 +1353,9 @@ static void select_panel(u32 target_x, u32 target_y, u32 panel_ptr, u32 battle_o
     SP += 0x30;
 }
 
-/* sub_80FE5EE(r0=target_x, r1=target_y, r2=panel_ptr, r5=battle_obj) -> r0,r1
+/* nav_pickAdjacentPanel_80FE5EE(r0=target_x, r1=target_y, r2=panel_ptr, r5=battle_obj) -> r0,r1
  * Outputs r3, r5, r7: r3 is left by callees/SWI; r5 and r7 are preserved. */
-Next sub_80FE5EE(void) {
+Next nav_pickAdjacentPanel_80FE5EE(void) {
     u32 x, y;
     select_panel(R0, R1, R2, R5, &x, &y);
     R0 = x;
@@ -1379,10 +1379,10 @@ static void call_battle_state_handler(u32 state) {
         GUEST_CALL(sub_8016C4E);
 }
 
-/* register form: calls sub_8016E64 outside this file, which has no typed C interface yet
+/* register form: calls battleObject_updateSprite_8016E64 outside this file, which has no typed C interface yet
  * (post-dispatch update that drives enemy attack animations). */
 static void call_post_dispatch_update(void) {
-    GUEST_CALL(sub_8016E64);
+    GUEST_CALL(battleObject_updateSprite_8016E64);
 }
 
 /* Dispatch a battle object to the handler for its current state, then run the
@@ -1508,7 +1508,7 @@ Next battle_attackTimerTick_8109CBC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8109D98 ── */
+/* ── aiAttackVars_countdownSub_8109D98 ── */
 /* register form: calls object_clearFlag outside this file, which has no typed C interface yet */
 static void call_object_clear_flag(u32 bitfield) {
     R0 = bitfield;
@@ -1550,8 +1550,8 @@ static u32 ai_attack_countdown(u32 vars) {
     return 0xC;
 }
 
-/* sub_8109D98(r7 = AIAttackVars) -> r0, nzcv, r1, r2, lr */
-Next sub_8109D98(void) {
+/* aiAttackVars_countdownSub_8109D98(r7 = AIAttackVars) -> r0, nzcv, r1, r2, lr */
+Next aiAttackVars_countdownSub_8109D98(void) {
     R0 = ai_attack_countdown(R7);
     RETURN_TO_CALLER();
 }
@@ -1583,12 +1583,12 @@ Next ai_attackTickDown_timerEndExit_8109DBA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8109DD2 ── */
+/* ── aiAttackDispatch_8109DD2 ── */
 /* AI attack dispatch: selects one of two handlers using the attack-var type
  * byte stored at the head of the AIAttackVars struct referenced by self. */
 
 /* register form: full-register virtual dispatch — both handlers (sub_8109DEC
- * and sub_8109E4A) receive and return every CPU register, so C parameter
+ * and aiAttackTimer_tick_8109E4A) receive and return every CPU register, so C parameter
  * passing cannot express the call. */
 static void ai_attack_dispatch_sub_8109DD2(u32 self) {
     u8 idx = LD8(self + oAIAttackVars_Unk_00);
@@ -1599,16 +1599,16 @@ static void ai_attack_dispatch_sub_8109DD2(u32 self) {
     if (idx == 0)
         GUEST_CALL(sub_8109DEC);
     else
-        GUEST_CALL(sub_8109E4A);
+        GUEST_CALL(aiAttackTimer_tick_8109E4A);
     R6 = saved_r6;
 }
 
-Next sub_8109DD2(void) {
+Next aiAttackDispatch_8109DD2(void) {
     ai_attack_dispatch_sub_8109DD2(R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8109E4A ── */
+/* ── aiAttackTimer_tick_8109E4A ── */
 /* register form: calls sub_800AA40 outside this file, which has no typed C interface yet */
 static void ai_recalc(u32 extra_vars) {
     R0 = extra_vars;
@@ -1667,8 +1667,8 @@ static u32 tick_ai_attack_timer(u32 r5, u32 r7) {
     return callee_r0;
 }
 
-/* sub_8109E4A(r4, r5, r6, r7, lr) -> nz c v r0 r1 r2 r3 r4 r6 r7 lr */
-Next sub_8109E4A(void) {
+/* aiAttackTimer_tick_8109E4A(r4, r5, r6, r7, lr) -> nz c v r0 r1 r2 r3 r4 r6 r7 lr */
+Next aiAttackTimer_tick_8109E4A(void) {
     R0 = tick_ai_attack_timer(R5, R7);
     SET_FLAGS_CMP(R0 + 1, 1);
     RETURN_TO_CALLER();

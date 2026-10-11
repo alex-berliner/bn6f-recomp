@@ -1,0 +1,143 @@
+name: battle_state_tick_8007CA0
+address: '0x08007CA0'
+kind: function
+status: probable
+summary: Per-frame tick for the battle game-state; routes battle-end cleanup, intro-frame counter, Navi
+  emotion/mood/HP bookkeeping, and post-battle teardown.
+interface: void sub_8007CA0(BattleState* r5, Toolkit* r10) -> void
+details: 'Dispatches on the current battle state byte (via battle_getStateByteNibbles_800A832) and the
+
+  global BattleEffects bitmask (GetBattleEffects). Effect ''0x400'' triggers the battle-end branch,
+
+  which either tears down the visual (SetDummyBGScrollCallbacks, zeroFill_e20094C0,
+
+  palette_clearEPalette20097a0_80023A8) and calls init_battle_display via loc_8007204
+
+  (preserving BattleState+oBattleState_Unk_18 across the call), or selects one of three
+
+  link/battle "modes" (1/2/3) via sub_800AF50 and setTwoStructs_800A840. State==1 in that
+
+  branch also ticks a halfword counter at dword_2000B30 up to 0x11. State==5 checks effect 8
+
+  and event flag EVENT_1733; if flag 1733 is set it clears the display, fetches
+
+  BattleState+oBattleState_BattleSettings and calls loc_80071FE (used to restore the previous
+
+  battle settings). Active states (not 5) snapshot player HP (battle_snapshotPlayerHP_800FAE0),
+
+  and write Navi stats: effect 0x40 -> SetCurPETNaviStatsHword field 0x40 from
+
+  BattleState+oBattleState_Unk_34 (defaulting to 1); effect 8 short-circuits the emotion/mood
+
+  block; otherwise field 0xE is set from callPossiblyGetBattleEmotion_8015B54 (or 0x80 if
+
+  effect 0x10000) and field 0x21 (mood) is computed as max(stats byte 0x21, 3) unless effect
+
+  0x400000 is set. State==1 also calls battle_updateSlotBestRecords_802C9B8 and clears two
+
+  halfword counters in the S2001C04 sub-struct (+0x12, +0x14). State==2 effects: 0x800000 ->
+
+  SetCurNaviHPToFull, 0x1000 -> force mood=3, 0x40000 -> force emotion=0x80. Effect 0x10 also
+
+  forces full HP. Always (post-state logic) runs eStruct200A008_redrawOnDirtyFlags_802CA82 and
+
+  the cleanup tail: clears GameState_BattlePaused, zeroFill_e20097A0, SetRenderInfoLCDControl
+
+  (0x40), battle_tickCustomScreenEffect_800A892, clear_flags32_20093A4(1), clear flag
+
+  EVENT_1722_BEAST_LINK_GATE_RELATED, zeroes BattleState+oBattleState_Unk_0a, and finally
+
+  SetPrimaryToolkitPointers. Self pointer lives in r5; r10 is the Toolkit; r4/r6/r7 cache the
+
+  S2001c04 ptr, MainJumptableIndex ptr, and GameState ptr respectively, and are preserved across
+
+  the body. Preserved regs: r4,r5,r6,r7.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c
+    sub_8007CA0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8007CA0
+
+    ./wf verify --function sub_8007CA0 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8007CA0
+
+    ./wf verify --function sub_8007CA0 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8007CA0
+
+    ./wf verify --function sub_8007CA0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08007ca0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm00_1_8005C04.c after review against the assembly (the
+    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
+    that differs from the original: On the battle-finished path (GetBattleEffects & 0x400, state nibble
+    not 5/9/0xA, sub_800AF50 returns 0), the asm passes battleSettings_802D2B2''s result in r0: `bl battleSettings_802D2B2
+    // () -> BattleSettings*` is followed directly by `bl loc_8007204`, so r0 = getBattleSettings_200AF60()
+    = &BattleSettings_200AF60. The C throws that result away (`(void)ptr;`) and calls `init_battle_display(LD32(ba...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8007CA0 -> battle_state_tick_8007CA0
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of sub_800AF50's return values (1/2/3) and how the three "modes" passed to setTwoStructs_800A840
+  map to in-game outcomes (e.g., win vs link rules).
+- The saved/restored BattleState+oBattleState_Unk_18 versus oBattleState_BattleSettings distinction (one
+  is preserved across init_battle_display, the other fed to restore_battle_settings).
+- Identity of the halfword counter at dword_2000B30 (intro-state frames before something triggers) and
+  the +0x12/+0x14 fields inside the S2001C04 sub-struct.
+- Why effect 0x400000 disables the mood-computation table lookup (likely a battle-rule flag like "no level-up
+  on victory").
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55
+previous_names:
+- sub_8007CA0

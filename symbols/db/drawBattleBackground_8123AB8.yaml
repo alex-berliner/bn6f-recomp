@@ -1,0 +1,92 @@
+name: drawBattleBackground_8123AB8
+address: '0x08123AB8'
+kind: function
+status: confirmed
+summary: Decompresses and uploads the five tile regions (center, mid-strip, left/right panels, etc.) of
+  the battle background into BG tile block 2 for the current field's tileset.
+interface: void sub_8123AB8(u32 *battle_obj /* r5 */); preserves r4-r7, flags from last sub-call
+details: "Called with r5 = pointer to a battle object whose byte at offset 0xC indexes a ROM\ntable (dword_8123BBC:\
+  \ 0x382E24) of u8 offsets; the u16 at (battle_obj + offset)\nis the field's tileset ID. The function:\n\
+  \  1. sub_81200EC staging-buffer prep with width arg r3=0xB, count r5=5, source\n     unk_201D220, dest\
+  \ unk_201D6E0.\n  2. CopyBackgroundTiles to bg (j=0xE,i=8,block=2) using unk_201D6E0, 8 cols x 10 rows.\n\
+  \  3. sub_8120390 with VRAM dest 0x6007200, source unk_201D7C0, pal byte_8123394, count 5\n     → upload\
+  \ at (j=0xC,i=8,2 cols x 10 rows, unk_201D7C0).\n  4. sub_81203E4 with palette slot (0xA<<12)|0x35C,\
+  \ VRAM dest 0x6006B80 → upload at\n     (j=0x16,i=8,2 cols x 10 rows, unk_201D7F8).\n  5. sub_8120458\
+  \ with palette slot (0xB<<12)|0x216 → upload at\n     (j=0x18,i=8,1 col x 10 rows, unk_201D830).\n \
+  \ 6. sub_81204C4 with palette slot (9<<12)|0x34F → upload at\n     (j=0x19,i=8,2 cols x 10 rows, unk_201D84C).\n\
+  All five sub-routines are passed the same tileset_id and battle_obj pointer; together\nthey compose\
+  \ the layered battle background. Caller contract: r5 in, r5/r6/r7 out\n(r6/r7 actually preserved), r0-r3/r4/lr\
+  \ clobbered, NZCV reflects last callee (CopyBackgroundTiles\nor sub_81204C4). push {r4-r7,lr} / pop\
+  \ {r4-r7,pc} — true return in r15 via popped lr.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_8123AB8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8123AB8
+
+    ./wf verify --function sub_8123AB8 --snapshots build-snapshots'
+  result: 'captured calls: 31 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8123AB8
+
+    ./wf verify --function sub_8123AB8 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8123AB8
+
+    ./wf verify --function sub_8123AB8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08123ab8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8123AB8 -> drawBattleBackground_8123AB8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- The exact screen-space role of each region (center vs. mid-strip vs. side panels) is inferred only from
+  j coordinates; needs verification against a screenshot.
+- Whether sub_81200EC, sub_8120390, sub_81203E4, sub_8120458, sub_81204C4 are themselves reusable helpers
+  or one-shot prep specific to this routine.
+- unk_201D220 is a pointer shared by all five prep calls — likely a single shared input buffer (LZ/RL-decompressed
+  source) rather than per-region data.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_8123AB8

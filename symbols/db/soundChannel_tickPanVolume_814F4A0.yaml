@@ -1,0 +1,99 @@
+name: soundChannel_tickPanVolume_814F4A0
+address: '0x0814F4A0'
+kind: function
+status: confirmed
+summary: Per-tick update of one GBA sound channel's pan / volume / mute bytes (called from the SIO/stream
+  audio mixer tick)
+interface: void soundChannel_tickPanVolume_814F4A0(struct SoundChannel* r0); clobbers r0 r1, returns via
+  lr
+details: "Operates on a SoundChannel struct:\n  +0x02, +0x03 : L/R pan byte pair (u8 each, treated as\
+  \ left/right attenuation)\n  +0x06        : base volume (u8)\n  +0x0A        : computed pan-average,\
+  \ stored here (clamped to 0xF on the 0x0F/0xF0 mute paths only)\n  +0x19        : final scaled ((vol*avg)+0xF)>>4\
+  \ volume sent to the channel\n  +0x1B        : channel mute mask (0x0F, 0xF0, or 0xFF derived from L/R\
+  \ balance)\n  +0x1C        : per-channel mute flag byte\nLogic:\n  - Compares L pan (+2) vs R pan (+3).\n\
+  \  - If R > L (right-dominant): compare (R>>1) vs L. If R is more than 2x L, mute = 0xF0 (kill right)\
+  \ and recompute/clamp avg. Else mute = 0xFF (full) and skip the clamp.\n  - If L >= R: symmetric, mute\
+  \ = 0x0F (kill left) when L > 2x R, else 0xFF.\n  - Then avg = (L+R)>>4 is written to +0x0A (only clamped\
+  \ on the 0x0F/0xF0 paths).\n  - Final volume at +0x19 = ((base_vol * avg) + 0xF) >> 4.\n  - Final mute\
+  \ at +0x1B = old_mute & LD8(+0x1C) — ANDs in a per-channel mute bit.\nThe tail pops r4, then r0 into\
+  \ pc via lr-style epilogue (no explicit value).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c
+    sub_814F4A0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_814F4A0
+
+    ./wf verify --function sub_814F4A0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    182 out of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_814F4A0
+
+    ./wf verify --function sub_814F4A0 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_814F4A0
+
+    ./wf verify --function sub_814F4A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814f4a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_814F4A0 -> soundChannel_tickPanVolume_814F4A0
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which mixer tick calls this (likely the SIO stream / NetStream driver update).
+- Whether +0x1C is a per-channel master mute (bit7) versus a side flag.
+- Whether the unclamped path (avg > 0xF written to +0x0A when mute=0xFF) is intentional or a quirk of
+  the disassembly split.
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e
+previous_names:
+- sub_814F4A0

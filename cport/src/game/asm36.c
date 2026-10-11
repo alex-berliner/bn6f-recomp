@@ -263,11 +263,11 @@ Next ExitSaveMenu8132CA0(void) {
  * guest R4/R5, the adapter saves the incoming r4-r7 and restores them after
  * the typed function has run. */
 
-/* register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+/* register form: calls getKeyedTableEntry_811FB84 outside this file, which has no typed C interface yet */
 static u32 convert_init_ref(u32 data, u32 size) {
     R0 = data;
     R1 = size;
-    GUEST_CALL(sub_811FB84);
+    GUEST_CALL(getKeyedTableEntry_811FB84);
     return R0;
 }
 
@@ -379,9 +379,9 @@ static void store_table_entry(u32 index, u32 data) {
     GUEST_CALL(storeTableEntryIntoUnk200a220Field8_8132FC4);
 }
 
-/* register form: calls sub_803D06C outside this file, which has no typed C interface yet */
+/* register form: calls protectedZennyOrZero_803D06C outside this file, which has no typed C interface yet */
 static u32 query_save_state(void) {
-    GUEST_CALL(sub_803D06C);
+    GUEST_CALL(protectedZennyOrZero_803D06C);
     return R0;
 }
 
@@ -566,7 +566,7 @@ Next storeTableEntryIntoUnk200a220Field8_8132FC4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8132FD0 ── */
+/* ── decomposeTileBlock_8132FD0 ── */
 /* register form: calls SWI 6 (game-custom tile-chain decompression), no typed C interface yet */
 static u32 swi6_decompress_tile(u32 tile, u32 param) {
     R0 = tile;
@@ -655,15 +655,15 @@ static void decompose_tile_block(u32 tile_block_header) {
     copy_bg_tiles_sub_8132FD0(j, 5, 2, buf, j_size, 2);
 }
 
-/* sub_8132FD0(r5 = tile_block_header) -> preserves r4-r7 */
-Next sub_8132FD0(void) {
+/* decomposeTileBlock_8132FD0(r5 = tile_block_header) -> preserves r4-r7 */
+Next decomposeTileBlock_8132FD0(void) {
     u32 save_r4 = R4, save_r5 = R5, save_r6 = R6, save_r7 = R7;
     decompose_tile_block(R5);
     R4 = save_r4; R5 = save_r5; R6 = save_r6; R7 = save_r7;
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81330AC ── */
+/* ── gfx_fillAllBandedTilemaps_81330AC ── */
 /* register form: calls gfx_fillTilemapConsecutiveBanded_8120C94 outside this file,
  * which has no typed C interface yet */
 static void fill_tilemap_banded(u32 dst, u32 rows, u32 bands, u32 src) {
@@ -696,23 +696,23 @@ static void fill_all_tilemaps(void) {
     }
 }
 
-/* sub_81330AC() -> r4 r5 r6 r7 preserved; nz c from the loop's final CMP r6, #0x1C */
-Next sub_81330AC(void) {
+/* gfx_fillAllBandedTilemaps_81330AC() -> r4 r5 r6 r7 preserved; nz c from the loop's final CMP r6, #0x1C */
+Next gfx_fillAllBandedTilemaps_81330AC(void) {
     fill_all_tilemaps();
     SET_FLAGS_CMP(0x1C, 0x1C);       /* loop always exits with r6 == 0x1C: equal */
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8133400 ── */
+/* ── battle_objectUpdate_8133400 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active_sub_8133400(void) {
     GUEST_CALL(IsScreenFadeActive);
     return !ZERO_FLAG();  /* Z clear (return value non-zero) means a fade transition is running */
 }
 
-/* register form: calls sub_8134594 outside this file, which has no typed C interface yet */
+/* register form: calls submenu_clearBgIfClosed_8134594 outside this file, which has no typed C interface yet */
 static void call_update_battle_logic(void) {
-    GUEST_CALL(sub_8134594);
+    GUEST_CALL(submenu_clearBgIfClosed_8134594);
 }
 
 /* register form: calls sub_8134538 outside this file, which has no typed C interface yet */
@@ -762,14 +762,14 @@ static void battle_object_update(u32 object_ptr) {
     call_set_substate(6, 1);
 }
 
-/* sub_8133400(r4, r5=battle obj ptr, r6, r7, r10, lr) → r0 r1 r2 r3 nz c v */
-Next sub_8133400(void) {
+/* battle_objectUpdate_8133400(r4, r5=battle obj ptr, r6, r7, r10, lr) → r0 r1 r2 r3 nz c v */
+Next battle_objectUpdate_8133400(void) {
     battle_object_update(R5);
     /* r0-r3, nz, c, v were set by the last GUEST_CALL in call_set_substate; nothing to write */
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813388C ── */
+/* ── folderEdit_step_813388C ── */
 /* register form: calls sub_8133BB4 outside this file, which has no typed C interface yet */
 static bool guard_8133BB4_passed(void) {
     GUEST_CALL(sub_8133BB4);
@@ -851,8 +851,8 @@ post:
     post_step_8134548();
 }
 
-/* sub_813388C(r2 r3 r4 r5 r6 r7 r8 r10 lr) -> nz c v r0..r10 r12 lr */
-Next sub_813388C(void) {
+/* folderEdit_step_813388C(r2 r3 r4 r5 r6 r7 r8 r10 lr) -> nz c v r0..r10 r12 lr */
+Next folderEdit_step_813388C(void) {
     folder_edit_step(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -877,12 +877,12 @@ Next sub_8133944(void) {
             GUEST_CALL(menu_moveCursorUpDown_811FA22);
             ST16(R5 + 0x34, (u16)R0);
         }
-        GUEST_CALL(sub_813471C);
+        GUEST_CALL(copyBackgroundTiles_sub_813471C);
         GUEST_CALL(sub_8134740);
     }
 
     /* Always-run scene updates. */
-    GUEST_CALL(sub_8134594);
+    GUEST_CALL(submenu_clearBgIfClosed_8134594);
     GUEST_CALL(sub_81345B0);
     GUEST_CALL(sub_8134538);
     GUEST_CALL(sub_8134548);
@@ -904,33 +904,33 @@ Next sub_8133944(void) {
  * fixed tail call.
  *
  * The byte at (r5 + 2) selects a handler from the two-entry table at
- * off_81339B4 — both entries hold sub_81339BC+1, so the fetched pointer is
+ * off_81339B4 — both entries hold petNavi_perFrameUpdate_81339BC+1, so the fetched pointer is
  * always that function. The original performs the call with the classic
  * "mov lr, pc / bx r0" idiom: the handler is entered with R0 still holding
  * the fetched table entry (its own address) and R1 holding the selector,
  * and it returns straight into the call below. */
 Next sub_813399C(void) {
     u32 method = LD8(R5 + 2);
-    u32 handler = LD32(A_off_81339B4 + method); /* both entries: sub_81339BC+1 */
+    u32 handler = LD32(A_off_81339B4 + method); /* both entries: petNavi_perFrameUpdate_81339BC+1 */
 
     R0 = handler;
     R1 = method;
-    GUEST_CALL(sub_81339BC);
+    GUEST_CALL(petNavi_perFrameUpdate_81339BC);
 
     GUEST_CALL(sub_8134490);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81339BC ── */
+/* ── petNavi_perFrameUpdate_81339BC ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active(void) {
     GUEST_CALL(IsScreenFadeActive);
     return !ZERO_FLAG();
 }
 
-/* register form: calls sub_81340FC outside this file, which has no typed C interface yet */
+/* register form: calls battle_setFieldsFromObj_81340FC outside this file, which has no typed C interface yet */
 static void sub_81340FC_call(void) {
-    GUEST_CALL(sub_81340FC);
+    GUEST_CALL(battle_setFieldsFromObj_81340FC);
 }
 
 /* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
@@ -985,9 +985,9 @@ static void SetCurPETNaviStatsByte_call(u32 a1, u32 a2, u32 a3) {
     GUEST_CALL(SetCurPETNaviStatsByte);
 }
 
-/* register form: calls sub_8134594 outside this file, which has no typed C interface yet */
+/* register form: calls submenu_clearBgIfClosed_8134594 outside this file, which has no typed C interface yet */
 static void sub_8134594_call(void) {
-    GUEST_CALL(sub_8134594);
+    GUEST_CALL(submenu_clearBgIfClosed_8134594);
 }
 
 /* register form: calls sub_8134538 outside this file, which has no typed C interface yet */
@@ -1068,12 +1068,12 @@ static void refresh_pet_navi_stats(u32 state) {
     sub_8134548_call();
 }
 
-Next sub_81339BC(void) {
+Next petNavi_perFrameUpdate_81339BC(void) {
     refresh_pet_navi_stats(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8133C58 ── */
+/* ── chatbox_selectPress_8133C58 ── */
 /* register form: calls IsButtonPressed outside this file, which has no typed C interface yet */
 static bool is_button_pressed(u32 button) {
     R0 = button;
@@ -1132,8 +1132,8 @@ static u32 sub_8133C58_logic(u32 state_ptr) {
     return 1;
 }
 
-/* sub_8133C58(r5 = menu state ptr) -> nz */
-Next sub_8133C58(void) {
+/* chatbox_selectPress_8133C58(r5 = menu state ptr) -> nz */
+Next chatbox_selectPress_8133C58(void) {
     R0 = sub_8133C58_logic(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -1237,7 +1237,7 @@ Next sub_81340DC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81340FC ── */
+/* ── battle_setFieldsFromObj_81340FC ── */
 /* Table entry size in bytes (0x20 per entry). */
 #define TABLE_ENTRY_SIZE 0x20
 
@@ -1290,14 +1290,14 @@ static void setBattleFieldsFromObject(u32 obj) {
     call_setFieldsInThreeTableEntries(fieldHi, fieldLo, 0, entryIdx);
 }
 
-/* sub_81340FC(r5 = battle object ptr) -> c v r1 r2 r3 from callee */
-Next sub_81340FC(void) {
+/* battle_setFieldsFromObj_81340FC(r5 = battle object ptr) -> c v r1 r2 r3 from callee */
+Next battle_setFieldsFromObj_81340FC(void) {
     setBattleFieldsFromObject(R5);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_8134538 ── */
-/* sub_8134538: thin wrapper that invokes sub_8134558 with the fixed argument
+/* sub_8134538: thin wrapper that invokes object_resolveTableEntry_8134558 with the fixed argument
  * set (226, 28, 30, 36); result and condition flags are whatever the callee
  * leaves behind. r4-r7 pass through untouched. */
 Next sub_8134538(void) {
@@ -1305,24 +1305,24 @@ Next sub_8134538(void) {
     R1 = 0x1C;
     R2 = 0x1E;
     R3 = 0x24;
-    GUEST_CALL(sub_8134558);
+    GUEST_CALL(object_resolveTableEntry_8134558);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_8134548 ── */
-/* sub_8134548: tail-call wrapper for sub_8134558 with fixed arguments
+/* sub_8134548: tail-call wrapper for object_resolveTableEntry_8134558 with fixed arguments
  *   r0 = 0x182, r1 = 0x1C, r2 = 0x28, r3 = 0x2E.
- * Registers r0-r3 and the condition flags are whatever sub_8134558 leaves. */
+ * Registers r0-r3 and the condition flags are whatever object_resolveTableEntry_8134558 leaves. */
 Next sub_8134548(void) {
     R0 = 0x182;
     R1 = 0x1C;
     R2 = 0x28;
     R3 = 0x2E;
-    GUEST_CALL(sub_8134558);
+    GUEST_CALL(object_resolveTableEntry_8134558);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8134558 ── */
+/* ── object_resolveTableEntry_8134558 ── */
 /* Lookup constants baked into the original via literal-pool loads. */
 #define LOOKUP_TYPE       0x20002   /* passed as r1 to sub_811FA98 */
 #define LOOKUP_FIELD_ID   0xC24C    /* passed as r6 to sub_811FA98 */
@@ -1364,14 +1364,14 @@ static void lookup_object_entry(u32 index, u32 table_ptr,
                  ENTRY_TYPE_FLD, table_ptr, LOOKUP_FIELD_ID, LOOKUP_COUNT);
 }
 
-/* sub_8134558(r0 = index, r1 = sub_id, r2 = attr_a_off, r3 = attr_b_off,
+/* object_resolveTableEntry_8134558(r0 = index, r1 = sub_id, r2 = attr_a_off, r3 = attr_b_off,
  *             r5 = entry pointer;  r4 r6 r7 lr preserved) */
-Next sub_8134558(void) {
+Next object_resolveTableEntry_8134558(void) {
     lookup_object_entry(R0, R5, R1, R2, R3);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8134594 ── */
+/* ── submenu_clearBgIfClosed_8134594 ── */
 /* register form: calls submenu_isOpen_81355D8 outside this file, which has no typed C interface yet */
 static bool submenu_is_open_sub_8134594(void) {
     GUEST_CALL(submenu_isOpen_81355D8);
@@ -1395,8 +1395,8 @@ static void ensure_submenu_cleared(void) {
     call_813468C_sub_8134594(0xE7, 0x16, 0, 0x10, A_byte_81331EC, 0);
 }
 
-/* sub_8134594(): clears the submenu background tile if the submenu is not open. */
-Next sub_8134594(void) {
+/* submenu_clearBgIfClosed_8134594(): clears the submenu background tile if the submenu is not open. */
+Next submenu_clearBgIfClosed_8134594(void) {
     ensure_submenu_cleared();
     RETURN_TO_CALLER();
 }
@@ -1485,8 +1485,8 @@ Next battle_spawnFixedArgEffect_wrapper_81345E8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813471C ── */
-/* sub_813471C: Copy background tiles for an object. The flag byte at r5+0xD
+/* ── copyBackgroundTiles_sub_813471C ── */
+/* copyBackgroundTiles_sub_813471C: Copy background tiles for an object. The flag byte at r5+0xD
  * selects between a small (2x2) and large (0x15x2) source rectangle; the
  * destination tile block, tile id source, and the call's own j/i sizes are
  * fixed.
@@ -1495,7 +1495,7 @@ Next battle_spawnFixedArgEffect_wrapper_81345E8(void) {
  * outputs: r5 (preserved across the call via push/pop)
  * clobbers: nz c v r0 r1 r2 r3 lr
  * preserved: r4 r5 r6 r7 */
-Next sub_813471C(void) {
+Next copyBackgroundTiles_sub_813471C(void) {
     u32 saved_r4 = R4;
     u32 saved_r5 = R5;
 
@@ -1522,7 +1522,7 @@ Next sub_813471C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81348DC ── */
+/* ── battle_alignRowCheck_81348DC ── */
 /* register form: calls sub_81171F4 outside this file, which has no typed C interface yet */
 static void call_set_valid_flag(u32 val, u32 flag_obj) {
     R0 = val;
@@ -1538,7 +1538,7 @@ static void call_move_position(u32 x, u32 y, u32 flag_obj, u32 threshold, u32 ro
     R4 = saved_r4;
 }
 
-/* sub_81348DC: position/row alignment check for a battle object.
+/* battle_alignRowCheck_81348DC: position/row alignment check for a battle object.
  * gate bit-0 (obj+0x4C): 0 → early exit, 1 → verify diff is in [0, threshold]. */
 static void battle_align_check(u32 obj, u32 row_off, u32 cur_x, u32 cur_y,
                                u32 flag_obj, u32 threshold) {
@@ -1569,8 +1569,8 @@ static void battle_align_check(u32 obj, u32 row_off, u32 cur_x, u32 cur_y,
     call_set_valid_flag(0, flag_obj);
 }
 
-/* sub_81348DC(r0=row_off r1=cur_x r2=cur_y r3=flag_obj r4=threshold r5=obj) */
-Next sub_81348DC(void) {
+/* battle_alignRowCheck_81348DC(r0=row_off r1=cur_x r2=cur_y r3=flag_obj r4=threshold r5=obj) */
+Next battle_alignRowCheck_81348DC(void) {
     battle_align_check(R5, R0, R1, R2, R3, R4);
     RETURN_TO_CALLER();
 }
@@ -1614,7 +1614,7 @@ Next chatbox_clampScrollToTextEnd_813525C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813527C ── */
+/* ── battle_copyStateSlotsAndZeroNext_813527C ── */
 /* Size of one data slot in bytes (toolkit/battle-state entry). */
 #define SLOT_SIZE 0x20
 
@@ -1648,14 +1648,14 @@ static void copy_then_zero_fill(u32 src, u32 dst, u32 count) {
     zero_fill_by_eight_words(dst, SLOT_SIZE);
 }
 
-/* sub_813527C(r0=src, r1=dst, r2=slot_count) -> copies slots then zero-fills the next one;
+/* battle_copyStateSlotsAndZeroNext_813527C(r0=src, r1=dst, r2=slot_count) -> copies slots then zero-fills the next one;
  * r4-r7 preserved via push/pop, r0/r1/lr/nz/c/v clobbered. */
-Next sub_813527C(void) {
+Next battle_copyStateSlotsAndZeroNext_813527C(void) {
     copy_then_zero_fill(R0, R1, R2);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8135314 ── */
+/* ── battle_setupPETNavis_8135314 ── */
 /* PET navi stat type lookup indexed by battle_obj[0xC] */
 #define ADDR_PET_NAVI_STAT_TBL  0x081353B4
 /* Battle-object field offsets for storing each navi's stat byte */
@@ -1754,15 +1754,15 @@ static u32 process_pet_navis(u32 navi_data, u32 stats_arr, u32 arg2, u32 arg3,
     return r3_out;
 }
 
-/* sub_8135314(r0=navi_data, r1=stats_arr, r2=arg2, r3=arg3,
+/* battle_setupPETNavis_8135314(r0=navi_data, r1=stats_arr, r2=arg2, r3=arg3,
  *             r4=ptr_array, r5=battle_obj) -> r3; r4-r7 preserved */
-Next sub_8135314(void) {
+Next battle_setupPETNavis_8135314(void) {
     R3 = process_pet_navis(R0, R1, R2, R3, R4, R5);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_81353DC ── */
-/* sub_81353DC: thin wrapper around sub_81348DC. It invokes that routine with
+/* sub_81353DC: thin wrapper around battle_alignRowCheck_81348DC. It invokes that routine with
  * a fixed argument set (r0 = 0x24, r1 = 0xA5, r2 = 0x28, r3 = 4, r4 = 6) and
  * simply lets its results in r2/r3 pass through to the caller. As in the
  * original (push/pop {r4}), the caller's r4 survives even though the callee
@@ -1775,7 +1775,7 @@ Next sub_81353DC(void) {
     R2 = 0x28;
     R3 = 4;
     R4 = 6;
-    GUEST_CALL(sub_81348DC);
+    GUEST_CALL(battle_alignRowCheck_81348DC);
 
     /* restore the caller's r4, matching the original's push/pop */
     R4 = saved_r4;
@@ -1810,8 +1810,8 @@ Next sub_81353F0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8135500 ── */
-/* sub_8135500: Count battle objects whose alliance matches a given value,
+/* ── battle_CheckSpawnLimit_8135500 ── */
+/* battle_CheckSpawnLimit_8135500: Count battle objects whose alliance matches a given value,
  * bucketed by HP tier, then check whether the current object's tier bucket
  * would exceed the per-tier spawn limit.
  *
@@ -1886,8 +1886,8 @@ static TierResult check_tier_limit(u32 obj_ptr, u32 alliance, u32 prev_r2) {
     }
 }
 
-/* sub_8135500(r0 = obj_ptr, r1 = alliance) -> r0(r2) */
-Next sub_8135500(void) {
+/* battle_CheckSpawnLimit_8135500(r0 = obj_ptr, r1 = alliance) -> r0(r2) */
+Next battle_CheckSpawnLimit_8135500(void) {
     TierResult res = check_tier_limit(R0, R1, R2);
     R0 = res.exceeded;
     R1 = res.count;
@@ -1912,23 +1912,23 @@ Next submenu_isOpen_81355D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81355EC ── */
-/* sub_8135314 is the underlying "register a script block" routine; it lives outside this file
+/* ── registerBattleStartScript_81355EC ── */
+/* battle_setupPETNavis_8135314 is the underlying "register a script block" routine; it lives outside this file
  * and currently has no typed C interface, so the simplest helper is a register-form passthrough. */
-/* register form: calls sub_8135314 outside this file, which has no typed C interface yet */
+/* register form: calls battle_setupPETNavis_8135314 outside this file, which has no typed C interface yet */
 static void call_sub_8135314(u32 arg0, u32 arg1, u32 arg2, u32 arg3, u32 arg4) {
     R0 = arg0;
     R1 = arg1;
     R2 = arg2;
     R3 = arg3;
     R4 = arg4;
-    GUEST_CALL(sub_8135314);
+    GUEST_CALL(battle_setupPETNavis_8135314);
 }
 
 /* Register the Battle Start script: source data table, script byte-pool base, total script length,
- * step count, and the init-record pointer. Clobbers r0..r3 (sub_8135314 may use them); r4..r7
+ * step count, and the init-record pointer. Clobbers r0..r3 (battle_setupPETNavis_8135314 may use them); r4..r7
  * are preserved exactly as before the call (they are inputs and outputs). */
-Next sub_81355EC(void) {
+Next registerBattleStartScript_81355EC(void) {
     /* Save the incoming r4..r7 across the call. The original only pushes {r4, lr} since r4 is
      * the only callee-clobbered among the preserved set, but we keep the contract clean. */
     u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
@@ -1939,7 +1939,7 @@ Next sub_81355EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8136C24 ── */
+/* ── battle_refreshPETNaviStats_8136C24 ── */
 /* Register-form helpers for the PET Navi stats API (no typed C interface yet). */
 
 /* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
@@ -2046,8 +2046,8 @@ static void save_restore_pet_navi_stats(void) {
     /* The last SetCurPETNaviStatsByte leaves r1, r2, c, v for the caller. */
 }
 
-/* sub_8136C24() — no meaningful inputs used; outputs (r1,r2,c,v) left by last callee GUEST_CALL. */
-Next sub_8136C24(void) {
+/* battle_refreshPETNaviStats_8136C24() — no meaningful inputs used; outputs (r1,r2,c,v) left by last callee GUEST_CALL. */
+Next battle_refreshPETNaviStats_8136C24(void) {
     save_restore_pet_navi_stats();
     RETURN_TO_CALLER();
 }

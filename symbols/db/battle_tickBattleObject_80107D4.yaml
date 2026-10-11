@@ -1,0 +1,103 @@
+name: battle_tickBattleObject_80107D4
+address: '0x080107D4'
+kind: function
+status: confirmed
+summary: 'Per-frame housekeeping for a battle object: tick down AI timers (chip lockout, unk 0x15) and
+  alliance entry counters at offsets 0x2E, 0x3A and 0x3C, except when battle time is stopped.'
+interface: 'void battle_tickBattleObject_80107D4(void); // in: r5 = battle object pointer, r10 = ?, r4
+  = preserved by callee across the call; out: r4 unchanged'
+details: 'Reads oBattleObject_AIDataPtr (32-bit) from r5 to obtain the per-object AI data block, then
+
+  decrements oAIData_ChipLockoutTimer (u8) and oAIData_Unk_15 (u8) if currently nonzero.
+
+  Reads oBattleObject_Alliance (u8) and asks getEntryPtr_2036120_1D0_802E070 for an alliance-
+
+  scoped entry pointed to by a 0x1D0-entry table rooted at 0x2036120; if entry byte 0 is zero,
+
+  it bails. Otherwise it ticks three 16-bit counters at offsets 0x2E, 0x3A and 0x3C of that
+
+  entry when nonzero. The whole body is skipped when battle_isTimeStop returns true.
+
+  All decrement operations are saturating-at-zero (tst/beq + sub + str) so the counters clamp
+
+  rather than underflow. r4 is treated as callee-saved.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c
+    sub_80107D4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80107D4
+
+    ./wf verify --function sub_80107D4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80107D4
+
+    ./wf verify --function sub_80107D4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80107D4
+
+    ./wf verify --function sub_80107D4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080107d4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80107D4 -> battle_tickBattleObject_80107D4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does the alliance entry's byte 0 flag represent (slot active / object present)?
+- What semantics belong to the counters at 0x2E, 0x3A and 0x3C (charge time, status durations, AI cooldowns)?
+- Meaning of oAIData_Unk_15 and the unidentified oAIData_Unk_16 (an 0xFE mask is used implicitly via the
+  byte-0 check)?
+- Why is r10 passed in if the routine does not read it?
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f
+previous_names:
+- sub_80107D4

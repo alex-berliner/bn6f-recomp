@@ -1,0 +1,92 @@
+name: countActiveNaviBonuses_800FE52
+address: '0x0800FE52'
+kind: function
+status: confirmed
+summary: Counts how many Navi bonus-stat fields are currently set on the allied BattleObject.
+interface: u32 countActiveNaviBonuses_800FE52(u32 r5_battleObject); // r0 = active bonus count; r4, r6
+  preserved; NZCV clobbered
+details: Iterates ten BattleObject stat slots (offsets 0x31, 0x13, 0x14, 0x16, 0x54, 0x24, 0x18, 0x19,
+  0x1A, 0x63) via GetBattleNaviStatsByte_AllianceFromBattleObject / GetBattleNaviStatsHword_AllianceFromBattleObject,
+  incrementing a counter when each is "active". Field 0x31 is treated specially — it only counts when
+  equal to 1, not merely non-zero — suggesting it is a boolean flag whose non-1 value means a different
+  state (e.g. disabled/clearing). All other fields count whenever non-zero, indicating they hold value-bearing
+  data (bonus counts, equipped bonus chips, etc.). The function is purely a tally; it does not modify
+  the BattleObject and only returns the count in r0. Likely consumed by a BattleObject spawn/refresh path
+  to decide how many visual Navi-bonus icons to render in the status panel.
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c
+    sub_800FE52
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800FE52
+
+    ./wf verify --function sub_800FE52 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    238 out of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800FE52
+
+    ./wf verify --function sub_800FE52 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800FE52
+
+    ./wf verify --function sub_800FE52 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800fe52 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_800FE52 -> countActiveNaviBonuses_800FE52
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does offset 0x31 represent such that exactly 1 is the "active" value?
+- Are the offsets (0x13/0x14/0x16, 0x54, 0x18/0x19/0x1A, 0x63) related to specific bonus categories (e.g.
+  HP bonus, MegaChip bonus, Buster bonus) and is 0x54 the only halfword because it stores a larger value?
+- Does the caller use the returned count only for UI icon count, or also for a battle formula bonus?
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f
+previous_names:
+- sub_800FE52

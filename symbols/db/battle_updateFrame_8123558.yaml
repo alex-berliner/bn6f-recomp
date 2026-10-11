@@ -1,0 +1,97 @@
+name: battle_updateFrame_8123558
+address: '0x08123558'
+kind: function
+status: confirmed
+summary: 'Per-frame battle update: runs three battle sub-routines and, once the screen fade finishes,
+  advances the battle-object state to phase 4'
+interface: void battle_updateFrame_8123558(BattleObject* r5) -> r0 (4 on phase transition, else IsScreenFadeActive's
+  r0); nz clobbered (Z set iff no transition written)
+details: "Sequence:\n  1. Calls sub_8123BC0, sub_8123BE0, sub_8123C00 (three unnamed battle\n     sub-updates;\
+  \ all external, no typed interface yet).\n  2. Calls IsScreenFadeActive(); if ZF=1 the fade is still\
+  \ active\n     (or no fade running) and the function returns immediately with the\n     caller's prior\
+  \ r5 and the fade call's flags.\n  3. If the fade is NOT active (Z clear), it writes the byte 4 to\n\
+  \     [r5 + 2] - the \"state\"/\"phase\" field of the BattleObject pointed\n     to by r5 (r5 is read\
+  \ but never written here; +2 is a single byte).\n  4. Sets r0 = 4 and returns.\n\nRegister contract:\
+  \ r5 is the only meaningful input (preserved across\nthe whole call: the prologue preserves it via the\
+  \ convention and it is\nnot on the push/pop list). r6, r10, lr are passed in by the caller but\nunused.\
+  \ r0, r1, r2, r3 are scratch; NZ/C/V come from the last callee\n(IsScreenFadeActive) or, on the write\
+  \ path, from `mov r0, #4`.\nTail-return (`pop {pc}`) rather than `bx lr`.\n\nGame terms: this is the\
+  \ main per-VBlank tick of the battle engine\nlayer sitting at this address; the \"phase 4\" byte it\
+  \ writes on\nfade-out completion matches the typical NAVI/Battle state machine\nprogression used across\
+  \ the BN6 codebase.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_8123558
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8123558
+
+    ./wf verify --function sub_8123558 --snapshots build-snapshots'
+  result: 'captured calls: 34 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8123558
+
+    ./wf verify --function sub_8123558 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8123558
+
+    ./wf verify --function sub_8123558 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08123558 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8123558 -> battle_updateFrame_8123558
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What each of sub_8123BC0, sub_8123BE0, sub_8123C00 specifically does (animation, damage application,
+  etc.) - they are not yet named.
+- Confirm that r5 is indeed a BattleObject* and that offset 2 is the "phase"/"state" byte (strongly suggested
+  but only verified by usage contract; the struct definition elsewhere in the disassembly would nail it
+  down).
+- Whether the fade check uses the Z flag from IsScreenFadeActive to mean "fade still busy" (so we wait)
+  vs "fade inactive" (so we transition); the readable C treats beq as the early-return path, which is
+  the conventional "skip while busy" interpretation.
+- Why r6 and r10 are listed in the register contract as inputs but are never referenced here - callee-saved
+  by the inner subs, or dead caller setup.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_8123558

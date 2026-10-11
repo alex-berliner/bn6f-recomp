@@ -1,0 +1,134 @@
+name: canBattleObjectBeastOut_80159C6
+address: '0x080159C6'
+kind: function
+status: probable
+summary: Tests whether a battle object may currently beast-out / cross over (sets an AI state flag and
+  validates the Navi's transformation state).
+interface: u32 canBattleObjectBeastOut_80159C6(u32 battle_obj /* r0 */); /* returns 0/1 (flags NZ) */
+details: 'Resolves whether the supplied battle object is currently eligible to start a Beast-Out
+
+  / cross-over transformation. The function takes the alliance battle object in r0, returns 0
+
+  when not allowed and 1 when all checks pass.
+
+
+  For non-crossover battles (GetBattleMode() != 1) it first marks the AI side as
+
+  transitioning: the AI data block is fetched via oBattleObject_AIDataPtr (likely the
+
+  NAVI-side AI descriptor), and oAIData_Unk_0f is required to be 0 and is then written
+
+  to 2 — i.e. this likely sets a "transformation in progress / requested" state on the AI
+
+  helper so other logic doesn''t re-trigger. It also requires oNaviStats_BeastOutCounter
+
+  to be 0 (the Navi isn''t already beast-out) and calls sub_801443C, which presumably
+
+  pulls in cross-over battle setup data.
+
+
+  For all modes it then reads oNaviStats_Transformation and requires the value to lie in
+
+  the inclusive range 0xB..0x18 (the mid/late-game transformations — this is the loose
+
+  numeric "form" ID, not a character index). In non-crossover mode it re-checks that
+
+  oNaviStats_BeastOutCounter is still 0 before granting success.
+
+
+  All queries go through GetBattleNaviStatsByte_AllianceFromBattleObject (battle obj + a
+
+  stats byte offset) and GetBattleMode, the standard front-ends used by the alliance/
+
+  battle mode plumbing. The function preserves r5/r6, clobbers r0/r1/lr, and sets the
+
+  N/Z flags from the returned success value.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-005019);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c
+    sub_80159C6
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80159C6
+
+    ./wf verify --function sub_80159C6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261011-005019-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80159C6
+
+    ./wf verify --function sub_80159C6 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-005019-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80159C6
+
+    ./wf verify --function sub_80159C6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-005019-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080159c6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 1a91c64
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm00_2_8012BA2.c after review against the assembly (the
+    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
+    that differs from the original: r5 is never set to the battle object. Asm: `mov r5, r0` at entry,
+    so GetBattleNaviStatsByte_AllianceFromBattleObject (contract inputs r1 r5) and sub_801443C (input
+    r5) run with r5 = the object passed in r0. The C helpers set `R0 = battle_obj; R1 = offset;` but leave
+    R5 = the caller''s r5. The only callers (sub_801486C, asm00_2.s:13142/13162) pass r0 = [r6/r7,#8]
+    with r5 = dword_20367F0, not the obj...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80159C6 -> canBattleObjectBeastOut_80159C6
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of oAIData_Unk_0f value 2 — likely a "transformation requested/locked" flag set on the
+  AI helper; needs cross-references to callers/writers.
+- Why the BeastOutCounter check is repeated after the transformation range check only in non-crossover
+  mode; possibly guarding against a re-entrant beast-out request.
+- Exact transformation mapping for IDs 0xB..0x18 (which forms these correspond to in Falzar version ordering).
+- What sub_801443C initialises exactly — looks like it pre-loads cross-over / cross mega state but its
+  body isn't part of this function.
+sources:
+- tools/wf run convert-20261011-005019
+- recomp 1a91c64
+previous_names:
+- sub_80159C6

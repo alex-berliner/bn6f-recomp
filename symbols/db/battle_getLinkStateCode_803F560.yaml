@@ -1,0 +1,113 @@
+name: battle_getLinkStateCode_803F560
+address: '0x0803F560'
+kind: function
+status: confirmed
+summary: Returns a link-battle state code (0xFF, 0x80 or 0) by checking the current battle mode and, in
+  mode 2, polling the link partner and the four link slots.
+interface: u32 battle_getLinkStateCode_803F560(void); /* out r0 = code (0xFF/0x80/0), out r1 = path-dependent
+  (partner value, leftover, or 0); N/Z set from r0, C=V=0; r4-r7 preserved */
+details: 'First asks sub_803DEB4 for the current battle/mode code. Mode 4 keeps the
+
+  default code 0xFF; any mode other than 2 or 4 forces 0x80; mode 2 (link
+
+  battle) takes a polling path: it calls sub_813DB24(0, 1) to query the link
+
+  partner. If that returns 0xFF the code stays 0xFF and r1 receives the
+
+  callee''s r2 (the partner''s answer); otherwise it loops over the four link
+
+  slots 0..3 calling sub_8144D04(slot), and if slot 1 or slot 3 reports state
+
+  2 the code is dropped to 0 (and r1 is set to 0). Slots 0 and 2 are ignored
+
+  for the downgrade even though they are polled. r4 is bumped once per loop
+
+  iteration by the original but is restored on exit (only pushed/popped, never
+
+  read). The literal pool references eLinkState. The trailing "mov r0, r6" is
+
+  an ADDS, so N/Z reflect the returned code and C/V end up clear.
+
+  Likely used to gate behaviour during link battles / tag-style setups where
+
+  partner slots are odd-numbered (1 and 3).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_803F560
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803F560
+
+    ./wf verify --function sub_803F560 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    216 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803F560
+
+    ./wf verify --function sub_803F560 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803F560
+
+    ./wf verify --function sub_803F560 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0803f560 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_803F560 -> battle_getLinkStateCode_803F560
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- exact meaning of the 0xFF vs 0x80 vs 0 codes at call sites
+- what sub_813DB24(0,1) and sub_8144D04(slot) query (link comm buffers?)
+- why only odd slots 1 and 3 can downgrade the code
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_803F560

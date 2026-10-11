@@ -1,0 +1,106 @@
+name: maybeStartEntranceCutscene_8034F68
+address: '0x08034F68'
+kind: function
+status: confirmed
+summary: 'Overworld per-frame: if a door-coordinate trigger under the player is enabled, start the door''s
+  entrance/interact cutscene.'
+interface: 'void sub_8034F68(void); /* inputs: r10 toolkit, lr; outputs: r2 r8 r9 r10 r11; clobbers nz
+  c v r0 r1 r3 lr; preserves r4-r7 r12 */'
+details: "Called from the overworld main loop; receives r10 = the active Toolkit* and exits cleanly.\n\
+  Guards out if a cutscene script is already non-null (IsCutsceneScriptNonNull), so it doesn't\ndouble-trigger.\
+  \ Loads GameState* via oToolkit_GameStatePtr, then the overworld player object\nvia oGameState_OverworldPlayerObjectPtr,\
+  \ then submits the player-space coordinate word\n(player_obj + 0x1C, the entity's current tile coords\
+  \ blob) to checkCoordinateTrigger_8031a7a.\nReads back the r1 trigger id. Valid range is 1..0xF (15);\
+  \ id 0 / 0x10+ bails.\nComputes an event-flag id by indexing into a base of 0x16F0 + id (the per-door\
+  \ script flag\nblock in EWRAM/IRAM). If TestEventFlag says the flag is clear, bails.\nThen reads slot_addr\
+  \ = unk_2011EA0 + id*4 (size-16 door-slot table of { u8 enabled, u24? param });\na leading zero byte\
+  \ (the enabled flag) means the door is disabled and bails. Otherwise starts\nCutsceneScriptEntranceInteract_8098384\
+  \ with the slot's 32-bit tail as the param (the door's\ncutscene-id / warp-target).\nQuirks:\n  * r2\
+  \ is in the preserved set by contract but never used or written in the body; the readable\n    preserves\
+  \ it explicitly.\n  * The flag base \"0x16F0\" is EVENT_16F0 in this build (exposed symbol); id 0 isn't\
+  \ a real door\n    so that slot's flag never matters.\n  * Returns early on every guard; only the happy\
+  \ path clobbers r0/r1/r3/lr for the\n    StartCutscene call. r10 is set to the GameState*'s derived\
+  \ pointer at one point but is\n    caller-preserved, so the caller's r10 survives.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004614);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 58' --file inbox_farm_58.c
+    sub_8034F68
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8034F68
+
+    ./wf verify --function sub_8034F68 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-004614-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8034F68
+
+    ./wf verify --function sub_8034F68 --snapshots build-snapshots'
+  result: 20 compared, 0 differed, 4 out of domain (verify run convert-20261011-004614-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8034F68
+
+    ./wf verify --function sub_8034F68 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004614-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08034f68 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 8734ebe
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8034F68 -> maybeStartEntranceCutscene_8034F68
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What is the exact layout of unk_2011EA0? It is treated as a [u32; 0x10] table but only the leading byte
+  is consulted; is the upper 3 bytes always a packed param, or is there a sibling array at unk_2011EA0
+  + 1 / + 2?
+- Does 0x16F0 actually equal EVENT_16F0 in this build, or is the base offset table-private?
+- Is the "trigger id" from checkCoordinateTrigger_8031a7a a door index, or a generic coordinate-trigger
+  id reused for doors here?
+- Should this be tagged as overworld_ rather than bare maybeStartEntranceCutscene_?
+sources:
+- tools/wf run convert-20261011-004614
+- recomp 8734ebe
+previous_names:
+- sub_8034F68

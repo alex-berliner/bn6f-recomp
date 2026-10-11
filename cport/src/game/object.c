@@ -240,18 +240,18 @@ Next zeroFill_800BF66(void) {
 /* sub_800BF88: reset the six two-byte selection slots at byte_2036740.
  * Each slot gets its "count" byte cleared to 0 and its partner byte set to a
  * descending default value (0xE, 0xD, ..., 9). Before that it calls
- * sub_800C4BC (whose r2/r3/r5 results and carry/overflow flags the callers
+ * battle_buildPlayerPanelGrid_800C4BC (whose r2/r3/r5 results and carry/overflow flags the callers
  * of this function rely on) and stores 0x8C into the state word at
  * byte_203CB04. r4/r6/r7 are only used across the call, so they come back
  * unchanged, as in the original's push/pop. */
 Next sub_800BF88(void) {
-    /* sub_800C4BC may clobber r4/r6/r7; the original saves and restores
+    /* battle_buildPlayerPanelGrid_800C4BC may clobber r4/r6/r7; the original saves and restores
      * them around the call, so capture them here and put them back. */
     u32 savedR4 = R4;
     u32 savedR6 = R6;
     u32 savedR7 = R7;
 
-    GUEST_CALL(sub_800C4BC);
+    GUEST_CALL(battle_buildPlayerPanelGrid_800C4BC);
     R4 = savedR4;
     R6 = savedR6;
     R7 = savedR7;
@@ -269,7 +269,7 @@ Next sub_800BF88(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800C4BC ── */
+/* ── battle_buildPlayerPanelGrid_800C4BC ── */
 /* register form: calls getTable12Record outside this file, which has no typed C interface yet */
 static u32 get_table12_record(u32 arg0, u32 arg1) {
     R0 = arg0; R1 = arg1;
@@ -393,9 +393,9 @@ static void build_battle_panels(u32 arg0, u32 col_mask, u32 r2_in, u32 r3_in) {
     finalize_panels(r2_in, r3_in);
 }
 
-/* sub_800C4BC(r0 = table arg, r1 = column bitmask, r2/r3 = passthrough to sub_800C67C)
+/* battle_buildPlayerPanelGrid_800C4BC(r0 = table arg, r1 = column bitmask, r2/r3 = passthrough to sub_800C67C)
  * -> r2, r3, c, v (from sub_800C67C) */
-Next sub_800C4BC(void) {
+Next battle_buildPlayerPanelGrid_800C4BC(void) {
     build_battle_panels(R0, R1, R2, R3);
     RETURN_TO_CALLER();
 }
@@ -428,7 +428,7 @@ Next battle_getPanelDataPtr_800C6E0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800C746 ── */
+/* ── battle_updatePanels_800C746 ── */
 #define PANEL_TEAMS     6
 #define PANEL_COLS      6
 #define PANEL_ROWS      3
@@ -560,13 +560,13 @@ static u32 process_battle_panels(void) {
 }
 
 /*
- * sub_800C746()
+ * battle_updatePanels_800C746()
  * inputs:  r4 r5 r6 r7 r10 lr
  * outputs: r2 (from last callee), r3 (grid logic), r6 (preserved by pop)
  * clobbers: nz c v r0 r1 lr
  * preserved: r4 r5 r6 r7
  */
-Next sub_800C746(void) {
+Next battle_updatePanels_800C746(void) {
     R3 = process_battle_panels();
     RETURN_TO_CALLER();
 }
@@ -1447,15 +1447,15 @@ Next object_getFlip(void) {
 }
 
 /* ── sub_800E45E ── */
-/* sub_800E45E: tail-call wrapper that invokes sub_800E468 with r0 = 1.
+/* sub_800E45E: tail-call wrapper that invokes battle_objectResolveContactOffset_800E468 with r0 = 1.
  * All other registers (and the flags left behind by the callee) pass through. */
 Next sub_800E45E(void) {
     R0 = 1;
-    GUEST_CALL(sub_800E468);
+    GUEST_CALL(battle_objectResolveContactOffset_800E468);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800E468 ── */
+/* ── battle_objectResolveContactOffset_800E468 ── */
 typedef struct { u32 x, y, extra; } ContactOffset;
 
 /* register form: calls battle_dispatchObjectContactHandler_800E498 outside this file, which has no typed C interface yet */
@@ -1492,8 +1492,8 @@ static ContactOffset get_contact_offset(u32 obj) {
     return raw;
 }
 
-/* sub_800E468(r5 = battle object ptr) -> r0,r1,r2 = contact offset; c,v,r3 from panel check callee */
-Next sub_800E468(void) {
+/* battle_objectResolveContactOffset_800E468(r5 = battle object ptr) -> r0,r1,r2 = contact offset; c,v,r3 from panel check callee */
+Next battle_objectResolveContactOffset_800E468(void) {
     ContactOffset result = get_contact_offset(R5);
     R0 = result.x;
     R1 = result.y;
@@ -1516,7 +1516,7 @@ Next battle_dispatchObjectContactHandler_800E498(void) {
     /* Handler table (off_800E4B0), in table order: */
     switch (index) {
     case 0: GUEST_CALL(sub_800E4C0); break;
-    case 1: GUEST_CALL(sub_800E548); break;
+    case 1: GUEST_CALL(battle_getHitModifierOffsets_800E548); break;
     case 2: GUEST_CALL(sub_800E4C8); break;
     case 3: GUEST_CALL(sub_800E500); break;
     }
@@ -1524,7 +1524,7 @@ Next battle_dispatchObjectContactHandler_800E498(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800E548 ── */
+/* ── battle_getHitModifierOffsets_800E548 ── */
 /* register form: calls object_getEnemyDirection outside this file, which has no typed C interface yet */
 static u32 get_enemy_direction(u32 object_ptr, u32 r4_in, u32 r6_in) {
     R4 = r4_in;
@@ -1545,7 +1545,7 @@ typedef struct {
     u32 collision_ptr; /* r3 = collision data pointer (unchanged by later code) */
 } HitModifierResult;
 
-/* sub_800E548: compute knockback from enemy direction and hit modifier. */
+/* battle_getHitModifierOffsets_800E548: compute knockback from enemy direction and hit modifier. */
 static HitModifierResult compute_hit_offsets(u32 object_ptr, u32 r4_in, u32 r6_in) {
     u32 direction = get_enemy_direction(object_ptr, r4_in, r6_in);
 
@@ -1584,8 +1584,8 @@ static HitModifierResult compute_hit_offsets(u32 object_ptr, u32 r4_in, u32 r6_i
     return res;
 }
 
-/* sub_800E548(r5 = battle object) -> r0..r3, flags */
-Next sub_800E548(void) {
+/* battle_getHitModifierOffsets_800E548(r5 = battle object) -> r0..r3, flags */
+Next battle_getHitModifierOffsets_800E548(void) {
     HitModifierResult e = compute_hit_offsets(R5, R4, R6);
     R0 = e.result;
     R1 = e.offset_x;

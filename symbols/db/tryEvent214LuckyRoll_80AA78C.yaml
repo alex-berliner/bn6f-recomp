@@ -1,0 +1,85 @@
+name: tryEvent214LuckyRoll_80AA78C
+address: '0x080AA78C'
+kind: function
+status: confirmed
+summary: Returns 1 when "EVENT:214" is set and a [0,255] roll is <= 0xC0 (~75% chance), else 0.
+interface: u32 sub_80AA78C(void); /* clobbers nz c v r1 r3 lr; preserves r4 r7 */
+details: 'Reads the event-flag bit for "EVENT:214" (selector 2, bit 20); when unset, returns 0
+
+  unconditionally. When set, pulls a byte from GetPositiveSignedRNG() and returns 1 only
+
+  if the rolled value is <= 0xC0 (signed comparison, so values 0xC1..0xFF fail the check).
+
+  The "inputs: r10" in the contract is unused inside the function body; "outputs: r2 r7" is
+
+  an artifact of the caller-lifter analysis. Sets NZ to the returned 0/1 in R0. Decides
+
+  whether the EVENT:214 encounter (procurement / lucky encounter trigger) succeeds as a
+
+  "lucky" outcome.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed;
+  tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file
+    inbox_farm_old_4.c sub_80AA78C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AA78C
+
+    ./wf verify --function sub_80AA78C --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AA78C
+
+    ./wf verify --function sub_80AA78C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AA78C
+
+    ./wf verify --function sub_80AA78C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080aa78c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80AA78C -> tryEvent214LuckyRoll_80AA78C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- story9
+open_questions:
+- Which in-game event/script consumes this 0/1 "lucky" result (encounter table selection, item drop rate,
+  shop/jack-in reward, etc.)?
+- Confirm the exact bit position of "EVENT:214" (selector 2, bit 20 -> 0x100000 in word 2).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c
+previous_names:
+- sub_80AA78C

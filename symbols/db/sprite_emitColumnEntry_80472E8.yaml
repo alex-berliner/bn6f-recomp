@@ -1,0 +1,83 @@
+name: sprite_emitColumnEntry_80472E8
+address: '0x080472E8'
+kind: function
+status: confirmed
+summary: Feeds one column of a per-column sprite/attr table to the writer at sub_802FE28 and advances
+  an 18-column counter that wraps to 0.
+interface: void sub_80472E8(u16 upper /*r0*/, u16 lower /*r1*/, u32 column /*r2*/) — returns the column's
+  table entry in r1, the next (wrapped) column counter in r2, and 0 in r3; r0 is scratch, r4-r7/lr preserved,
+  flags clobbered.
+details: 'Packs (upper<<16)|lower, ORs in the constant 0x40000000 (bit 30 — set inside what looks like
+  a sprite attr0/attr1 packed pair, i.e. the attr0 window flag), looks up a halfword from byte_8047318
+  at offset column*2, then tail-calls sub_802FE28(r0=packed, r1=entry, r2=0, r3=0) with that signature''s
+  a2/args-3-4 forced to 0. The table has 18 halfword entries in three groups of six: columns 0-5 give
+  0xE002, columns 6-11 give 0xE006, columns 12-17 give 0xE00A — values shaped like OAM attr2 (tile indices
+  2/6/10, palette 14, priority 0), incrementing by 4 tiles per 6-column group. sub_802FE28 preserves r1,
+  so the table entry is handed back to the caller. The column counter is incremented after the call and
+  reset to 0 when it reaches 0x12 (18); the wrap uses a signed blt, so a counter that is already negative
+  is never reset and keeps counting up to 18. r4-r7 are pushed only to preserve them; the routine holds
+  the original r2 in r7 across the call. Likely drives a column-by-column display strip (18 columns =
+  three 6-wide rows, e.g. field/screen tiles) whose per-group entry selects the tile shown.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_80472E8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80472E8
+
+    ./wf verify --function sub_80472E8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    211 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80472E8
+
+    ./wf verify --function sub_80472E8 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80472E8
+
+    ./wf verify --function sub_80472E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^080472e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80472E8 -> sprite_emitColumnEntry_80472E8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- What sub_802FE28 actually does with (packed, entry, 0, 0) — OAM/DMA write or engine queue push — is
+  inferred only from the 0x40000000 flag and the attr2-shaped table values.
+- Which on-screen 18-column element (3x6 field rows, a gauge, a scrolling strip) this emits for.
+- Whether callers intentionally exploit the signed-compare quirk with negative column counters.
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_80472E8

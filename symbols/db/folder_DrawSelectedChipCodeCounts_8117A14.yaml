@@ -1,0 +1,77 @@
+name: folder_DrawSelectedChipCodeCounts_8117A14
+address: '0x08117A14'
+kind: function
+status: confirmed
+summary: On the folder screen, renders the selected chip's four code letters and the per-code "copies
+  in folder" tallies into a tile buffer and queues them to VRAM.
+interface: 'void sub_8117A14(r4: *entry /* folder entry, chip id halfword at +2 */) -> r0-r3 as left by
+  QueueEightWordAlignedGFXTransfer, nz/c/v from last callee; r4-r7 preserved'
+details: 'Folder-screen selected-entry redraw. Clears the 0x200-byte tile buffer at unk_2016300 via ZeroFillByEightWords,
+  then reads the chip id halfword from the folder entry at r4+2 and looks it up with getChip8021DA8. Bytes
+  0-3 of the chip''s database entry are its four code letters; each letter is drawn into the tile buffer
+  by sub_8117A84, and folder_CountChipsOfCodeOrSkipEntry_8117AA0 counts matching folder entries (skipping
+  the selected chip''s own entry) and draws the tally next to it. The drawing callees thread a write cursor
+  in guest r6 and expect the chip id in r4 and the chip database entry in r5, which this function reloads
+  around each call. The finished tiles are queued to VRAM at 0x6013B40 (size 0x20 << 4 = 0x200) with QueueEightWordAlignedGFXTransfer.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_8117A14
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8117A14
+
+    ./wf verify --function sub_8117A14 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    281 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8117A14
+
+    ./wf verify --function sub_8117A14 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8117A14
+
+    ./wf verify --function sub_8117A14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story2.'
+  reproduce: grep -l '^08117a14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8117A14 -> folder_DrawSelectedChipCodeCounts_8117A14
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles2
+- story2
+open_questions:
+- exact on-screen meaning of the r4 entry pointer (folder cursor position vs. static entry)
+- which screen state calls this and what 0x6013B40's tile slot corresponds to visually
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_8117A14

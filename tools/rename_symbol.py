@@ -9,7 +9,7 @@ For each pair:
     its name set to NEW, OLD added to previous_names and a change recorded;
   - bn6f (the disassembly): every whole-word OLD in its sources (.s, .inc,
     .h, .c, .ld; like bn6f's replace.sh) becomes NEW;
-  - this repo: hand-written C (cport/src/game), cport/host/difftest.cfg,
+  - this repo: hand-written C (cport/src/game, gba, runtime), cport/host/difftest.cfg,
     tools/lifter/iwram.txt and not_entries.txt, and the lint baseline
     (tools/abi/lint_baseline.json, keyed by function name) and the retype
     queue (tools/abi/retype_queue.tsv), including the A_OLD / L_OLD forms.
@@ -51,8 +51,12 @@ def bn6f_files():
 
 def recomp_files():
     yield from (os.path.join(ROOT, f) for f in RECOMP_FILES)
-    game = os.path.join(ROOT, "cport", "src", "game")
-    yield from (os.path.join(game, f) for f in sorted(os.listdir(game)) if f.endswith((".c", ".h")))
+    # every hand-written C folder of the port (cport/src/lifted is generated): src/gba's boot code calls
+    # the game's entry points by name (start_800023C, renamed in record-20261011-104138, broke the build)
+    for sub in ("game", "gba", "runtime"):
+        d = os.path.join(ROOT, "cport", "src", sub)
+        if os.path.isdir(d):
+            yield from (os.path.join(d, f) for f in sorted(os.listdir(d)) if f.endswith((".c", ".h")))
 
 
 def run(cmd, **kw):

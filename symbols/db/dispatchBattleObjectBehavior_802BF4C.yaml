@@ -1,0 +1,99 @@
+name: dispatchBattleObjectBehavior_802BF4C
+address: '0x0802BF4C'
+kind: function
+status: confirmed
+summary: Dispatches a battle-object behavior update to one of three handlers selected by a per-object
+  state byte at [R5+3].
+interface: 'void sub_802BF4C(void);   // in: R5=object pointer, R2/R4/R6/R7/R10=scratch; out: r0..r4,lr
+  clobbered
+
+  '
+details: 'Reads the low byte at [R5+3] (a behavior/state selector) and uses it to index a
+
+  three-entry Thumb function-pointer table at off_802BF60 (entries 0, 4, fallthrough),
+
+  then tail-calls the chosen handler with R0=selector and R1=the function pointer itself.
+
+  Handlers: sub_802BF6C, sub_802C044, sub_802C0A4. The push {lr}/pop {pc} bookend is a
+
+  register-form artifact: it lets the callee build its stack frame relative to SP and
+
+  pops the return into PC on return. R5 is presumed to point at a battle/object struct
+
+  whose +3 byte is the behavior ID. No other structures are touched here directly;
+
+  all real work is in the dispatched handlers.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c
+    sub_802BF4C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802BF4C
+
+    ./wf verify --function sub_802BF4C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802BF4C
+
+    ./wf verify --function sub_802BF4C --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 1 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802BF4C
+
+    ./wf verify --function sub_802BF4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802bf4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_802BF4C -> dispatchBattleObjectBehavior_802BF4C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the full layout of the object at R5, and what does byte +3 semantically represent (state phase,
+  behavior kind, animation ID)?
+- Are entries at table offsets 0/4 the only valid selectors, or is the fallthrough (sub_802C0A4) an error/default
+  path?
+- Which callers pass which selectors, and do all three handlers share a calling convention beyond the
+  documented R0/R1?
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
+previous_names:
+- sub_802BF4C

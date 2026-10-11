@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_8119438 ── */
+/* ── chipPanel_renderChipGfxAndText_8119438 ── */
 /* Chip graphics & description rendering for the menu/selection panel.
  * Reads the chip ID from the panel object, blits the chip's tile graphic and
  * palettes into VRAM, queues DMA, fills the special-effect region, and renders
@@ -218,9 +218,9 @@ static void render_chip_gfx_and_text(u32 panel) {
                             text_bg, TEXT_LINE_LEN, TEXT_MODE, A_dword_86A5D60);
 }
 
-/* sub_8119438(r5 = chip_panel_ptr) -> outputs r1 r2 r3 + flags from callees;
+/* chipPanel_renderChipGfxAndText_8119438(r5 = chip_panel_ptr) -> outputs r1 r2 r3 + flags from callees;
  * r4-r7 are preserved (original restores them via push/pop). */
-Next sub_8119438(void) {
+Next chipPanel_renderChipGfxAndText_8119438(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     render_chip_gfx_and_text(R5);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
@@ -229,7 +229,7 @@ Next sub_8119438(void) {
 
 /* ── sub_81196F0 ── */
 /* register form: path-dependent condition flag propagation — gate-pass inherits flags
- * from sub_8119438 (opaque callee result) while gate-fail sets them from local CMP;
+ * from chipPanel_renderChipGfxAndText_8119438 (opaque callee result) while gate-fail sets them from local CMP;
  * a no-branch thin adapter cannot express both without overwriting callee flags. */
 static void sync_battle_state_regs(void) {
     u32 obj = R5;                    /* r5 = battle object pointer (preserved by push/pop) */
@@ -281,7 +281,7 @@ static void sync_battle_state_regs(void) {
     }
 
     /* Gate-pass: call frame update, then unconditional primary→backup copy. */
-    GUEST_CALL(sub_8119438);         /* flags now from callee */
+    GUEST_CALL(chipPanel_renderChipGfxAndText_8119438);         /* flags now from callee */
 
     /* ldrh/strh/ldrb/strb do not modify CPSR — callee flags survive. */
     u16 hp = (u16)LD16(obj + 0x0E);
@@ -290,7 +290,7 @@ static void sync_battle_state_regs(void) {
     ST8(obj + 0x0D, id);
     u16 pos = (u16)LD16(obj + 0x18);
     ST16(obj + 0x1A, pos);
-    R0 = pos;                        /* r1, r2, r3 and flags remain from sub_8119438 */
+    R0 = pos;                        /* r1, r2, r3 and flags remain from chipPanel_renderChipGfxAndText_8119438 */
 
     R4 = save_r4;
     R5 = obj;
@@ -318,11 +318,11 @@ Next sub_811974C(void) {
 
 /* ── npc_stepChainSetState0x10_811975C ── */
 /* npc_stepChainSetState0x10_811975C: advance the state machine on the object in r5.
- * Runs sub_8119438's step, marks the object's state byte as 0x10
+ * Runs chipPanel_renderChipGfxAndText_8119438's step, marks the object's state byte as 0x10
  * (state done/waiting to advance), then runs sprite_stepZoomShrinkOut_811976C's step.
  * r4-r9 are preserved; r0 and the flags come back from sprite_stepZoomShrinkOut_811976C. */
 Next npc_stepChainSetState0x10_811975C(void) {
-    GUEST_CALL(sub_8119438);
+    GUEST_CALL(chipPanel_renderChipGfxAndText_8119438);
 
     ST8(R5 + 9, 0x10);
 
@@ -516,7 +516,7 @@ Next sub_8119880(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81198B0 ── */
+/* ── submenu_isStateChanged_81198B0 ── */
 /* register form: calls submenu_isOpen_81355D8 outside this file, which has no typed C interface yet */
 static bool submenu_is_open_sub_81198B0(void) {
     GUEST_CALL(submenu_isOpen_81355D8);
@@ -565,15 +565,15 @@ static SubmenuCheckResult check_submenu_state(u32 submenu_ptr, u32 r1_in) {
     return res;
 }
 
-/* sub_81198B0(r5 = submenu ptr, lr) → nz, c, v, r1, lr */
-Next sub_81198B0(void) {
+/* submenu_isStateChanged_81198B0(r5 = submenu ptr, lr) → nz, c, v, r1, lr */
+Next submenu_isStateChanged_81198B0(void) {
     SubmenuCheckResult res = check_submenu_state(R5, R1);
     R1 = res.r1_out;
     SET_FLAGS_CMP(res.left, res.right);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81198E8 ── */
+/* ── sprite_setUnk0x2cFromLoader_81198E8 ── */
 /* register form: calls sprite_setUnk0x2c outside this file, which has no typed C interface yet */
 static void sprite_set_unk0x2c(u32 base, u8 loader_byte) {
     R0 = base;
@@ -590,7 +590,7 @@ static void set_sprite_unk0x2c_from_loader(u32 sprite_ptr) {
     sprite_set_unk0x2c(base, loader_byte);
 }
 
-Next sub_81198E8(void) {
+Next sprite_setUnk0x2cFromLoader_81198E8(void) {
     set_sprite_unk0x2c_from_loader(R5);
     RETURN_TO_CALLER();
 }
@@ -613,7 +613,7 @@ Next sub_8119ACC(void) {
     R1 = selector;
 
     if (selector == 0)
-        GUEST_CALL(sub_8119AEC);
+        GUEST_CALL(buildPetStatusIconSprite_8119AEC);
     else if (selector == 4)
         GUEST_CALL(sprite_applyComputedPaletteAndUpdate_8119BD0);
     else if (selector == 8)
@@ -624,8 +624,8 @@ Next sub_8119ACC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8119AEC ── */
-/* sub_8119AEC: build the PET-status icon sprite.
+/* ── buildPetStatusIconSprite_8119AEC ── */
+/* buildPetStatusIconSprite_8119AEC: build the PET-status icon sprite.
  *
  * The original takes the object pointer in R5 and runs through a small state
  * machine: pick which sprite form to display, initialise the sprite, load its
@@ -785,7 +785,7 @@ static void build_pet_status_icon(u32 obj) {
     sprite_apply_palette();
 }
 
-Next sub_8119AEC(void) {
+Next buildPetStatusIconSprite_8119AEC(void) {
     build_pet_status_icon(R5);
     RETURN_TO_CALLER();
 }
@@ -938,7 +938,7 @@ Next object_runTypeUpdateThenSpriteUpdate_811A0A4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811A0CC ── */
+/* ── stateObj_dispatchByStateByte_811A0CC ── */
 /* Jump table base at 0x0811A0E0; entries are 4-byte-aligned, so the state byte
  * at object offset 9 is pre-multiplied (0, 4, 8, 12, 16). */
 
@@ -956,8 +956,8 @@ static void dispatch_state_handler(u32 obj) {
     }
 }
 
-/* sub_811A0CC(r5 = state-object ptr) -> everything the chosen handler returns */
-Next sub_811A0CC(void) {
+/* stateObj_dispatchByStateByte_811A0CC(r5 = state-object ptr) -> everything the chosen handler returns */
+Next stateObj_dispatchByStateByte_811A0CC(void) {
     dispatch_state_handler(R5);
     RETURN_TO_CALLER();
 }
@@ -1054,14 +1054,14 @@ Next sprite_scaleShrinkStep_811A160(void) {
  * first (the original leaves the table entry itself in r0 and the type
  * byte in r1 when it jumps to it). Afterwards two shared update passes,
  * sub_811A29C and sub_811A2EC, run; r0/r1 flow out of the last one.
- * The table currently contains a single entry, sub_811A1B0. */
+ * The table currently contains a single entry, submenu_updateChipPreviewSprite_811A1B0. */
 Next object_runUpdateDispatch_811A190(void) {
     u32 type = LD8(R5 + 9);
 
     /* Call the object's own handler. */
     R0 = LD32(A_off_811A1AC + type);
     R1 = type;
-    GUEST_CALL(sub_811A1B0);
+    GUEST_CALL(submenu_updateChipPreviewSprite_811A1B0);
 
     /* Shared update passes. */
     GUEST_CALL(sub_811A29C);
@@ -1070,7 +1070,7 @@ Next object_runUpdateDispatch_811A190(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811A1B0 ── */
+/* ── submenu_updateChipPreviewSprite_811A1B0 ── */
 #define oCursorByte         0x0C   /* u8  current cursor byte */
 #define oCursorByteBak      0x0D   /* u8  backup cursor byte */
 #define oChipIndex          0x0E   /* u16 selected chip id */
@@ -1165,11 +1165,11 @@ static struct ChipPreviewResult chip_preview(u32 menu, u32 r4_in, u32 r6_in) {
     return res;
 }
 
-/* sub_811A1B0(r5 = cursor-line struct ptr, lr = return addr)
+/* submenu_updateChipPreviewSprite_811A1B0(r5 = cursor-line struct ptr, lr = return addr)
  * outputs: nz c v r0 r1 r2 r3 r4 r6 lr
  * r2, r3, lr are only ever left behind by callees (GUEST_CALLs);
  * the adapter writes only what chip_preview computes. */
-Next sub_811A1B0(void) {
+Next submenu_updateChipPreviewSprite_811A1B0(void) {
     struct ChipPreviewResult res = chip_preview(R5, R4, R6);
     R0 = res.r0;
     R1 = res.r1;
@@ -1364,13 +1364,13 @@ Next sub_811A29C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811A57C ── */
-/* sub_811A57C: clamp a sprite's X coordinate against 0x3C (using a per-state
+/* ── sprite_updatePositionAndClamp_811A57C ── */
+/* sprite_updatePositionAndClamp_811A57C: clamp a sprite's X coordinate against 0x3C (using a per-state
  * clamp table) and reset a state byte, then chain into sub_811A51C.
  *   inputs:  r5 (sprite object), lr
  *   outputs: r5
  *   preserved: r4 r5 r6 r7 */
-Next sub_811A57C(void) {
+Next sprite_updatePositionAndClamp_811A57C(void) {
     /* sprite_addCoordinates(0x10, 0) — find slot 0x10, then move origin to (0,0). */
     R0 = 0x10;
     R1 = 0;
@@ -1401,8 +1401,8 @@ Next sub_811A57C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811A5BC ── */
-/* sub_811A5BC: Position the battle-screen sprite whose index is implied by
+/* ── sprite_setPositionByFlags_811A5BC ── */
+/* sprite_setPositionByFlags_811A5BC: Position the battle-screen sprite whose index is implied by
  * the object array R5 points into. Each per-frame entry stores three flag
  * bytes (R5+4, R5+7) that pick one of three sprite-coordinate tables and a
  * 4th byte (R5+6) that indexes a {x, y} pair inside the chosen table. The
@@ -1412,7 +1412,7 @@ Next sub_811A57C(void) {
  *   outputs: -
  *   clobbers: nz c v r0 r1 r2 r3 lr
  */
-Next sub_811A5BC(void) {
+Next sprite_setPositionByFlags_811A5BC(void) {
     u32 tbl;
 
     /* First flag clear? Use the "off-screen" table at byte_811A600. */
@@ -1543,7 +1543,7 @@ Next battle_runObjectStateHandler_811B1EC(void) {
 
     switch (state) {
     case 0:
-        GUEST_CALL(sub_811B20C);
+        GUEST_CALL(setupGuiObjectSprite_811B20C);
         break;
     case 4:
         GUEST_CALL(sprite_objectUpdateAnimation_811B284);
@@ -1556,7 +1556,7 @@ Next battle_runObjectStateHandler_811B1EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811B20C ── */
+/* ── setupGuiObjectSprite_811B20C ── */
 /* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
 static void init_gui_sprite_sub_811B20C(u32 gfxId, u32 resourceAddr) {
     R0 = gfxId;
@@ -1610,9 +1610,9 @@ static void sprite_set_sub_record_field_a_sub_811B20C(u32 value) {
     GUEST_CALL(sprite_setSubRecordFieldA_8003060);
 }
 
-/* register form: calls sub_811B298 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_submenuUpdateAnimAndPos_811B298 outside this file, which has no typed C interface yet */
 static void call_sub_811B298(void) {
-    GUEST_CALL(sub_811B298);
+    GUEST_CALL(sprite_submenuUpdateAnimAndPos_811B298);
 }
 
 /* register form: calls sprite_objectUpdateAnimation_811B284 outside this file, which has no typed C interface yet */
@@ -1657,24 +1657,24 @@ static void setup_object_sprite(u32 obj) {
     sprite_object_update_animation();
 }
 
-/* sub_811B20C(r4, r5 = object, r6, r7, lr): no result of its own; flags and
+/* setupGuiObjectSprite_811B20C(r4, r5 = object, r6, r7, lr): no result of its own; flags and
  * r0-r3 are left exactly as the final callee leaves them. */
-Next sub_811B20C(void) {
+Next setupGuiObjectSprite_811B20C(void) {
     setup_object_sprite(R5);
     RETURN_TO_CALLER();
 }
 
 /* ── sprite_objectUpdateAnimation_811B284 ── */
 /* sprite_objectUpdateAnimation_811B284: update step for an animated object — first runs the
- * object's own per-frame handler (sub_811B298), then advances its
+ * object's own per-frame handler (sprite_submenuUpdateAnimAndPos_811B298), then advances its
  * sprite animation via sprite_update. */
 Next sprite_objectUpdateAnimation_811B284(void) {
-    GUEST_CALL(sub_811B298);
+    GUEST_CALL(sprite_submenuUpdateAnimAndPos_811B298);
     GUEST_CALL(sprite_update);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811B298 ── */
+/* ── sprite_submenuUpdateAnimAndPos_811B298 ── */
 /* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
 static void call_set_animation(u8 mode) {
     R0 = mode;
@@ -1727,13 +1727,13 @@ static u32 sprite_update_animation(u32 sprite_ptr) {
     return coord_table;
 }
 
-/* sub_811B298(r5 = sprite ptr) -> r2 = coord table base */
-Next sub_811B298(void) {
+/* sprite_submenuUpdateAnimAndPos_811B298(r5 = sprite ptr) -> r2 = coord table base */
+Next sprite_submenuUpdateAnimAndPos_811B298(void) {
     R2 = sprite_update_animation(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811B414 ── */
+/* ── gui_initSprite0x2C_811B414 ── */
 /* Register-form helpers for external game functions called during GUI sprite setup. */
 
 /* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
@@ -1743,9 +1743,9 @@ static void call_initGuiSprite_sub_811B414(u32 sprite_id, u32 a2) {
     GUEST_CALL(initGuiSprite_8002770);
 }
 
-/* register form: calls sub_80101F8 outside this file, which has no typed C interface yet */
+/* register form: calls getPetNaviStatus_80101F8 outside this file, which has no typed C interface yet */
 static u32 call_getAnimationId(void) {
-    GUEST_CALL(sub_80101F8);
+    GUEST_CALL(getPetNaviStatus_80101F8);
     return R0;
 }
 
@@ -1830,8 +1830,8 @@ static void init_guisprite_2c(u32 gui_arg, u32 state_ptr) {
     call_updateWrapper();
 }
 
-/* sub_811B414(r1 = gui_arg, r5 = state_ptr, r4/r6 preserved) -> r0 (from wrapper update), nzcv from callee */
-Next sub_811B414(void) {
+/* gui_initSprite0x2C_811B414(r1 = gui_arg, r5 = state_ptr, r4/r6 preserved) -> r0 (from wrapper update), nzcv from callee */
+Next gui_initSprite0x2C_811B414(void) {
     init_guisprite_2c(R1, R5);
     RETURN_TO_CALLER();
 }
@@ -1845,7 +1845,7 @@ Next sprite_updateWrapper_811B45C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811B46C ── */
+/* ── sprite_setCoordsIfExists_811B46C ── */
 /* register form: calls getStructFrom2008450 outside this file, which has no typed C interface yet.
  * Returns the struct pointer (R1) if found (Z clear), or 0 if not found. */
 static u32 lookup_struct(u32 sprite_id) {
@@ -1873,10 +1873,10 @@ static void set_sprite_coords_if_found(u32 x, u32 y, u32 sprite_id) {
     sprite_set_coords(x, y, struct_ptr);
 }
 
-/* sub_811B46C(r0 = x, r1 = y, r2 = sprite_id, r4-r7 preserved):
+/* sprite_setCoordsIfExists_811B46C(r0 = x, r1 = y, r2 = sprite_id, r4-r7 preserved):
  * conditionally update a sprite's position. Outputs r1, r2 from callees;
  * r4, r5, r6 restored to input (pop in original); flags c, v from last callee. */
-Next sub_811B46C(void) {
+Next sprite_setCoordsIfExists_811B46C(void) {
     u32 saved_r5 = R5;
     set_sprite_coords_if_found(R0, R1, R2);
     R5 = saved_r5;
@@ -1964,12 +1964,12 @@ Next sprite_dispatchObjectUpdate_811BDCC(void) {
 }
 
 /* ── sub_811BDEC ── */
-/* sub_811BDEC: thin trampoline — performs sub_811BE9C and returns.
+/* sub_811BDEC: thin trampoline — performs adjustSpriteByOffset_811BE9C and returns.
  * All of the real work (and all outputs: r0-r3, flags, lr) belongs to
- * sub_811BE9C; this wrapper exists only so callers can branch through it.
+ * adjustSpriteByOffset_811BE9C; this wrapper exists only so callers can branch through it.
  * r5 is an input to the callee and passes through untouched. */
 Next sub_811BDEC(void) {
-    GUEST_CALL(sub_811BE9C);
+    GUEST_CALL(adjustSpriteByOffset_811BE9C);
     RETURN_TO_CALLER();
 }
 
@@ -2016,7 +2016,7 @@ Next object_checkStatusFlag_811BE90(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811BE9C ── */
+/* ── adjustSpriteByOffset_811BE9C ── */
 /* Sprite position offset table (signed 16-bit dx,dy pairs indexed by sprite ID). */
 #define SPRITE_OFFSET_TABLE A_byte_811BF0C
 
@@ -2070,8 +2070,8 @@ static AdjustResult adjust_sprite_offset(u32 obj) {
     return res;
 }
 
-/* sub_811BE9C(r5 = sprite object ptr) -> r0 r1 r2 r3 lr, flags nz c v */
-Next sub_811BE9C(void) {
+/* adjustSpriteByOffset_811BE9C(r5 = sprite object ptr) -> r0 r1 r2 r3 lr, flags nz c v */
+Next adjustSpriteByOffset_811BE9C(void) {
     AdjustResult res = adjust_sprite_offset(R5);
     R0 = res.flag_val;
     R1 = res.attr;
@@ -2081,19 +2081,19 @@ Next sub_811BE9C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811C1AC ── */
+/* ── battle_dispatchByClass_811C1AC ── */
 /* Dispatch on a battle object's class-selector byte at [obj+8].
  * The three handlers are outside this file with no typed C interface yet.
  * All of R2–R12, R5, and LR pass through to the callee unchanged;
  * the callee's GUEST_CALL leaves every output register (R0, R1, R2–R12, LR)
  * and condition flags in their final state, so the adapter writes nothing back. */
 
-/* register form: calls sub_811C1CC outside this file, which has no typed C interface yet */
+/* register form: calls sprite_setupGuiResourceObject_811C1CC outside this file, which has no typed C interface yet */
 static void call_battle_handler_0(u32 obj, u8 idx,
     u32 r2, u32 r3, u32 r4, u32 r6, u32 r7, u32 r8, u32 r9, u32 r10, u32 r11, u32 r12, u32 lr) {
     R1 = idx; R2 = r2; R3 = r3; R4 = r4; R5 = obj;
     R6 = r6; R7 = r7; R8 = r8; R9 = r9; R10 = r10; R11 = r11; R12 = r12; LR = lr;
-    GUEST_CALL(sub_811C1CC);
+    GUEST_CALL(sprite_setupGuiResourceObject_811C1CC);
 }
 
 /* register form: calls sprite_updateAnimPassthrough_811C22C outside this file, which has no typed C interface yet */
@@ -2125,13 +2125,13 @@ static void dispatch_battle_object(u32 obj,
         call_battle_handler_2(obj, class_off, r2, r3, r4, r6, r7, r8, r9, r10, r11, r12, lr);
 }
 
-/* sub_811C1AC(r5 = battle object, r2-r4/r6-r12/lr = handler args) -> all regs + flags */
-Next sub_811C1AC(void) {
+/* battle_dispatchByClass_811C1AC(r5 = battle object, r2-r4/r6-r12/lr = handler args) -> all regs + flags */
+Next battle_dispatchByClass_811C1AC(void) {
     dispatch_battle_object(R5, R2, R3, R4, R6, R7, R8, R9, R10, R11, R12, LR);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811C1CC ── */
+/* ── sprite_setupGuiResourceObject_811C1CC ── */
 /* ------------------------------------------------------------------ *
  * Register-form helpers for the sprite/GUI routines this function
  * drives. None of them has a typed C interface yet, so each one just
@@ -2237,9 +2237,9 @@ static void setup_gui_sprite_object(u32 work) {
     sprite_update_anim_passthrough();
 }
 
-/* sub_811C1CC(r4, r5 = object work area, r6, r7) -> r0-r3, nz, c, v from
+/* sprite_setupGuiResourceObject_811C1CC(r4, r5 = object work area, r6, r7) -> r0-r3, nz, c, v from
  * the final sprite_updateAnimPassthrough call; r4-r7 preserved. */
-Next sub_811C1CC(void) {
+Next sprite_setupGuiResourceObject_811C1CC(void) {
     setup_gui_sprite_object(R5);
     RETURN_TO_CALLER();
 }
@@ -2277,7 +2277,7 @@ Next sprite_setPositionById_811C23C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811CA1C ── */
+/* ── install_object_state_handler_811CA1C ── */
 /* install_object_state_handler: object base passed via guest register r5; the assembly
  * uses r5 to address fields 0/4/8 of the object record (state byte, palette index,
  * next state). r5 is preserved unchanged across the call. */
@@ -2412,7 +2412,7 @@ static void install_object_state_handler(u32 obj_ptr) {
     }
 }
 
-Next sub_811CA1C(void) {
+Next install_object_state_handler_811CA1C(void) {
     install_object_state_handler(R5);
     RETURN_TO_CALLER();
 }

@@ -1,0 +1,109 @@
+name: battle_customGauge_EndTurn_8027D78
+address: '0x08027D78'
+kind: function
+status: probable
+summary: 'Per-turn Custom Gauge housekeeping for the battle UI: resets the gauge, dispatches ending/init
+  requests, and routes to the appropriate end-of-turn cleanup based on battle state, mode, and the 0x40
+  battle flag.'
+interface: 'void sub_8027D78(void);  // inputs: r10=oToolkit (render-info + battle-state ptrs), lr=return;
+  outputs: none; clobbers r0-r3, r12, N Z C V; preserved r4-r9, r11'
+details: "Operates on the Battle Toolkit (r10) which yields oToolkit_RenderInfoPtr and\noToolkit_BattleStatePtr.\
+  \ First writes 0 to render_info+0x18 (clears a pending-trigger\ncounter), then drives the standard battle\
+  \ Custom Gauge init sequence:\n  sub_801E71C        // gauge display reset\n  dispatch_801DACC(0x80)\n\
+  \  sub_801E0A0(0, 0)  // clear gauge counter\nthen unconditionally sets the 0x400 \"ending\" request\
+  \ via\nSetRequestBits_801BECC followed by dispatch_801DA48 (note this path reverses the\norder seen\
+  \ in every other branch: SetRequestBits first, then dispatch).\n\nIf battle_IsBattleEnding_800A97A returns\
+  \ true, the function exits early.\n\nOtherwise it reads battle_state[7] as a path selector:\n  - path\
+  \ == 1: if battle_testFlag0x40_800A8F8 -> sub_801DF0C; else if\n    GetBattleMode==1 -> sub_801DEEE;\
+  \ else custGauge_Init_801DED0.\n  - path != 1: if battle_testFlag0x40 -> request bits 0x20000\n    (dispatch\
+  \ then SetRequestBits); else ClearCustGauge, then if mode==1\n    request bits 0x20, else request bits\
+  \ 0x10 (always dispatch then SetRequestBits).\n\nThe asymmetry between the unconditional 0x400 path\
+  \ (SetRequestBits-then-dispatch)\nand the 0x20000/0x20/0x10 paths (dispatch-then-SetRequestBits) is\
+  \ preserved from\nthe original code and looks intentional.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-001226);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 48' --file inbox_farm_48.c
+    sub_8027D78
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8027D78
+
+    ./wf verify --function sub_8027D78 --snapshots build-snapshots'
+  result: 'captured calls: 26 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-001226-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8027D78
+
+    ./wf verify --function sub_8027D78 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-001226-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8027D78
+
+    ./wf verify --function sub_8027D78 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001226-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08027d78 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp a6b6c1a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm03_0.c after review against the assembly (the lifted
+    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
+    differs from the original: The battle-ending test reads the Z flag instead of r0. Asm: `bl battle_IsBattleEnding_800A97A;
+    tst r0, r0; bne locret`. C: `battle_is_ending()` returns `!ZERO_FLAG()` after the GUEST_CALL. battle_IsBattleEnding_800A97A
+    does not leave Z matching r0 (its contract lists nz c v as clobbers). Both the lifted and the readable
+    versions leave nz = phase - 0xF from `cmp r1,#0xf` and then set r0 = 1/0 witho...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8027D78 -> battle_customGauge_EndTurn_8027D78
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of the request bits 0x80, 0x10, 0x20, 0x400, 0x20000 in the eStruct1 request system (likely
+  battle_801DA48 / eStruct2035280_SetRequestBits_801BECC).
+- Semantic meaning of battle_state[7] (path selector) and of battle flag 0x40 (battle_testFlag0x40_800A8F8)
+  — they choose between the gauge-init and the end-of-turn cleanup variants.
+- What render_info+0x18 actually counts (cleared at the top, presumably the "trigger pending" field used
+  by the gauge HUD).
+- Difference between sub_801DF0C / sub_801DEEE / custGauge_Init_801DED0 (the three "path 1" cleanup variants)
+  and between the 0x20 vs 0x10 mode-dependent requests.
+sources:
+- tools/wf run convert-20261011-001226
+- recomp a6b6c1a
+previous_names:
+- sub_8027D78

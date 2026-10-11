@@ -144,6 +144,6 @@ Next npc_standard_809E5E2(void) {
     R1 = OW_NPC_UNK_FLAGS_60_0x40;
     SET_FLAGS_NZ(R0 & R1);                /* as the original (tst r0, r1) */
     if (R0 & R1)
-        GUEST_CALL(sub_809F922);
+        GUEST_CALL(recordCapsule_809F922);
     RETURN_TO_CALLER();
 }

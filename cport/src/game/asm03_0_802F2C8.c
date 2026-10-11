@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_802F2C8 ── */
+/* ── resetPaletteScratch_802F2C8 ── */
 /* register form: calls ByteFill outside this file, which has no typed C interface yet */
 static void byte_fill(u32 mem, u32 byteCount, u32 fillValue) {
     R0 = mem;
@@ -23,8 +23,8 @@ static void reset_palette_scratch(u32 paletteBuf, u32 dwordSlot) {
     ST32(dwordSlot, 0);
 }
 
-/* sub_802F2C8() -> c/v left by ByteFill */
-Next sub_802F2C8(void) {
+/* resetPaletteScratch_802F2C8() -> c/v left by ByteFill */
+Next resetPaletteScratch_802F2C8(void) {
     reset_palette_scratch(A_byte_2006530, A_dword_2001140);
     RETURN_TO_CALLER();
 }
@@ -32,10 +32,10 @@ Next sub_802F2C8(void) {
 /* ── startScreen_initGfx_802F574 ── */
 /* ---- register-form call helpers ---- */
 
-/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+/* register form: calls toolkit_applyOverlayPalette_80015FC outside this file, which has no typed C interface yet */
 static void set_display_mode(u32 mode) {
     R0 = mode;
-    GUEST_CALL(sub_80015FC);
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 }
 
 /* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
@@ -182,7 +182,7 @@ Next startScreen_initGfx_802F574(void) {
  * Start screen state dispatcher. Reads the screen's state byte and calls the
  * matching handler from the jump table jt_802F654, passing it r0 = handler
  * address | thumb bit and r1 = the state byte, then runs the common
- * post-state routine sub_802FB10 before returning. */
+ * post-state routine loadTitleBlob_802FB10 before returning. */
 
 /* Offset of the state byte in StartScreen; named as in the disassembly
  * (ldrb r1, [r5, #oStartScreen_JumpTableOff_01]). */
@@ -203,10 +203,10 @@ Next startScreen_RunStateHandler_802F63C(void) {
     case 4:  GUEST_CALL(sub_802F6A4); break;                              /* state 1 */
     case 8:  GUEST_CALL(sub_802F6B2); break;                              /* state 2 */
     case 12: GUEST_CALL(startScreen_UpdateAndRenderFrame_802F704); break; /* state 3 */
-    case 16: GUEST_CALL(sub_802F710); break;                              /* state 4 */
+    case 16: GUEST_CALL(startScreen_update_802F710); break;                              /* state 4 */
     }
 
-    GUEST_CALL(sub_802FB10);
+    GUEST_CALL(loadTitleBlob_802FB10);
 
     RETURN_TO_CALLER();
 }
@@ -233,7 +233,7 @@ Next startScreen_init_802F668(void) {
     GUEST_CALL(music_80005F2);
 
     R0 = 0xA;
-    GUEST_CALL(sub_80015FC);
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 
     /* configure LCD render control */
     R0 = 0x1340;
@@ -266,7 +266,7 @@ Next startScreen_UpdateAndRenderFrame_802F704(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802F710 ── */
+/* ── startScreen_update_802F710 ── */
 /* register form: calls sub_802F8D8 outside this file, which has no typed C interface yet */
 static void start_screen_step(u32 self) {
     R5 = self;
@@ -356,8 +356,8 @@ static void start_screen_update(u32 self) {
     }
 }
 
-/* sub_802F710(self: *mut StartScreen r5) -> (clobbers r0-r3 + flags) */
-Next sub_802F710(void) {
+/* startScreen_update_802F710(self: *mut StartScreen r5) -> (clobbers r0-r3 + flags) */
+Next startScreen_update_802F710(void) {
     start_screen_update(R5);
     RETURN_TO_CALLER();
 }
@@ -403,11 +403,11 @@ Next menu_onStartPressBeginTransition_802F7E8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802F994 ── */
-/* register form: calls sub_8001158 outside this file, which has no typed C interface yet */
+/* ── sprite_submitOamSet_802F994 ── */
+/* register form: calls scriptListRun_8001158 outside this file, which has no typed C interface yet */
 static void call_sub_8001158(u32 oam_data_ptr) {
     R0 = oam_data_ptr;
-    GUEST_CALL(sub_8001158);
+    GUEST_CALL(scriptListRun_8001158);
 }
 
 /* Look up a ROM OAM data pointer by index (0-2) and submit it for rendering.
@@ -417,27 +417,27 @@ static void submit_oam_by_index(u32 index) {
     call_sub_8001158(ptr);
 }
 
-/* sub_802F994(r0 = OAM data set index) -> r2, r3, c, v (left by callee) */
-Next sub_802F994(void) {
+/* sprite_submitOamSet_802F994(r0 = OAM data set index) -> r2, r3, c, v (left by callee) */
+Next sprite_submitOamSet_802F994(void) {
     submit_oam_by_index(R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802F9EC ── */
-/* register form: calls sub_8001158 outside this file, which has no typed C interface yet */
+/* ── playOamSeq_802F9EC ── */
+/* register form: calls scriptListRun_8001158 outside this file, which has no typed C interface yet */
 static void load_via_sub_8001158(u32 addr) {
     R0 = addr;
-    GUEST_CALL(sub_8001158);
+    GUEST_CALL(scriptListRun_8001158);
 }
 
-/* Look up a pointer in a small jump-table by index, then hand it to sub_8001158.
+/* Look up a pointer in a small jump-table by index, then hand it to scriptListRun_8001158.
  * The table lives at A_off_802FA00 and holds guest pointers to constant OAM-shaped blobs. */
 static void play_oam_seq(u32 index) {
     u32 addr = LD32((index << 2) + (u32)A_off_802FA00);
     load_via_sub_8001158(addr);
 }
 
-Next sub_802F9EC(void) {
+Next playOamSeq_802F9EC(void) {
     play_oam_seq((u32)R0);
     RETURN_TO_CALLER();
 }
@@ -449,11 +449,11 @@ static bool event_flag_set(u32 flag) {
     return !ZERO_FLAG();
 }
 
-/* ── sub_802FB10 ── */
-/* register form: calls sub_8001158 outside this file, which has no typed C interface yet */
+/* ── loadTitleBlob_802FB10 ── */
+/* register form: calls scriptListRun_8001158 outside this file, which has no typed C interface yet */
 static void call_sub_8001158_sub_802FB10(u32 data) {
     R0 = data;
-    GUEST_CALL(sub_8001158);
+    GUEST_CALL(scriptListRun_8001158);
 }
 
 /* Load the title-screen VRAM blob through the game's loader. */
@@ -461,7 +461,7 @@ static void load_title_blob(void) {
     call_sub_8001158_sub_802FB10(A_byte_802FB20);
 }
 
-Next sub_802FB10(void) {
+Next loadTitleBlob_802FB10(void) {
     load_title_blob();
     RETURN_TO_CALLER();
 }
@@ -469,11 +469,11 @@ Next sub_802FB10(void) {
 /* ── startScreen_playSoundIfFlagSet_802FB64 ── */
 /* startScreen_playSoundIfFlagSet_802FB64(self: *const StartScreen r5):
  * If the start screen's status halfword has bit 0x80 set, run the sound/data
- * sequence at byte_802FB7C through sub_8001158. Otherwise do nothing. */
+ * sequence at byte_802FB7C through scriptListRun_8001158. Otherwise do nothing. */
 Next startScreen_playSoundIfFlagSet_802FB64(void) {
     if (LD16(R5 + 0xA) & 0x80) {
         R0 = A_byte_802FB7C;
-        GUEST_CALL(sub_8001158);
+        GUEST_CALL(scriptListRun_8001158);
     }
     RETURN_TO_CALLER();
 }
@@ -481,13 +481,13 @@ Next startScreen_playSoundIfFlagSet_802FB64(void) {
 /* ── startScreen_fadeOutUpdateIfFlag40_802FB90 ── */
 /* startScreen_fadeOutUpdateIfFlag40_802FB90(self: *StartScreen (r5)):
  * When the start screen's 16-bit flag field has bit 0x40 set, invoke
- * sub_8001158 with the parameter table at byte_802FBA8 (an update/
+ * scriptListRun_8001158 with the parameter table at byte_802FBA8 (an update/
  * fade routine). Flags (c/v) and r2/r3 after the call are whatever
- * sub_8001158 leaves; r4-r7 are untouched throughout. */
+ * scriptListRun_8001158 leaves; r4-r7 are untouched throughout. */
 Next startScreen_fadeOutUpdateIfFlag40_802FB90(void) {
     if (LD16(R5 + 0xA) & 0x40) {
         R0 = A_byte_802FBA8;
-        GUEST_CALL(sub_8001158);
+        GUEST_CALL(scriptListRun_8001158);
     }
     RETURN_TO_CALLER();
 }
@@ -495,7 +495,7 @@ Next startScreen_fadeOutUpdateIfFlag40_802FB90(void) {
 /* ── startScreen_dispatchIfFlag20_802FBB4 ── */
 /* startScreen_dispatchIfFlag20_802FBB4(self = start screen object in R5):
  * If the screen's state halfword (offset 0xA) has flag 0x20 set, invoke
- * sub_8001158 with the address of the byte_802FBCC record (which begins
+ * scriptListRun_8001158 with the address of the byte_802FBCC record (which begins
  * with the word 0x80544004, a pointer followed by padding). Otherwise
  * return immediately. */
 #define SCREEN_FLAG_20 0x20u /* bit in the state halfword at +0xA */
@@ -505,7 +505,7 @@ Next startScreen_dispatchIfFlag20_802FBB4(void) {
 
     if (state & SCREEN_FLAG_20) {
         R0 = A_byte_802FBCC;
-        GUEST_CALL(sub_8001158);
+        GUEST_CALL(scriptListRun_8001158);
     } else {
         /* Not-taken path: TST r0, r1 is the last flag-setting instruction,
          * so leave N/Z reflecting (state & 0x20). */
@@ -517,7 +517,7 @@ Next startScreen_dispatchIfFlag20_802FBB4(void) {
 /* ── startScreen_playSoundIfFlagSet_802FBD8 ── */
 /* startScreen_playSoundIfFlagSet_802FBD8(r5 = StartScreen):
  * Check the screen's status flags at +0xA; if bit 4 (0x10) is set, hand the
- * byte table at byte_802FBF0 to sub_8001158, which plays the associated
+ * byte table at byte_802FBF0 to scriptListRun_8001158, which plays the associated
  * sound/voice clip. Otherwise do nothing.
  *
  * r2/r3 and r4-r7 pass through untouched; on the not-taken path C/V are left
@@ -526,7 +526,7 @@ Next startScreen_dispatchIfFlag20_802FBB4(void) {
 Next startScreen_playSoundIfFlagSet_802FBD8(void) {
     if (LD16(R5 + 0xA) & 0x10) {
         R0 = A_byte_802FBF0;
-        GUEST_CALL(sub_8001158);
+        GUEST_CALL(scriptListRun_8001158);
     }
     RETURN_TO_CALLER();
 }
@@ -534,12 +534,12 @@ Next startScreen_playSoundIfFlagSet_802FBD8(void) {
 /* ── startScreen_printTextIfFlag3_802FBFC ── */
 /* startScreen_printTextIfFlag3_802FBFC(r5 = start screen): if the start screen's state field has
  * bit 3 set, hand the text descriptor table at byte_802FC14 to the
- * text printer helper sub_8001158. r2/r3, the c and v flags (and r5-r7)
- * are whatever sub_8001158 leaves behind when it runs. */
+ * text printer helper scriptListRun_8001158. r2/r3, the c and v flags (and r5-r7)
+ * are whatever scriptListRun_8001158 leaves behind when it runs. */
 Next startScreen_printTextIfFlag3_802FBFC(void) {
     if (LD16(R5 + 0xA) & 8) {
         R0 = A_byte_802FC14;
-        GUEST_CALL(sub_8001158); /* () -> void */
+        GUEST_CALL(scriptListRun_8001158); /* () -> void */
     }
     RETURN_TO_CALLER();
 }
@@ -547,15 +547,15 @@ Next startScreen_printTextIfFlag3_802FBFC(void) {
 /* ── startScreen_onStatusBit2_802FC28 ── */
 /* startScreen_onStatusBit2_802FC28(r5 = start screen state):
  * When the start screen's status word has bit 2 set, hand the data table at
- * byte_802FC40 to sub_8001158 (which follows the pointer/params stored there).
+ * byte_802FC40 to scriptListRun_8001158 (which follows the pointer/params stored there).
  * Flag state on the skip path comes from the TST (N/Z from the AND result,
- * C/V untouched); on the call path it is whatever sub_8001158 leaves behind. */
+ * C/V untouched); on the call path it is whatever scriptListRun_8001158 leaves behind. */
 Next startScreen_onStatusBit2_802FC28(void) {
     u16 status = LD16(R5 + 0xA);
 
     if (status & 4) {
         R0 = A_byte_802FC40;
-        GUEST_CALL(sub_8001158);
+        GUEST_CALL(scriptListRun_8001158);
     } else {
         SET_FLAGS_NZ(status & 4);
     }
@@ -566,9 +566,9 @@ Next startScreen_onStatusBit2_802FC28(void) {
 /* ── startScreen_playSfxIfFlagSet_802FC4C ── */
 /* startScreen_playSfxIfFlagSet_802FC4C(r5 = StartScreen):
  * If the start screen has flagged bit 1 in its state field at +0xA, feed the
- * sound-effect parameter block at byte_802FC64 to sub_8001158 (SFX player).
+ * sound-effect parameter block at byte_802FC64 to scriptListRun_8001158 (SFX player).
  * Flags on return: NZ from the bit test if the call was skipped, otherwise
- * whatever sub_8001158 leaves behind. */
+ * whatever scriptListRun_8001158 leaves behind. */
 Next startScreen_playSfxIfFlagSet_802FC4C(void) {
     u16 screenFlags = LD16(R5 + 0xA);
 
@@ -578,7 +578,7 @@ Next startScreen_playSfxIfFlagSet_802FC4C(void) {
 
     if (screenFlags & 2) {
         R0 = A_byte_802FC64;   /* SFX parameter block */
-        GUEST_CALL(sub_8001158);
+        GUEST_CALL(scriptListRun_8001158);
     }
 
     RETURN_TO_CALLER();
@@ -587,14 +587,14 @@ Next startScreen_playSfxIfFlagSet_802FC4C(void) {
 /* ── startScreen_playFlaggedSfx_802FC70 ── */
 /* startScreen_playFlaggedSfx_802FC70: start-screen per-frame helper (r5 = StartScreen state block).
  * If bit 0x100 of the halfword at +0x0A is set, trigger the effect whose
- * parameter table is byte_802FC88 (passed to sub_8001158 in r0).
+ * parameter table is byte_802FC88 (passed to scriptListRun_8001158 in r0).
  *
  * Flag behaviour of the original: the "lsl r1, r1, #4" used to build the
  * test mask (0x10 -> 0x100) is a Thumb shifted-move, which clears C (bit 28
  * of 0x10 shifts out) and leaves V alone; the subsequent TST only updates
  * N/Z. So on the early-out path C is always 0, V is untouched, and N/Z come
  * from (state & 0x100). On the call path the flags are whatever
- * sub_8001158 leaves behind. */
+ * scriptListRun_8001158 leaves behind. */
 Next startScreen_playFlaggedSfx_802FC70(void) {
     u32 state = LD16(R5 + 0xA);
 
@@ -604,7 +604,7 @@ Next startScreen_playFlaggedSfx_802FC70(void) {
     if (state & 0x100) {
         /* r0 = sound/effect parameter table, run it. */
         R0 = A_byte_802FC88;
-        GUEST_CALL(sub_8001158);
+        GUEST_CALL(scriptListRun_8001158);
     } else {
         /* TST r0, r1 result (0 or 0x100, so N clear; Z per the result). */
         SET_FLAGS_NZ(state & 0x100);
@@ -616,14 +616,14 @@ Next startScreen_playFlaggedSfx_802FC70(void) {
 /* ── startScreen_runTriggerHandler_802FC9C ── */
 /* startScreen_runTriggerHandler_802FC9C(r5 = start screen state):
  * Start screen hook. When bit 0x200 of the state word at +0xA is set, hand the
- * small data table at byte_802FCB4 to sub_8001158 (which consumes it as a
+ * small data table at byte_802FCB4 to scriptListRun_8001158 (which consumes it as a
  * parameter block). Otherwise do nothing. */
 Next startScreen_runTriggerHandler_802FC9C(void) {
     enum { STARTSCREEN_TRIGGER = 0x200 };
 
     if (LD16(R5 + 0xA) & STARTSCREEN_TRIGGER) {
         R0 = A_byte_802FCB4;
-        GUEST_CALL(sub_8001158);
+        GUEST_CALL(scriptListRun_8001158);
     }
     RETURN_TO_CALLER();
 }
@@ -1558,7 +1558,7 @@ Next decompressCoordEventData_8030aa4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8030CAC ── */
+/* ── owObject_lineDraw_8030CAC ── */
 /* Field offsets in OWObjectCoords used by the Bresenham line routine */
 #define OW_CUR_X   2
 #define OW_CUR_Y   6
@@ -1666,8 +1666,8 @@ static u32 ow_line_draw(u32 obj, u32 ctx) {
     }
 }
 
-/* sub_8030CAC(r0 = OWObjectCoords*, r5 = draw context) -> r0, r3, r5, r7, r8 */
-Next sub_8030CAC(void) {
+/* owObject_lineDraw_8030CAC(r0 = OWObjectCoords*, r5 = draw context) -> r0, r3, r5, r7, r8 */
+Next owObject_lineDraw_8030CAC(void) {
     R3 = ow_line_draw(R0, R5);
     RETURN_TO_CALLER();
 }
@@ -1870,8 +1870,8 @@ Next sub_80311F4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803123E ── */
-/* sub_803123E: initialize camera and mark it as ready/active.
+/* ── camera_initAndActivate_803123E ── */
+/* camera_initAndActivate_803123E: initialize camera and mark it as ready/active.
  * inputs:  r0 r5 r12 lr
  * outputs: r0 r1 r2 r3 r5 r12
  * clobbers: r4 r6 r7 r8 r9 lr, nz c v
@@ -1882,7 +1882,7 @@ Next sub_80311F4(void) {
  * via sub_8030E8C with a (0, 0x20, 0x20, 1) window, halves both coordinates
  * and feeds the delta into camera_moveByDelta_80310B0. Finally ORs 3 into
  * r12 (bit 0 = active, bit 1 = ready) and restores the original r0..r2, r5. */
-Next sub_803123E(void) {
+Next camera_initAndActivate_803123E(void) {
     /* Snapshot r0..r2, r5, lr on the guest stack so the pop can restore them. */
     u32 saved_lr = LR;
     u32 saved_r0 = R0;
@@ -1923,15 +1923,15 @@ Next sub_803123E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803135E ── */
-/* sub_803135E: recenter camera and set bits 0-1 of the r12 control word.
+/* ── camera_recenterAndSetCtrlBits_803135E ── */
+/* camera_recenterAndSetCtrlBits_803135E: recenter camera and set bits 0-1 of the r12 control word.
  *
  * Pushes r0..r2, r5 and lr; calls sub_80311B6 to seed a view; calls
  * sub_8030F7C to compute a delta against a 64x32 box anchored at (0x20, 0x20)
  * with layer 1; halves the delta and feeds it to camera_moveByDelta_80310B0;
  * then ORs 3 into the r12 control word and tail-returns through the saved
  * lr so the caller sees the original r0/r1/r2/r5 intact. */
-Next sub_803135E(void) {
+Next camera_recenterAndSetCtrlBits_803135E(void) {
     /* Reserve the same 20 bytes the original's push {r0-r2,r5,lr} uses,
      * so any callee that peeks at the frame sees the same layout. */
     u32 sp = SP -= 20;

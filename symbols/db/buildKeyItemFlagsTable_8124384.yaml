@@ -1,0 +1,77 @@
+name: buildKeyItemFlagsTable_8124384
+address: '0x08124384'
+kind: function
+status: confirmed
+summary: Snapshots ownership of key items 0x80–0x85 into a 16-byte status table at unk_201C400.
+interface: void buildKeyItemFlagsTable_8124384(void)
+details: Zeroes the 16-byte buffer at unk_201C400 via ZeroFillByByte, then loops item IDs 0x80 through
+  0x85 (inclusive). For each, calls CheckKeyItem to query whether the player owns that key item, and writes
+  a (id_byte, owned_byte) pair sequentially into the buffer. The result is six (item_id, 0/1) byte pairs
+  laid out contiguously. No meaningful register inputs are consumed; r2–r7 are pushed/popped to preserve
+  the caller's state. The function touches only the global buffer at unk_201C400 and the CheckKeyItem
+  lookup (likely a script or flag table elsewhere).
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c
+    sub_8124384
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8124384
+
+    ./wf verify --function sub_8124384 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8124384
+
+    ./wf verify --function sub_8124384 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8124384
+
+    ./wf verify --function sub_8124384 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^08124384 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8124384 -> buildKeyItemFlagsTable_8124384
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+open_questions:
+- What specific key items map to IDs 0x80–0x85 (e.g. Gospel parts, special items)?
+- Is unk_201C400 read back by a later event or dialog trigger that branches on these flags?
+- Why only this narrow range of six IDs rather than all key items?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c
+previous_names:
+- sub_8124384

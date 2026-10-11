@@ -1,0 +1,86 @@
+name: library_rebuildCollectedChipList_8125B3C
+address: '0x08125B3C'
+kind: function
+status: confirmed
+summary: Rebuilds the chip library's collected-chip list from each standard chip's ownership/registration
+  bytes and per-chip "how obtained" event flags, compacting gaps and returning the number of collected
+  chips.
+interface: (void) -> u32 collected_count (r0); r2 left as scratch leftover; r3 left as the last event-flag
+  probe left it; nzcv clobbered
+details: 'Zeros the chip collection list at dword_201F420 (0x578 bytes, ending at unk_201F998; one u32
+  per library slot). For every standard chip id 1..0x13F, fetches its ChipData via getChip8021DA8 and
+  uses field +0x15 as a 1-based library slot index. A chip is recorded only if it is owned (byte +9 bit
+  0x40) and registered (byte +0x16 bit 1). Each recorded entry stores the chip id in the low halfword
+  and a "how obtained" byte at +2, chosen from which event flag answers: flag 0x1E20+chip_id -> 0, flag
+  0x2220+chip_id -> 1, flag 0x2020+chip_id -> 1 or 2 depending on event flag 0x1711 (tested via the immediate
+  page/bit form). Counted entries fill slots at (lib_slot-1)*4; owned-but-unregistered or flagless chips
+  leave their slot zero. After the scan, a compaction pass slides every non-zero entry down over empty
+  slots so the list has no gaps. Returns the collected count in r0 (accumulated in r5 during the scan).
+  Quirk: callers see stale register values in r2 (last bit-test immediate / moved pointer) and r3 (last
+  flag argument handed to TestEventFlag) — the contract''s "outputs r2 r3" are leftovers, not data.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_8125B3C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8125B3C
+
+    ./wf verify --function sub_8125B3C --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8125B3C
+
+    ./wf verify --function sub_8125B3C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8125B3C
+
+    ./wf verify --function sub_8125B3C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08125b3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8125B3C -> library_rebuildCollectedChipList_8125B3C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+open_questions:
+- Exact meaning of the three "how obtained" flag ranges (0x1E20+, 0x2220+, 0x2020+) and of the EVENT_1711
+  split — presumably shop/trade/other acquisition routes per chip, matching the library's obtain-source
+  display.
+- Why owned-but-unregistered chips are skipped entirely rather than shown greyed out — the greyed library
+  entries may be derived elsewhere from the chip data directly.
+- Whether dword_201F420 is the whole library screen state or just the collected-chip array feeding it.
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_8125B3C

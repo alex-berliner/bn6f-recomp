@@ -1,0 +1,93 @@
+name: fade_tick_80064BE
+address: '0x080064BE'
+kind: function
+status: confirmed
+summary: Advances a two-slot palette color fade by one tick, repaints the affected palette entries, then
+  dispatches to a running or finished handler.
+interface: void sub_80064BE(u32 fade_state /* r5 */) /* preserves r4-r7; clobbers nzcv,r0,r1,r2,r3,r6,r7,lr
+  */
+details: "Operates on a fade state block pointed to by r5:\n  +0x03 u8   running flag (cleared on completion)\n\
+  \  +0x04 u16  per-tick step\n  +0x06 u16  current fade position (r/w)\n  +0x08 u16  argument forwarded\
+  \ to sub_8002378 (likely dest palette index)\n  +0x0A u16  end position; reaching it ends the fade\n\
+  \  +0x0C u8   base palette slot index\n  +0x10 u32  first  palette slot descriptor passed as r4 to sub_8002378\n\
+  \  +0x14 u32  second palette slot descriptor\n  +0x18 u16  first  palette slot length/payload arg\n\
+  \  +0x1C u16  second palette slot length/payload arg\nEach tick: pos += step; if pos >= end, clamp pos=end,\
+  \ clear +0x03, set r7=4; else r7=0.\nThe top 4 bits of pos are broadcast into R, G, B of an RGB555 color\
+  \ via shifts\nof 0,5,10; that color is written to palette entries base+0x12 and base+0x13\nthrough sub_8002378(r0=arg_at_+8,\
+  \ r1=color, r2=arg_at_+18/+1c, r3=base+0x12/+13, r4=descriptor_+10/+14).\nFinally dispatches via an\
+  \ indirect jump through off_8006510[r7]: r7=0 -> sub_8006518\n(fade still running, called once per tick),\
+  \ r7=4 -> sub_8006580 (fade just completed).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261011-101420);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 77' --file inbox_farm_77.c
+    sub_80064BE
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80064BE
+
+    ./wf verify --function sub_80064BE --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-101420-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80064BE
+
+    ./wf verify --function sub_80064BE --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-101420-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80064BE
+
+    ./wf verify --function sub_80064BE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101420-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story2, story4, story5, story6,
+    story7, story8, story9.'
+  reproduce: grep -l '^080064be ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp a51146b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80064BE -> fade_tick_80064BE
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact semantics of the r2/r4 arguments to sub_8002378 (length vs. bank/source of the slot descriptor).
+- How off_8006510 is shared with other fade variants — its index scheme (0/4) suggests one or more additional
+  handlers in between.
+- What callback structure lives at +0x10/+0x14 (raw pointer, struct, or paired descriptor).
+sources:
+- tools/wf run convert-20261011-101420
+- recomp a51146b
+previous_names:
+- sub_80064BE

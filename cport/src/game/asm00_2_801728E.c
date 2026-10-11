@@ -32,7 +32,7 @@ Next battle_objectTickTimerAndSetPhaseC_80174AA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80174BE ── */
+/* ── battle_tickIntroState_80174BE ── */
 /* register form: calls sprite_setMosaicSize outside this file, which has no typed C interface yet
  * (original sets both r0 and r1 to the halved timer before the call) */
 static void call_sprite_setMosaicSize(u32 half) {
@@ -111,7 +111,7 @@ static IntroResult tick_intro(u32 object_ptr) {
     return res;
 }
 
-Next sub_80174BE(void) {
+Next battle_tickIntroState_80174BE(void) {
     IntroResult res = tick_intro(R5);
     R0 = res.r0;
     SET_FLAGS_CMP(res.cmp_a, res.cmp_b);

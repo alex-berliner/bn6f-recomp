@@ -1,0 +1,98 @@
+name: chatbox_event163Progress_81273B4
+address: '0x081273B4'
+kind: function
+status: probable
+summary: If event flag 163 is set, increments a per-toolkit progress counter and shows either the in-progress
+  or completion text script (0x12 or 0x13) via the chatbox/text-script runner.
+interface: void sub_81273B4(u32* toolkitContainer /* r10 */);
+details: 'Guards on event flag 163 via TestEventFlagFromImmediate; if the flag is clear it
+
+  returns immediately. Otherwise it dereferences r10 through oToolkit_Unk200a220_Ptr
+
+  to obtain a toolkit pointer, calls sub_8121198 to fetch the current progress
+
+  counter, then writes counter+1 back to toolkit+0xC UNLESS the new value equals
+
+  0xF (15), in which case the counter is left untouched and 0x13 is treated as the
+
+  final/completion script; otherwise the in-progress script 0x12 is shown. The
+
+  chosen script id is passed to sub_8127578 along with fixed chatbox arguments
+
+  (palette/base = 0x600AC00, text-script pointer = eTextScript201BF20, dest
+
+  buffer = unk_201A600) and a 0 second parameter. The 0xF cap acts as the terminal
+
+  step, after which further entries into this function will keep showing 0x13.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_81273B4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81273B4
+
+    ./wf verify --function sub_81273B4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81273B4
+
+    ./wf verify --function sub_81273B4 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81273B4
+
+    ./wf verify --function sub_81273B4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^081273b4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm33_81263D0.c after review against the assembly (the
+    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
+    that differs from the original: Preserved registers r4 and r6 are not restored on the EVENT_163-set
+    path. The contract lists r4 r6 as preserved, not as clobbers, so the difftest compares them. Asm:
+    `push {r4-r7,lr}` ... `mov r6, r10; ldr r6, [r6,#oToolkit_Unk200a220_Ptr]` ... `ldr r4, off_81273EC
+    // =unk_201A600; bl sub_8127578` ... `pop {r4-r7,pc}`, so the caller''s r4/r6 come back. C: get_toolkit_counter
+    does `R6 = toolkit;`, s...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_81273B4 -> chatbox_event163Progress_81273B4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- menus3
+- story2
+open_questions:
+- What r10's owner is at the call site (which subsystem holds this toolkit container pointer).
+- Exact meaning of event flag 163 in this scenario (which quest/condition it represents).
+- Whether sub_8127578 is the generic text/chatbox script runner and what unk_201A600 is used for.
+- Whether counter at toolkit+0xC is reset elsewhere when the underlying quest resets.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_81273B4

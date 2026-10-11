@@ -75,7 +75,7 @@ Next task484_RunFrame_800927C(void) {
     GUEST_CALL(dispatch_801DA48);
 
     /* Shared bookkeeping after a dispatched task. */
-    GUEST_CALL(sub_801E5F8);
+    GUEST_CALL(battle_initSceneStart_801E5F8);
     GUEST_CALL(battle_sceneFrameSetup_801DA24);
 
     /* Clear the task state (r0 = r1 = 0). */
@@ -646,7 +646,7 @@ Next battle_isBattleOver(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800A1D0 ── */
+/* ── battle_checkNaviFreeze_800A1D0 ── */
 /* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
 static bool time_is_stopped(u32 *r1_out) {
     GUEST_CALL(battle_isTimeStop);
@@ -733,8 +733,8 @@ static struct FreezeResult check_navi_freeze(u32 r1_in) {
     return (struct FreezeResult){ 0, FLAG_SLOWDOWN };
 }
 
-/* sub_800A1D0(r6, r10) -> r0 (freeze active), r1, flags nz */
-Next sub_800A1D0(void) {
+/* battle_checkNaviFreeze_800A1D0(r6, r10) -> r0 (freeze active), r1, flags nz */
+Next battle_checkNaviFreeze_800A1D0(void) {
     struct FreezeResult res = check_navi_freeze(R1);
     R0 = res.active;
     R1 = res.mask;
@@ -1145,7 +1145,7 @@ Next sub_800A86E(void) {
 /* battle_tickCustomScreenEffect_800A892:
  * Custom battle effect tick: if the active battle effects include the "custom
  * style" effect (0x100) but not the one at bit 3, and battle_getStateByteNibbles_800A832 reports
- * state 2, run the effect's main handler sub_8005DBE. */
+ * state 2, run the effect's main handler battle_initFullSetup_8005DBE. */
 Next battle_tickCustomScreenEffect_800A892(void) {
     u32 effects = 0;
 
@@ -1155,7 +1155,7 @@ Next battle_tickCustomScreenEffect_800A892(void) {
     if ((effects & 0x100) != 0 && (effects & 8) == 0) {
         GUEST_CALL(battle_getStateByteNibbles_800A832);
         if (R0 == 2) {
-            GUEST_CALL(sub_8005DBE);
+            GUEST_CALL(battle_initFullSetup_8005DBE);
         }
     }
 
@@ -1178,7 +1178,7 @@ Next battle_testFlag0x40_800A8F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800A908 ── */
+/* ── clearBattleStateCounter_800A908 ── */
 /* Clear the 32-bit battle state counter at dword_2000B30 to 0 and return its address in r1.
  * r0 is set to 0 so callers can detect "just cleared" via the NZ flag. */
 static u32 clear_battle_state_counter(void) {
@@ -1186,7 +1186,7 @@ static u32 clear_battle_state_counter(void) {
     return 0;
 }
 
-Next sub_800A908(void) {
+Next clearBattleStateCounter_800A908(void) {
     R0 = clear_battle_state_counter();
     R1 = A_dword_2000B30;
     SET_FLAGS_NZ(R0);
@@ -1615,7 +1615,7 @@ Next zeroFill_800AB70(void) {
  *
  * - If the current phase (Unk_1c) has moved past the previously recorded one
  *   (Unk_1b), record the new phase and, once it reaches 2 or more, kick off
- *   the setup routine for that phase (sub_801E228) unless the current battle
+ *   the setup routine for that phase (eStruct2035280_DrawMessageMode_801E228) unless the current battle
  *   mode is 6, which handles its own setup.
  * - Then count the phase timer (Unk_1d) down; when it expires, reset the
  *   phase back to 0.
@@ -1638,7 +1638,7 @@ Next battle_updatePhaseState_800AE0C(void) {
                  * battle state in r4 */
                 R0 = phase - 2;
                 R4 = battle;
-                GUEST_CALL(sub_801E228);
+                GUEST_CALL(eStruct2035280_DrawMessageMode_801E228);
                 R4 = savedR4;
             }
         }
@@ -1904,7 +1904,7 @@ Next encryption_applyPackList_800B110(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800B144 ── */
+/* ── battle_initBattleStateBuffer_800B144 ── */
 #define NAVA_STATS_OFF   0xC
 #define NAVA_STATS_WORDS 0x64
 #define EVENT_FLAGS_OFF  0x3C4
@@ -2121,8 +2121,8 @@ static void init_battle_state(u32 toolkit_ptr, u32 r6_input) {
     battle_sfx_call(0x3E);
 }
 
-/* sub_800B144(r10 = toolkit, r6 = caller R6) -> c v r1 r2 r3 (r4/r6/r7/r5 preserved) */
-Next sub_800B144(void) {
+/* battle_initBattleStateBuffer_800B144(r10 = toolkit, r6 = caller R6) -> c v r1 r2 r3 (r4/r6/r7/r5 preserved) */
+Next battle_initBattleStateBuffer_800B144(void) {
     u32 saved_r4 = R4, saved_r6 = R6;
     init_battle_state(R10, saved_r6);
     R4 = saved_r4;

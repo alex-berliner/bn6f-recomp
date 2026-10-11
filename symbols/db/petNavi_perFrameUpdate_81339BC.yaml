@@ -1,0 +1,98 @@
+name: petNavi_perFrameUpdate_81339BC
+address: '0x081339BC'
+kind: function
+status: confirmed
+summary: Per-frame update for a PET/Navi state object that drives the entity pipeline, and during screen
+  fades refreshes the current PET/Navi's stats from the state struct and resets its header.
+interface: 'void petNavi_perFrameUpdate_81339BC(u32 state /* r5 */);
+
+  // trashes r0-r4, r6, r8, r9, r10-r12, lr; flags nzcv; returns via pop {pc}
+
+  '
+details: "Called with the state-struct pointer in r5.\nAlways: calls sub_81340FC, entity_runAllUpdateHandlers_80465BC,\
+  \ sub_80465F8,\nthen IsScreenFadeActive. If the fade is not active it jumps straight to the\ntail pipeline\
+  \ (sub_8134594, sub_8134538, sub_81345B0, sub_8134548) and\nreturns.\n\nWhile the screen fade IS active:\n\
+  \  - sub_8046664, zeroFill_e2002230, timer_setNoTimeout_8137700 reset\n    rendering scratch and timers.\n\
+  \  - sub_81206C4(unk_202A3E0), sub_8120740(state[0xC]),\n    sub_81206F8(word_202A020, state[0xC]) push\
+  \ the current navi index into\n    some render/config slots.\n  - If state[2] (a \"no sync\" flag) is\
+  \ zero:\n      * SetCurPETNaviStatsByte(state[0x14], state[0xC]+0x2E, state[0x1C])\n        copies a\
+  \ half-word stat to slot 0x2E + navi.\n      * Loop r4 = 0x5C..0x60 step 4, r6 = 0x56..0x57 step 1,\
+  \ doing\n        SetCurPETNaviStatsByte(state[0x14], (state[0xC]<<1)+r6, state[r4])\n        to copy\
+  \ two word-sized stats into byte slots 0x56/0x57 of the navi's\n        stats block (one stats byte\
+  \ per word, keyed by navi index).\n  - Finally resets the small header: state[0] = 0, state[1] = 0xC,\n\
+  \    state[2] = 0, then runs the same tail pipeline.\n\nStructures touched: an unnamed state struct\
+  \ (r5) with byte fields at +0,\n+2, +0xC, +0x14, a half-word at +0x1C, and words at +0x5C..+0x60; the\n\
+  current PET/Navi stats block via SetCurPETNaviStatsByte using offsets\n0x2E+navi and 0x56+(navi<<1)/0x57+(navi<<1);\
+  \ globals unk_202A3E0 and\nword_202A020.\n\nQuirks: the loop runs one extra iteration past 0x5C (inclusive\
+  \ up to\n0x60), so two stats bytes (0x56, 0x57) are written, not just one.\nThe function tail-call returns\
+  \ via `pop {pc}`.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c
+    sub_81339BC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81339BC
+
+    ./wf verify --function sub_81339BC --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81339BC
+
+    ./wf verify --function sub_81339BC --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 3 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81339BC
+
+    ./wf verify --function sub_81339BC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081339bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_81339BC -> petNavi_perFrameUpdate_81339BC
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What is the state struct passed in r5 (likely a PET/Navi runtime state)?
+- What does state[2] == 0 guard against (a "dirty"/"in-sync" flag)?
+- Why is the stats sync done only during a screen fade?
+- Meaning of the two globals unk_202A3E0 and word_202A020.
+- Identity/purpose of sub_81340FC and the four tail pipeline calls (sub_8134594, sub_8134538, sub_81345B0,
+  sub_8134548).
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e
+previous_names:
+- sub_81339BC

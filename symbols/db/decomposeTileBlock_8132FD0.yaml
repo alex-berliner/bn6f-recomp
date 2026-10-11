@@ -1,0 +1,94 @@
+name: decomposeTileBlock_8132FD0
+address: '0x08132FD0'
+kind: function
+status: confirmed
+summary: Decomposes a 3-block compression chain header into a left/right interleaved tile-ID list and
+  blits it as one 32x32 BG tile block on layer 2.
+interface: void decomposeTileBlock_8132FD0(const u16 *tile_block_header /* r5 */);
+details: "Walks three compression chains starting at offsets 0xC, 0xE, 0x10 of a block header (r5)\nusing\
+  \ SWI 6 with arg 0xA, counting chain lengths into a 3-entry stack array. Builds an\ninterleaved two-column\
+  \ tile-ID buffer in eDecompBuffer2013A00: a fixed 2-entry header pair\ncopied from word_201C4E0, then\
+  \ per-block \"body\" + \"trailer\" sections:\n  - Block 0: sequential IDs from VRAM base 0x30B250, then\
+  \ 2 pairs from unk_201C4F0\n  - Block 1: sequential IDs from VRAM base 0x30B260, then 2 pairs from unk_201C500\n\
+  \  - Block 2: sequential IDs from VRAM base 0x30B270 (no trailer)\nEach block writes to alternating\
+  \ left/right columns. The trailing column count (right/2)\nis subtracted from 0x19 to position the blit\
+  \ within a 25-tile-wide row. CopyBackgroundTiles\nis invoked as CopyBackgroundTiles(j = 0x19 - right/2,\
+  \ i = 5, which_tile_block_32x32 = 2,\ntile_ids = eDecompBuffer2013A00, j_size = right/2, i_size = 2).\n\
+  Preserves r4-r7; clobbers r0-r3, lr, flags. Used to materialise a single 32x32 BG tile\nblock from a\
+  \ compressed multi-chain header into VRAM.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_8132FD0
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8132FD0
+
+    ./wf verify --function sub_8132FD0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8132FD0
+
+    ./wf verify --function sub_8132FD0 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8132FD0
+
+    ./wf verify --function sub_8132FD0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08132fd0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8132FD0 -> decomposeTileBlock_8132FD0
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of SWI 6 arg 0xA (likely palette or layer selector).
+- Layout of unk_201C4F0 / unk_201C500 trailer tables and why block 2 has none.
+- Why right column starts at (total << 1) rather than at the end of the left column data.
+- Producer of the tile_block_header structure and what r10 was carrying.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_8132FD0

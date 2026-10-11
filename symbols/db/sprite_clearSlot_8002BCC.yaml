@@ -1,0 +1,87 @@
+name: sprite_clearSlot_8002BCC
+address: '0x08002BCC'
+kind: function
+status: confirmed
+summary: Reset a sprite slot by hiding its OAM attribute (0x7FFF) and marking its link field as free (-1).
+interface: 'void sub_8002BCC(void /* r5 = sprite base */);  /* inputs: r5, lr; outputs: r0, r5; clobbers:
+  nz, c, v; preserved: r0-r7 */'
+details: 'Reads the low byte of the sprite base as a slot index. Writes 0x7FFF to the OAM
+
+  attribute word at offset (index*2 + 4) (hides the sprite) and -1 (0xFFFFFFFF) to the
+
+  slot''s link/extra u32 at offset (index*4 + 0x1C) to mark it free. Effectively the
+
+  inverse of allocation; used to release/free a sprite entry in the OAM/OBJ buffer
+
+  managed through the r5-passed base pointer. All other registers (including r0) are
+
+  preserved by the symmetric push/pop of r0-r7+lr/pc, making it look-through from the
+
+  caller''s perspective.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed;
+  tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (8 attempt(s), run convert-20261011-013710);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/sprite.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 3' --file
+    inbox_farm_old_3.c sub_8002BCC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8002BCC
+
+    ./wf verify --function sub_8002BCC --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    183 out of domain (verify run convert-20261011-013710-verify-8)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8002BCC
+
+    ./wf verify --function sub_8002BCC --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261011-013710-verify-8)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8002BCC
+
+    ./wf verify --function sub_8002BCC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013710-verify-8)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^08002bcc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/sprite.c
+  where: recomp d081832
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8002BCC -> sprite_clearSlot_8002BCC
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/sprite.c
+coverage:
+- story9
+open_questions:
+- Exact struct layout at r5; the (index*2 + 4) attribute slot and (index*4 + 0x1C) link/next-free field
+  are inferred from offsets rather than a named struct.
+- Whether the u32 at offset 0x1C is strictly a "link" (singly-linked free list) or also holds per-sprite
+  scratch data that gets clobbered here.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-013710
+- recomp d081832
+previous_names:
+- sub_8002BCC

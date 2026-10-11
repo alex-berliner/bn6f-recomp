@@ -835,7 +835,7 @@ Next stub_returnZero_8000E30(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8000E3A ── */
+/* ── pickWeightedIndex_8000E3A ── */
 /* Weighted random pick from a table of u8 weights.
  *
  * Entry registers: r0 = weight table, r1 = entry count, r10 = toolkit.
@@ -916,9 +916,9 @@ static weighted_pick pick_weighted_index(u32 table, s32 count, u32 toolkit)
     return res;
 }
 
-/* sub_8000E3A(r0 = weight table, r1 = entry count, r10 = toolkit)
+/* pickWeightedIndex_8000E3A(r0 = weight table, r1 = entry count, r10 = toolkit)
  * -> r0 = chosen index, r2 = chosen index, r3 = last weight byte read */
-Next sub_8000E3A(void) {
+Next pickWeightedIndex_8000E3A(void) {
     weighted_pick pick = pick_weighted_index(R0, (s32)R1, R10);
     R0 = pick.index;
     R2 = pick.index;
@@ -941,10 +941,10 @@ static bool event_flag_set(u16 flag) {
     return !ZERO_FLAG();
 }
 
-/* register form: calls sub_81207F8 outside this file, which has no typed C interface yet */
+/* register form: calls countEventFlagChips_81207F8 outside this file, which has no typed C interface yet */
 static u32 get_progress_stat(u32 index) {
     R0 = index;
-    GUEST_CALL(sub_81207F8);
+    GUEST_CALL(countEventFlagChips_81207F8);
     return R0;
 }
 
@@ -1083,11 +1083,11 @@ Next GetMaxAndCurHPForCurPETNavi_80010D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8001158 ── */
-/* sub_8001158(r0 = list ptr):
+/* ── scriptListRun_8001158 ── */
+/* scriptListRun_8001158(r0 = list ptr):
  * Walk an array of {cmd_id, arg} pairs (terminated by cmd_id == 0) and dispatch
  * each entry to sub_802FE28(cmd_id, arg, 0, 0). */
-Next sub_8001158(void) {
+Next scriptListRun_8001158(void) {
     u32 entry = R0;
     u32 cmd = LD32(entry);
     /* tst r0, r0 — sets NZ from cmd, leaves CV untouched. */
@@ -1391,8 +1391,8 @@ Next copyToVRAMAndClear_iBGTileIdBlocks_Ptr(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80015FC ── */
-/* sub_80015FC: copies an 8-byte palette entry from the ROM table at
+/* ── toolkit_applyOverlayPalette_80015FC ── */
+/* toolkit_applyOverlayPalette_80015FC: copies an 8-byte palette entry from the ROM table at
  * byte_8001618 into the toolkit render-info slot (offset +4). The
  * entry index is r0; r10 holds the toolkit pointer (the output goes
  * into the render-info write area). */
@@ -1405,7 +1405,7 @@ static void apply_overlay_palette(u32 toolkit, u32 entry_index,
     *out_render_info_post = render_info;
 }
 
-Next sub_80015FC(void) {
+Next toolkit_applyOverlayPalette_80015FC(void) {
     u32 render_info_post;
     apply_overlay_palette(R10, R0, &render_info_post);
     R2 = render_info_post;
@@ -1418,8 +1418,8 @@ Next sub_80015FC(void) {
 /* map_lookupMapIdByGroupAndNumber_8001708(R0 = map group, R1 = map number):
  * Selects the real-world group table for groups below INTERNET_MAP_GROUP_START
  * and the internet table for the rest (subtracting the base so the index fits),
- * then loads the byte for (group, number) and hands it to sub_80015FC.
- * Flags and r2/r3 on return are whatever sub_80015FC leaves. */
+ * then loads the byte for (group, number) and hands it to toolkit_applyOverlayPalette_80015FC.
+ * Flags and r2/r3 on return are whatever toolkit_applyOverlayPalette_80015FC leaves. */
 Next map_lookupMapIdByGroupAndNumber_8001708(void) {
     u32 group = R0;
     u32 table;
@@ -1435,11 +1435,11 @@ Next map_lookupMapIdByGroupAndNumber_8001708(void) {
     R3 = LD32(table + group * 4) + R1;
     R0 = LD8(R3);
 
-    GUEST_CALL(sub_80015FC);
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
     RETURN_TO_CALLER();
 }
 
-/* ── render_800172C ── */
+/* ── render_flushDisplayRegisters_800172C ── */
 /* register form: calls CopyWords outside this file, which has no typed C interface yet */
 static void call_copy_words(u32 src, u32 dest, u32 count) {
     R0 = src;
@@ -1483,8 +1483,8 @@ static u32 render_display_registers(u32 tk) {
     return ri;
 }
 
-/* render_800172C(r10 = Toolkit) -> v from (render_info + 4) */
-Next render_800172C(void) {
+/* render_flushDisplayRegisters_800172C(r10 = Toolkit) -> v from (render_info + 4) */
+Next render_flushDisplayRegisters_800172C(void) {
     u32 ri = render_display_registers(R10);
     SET_FLAGS_ADD(ri, 4);
     RETURN_TO_CALLER();
@@ -1695,8 +1695,8 @@ Next bgmap_WriteTileIdAtBlock_800187C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80018E0 ── */
-/* Result of sub_80018E0: the values the original leaves in r0-r4.
+/* ── bg_writeTileIdRow_80018E0 ── */
+/* Result of bg_writeTileIdRow_80018E0: the values the original leaves in r0-r4.
  * r6/r7 are pushed/popped by the original, so they need no handling here. */
 typedef struct {
     u32 x;        /* r0: column just past the last tile written, wrapped to the row */
@@ -1734,9 +1734,9 @@ static BgRowWrite bg_write_tile_row(u32 x, u32 y, u32 layer, u32 src, s32 count,
     return out;
 }
 
-/* sub_80018E0(r0 = start column, r1 = row, r2 = tile-id block, r3 = source tile
+/* bg_writeTileIdRow_80018E0(r0 = start column, r1 = row, r2 = tile-id block, r3 = source tile
  * ids, r4 = count, r10 = toolkit) -> r0-r4, flags from the final CMP r4,#0 */
-Next sub_80018E0(void) {
+Next bg_writeTileIdRow_80018E0(void) {
     BgRowWrite out = bg_write_tile_row(R0, R1, R2, R3, (s32)R4, R10);
     R0 = out.x;
     R1 = out.mask;
@@ -1747,15 +1747,15 @@ Next sub_80018E0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8001930 ── */
-/* sub_8001930(r0 = tile_id_base, r1 = high_bits, r2 = stride_entries, r3 = strip_count, r4 = dst):
+/* ── fillOamTileStripes_8001930 ── */
+/* fillOamTileStripes_8001930(r0 = tile_id_base, r1 = high_bits, r2 = stride_entries, r3 = strip_count, r4 = dst):
  *
  * Fill OAM attribute pairs. The inner loop writes two OAM entries per step
  * (4 bytes each): one at the running row cursor, one at cursor + stride (the
  * partner row in OAM). Four consecutive tile IDs are consumed per step.
  * After the inner loop fills `stride` bytes of the row, r3 is decremented;
  * if it was non-zero we return. */
-Next sub_8001930(void) {
+Next fillOamTileStripes_8001930(void) {
     u32 stride      = R2 << 2;
     u32 tile_id     = R0 | (R1 << 12);
     u32 row_cursor  = R4;
@@ -2024,7 +2024,7 @@ Next sub_8001D64(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8002000 ── */
+/* ── copyStruct_64bytes_8002000 ── */
 /* Copy 16 words (64 bytes) from src to dst. Returns the last word copied. */
 static u32 copy_64_bytes(u32 dst, u32 src) {
     for (u32 off = 0; off < 0x40; off += 4)
@@ -2032,7 +2032,7 @@ static u32 copy_64_bytes(u32 dst, u32 src) {
     return LD32(src + 0x3C);
 }
 
-Next sub_8002000(void) {
+Next copyStruct_64bytes_8002000(void) {
     R0 = copy_64_bytes(R5, R4);
     RETURN_TO_CALLER();
 }
@@ -2219,7 +2219,7 @@ Next event_runArmedCallback_80024AE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── copy_800260C ── */
+/* ── resetOverworldScene_800260C ── */
 /* register form: calls ZeroFillByEightWords outside this file, which has no typed C interface yet */
 static void zero_fill_eight_words(u32 addr, u32 size) {
     R0 = addr;
@@ -2281,7 +2281,7 @@ static void copy_800260C_impl(void) {
 /* Thin adapter: inputs r2/r3/r4/r7 are untouched by the typed function, so they pass through
  * automatically. The original function's only output (besides preserved inputs) is the
  * side effects above; no registers or flags need to be set. */
-Next copy_800260C(void) {
+Next resetOverworldScene_800260C(void) {
     copy_800260C_impl();
     RETURN_TO_CALLER();
 }

@@ -1,0 +1,84 @@
+name: buildChipAvailabilityTable_81258F8
+address: '0x081258F8'
+kind: function
+status: confirmed
+summary: Builds the in-RAM chip availability table at unk_201DC20 by scanning every chip and recording
+  its id and ownership status into 4-byte group slots.
+interface: void buildChipAvailabilityTable_81258F8(void) -> r0 = qualifying_chip_count, r2 = loop_leftover
+  (0x40 if last chip failed the 0x09 & 0x40 test, 1 otherwise); nz/c/v flags clobbered
+details: "Zeros the 0x320-byte table at unk_201DC20 (size = 800 bytes = 200 slots of 4 bytes; chip_count_max\
+  \ = 0x13F, group slots indexed by [byte0x15 - 1]).\nLoops over chip ids 1..0x13F, calling getChip8021DA8\
+  \ to fetch each ChipData. A chip qualifies when:\n  - byte 0x09 has bit 0x40 (special-type flag)\n \
+  \ - byte 0x16 bit 0 is clear (not disabled)\n  - byte 0x07 == 0 (category zero)\nFor each qualifying\
+  \ chip, the group index (LD8(data+0x15) - 1) selects a 4-byte slot at unk_201DC20 + (group << 2):\n\
+  \  - strh chipId, [entry]; strb status, [entry+2]\n  - status 0: event flag (0x1E20 + chipId) set ->\
+  \ already owned\n  - status 1: event flag (0x2220 + chipId) set -> newly acquired this run\n  - status\
+  \ 2: event flag (0x2020 + chipId) set and TestEventFlagFromImmediate(0x17,0x11) clear -> previously\
+  \ obtained\n    (if event 0x1711 is set, status becomes 2; otherwise 1 — the asm reads back into r0\
+  \ after the call)\ncounter r5 is incremented per qualifying chip and returned in r0. r2 is overwritten\
+  \ each iteration: 0x40 right after the ChipData load, then 1 after the disabled-bit test, so the value\
+  \ left at exit reflects the last chip that was tested.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_81258F8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81258F8
+
+    ./wf verify --function sub_81258F8 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81258F8
+
+    ./wf verify --function sub_81258F8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81258F8
+
+    ./wf verify --function sub_81258F8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^081258f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_81258F8 -> buildChipAvailabilityTable_81258F8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+related:
+- sub_8124B5C
+open_questions:
+- Why does r2 get set to 0x40 and 1 unconditionally and is leaked out of the function — does a caller
+  depend on this side channel?
+- Are multiple chip ids allowed to share the same group slot (strh overwrites the previous id)?
+- What does event flag 0x1711 represent (the "ever obtained" sentinel) and what is its page/bit in TestEventFlagFromImmediate?
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_81258F8

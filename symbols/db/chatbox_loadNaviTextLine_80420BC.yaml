@@ -1,0 +1,87 @@
+name: chatbox_loadNaviTextLine_80420BC
+address: '0x080420BC'
+kind: function
+status: confirmed
+summary: Copies one 64-byte block of the current PET navi's dialogue text into the next chatbox buffer
+  slot and advances the script cursor.
+interface: r4=scriptPtr (command stream), r5=chatbox (chatbox struct); returns r0=1, r4=text slot dest
+  pointer, r7=chatbox+0x64 (slot-counter address); flags from final mov r0,#1 (nz set, c/v clear)
+details: 'Increments the per-chatbox line counter (chatbox+oChatbox_Unk_05). Reads the active PET navi
+  via GetCurPETNavi. Uses scriptPtr[2] as a table selector (0 or 1) indexing off_8042118 to pick TextScriptNaviNames0
+  or TextScriptNaviNames1; fetches a u16 per-navi offset from that table and computes the source text
+  pointer. Computes a destination slot in the global text pool at byte_200AFA0: (u16 slot index at chatbox+0x64)
+  << 6 gives a 64-byte-aligned address. Calls CopyBytes(src, dest, 0x40) to transfer one block. Increments
+  the slot index (wrapping within the pool). Writes dest into chatbox+oChatbox_TextScriptCursorPtr and
+  writes scriptPtr+3 (past the 3-byte command) into chatbox+oChatbox_Unk_44 and into a per-line pointer
+  array at chatbox+0x140+(counter-1)*4. Returns with r4 holding the dest pointer so callers can read the
+  just-copied text directly.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c
+    chatbox_80420BC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_80420BC
+
+    ./wf verify --function chatbox_80420BC --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_80420BC
+
+    ./wf verify --function chatbox_80420BC --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_80420BC
+
+    ./wf verify --function chatbox_80420BC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story2, story4, story5, story6, story8, story9.'
+  reproduce: grep -l '^080420bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename chatbox_80420BC -> chatbox_loadNaviTextLine_80420BC
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What exactly do TextScriptNaviNames0/1 contain—navi display names, or full dialogue lines? The 64-byte
+  block suggests a single name string or short line.
+- What is the total capacity of the byte_200AFA0 text pool (how many 64-byte slots before wrapping)?
+- Is chatbox+oChatbox_Unk_44 the active script PC or a resume point after a text-page break?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3
+previous_names:
+- chatbox_80420BC

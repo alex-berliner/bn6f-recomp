@@ -1,0 +1,81 @@
+name: dialogueEnd_unlockPlayer_8046E48
+address: '0x08046E48'
+kind: function
+status: confirmed
+summary: Overworld dialogue-end handler that applies a counter update and unlocks the player when the
+  screen isn't fading and the counter validates.
+interface: u32 sub_8046E48(u32 dialogue_ptr /* r5 */) -> r0 (0/1 in nz)
+details: 'Reads r5 as a pointer to a dialogue/state struct. Calls an init/setup routine (sub_8047134),
+  then bails out with 0 if IsScreenFadeActive is true or if checkScrambledCounter_8047366 fails on the
+  counter at [r5+0x28]. Otherwise reads a sub-state word at [[r5+0x1C]]: when it equals 1 it calls sub_803D0B4
+  with r0=r1=counter, else it calls sub_803D02C. Finally it runs owPlayer_unlockPlayerAfterNonNPCDialogue_809E122
+  and sub_8005F84, then returns 1; the fade-active / scramble-fail path returns 0 with no follow-up calls.
+  Preserves r4-r7; clobbers r0-r3, r8, r9, r12, lr and NZCV.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c
+    sub_8046E48
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8046E48
+
+    ./wf verify --function sub_8046E48 --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8046E48
+
+    ./wf verify --function sub_8046E48 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8046E48
+
+    ./wf verify --function sub_8046E48 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^08046e48 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8046E48 -> dialogueEnd_unlockPlayer_8046E48
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- story2
+related:
+- sub_803D02C
+open_questions:
+- What sub_8047134 initializes or tears down (likely tied to the dialogue struct).
+- Exact meaning of [r5+0x1C]'s sub-state value of 1 vs. the else branch (which of sub_803D0B4 / sub_803D02C
+  is the "normal" counter apply path).
+- What sub_8005F84 does post-unlock (cleanup, queue flush, or side-effect for the next dialogue).
+- Why the function is only invoked when r5 holds a dialogue struct rather than via a shared dispatcher.
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
+previous_names:
+- sub_8046E48

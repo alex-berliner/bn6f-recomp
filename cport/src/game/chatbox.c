@@ -163,7 +163,7 @@ Next chatbox_checkAdvanceTextPrint_8040154(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_804021C ── */
+/* ── chatbox_emitTextGridOAM_804021C ── */
 /* ROM data tables for the chatbox OAM emitter */
 #define TILE_BASE          0xE2B8
 #define COL_STRIDE         0x20
@@ -198,11 +198,11 @@ static void emit_chatbox_grid(u32 chatbox) {
     }
 }
 
-/* chatbox_804021C(r5 = ChatBoxProperties*)
+/* chatbox_emitTextGridOAM_804021C(r5 = ChatBoxProperties*)
  * Outputs r1 = input r12 (the epilogue pop sequence leaves r1 with the
  * originally-pushed r12 value).  r2/r3 are whatever sub_802FE28 leaves
  * in them after the last GUEST_CALL. */
-Next chatbox_804021C(void) {
+Next chatbox_emitTextGridOAM_804021C(void) {
     u32 saved_r12 = R12;
     emit_chatbox_grid(R5);
     R1 = saved_r12;
@@ -647,7 +647,7 @@ Next chatbox_ED_select_8040944(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8040B3A ── */
+/* ── chatbox_loadMugshotPortrait_8040B3A ── */
 /* The chatbox object (r5 on entry) keeps the sprite it displays in a
  * sub-structure this far into the object. */
 #define CHATBOX_SPRITE_OFFSET 0x1F8
@@ -716,9 +716,9 @@ static MugshotShowResult showMugshotInChatbox(u32 mugshotId, u32 attr01, u32 cha
     return out;
 }
 
-/* sub_8040B3A(r0 = mugshotId, r1 = attr01, r4 = unused, r5 = chatbox)
+/* chatbox_loadMugshotPortrait_8040B3A(r0 = mugshotId, r1 = attr01, r4 = unused, r5 = chatbox)
  * -> r1 r2 r3 r7 (r4/r5 preserved) */
-Next sub_8040B3A(void) {
+Next chatbox_loadMugshotPortrait_8040B3A(void) {
     u32 chatbox = R5;
     /* r4 is never touched by the original, so it passes through unchanged. */
     MugshotShowResult out = showMugshotInChatbox(R0, R1, chatbox);
@@ -871,7 +871,7 @@ Next chatbox_E6_end(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_804103E ── */
+/* ── chatbox_stepOpenAnimation_804103E ── */
 /* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
 static void call_setflags_3e(u32 mask) {
     R0 = mask;
@@ -992,7 +992,7 @@ static ChatboxStepOut chatbox_step_animation(u32 r1_in, u32 r2_in, u32 r5) {
     return out;
 }
 
-Next chatbox_804103E(void) {
+Next chatbox_stepOpenAnimation_804103E(void) {
     ChatboxStepOut out = chatbox_step_animation(R1, R2, R5);
     R0 = out.r0;
     R1 = out.r1;
@@ -1234,7 +1234,7 @@ static void chatbox_dispatch_command(u32 ctx)
     case 7:  GUEST_CALL(chatbox_80417E4); break;
     case 8:
     case 9:
-    case 42: GUEST_CALL(chatbox_8041818); break;
+    case 42: GUEST_CALL(chatbox_evaluateChipScript_8041818); break;
     case 10:
     case 11:
     case 12:
@@ -1363,7 +1363,7 @@ Next chatbox_stepScriptEntry_80417A4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8041818 ── */
+/* ── chatbox_evaluateChipScript_8041818 ── */
 /* register form: calls GetChipCountOfCode outside this file, which has no typed C interface yet */
 static u32 chip_count_of_code(u32 code, u32 code_param) {
     R0 = code; R1 = code_param;
@@ -1459,8 +1459,8 @@ static ChatboxRes eval_chip_script(u32 ptr) {
     return res;
 }
 
-/* chatbox_8041818(r4 = script record pointer) → r0=1, r1/r2/r4 updated, flags */
-Next chatbox_8041818(void) {
+/* chatbox_evaluateChipScript_8041818(r4 = script record pointer) → r0=1, r1/r2/r4 updated, flags */
+Next chatbox_evaluateChipScript_8041818(void) {
     ChatboxRes res = eval_chip_script(R4);
     R1 = res.r1;
     R2 = res.r2;
@@ -1633,13 +1633,13 @@ static void chatbox_flag_3e_clear(u32 mask) {
     GUEST_CALL(chatbox_clearFlags_3e);
 }
 
-/* register form: calls sub_8040B3A outside this file, which has no typed C interface yet.
+/* register form: calls chatbox_loadMugshotPortrait_8040B3A outside this file, which has no typed C interface yet.
    After the call, R1/R2/R3/R7 hold the callee's output values; the adapter does not
    rewrite them. */
 static void mugshot_refresh(u32 mugshot_id, u32 flag) {
     R0 = mugshot_id;
     R1 = flag;
-    GUEST_CALL(sub_8040B3A);
+    GUEST_CALL(chatbox_loadMugshotPortrait_8040B3A);
 }
 
 /* Process one chatbox F5 (mugshot) command.
@@ -1890,7 +1890,7 @@ Next chatbox_scriptStepSyncPlayerTextState_8041F44(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80420BC ── */
+/* ── chatbox_loadNaviTextLine_80420BC ── */
 /* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
 static u8 get_cur_pet_navi(void) {
     GUEST_CALL(GetCurPETNavi);
@@ -1960,8 +1960,8 @@ static ChatboxResult chatbox_load_text(u32 scriptPtr, u32 chatbox) {
     return res;
 }
 
-/* chatbox_80420BC(r4 = scriptPtr, r5 = chatbox) -> r0=1, r4=dest, r7=slotAddr */
-Next chatbox_80420BC(void) {
+/* chatbox_loadNaviTextLine_80420BC(r4 = scriptPtr, r5 = chatbox) -> r0=1, r4=dest, r7=slotAddr */
+Next chatbox_loadNaviTextLine_80420BC(void) {
     ChatboxResult res = chatbox_load_text(R4, R5);
     R0 = 1;
     R1 = res.ptr_offset;
@@ -1972,20 +1972,20 @@ Next chatbox_80420BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8042128 ── */
+/* ── chatbox_pushTextLevel_8042128 ── */
 /*
- * Chatbox nesting step (chatbox_8042128).
+ * Chatbox nesting step (chatbox_pushTextLevel_8042128).
  *
  * r4 points at a 4-byte text command word: byte 2 is a parameter for the text
  * setup routine, byte 3 selects a chatbox text slot.  r5 is the chatbox work
  * object.  Opening the command adds one nesting level, points the chatbox's
  * text cursor at the script to run (the slot's saved script, or one built by
- * sub_803D06C when the command doesn't name a slot), and records where the
+ * protectedZennyOrZero_803D06C when the command doesn't name a slot), and records where the
  * outer command list resumes once this level closes.
  *
  * Final register states the callers rely on:
  *   r0 = 1, r1 = history slot offset, r2 = 4 (left over from the mul),
- *   r3 = whatever chatbox_8042A14 left in it, r4 = the slot's text bank.
+ *   r3 = whatever chatbox_formatBcdNumber_8042A14 left in it, r4 = the slot's text bank.
  */
 typedef struct {
     u32 result;        /* r0: always 1 */
@@ -1993,19 +1993,19 @@ typedef struct {
     u32 textBank;      /* r4: byte_200AFA0 + slot*64, the per-slot text buffer */
 } ChatboxPushResult;
 
-/* register form: calls sub_803D06C outside this file, which has no typed C interface yet */
+/* register form: calls protectedZennyOrZero_803D06C outside this file, which has no typed C interface yet */
 static u32 default_text_script(u32 kind, u32 arg1, u32 arg2, u32 arg3) {
     R0 = kind; R1 = arg1; R2 = arg2; R3 = arg3;
-    GUEST_CALL(sub_803D06C);
+    GUEST_CALL(protectedZennyOrZero_803D06C);
     /* the original pops r1-r3 back around this call, so put the entry values back */
     R1 = arg1; R2 = arg2; R3 = arg3;
     return R0;
 }
 
-/* register form: calls chatbox_8042A14 outside this file, which has no typed C interface yet */
+/* register form: calls chatbox_formatBcdNumber_8042A14 outside this file, which has no typed C interface yet */
 static u32 setup_text_script(u32 scriptPtr, u32 param, u32 textBank) {
     R0 = scriptPtr; R1 = param; R2 = textBank;
-    GUEST_CALL(chatbox_8042A14);
+    GUEST_CALL(chatbox_formatBcdNumber_8042A14);
     /* r0 is unused here; r3 simply keeps whatever the callee left in it */
     return R0;
 }
@@ -2047,7 +2047,7 @@ static ChatboxPushResult chatbox_push_text_level(u32 arg1, u32 arg2, u32 arg3, u
     return out;
 }
 
-Next chatbox_8042128(void) {
+Next chatbox_pushTextLevel_8042128(void) {
     ChatboxPushResult out = chatbox_push_text_level(R1, R2, R3, R4, R5);
     R0 = out.result;
     R1 = out.historyOffset;
@@ -2208,14 +2208,14 @@ Next chatbox_textScriptAction_openShop_80424BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_80425F0 ── */
-/* chatbox_80425F0: launch the mail subsystem for a chatbox reply option.
+/* ── chatbox_launchMailOption_80425F0 ── */
+/* chatbox_launchMailOption_80425F0: launch the mail subsystem for a chatbox reply option.
  * inputs:  r4 (chatbox object), r5 (text-script state), r10, lr
  * outputs: r0 = 0 (with nz from it), r2/r3 unchanged, r4/r5 preserved
  *
  * First tick: marks FLAGS_3E_UNK_0001, reads the mail index from [r4+2], launches
  * the mail subsystem, and sets the guard byte at [r5+4] so it only runs once. */
-Next chatbox_80425F0(void) {
+Next chatbox_launchMailOption_80425F0(void) {
     /* mark FLAGS_3E_UNK_0001 */
     R0 = 1;
     GUEST_CALL(chatbox_setflags_3e);
@@ -2314,12 +2314,12 @@ Next chatbox_F7_move(void) {
     switch (state) {
     case 0: R0 = 0x0804286C; GUEST_CALL(sub_804286C); break;
     case 1: R0 = 0x080428B8; GUEST_CALL(sub_80428B8); break;
-    case 2: R0 = 0x080428C0; GUEST_CALL(sub_80428C0); break;
+    case 2: R0 = 0x080428C0; GUEST_CALL(chatbox_initFromScriptEntry_80428C0); break;
     case 3: R0 = 0x080428E4; GUEST_CALL(sub_80428E4); break;
     case 4: R0 = 0x080428EC; GUEST_CALL(sub_80428EC); break;
     case 5: R0 = 0x080428FC; GUEST_CALL(sub_80428FC); break;
     case 6: R0 = 0x08042910; GUEST_CALL(sub_8042910); break;
-    case 7: R0 = 0x0804293C; GUEST_CALL(sub_804293C); break;
+    case 7: R0 = 0x0804293C; GUEST_CALL(chatbox_placeCenteredTextRun_804293C); break;
     case 8: R0 = 0x08042990; GUEST_CALL(sub_8042990); break;
     case 9: R0 = 0x080429D8; GUEST_CALL(sub_80429D8); break;
     }
@@ -2327,12 +2327,12 @@ Next chatbox_F7_move(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80428C0 ── */
-/* sub_80428C0: Initialize chatbox state from a script entry.
+/* ── chatbox_initFromScriptEntry_80428C0 ── */
+/* chatbox_initFromScriptEntry_80428C0: Initialize chatbox state from a script entry.
  *  inputs:  r4 = script entry pointer, r5 = chatbox struct pointer, lr
  *  outputs: r0 = 1, r2 = 0xC * entry[4], r3 = entry[4], r4 = original r4 + 5
  *  clobbers: r1, nz, c, v */
-Next sub_80428C0(void) {
+Next chatbox_initFromScriptEntry_80428C0(void) {
     u8 charIdx = LD8(R4 + 2);
     ST8(R5 + oChatbox_TextScriptCharIdx, charIdx);
     ST8(R5 + oChatbox_CursorIdx, (u8)(charIdx + 0xAF));
@@ -2402,7 +2402,7 @@ Next sub_80429D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8042A14 ── */
+/* ── chatbox_formatBcdNumber_8042A14 ── */
 /* register form: calls memory_bcdConvert outside this file, which has no typed C interface yet.
  * Callee clobbers R1; save and restore it to honour the preserved-r1 contract. */
 static u32 to_bcd(u32 value, u32 flags, u32 buf) {
@@ -2494,8 +2494,8 @@ static void format_chatbox_number(u32 value, u32 flags, u32 buf,
     *out_r8 = bcd;
 }
 
-/* chatbox_8042A14(r0=value, r1=flags, r2=buffer) -> r3, r6, r7=0, r8; preserves r1,r4,r5 */
-Next chatbox_8042A14(void) {
+/* chatbox_formatBcdNumber_8042A14(r0=value, r1=flags, r2=buffer) -> r3, r6, r7=0, r8; preserves r1,r4,r5 */
+Next chatbox_formatBcdNumber_8042A14(void) {
     u32 r3, r6, r8;
     format_chatbox_number(R0, R1, R2, &r3, &r6, &r8);
     R3 = r3;

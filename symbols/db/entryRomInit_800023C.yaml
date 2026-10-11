@@ -1,0 +1,107 @@
+name: entryRomInit_800023C
+address: '0x0800023C'
+kind: function
+status: confirmed
+summary: 'GBA ROM entry thunk: calls the main ROM/BIOS initialization routine sub_3005DA0, then returns
+  control to the caller using the saved LR.'
+interface: 'u32 start_800023C(void);  // called with: <none>; returns caller''s saved LR in r0; nz/c/v
+  flags from the call; preserves r4-r7'
+details: 'Lives at the ROM entry point and acts as a trampoline. Pushes LR onto the
+
+  stack, loads sub_3005DA0+1 (Thumb bit set) into r0, switches LR to PC and
+
+  bx''s into the called routine. After sub_3005DA0 returns, the original
+
+  uses "pop {r0}" to load the saved caller LR into r0, then "bx r0" to
+
+  dispatch back to it. So the meaningful "return value" is the original
+
+  caller''s address, not whatever sub_3005DA0 left in the registers — the
+
+  subsequent code tail is treated as a TAILCALL target using that LR.
+
+  sub_3005DA0 itself is the real initializer (presumably the boot/IPC setup
+
+  for the GBA BIOS + IRQ + cartridge bring-up path) but lives in another
+
+  translation unit (has the +1 Thumb suffix in its address).
+
+  Touches the stack and the banked LR; r4-r7 preserved by the contract.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (9 attempt(s), run convert-20261010-210643);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/start.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 34' --file inbox_farm_34.c
+    start_800023C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function start_800023C
+
+    ./wf verify --function start_800023C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261010-210643-verify-9)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function start_800023C
+
+    ./wf verify --function start_800023C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-210643-verify-9)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function start_800023C
+
+    ./wf verify --function start_800023C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210643-verify-9)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, fuzz, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0800023c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/start.c
+  where: recomp 4e46892
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename start_800023C -> entryRomInit_800023C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/start.c
+coverage:
+- battle
+- battles1
+- battles2
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What exactly does sub_3005DA0 initialize (BIOS user tables, IRQ vectors, RAM clear, etc.)?
+- Is the returned LR meant to be the actual call site (BIOS jump target), and does anything read/use it
+  after this thunk?
+sources:
+- tools/wf run convert-20261010-210643
+- recomp 4e46892
+previous_names:
+- start_800023C

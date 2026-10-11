@@ -1,0 +1,90 @@
+name: battle_queueHpUpdate_8128C20
+address: '0x08128C20'
+kind: function
+status: confirmed
+summary: Queues an HP-related battle update command (opcode 0xE1.0x13) derived from the battle object's
+  HP field.
+interface: 'void sub_8128C20(void); /* in: r5 = battle object pointer (uses offset 0x1E = HP, 0x24 = some
+  field); out: r5 preserved; clobbers r0,r1,r2,r3,lr, nzc/v; preserved r4,r5,r6,r7 */'
+details: 'Reads the battle object''s HP halfword at r5 + 0x1E, computes coord = (hp & 1) + (hp >> 1)
+
+  (i.e. remainder-of-2 + half of HP), then prepares register arguments for sub_811FA98:
+
+  r0 = 0xE10013 (command opcode), r1 = 0x20002, r2 = coord, r3 = LD16(r5 + 0x24),
+
+  r4 = 4, r6 = 0xC240 (the "byte_8128C48" actually encodes 0x40 0xC2 0x00 0x00 i.e. 0xC240),
+
+  r7 = 0x37, and tails into sub_811FA98. r4/r6/r7 are preserved across the call by the
+
+  push/pop of r4-r7,lr, but the C listing shows r6 = 0xC240 (not 0x40) and r7 = 0x37 as
+
+  expected by the callee. Likely an HP-related state or damage update queued into the
+
+  battle command buffer.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed;
+  tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file
+    inbox_farm_old_5.c sub_8128C20
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8128C20
+
+    ./wf verify --function sub_8128C20 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    209 out of domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8128C20
+
+    ./wf verify --function sub_8128C20 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8128C20
+
+    ./wf verify --function sub_8128C20 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08128c20 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8128C20 -> battle_queueHpUpdate_8128C20
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- The exact meaning of coord = (hp&1) + (hp>>1) is unclear; could be a packed HP value (low bit + half)
+  used as a counter or an index into a state table.
+- What sub_811FA98 does with opcode 0xE1.0x13, key 0x20002 and the r2 coord argument.
+- Meaning of r3 = LD16(r5 + 0x24) (some other battle object field) and r4 = 4, r6 = 0xC240, r7 = 0x37.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63
+previous_names:
+- sub_8128C20

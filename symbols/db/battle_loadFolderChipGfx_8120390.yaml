@@ -1,0 +1,92 @@
+name: battle_loadFolderChipGfx_8120390
+address: '0x08120390'
+kind: function
+status: confirmed
+summary: Builds a folder display record from a template and queues each folder entry's battle-chip sprite
+  GFX, clearing unused slots
+interface: void battle_loadFolderChipGfx(u32 first_entry_index, u32 entry_array_base, u32 dest_record,
+  u32 template_src, u32 gfx_slot_base, s32 entry_count) // takes args in r0-r5, no meaningful return;
+  r0-r3 and lr clobbered, r4-r7 preserved
+details: 'First copies a 0x38-byte template record (r3) over the destination record (r2) with CopyWords,
+  establishing the record''s default contents. Then iterates over `entry_count` folder entries of 0x20
+  bytes each, starting at entry_array_base + first_entry_index * 0x20. For each entry it reads the halfword
+  at +0x1C and shifts it right by 7 to extract the chip ID (upper 9 bits, leaving flag bits below). If
+  the chip ID is nonzero, it looks up the chip via getChip8021DA8, reads the image pointer at ChipData+0x20,
+  and queues a 0x80-byte word-aligned GFX transfer into the next slot at gfx_slot_base (which advances
+  0x80 per entry). If the chip ID is zero, it instead stores two zero words (8 bytes) to the corresponding
+  output words at dest_record, zeroing that entry''s display data. dest_record itself is not advanced
+  by the loop — only the gfx slots move and the pair of cleared words advances 8 bytes per iteration from
+  the record base. Caller passes the last two arguments in r4 and r5 (callee-saved but not modified),
+  and the listed r6/r7 "outputs" are just preserved entry values.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_8120390
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8120390
+
+    ./wf verify --function sub_8120390 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    297 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8120390
+
+    ./wf verify --function sub_8120390 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 6 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8120390
+
+    ./wf verify --function sub_8120390 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08120390 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8120390 -> battle_loadFolderChipGfx_8120390
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- exact structure of the 0x38-byte template record and which fields remain meaningful after the loop
+- meaning of the flag bits masked off by the >>7 shift in the entry halfword at +0x1C (e.g. coded/used
+  markers)
+- which screen/menu the queued GFX slots feed into (folder viewer vs. custom screen)
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_8120390

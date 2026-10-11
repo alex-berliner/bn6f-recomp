@@ -1,0 +1,108 @@
+name: battle_scanChipSeq_80295C8
+address: '0x080295C8'
+kind: function
+status: confirmed
+summary: Validates a run of consecutive chip codes in the battle buffer against a target and a trailing
+  descending sub-sequence pattern, returning the owning chip's data field on success.
+interface: battle_scanChipSeq_80295C8(r2=count, r3=data_ptr, r6=buffer_offset, r7=buffer_base) -> (r0,
+  r1, nzcv)
+details: 'Reads a u16 target code from [data_ptr+4]. First pass verifies `count` consecutive
+
+  u16 entries starting at [buffer_base+buffer_offset] all equal that target; any
+
+  mismatch returns 0. Then advances offset by +8 and reads [buffer_base+r6] as the
+
+  starting value (r0 = value+1) of a descending sub-sequence. Second pass walks
+
+  `count` entries backwards (r6 -= 2 each iteration), checking each equals r0 after
+
+  decrement. Value 0x1A is treated as a single wildcard: if encountered while r0 is
+
+  0x1B it re-derives the expected value from the prior entry [r6-2]+2; otherwise
+
+  it simply substitutes r0-1. More than one wildcard is a failure. A negative
+
+  final r0 is also a failure. On success returns r0 = [data_ptr+2] and r1 = r6-8
+
+  (the scan end position). The data_ptr struct appears to hold at minimum:
+
+  u16 at +2 (owner/result ID), u16 at +4 (expected chip code), u16 at +6 (sequence
+
+  start value). The 0x1A wildcard likely represents a "any" or filler chip slot in
+
+  multi-code sequences (lock chips, program chip sub-codes). Flags on return:
+
+  success sets NZ from r1 and CV from the final CMP(r6, 8); failure zeroes everything.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c
+    sub_80295C8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80295C8
+
+    ./wf verify --function sub_80295C8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    259 out of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80295C8
+
+    ./wf verify --function sub_80295C8 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80295C8
+
+    ./wf verify --function sub_80295C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, menus2, menus3, story2, story4, story5, story6, story7, story8,
+    story9.'
+  reproduce: grep -l '^080295c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80295C8 -> battle_scanChipSeq_80295C8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battles1
+- battles2
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What game mechanic uses the 0x1A wildcard – chip fusion, lock sequence, or program chip sub-slot?
+- Is [data_ptr+2] a chip-ID or an NPC/enemy index that owns this sequence?
+- Who calls this and does the +8 offset correspond to a fixed header size in the chip buffer?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3
+previous_names:
+- sub_80295C8

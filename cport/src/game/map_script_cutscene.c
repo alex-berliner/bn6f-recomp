@@ -2811,10 +2811,10 @@ static void start_battle(u32 settings) {
     GUEST_CALL(StartBattle);
 }
 
-/* register form: calls sub_803522E outside this file, which has no typed C interface yet */
+/* register form: calls handleDriveOutEvents_803522E outside this file, which has no typed C interface yet */
 static void battle_setup_helper(u32 operand) {
     R0 = operand;
-    GUEST_CALL(sub_803522E);
+    GUEST_CALL(handleDriveOutEvents_803522E);
 }
 
 /* register form: calls SetScreenFade outside this file, which has no typed C interface yet */

@@ -1,0 +1,86 @@
+name: battleObject_respawn_80D84DE
+address: '0x080D84DE'
+kind: function
+status: confirmed
+summary: Respawn / reinitialize a battle object (mark hidden, reset palette/HP, install standard per-state
+  handlers, refresh collision and timestop sprite).
+interface: 'void battleObject_respawn_80D84DE(void);  /* in: r2 r4 r5 r8 r9 r10 r11 r12 lr; out: r5 r8
+  r9 r10 r11 r12; clobbers nz c v r0 r1 r2 r3 r4 lr; preserves r6 r7 */'
+details: "Operates on the battle object pointed to by r5 (oObjectHeader / oBattleObject).\n- ORs 0x02\
+  \ into the byte at r5+oObjectHeader_Flags (hidden/respawn flag), updating NZ.\n- Calls sprite_clearFinalPalette\
+  \ and sub_801AD9E (generic post-death hook).\n- Writes HP = 1 as a u16 at r5+oBattleObject_HP.\n- Loads\
+  \ pointer off_80D8504 (= off_80D8508) and calls sub_801B394 with it; the\n  table at off_80D8508 is\
+  \ the standard per-state handler set:\n    sub_80D852C, battle_ResetObjectActionState_80165B8, sub_80D855C,\n\
+  \    sub_80166AE, sub_8016B02, sub_8017E26, sub_8016B36, sub_8016B72, sub_80D8558\n  (each entry stored\
+  \ with the +1 Thumb bit set, hence the +1 in the table).\n- Refreshes collision data via object_presentCollisionData\
+  \ and timestop sprite\n  bookkeeping via object_updateSpriteTimestop.\nFunction is a leaf-ish tail:\
+  \ pushes LR, bl's all helpers, pops {pc}.\n\nRegister form, old prompt; queued for retype (the farm's\
+  \ prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file
+    inbox_farm_old_5.c sub_80D84DE
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D84DE
+
+    ./wf verify --function sub_80D84DE --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D84DE
+
+    ./wf verify --function sub_80D84DE --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 8 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D84DE
+
+    ./wf verify --function sub_80D84DE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story5, story6, story7.'
+  reproduce: grep -l '^080d84de ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80D84DE -> battleObject_respawn_80D84DE
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story5
+- story6
+- story7
+open_questions:
+- Which exact offset/state slot in sub_801B394's install corresponds to sub_80D852C and sub_80D855C (respawn-specific
+  entry/exit)?
+- Is the "HP = 1" sentinel just a placeholder until the spawner writes real HP, or is this the post-chip-drop
+  revival HP?
+- Meaning of bit 1 in oObjectHeader_Flags (hidden vs "being respawned" vs "no-draw this frame") — could
+  only confirm from a sibling setter/clearer.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63
+previous_names:
+- sub_80D84DE

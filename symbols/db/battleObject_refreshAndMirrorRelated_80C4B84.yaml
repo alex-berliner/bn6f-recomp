@@ -1,0 +1,102 @@
+name: battleObject_refreshAndMirrorRelated_80C4B84
+address: '0x080C4B84'
+kind: function
+status: confirmed
+summary: Refreshes the current battle object's animation slot and active flag (alliance-gated), mirrors
+  extra-variable state from its related object, syncs direction/sprite flip, handles an emotion data pointer,
+  and frees its memory.
+interface: "void sub_80C4B84(void); /* r5 = battle object in; r4 = related object out;\n             \
+  \             nz,c,v,r0,r1,r2,r3,lr clobbered; r5,r6 preserved */\n"
+details: "Runs as an object update step for a battle object whose RelatedObject1Ptr\npoints to a partner/source\
+  \ object.\n\n1. Calls sub_80C4C52 to compute the new animation index and stores the\n   result byte\
+  \ in oBattleObject_CurAnim.\n\n2. Sets bit 0x02 of oObjectHeader_Flags (the \"ANIM_ACTIVE\" gate), then\n\
+  \   checks oBattleObject_Alliance via sub_800EB6C. If invalid, the same\n   bit is cleared. If valid,\
+  \ the bit is set again, but it is cleared a\n   second time when oBattleObject_Unk_0c is zero.\n\n3.\
+  \ Calls nullsub_10 (no-op wrapper).\n\n4. Loads oBattleObject_RelatedObject1Ptr into r4 and queries\n\
+  \   object_getFlag on it; if bit 0x04 is set, clears the active flag on\n   the main object.\n\n5. Copies\
+  \ three words at offset 0x34 (oBattleObject_ExtraVars) from the\n   related object into the main object\
+  \ (r4→r5 via ldmia/stmia), then\n   copies oBattleObject_DirectionFlip byte. Re-applies the sprite\n\
+  \   horizontal flip via object_getFlip + sprite_setFlip so the mirrored\n   state matches.\n\n6. If\
+  \ the pointer at oBattleObject_ExtraVars+4 (transitive: the u32 it\n   points to) is non-zero, calls\n\
+  \   callPossiblyGetBattleEmotion_8015B54(alliance). On result != 2 it\n   zeroes that pointed-to u32;\
+  \ on result == 2 it early-returns without\n   freeing memory.\n\n7. On the fall-through path, calls\
+  \ object_freeMemory(r5).\n\nr4 (the related-object pointer) is returned to the caller via the\npush/pop\
+  \ wrapper. Preserves r5 and r6 for the caller; everything else\nplus flags are clobbered by the final\
+  \ callee chain.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c
+    sub_80C4B84
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C4B84
+
+    ./wf verify --function sub_80C4B84 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C4B84
+
+    ./wf verify --function sub_80C4B84 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C4B84
+
+    ./wf verify --function sub_80C4B84 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080c4b84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80C4B84 -> battleObject_refreshAndMirrorRelated_80C4B84
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- The exact meaning of bit 0x02 in oObjectHeader_Flags (the "active" / animation-on gate) and bit 0x04
+  of object_getFlag's returned word.
+- oBattleObject_Unk_0c is unknown in this disassembly — likely an enemy-side or transparency/state byte
+  conditioned before showing the object.
+- Why the emotion result == 2 path skips object_freeMemory (probably holds the object alive for a transformation
+  or emotion animation).
+- sub_80C4C52's parameter contract (R0 in? not used here) is not visible from this site.
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd
+previous_names:
+- sub_80C4B84

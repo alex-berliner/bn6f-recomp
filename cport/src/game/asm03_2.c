@@ -178,8 +178,8 @@ Next getStructFrom2008450(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80466D8 ── */
-/* sub_80466D8: walks a battle-object's hitbox list and marks which entries
+/* ── battleObject_scanHitboxesAndSetFlags_80466D8 ── */
+/* battleObject_scanHitboxesAndSetFlags_80466D8: walks a battle-object's hitbox list and marks which entries
  * fall inside the screen bounds (with mirror adjustments), then updates
  * the object's on-screen / collision flags byte and bitmask. */
 
@@ -254,8 +254,8 @@ static HitboxScanResult scan_hitboxes(u32 obj) {
     return result;
 }
 
-/* sub_80466D8(r5 = battle object pointer) -> r3, r6, r8, r9, r12 */
-Next sub_80466D8(void) {
+/* battleObject_scanHitboxesAndSetFlags_80466D8(r5 = battle object pointer) -> r3, r6, r8, r9, r12 */
+Next battleObject_scanHitboxesAndSetFlags_80466D8(void) {
     HitboxScanResult res = scan_hitboxes(R5);
     R3  = res.flags;
     R6  = res.r6;
@@ -348,10 +348,10 @@ static u32 call_shop_handler(u32 handler_addr, u32 state_offset) {
     case 0:  GUEST_CALL(sub_8046D4C); break;
     case 4:  GUEST_CALL(battle_objectAdvanceCounterToState8_8046DDC); break;
     case 8:  GUEST_CALL(sub_8046DF8); break;
-    case 12: GUEST_CALL(sub_8046E06); break;
-    case 16: GUEST_CALL(sub_8046E48); break;
+    case 12: GUEST_CALL(scramblePanel_tick_8046E06); break;
+    case 16: GUEST_CALL(dialogueEnd_unlockPlayer_8046E48); break;
     case 20: GUEST_CALL(sub_8046E84); break;
-    case 24: GUEST_CALL(sub_8046ED2); break;
+    case 24: GUEST_CALL(chatbox_confirmShopPurchase_8046ED2); break;
     case 28: GUEST_CALL(chatbox_stepContextScript_8047028); break;
     case 32: GUEST_CALL(sub_8047050); break;
     case 36: GUEST_CALL(sub_8047066); break;
@@ -412,10 +412,10 @@ Next battle_objectAdvanceCounterToState8_8046DDC(void) {
 }
 
 /* ── sub_8046DF8 ── */
-/* sub_8046DF8: run two update passes (sub_8047950 then sub_8047134) and
+/* sub_8046DF8: run two update passes (battleMenu_navigate_8047950 then sub_8047134) and
  * return 0. Always yields r0 = 0 with N/Z set accordingly. */
 Next sub_8046DF8(void) {
-    GUEST_CALL(sub_8047950);
+    GUEST_CALL(battleMenu_navigate_8047950);
     GUEST_CALL(sub_8047134);
 
     R0 = 0;
@@ -423,7 +423,7 @@ Next sub_8046DF8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8046E06 ── */
+/* ── scramblePanel_tick_8046E06 ── */
 /* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
 static bool chatbox_should_skip(u32 flag) {
     R0 = flag;
@@ -486,14 +486,14 @@ end:
     call_sub_8047134();
 }
 
-Next sub_8046E06(void) {
+Next scramblePanel_tick_8046E06(void) {
     animate_scramble_panel(R5);
     R0 = 0;
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8046E48 ── */
+/* ── dialogueEnd_unlockPlayer_8046E48 ── */
 /* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
 static void sub_8047134_call(void) {
     GUEST_CALL(sub_8047134);
@@ -519,10 +519,10 @@ static void apply_counter_normal(u32 counter) {
     GUEST_CALL(sub_803D0B4);
 }
 
-/* register form: calls sub_803D02C outside this file, which has no typed C interface yet */
+/* register form: calls protectZenny_803D02C outside this file, which has no typed C interface yet */
 static void apply_counter_default(u32 counter) {
     R0 = counter;
-    GUEST_CALL(sub_803D02C);
+    GUEST_CALL(protectZenny_803D02C);
 }
 
 /* register form: calls owPlayer_unlockPlayerAfterNonNPCDialogue_809E122 outside this file, which has no typed C interface yet */
@@ -530,9 +530,9 @@ static void unlock_player_after_dialogue(void) {
     GUEST_CALL(owPlayer_unlockPlayerAfterNonNPCDialogue_809E122);
 }
 
-/* register form: calls sub_8005F84 outside this file, which has no typed C interface yet */
+/* register form: calls resetGameStateToOpening_8005F84 outside this file, which has no typed C interface yet */
 static void sub_8005F84_call(void) {
-    GUEST_CALL(sub_8005F84);
+    GUEST_CALL(resetGameStateToOpening_8005F84);
 }
 
 /* Attempt to unlock the player after a non-NPC overworld dialogue ends.
@@ -558,14 +558,14 @@ static u32 handle_dialogue_unlock(u32 dialogue_ptr) {
     return 1;
 }
 
-/* sub_8046E48(r5 = dialogue struct ptr) -> r0 */
-Next sub_8046E48(void) {
+/* dialogueEnd_unlockPlayer_8046E48(r5 = dialogue struct ptr) -> r0 */
+Next dialogueEnd_unlockPlayer_8046E48(void) {
     R0 = handle_dialogue_unlock(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8046ED2 ── */
+/* ── chatbox_confirmShopPurchase_8046ED2 ── */
 /* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
 static void call_refresh_chatbox(void) {
     GUEST_CALL(sub_8047134);
@@ -800,8 +800,8 @@ static u32 handle_item_selection(u32 ctx) {
     return 0;
 }
 
-/* sub_8046ED2(r5 = ctx) -> r0 = 0, nz/c/v from final R0 */
-Next sub_8046ED2(void) {
+/* chatbox_confirmShopPurchase_8046ED2(r5 = ctx) -> r0 = 0, nz/c/v from final R0 */
+Next chatbox_confirmShopPurchase_8046ED2(void) {
     R0 = handle_item_selection(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -875,7 +875,7 @@ Next text_decompressMessageAssets_80471F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80472E8 ── */
+/* ── sprite_emitColumnEntry_80472E8 ── */
 /* byte_8047318: halfword table indexed by column -- columns 0-5 hold
  * 0xE002, columns 6-11 hold 0xE006, columns 12-17 hold 0xE00A. */
 #define COLUMN_COUNT 0x12
@@ -915,11 +915,11 @@ static ColumnStep advance_column(u32 upper, u32 lower, u32 column) {
     return result;
 }
 
-/* sub_80472E8(r0 = upper halfword, r1 = lower halfword, r2 = column counter)
+/* sprite_emitColumnEntry_80472E8(r0 = upper halfword, r1 = lower halfword, r2 = column counter)
  * Passes the packed halves plus the column's table entry on to sub_802FE28,
  * and leaves the incremented (wrapped) counter in r2. r4-r7 and lr are
  * untouched, r0 is scratch. */
-Next sub_80472E8(void) {
+Next sprite_emitColumnEntry_80472E8(void) {
     ColumnStep result = advance_column(R0, R1, R2);
     R1 = result.entry;
     R2 = result.next_column;
@@ -1114,10 +1114,10 @@ Next chatbox_uploadWindowTileGfx_804754C(void) {
 }
 
 /* ── sub_804758C ── */
-/* sub_804758C: thin wrapper that tail-calls sub_80478D4 (all caller registers
+/* sub_804758C: thin wrapper that tail-calls mail_drawSelectedEntry_80478D4 (all caller registers
  * are preserved, results come straight from the callee). */
 Next sub_804758C(void) {
-    GUEST_CALL(sub_80478D4);
+    GUEST_CALL(mail_drawSelectedEntry_80478D4);
     RETURN_TO_CALLER();
 }
 
@@ -1165,7 +1165,7 @@ Next background_LoadAreaTiles_8047800(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80478D4 ── */
+/* ── mail_drawSelectedEntry_80478D4 ── */
 /* Mail list entry object (arrives in r5) — field offsets as used by the disassembly. */
 #define ENTRY_CURSOR_INDEX  0x08  /* u8: which list row is currently highlighted */
 #define ENTRY_INFO_PTR      0x1C  /* -> entry info record */
@@ -1227,10 +1227,10 @@ static void draw_highlighted_mail_entry(u32 entry, u32 toolkit)
                     7, 1, A_dword_86A5D60, 0);
 }
 
-/* sub_80478D4: r5 = mail list entry, r10 = toolkit.
+/* mail_drawSelectedEntry_80478D4: r5 = mail list entry, r10 = toolkit.
  * The routine itself preserves r4-r9 (the original push/pop), and the callees
  * leave r10-r12 alone, so only the callee-clobbered r4-r7 need restoring. */
-Next sub_80478D4(void) {
+Next mail_drawSelectedEntry_80478D4(void) {
     u32 keep_r4 = R4, keep_r5 = R5, keep_r6 = R6, keep_r7 = R7;
     draw_highlighted_mail_entry(R5, R10);
     R4 = keep_r4;
@@ -1425,12 +1425,12 @@ Next shop_copyItemTableToShopData_8048C98(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8048F9C ── */
-/* sub_8048F9C(r0 = save_arg, r10 = toolkit):
+/* ── initSaveStateBlock_8048F9C ── */
+/* initSaveStateBlock_8048F9C(r0 = save_arg, r10 = toolkit):
  *   Zero-fill the save state block at eS200A290 (0x1B0 bytes),
  *   then write a small header and set *toolkit->main_jumptable_index_ptr
  *   to 0x30. Preserves r2..r7; leaves r0=0xA, r1=*main_jumptable_index_ptr. */
-Next sub_8048F9C(void) {
+Next initSaveStateBlock_8048F9C(void) {
     u32 save_arg = R0;
     u32 state = A_eS200A290;
 
@@ -1458,7 +1458,7 @@ Next sub_8048F9C(void) {
 /* ── sub_8049808 ── */
 /* sub_8049808(r2, r4, r5, r10, lr): jump-table dispatcher.
  *   Calls sub_803AFC2(0); if it returns nonzero, the result indexes a small Thumb
- *   function-pointer table (dword_804982C: entry 1 = sub_803AA24, 2 = sub_803AA40,
+ *   function-pointer table (dword_804982C: entry 1 = handleExitSubmenu_803AA24, 2 = battleObj_dispatchSubstate_803AA40,
  *   3 = sub_803ABF4, 4 = sub_803AB6C, 5 = sub_803AB94) which is tail-called with
  *   LR = 0x0804981C (the fallthrough into the default cleanup). On zero it skips
  *   the table, runs sub_803A7B8, then sub_803BC7C(0), and returns to the caller. */
@@ -1471,8 +1471,8 @@ Next sub_8049808(void) {
          * the switch handles the actual dispatch. */
         SET_FLAGS_NZ(idx << 2);
         switch (idx) {
-            case 1: GUEST_CALL(sub_803AA24); break;
-            case 2: GUEST_CALL(sub_803AA40); break;
+            case 1: GUEST_CALL(handleExitSubmenu_803AA24); break;
+            case 2: GUEST_CALL(battleObj_dispatchSubstate_803AA40); break;
             case 3: GUEST_CALL(sub_803ABF4); break;
             case 4: GUEST_CALL(sub_803AB6C); break;
             case 5: GUEST_CALL(sub_803AB94); break;
@@ -1485,13 +1485,13 @@ Next sub_8049808(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8049888 ── */
-/* sub_8049888: chatbox input handler dispatcher.
+/* ── chatbox_inputHandler_8049888 ── */
+/* chatbox_inputHandler_8049888: chatbox input handler dispatcher.
  * Inputs:  r5 = chatbox state struct, r10, lr
  * Outputs: r3, r8, r9, r10, r11, r12 + flags c, v
  * Writes one byte into chatbox state based on a flag check and the current
  * chatbox sub-state, then ticks the chatbox state machine. */
-Next sub_8049888(void) {
+Next chatbox_inputHandler_8049888(void) {
     u32 r0;
 
     /* Probe flag 0x80; if it isn't set, the state byte stays untouched. */
@@ -1508,13 +1508,13 @@ Next sub_8049888(void) {
     }
 
     /* Run the chatbox state machine tick. */
-    GUEST_CALL(sub_803A820);
+    GUEST_CALL(battle_moduleInit_803A820);
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8049984 ── */
-/* sub_8049984:
+/* ── chatbox_stepState_8049984 ── */
+/* chatbox_stepState_8049984:
  *   inputs:  r5 r10 lr
  *   outputs: c v r3 r8 r9 r10 r11 r12
  *   clobbers (unused by callers): nz r0 r1 r2 lr
@@ -1525,7 +1525,7 @@ Next sub_8049888(void) {
  * query the chatbox state: state != 0 advances to phase 0x28, while state == 0
  * kicks off a screen fade (0xc / 0x10) and advances to phase 0x3c. R5 points
  * to a control byte whose byte [1] is the next-phase slot. */
-Next sub_8049984(void) {
+Next chatbox_stepState_8049984(void) {
     R0 = 0x80;
     GUEST_CALL(chatbox_mask_eFlags2009F38);
     if (ZERO_FLAG()) {
@@ -1539,22 +1539,22 @@ Next sub_8049984(void) {
             ST8(R5 + 1, 0x3C);
         }
     }
-    GUEST_CALL(sub_803A820);
+    GUEST_CALL(battle_moduleInit_803A820);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80499CE ── */
-/* sub_80499CE: 080499CE-08049A18 THUMB
+/* ── chatbox_closeFadeHandler_80499CE ── */
+/* chatbox_closeFadeHandler_80499CE: 080499CE-08049A18 THUMB
  * Inputs:  r5 r6 r7 r8 r9 r10 r11 r12 lr
  * Outputs: c v r3 r8 r9 r10 r11 r12
  * Clobbers: nz r0 r1 r2 lr
  * Preserved: r4 r5 r6 r7
  *
  * The original push {r4-r7,lr} / pop {r4-r7,pc} is reproduced because
- * the callee in the else-path (sub_803A820) writes 0x20093b0 to the
+ * the callee in the else-path (battle_moduleInit_803A820) writes 0x20093b0 to the
  * saved r7 slot on the stack, and the final pop surfaces that value in r7.
  */
-Next sub_80499CE(void) {
+Next chatbox_closeFadeHandler_80499CE(void) {
     /* push {r4-r7,lr} */
     u32 sp = SP - 20;
     ST32(sp,     R4);
@@ -1586,7 +1586,7 @@ Next sub_80499CE(void) {
         GUEST_CALL(sub_811F758);
     } else {
         /* Screen fade still active: bail out via the alternate path. */
-        GUEST_CALL(sub_803A820);
+        GUEST_CALL(battle_moduleInit_803A820);
     }
 
     /* pop {r4-r7,pc} */
@@ -1684,7 +1684,7 @@ Next sub_8049CBC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8049CF8 ── */
+/* ── chatbox_initTextLineBuffer_8049CF8 ── */
 /* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
 static void zero_fill_words(u32 dst, u32 byte_count) {
     R0 = dst;
@@ -1728,8 +1728,8 @@ static ExitRegs init_work_buffer(u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7)
     }
 }
 
-/* sub_8049CF8: r2/r3 exit as the last fill setup left them; r4-r7 preserved. */
-Next sub_8049CF8(void) {
+/* chatbox_initTextLineBuffer_8049CF8: r2/r3 exit as the last fill setup left them; r4-r7 preserved. */
+Next chatbox_initTextLineBuffer_8049CF8(void) {
     ExitRegs out = init_work_buffer(R2, R3, R4, R5, R6, R7);
     R2 = out.r2;
     R3 = out.r3;
@@ -1762,15 +1762,15 @@ Next sub_8049D4A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8049E28 ── */
-/* sub_8049E28: chatbox/dialog init for a new screen — clears chatbox state,
+/* ── chatbox_initNewScreen_8049E28 ── */
+/* chatbox_initNewScreen_8049E28: chatbox/dialog init for a new screen — clears chatbox state,
  * sets up render info and LCD control, then resets the graphics subsystem
  * and writes the initial chatbox state bytes at the object pointed to by R5.
  *   inputs:  r5 = pointer to chatbox state struct
  *   outputs: -
  *   clobbers: r0 r1 r2 r3 lr (nz c v from callees)
  *   preserved: r4 r6 r7 */
-Next sub_8049E28(void) {
+Next chatbox_initNewScreen_8049E28(void) {
     GUEST_CALL(chatbox_8040818);
 
     R0 = 0x40;
@@ -1780,11 +1780,11 @@ Next sub_8049E28(void) {
     GUEST_CALL(renderInfo_80017A0);
 
     R0 = 0x11;
-    GUEST_CALL(sub_80015FC);
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 
     GUEST_CALL(resetAllGraphicsState_8005F40);
     GUEST_CALL(sub_803BEC0);
-    GUEST_CALL(sub_804A14C);
+    GUEST_CALL(sprite_loadTilesAndPlaySfx_804A14C);
 
     /* Initialize the chatbox state struct: state = 8 (opening/animating in),
      * sub-state = 0 (frame 0). */
@@ -1794,8 +1794,8 @@ Next sub_8049E28(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8049F32 ── */
-/* sub_8049F32: 08049F32-08049F50 THUMB, bn6f asm03_2.s:6567
+/* ── screenFadeUpdateTick_8049F32 ── */
+/* screenFadeUpdateTick_8049F32: 08049F32-08049F50 THUMB, bn6f asm03_2.s:6567
  *
  * Screen-fade update tick. If a screen fade is currently active, advance
  * its animation (timer/draw) and update a state byte held in r5+1; then
@@ -1806,7 +1806,7 @@ Next sub_8049E28(void) {
  *   clobbers: nz c v r0 r1 r2 r3 lr
  *   preserved: r4 r5 r6 r7 r8 r9 r12
  */
-Next sub_8049F32(void) {
+Next screenFadeUpdateTick_8049F32(void) {
     /* IsScreenFadeActive() -> zf */
     GUEST_CALL(IsScreenFadeActive);
     if (!ZERO_FLAG()) {
@@ -1840,12 +1840,12 @@ Next sub_8049F50(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804A024 ── */
-/* sub_804A024: Handle a chatbox state transition for the script runner.
+/* ── chatbox_stateStep_804A024 ── */
+/* chatbox_stateStep_804A024: Handle a chatbox state transition for the script runner.
  * r5 = state struct pointer; r10 = some context used by sub_8049F70.
  * Drives either a flag-clear path (sets r5[1]=0x0C) or a fade-and-finalize path
  * (SetScreenFade(0x0C, 0x10) then r5[1]=0x20), then runs sub_8049F70. */
-Next sub_804A024(void) {
+Next chatbox_stateStep_804A024(void) {
     /* If chatbox flag 0x80 is set, skip the state-change logic entirely. */
     R0 = 0x80;
     GUEST_CALL(chatbox_mask_eFlags2009F38);
@@ -1869,8 +1869,8 @@ done_with_state:
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804A078 ── */
-/* sub_804A078: scene-update hook.
+/* ── sceneUpdate_804A078 ── */
+/* sceneUpdate_804A078: scene-update hook.
  * inputs:  r5, r10, lr
  * outputs: r8, r9, r10, r11, r12
  * clobbers: r0, r1, r2, r3, lr, nz, c, v
@@ -1878,7 +1878,7 @@ done_with_state:
  * If a screen fade is in progress, tear down the current scene's graphical
  * state (clear VRAM, clear GFX buffer, restore tile memory, set LCD mode,
  * reset chatbox, run system init). Otherwise delegate to sub_8049F70. */
-Next sub_804A078(void) {
+Next sceneUpdate_804A078(void) {
     GUEST_CALL(IsScreenFadeActive);
     if (!ZERO_FLAG()) {
         R0 = LD16(R5 + 0x22);
@@ -1928,8 +1928,8 @@ Next copyData_804A0AC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804A14C ── */
-Next sub_804A14C(void) {
+/* ── sprite_loadTilesAndPlaySfx_804A14C ── */
+Next sprite_loadTilesAndPlaySfx_804A14C(void) {
     /* Look up a per-id offset from byte_804A178, copy 0x20 bytes from unk_2001850+offset
      * into the object at R5+0x30, then play SFX 0x10/0x30 and stash the handle at R5+0x10. */
     u32 table = A_unk_2001850;
@@ -1954,8 +1954,8 @@ Next sub_804A14C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804A17A ── */
-/* sub_804A17A: build the two text-script folder name buffers at unk_2001850.
+/* ── textScript_buildFolderNameBuffers_804A17A ── */
+/* textScript_buildFolderNameBuffers_804A17A: build the two text-script folder name buffers at unk_2001850.
  *
  * Each buffer is 0x30 bytes (0x20 halfwords of 0xE5E5, then the folder name in
  * wide chars, then a 0xE6 terminator at offset 0x10). The first half of the
@@ -2004,7 +2004,7 @@ static void build_folder_name_buffers_typed(void) {
     ST8(memBlock + 0x20 + 0x10, 0xE6);
 }
 
-Next sub_804A17A(void) {
+Next textScript_buildFolderNameBuffers_804A17A(void) {
     build_folder_name_buffers_typed();
     RETURN_TO_CALLER();
 }
@@ -2053,12 +2053,12 @@ Next sub_804A24C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C11C ── */
-/* sub_804C11C: gates two chatbox/cutscene steps behind a flag test, a pair of cutscene
+/* ── chatbox_stepIfGatesOpen_804C11C ── */
+/* chatbox_stepIfGatesOpen_804C11C: gates two chatbox/cutscene steps behind a flag test, a pair of cutscene
  * position checks, and a chatbox flag mask. If all four pass, runs sub_804C144 then
  * sub_804C298. Inputs: r5, r10, lr. Outputs: r2. Clobbers: nz, c, v, r0, r1, r3, lr.
  * Preserved: r4, r5, r6, r7. */
-Next sub_804C11C(void) {
+Next chatbox_stepIfGatesOpen_804C11C(void) {
     /* TestPETMenuDataFlag(1) must return zero (flag not set). */
     R0 = 1;
     GUEST_CALL(TestPETMenuDataFlag);
@@ -2084,8 +2084,8 @@ Next sub_804C11C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C1D4 ── */
-/* sub_804C1D4: applies a scroll offset to the RenderInfo X/Y scroll regs and
+/* ── applyScrollOffset_804C1D4 ── */
+/* applyScrollOffset_804C1D4: applies a scroll offset to the RenderInfo X/Y scroll regs and
  * to the caller's r5 object's local X/Y offsets, indexed by the
  * screen/menu index byte at 0x2013965.
  *   inputs:  r5 (object), r10 (toolkit), lr
@@ -2093,7 +2093,7 @@ Next sub_804C11C(void) {
  *   clobbers: nz c v r0 r1 r2 r3
  *   preserved: r4 r5 r6 r7
  */
-Next sub_804C1D4(void) {
+Next applyScrollOffset_804C1D4(void) {
     /* Parallel lookup tables at 0x0804C208 (X addend) and 0x0804C20C
      * (Y addend), indexed by the menu/screen index byte at 0x2013965. */
     u32 idx = LD8(A_unk_2013960 + 5);
@@ -2118,15 +2118,15 @@ Next sub_804C1D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C214 ── */
-/* sub_804C214(r5 = battle object?, r10 = toolkit, lr):
+/* ── tickActionTimer_804C214 ── */
+/* tickActionTimer_804C214(r5 = battle object?, r10 = toolkit, lr):
  *   Tick down the object's pending-action timer (offset 0x18).
  *   When it expires, reset it to 2 and advance the toolkit's
  *   animation/state counters at oToolkit_Unk2009740_Ptr:
  *     - offset 2 is an index that wraps at 0x10 (then triggers state 4 at [0])
  *     - offset 3 is a separate countdown that gets one step consumed each lap
  */
-Next sub_804C214(void) {
+Next tickActionTimer_804C214(void) {
     u8 timer = LD8(R5 + 0x18);
     timer--;
     SET_FLAGS_NZ(timer);

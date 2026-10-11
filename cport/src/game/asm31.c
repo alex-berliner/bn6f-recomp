@@ -10,13 +10,13 @@
 
 /* ── t1_0x5_tempAttackObject_80B8CD8 ── */
 /* register form: tail-dispatch to the temp-attack object's state handler.
- * sub_80B8CF8 / sub_80B8DA6 / object_freeMemory have no typed C interface yet. */
+ * battle_initNaviSprite_80B8CF8 / sub_80B8DA6 / object_freeMemory have no typed C interface yet. */
 static void call_temp_attack_handler(u32 state, u32 handler_addr, u32 obj_ptr) {
     R0 = state;
     R1 = handler_addr;
     R5 = obj_ptr;
     switch (state) {
-    case 0: GUEST_CALL(sub_80B8CF8);      break;
+    case 0: GUEST_CALL(battle_initNaviSprite_80B8CF8);      break;
     case 4: GUEST_CALL(sub_80B8DA6);      break;
     case 8: GUEST_CALL(object_freeMemory); break;
     }
@@ -35,7 +35,7 @@ Next t1_0x5_tempAttackObject_80B8CD8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80B8CF8 ── */
+/* ── battle_initNaviSprite_80B8CF8 ── */
 /* Navi/battle-sprite spawn table: each entry is 5 bytes.
  * [0] sprite tile ID, [1] animation data, [2] palette base,
  * [3] transform sprite ID, [4] arm-position index. */
@@ -191,8 +191,8 @@ static void init_battle_navi_sprite(u32 obj) {
 
 /* ------------------------------------------------------------------ */
 
-/* sub_80B8CF8(obj = R5) -> r0-r3 (from sub_80B8DA6), nzcv; preserves caller's r4. */
-Next sub_80B8CF8(void) {
+/* battle_initNaviSprite_80B8CF8(obj = R5) -> r0-r3 (from sub_80B8DA6), nzcv; preserves caller's r4. */
+Next battle_initNaviSprite_80B8CF8(void) {
     u32 saved_r4 = R4;
     init_battle_navi_sprite(R5);
     R4 = saved_r4;
@@ -286,14 +286,14 @@ Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C08EE ── */
-/* sub_80C08EE: First-turn phase initialization / timer → next phase.
+/* ── battleObject_runFirstTurnPhase_80C08EE ── */
+/* battleObject_runFirstTurnPhase_80C08EE: First-turn phase initialization / timer → next phase.
  * Called from the battle object's phase driver while r5 points at the
  * battle object. If the phase hasn't been initialized yet, set a 15-tick
  * timer and mark it initialized. Otherwise count the timer down; on
  * expiry, advance to action 4 and clear the phase/initialized flag so
  * the phase restarts cleanly next time. */
-Next sub_80C08EE(void) {
+Next battleObject_runFirstTurnPhase_80C08EE(void) {
     u8 initialized = LD8(R5 + oBattleObject_PhaseInitialized);
 
     if (initialized == 0) {
@@ -319,14 +319,14 @@ Next sub_80C08EE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C0938 ── */
-/* sub_80C0938(r5 = battle object pointer):
+/* ── battle_panelObject_tryTargetAndSetPhase_80C0938 ── */
+/* battle_panelObject_tryTargetAndSetPhase_80C0938(r5 = battle object pointer):
  * Try to find a panel target via sub_80C0C9A.
  * On success: stash the picked param bytes into the object's Param3/Param4 and set
  *   its phase to 4 (the "execute panel effect" phase).
  * On failure: set its current action to 0xC and its phase to 0 (idle / no target).
  *   r5 is preserved; sub_80C0C9A may clobber nz/c/v and r0..r3. */
-Next sub_80C0938(void) {
+Next battle_panelObject_tryTargetAndSetPhase_80C0938(void) {
     GUEST_CALL(sub_80C0C9A);
 
     if (R0 != 0) {
@@ -341,8 +341,8 @@ Next sub_80C0938(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C0988 ── */
-/* sub_80C0988: Z-axis pop-up animation for a battle object.
+/* ── battleObject_jumpUpPhase_80C0988 ── */
+/* battleObject_jumpUpPhase_80C0988: Z-axis pop-up animation for a battle object.
  *
  * First time through, arms the upward jump (Z velocity 0x0F0000, 4-frame
  * period timer) and stamps the phase-init flag to 4. On later ticks it
@@ -350,7 +350,7 @@ Next sub_80C0938(void) {
  * the object's phase advances to 0xC and we exit. The 4-frame period
  * timer counts down each visit, calling sub_80C0DC2 every 5 frames.
  */
-Next sub_80C0988(void) {
+Next battleObject_jumpUpPhase_80C0988(void) {
     if (!LD8(R5 + oBattleObject_PhaseInitialized)) {
         /* First time: launch the object upward and arm the period timer. */
         ST16(R5 + oBattleObject_Timer, 4);
@@ -378,8 +378,8 @@ Next sub_80C0988(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C0A6C ── */
-/* sub_80C0A6C — advance the phase-3 → phase-4 transition for a battle object.
+/* ── advancePhase3ToPhase4_80C0A6C ── */
+/* advancePhase3ToPhase4_80C0A6C — advance the phase-3 → phase-4 transition for a battle object.
  *   inputs:  r5 = battle object pointer
  *   outputs: -
  *   clobbers: nz c v r0
@@ -389,7 +389,7 @@ Next sub_80C0988(void) {
  * zero (signed), the combined phase/state field is set to 4 to land in
  * phase 4.
  */
-Next sub_80C0A6C(void) {
+Next advancePhase3ToPhase4_80C0A6C(void) {
     if (!LD8(R5 + oBattleObject_PhaseInitialized)) {
         /* First entry into the transition: kick off the anim + timer. */
         ST8(R5 + oBattleObject_CurAnim, 3);
@@ -416,15 +416,15 @@ Next sub_80C0A6C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C0B90 ── */
-/* sub_80C0B90: per-frame update for a battle object's freeze/hit-react phase.
+/* ── battleObject_tickHitReact_80C0B90 ── */
+/* battleObject_tickHitReact_80C0B90: per-frame update for a battle object's freeze/hit-react phase.
  *
  * PhaseInit byte acts as a tiny state machine:
  *   0  -> first tick: kick off the reaction anim, play its SFX (0xBE), arm a
  *         5-frame timer, then mark state = 4 so we don't re-enter.
  *   !=0-> count the timer down each tick. When it reaches 0, clear flag 0x02
  *         in the object's header flags and advance CurPhase to 4. */
-Next sub_80C0B90(void) {
+Next battleObject_tickHitReact_80C0B90(void) {
     u8 phaseInit = LD8(R5 + oBattleObject_PhaseInitialized);
 
     if (phaseInit == 0) {
@@ -459,8 +459,8 @@ Next sub_80C0B90(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C0C20 ── */
-/* sub_80C0C20: Battle-object phase-3 init/tick.
+/* ── battleObject_tickPhase3_80C0C20 ── */
+/* battleObject_tickPhase3_80C0C20: Battle-object phase-3 init/tick.
  *   inputs:  r5 (battle object), lr
  *   outputs: r5 (preserved)
  *   clobbers: r0, r1, r2, r3, lr
@@ -468,7 +468,7 @@ Next sub_80C0B90(void) {
  * On first entry (phase != 4): set timer = 10 and mark phase initialized (=4).
  * Otherwise: decrement timer; when it expires, reset the linked object via
  * sub_80E1332(related_object_1, 0) and advance phase to 4. */
-Next sub_80C0C20(void) {
+Next battleObject_tickPhase3_80C0C20(void) {
     if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
         ST16(R5 + oBattleObject_Timer, (u16)0xA);
         ST8(R5 + oBattleObject_PhaseInitialized, 4);
@@ -485,8 +485,8 @@ Next sub_80C0C20(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C3F00 ── */
-/* sub_80C3F00: initialize a battle object's sprite (panels, sprite, anim, palette, flip),
+/* ── battleObj_initSprite_80C3F00 ── */
+/* battleObj_initSprite_80C3F00: initialize a battle object's sprite (panels, sprite, anim, palette, flip),
  * set the state phase to CUR_STATE_UPDATE_sub_80C3F00, then tail-call sub_80C3F52. */
 
 #define CUR_STATE_UPDATE_sub_80C3F00 4
@@ -603,7 +603,7 @@ static u32 sub_80C3F00_typed(u32 obj_ptr) {
     return call_sub_80C3F52();
 }
 
-Next sub_80C3F00(void) {
+Next battleObj_initSprite_80C3F00(void) {
     u32 r0 = sub_80C3F00_typed(R5);
     SET_FLAGS_NZ(r0);
     R0 = r0;
@@ -632,7 +632,7 @@ Next battle_SetObjectExtraFlag14_80C4086(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C4368 ── */
+/* ── battleObject_setupSprite_80C4368 ── */
 /* CUR_STATE_UPDATE_sub_80C4368 is the value used by the original when priming the state machine. */
 #define CUR_STATE_UPDATE_sub_80C4368 4
 
@@ -727,13 +727,13 @@ static void battle_object_sprite_setup(u32 battle_object_ptr) {
     sub_80C43C4_guest();
 }
 
-Next sub_80C4368(void) {
+Next battleObject_setupSprite_80C4368(void) {
     battle_object_sprite_setup(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C4484 ── */
-/* sub_80C4484: update a battle object's sprite each frame.
+/* ── battleObject_updateSprite_80C4484 ── */
+/* battleObject_updateSprite_80C4484: update a battle object's sprite each frame.
  *
  * Reads the "related object" pointer from the battle object (r5) and runs the
  * standard mosaic-scaling + alpha setup on that sprite. Then dispatches by
@@ -794,7 +794,7 @@ static void sub_80C4484_impl(u32 battle_obj_ptr) {
 /* Thin adapter: pulls the one argument (r5) from the guest register file,
  * calls the typed function, and returns. r4/r7/r10/lr are not touched, so
  * they round-trip unchanged, as does r5 (the original never modifies it). */
-Next sub_80C4484(void) {
+Next battleObject_updateSprite_80C4484(void) {
     sub_80C4484_impl(R5);
     RETURN_TO_CALLER();
 }
@@ -899,7 +899,7 @@ Next t1_0x5e_pinkRingOnCounter_80C4B18(void) {
     R1 = LD32(A_off_80C4B3C + state);
     switch (state) {
     case PINKRING_STATE_INIT: GUEST_CALL(battle_stateEnter_loadSprite0x80_80C4B48);       break;
-    case PINKRING_STATE_RUN:  GUEST_CALL(sub_80C4B84);       break;
+    case PINKRING_STATE_RUN:  GUEST_CALL(battleObject_refreshAndMirrorRelated_80C4B84);       break;
     case PINKRING_STATE_FREE: GUEST_CALL(object_freeMemory); break;
     }
 
@@ -923,7 +923,7 @@ Next t1_0x5e_pinkRingOnCounter_80C4B18(void) {
  *
  * Loads the object's sprite resources, selects and starts the animation for
  * this state, switches the object into the "update" phase, and then runs the
- * per-frame update hook (sub_80C4B84).
+ * per-frame update hook (battleObject_refreshAndMirrorRelated_80C4B84).
  *
  * The original pushes/pops r4 around the calls, so R4 must be preserved even
  * though callees clobber it. r5, r6 and r10 are left untouched. */
@@ -961,15 +961,15 @@ Next battle_stateEnter_loadSprite0x80_80C4B48(void) {
     ST32(R5 + oBattleObject_CurPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
 
     /* Run the per-frame update for this state; its results in r0-r3 are ours. */
-    GUEST_CALL(sub_80C4B84);
+    GUEST_CALL(battleObject_refreshAndMirrorRelated_80C4B84);
 
     /* pop {r4, pc}: restore the caller's r4. */
     R4 = saved_r4;
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C4B84 ── */
-/* sub_80C4B84: refresh a battle object – update its animation, alliance gate,
+/* ── battleObject_refreshAndMirrorRelated_80C4B84 ── */
+/* battleObject_refreshAndMirrorRelated_80C4B84: refresh a battle object – update its animation, alliance gate,
  * mirror related-object state (extra vars, direction/sprite flip), and
  * handle emotion data before freeing memory. */
 
@@ -1127,8 +1127,8 @@ static u32 sub_80C4B84_body(u32 obj) {
     return related;
 }
 
-/* sub_80C4B84(r5 = battle object) -> r4 = related object; r0–r3/flags from last callee */
-Next sub_80C4B84(void) {
+/* battleObject_refreshAndMirrorRelated_80C4B84(r5 = battle object) -> r4 = related object; r0–r3/flags from last callee */
+Next battleObject_refreshAndMirrorRelated_80C4B84(void) {
     R4 = sub_80C4B84_body(R5);
     RETURN_TO_CALLER();
 }
@@ -1185,11 +1185,11 @@ static void call_idle_handler(u32 state, u32 object_ptr) {
     GUEST_CALL(sub_80C4E7C);
 }
 
-/* register form: calls sub_80C4F02 outside this file, which has no typed C interface yet */
+/* register form: calls battle_object_collisionPhase_80C4F02 outside this file, which has no typed C interface yet */
 static void call_active_handler(u32 state, u32 object_ptr) {
     R0 = state;
     R5 = object_ptr;
-    GUEST_CALL(sub_80C4F02);
+    GUEST_CALL(battle_object_collisionPhase_80C4F02);
 }
 
 /* register form: calls object_genericDestroy outside this file, which has no typed C interface yet */
@@ -1229,7 +1229,7 @@ Next t3_0x0_80C4E58(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C4F02 ── */
+/* ── battle_object_collisionPhase_80C4F02 ── */
 /* Collision phase handler for a battle object.
  * Processes the object's collision data, advances its panel-movement timer,
  * reacts to solid/breakable/crackable panel hits, and either re-presents
@@ -1452,8 +1452,8 @@ static u32 process_collision_phase(u32 obj) {
     return handle_no_collision(obj);
 }
 
-/* sub_80C4F02(r5 = obj) -> r0, r1, r2, r3, nz, c, v */
-Next sub_80C4F02(void) {
+/* battle_object_collisionPhase_80C4F02(r5 = obj) -> r0, r1, r2, r3, nz, c, v */
+Next battle_object_collisionPhase_80C4F02(void) {
     R0 = process_collision_phase(R5);
     RETURN_TO_CALLER();
 }
@@ -1570,7 +1570,7 @@ Next battle_object_stepLifetimeDestroyOnHit_80C532E(void) {
  *
  * The jump table off_80C5BC8 is indexed by CurState (byte offsets 0, 4, 8):
  *   0 → sub_80C5BD4       (spawn / initialize)
- *   4 → sub_80C5C40       (active / per-frame logic)
+ *   4 → battle_processCollisionEvent_80C5C40       (active / per-frame logic)
  *   8 → object_genericDestroy (death cleanup)
  * After the handler returns, object_updateSprite is called every frame.
  */
@@ -1582,7 +1582,7 @@ static void dispatch_state_and_update_sprite(u32 object) {
     R0 = state;
     switch (state) {
         case 0: GUEST_CALL(sub_80C5BD4); break;
-        case 4: GUEST_CALL(sub_80C5C40); break;
+        case 4: GUEST_CALL(battle_processCollisionEvent_80C5C40); break;
         case 8: GUEST_CALL(object_genericDestroy); break;
     }
     GUEST_CALL(object_updateSprite);
@@ -1594,7 +1594,7 @@ Next t3_0x8_80C5BB0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C5C40 ── */
+/* ── battle_processCollisionEvent_80C5C40 ── */
 /* Jump table address for collision action dispatch (entries at +0 and +4). */
 #define COLLISION_ACTION_TABLE  0x080C5C94u
 
@@ -1729,8 +1729,8 @@ static void handle_collision_event(u32 obj) {
     present_collision_data(obj);
 }
 
-/* sub_80C5C40(r5 = battle object pointer) -> side effects; all registers are outputs via callees */
-Next sub_80C5C40(void) {
+/* battle_processCollisionEvent_80C5C40(r5 = battle object pointer) -> side effects; all registers are outputs via callees */
+Next battle_processCollisionEvent_80C5C40(void) {
     handle_collision_event(R5);
     RETURN_TO_CALLER();
 }
@@ -1946,7 +1946,7 @@ Next battle_stepObjectXByVelocityAndDestroyIfInvalidPanel_80C6A08(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C6A34 ── */
+/* ── battle_object_dispatchPhaseHandler_80C6A34 ── */
 /* register form: calls the phase handler by name; the target is a function pointer
  * read from a table indexed by CurPhase, so no single typed C interface covers it. */
 static void dispatch_phase_handler(u32 phase, u32 handler_addr) {
@@ -1965,9 +1965,9 @@ static void battle_object_phase_update(u32 battle_obj) {
     dispatch_phase_handler(phase, handler);
 }
 
-/* sub_80C6A34(r5 = BattleObject*) -> r0, r1, nzcv
+/* battle_object_dispatchPhaseHandler_80C6A34(r5 = BattleObject*) -> r0, r1, nzcv
  * Looks up CurPhase in the two-entry handler table and tail-calls the result. */
-Next sub_80C6A34(void) {
+Next battle_object_dispatchPhaseHandler_80C6A34(void) {
     battle_object_phase_update(R5);
     RETURN_TO_CALLER();
 }
@@ -2029,7 +2029,7 @@ Next battle_refreshObjectCollisionFromExtraVars_80C6AB8(void) {
  * off_80C6B58 is indexed by the raw state byte; because the table holds
  * 32-bit entries and there is no shift before the load, the state byte
  * stores word offsets:
- *   0 -> sub_80C6B64            (state handler 0)
+ *   0 -> battle_objectInitFromParamTable_80C6B64            (state handler 0)
  *   4 -> sub_80C6C14            (state handler 1)
  *   8 -> object_genericDestroy  (final state: remove the object)
  *
@@ -2048,7 +2048,7 @@ Next t3_0x16_80C6B40(void) {
 
     switch (state) {
     case 0:
-        GUEST_CALL(sub_80C6B64);
+        GUEST_CALL(battle_objectInitFromParamTable_80C6B64);
         break;
     case 4:
         GUEST_CALL(sub_80C6C14);
@@ -2068,7 +2068,7 @@ Next t3_0x16_80C6B40(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C6B64 ── */
+/* ── battle_objectInitFromParamTable_80C6B64 ── */
 #define TABLE_ENTRY_SIZE 4
 #define PANEL_TYPE_FLAG  0x10
 #define OBJ_FLAG_HAS_SPRITE 2
@@ -2242,10 +2242,10 @@ static u32 init_object_from_table(u32 obj) {
     return CUR_STATE_UPDATE_sub_80C6B64;
 }
 
-/* sub_80C6B64(r5 = battle object ptr) -> r0, flags from last callee */
+/* battle_objectInitFromParamTable_80C6B64(r5 = battle object ptr) -> r0, flags from last callee */
 /* register form: original saves r4/r7 via push/pop; helpers pass args through R4/R7
  * which remain modified after callee returns, so restore them here */
-Next sub_80C6B64(void) {
+Next battle_objectInitFromParamTable_80C6B64(void) {
     u32 saved_r4 = R4, saved_r7 = R7;
     R0 = init_object_from_table(R5);
     R4 = saved_r4;

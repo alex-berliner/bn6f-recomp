@@ -1,0 +1,102 @@
+name: petCommSaveInit_811F11C
+address: '0x0811F11C'
+kind: function
+status: confirmed
+summary: Initializes the PET (Personal Terminal) communication save slots, writing default halfword values
+  to each of 8 pointer-table slots, overriding the active state slot (unless state byte == 8), and applying
+  the EVENT_PET_COMM_SAVE_DISABLED patch when that flag is set.
+interface: void sub_811F11C(u32 state_addr /* r5 */); clobbers r0,r1,r2,r3,lr,NZcv; r4 preserved
+details: 'Walks the 8-entry pointer table at A_byte_811F158 (each entry is a pointer to a u16),
+
+  writing 0x537F to every slot. Then reads a state byte from state_addr+4 (r5+4);
+
+  unless it equals 8, overwrites that state''s slot with 0x7BFE. If
+
+  EVENT_PET_COMM_SAVE_DISABLED is set (TestEventFlagFromImmediate for flag 0x17),
+
+  overwrites slots at offsets 0x18 and 0x1C (word_3001B56, word_3001B58)
+
+  with 0x5A7A. The pointer table resolves to words in the 0x0300XXXX region
+
+  (0x03001B4A..0x03001B56 etc.), consistent with EWRAM comm/save state slots.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-003727);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c
+    sub_811F11C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811F11C
+
+    ./wf verify --function sub_811F11C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-003727-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811F11C
+
+    ./wf verify --function sub_811F11C --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261011-003727-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811F11C
+
+    ./wf verify --function sub_811F11C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003727-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0811f11c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp bdefe69
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811F11C -> petCommSaveInit_811F11C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+related:
+- sub_811EF28
+open_questions:
+- What game state the 8 table entries map to (likely one per PET comm player/order slot).
+- Why state byte == 8 skips the per-state 0x7BFE override.
+- The exact meaning of halfword values 0x537F, 0x7BFE, 0x5A7A (data IDs, checksums, status codes?).
+- Why only offsets 0x18/0x1C are patched when EVENT_PET_COMM_SAVE_DISABLED is set.
+sources:
+- tools/wf run convert-20261011-003727
+- recomp bdefe69
+previous_names:
+- sub_811F11C

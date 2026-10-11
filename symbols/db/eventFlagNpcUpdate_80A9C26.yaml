@@ -1,0 +1,91 @@
+name: eventFlagNpcUpdate_80A9C26
+address: '0x080A9C26'
+kind: function
+status: confirmed
+summary: Overworld event-driven object update that flips an NPC/object between hidden (state 1) and shown
+  (state 3) based on an event flag, syncing flags and playing appear/disappear animations with a sound
+  effect.
+interface: void sub_80A9C26(r5 = object ptr, r7 = flag script record ptr); no meaningful return value
+  (r0-r3 and nz/c/v are whatever the final sprite_update call leaves behind); preserves r4, r6, r7, r10
+details: 'r7 points at a three-halfword flag record: +0 is a trigger flag selecting the object''s state,
+  +2 is a flag kept in sync with the object''s idle/active state, and +4 is a one-shot flag cleared once
+  the object becomes active. r5 is the object: byte +0 is its state byte, word +0x24 tracks whether the
+  active ("appeared") animation is currently up. Each run: if the trigger flag at [r7] is set, the object
+  is put in state 3, the +2 flag is set and the +4 flag is cleared; otherwise the object is put in state
+  1 and the +2 flag is cleared. While the trigger flag is set, sub_80A9CAE is called as an extra condition
+  (it consumes whatever r0 TestEventFlag left behind, a register-form quirk): if it returns nonzero and
+  obj+0x24 is still 0, the appear animation is played once — sprite_setAnimation(3), sprite_loadAnimationData,
+  sprite_noShadow, PlaySoundEffect(0x1D8) (written as 0xD9+0xFF) — and obj+0x24 is set to 1; if the condition
+  has gone away and obj+0x24 is still set, the disappear animation plays once — sprite_setAnimation(5),
+  sprite_loadAnimationData, sprite_noShadow — and obj+0x24 is cleared. Finally sprite_update runs. Typical
+  use is an NPC/object that materializes or vanishes when an event flag plus an extra condition are satisfied.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_80A9C26
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A9C26
+
+    ./wf verify --function sub_80A9C26 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A9C26
+
+    ./wf verify --function sub_80A9C26 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A9C26
+
+    ./wf verify --function sub_80A9C26 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3, story2, story8, story9.'
+  reproduce: grep -l '^080a9c26 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80A9C26 -> eventFlagNpcUpdate_80A9C26
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- battles2
+- maps
+- menus3
+- story2
+- story8
+- story9
+related:
+- sub_80A9B9C
+open_questions:
+- what sub_80A9CAE checks (called with a stale r0 from TestEventFlag; likely a "is the player nearby/npc
+  interaction" style check)
+- exact gameplay meaning of sound effect 0x1D8 and animations 3/5 for this object
+- what data structure r7 points into (a per-object script record; its allocation/owner is unknown)
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_80A9C26

@@ -1,0 +1,112 @@
+name: battle_chipMatchesHpFullRestoreAiBranch_8012B4E
+address: '0x08012B4E'
+kind: function
+status: probable
+summary: Decides whether the current chip is eligible for the AI's "HP-full restore" attack branch by
+  checking the navi's alliance stat and chip flags.
+interface: u32 battle_chipMatchesHpFullRestoreAiBranch_8012B4E(u32 chip_id, u32 arg1, u32 battle_object
+  /* r5 */); // returns 0/1 in r0; r6, r7 preserved; clobbers nz,cv,r1,r4,lr
+details: 'Reads two alliance-style bytes from the battle object via
+
+  GetBattleNaviStatsByte_AllianceFromBattleObject at offsets 0x29 and 0x2C; short-circuits to the
+
+  flag check when either equals 6, or when 0x2C equals 0x12. Resolves the chip descriptor via
+
+  getChip8021DA8 and inspects chip+9 (bit 1 must be set, bit 0 must be clear) and chip+4 (must equal 2).
+
+  If arg1 != 0 the function returns 1 immediately; otherwise it reads oBattleObject_AIDataPtr->PwrAtkState
+
+  (must be 2) and PwrAtkButton (must be 1) from the battle object''s AI data block before returning 1.
+
+  Otherwise returns 0. The chip-element check at +4==2 plus the alliance filter is consistent with
+
+  selecting Recovery-family chips (element 2) used by a specific navi alliance under an HP-full
+
+  condition for the AI''s power-attack path.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c
+    sub_8012B4E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8012B4E
+
+    ./wf verify --function sub_8012B4E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    233 out of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8012B4E
+
+    ./wf verify --function sub_8012B4E --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8012B4E
+
+    ./wf verify --function sub_8012B4E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08012b4e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm00_2.c after review against the assembly (the lifted
+    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
+    differs from the original: Contract output r2 is not reproduced on the chip-check paths. After getChip8021DA8
+    (which leaves r2 = 44 from `mov r2, #44`), the original does `mov r2, #2; tst r1, r2; beq ...` and
+    then `mov r2, #1; tst r1, r2; bne ...`. So on return r2 = 2 when chip byte 9 has bit 1 clear, and
+    1 on every later path. The C never writes R2 (`if ((flags & 2) == 0) return 0; if ((flags & 1) !=
+    0) return 0; ...`), so...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8012B4E -> battle_chipMatchesHpFullRestoreAiBranch_8012B4E
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact chip element mapping for value 2 (likely Recovery, but unconfirmed).
+- Semantics of arg1 (likely "HP already full" flag or stage selector passed by the AI tick).
+- Why stat offset 0x2C==0x12 is grouped with the stat==6 fast-return path.
+- Whether 0x29 and 0x2C are "current HP" and "max HP" or alliance-related stats (call site name says Alliance,
+  but behaviour suggests HP-related thresholds).
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f
+previous_names:
+- sub_8012B4E

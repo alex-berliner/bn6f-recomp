@@ -1,0 +1,84 @@
+name: battle_objTickTimerAndRefreshSpritePairs_8124D30
+address: '0x08124D30'
+kind: function
+status: confirmed
+summary: Per-frame update for a battle object — advances a clamp-at-160 frame timer, resets a counter,
+  runs three per-object update routines, and refreshes two sprite halfword pairs.
+interface: void sub_8124D30(void);  // object/work pointer in r5; r0-r3 and flags out are whatever the
+  last callee left
+details: 'Reads the object/work pointer from r5 only; all other registers are pass-through. First calls
+  sub_8126818 with r0=0 (purpose unknown from this site). Then ticks the word timer at obj+0x74 by +2
+  each call; once it reaches 0xA0 (160) it is clamped to exactly 0xA0 and the state byte at obj+2 is cleared
+  to 0 (i.e. the object finishes this phase after ~160 frames). Next stores 0xFF into the word counter
+  at obj+0x70 every call (so +0x70 acts as a countdown refilled to 255 each frame). Calls three per-object
+  routines in order: sub_8125444, sub_8125D10, sub_8125D94. Finally writes two sprite halfword pairs via
+  sprite_setStructHalfwordPairOnThree_8117084: pair slot 4 gets halfword obj+0x12 with pointer obj+0x58;
+  pair slot 7 gets halfword obj+0x1C if the word at obj+0x5C equals 0x27, otherwise 0, and in both cases
+  R0 passed to the sprite setter is the raw value of obj+0x5C itself (not the obj+0x58 pointer used for
+  slot 4) — so slot 7 normally receives 0x27 as its "pointer" argument unless +0x5C holds something else.
+  The +2-per-frame timer with a 0xA0 cap and the phase byte clear at obj+2 suggest a timed effect/animation
+  whose visible parameters are pushed to the sprite struct through the halfword-pair helper.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_8124D30
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8124D30
+
+    ./wf verify --function sub_8124D30 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8124D30
+
+    ./wf verify --function sub_8124D30 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 1 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8124D30
+
+    ./wf verify --function sub_8124D30 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^08124d30 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8124D30 -> battle_objTickTimerAndRefreshSpritePairs_8124D30
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33.c
+coverage:
+- story2
+open_questions:
+- what sub_8126818(0), sub_8125444, sub_8125D10 and sub_8125D94 do (all outside this file)
+- what object type owns this work area; meaning of the timer at +0x74, the 0xFF counter at +0x70, and
+  the state byte at +2
+- why slot 7 passes the value of obj+0x5C as the sprite-struct pointer and only writes halfword +0x1C
+  when that value is exactly 0x27
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_8124D30

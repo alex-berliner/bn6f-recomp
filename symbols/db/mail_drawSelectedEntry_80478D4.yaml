@@ -1,0 +1,84 @@
+name: mail_drawSelectedEntry_80478D4
+address: '0x080478D4'
+kind: function
+status: confirmed
+summary: Redraws the currently highlighted mail-list entry — its icon tiles, name strip, and the text
+  shown in the mail reader.
+interface: 'void sub_80478D4(u32 entry /* r5: mail list entry object */, void* toolkit /* r10: toolkit
+  struct */) — no return value; clobbers r0-r3, lr and flags; preserves r4-r9 per its own push/pop'
+details: 'Takes the mail list entry object in r5 and the toolkit in r10. Reads the highlighted row index
+  from entry+0x08 and a value from entry+0x1C''s pointee (entry info record). If that value is 1, an alternate
+  tile-id table (unk_2019404) and alternate text style (0xD) are used instead of the default ones (unk_2019204,
+  style 0xE) — likely a "read/unread" or special-mail variant. First call CopyBackgroundTiles(j = 0x1E
+  - (cursor - 0xC), i = 0, tile block 2, icon tiles, 9x5) to draw the entry''s icon, positioned one background
+  row higher per list row. Then CopyBackgroundTiles(j = 0x1E - (cursor - 0xD), i = 2, tile block 0, byte_8046B58,
+  7x2) to draw the name strip just below the icon. Finally it stores entry+0x28 (the entry id) into slot
+  8 of the struct at toolkit+oToolkit_Unk200a220_Ptr (shared menu state), so the reader knows which mail
+  is selected, and calls renderTextGfx_8045F8C with the reader text pointer from entry+0x24, style 0xD/0xE,
+  source gfx unk_2015A00, destination VRAM 0x600A400, params 7 and 1, lookup table dword_86A5D60, and
+  0. Quirk: r5 (the entry) is read by the callee but the caller inlines its save/restore of r4-r7 only;
+  r5 is listed as an input the callee reads but the routine never modifies it beyond the push/pop.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_80478D4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80478D4
+
+    ./wf verify --function sub_80478D4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80478D4
+
+    ./wf verify --function sub_80478D4 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80478D4
+
+    ./wf verify --function sub_80478D4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^080478d4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80478D4 -> mail_drawSelectedEntry_80478D4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- exact meaning of the info value 1 at entry+0x1C's pointee (read vs unread vs special mail icon variant)
+- identity of unk_200a220 slot 8 (assumed "selected entry id" slot in shared menu state)
+- what dword_86A5D60 is (text glyph lookup table for the reader?)
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_80478D4

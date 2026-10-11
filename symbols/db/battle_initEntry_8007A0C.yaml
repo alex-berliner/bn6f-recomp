@@ -1,0 +1,95 @@
+name: battle_initEntry_8007A0C
+address: '0x08007A0C'
+kind: function
+status: confirmed
+summary: 'Initializes a new battle: clears hit data, resets object/panel lists, sets up sprite decomp
+  state, then advances the battle state phase index to 4.'
+interface: void sub_8007A0C(struct BattleState *r5); // clobbers nz c v r0 r1 r2 r3 r5 r6 r7 r8 r9 r10
+  r12 lr
+details: 'Called via the battle main dispatcher with r5 pointing at the current BattleState struct. Resets
+  all collision hit boxes (collision_resetAllHitData_801986C), clears the object linked lists (clearBattleObjectLinkedLists_800318C),
+  runs panel_800BFC4, then initializes the uncomp-screen sprite state at offset eLogoScreenState. Reads
+  the battle-effects flags word via GetBattleEffects and, unless bit 3 (0x8) is set, dereferences BattleState->oBattleState_BattleSettings
+  (struct pointer at +0xC inside the settings blob) to feed decompSprites_80029A8. Always clears the enemy
+  fade-in list (battle_clearEnemyFadeinList), then writes the literal value 4 into BattleState->oBattleState_Index_00
+  so the battle main loop dispatches battle_update_8007A44 on its next tick. Touches fields oBattleState_BattleSettings
+  and oBattleState_Index_00 on the BattleState struct.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c
+    sub_8007A0C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8007A0C
+
+    ./wf verify --function sub_8007A0C --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8007A0C
+
+    ./wf verify --function sub_8007A0C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8007A0C
+
+    ./wf verify --function sub_8007A0C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08007a0c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8007A0C -> battle_initEntry_8007A0C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does sub_800C8F0 actually do — full battle-state reset, or just one of the many per-frame "clear
+  queued actions" helpers?
+- Confirm this is the canonical "new battle" initializer (i.e. only called once per battle, not on every
+  re-entry from a sub-screen).
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55
+previous_names:
+- sub_8007A0C

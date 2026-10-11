@@ -282,8 +282,8 @@ Next lookupValueForIdInTableAt_200DCA0_8002986(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8002BCC ── */
-/* sub_8002BCC(r5 = sprite base):
+/* ── sprite_clearSlot_8002BCC ── */
+/* sprite_clearSlot_8002BCC(r5 = sprite base):
  * Reset a sprite entry: mark its OAM attribute as hidden (0x7FFF) and its
  * link field as -1 (free slot marker). r0 is preserved from the caller
  * (the push/pop pair restores r0..r7 and pc).
@@ -291,7 +291,7 @@ Next lookupValueForIdInTableAt_200DCA0_8002986(void) {
  *   outputs: r0 r5
  *   clobbers: nz c v
  *   preserved: r0 r1 r2 r3 r4 r5 r6 r7 */
-Next sub_8002BCC(void) {
+Next sprite_clearSlot_8002BCC(void) {
     u32 index = LD8(R5);
 
     /* Sprite attribute table: (u16 attr[index]) at offset (index*2 + 4). */

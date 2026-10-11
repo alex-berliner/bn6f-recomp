@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_8144158 ── */
+/* ── link_initAndClear_8144158 ── */
 /* register form: calls SWI_CpuSet outside this file, which has no typed C interface yet.
  * CpuSet's fill source must be a guest address, so a zero is placed on the stack. */
 static void cpu_set_fill_32(u32 dest, u32 mode) {
@@ -82,18 +82,18 @@ static void init_sio_and_clear_link_state(void) {
     ST16(A_word_2006E04, 0);
 }
 
-/* sub_8144158() -> () ; no register inputs/outputs beyond preserved callee regs */
-Next sub_8144158(void) {
+/* link_initAndClear_8144158() -> () ; no register inputs/outputs beyond preserved callee regs */
+Next link_initAndClear_8144158(void) {
     init_sio_and_clear_link_state();
     RETURN_TO_CALLER();
 }
 
 /* ── sub_8144240 ── */
 /* sub_8144240: run both steps of the (likely per-frame) update for this
- * subsystem: sub_8144158 followed by sub_81440D8. Neither takes arguments;
+ * subsystem: link_initAndClear_8144158 followed by sub_81440D8. Neither takes arguments;
  * whatever the callees leave in r2/r3 is passed through to the caller. */
 Next sub_8144240(void) {
-    GUEST_CALL(sub_8144158);
+    GUEST_CALL(link_initAndClear_8144158);
     GUEST_CALL(sub_81440D8);
     RETURN_TO_CALLER();
 }
@@ -123,10 +123,10 @@ Next timer_IsEnabled_8144CE0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81453D4 ── */
-/* sub_81453D4: Sync VBlank; if rfu_syncVBlank returned non-zero,
+/* ── rfu_handleVBlank_81453D4 ── */
+/* rfu_handleVBlank_81453D4: Sync VBlank; if rfu_syncVBlank returned non-zero,
  * call sub_81461B0 with r0=0xF1, r1=0, then sub_81464B4. */
-Next sub_81453D4(void) {
+Next rfu_handleVBlank_81453D4(void) {
     GUEST_CALL(rfu_syncVBlank);
     if ((s32)R0 != 0) {
         R0 = 0xF1;
@@ -1077,7 +1077,7 @@ Next sound_tickAllMusicPlayers_814EA58(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814EB84 ── */
+/* ── cgbSoundInit_814EB84 ── */
 /* register form: calls SWI_CpuSet (BIOS wrapper) outside this file;
  * needs SP because it passes a stack address as the 32-bit fill source.
  * Leaves R2/R3 as the callee's outputs (the caller reads those after the call). */
@@ -1149,7 +1149,7 @@ static void init_cgb_sound(u32 sound_buf) {
     /* Wire state struct to patched handlers and the sound buffer */
     ST32(state_ptr + 0x1C, sound_buf);
     ST32(state_ptr + 0x28, (A_CgbSound | 1));
-    ST32(state_ptr + 0x2C, (A_sub_814F44C | 1));
+    ST32(state_ptr + 0x2C, (A_soundStartChannel_814F44C | 1));
     ST32(state_ptr + 0x30, (A_sub_814F3A4 | 1));
     ST8(state_ptr + 0x0C, 0);
 
@@ -1170,10 +1170,10 @@ static void init_cgb_sound(u32 sound_buf) {
     ST32(state_ptr, tag);
 }
 
-/* sub_814EB84(r0 = CGB sound buffer) -> r2, r3 (r4/r5/r6 preserved by push/pop).
+/* cgbSoundInit_814EB84(r0 = CGB sound buffer) -> r2, r3 (r4/r5/r6 preserved by push/pop).
  * Mismatch path: r2=0, r3=NR50 address (set by adapter before the call).
  * Match path:    r2/r3 left behind by SWI_CpuSet inside the typed function. */
-Next sub_814EB84(void) {
+Next cgbSoundInit_814EB84(void) {
     R2 = 0;
     R3 = A_ControlStereo_Volume_Enable_NR50_NR51_;
     init_cgb_sound(R0);
@@ -1377,7 +1377,7 @@ Next sub_814F3A4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814F44C ── */
+/* ── soundStartChannel_814F44C ── */
 /* Structured result of the APU channel-start helper. */
 struct SoundChanResult {
     u32 r1;       /* address of the last byte written (the trigger/consecutive register) */
@@ -1433,8 +1433,8 @@ static struct SoundChanResult configure_channel(u32 channel) {
     return res;
 }
 
-/* sub_814F44C(r0 = channel number, lr = return address) → r0=lr, r1=trigger addr, flags */
-Next sub_814F44C(void) {
+/* soundStartChannel_814F44C(r0 = channel number, lr = return address) → r0=lr, r1=trigger addr, flags */
+Next soundStartChannel_814F44C(void) {
     struct SoundChanResult res = configure_channel(R0);
     R0 = LR;                    /* pop {r0} restores the caller's return address */
     R1 = res.r1;
@@ -1442,8 +1442,8 @@ Next sub_814F44C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814F4A0 ── */
-/* sub_814F4A0: per-tick update of one sound channel's pan / volume / mute bytes.
+/* ── soundChannel_tickPanVolume_814F4A0 ── */
+/* soundChannel_tickPanVolume_814F4A0: per-tick update of one sound channel's pan / volume / mute bytes.
  *
  * inputs:  r0 = channel struct pointer
  * outputs: r2 r3 r4 (preserved; the typed function never touches them)
@@ -1515,7 +1515,7 @@ static void sub_814F4A0_impl(u32 channel) {
 /* Thin adapter. r2/r3/r4 are listed as outputs (preserved); the typed function
  * never touches them, so its presence automatically keeps them unchanged.
  * The original returns no flags or scalar value — just falls off the tail. */
-Next sub_814F4A0(void) {
+Next soundChannel_tickPanVolume_814F4A0(void) {
     sub_814F4A0_impl(R0);
     RETURN_TO_CALLER();
 }

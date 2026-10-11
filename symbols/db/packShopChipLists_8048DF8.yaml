@@ -1,0 +1,95 @@
+name: packShopChipLists_8048DF8
+address: '0x08048DF8'
+kind: function
+status: probable
+summary: Splits one shop's chip stock list into two packed display regions based on per-chip event flags
+  (bought/sold/unlocked state), compacts the empty slots, and hands both region pointers back to the caller.
+interface: void sub_8048DF8(u32 list_index r0, void* region_a r1, void* region_b r2, u32 capacity r4,
+  struct Toolkit* r10) -> r2 = region_a ptr (packed path) / unchanged (skip path), r3 = region_b ptr /
+  shop data ptr
+details: 'Indexed through a table at dword_8046B98 with 16-byte records: +0x00 u32 state (2 = list still
+  needs packing; any other value makes the function return immediately without touching r1/r2, leaving
+  r2 as it came in and r3 = toolkit->shopDataPtr), +0x08 list pointer relative to the shop data block
+  from toolkit+oToolkit_ShopDataPtr (r10), +0x0C capacity in 8-byte slots. On the packing path both destination
+  regions are zero-filled to capacity*2*8 bytes via ZeroFillByWord. Each 8-byte source entry is {u8 chip_id,
+  u8, u16 chip_index, u8, u8, u16} and is routed by three event flags keyed on the chip index: chip_index+0x1E20
+  set -> region B far half (slot offset 0x140); else chip_index+0x2020 or chip_index+0x2220 set -> region
+  B near half (slot offset 0); else region A (slot offset 0, and entry byte +5 is set to 1 instead of
+  0). The destination slot is (getChip8021DA8(chip_id)->field_0x1C + slot_offset) * 8, i.e. placed by
+  a slot number stored in the chip data table, so skipped/unset chips leave gaps. After the source list
+  ends (chip_id 0), both regions are compacted: entries are pulled down over empty slots and the moved-from
+  entries are cleared. r2/r3 report the two region pointers back to the caller on the packed path. Preserves
+  r4-r9 and r12; the routine deliberately reuses r8/r9/r12 as high registers to hold region end pointers.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_8048DF8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8048DF8
+
+    ./wf verify --function sub_8048DF8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    259 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8048DF8
+
+    ./wf verify --function sub_8048DF8 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8048DF8
+
+    ./wf verify --function sub_8048DF8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^08048df8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm03_2.c after review against the assembly (the lifted
+    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
+    differs from the original: (1) Capacity comes from the wrong place. Asm reads it from the shop record:
+    `ldr r4, [r7,#0xc]` (r7 = dword_8046B98 + r0*0x10), so the region size is [record+0xC]*16 (0x140*16
+    = 0x1400 for the only state-2 record). C passes the caller''s incoming register instead: `pack_shop_chip_lists(R0,
+    R1, R2, R4, R10)` -> `u32 region_bytes = capacity * 2 * CHIP_ENTRY_SIZE;` (SHOP_RECORD_Capacity is
+    defined but...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8048DF8 -> packShopChipLists_8048DF8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- Which in-game shop(s) use list index r0 and what state value 2 means in the record (presumably "stock
+  list not yet laid out").
+- Exact game meaning of the three per-chip flag bases 0x1E20/0x2020/0x2220 (e.g. sold-out vs. unlocked
+  vs. special stock) and why region B's near half sets entry byte +5 = 0 while region A sets 1.
+- Purpose of the slot number in ChipData+0x1C and whether region B far half (offset 0x140 = 40 slots)
+  is a second page of the same menu.
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_8048DF8

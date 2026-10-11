@@ -1,0 +1,96 @@
+name: ow_gatePendingTileInteraction_809DED4
+address: '0x0809DED4'
+kind: function
+status: confirmed
+summary: Overworld dispatcher that suppresses a pending tile-interaction request while the PET menu's
+  data flag is set or a cutscene is running, otherwise hands it off to the tile-interaction handler.
+interface: 'void ow_gatePendingTileInteraction_809DED4(void); // in: r5 = overworld player object pointer;
+  out: r0 (handler return value); clobbers r0,r2,r5,r8,r9,r10,r11,r12,r1,r3,r4,r6,r7,lr,NZCV'
+details: Called as the overworld's pending-interaction gate (the player-object pointer is passed in r5,
+  the customary overworld object's-this register). Reads the pending-action byte oOWPlayerObject_Unk_07
+  on the player object. If TestPETMenuDataFlag(1) returns non-zero (flag active) or IsCutsceneScriptNonNull()
+  returns non-NULL (cutscene playing), the pending byte is zeroed and the function returns 0 with no dispatch.
+  Otherwise the same byte is reused as a 1-entry index into off_809DEF8 (only slot is ow_tryTileInteraction_809DF00)
+  and execution is transferred there via `mov lr,pc; bx`. Because the dispatch uses bx the table holds
+  Thumb addresses with the low bit set (e.g. ow_tryTileInteraction_809DF00+1). Flag state on exit mirrors
+  the callees (no canonicalisation).
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c
+    sub_809DED4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809DED4
+
+    ./wf verify --function sub_809DED4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    239 out of domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809DED4
+
+    ./wf verify --function sub_809DED4 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809DED4
+
+    ./wf verify --function sub_809DED4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0809ded4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_809DED4 -> ow_gatePendingTileInteraction_809DED4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/ow_player.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- The table off_809DEF8 currently exposes a single entry; whether more sub-state slots were planned (or
+  ever had siblings) is unknown from this function alone.
+- Why TestPETMenuDataFlag is consulted for an overworld interaction gate (rather than e.g. an overworld-side
+  menu-open flag) is not obvious from the code here.
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd
+previous_names:
+- sub_809DED4

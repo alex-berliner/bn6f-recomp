@@ -372,7 +372,7 @@ Next battle_getObjectAllianceTeam_800F49E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800F9DE ── */
+/* ── dirOffsetFromAlliance_800F9DE ── */
 /* register form: calls object_getAllianceDirection outside this file, which has no typed C interface yet;
  * preserves r4 across the GUEST_CALL to mirror the push {r4,lr}/pop {r4,pc} frame in the original. */
 static u32 get_alliance_direction(u32 object) {
@@ -407,8 +407,8 @@ static DirOffset direction_lookup(u32 index, u32 src_dir) {
     return result;
 }
 
-/* sub_800F9DE(r0 = direction index, r1 = source direction) -> r0 = dy*alliance, r1 = dx */
-Next sub_800F9DE(void) {
+/* dirOffsetFromAlliance_800F9DE(r0 = direction index, r1 = source direction) -> r0 = dy*alliance, r1 = dx */
+Next dirOffsetFromAlliance_800F9DE(void) {
     DirOffset r = direction_lookup(R0, R1);
     R0 = r.dy;
     R1 = r.dx;
@@ -420,7 +420,7 @@ Next sub_800F9DE(void) {
 /* battle_SpawnObjectOnFrontPanel_800FAAC(r0, r1, r2, r3 = effect parameters, r5 = battle object):
  * Spawns a type-3 battle object on the panel in front of the given object
  * and finishes its setup using the object's alliance stats byte.
- * Returns sub_800FAF6's results in r0-r3; preserves r4-r7. */
+ * Returns scanFrontPanels_800FAF6's results in r0-r3; preserves r4-r7. */
 Next battle_SpawnObjectOnFrontPanel_800FAAC(void) {
     u32 savedR0 = R0, savedR1 = R1, savedR3 = R3;
     u32 savedR4 = R4, savedR6 = R6, savedR7 = R7;
@@ -462,9 +462,9 @@ Next battle_SpawnObjectOnFrontPanel_800FAAC(void) {
     R5 = object;
     R6 = savedR1;
     R7 = savedR3;
-    GUEST_CALL(sub_800FAF6);
+    GUEST_CALL(scanFrontPanels_800FAF6);
 
-    /* r0-r3 hold sub_800FAF6's results; restore the scratch registers,
+    /* r0-r3 hold scanFrontPanels_800FAF6's results; restore the scratch registers,
      * as the original's pop {r4,r6,r7,pc} does. */
     R4 = savedR4;
     R6 = savedR6;
@@ -494,9 +494,9 @@ Next battle_snapshotPlayerHP_800FAE0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800FAF6 ── */
+/* ── scanFrontPanels_800FAF6 ── */
 /*
- * sub_800FAF6 - forward panel scan for a battle object.
+ * scanFrontPanels_800FAF6 - forward panel scan for a battle object.
  *
  * Reads the direction the object is facing, then walks one panel at a time
  * from the object's position in that direction, counting the panels it
@@ -563,8 +563,8 @@ static front_scan_result scan_front_panels(u32 x, u32 y, u32 column, u32 object)
     return out;
 }
 
-/* sub_800FAF6(r0 = x, r1 = y, r2 = column, r5 = object) -> r0, r1, r2, nz/c/v */
-Next sub_800FAF6(void) {
+/* scanFrontPanels_800FAF6(r0 = x, r1 = y, r2 = column, r5 = object) -> r0, r1, r2, nz/c/v */
+Next scanFrontPanels_800FAF6(void) {
     front_scan_result out = scan_front_panels(R0, R1, R2, R5);
     R0 = out.table_byte;
     R1 = out.index;
@@ -611,7 +611,7 @@ Next battle_drawCardToHand_800FC7C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800FC9E ── */
+/* ── chip_class_lookup_800FC9E ── */
 /* chip_class_lookup: r0==0 reads table0[r1], r0!=0 reads table1[r0].
  * In the original, the r0!=0 path is a single byte load at 0x0800FCD5 + r0
  * from ROM (no length check), so it may return arbitrary ROM bytes for large r0. */
@@ -625,8 +625,8 @@ static u32 chip_class_lookup(u32 class, u32 code, u32 *flag_out) {
     }
 }
 
-/* sub_800FC9E(r0 = class, r1 = code) -> r1 = (0 | 8), r2 = table byte */
-Next sub_800FC9E(void) {
+/* chip_class_lookup_800FC9E(r0 = class, r1 = code) -> r1 = (0 | 8), r2 = table byte */
+Next chip_class_lookup_800FC9E(void) {
     u32 flag;
     R2 = chip_class_lookup(R0, R1, &flag);
     R1 = flag;
@@ -750,7 +750,7 @@ Next battle_getAiDifficultyTier_800FE36(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800FE52 ── */
+/* ── countActiveNaviBonuses_800FE52 ── */
 /* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
 static u32 battle_navi_stats_byte(u32 r5_arg, u32 offset) {
     R5 = r5_arg;
@@ -787,7 +787,7 @@ static u32 count_active_navi_bonuses(u32 r5_in) {
     return count;
 }
 
-Next sub_800FE52(void) {
+Next countActiveNaviBonuses_800FE52(void) {
     R0 = count_active_navi_bonuses(R5);
     /* r4 is restored from the stack by the original `pop {r4,pc}`; the typed function
      * never touched R4, so it still holds the caller's saved value. */
@@ -999,8 +999,8 @@ Next battle_resetCollisionState_80101C4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80101F8 ── */
-/* sub_80101F8: Determines the PET Navi battle status code.
+/* ── getPetNaviStatus_80101F8 ── */
+/* getPetNaviStatus_80101F8: Determines the PET Navi battle status code.
  * Returns the PET Navi index (0xD if the fallback byte at 200AD04 is non-zero,
  * 0 if event flag 0x163 is set or the byte is zero, or the raw Navi ID otherwise). */
 
@@ -1039,7 +1039,7 @@ static u32 resolve_pet_navi_status(void) {
     return 0;
 }
 
-Next sub_80101F8(void) {
+Next getPetNaviStatus_80101F8(void) {
     R0 = resolve_pet_navi_status();
     SET_FLAGS_ADD(R0, 0);
     RETURN_TO_CALLER();
@@ -1202,7 +1202,7 @@ Next battle_IsNoCustomPlusActive_80107C0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80107D4 ── */
+/* ── battle_tickBattleObject_80107D4 ── */
 /* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
 static bool battle_is_time_stopped(void) {
     GUEST_CALL(battle_isTimeStop);
@@ -1261,7 +1261,7 @@ static u32 per_frame_ai_update(u32 orig_r4, u32 battle_object_ptr) {
     return orig_r4;
 }
 
-Next sub_80107D4(void) {
+Next battle_tickBattleObject_80107D4(void) {
     R4 = per_frame_ai_update(R4, R5);
     RETURN_TO_CALLER();
 }

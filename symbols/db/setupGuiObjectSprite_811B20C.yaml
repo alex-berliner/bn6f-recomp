@@ -1,0 +1,90 @@
+name: setupGuiObjectSprite_811B20C
+address: '0x0811B20C'
+kind: function
+status: confirmed
+summary: Initialises the sprite of a GUI object - loads the resource for its kind, picks the animation,
+  and applies standard palette/priority/slot settings.
+interface: void setupGuiObjectSprite(struct GuiObject *obj /* r5 */); also receives r4, r6, r7 (preserved)
+  and lr; returns nothing of its own, leaving r0-r3 and flags as the last callee left them
+details: 'Takes an object structure in r5. Marks the object state 0x23 (byte at +0), then reads the object''s
+  kind byte at +4, shifts it left by 2 and indexes off_811B278 to pick one of two sprite resource pointers
+  (unk_2020484 for kind 0, unk_202458C otherwise) and passes it with gfxId 9 to initGuiSprite_8002770.
+  Animation selection re-reads the kind byte: 0 if kind is 0; otherwise 2 if byte_203778C (field 0xC of
+  unk_2037780) is set, else 1 - so a flag in the 0x2037780 work area switches the non-zero-kind animation
+  variant. Then applies the standard GUI sprite setup: load animation data, no shadow, palette 0, priority
+  2, slot-list value 0x130, sub-entry palette bank 2, sub-record field A 5, and calls sub_811B298 (unclear,
+  sprite-related). Finally sets obj->field08 = 4, obj->field0C = 0, and kicks off one animation update
+  via sprite_objectUpdateAnimation_811B284. Note the kind byte is re-read after the sprite init call rather
+  than reused, matching the original exactly.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_811B20C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811B20C
+
+    ./wf verify --function sub_811B20C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811B20C
+
+    ./wf verify --function sub_811B20C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 23 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811B20C
+
+    ./wf verify --function sub_811B20C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^0811b20c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811B20C -> setupGuiObjectSprite_811B20C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What state 0x23 and field08 = 4 mean in the object state machine
+- What the two resources at unk_2020484 / unk_202458C render (which GUI object kinds these are)
+- What byte_203778C in the 0x2037780 work area represents and when it toggles the animation variant
+- What sub_811B298 does
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_811B20C

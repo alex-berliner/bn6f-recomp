@@ -1,0 +1,112 @@
+name: processChipCommandQueue_8029224
+address: '0x08029224'
+kind: function
+status: confirmed
+summary: Walks the chip-use command queue at 0x2033000, validating opcodes against chip attributes and
+  applying per-opcode side effects.
+interface: void sub_8029224(u32 r3 /* target object for status-bit merge */);
+details: 'Iterates slots in the queue starting at dword_2033000+2; each slot is a s16 opcode
+
+  preceded by a u16 chip index. Opcodes 0xB8, 0xB9, 0xC0, 0xC1, 0xC3 are dispatched;
+
+  others cause a plain slot skip. Validation calls getChip8021DA8 (untyped) with the
+
+  stored chip index and tests byte 9 of the returned ChipData: 0xC0/0xC3/0xB8 require
+
+  attribute bit 1, 0xC1 requires bit 2, 0xB9 requires bit 1 and forbids bit 0 (1<<0
+
+  mask). On pass, side effects per opcode: 0xC0/0xC1/0xC3 add slot[+0xC] into
+
+  slot[+0x16]; 0xB8 sets bit 1 of slot-base+0x3C; 0xB9 sets bit 2 of slot-base+0x3C.
+
+  Then bit 0 of r3+0x3C is OR''d into r3+0x3A (status merge into target object).
+
+  Used slots are removed by a shift loop that copies 4 u16 fields (+0x3C, +0x0C,
+
+  +0x24, the opcode) from the next slot until the 0xFFFF sentinel is moved into
+
+  place. After shifting, the pointer is parked on the shifted-in slot for re-scan.
+
+  r3 is clobbered by the shift (set to pos+2) so the input target pointer is lost
+
+  after the first dispatch, exactly as in the original.
+
+
+  Register form kept (C call semantics could not work): r3 in'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c
+    sub_8029224
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8029224
+
+    ./wf verify --function sub_8029224 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 1 out of domain; random inputs: 300 trials, 0 failures,
+    212 out of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8029224
+
+    ./wf verify --function sub_8029224 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8029224
+
+    ./wf verify --function sub_8029224 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08029224 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8029224 -> processChipCommandQueue_8029224
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What game object r3 points to; the +0x3A/+0x3C status fields are guesses about which subsystem owns
+  it.
+- Exact semantics of chip attribute bits 0/1 at ChipData+9 (offense/defense tags?).
+- How getChip8021DA8 looks up chips by the stored index (deferred until its signature is typed).
+- 'Calling-convention work: register form kept because r3 in'
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
+previous_names:
+- sub_8029224

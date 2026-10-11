@@ -1,0 +1,83 @@
+name: stepBattleObjectWobble_8016BFC
+address: '0x08016BFC'
+kind: function
+status: confirmed
+summary: Per-tick battle-object wobble driver that snapshots the rest pose, applies random X/Z variance
+  while a counter is armed, and restores the rest pose when it expires.
+interface: "void stepBattleObjectWobble_8016BFC(u32 /*r5*/ obj);\n  inputs:  r5 = battle object pointer\n\
+  \  outputs: r1 = variance result X (wobble path) or collision-data+0x80 halfword (rest path)\n     \
+  \      r4 = preserved from caller\n  clobbers: r0, r1, r2, r3, NZCV (r4/r6/r7 preserved)\n"
+details: "Operates on a battle object via global offsets oBattleObject_*:\n  - oBattleObject_PreventAnim,\
+  \ oBattleObject_X16, oBattleObject_Z16,\n    oBattleObject_Unk_30, oBattleObject_Unk_32, oBattleObject_Unk_19,\n\
+  \    oBattleObject_CollisionDataPtr, oBattleObject_Y.\nFirst guard: if PreventAnim is clear, snapshot\
+  \ X16->Unk_30 and Z16->Unk_32,\nclear Unk_19, and set PreventAnim to 4 (anti-re-trigger window).\nCollision\
+  \ check: halfword at *(CollisionDataPtr + 0x80); if non-zero, force\nUnk_19 = 0x1E (30 frames of wobble).\n\
+  If Unk_19 is non-zero, decrement it, build (X<<16, Y, Z<<16), and call\nAddRandomVarianceToTwoCoords(amplitude=3,\
+  \ ...) producing a perturbed\n(X, Y, Z) triple that is written to the obj+0x34 block (three 32-bit words)\n\
+  and returned in r1/r2/r3.\nOtherwise, restore X16/Z16 from the Unk_30/Unk_32 snapshot (rest pose).\n\
+  The exit NZ flag is sourced from the Unk_19 value tested at the branch.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c
+    sub_8016BFC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8016BFC
+
+    ./wf verify --function sub_8016BFC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8016BFC
+
+    ./wf verify --function sub_8016BFC --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8016BFC
+
+    ./wf verify --function sub_8016BFC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus2, menus3, story2, story9.'
+  reproduce: grep -l '^08016bfc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8016BFC -> stepBattleObjectWobble_8016BFC
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- menus2
+- menus3
+- story2
+- story9
+open_questions:
+- What does halfword at "collision-data+0x80" actually represent (hit flag, shake-trigger, environmental
+  sway flag)?
+- Meaning of the 4-frame PreventAnim window vs. the 30-frame Unk_19 wobble duration, and how callers re-arm
+  this.
+- Layout/usage of the 12-byte (0x34) destination triple (transform matrix column? display offset?).
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e
+previous_names:
+- sub_8016BFC

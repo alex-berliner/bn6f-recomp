@@ -1,0 +1,109 @@
+name: shuffleFolder_800A570
+address: '0x0800A570'
+kind: function
+status: probable
+summary: Shuffles a 30-chip battle folder in place, splitting gigas, reshuffling pools, and (optionally)
+  tagging two chips into the last slots.
+interface: 'void sub_800A570(u32 folder_ptr, u32 reg_flag, u32 tag_flag, u32 toolkit /* r10 */); /* out:
+  none; clobbers nz,c,v,r0-r3,lr; preserves r4-r7 */'
+details: "Operates on a 30-entry u16 chip folder at `folder_ptr`. Walks all 30 entries, looking up each\
+  \ chip via `getChip8021DA8` and inspecting `ChipData.elemIdx` (offset 7). Chips with elem == 2 (Giga)\
+  \ are split into the giga buffer at 0x2033040; everything else goes into the non-giga buffer at 0x2033000.\n\
+  \nThe non-giga pool is shuffled by `ShuffleHwordList_SecondaryRNG`, optionally skipping the first entry\
+  \ (reg_flag) and/or the last two entries (tag_flag) at the shuffle boundary. The giga pool is then shuffled\
+  \ as well, and each giga is interleaved into the non-giga pool at a random insertion index via `sub_800A672`.\
+  \ The allowed range depends on `GetBattleMode()`:\n  - Mode != 1 (Crossover): insertion index lies in\
+  \ [10, len-2] (R0 % (len-12) + 10).\n  - Mode == 1 (Crossover): insertion index lies in [8, 18] (R0\
+  \ % 11 + 8).\n\nIn the tag path (tag_flag set), a random chip position in [1, 19] is picked via the\
+  \ secondary RNG, the chosen position is recorded into `battle_state->tagChipPos` (offset 0x45) reachable\
+  \ via `toolkit[oToolkit_BattleStatePtr]`, and that chip is swapped with slot 28, and the following slot\
+  \ is swapped with slot 29.\n\nFinally 0x3C (60) halfwords are copied from the staging buffer at 0x2033000\
+  \ back to `folder_ptr` via `CopyHalfwords`.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c
+    sub_800A570
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800A570
+
+    ./wf verify --function sub_800A570 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800A570
+
+    ./wf verify --function sub_800A570 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800A570
+
+    ./wf verify --function sub_800A570 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800a570 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm00_1_800801C.c after review against the assembly (the
+    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
+    that differs from the original: In the non-crossover giga loop (loc_800A5E8), the asm recomputes the
+    divisor on every iteration from the updated length: `mov r1,#0xc; neg r1,r1; add r1,r1,r5; svc 6`,
+    after which `bl sub_800A672; mov r5,r0` updates r5 (sub_800A672 returns len+1, or the list pointer
+    when the index is greater than the length). The C computes `divisor = current_len - 12` once, before
+    `for (u32 i = 0; i < giga_count;...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_800A570 -> shuffleFolder_800A570
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- The exact meaning of reg_flag beyond "shrink shuffle window by 1" is unclear from this site alone; what
+  entry it protects or why.
+- 'The two pinned chips in the tag path: does slot 28 always hold a specific type, and is slot 29 a different
+  counter (chip + element)?'
+- Why crossover mode uses a fixed divisor of 11 while normal mode uses `len-12` - is the spreading algorithm
+  asymmetric by design?
+- Caller's `r10` is loaded as toolkit; is there ever a path where `toolkit` is not a battle context (e.g.,
+  normal/multi selection screens)?
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55
+previous_names:
+- sub_800A570

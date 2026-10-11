@@ -1,0 +1,109 @@
+name: clampPlayerPosition_809E3D6
+address: '0x0809E3D6'
+kind: function
+status: confirmed
+summary: 'Overworld per-frame clamp: pushes the player object''s X/Y coordinates out to the bounding box
+  stored in eStruct2000aa0 when its enable flag is set.'
+interface: 'void sub_809E3D6(u32 /* r10 */ in toolkit, LR: out); clobbers NZCV, r0, r1; preserves r4-r7.'
+details: 'Reads the engine state toolbox via r10 to obtain oGameState_OverworldPlayerObjectPtr
+
+  (offsets 0x1C / 0x20 hold the player''s primary/secondary axis coordinates, 0x28 / 0x2C
+
+  are swapped into them on snap). Compares them against four s32 limits from
+
+  eStruct2000aa0: high/low of primary axis at offsets 0xC / 0x14, and high/low of
+
+  secondary axis at 0x10 / 0x18. When the current value is past a limit the coordinate
+
+  is snapped to the limit and the other axis is taken from the swapped copy (0x2C into
+
+  0x20, or 0x28 into 0x1C) — likely the "previous tick" position used for friction-style
+
+  resolution. Early-returns if the enable byte at eStruct2000aa0+0xB is 0. The
+
+  oGameState_MapGroup compare against 0x80 is dead — its only purpose is to give the
+
+  pipeline a delay slot before the player pointer load.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-002359);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 49' --file inbox_farm_49.c
+    sub_809E3D6
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809E3D6
+
+    ./wf verify --function sub_809E3D6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261011-002359-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809E3D6
+
+    ./wf verify --function sub_809E3D6 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-002359-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809E3D6
+
+    ./wf verify --function sub_809E3D6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002359-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0809e3d6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp 52c01c1
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_809E3D6 -> clampPlayerPosition_809E3D6
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/ow_player.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What controls the byte at eStruct2000aa0+0xB that gates this clamp per area?
+- Why does the snap also overwrite the other axis from 0x28/0x2C (previous-tick bookkeeping vs. intentional
+  lock)?
+- Is the dead MapGroup == 0x80 check leftover from a debug build, or does it gate something on real hardware
+  that the recompile drops?
+sources:
+- tools/wf run convert-20261011-002359
+- recomp 52c01c1
+previous_names:
+- sub_809E3D6

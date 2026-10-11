@@ -1,0 +1,116 @@
+name: battle_state_tick_811EE98
+address: '0x0811EE98'
+kind: function
+status: confirmed
+summary: Battle-state tick handler that decrements the per-frame countdown by 4, clamps at -32, and triggers
+  a timeout (state byte 0xC) when the PET GFX animation finishes.
+interface: void sub_811EE98(u32* r5 /* battle state struct */) -> void (clobbers r0,r1,r2,r3,lr,nz,c,v;
+  caller must preserve r5)
+details: 'Operates on a battle state struct passed in r5. Reads the 16-bit countdown at offset 0x10,
+
+  subtracts 4 each invocation, and stores it back. When the value reaches or falls below the
+
+  floor constant 0xFFFFFFE0 (-32, loaded via `ldr r1, byte_811EEC8` and sign-extended by the
+
+  subsequent `cmp`/`bgt`), the countdown is clamped to 0xFFE0 and the struct''s first byte
+
+  (offset 0x0) is set to 0x0C, indicating a countdown timeout/defeat transition - but only
+
+  if the PET-related GFX animation slot 0x10 is no longer active (checked via
+
+  IsGFXAnimActive; non-zero return means still active and the flag is NOT set).
+
+  Regardless of the branch, it then unconditionally calls sub_811F0C8, sub_811F11C,
+
+  CopyBackgroundTiles_PET_811EF70 and CopyBackgroundTiles_onNaviSelect_811F54C - the
+
+  latter two are PET and Navi-select background tile blits, suggesting this state is the
+
+  PET / Navi-customisation battle entry screen where a pre-battle countdown plays over a
+
+  choice of Navi. The "0x10" animation id matches the PET animation budget already used
+
+  by the copy-tile helpers, reinforcing the PET-context reading.
+
+  Quirks: floor is loaded as a 32-bit negative constant (0xFFFFFFE0) but only the low 16
+
+  bits are stored; the `bgt` comparison treats r0 as signed so equality still triggers the
+
+  floor branch. State byte write uses `strb` so only the LSB of r0 matters.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-101422);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 78' --file inbox_farm_78.c
+    sub_811EE98
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811EE98
+
+    ./wf verify --function sub_811EE98 --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-101422-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811EE98
+
+    ./wf verify --function sub_811EE98 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261011-101422-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811EE98
+
+    ./wf verify --function sub_811EE98 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101422-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story4,
+    story6, story8, story9.'
+  reproduce: grep -l '^0811ee98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 74d50a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811EE98 -> battle_state_tick_811EE98
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What exactly does state byte 0x0C represent in the parent FSM (defeat? timeout? ready-to-leave?)?
+- Is offset 0x10 actually a "frames remaining" field, or a velocity/Y-style sub-pixel counter being abused
+  here?
+- Does this function belong to the pre-battle PET/Navi-select screen, the result screen, or an in-battle
+  countdown HUD?
+sources:
+- tools/wf run convert-20261011-101422
+- recomp 74d50a7
+previous_names:
+- sub_811EE98

@@ -23,7 +23,7 @@ Next zeroFill_e2004348(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809F9DC ── */
+/* ── mysteryData_processMapGroups_809F9DC ── */
 /* register form: calls sub_809FD70 outside this file, which has no typed C interface yet */
 static void call_sub_809FD70(u32 r12_val) {
     R4 = r12_val;
@@ -81,7 +81,7 @@ static u32 call_record_write(u32 group_type, u32 slots, u32 match_count) {
     return R1;
 }
 
-/* register form: calls sub_809FDE0 outside this file, which has no typed C interface yet.
+/* register form: calls rollInternetMysteryData_809FDE0 outside this file, which has no typed C interface yet.
    Sets R4/R6/R7/R12 as inputs; restores R4-R7/R12 (original uses pop to preserve them). */
 static void call_sub_809FDE0(u32 r4_in, u32 r6_in, u32 r7_in, u32 r12_in,
                              u32 orig_r4, u32 orig_r5, u32 orig_r6, u32 orig_r7, u32 orig_r12) {
@@ -89,7 +89,7 @@ static void call_sub_809FDE0(u32 r4_in, u32 r6_in, u32 r7_in, u32 r12_in,
     R6 = r6_in;
     R7 = r7_in;
     R12 = r12_in;
-    GUEST_CALL(sub_809FDE0);
+    GUEST_CALL(rollInternetMysteryData_809FDE0);
     R4 = orig_r4;
     R5 = orig_r5;
     R6 = orig_r6;
@@ -100,7 +100,7 @@ static void call_sub_809FDE0(u32 r4_in, u32 r6_in, u32 r7_in, u32 r12_in,
 /* Walk the InternetMysteryDataMapGroupEntries table.  For each valid group, iterate its
  * list of 12-byte entry blocks; resolve type-5 entries, accumulate results in a 16-byte
  * scratch buffer on the guest stack, clear their event flags, and record per-group
- * statistics.  Terminates on a group whose type field is 1, calling sub_809FDE0 for
+ * statistics.  Terminates on a group whose type field is 1, calling rollInternetMysteryData_809FDE0 for
  * final output (r1/r2/r3/flags pass through from that callee). */
 static void process_mystery_data_map_groups(void) {
     u32 orig_r4 = R4, orig_r5 = R5, orig_r6 = R6, orig_r7 = R7, orig_r12 = R12;
@@ -186,8 +186,8 @@ static void process_mystery_data_map_groups(void) {
     }
 }
 
-/* sub_809F9DC() -> c v r1 r2 r3 (all from sub_809FDE0 via GUEST_CALL) */
-Next sub_809F9DC(void) {
+/* mysteryData_processMapGroups_809F9DC() -> c v r1 r2 r3 (all from rollInternetMysteryData_809FDE0 via GUEST_CALL) */
+Next mysteryData_processMapGroups_809F9DC(void) {
     process_mystery_data_map_groups();
     RETURN_TO_CALLER();
 }
@@ -212,15 +212,15 @@ Next sub_809FADE(void) {
 /* ── mysteryData_InitMapGroupTables_809FAF4 ── */
 /* mysteryData_InitMapGroupTables_809FAF4: (re)initialize the mystery data map group tables, first the
  * internet-world table, then the real-world table. The table base pointer is
- * passed to sub_809FB04 in r4; r4-r7 are preserved for the caller. */
+ * passed to clearMysteryDataEventFlags_809FB04 in r4; r4-r7 are preserved for the caller. */
 Next mysteryData_InitMapGroupTables_809FAF4(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
 
     R4 = A_InternetMysteryDataMapGroupEntries;
-    GUEST_CALL(sub_809FB04);
+    GUEST_CALL(clearMysteryDataEventFlags_809FB04);
 
     R4 = A_RealWorldMysteryDataMapGroupEntries;
-    GUEST_CALL(sub_809FB04);
+    GUEST_CALL(clearMysteryDataEventFlags_809FB04);
 
     R4 = saved_r4;
     R5 = saved_r5;
@@ -229,7 +229,7 @@ Next mysteryData_InitMapGroupTables_809FAF4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809FB04 ── */
+/* ── clearMysteryDataEventFlags_809FB04 ── */
 /* register form: calls sub_809FB4C outside this file, which has no typed C interface yet.
  * (kind, placements, contents, eventFlag) -> { kindResult in kindR, placementResult in placementR } */
 static void call_sub_809FB4C(u32 kind, u32 placements, u32 contents, u16 eventFlag,
@@ -320,7 +320,7 @@ static void clear_mystery_data_event_flags(u32 group, u32 *r5Out, u32 *r6Out, u3
     }
 }
 
-Next sub_809FB04(void) {
+Next clearMysteryDataEventFlags_809FB04(void) {
     u32 group = R4;
     u32 r5 = R5, r6 = R6, r7 = R7;
     clear_mystery_data_event_flags(group, &r5, &r6, &r7);
@@ -350,8 +350,8 @@ Next mysteryData_resolveMapGroupEntry_809FBF2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809FC96 ── */
-/* sub_809FC96: 0809FC96-0809FD70 THUMB */
+/* ── mysteryData_lookupForNavi_809FC96 ── */
+/* mysteryData_lookupForNavi_809FC96: 0809FC96-0809FD70 THUMB */
 /*   inputs:  r0 r4 r5 r6 r7 r10 r12 lr
  *   outputs: c v r0 r1 r2 r3 r4 r5 r6 r7 r12 lr
  *   clobbers (unused by callers): nz
@@ -511,8 +511,8 @@ static MysteryDataResult lookup_mystery_data(u32 navi_id, u32 toolkit_ptr) {
     return extract_gold_output(target, mystery_type);
 }
 
-/* sub_809FC96(r0 = navi_id, r10 = toolkit_ptr) -> r0-r3, c, v */
-Next sub_809FC96(void) {
+/* mysteryData_lookupForNavi_809FC96(r0 = navi_id, r10 = toolkit_ptr) -> r0-r3, c, v */
+Next mysteryData_lookupForNavi_809FC96(void) {
     MysteryDataResult res = lookup_mystery_data(R0, R10);
     R0 = res.r0;
     R1 = res.r1;
@@ -542,7 +542,7 @@ Next record_writeU16IfIdMatches_809FDCE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809FDE0 ── */
+/* ── rollInternetMysteryData_809FDE0 ── */
 /* Result of the mystery-data roll: the values the original leaves behind in r1 and r3.
  * (r2 ends up holding whatever the hash callee leaves in the register, and r0 is a
  * clobber, so neither is carried through here.) */
@@ -552,7 +552,7 @@ struct MysteryDataRoll {
 };
 
 /* register form: fills a 16-byte scratch buffer on the guest stack with 0x20 through
- * ByteFill and hashes it with sub_8000E3A; both are outside this file with no typed C
+ * ByteFill and hashes it with pickWeightedIndex_8000E3A; both are outside this file with no typed C
  * interface yet, and the buffer's guest address has to live in SP. 0x24 bytes are
  * reserved so the buffer sits at the same guest stack address the original uses (it
  * pushes five registers before subtracting 0x10), which also keeps SP identical while
@@ -565,7 +565,7 @@ static u32 hash_scratch_state(u32 stateAddr) {
     GUEST_CALL(ByteFill);
     R0 = SP;
     R1 = LD16(stateAddr + 6);   /* re-read the state halfword, as the original does after the fill */
-    GUEST_CALL(sub_8000E3A);
+    GUEST_CALL(pickWeightedIndex_8000E3A);
     SP += 0x24;
     return R0;
 }
@@ -612,12 +612,12 @@ static struct MysteryDataRoll roll_mystery_data(u32 inR1, u32 inR3) {
     return out;
 }
 
-/* sub_809FDE0() — roll the mystery data for the current internet map block.
+/* rollInternetMysteryData_809FDE0() — roll the mystery data for the current internet map block.
  * Inputs r4-r7/r10 and r6 are preserved (the original only borrows them and restores
- * them with its pop); r2 is left exactly as sub_8000E3A leaves it, so the adapter
+ * them with its pop); r2 is left exactly as pickWeightedIndex_8000E3A leaves it, so the adapter
  * never writes it. Both table-walk exits end on an equal compare, which leaves
  * Z set, N clear, C set and V clear. */
-Next sub_809FDE0(void) {
+Next rollInternetMysteryData_809FDE0(void) {
     struct MysteryDataRoll out = roll_mystery_data(R1, R3);
     R1 = out.r1;
     R3 = out.r3;

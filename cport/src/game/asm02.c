@@ -327,7 +327,7 @@ Next getOffsetToQuantityOfChipCodeMaybe_8021c7c(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8021CA8 ── */
+/* ── battle_countValidChipSlots_8021CA8 ── */
 #define NUM_CHIPS           0x140
 #define SLOTS_PER_CHIP      4
 #define CHIP_TABLE_STRIDE   0xC
@@ -380,8 +380,8 @@ static s32 count_valid_chip_slots(u32 toolkit) {
     return total;
 }
 
-/* sub_8021CA8(r10 = toolkit ptr) -> r0 = total chip-slot count */
-Next sub_8021CA8(void) {
+/* battle_countValidChipSlots_8021CA8(r10 = toolkit ptr) -> r0 = total chip-slot count */
+Next battle_countValidChipSlots_8021CA8(void) {
     R0 = (u32)count_valid_chip_slots(R10);
     RETURN_TO_CALLER();
 }

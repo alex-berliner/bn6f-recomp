@@ -1,0 +1,93 @@
+name: battleTutorial_first_checkTextStep_8029B1C
+address: '0x08029B1C'
+kind: function
+status: confirmed
+summary: First-battle tutorial text trigger — for the current tutorial step, asks a per-step checker if
+  a chatbox script should play, runs it, and moves the task into its post-text wait state.
+interface: u32 tutorialTextUpdate(void* work /* r5 */); returns 1 if a script started, 0 otherwise; reads
+  r5=work, clobbers r0-r3 and flags
+details: "Task-style update for the first-battle tutorial (MegaMan's first tutorial in the game, r5 =\
+  \ tutorial\nwork struct). Dispatches on the current step byte at work+0x0C:\n  0   -> sub_8029B86 (step\
+  \ 0 checker, returns script index or 0)\n  1   -> sub_8029BAC (step 1 checker)\n  3,4 -> sub_8029BD6\
+  \ (shared checker for steps 3 and 4)\n  6   -> sub_8029BE6 (step 6 checker)\n  0xFF (tutorial finished)\
+  \ and any other value -> return 0 with no side effects.\nIf the checker returns a nonzero script index,\
+  \ the script from TextScriptFirstBattleTutorials\n(a pointer table indexed by the step, each entry one\
+  \ text archive) is played via\nchatbox_runScript(archive, script_idx). It then saves the task's current\
+  \ state byte\n(work+0x01) into work+0x0D, sets the state byte to 0x34 (post-text wait state) and clears\n\
+  the u16 timer at work+0x02, returning 1. Callers use the return value to know that text\nhas taken over.\
+  \ No registers beyond the standard caller-saved set are preserved; the\ncontract listing \"outputs r0-r7\
+  \ / preserved r4-r7\" reflects the compiler reusing the\ncallee's frame rather than meaningful extra\
+  \ outputs.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_8029B1C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8029B1C
+
+    ./wf verify --function sub_8029B1C --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    183 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8029B1C
+
+    ./wf verify --function sub_8029B1C --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8029B1C
+
+    ./wf verify --function sub_8029B1C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, fuzz, maps, story2, story5, story6, story8,
+    story9.'
+  reproduce: grep -l '^08029b1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8029B1C -> battleTutorial_first_checkTextStep_8029B1C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- story2
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- Exact meaning of each step value (0/1/3/4/6/0xFF) depends on the main tutorial task's state machine;
+  only 0xFF is confirmed as 'tutorial finished'.
+- What the individual step-checker functions (sub_8029B86/BAC/BD6/BE6) test to decide whether text should
+  play.
+- Which task/state machine uses state byte 0x34 as its post-text wait state.
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_8029B1C

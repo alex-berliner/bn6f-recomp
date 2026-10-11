@@ -1,0 +1,105 @@
+name: pickWeightedIndex_8000E3A
+address: '0x08000E3A'
+kind: function
+status: confirmed
+summary: Picks a weighted-random index from a u8 weight table, stirring the RNG and using the current
+  frame counter.
+interface: u32 sub_8000E3A(const u8* table /* r0 */, s32 count /* r1 */, void* toolkit /* r10 */) -> r0
+  chosen index, r2 chosen index, r3 last table byte read; clobbers r1, nzcv
+details: "Weighted random selection over an array of u8 weights. r0 is the table base,\nr1 the entry count,\
+  \ and r10 the toolkit (used only for the current frame\ncounter via oToolkit_CurFramePtr, which is then\
+  \ masked with 3 to contribute\na 0..3 stir count). The routine:\n  1. Calls GetRNG once to get a 32-bit\
+  \ draw; the top 2 bits give 0..3.\n  2. Reads the toolkit's current frame counter (u16 via the pointer\
+  \ at\n     oToolkit_CurFramePtr) and takes its low 2 bits (0..3).\n  3. Sums the two as the number of\
+  \ extra GetRNG draws to consume, and\n     loops calling GetRNG that many times (a \"stir\" of the RNG);\
+  \ the final\n     raw draw is kept and masked to 16 bits as the roll value.\n  4. Sums the weight table\
+  \ back-to-front (LD8 from index count-1 down to 0)\n     into a running total; the do-while reads one\
+  \ entry even for count<=0,\n     matching the original's do-while with no length guard.\n  5. Calls\
+  \ BIOS Div (swi 6) with the roll in r0 and the total in r1, then\n     takes the remainder (r1) + 1\
+  \ as the target in [1, total].\n  6. Walks the table from index 0, accumulating weights until the running\n\
+  \     sum >= target; the first index that meets the target is returned in\n     both r0 and r2. If the\
+  \ walk reaches count before the target is met,\n     it falls back to index 0.\nr3 is left holding the\
+  \ last table byte loaded during the walk (on the\nnormal exit that is the byte at the chosen index;\
+  \ on the fallback path it\nis the last entry of the table, not index 0's byte). r4-r7 and lr are\npreserved\
+  \ across the call. GetRNG and oToolkit_CurFramePtr live in other\ntranslation units and are not typed\
+  \ here.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261011-003728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 51' --file inbox_farm_51.c
+    sub_8000E3A
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8000E3A
+
+    ./wf verify --function sub_8000E3A --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-003728-verify-7)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8000E3A
+
+    ./wf verify --function sub_8000E3A --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 11 out of domain (verify run convert-20261011-003728-verify-7)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8000E3A
+
+    ./wf verify --function sub_8000E3A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003728-verify-7)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08000e3a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 7abf99b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8000E3A -> pickWeightedIndex_8000E3A
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What subsys prefix fits best in the disassembly's style? The function is generic over (table, count)
+  and is plausibly used in many places (battle rewards, drop tables, encounters); no caller info was provided
+  to confirm a domain.
+- Is the r3 leftover (last byte read) ever consumed by callers, or is it truly incidental? Worth spot-checking
+  the few known callers.
+sources:
+- tools/wf run convert-20261011-003728
+- recomp 7abf99b
+previous_names:
+- sub_8000E3A

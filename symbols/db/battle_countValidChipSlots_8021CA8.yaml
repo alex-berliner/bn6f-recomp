@@ -1,0 +1,98 @@
+name: battle_countValidChipSlots_8021CA8
+address: '0x08021CA8'
+kind: function
+status: confirmed
+summary: Sums the per-slot chip-count entries from the toolkit table across all 320 eligible chip types,
+  skipping locked packs, empty (0xFF) slots, and chips flagged with bit 5.
+interface: r10 (toolkit* in, preserved) -> r0 (u32 total chip-slot count), r4-r7 preserved, clobbers r1-r3,
+  lr, flags; internally calls getChip8021DA8(idx) -> ChipData*, encryption_testPack_8006e84(idx) -> Z
+  set means eligible
+details: Iterates chip indices 0..0x13F (NUM_CHIPS=0x140=320). For each chip it fetches the ChipData pointer
+  via getChip8021DA8 and checks pack eligibility via encryption_testPack_8006e84 (returns 0 / Z-set when
+  the chip pack is accessible). Eligible chips are scanned across 4 slots. A slot is skipped when its
+  byte value equals 0xFF (CHIP_EMPTY) or when ChipData.flags (offset 9) has bit 5 (0x20, CHIP_FLAGS_EXCLUDE)
+  set—likely marking special/hidden chip packs. For each valid slot the function reads a count byte from
+  the toolkit's chip-count table at *(toolkit + oToolkit_Unk2002230_Ptr) + 0xC*chipIdx + slot and adds
+  it to the running total (r4). It also accumulates a subtotal for chips whose type byte (offset 7) equals
+  2 (r5), but the caller never reads r5 as a meaningful return—it is discarded in the register contract.
+  The final grand total is returned in r0. The 0xC stride and 4-slot width suggest each chip entry in
+  the table stores per-slot availability counts (e.g. how many copies the player holds or how many are
+  unlocked).
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c
+    sub_8021CA8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8021CA8
+
+    ./wf verify --function sub_8021CA8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8021CA8
+
+    ./wf verify --function sub_8021CA8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8021CA8
+
+    ./wf verify --function sub_8021CA8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08021ca8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm02.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8021CA8 -> battle_countValidChipSlots_8021CA8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm02.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does the type-2 (CHIP_TYPE_OFFSET == 2) sub-total in r5 represent? It is computed but the return
+  contract drops it; is it dead code or a later revision?
+- Is the toolkit field at oToolkit_Unk2002230_Ptr a per-save-file inventory count table or a global unlock/pack
+  table?
+- What does flag bit 5 (0x20) on ChipData exclude—debug chips, Navi-exclusive chips, or pack-locked chips
+  the player cannot obtain?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3
+previous_names:
+- sub_8021CA8

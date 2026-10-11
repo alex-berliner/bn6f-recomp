@@ -1,0 +1,108 @@
+name: toolkit_applyOverlayPalette_80015FC
+address: '0x080015FC'
+kind: function
+status: confirmed
+summary: Copies an 8-byte palette/tile slot entry from a ROM table into the toolkit render-info write
+  area.
+interface: void sub_80015FC(u32 entry_index /* r0 */, void *toolkit /* r10 */); -> void; clobbers r0,
+  r1, r2, r3, N, Z, C, V
+details: 'Loads the base of the ROM table at "byte_8001618" (a table of 8-byte entries whose words look
+  like OAM tile
+
+  attributes, e.g. "0x8,0x3C,0x3,0x3D,..."). The selected entry index comes in r0 and is multiplied by
+  8 to
+
+  index the table (entries 0 and 1 are zero). Then it reads oToolkit_RenderInfoPtr from the toolkit pointer
+  in
+
+  r10, adds 4 to get the render-info "post" slot, and writes the two 32-bit halves of the selected table
+  entry
+
+  there. Returns r2 = that render-info address and r3 = the toolkit pointer (matching the register contract''s
+
+  reported outputs r2, r3). Effectively a small helper that stages a tile/palette pair for the toolkit''s
+
+  subsequent sprite render pass.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c
+    sub_80015FC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80015FC
+
+    ./wf verify --function sub_80015FC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80015FC
+
+    ./wf verify --function sub_80015FC --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80015FC
+
+    ./wf verify --function sub_80015FC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080015fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80015FC -> toolkit_applyOverlayPalette_80015FC
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- The exact meaning of each 8-byte entry (likely OAM tile0/tile1 + affine-param or palette indices; values
+  like "0x83,0x3D" suggest VRAM tile IDs in the 0x3D..0x3F range and an 0x80 size/affine flag).
+- Why entries 0 and 1 are all-zero (possibly "no overlay" sentinels).
+- Whether oToolkit_RenderInfoPtr points at a 4-byte pre + 4-byte post pair, or at a larger structure and
+  +4 is the "second" slot.
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f
+previous_names:
+- sub_80015FC

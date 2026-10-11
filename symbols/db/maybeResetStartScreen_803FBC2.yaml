@@ -1,0 +1,97 @@
+name: maybeResetStartScreen_803FBC2
+address: '0x0803FBC2'
+kind: function
+status: confirmed
+summary: If no screen fade is in progress, runs the title/start-screen reinit sequence (subsystem reset,
+  start-screen init, clear and init the start-screen animation control) and sets the render-info LCD control
+  to 0x40.
+interface: void maybeResetStartScreen_803FBC2(void)
+details: 'Guarded by IsScreenFadeActive: when a fade is active the function is a no-op.
+
+  Otherwise it sequences four subroutine calls (sub_8006910,
+
+  startScreen_init_802F530, clear_e200AD04, init_eStartScreenAnimationControl200B1A0_2)
+
+  and then invokes SetRenderInfoLCDControl with the constant 0x40 (LCD control
+
+  register setting for BG mode 0 / forced blank via 0x40 bit pattern in this
+
+  engine). Reads/writes the named external state structs at 0x0200AD04 (e
+
+  start-screen control) and 0x0200B1A0 (start-screen animation control).
+
+  Register contract (per lifter): inputs r10/lr; clobbers NZCV, r0/r1/r3/lr;
+
+  preserves r2/r4. The function only writes the r0 argument and never reads
+
+  back results, matching a void init-style entry point typically called once
+
+  after a screen transition completes.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-011542);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 65' --file inbox_farm_65.c
+    sub_803FBC2
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803FBC2
+
+    ./wf verify --function sub_803FBC2 --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261011-011542-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803FBC2
+
+    ./wf verify --function sub_803FBC2 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-011542-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803FBC2
+
+    ./wf verify --function sub_803FBC2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011542-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz.'
+  reproduce: grep -l '^0803fbc2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 8ff3af8
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_803FBC2 -> maybeResetStartScreen_803FBC2
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- Exact semantics of sub_8006910 (engine subsystem reset) and the two 0x0200AD04 / 0x0200B1A0 control
+  structs.
+- Why LCD control is forced to 0x40 here (likely BG mode/forced blank select for the title intro); whether
+  it is reverted elsewhere.
+- Caller chain (r10 is passed in but not used inside) and which title/ start-screen state machine invokes
+  this gate.
+sources:
+- tools/wf run convert-20261011-011542
+- recomp 8ff3af8
+previous_names:
+- sub_803FBC2

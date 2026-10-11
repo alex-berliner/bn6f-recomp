@@ -1,0 +1,86 @@
+name: battle_sceneReset_8127A1C
+address: '0x08127A1C'
+kind: function
+status: confirmed
+summary: 'Full battle-scene reset: clears VRAM/GFX buffers, initialises the transition-state struct and
+  render-info fade timer, kicks off a screen fade, and rebuilds palettes/backgrounds.'
+interface: void sub_8127A1C(u32* r5 /*transition state*/, u32 r10 /*toolkit*/); /* clobbers r0-r7, r8-r12,
+  lr, N/Z/C/V */
+details: "Called when entering (or restarting) a battle/scene. Steps:\n1. zeroFillVRAM / ZeroFill_byte_3001960\
+  \ / ZeroFillGFX30025c0 — wipe display and\n   GFX working buffers.\n2. sub_80015FC(0x10) — one-shot\
+  \ subsystem init.\n3. Writes 0x1F40 (RENDER_FADE_TIMER) into the render-info header at\n   [r10 + oToolkit_RenderInfoPtr]\
+  \ and zeroes per-plane halfwords at +0x10..+0x1A.\n4. Sets transition state at r5: byte+1 = 4 (active),\
+  \ byte+2 = 0 (sub-state idle).\n5. SetScreenFade(8, 0x10) — fade type and speed.\n6. sub_8046664 / sub_8127CB8\
+  \ — extra scene setup hooks.\n7. Stores the current scene id (dword_2001140) into r5+0x1E.\n8. Initialises\
+  \ fade/transition fields at r5 + 0x20, 0x24, 0x28 (step count = 4),\n   0x2A, 0x2E to 0, and r5 + 0x22,\
+  \ 0x26, 0x2C, 0x30 to 0xFF (sentinel/\"no entry\").\n9. sub_8120CC8(0, dword_8127980) -> (step, frame)\
+  \ written into r5+0xC, 0xE, 0xF, 0x10\n   (fade palette index pair mirrored to two slots).\n10. sub_81283A0\
+  \ — post-fade hook.\n11. byte_2000FE0 = 7 (fade type), byte_2000FE1 = 4 (fade direction).\n12. Rebuilds\
+  \ display via sub_8128500, palette_fillBufferWithFadeByte_8128260,\n    sub_8127E9C, sub_8128008, bg_ReloadBackgroundRegion_5_3_81281C0,\n\
+  \    sub_81281E0, sub_8128280.\nReturns via pop {pc}; no value is produced for the caller.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_8127A1C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8127A1C
+
+    ./wf verify --function sub_8127A1C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8127A1C
+
+    ./wf verify --function sub_8127A1C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8127A1C
+
+    ./wf verify --function sub_8127A1C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: menus3, story1, story2, story8.'
+  reproduce: grep -l '^08127a1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8127A1C -> battle_sceneReset_8127A1C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- Exact role of sub_80015FC with arg 0x10 (subsystem selector).
+- Meaning of state bytes 0x0C-0x10 (looks like a 2-element fade palette table mirrored to slots 0 and
+  1).
+- Whether the sentinel 0xFF words at +0x22/+0x26/+0x2C/+0x30 are "no slot" indices into a fade-table or
+  coordinate values.
+- Exact scene-ids/values referenced through dword_2001140 and dword_8127980.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_8127A1C

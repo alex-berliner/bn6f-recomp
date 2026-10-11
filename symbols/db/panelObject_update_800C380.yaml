@@ -1,0 +1,114 @@
+name: panelObject_update_800C380
+address: '0x0800C380'
+kind: function
+status: probable
+summary: Battle panel tile state-machine update (animating in, settling, activating, timed trigger).
+interface: void sub_800C380(u32 r0 /*battle_obj*/, u32 r1 /*tile_data*/) panel_obj in r7 -> u16 r1 (delay)
+  in oTimerActive, byte r2 in r7->+6
+details: "Acts as the per-tick state machine for a battle field panel/grid tile object.\nDispatches on\
+  \ the object's state byte at [r7+0x2]:\n  state 0: no-op.\n  state 1: panel is animating in. Resets\
+  \ oTimerSettle to 0x708, decrements oTimerActive each\n            call; on reaching 0 transitions to\
+  \ state 2, refreshes panel params and computes a\n            new delay via sub_800C488 into oTimerActive;\
+  \ otherwise sets a \"blink speed\"\n            (r7+0x6) to 1 (steady) or 2 (blink) based on whether\
+  \ the remaining count is\n            <= 0x3C and bit 1 is set.\n  state 3: panel just landed. Sets\
+  \ both timers, then checks flag word at [r7+0x18]; if it\n            has any of bits 0xF800000 set\
+  \ but NOT bit 0x100000, queries object_getPanelParameters\n            and, when the result masked by\
+  \ 0xF880080 is zero, switches to state 1, refreshes\n            params + delay, and plays sound 0x97\
+  \ via PlaySoundEffect.\n  state 8: timed-trigger panel. Refreshes timers, picks an expected delay of\
+  \ 0x8C (normal)\n            or 0x46 when [r7+0xa] (tileX) > 3; when the global counter at dword_203CB04\n\
+  \            matches, calls sub_80C5B76 to spawn the tile-effect/timer trigger with X=0x28\n       \
+  \     and speed=0x32.\n  state 9-0xC: post-action settle. Refreshes oTimerActive via sub_800C488, decrements\n\
+  \            oTimerSettle; on reaching 0 transitions to state 2, refreshes params and resets\n     \
+  \       oTimerSettle to 0x708. Otherwise sets [r7+0x6] to state (when remaining>0x3C)\n            or\
+  \ to 2 (on the quarter-tick blink); original state value doubles as the\n            animation speed\
+  \ byte.\n  default: simply refreshes both timers via sub_800C488.\nField offsets in the tile object:\
+  \ state at +2, anim/refresh trigger (speed) at +6, tileX at\n+0xa, tileY at +0xb, oTimerActive at +0xe,\
+  \ oTimerSettle at +0x12, flags word at +0x18.\nsub_800C488 takes R0 and returns a u16 delay in R1 (used\
+  \ to seed oTimerActive each tick).\nobject_updatePanelParameters is called after every state transition\
+  \ to refresh the panel's\nrow/column parameters from the battle controller; object_getPanelParameters\
+  \ is read-only.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-003942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 57' --file inbox_farm_57.c
+    sub_800C380
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800C380
+
+    ./wf verify --function sub_800C380 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261011-003942-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800C380
+
+    ./wf verify --function sub_800C380 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-003942-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800C380
+
+    ./wf verify --function sub_800C380 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003942-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800c380 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp 35dfb62
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/object.c after review against the assembly (the lifted
+    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
+    differs from the original: State-8 path with a matching counter leaves r4/r5/r6 changed; the original
+    restores them. asm loc_800C438: `mov r2,#0; mov r3,#0; mov r4,#0x28; mov r6,#0x32; bl sub_80C5B76`
+    then `pop {r4-r7,pc}` (entry r4-r7 restored). C: spawn_tile_effect sets `R4 = TRIGGER_X; R5 = tile_data;
+    R6 = TRIGGER_SPEED;` and neither panel_object_update nor the Next adapter restores them; sub_80C5B76
+    preserves r4-r7, so ...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_800C380 -> panelObject_update_800C380
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- How state values 9-0xC are assigned to (does each correspond to a specific panel type/element?).
+- Whether [r7+0xa] really is tileX (the >3 test picking 0x46 vs 0x8C suggests it is a column).
+- 'Effect of oMoveSpeed ([r7+0x6]): is it animation speed, palette blink index, or both?'
+- Who writes state 0/2/3/8 and what observable differs between "settled" (2) and "idle" (0).
+sources:
+- tools/wf run convert-20261011-003942
+- recomp 35dfb62
+previous_names:
+- sub_800C380

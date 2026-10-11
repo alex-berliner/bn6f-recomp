@@ -1,0 +1,111 @@
+name: logoScreen_handleFade_803D298
+address: '0x0803D298'
+kind: function
+status: confirmed
+summary: Logo screen step that, when no screen fade is active, sets the logo state index to 0x10 to queue
+  logoScreen_finish.
+interface: void sub_803D298(LogoScreenState *self /* r5 */); // uses r0,r1,r3,lr; clobbers nz,c,v; returns
+  void
+details: 'Pushes lr, calls IsScreenFadeActive to read the screen-fade active flag and r0 result.
+
+  If the fade is active (ZERO_FLAG == true after IsScreenFadeActive), returns immediately
+
+  with IsScreenFadeActive''s r0 unchanged.
+
+  Otherwise writes immediate 0x10 into [r5 + oLogoScreenState_Index_00], which routes the
+
+  LogoScreenState machine into the logoScreen_finish_803D2A6 entry via
+
+  logoScreen_dispatch_803D1CA.
+
+  Quirks: the function does not return in registers per the caller contract; the embedded
+
+  readable C shows it returning r0 = the IsScreenFadeActive value when the fade is running,
+
+  or r0 = 0x10 after the store, but the assembly pop {pc} discards those values. The 0x10
+
+  index value is the sentinel that triggers logoScreen_finish on the next dispatch tick,
+
+  guarded so the finish transition never happens in the middle of a fade.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c
+    sub_803D298
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803D298
+
+    ./wf verify --function sub_803D298 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    177 out of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803D298
+
+    ./wf verify --function sub_803D298 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803D298
+
+    ./wf verify --function sub_803D298 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0803d298 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_803D298 -> logoScreen_handleFade_803D298
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Why is sub_803D298 called per-frame even when a fade is running (is it simply polled as part of the
+  logo sequence)?
+- Does oLogoScreenState_Index_00 = 0x10 always land on logoScreen_finish_803D2A6, or is there another
+  terminal handler at that index?
+- Is the readable C's r0 return path actually meaningful (e.g. flowed into a caller-side flag) given pop
+  {pc} drops it?
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
+previous_names:
+- sub_803D298

@@ -1,0 +1,96 @@
+name: chatbox_emitTextGridOAM_804021C
+address: '0x0804021C'
+kind: function
+status: confirmed
+summary: Emits a 3-row by 6-column grid of OAM sprite entries for a chatbox text panel.
+interface: void chatbox_804021C(struct ChatBoxProperties *r5); // preserves r4,r5,r6,r7,r8,r9,r10,r12;
+  clobbers r0,r1,r2,r3,lr,flags
+details: "Builds OAM attributes for the chatbox text tile grid using the per-chatbox text\ncoordinate\
+  \ (r5->oChatbox_TextScriptCharIdx) and font shift (r5->oChatbox_Unk_19).\nUses three ROM tables:\n \
+  \ - byte_8040314: per-row Y/affine attribute words (0x40,0x80,… etc.)\n  - byte_8040324: per-cell character\
+  \ tile offsets (3 rows × 6 cols + padding)\n  - dword_8040340: per-row pixel Y offsets for vertical\
+  \ centering\nEach of 18 cells is sent to sub_802FE28(attr01, tile=0xE2B8+charOff, 0, 3),\nwhich is the\
+  \ OAM submit primitive. The constant base tile 0xE2B8 plus the\nchar_off table builds the text glyph\
+  \ OBJ tile indices; COL_STRIDE of 0x20\nspaces columns apart in pixels. The \"r_off + font_shift\" addition\
+  \ suggests\nthis is also where per-chatbox vertical baseline shifts are applied.\nOutput r1 is the value\
+  \ of r12 restored from the stack epilogue — a quirk of\nthe routine not actually returning any meaningful\
+  \ value (r2,r3 likewise are\njust whatever sub_802FE28 left behind).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c
+    chatbox_804021C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_804021C
+
+    ./wf verify --function chatbox_804021C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    209 out of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_804021C
+
+    ./wf verify --function chatbox_804021C --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_804021C
+
+    ./wf verify --function chatbox_804021C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0804021c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename chatbox_804021C -> chatbox_emitTextGridOAM_804021C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Is oChatbox_Unk_19 truly a font/baseline shift, or a chatbox-wide vertical offset?
+- Why 3 rows × 6 cols specifically — chatbox text-wrap limit?
+- Does mode=3 to sub_802FE28 mean "OBJ tile commit" vs. some affine flag?
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3
+previous_names:
+- chatbox_804021C

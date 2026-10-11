@@ -101,7 +101,7 @@ __attribute__((used)) void gba_boot(void) {   /* entered from crt0.c (asm) */
 
     call_init(SetPrimaryToolkitPointers);
     call_init(RandomizeExtraToolkitPointers);
-    call_init(start_800023C);
+    call_init(entryRomInit_800023C);
 
     ST8(0x020081B0u, 0);      /* byte_20081B0 */
     ST32(0x02009930u, 1);     /* dword_2009930 */

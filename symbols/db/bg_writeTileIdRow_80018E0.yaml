@@ -1,0 +1,110 @@
+name: bg_writeTileIdRow_80018E0
+address: '0x080018E0'
+kind: function
+status: confirmed
+summary: Copies a horizontal run of BG tile ids from a source buffer into one 32x32 tile-id map block,
+  wrapping columns at 32.
+interface: void bg_writeTileIdRow(u32 x /*r0*/, u32 y /*r1*/, u32 block /*r2*/, const u16* src /*r3*/,
+  s32 count /*r4*/, Toolkit* toolkit /*r10*/) -> leaves r0 = next x (wrapped), r1 = 0x1F, r2 = block<<11,
+  r3 = src past the copy, r4 = remaining count, flags set by final "CMP r4,#0"
+details: 'Reads the toolkit''s iBGTileIdBlocks pointer via r10 (oToolkit_iBGTileIdBlocks_Ptr), selects
+  a
+
+  0x800-byte block (32x32 u16 entries) with r2<<11 and a row with y<<6, then writes `count`
+
+  halfwords from src into consecutive columns starting at x & 0x1F. Columns wrap modulo 32
+
+  (mask 0x1F), so a run longer than a row continues on the same row from its left edge. The
+
+  loop is a do-while: it always writes at least one tile, and a non-positive count just
+
+  decrements once and stops. Preserves r6/r7; trashes r1 with the mask constant and returns
+
+  the advanced source pointer in r3 (handy for callers that stream tile ids).
+
+  Note: the blob labelled sub_80018E0 also contains a second routine at loc_800191A
+
+  (~0x08001912) that is the vertical counterpart: dst = block + (r2<<11) + (r0<<1), rows from
+
+  r1 & 0x1F advancing by 1<<6 per tile, i.e. a column writer with the same do-while/wrap
+
+  behaviour; it should probably get its own symbol (e.g. bg_writeTileIdColumn).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
+    sub_80018E0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80018E0
+
+    ./wf verify --function sub_80018E0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80018E0
+
+    ./wf verify --function sub_80018E0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 13 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80018E0
+
+    ./wf verify --function sub_80018E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080018e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80018E0 -> bg_writeTileIdRow_80018E0
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which callers use the returned r0-r4 values, and which simply ignore them?
+- What the layer/block index in r2 enumerates (which of the game's BG maps use blocks 0/1/...)
+- Whether the second routine at loc_800191A is ever called separately and deserves its own entry
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
+previous_names:
+- sub_80018E0

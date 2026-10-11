@@ -1,0 +1,90 @@
+name: install_object_state_handler_811CA1C
+address: '0x0811CA1C'
+kind: function
+status: confirmed
+summary: Initialise and install the sprite state handler for a generic object, marking it as state 0x23
+  during sprite setup, then transitioning to state 4.
+interface: void sub_811CA1C(void);  // r5 = object record pointer (in); no out regs/flags exposed to caller
+  (r5 preserved)
+details: "Treats r5 as a pointer to a 3-field object record: byte at +0 is the current\nstate byte, byte\
+  \ at +4 is a palette-bank index, byte at +8 is the \"next\nstate\" byte. The function:\n  1. Sets +0\
+  \ = 0x23 (\"initialising sprite\" sentinel).\n  2. Loads graphics/animation tables via loc_8002774 (args\
+  \ 0x89, &unk_201BA04).\n  3. Runs the standard sprite configuration chain: setAnimation(0),\n     loadAnimationData,\
+  \ noShadow, makeScalable, setScaleParameters(0, 0x80, 0x80)\n     (uniform non-scaling scale).\n  4.\
+  \ Sets the palette bank to r5+4 (palette_index) via\n     sprite_setSubEntryPaletteBank_800304A.\n \
+  \ 5. Calls slotList_storeHalfwordAndClearField_800306C with\n     (palette_index * 0x30 + 0x80) as the\
+  \ slot address.\n  6. Priority and sub-record field A both set to 0; coordinates set to (0, 0).\n  7.\
+  \ Writes next-state byte at +8 = 4.\n  8. Calls object_SetStateHandler_811CC4E; if it succeeds it dispatches\
+  \ to\n     sub_811CA94, otherwise it undoes the scalable setup with\n     sprite_clearScaleCounterAndMakeUnscalable_804668A\
+  \ and returns.\nHard-coded values pulled into the call: state sentinel 0x23, graphics id 0x89,\nscale\
+  \ 0x80/0x80, scale slot base 0x80, slot stride 0x30, target state 4.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c
+    sub_811CA1C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811CA1C
+
+    ./wf verify --function sub_811CA1C --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811CA1C
+
+    ./wf verify --function sub_811CA1C --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 7 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811CA1C
+
+    ./wf verify --function sub_811CA1C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, menus2, story1, story2, story4, story5, story8.'
+  reproduce: grep -l '^0811ca1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811CA1C -> install_object_state_handler_811CA1C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story8
+open_questions:
+- What is the meaning of state 0x23 versus state 4; is 4 the "ready/active" state this handler is meant
+  to leave the object in?
+- What does sub_811CA94 do on success, and what is the failure path (when object_SetStateHandler_811CC4E
+  returns 0) actually used for?
+- What is unk_201BA04 (graphics/animation data table) and which object kind shares this setup chain?
+- Why is sprite_makeScalable called only to potentially be torn down by sprite_clearScaleCounterAndMakeUnscalable_804668A
+  on failure - is scale state inherently per-object here?
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e
+previous_names:
+- sub_811CA1C

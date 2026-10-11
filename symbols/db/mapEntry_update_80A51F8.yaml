@@ -1,0 +1,106 @@
+name: mapEntry_update_80A51F8
+address: '0x080A51F8'
+kind: function
+status: confirmed
+summary: 'Map-entry show/hide controller: when the entry''s trigger flag is set, load its sprite, clear
+  its pair of flags and switch to state 3 (shown); when clear, set both flags, mark hidden (state 0x10)
+  and tear down.'
+interface: "void sub_80A51F8(void);                 // uses caller-provided r5 = control struct, r7 =\
+  \ entry struct, r10 = bank base\n  in:  r5 (control struct), r7 (entry struct), r10 (bank/base), lr\
+  \ (return)\n  out: r0/r2/r5/r10 (forwarded from tail call sub_80A5268 or sub_80A5350); NZ/CV reflect\
+  \ that tail's flags\n  clobbers: r0, r1, r2, r3, lr; preserves r4, r5, r6, r7, r10\n"
+details: "Entry struct (at r7) layout used:\n  +0x00 u16 triggerFlag    (tested with TestEventFlag)\n\
+  \  +0x02 u16 flagA          (SetEventFlag on hide, ClearEventFlag on show)\n  +0x04 u16 flagB      \
+  \    (same treatment as flagA)\n  +0x06 u8  spriteArg2     (passed to sprite_load as 2nd arg)\n  +0x07\
+  \ u8  spriteArg3     (passed to sprite_load as 3rd arg)\n  +0x08 u8  animation      (sprite_setAnimation)\n\
+  \  +0x0A u8  unk0x2cField   (shifted left 24, passed to sprite_setUnk0x2c)\n  +0x0B u8  palette    \
+  \    (sprite_setPalette)\n  +0x0C u8  priority       (sprite_setPriority_8002E14)\n\nControl struct\
+  \ (at r5):\n  +0x00 u8 state    (written: 3 when shown)\n  +0x08 u8 visState (written: 4 when shown,\
+  \ 0x10 when hidden)\n\nBranch on TestEventFlag(triggerFlag):\n  * set (taken as \"show this entry\"\
+  ):\n      - state = 3\n      - sprite_load(0x80, spriteArg2, spriteArg3)\n      - sprite_setPriority_8002E14(priority)\n\
+  \      - sprite_setAnimation(animation)\n      - sprite_loadAnimationData()\n      - sprite_noShadow()\n\
+  \      - sprite_setUnk0x2c(unk0x2cField << 24)\n      - sprite_setPalette(palette)\n      - ClearEventFlag(flagA);\
+  \ ClearEventFlag(flagB)\n      - visState = 4\n      - tail call sub_80A5268 (return value flows into\
+  \ r0)\n  * clear (taken as \"hide this entry\"):\n      - SetEventFlag(flagA); SetEventFlag(flagB)\n\
+  \      - visState = 0x10\n      - tail call sub_80A5350 (return value flows into r0)\nThe function tail-calls\
+  \ one of two subroutines and pops {pc}, so r0/NZCV at return come\nfrom sub_80A5268 or sub_80A5350 respectively.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-002359);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 49' --file inbox_farm_49.c
+    sub_80A51F8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A51F8
+
+    ./wf verify --function sub_80A51F8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-002359-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A51F8
+
+    ./wf verify --function sub_80A51F8 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 17 out of domain (verify run convert-20261011-002359-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A51F8
+
+    ./wf verify --function sub_80A51F8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002359-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus3, story1, story2, story5, story6, story7,
+    story8, story9.'
+  reproduce: grep -l '^080a51f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 52c01c1
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80A51F8 -> mapEntry_update_80A51F8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus3
+- story1
+- story2
+- story5
+- story6
+- story7
+- story8
+- story9
+related:
+- sub_80A5268
+- sub_80A5350
+open_questions:
+- Which map subsystem owns this entry struct (overlay / emissive object / Pet / Weather / etc.)? The 0x10/3/4
+  state/visState vocabulary is the main clue.
+- Is sub_80A5268 the "begin update" / on-enter routine and sub_80A5350 the "tear down" / on-exit routine
+  of the same state machine?
+- What is the meaning of unk0x2cField << 24 being passed to sprite_setUnk0x2c - palette bank, render flag,
+  or alpha?
+- Why is the sprite id hard-coded to 0x80 for the show path while the hide path does no sprite teardown
+  (relies on the tail sub)?
+sources:
+- tools/wf run convert-20261011-002359
+- recomp 52c01c1
+previous_names:
+- sub_80A51F8

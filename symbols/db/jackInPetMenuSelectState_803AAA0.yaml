@@ -1,0 +1,96 @@
+name: jackInPetMenuSelectState_803AAA0
+address: '0x0803AAA0'
+kind: function
+status: confirmed
+summary: 'Handles the Pet Accessory menu''s jack-in attempt: branches on success/failure to play a sound,
+  queue a dialog/state message, and write the next state byte to the menu''s state field (r5+1).'
+interface: 'void sub_803AAA0(void);
+
+  // inputs: r2 r4 r5 r10 lr
+
+  // outputs: r10
+
+  // clobbers: nz c v r0 r1 r2 r3 lr
+
+  // preserved: r4 r5 r6 r7 r10
+
+  '
+details: "Calls sub_803C248 with arg 0x30 (a \"try jack-in\" / compatibility-check helper); if\nit returns\
+  \ zero (success path):\n  - Plays SOUND_MENU_SELECT via PlaySoundEffect.\n  - Calls sub_803BB2C with\
+  \ 0x16 (queues the success text/dialog entry).\n  - Calls sub_803C0F6 with (0x30, 0x70, 0x20) — likely\
+  \ sets up the success\n    animation/parameters for the pet icon (msg ID 0x30, palette/pos 0x70 and\
+  \ 0x20).\n  - Stores 0x18 into *(r5+1) — the next state code for the pet-menu state machine.\nIf sub_803C248\
+  \ returns non-zero (failure path):\n  - Plays SOUND_CANT_JACK_IN.\n  - Calls sub_803BB2C with 0x14 (failure\
+  \ text/dialog entry).\n  - Stores 0x1C into *(r5+1) — the failure/exit state code.\nr5 is treated as\
+  \ a pointer to a small menu state struct; byte at offset +1 is the\ncurrent/next state. The function\
+  \ picks between two follow-up states (0x18 vs 0x1C)\ndepending on whether the jack-in attempt succeeded.\n\
+  \nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed;\
+  \ tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file
+    inbox_farm_old_2.c sub_803AAA0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803AAA0
+
+    ./wf verify --function sub_803AAA0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803AAA0
+
+    ./wf verify --function sub_803AAA0 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 5 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803AAA0
+
+    ./wf verify --function sub_803AAA0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803aaa0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_803AAA0 -> jackInPetMenuSelectState_803AAA0
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+related:
+- sub_803C248
+open_questions:
+- What exactly is the r5 struct (size/fields)? Is +1 the "current phase" nibble?
+- What are sub_803C248, sub_803BB2C, sub_803C0F6 — these look like generic menu/pet helpers whose semantics
+  are inferred from arg patterns.
+- What is the full state machine around states 0x14/0x16/0x18/0x1C (is 0x14/0x16 the dispatch, 0x18 the
+  success epilogue, 0x1C the failure epilogue)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c
+previous_names:
+- sub_803AAA0

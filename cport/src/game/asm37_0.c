@@ -74,7 +74,7 @@ Next toolkit_getUnk2004190EntryPtr_813B9FC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813BBD4 ── */
+/* ── battle_initState_813BBD4 ── */
 /* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
 static void zero_fill(u32 addr, u32 num_bytes) {
     R0 = addr;
@@ -82,10 +82,10 @@ static void zero_fill(u32 addr, u32 num_bytes) {
     GUEST_CALL(ZeroFillByByte);
 }
 
-/* register form: calls sub_813BC1C outside this file, which has no typed C interface yet */
+/* register form: calls battle_categorizeRandomIds_813BC1C outside this file, which has no typed C interface yet */
 static void call_sub_813BC1C(u32 p) {
     R0 = p;
-    GUEST_CALL(sub_813BC1C);
+    GUEST_CALL(battle_categorizeRandomIds_813BC1C);
 }
 
 /* register form: calls sub_813BC98 outside this file, which has no typed C interface yet */
@@ -109,10 +109,10 @@ static void call_sub_813BEA8(void) {
     GUEST_CALL(sub_813BEA8);
 }
 
-/* register form: calls sub_813C584 outside this file, which has no typed C interface yet */
+/* register form: calls battleItems_countByType_813C584 outside this file, which has no typed C interface yet */
 static void call_sub_813C584(u32 p) {
     R0 = p;
-    GUEST_CALL(sub_813C584);
+    GUEST_CALL(battleItems_countByType_813C584);
 }
 
 /* Initialize the toolkit's battle-related state: zero several buffers, then run the
@@ -131,13 +131,13 @@ static void init_battle_state(u32 toolkit_ptr) {
     call_sub_813C584(state_ptr);
 }
 
-/* sub_813BBD4(r10 -> toolkit_ptr) -> r0..r12 unchanged */
-Next sub_813BBD4(void) {
+/* battle_initState_813BBD4(r10 -> toolkit_ptr) -> r0..r12 unchanged */
+Next battle_initState_813BBD4(void) {
     init_battle_state(R10);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813BC1C ── */
+/* ── battle_categorizeRandomIds_813BC1C ── */
 #define ID_SLOTS     7
 #define ID_SENTINEL  0xFF
 
@@ -216,8 +216,8 @@ static void process_categorized_ids(u32 byte_array_ptr) {
     }
 }
 
-/* sub_813BC1C(r0 = byte_array_ptr) */
-Next sub_813BC1C(void) {
+/* battle_categorizeRandomIds_813BC1C(r0 = byte_array_ptr) */
+Next battle_categorizeRandomIds_813BC1C(void) {
     process_categorized_ids(R0);
     RETURN_TO_CALLER();
 }
@@ -261,7 +261,7 @@ Next getUnk200431cTableByteCapped3_813BF0C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813BF1C ── */
+/* ── eventFlag1720IsSet_813BF1C ── */
 /* event_1720 is the 16-bit flag 0x1720; TestEventFlagFromImmediate takes it split as
  * hi byte in R0 and low byte in R1. */
 #define EVENT_1720_HI 0x17
@@ -287,7 +287,7 @@ static u32 check_gate_flag(void) {
     return 0;
 }
 
-Next sub_813BF1C(void) {
+Next eventFlag1720IsSet_813BF1C(void) {
     R0 = check_gate_flag();
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -418,8 +418,8 @@ Next reloadCurNaviStatBoosts_813c3ac(void) {
 Next applyNaviStatsMaybe_813C458(void) {
     u32 callerR4 = R4; /* saved across the call sequence, like push {r4} */
 
-    GUEST_CALL(sub_813BBD4); /* rebuild navi-related tables */
-    GUEST_CALL(sub_8136C24); /* ... */
+    GUEST_CALL(battle_initState_813BBD4); /* rebuild navi-related tables */
+    GUEST_CALL(battle_refreshPETNaviStats_8136C24); /* ... */
 
     GUEST_CALL(GetCurPETNavi);
     u32 naviId = R0;
@@ -469,7 +469,7 @@ Next checkCurPETNaviStats1FIsOne_813C490(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813C584 ── */
+/* ── battleItems_countByType_813C584 ── */
 /* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
 static void zero_fill_sub_813C584(u32 addr, u32 size) {
     R0 = addr;
@@ -582,8 +582,8 @@ static void gather_and_count_items(u32 count_array) {
     }
 }
 
-/* sub_813C584(r0 = count_array) -> r2, r3 */
-Next sub_813C584(void) {
+/* battleItems_countByType_813C584(r0 = count_array) -> r2, r3 */
+Next battleItems_countByType_813C584(void) {
     gather_and_count_items(R0);
     R2 = A_byte_2006DA0;
     RETURN_TO_CALLER();
@@ -598,7 +598,7 @@ Next sub_813C678(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813CEA0 ── */
+/* ── battle_clearIncompatibleChipSlot_813CEA0 ── */
 /* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
 static u8 get_pet_navi_stat_sub_813CEA0(u32 a1, u32 a2) {
     R0 = a1; R1 = a2;
@@ -658,8 +658,8 @@ static void check_chip_vs_navi_stat(u32 toolkit) {
     set_pet_navi_stat_sub_813CEA0(0, slot_index, 0xFF);
 }
 
-/* sub_813CEA0(r4, r5, r6, r7, r10, lr) -> r2 */
-Next sub_813CEA0(void) {
+/* battle_clearIncompatibleChipSlot_813CEA0(r4, r5, r6, r7, r10, lr) -> r2 */
+Next battle_clearIncompatibleChipSlot_813CEA0(void) {
     check_chip_vs_navi_stat(R10);
     /* R2 is set by decode_chip_from_bitfield's GUEST_CALL; left alone on early exits */
     RETURN_TO_CALLER();

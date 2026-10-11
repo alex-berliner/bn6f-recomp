@@ -1,0 +1,104 @@
+name: chatbox_pushTextLevel_8042128
+address: '0x08042128'
+kind: function
+status: confirmed
+summary: Open a nested text-display level in the chatbox, wiring its script pointer and saving the resume
+  point for when it closes.
+interface: void chatbox_pushTextLevel(u32 arg1 /* r1 */, u32 arg2 /* r2 */, u32 arg3 /* r3 */, const u8*
+  cmdWord /* r4, points at a 4-byte chatbox text command */, struct Chatbox* chat /* r5 */); -> r0 = 1
+  (always), r1 = historySlotOffset (0x140 + (depth-1)*4), r2 = 4 (mul scratch left in place), r4 = per-slot
+  text buffer base (byte_200AFA0 + slot*64); NZ from r0=1, C/V cleared; r5, r10, lr clobbered.
+details: 'Increments chat->unk_05 (the active text-level depth). r4 points at a 4-byte chatbox text
+
+  command word in an outer script: byte 2 is a parameter passed to chatbox_8042A14, byte 3
+
+  selects which of the chatbox''s saved text-buffer slots to resume from. If byte 3 != 0 the
+
+  script pointer is taken from the chatbox''s per-slot saved-script table at chat+0x4C +
+
+  (slot-1)*4; if 0 the script is built fresh by sub_803D06C (called with the caller''s r1..r3
+
+  preserved via a push/pop sandwich). The chosen script plus the byte-2 parameter are handed
+
+  to chatbox_8042A14 along with the per-slot text bank (byte_200AFA0 + slot*64). The slot''s
+
+  text bank is then stored into chat->TextScriptCursorPtr (the engine''s current text cursor).
+
+  The outer command pointer advances by 4 bytes and is recorded as the resume point in two
+
+  places: chat->unk_44 (single-level resume) and the depth-indexed history table at chat+0x140
+
+  +(depth-1)*4 (multi-level resume). The function returns r0=1 with the slot''s text-bank base
+
+  left in r4 so the caller can chain into chatbox_8042A14''s already-prepared text state.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c
+    chatbox_8042128
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_8042128
+
+    ./wf verify --function chatbox_8042128 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    258 out of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_8042128
+
+    ./wf verify --function chatbox_8042128 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_8042128
+
+    ./wf verify --function chatbox_8042128 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story2, story4, story5, story6, story8, story9.'
+  reproduce: grep -l '^08042128 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename chatbox_8042128 -> chatbox_pushTextLevel_8042128
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/chatbox.c
+coverage:
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What exactly is the script-pointer table at chat+0x4C (how many slots, what saves into it)?
+- What does sub_803D06C build, and why is its return value only valid for the byte-3==0 case?
+- Is oChatbox_TextScriptCursorPtr the same engine cursor that chatbox_8042A14 consumed, or is the re-read
+  of cmd+3 guarding against chatbox_8042A14 rewriting the command word?
+- What is the precise layout of the depth-indexed resume history at chat+0x140, and how is it popped on
+  level close?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349
+previous_names:
+- chatbox_8042128

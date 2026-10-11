@@ -1,0 +1,104 @@
+name: battleObject_runPhase4AndDestroy_80C8268
+address: '0x080C8268'
+kind: function
+status: confirmed
+summary: Battle-object phase-4 runner — seeds timers from Param2 on first entry, ticks down each frame,
+  dispatches the Param3 sub-handler while it remains positive, then transitions the object to the destroy
+  state.
+interface: 'void sub_80C8268(void); /* in: r3 r5 lr (r5 = battle object) */ /* out: r5 */ /* clobbers:
+  nz c v r0 r1 r2 r3 lr */ /* preserves: r4 r5 r6 r7 */'
+details: 'Operates on the caller''s battle-object record at r5 using offsets oBattleObject_CurPhase,
+
+  oBattleObject_Param2, oBattleObject_Param3, oBattleObject_Timer, oBattleObject_Timer2 and
+
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized. On first entry (CurPhase == 0) it sets
+
+  CurPhase = 4, calls sub_80C832E(Param3), copies Param2 into Timer (16-bit), sets Timer2 = 1,
+
+  and calls sub_80C82D0 as a one-shot setup. Each frame it decrements Timer by 1 and, using the
+
+  original signed BLE, while the new value is > 0 it calls sub_80C8310(Param3); once it has
+
+  expired it writes CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized so the
+
+  object is reaped.
+
+  Quirks: the BLE that guards the destroy branch compares the pre-store (timer - 1) against
+
+  1 with the carry/overflow flags, so expiry triggers when the decremented value falls to 0
+
+  or below; Timer2 is initialised to 1 but never read in this function (likely consumed by
+
+  one of the sub-handlers).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed;
+  tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 5' --file
+    inbox_farm_old_5.c sub_80C8268
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C8268
+
+    ./wf verify --function sub_80C8268 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    184 out of domain (verify run convert-20261011-053938-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C8268
+
+    ./wf verify --function sub_80C8268 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-053938-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C8268
+
+    ./wf verify --function sub_80C8268 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053938-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080c8268 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2a51d63
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80C8268 -> battleObject_runPhase4AndDestroy_80C8268
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+related:
+- sub_80C8310
+open_questions:
+- Whether Timer2 (set to 1 here) is meaningful for sub_80C82D0 / sub_80C8310 / sub_80C832E or is leftover
+  scratch.
+- The semantics of Param2 (tick count) and Param3 (sub-state / handler index passed to the three sub_80C8xxx
+  routines).
+- Why the running phase is written as the literal 4 rather than via a named constant, and what the wider
+  phase-4 state machine represents (e.g. timed disappear / cleanup animation).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053938
+- recomp 2a51d63
+previous_names:
+- sub_80C8268

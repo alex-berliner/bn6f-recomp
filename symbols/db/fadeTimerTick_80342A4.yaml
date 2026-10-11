@@ -1,0 +1,83 @@
+name: fadeTimerTick_80342A4
+address: '0x080342A4'
+kind: function
+status: confirmed
+summary: Advances the screen-fade countdown for one frame, kicking off the next fade phase when it expires,
+  then runs the post-fade update step.
+interface: 'void fadeTimerTick_80342A4(void /* r5 = fade state ptr */);  // inputs: r5, r10, lr; outputs:
+  r5, r8, r9, r10, r11, r12; clobbers nzcv r0-r3 lr; preserves r4-r9 r12'
+details: "Operates on a small fade-state struct in r5 with at least two fields:\n  - byte at +1 (\"FADE_PHASE\"\
+  ) set to 8 once the timer expires.\n  - u16 at +4 (\"FADE_TIMER\") decremented each frame while a fade\
+  \ is active.\nFlow:\n  1. Calls IsScreenFadeActive; if a fade is in progress, decrements the\n     u16\
+  \ at [r5+4] by 1.\n  2. If the new timer is <= 0, calls SetScreenFade(4, 0x10) and writes\n     the\
+  \ literal byte 8 to [r5+1] to record the new phase.\n  3. Unconditionally tail-calls sub_80343B0 (\"\
+  post_fade_update\") via\n     bl + pop {pc}, which uses lr as a return so the frame's pc line is\n \
+  \    effectively a tail call.\nQuirk: the post-update call is reached even when no fade is active, so\n\
+  the function doubles as a per-frame tick for whatever sub_80343B0 owns.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c
+    sub_80342A4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80342A4
+
+    ./wf verify --function sub_80342A4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80342A4
+
+    ./wf verify --function sub_80342A4 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 7 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80342A4
+
+    ./wf verify --function sub_80342A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, menus2, story1, story2, story4, story5, story8.'
+  reproduce: grep -l '^080342a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80342A4 -> fadeTimerTick_80342A4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story8
+open_questions:
+- Meaning of the fade phase byte value 8 (set on expiry).
+- Identity and ownership of the struct pointed to by r5 (likely a per-scene screen-fade descriptor rather
+  than the GP fade buffer).
+- Why r10 is passed in and reused for output across the call boundary.
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
+previous_names:
+- sub_80342A4

@@ -1,0 +1,88 @@
+name: buildChipSearchTable_811FE7C
+address: '0x0811FE7C'
+kind: function
+status: confirmed
+summary: Build a 0x20-byte-entry chip search/index table in the given buffer by scanning chips 1..0x13A,
+  returning the entry count
+interface: u32 sub_811FE7C(u32 dest /*r0*/, u32 mode /*r1*/) -> r0 = entry count; preserves r4-r7; clobbers
+  r1-r3, lr, nzcv
+details: "Zero-fills the destination buffer (via zeroFill_0xA000Words_811FF6C), then iterates chip\nindices\
+  \ 1..0x13A (inclusive). For each chip, applies optional filters when mode!=0\n(skip chip \"0:137\",\
+  \ chip type 2 at +7, flag bit 0x20 at +9) and always skips chips\nflagged at +0x16 bit 0x20. For each\
+  \ of four search-item slots (offset 0..3) whose\nbyte != 0xFF, looks up the quantity pointer via getOffsetToQuantityOfChipCodeMaybe_8021c7c;\n\
+  a zero quantity also skips. Otherwise writes a 0x20-byte entry into the destination\nbuffer, packed\
+  \ as 8 little-endian u32 dwords whose high half is a payload field and\nwhose low half is a shared composite\
+  \ \"key\" = (chipField_0x1C << 7) | searchItem:\n  +0x00: high = chip+0x1C (u16)\n  +0x04: high = chip+0x18\
+  \ (u16)\n  +0x08: high = searchItem (u8, zero-extended)\n  +0x0C: high = map_chip_index(idx, key)  \
+  \          (sub_811FF80)\n  +0x10: high = map_chip_element(chip+6)            (sub_811FF54)\n  +0x14:\
+  \ high = quantity (u8, zero-extended)\n  +0x18: high = chip+8 (u8, zero-extended)\n  +0x1C: high = loadU16FromTableEntry(table_index)\
+  \ (from chip code table), low = ((idx << 7) | searchItem)\nReturns (cur - dest) / 0x20 (SWI 6 signed\
+  \ divide) as the entry count. Mode==0 disables\nthe three additional skip checks but the +0x16 bit-0x20\
+  \ skip remains unconditional.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_811FE7C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811FE7C
+
+    ./wf verify --function sub_811FE7C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811FE7C
+
+    ./wf verify --function sub_811FE7C --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811FE7C
+
+    ./wf verify --function sub_811FE7C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^0811fe7c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811FE7C -> buildChipSearchTable_811FE7C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Who owns the buffer passed in r0, and what is its size budget relative to ~0x13A chips * 4 slots?
+- What distinguishes mode==0 vs mode!=0 in practice (player-owned folder vs shop/tradable list)?
+- How are the resulting entries consumed (the per-entry "key" appears to be a sort/comparison key)
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_811FE7C

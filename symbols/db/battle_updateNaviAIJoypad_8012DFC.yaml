@@ -1,0 +1,99 @@
+name: battle_updateNaviAIJoypad_8012DFC
+address: '0x08012DFC'
+kind: function
+status: confirmed
+summary: Advances one frame of virtual-joypad edge state for a player-controlled battle navi, including
+  a frozen-input mirror used during TimeStop.
+interface: void battle_updateNaviAIJoypad(u32 naviIndex /*r0*/) – reads AI data via battle_getPlayerAIData_8010022;
+  leaves c,v set by last internal test/cmp; clobbers r0,lr; preserves r4,r5,r6
+details: "Fetches the player-AI struct via battle_getPlayerAIData_8010022 (r4).\nIf battle_isBattleOver\
+  \ returns non-zero the four joypad fields\n(oAIData_JoypadHeld/Released/Pressed/Up) are zeroed and the\
+  \ function exits.\nReads navi stats byte 0x2C via GetBattleNaviStatsByte; values 0x17–0x18\nmean the\
+  \ navi is in a \"no-input\" state (e.g. being deleted or mid-animation)\nso the function returns early\
+  \ without touching joypad fields.\nRaw button bitmask for this navi is read from a per-navi table at\n\
+  dword_2036820 (stride 8, offset +2 into each slot), indexed by r0 (r7).\nMain joypad is updated with\
+  \ standard edge logic:\n  released ← old held\n  held     ← new raw\n  pressed  ← (~old held) & new\
+  \ raw\n  up       ← (~new raw) & old held\nA secondary mirror at oAIData_Unk_2a/2c/2e/30 holds a duplicate\n\
+  held/pressed/up chain.  When battle_isTimeStop returns zero (time-stop\ninactive) the mirror is zeroed;\
+  \ when non-zero the mirror is advanced with\nthe same edge logic so that inputs frozen during a TimeStop\
+  \ effect still\nregister single-shot edges on the first frame after the effect ends.\nThe function does\
+  \ not write r5 in the disassembly; the register contract\nlists it as an output read-back from callees\
+  \ (r5 is caller-saved in the\nABI but the lifter observed callers reading it post-call)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-011541);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 64' --file inbox_farm_64.c
+    sub_8012DFC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8012DFC
+
+    ./wf verify --function sub_8012DFC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 20 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-011541-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8012DFC
+
+    ./wf verify --function sub_8012DFC --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-011541-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8012DFC
+
+    ./wf verify --function sub_8012DFC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011541-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08012dfc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 6544998
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8012DFC -> battle_updateNaviAIJoypad_8012DFC
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact semantics of stats byte 0x2C values 0x17 and 0x18 – likely navi-deleted / navi-unavailable states
+  but unconfirmed.
+- What chip or mechanic sets battle_isTimeStop and whether the Unk_2a..Unk_30 mirror corresponds to a
+  visible 'input buffer' during time-stop effects.
+- 'Why r7 is listed as an output: the readable C propagates naviIndex into R7 on return, but no caller
+  in the current set reads it; possibly a lifter artifact.'
+sources:
+- tools/wf run convert-20261011-011541
+- recomp 6544998
+previous_names:
+- sub_8012DFC

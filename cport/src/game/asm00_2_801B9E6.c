@@ -385,7 +385,7 @@ Next nullsub_10(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801BE70 ── */
+/* ── resetBattleBuffers_801BE70 ── */
 /* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
 static void zero_fill_by_word_sub_801BE70(u32 addr, u32 num_bytes) {
     R0 = addr;
@@ -412,7 +412,7 @@ static void reset_battle_buffers(void) {
     ST32(A_dword_20367E0,     0);
 }
 
-Next sub_801BE70(void) {
+Next resetBattleBuffers_801BE70(void) {
     reset_battle_buffers();
     RETURN_TO_CALLER();
 }
@@ -545,7 +545,7 @@ Next easeValueTowardTarget_801C1EA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801C296 ── */
+/* ── renderHpDigits_801C296 ── */
 /* register form: calls memory_bcdConvert outside this file, which has no typed C interface yet */
 static u32 bcd_convert(u32 value) {
     R0 = value;
@@ -622,8 +622,8 @@ static u32 render_hp_digits(u32 r3_in, u32 r4, u32 r6, u32 r7) {
     return r3_in;
 }
 
-/* sub_801C296(r3, r4=source object, r6, r7=destination readout) -> r3 r4 r6 r7 */
-Next sub_801C296(void) {
+/* renderHpDigits_801C296(r3, r4=source object, r6, r7=destination readout) -> r3 r4 r6 r7 */
+Next renderHpDigits_801C296(void) {
     R3 = render_hp_digits(R3, R4, R6, R7);
     RETURN_TO_CALLER();
 }
@@ -860,7 +860,7 @@ Next sub_801CA80(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801CB38 ── */
+/* ── battle_updateObjectAnim_801CB38 ── */
 /* Object animation state-machine offsets */
 #define OBJ_PREV_FRAME       0x0D
 #define OBJ_FRAME            0x0E
@@ -1000,8 +1000,8 @@ static void update_object_animation(u32 obj) {
     queue_gfx_transfer_sub_801CB38(pattern_src, A_byte_30016D0, PATTERN_SIZE);
 }
 
-/* sub_801CB38(obj: r5) -- updates animation state and queues GFX transfers */
-Next sub_801CB38(void) {
+/* battle_updateObjectAnim_801CB38(obj: r5) -- updates animation state and queues GFX transfers */
+Next battle_updateObjectAnim_801CB38(void) {
     u32 saved_r0 = R0;
     update_object_animation(R5);
     R0 = saved_r0;
@@ -1513,7 +1513,7 @@ Next sub_801DDD8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801DDF6 ── */
+/* ── setupBattleBackground_801DDF6 ── */
 /* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
 static void queue_gfx_transfer_sub_801DDF6(u32 src, u32 dest, u32 size) {
     R0 = src;
@@ -1546,9 +1546,9 @@ static void setup_battle_background(void) {
     set_flag_bits(0x10); /* 1 << 4 */
 }
 
-/* sub_801DDF6: transfers GFX, copies BG tiles, sets flag bit 4.
+/* setupBattleBackground_801DDF6: transfers GFX, copies BG tiles, sets flag bit 4.
  * Preserves r4, r5 (clobbered by callees), plus r6, r7. */
-Next sub_801DDF6(void) {
+Next setupBattleBackground_801DDF6(void) {
     u32 saved_r4 = R4;
     u32 saved_r5 = R5;
     setup_battle_background();
@@ -1890,7 +1890,7 @@ Next battle_redrawCommandMenuWindow_801E1A4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E228 ── */
+/* ── eStruct2035280_DrawMessageMode_801E228 ── */
 /* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
 static void call_dispatch_801DACC(u32 flags) {
     R0 = flags;
@@ -1946,7 +1946,7 @@ static u32 sub_801E228_logic(u32 mode, u32 r4_in, u32 r5_in, u32 r6_in, u32 r7_i
     return 0;
 }
 
-Next sub_801E228(void) {
+Next eStruct2035280_DrawMessageMode_801E228(void) {
     u32 r4_save = R4, r5_save = R5, r6_save = R6, r7_save = R7;
     sub_801E228_logic(R0, r4_save, r5_save, r6_save, r7_save);
     R4 = r4_save;
@@ -2101,9 +2101,9 @@ Next sub_801E5EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E5F8 ── */
+/* ── battle_initSceneStart_801E5F8 ── */
 /* ------------------------------------------------------------------ *
- * Battle scene start-up (sub_801E5F8)
+ * Battle scene start-up (battle_initSceneStart_801E5F8)
  *
  * Resets the per-battle work area at eStruct2035280 and hands control
  * to the scene dispatcher: the navi-status fields are cleared, the
@@ -2129,10 +2129,10 @@ static u32 read_battle_mode(void) {
     return R0;
 }
 
-/* register form: calls sub_813BF1C outside this file, which has no typed C interface yet */
+/* register form: calls eventFlag1720IsSet_813BF1C outside this file, which has no typed C interface yet */
 static u32 sub_813BF1C_result_zero(void) {
-    GUEST_CALL(sub_813BF1C);
-    return ZERO_FLAG();               /* sub_813BF1C answers in the Z flag */
+    GUEST_CALL(eventFlag1720IsSet_813BF1C);
+    return ZERO_FLAG();               /* eventFlag1720IsSet_813BF1C answers in the Z flag */
 }
 
 /* register form: calls eStruct2035280_SetRequestBits_801BECC outside this file, which has no typed C interface yet */
@@ -2165,7 +2165,7 @@ static void init_battle_scene(void) {
 
     /* byte_203529E becomes 1 only when none of the "plain battle" conditions
      * hold: the effects bit being set, a special battle mode, or the
-     * sub_813BF1C check answering zero each force it to 0.  The checks must
+     * eventFlag1720IsSet_813BF1C check answering zero each force it to 0.  The checks must
      * run in this order and stop as soon as one succeeds (they have side
      * effects), so each is nested instead of merged into one condition. */
     u32 special_rule = 0;
@@ -2182,10 +2182,10 @@ static void init_battle_scene(void) {
     dispatch_request(SCENE_REQUEST_BIT);
 }
 
-/* sub_801E5F8() -> r2..r12 all pass through unchanged (r4/r5 are saved and
+/* battle_initSceneStart_801E5F8() -> r2..r12 all pass through unchanged (r4/r5 are saved and
  * restored by the original's push/pop, the rest are never touched); the
  * flags and r0/r1/lr are clobbers. */
-Next sub_801E5F8(void) {
+Next battle_initSceneStart_801E5F8(void) {
     init_battle_scene();
     RETURN_TO_CALLER();
 }
@@ -2296,7 +2296,7 @@ Next comm_checkCrossNetBattleReady_801E754(void) {
 /* ── setByteFieldCapped99_801E828 ── */
 /* setByteFieldCapped99_801E828(r1 = value, r5 = struct pointer):
  * Clamp the byte value to at most 99, store it at [r5+9], then let
- * sub_801E838 refresh whatever depends on it (results and flags are
+ * battle_queueScoreAndTiles_801E838 refresh whatever depends on it (results and flags are
  * whatever that call leaves behind). */
 Next setByteFieldCapped99_801E828(void) {
     u32 value = R1;
@@ -2307,12 +2307,12 @@ Next setByteFieldCapped99_801E828(void) {
     ST8(R5 + 9, value);
     R1 = value;
 
-    GUEST_CALL(sub_801E838);
+    GUEST_CALL(battle_queueScoreAndTiles_801E838);
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E838 ── */
+/* ── battle_queueScoreAndTiles_801E838 ── */
 #define TILE_SIZE              0x20
 #define VRAM_OBJ_TILE_BASE     0x6016E00
 #define VRAM_SCORE_DIGIT_BASE  0x6017300
@@ -2430,9 +2430,9 @@ static void queue_tile_and_score(u32 tile_list, u32 battle_state) {
     queue_gfx_transfer_sub_801E838(FIXED_BG_SRC, FIXED_BG_DST, BG_TILE_SIZE);
 }
 
-/* sub_801E838(r4 = tile_list, r5 = battle_state)
+/* battle_queueScoreAndTiles_801E838(r4 = tile_list, r5 = battle_state)
  * Preserves r4–r7; outputs r0–r3 and flags from the last GFX transfer call. */
-Next sub_801E838(void) {
+Next battle_queueScoreAndTiles_801E838(void) {
     queue_tile_and_score(R4, R5);
     RETURN_TO_CALLER();
 }
@@ -2472,7 +2472,7 @@ Next sub_801E8CC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801EA5A ── */
+/* ── selectPlayerSide_801EA5A ── */
 /* register form: reads the side-select word the caller stashed at sp+8.
  * No typed interface exists for the raw sp access, so we keep it in a
  * tiny register-form helper. */
@@ -2495,7 +2495,7 @@ static void select_player_side(u32 *out_base, u32 *out_pal_base) {
     }
 }
 
-Next sub_801EA5A(void) {
+Next selectPlayerSide_801EA5A(void) {
     u32 r2, r3;
     select_player_side(&r2, &r3);
     R2 = r2;

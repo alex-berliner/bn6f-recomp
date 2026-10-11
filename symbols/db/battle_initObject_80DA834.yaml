@@ -1,0 +1,86 @@
+name: battle_initObject_80DA834
+address: '0x080DA834'
+kind: function
+status: confirmed
+summary: Initializes a battle object—position, collision, HP, palette, state, and first action—then hands
+  off to the action state machine.
+interface: void battle_initObject_80DA834(struct BattleObject *obj /* r5 */); /* r4,r6-r12,lr pass-through;
+  outputs r0-r3,r4-r12,lr,nzcv from sub_80DA886 */
+details: "Called during battle-object spawn. Operates on the object pointed to by r5. Steps in order:\
+  \ (1) Calls object_setCoordinatesFromPanels to place the sprite on the grid. (2) Zeroes obj->Z (oBattleObject_Z).\
+  \ (3) Loads a fixed collision descriptor pair (0x100100C, 0xE0F0300) and calls sub_8011504\n    to build\
+  \ a collision descriptor; the result is passed forward.\n(4) Sets ObjectHeader_Flags bit 1 (active flag).\
+  \ (5) Writes HP = MaxHP = 1 (obj is a single-hit entity). (6) Calls object_setCollisionHitEffect with\
+  \ effect id 0xFF (the \"generic\" hit flash). (7) Calls object_presentCollisionData to register the\
+  \ collision geometry (this also\n    updates r1/r2 in place with refined collision parameters).\n(8)\
+  \ Calls sprite_setUnk0x2c with 0xFF80000 to tint the sprite palette. (9) Sets CurStateActionPhaseAndPhaseInitialized\
+  \ to CUR_STATE_UPDATE (starts the update loop). (10) Reads battle_getFlags(); if bit 0 is set it clears\
+  \ ObjectHeader_Flags bit 2 (index 4)\n     and selects initial action 4, otherwise action 0.\n(11) Writes\
+  \ CurAction, then tail-calls sub_80DA886 (the action-state-machine starter)\n     whose r0-r2/flags\
+  \ become this function's outputs.\nData constants live in a small literal pool at 0x080DAA18-0x080DAA20.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c
+    sub_80DA834
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80DA834
+
+    ./wf verify --function sub_80DA834 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80DA834
+
+    ./wf verify --function sub_80DA834 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 11 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80DA834
+
+    ./wf verify --function sub_80DA834 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: fuzz, menus3, story2, story6, story9.'
+  reproduce: grep -l '^080da834 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80DA834 -> battle_initObject_80DA834
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- fuzz
+- menus3
+- story2
+- story6
+- story9
+open_questions:
+- What game entity (chip animation, obstacle, NetSoul projectile?) uses HP=1 and hit-effect 0xFF?
+- What do battle_getFlags bit 0 and ObjectHeader_Flags bit 2 represent in this context (e.g. 'skip intro'
+  / 'disable collision')?
+- What is sub_80DA886's full role (state-machine entry vs. per-frame tick)?
+- Why are 0x100100C / 0xE0F0300 / 0xFF80000 fixed rather than per-object?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c
+previous_names:
+- sub_80DA834

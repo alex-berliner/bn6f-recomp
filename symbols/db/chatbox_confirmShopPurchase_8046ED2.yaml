@@ -1,0 +1,89 @@
+name: chatbox_confirmShopPurchase_8046ED2
+address: '0x08046ED2'
+kind: function
+status: confirmed
+summary: Chatbox shop state handler that processes the player's OK/confirm press to purchase the currently
+  highlighted chip, item, or Navi Cust Program.
+interface: void chatbox_confirmShopPurchase_8046ED2(u32 r5 /* chatbox state ptr */); returns r0=0; clobbers
+  flags; preserves r5,r6
+details: 'r5 is the chatbox dialog-box state structure. The handler first calls sub_8047134 to refresh
+  the chatbox and checks button flags via chatbox_mask_eFlags2009F38 (0x20 and 0x100 = both confirm buttons;
+  8 = confirm-pressed gate). If the chatbox is busy displaying text (chatbox_get_state_8045F4C != 0),
+  it replays the current script (index 1) and re-enters state 8. Otherwise it reads the selected shop
+  entry from ctx+0x1C (category type) and ctx+0x20 (item data pointer: kind byte at +0, code at +2, param
+  at +4, price at +6). Cost is adjusted: type 1 uses raw price, others multiply by 100 (0x64). It validates
+  the purchase against an obfuscated scrambled counter (checkScrambledCounter_8047366) at ctx+0x28; failure
+  runs script 8 and plays SOUND_CANT_JACK_IN. On success it dispatches by item kind: 2=chip (GiveChips),
+  1=item (GiveItem), else Navi Cust Program (GiveNaviCustPrograms, code+0x90). Availability is checked
+  via sub_8047384 before giving. Type-2 special chips take a separate path storing remaining to ctx+0x2C
+  and entering state 0x28. After a successful purchase it decrements the counter, stores an obfuscated
+  token (storeObfuscatedRandomToken_804733C), records the transaction via sub_8048DAE, updates the displayed
+  code via sub_8047B88 into ctx+0x12, clamps the menu scroll (menu_clampListScrollAfterCountChange_8047CB6),
+  runs a success script (index 7/6/0xC depending on kind), sets ctx+0xD=0xFF (acquisition marker), and
+  plays SOUND_UNK_73. State transitions set ctx[0] to 8, 0x28, or 0x1C depending on outcome.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c
+    sub_8046ED2
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8046ED2
+
+    ./wf verify --function sub_8046ED2 --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8046ED2
+
+    ./wf verify --function sub_8046ED2 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8046ED2
+
+    ./wf verify --function sub_8046ED2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story2.'
+  reproduce: grep -l '^08046ed2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8046ED2 -> chatbox_confirmShopPurchase_8046ED2
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles2
+- story2
+related:
+- GiveItem
+- chatbox_runScript
+open_questions:
+- What does sub_8047134 (initial refresh) actually do to the chatbox state?
+- 'sub_8047384''s semantics beyond Z-flag: what does R1=0xFF mean for items vs R1=param byte?'
+- What is the 'type 2' special-chip path (state 0x28, script 6) used for—likely a one-time or scripted
+  shop encounter?
+- 'Sub_8048DAE: exact structure of the purchase log record (6 inputs passed in non-obvious register slots).'
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3
+previous_names:
+- sub_8046ED2

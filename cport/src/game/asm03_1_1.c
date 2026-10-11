@@ -74,11 +74,11 @@ Next sub_803A7EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803A820 ── */
-/* sub_803A820: scene/sequence init for a battle-related module.
+/* ── battle_moduleInit_803A820 ── */
+/* battle_moduleInit_803A820: scene/sequence init for a battle-related module.
  * Calls a pair of setup helpers, registers two entries (IDs 10/0x26 and 11/0x27),
  * then runs the main init pair with a 0 argument. */
-Next sub_803A820(void) {
+Next battle_moduleInit_803A820(void) {
     GUEST_CALL(sub_803BA64);
     GUEST_CALL(sub_803BA74);
 
@@ -99,14 +99,14 @@ Next sub_803A820(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803A886 ── */
-/* sub_803A886(r0 = step-index field, r1 = countdown field, r5 = object base):
+/* ── objectStepTable_803A886 ── */
+/* objectStepTable_803A886(r0 = step-index field, r1 = countdown field, r5 = object base):
  *   Advance a multi-step table-driven action. If the step index is non-zero,
  *   tick the countdown and step through the {word, byte} pairs at off_803A910
  *   (8 bytes per entry). When the countdown expires, advance the index and
  *   either reload the next countdown from the table or clear both fields if
  *   the table entry's first word is zero (end of sequence). */
-Next sub_803A886(void) {
+Next objectStepTable_803A886(void) {
     u8 index = LD8(R5 + R0);
     SET_FLAGS_NZ(index);
 
@@ -142,13 +142,13 @@ Next sub_803A886(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803AA24 ── */
-/* sub_803AA24: Exit-submenu handler.
+/* ── handleExitSubmenu_803AA24 ── */
+/* handleExitSubmenu_803AA24: Exit-submenu handler.
  * - inputs:  r2, r5, lr
  * - outputs: r5, r10
  * If sub_803C068(0x10, 0x30) returns non-zero (success), clears [r5+0x13],
  * plays the exit-submenu sound, then runs sub_803A84E. */
-Next sub_803AA24(void) {
+Next handleExitSubmenu_803AA24(void) {
     R0 = 0x10;
     R1 = 0x30;
     GUEST_CALL(sub_803C068);
@@ -161,8 +161,8 @@ Next sub_803AA24(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803AA40 ── */
-/* sub_803AA40: dispatch on a battle-object substate byte ([r5+8]).
+/* ── battleObj_dispatchSubstate_803AA40 ── */
+/* battleObj_dispatchSubstate_803AA40: dispatch on a battle-object substate byte ([r5+8]).
  * Inputs:  r2 r4 r5 r10 lr
  * Outputs: r5 r8 r9 r10 r11 r12
  * Clobbers: nz c v r0 r1 r2 r3 lr
@@ -170,7 +170,7 @@ Next sub_803AA24(void) {
  *
  * Reads the substate byte and selects one of eight handlers via a Thumb-target
  * jump table (entries are stored as address|1 so BX switches to Thumb). */
-Next sub_803AA40(void) {
+Next battleObj_dispatchSubstate_803AA40(void) {
     u8 state = LD8(R5 + 8);
     u32 slot;
     if      (state == 0x3F) slot = 0;
@@ -188,8 +188,8 @@ Next sub_803AA40(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803AAA0 ── */
-Next sub_803AAA0(void) {
+/* ── jackInPetMenuSelectState_803AAA0 ── */
+Next jackInPetMenuSelectState_803AAA0(void) {
     /* Try to perform the menu select action (0x30). If it succeeds, play the
      * menu select sound, set state 0x16, and queue the success animation
      * parameters (0x30, 0x70, 0x20) before writing 0x18 to r5+1.
@@ -223,15 +223,15 @@ Next sub_803AAA0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803ABB4 ── */
-/* sub_803ABB4(r2, r5 = some object pointer, lr):
+/* ── shopBuyMenu_confirm_803ABB4 ── */
+/* shopBuyMenu_confirm_803ABB4(r2, r5 = some object pointer, lr):
  * Shop/buy-menu confirm handler. If the object's current cursor index
  * (offset 0x10) is below its stored count (offset 0x24), play the menu
  * select sound, clear offset 0x13, then run the menu-flow callbacks
  * sub_803BF70(0x10, 0x30) and sub_803A85C. Otherwise delegate to
- * sub_803ABDC. Returns nothing on the guest stack; output register r10
+ * markBattleObjCurDone_803ABDC. Returns nothing on the guest stack; output register r10
  * is preserved by the caller contract. */
-Next sub_803ABB4(void) {
+Next shopBuyMenu_confirm_803ABB4(void) {
     u8  cursor     = LD8(R5 + 0x10);
     u16 totalSlots = LD16(R5 + 0x24);
 
@@ -247,17 +247,17 @@ Next sub_803ABB4(void) {
 
         GUEST_CALL(sub_803A85C);
     } else {
-        GUEST_CALL(sub_803ABDC);
+        GUEST_CALL(markBattleObjCurDone_803ABDC);
     }
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803ABDC ── */
-/* sub_803ABDC(r2, r5 = object ptr, lr):
+/* ── markBattleObjCurDone_803ABDC ── */
+/* markBattleObjCurDone_803ABDC(r2, r5 = object ptr, lr):
  * If [r5+8] != 0x3F, play the cur-move sound, clear [r5+0x13] and set
  * [r5+8] = 0x3F (mark this battle object as finished/cur-done). */
-Next sub_803ABDC(void) {
+Next markBattleObjCurDone_803ABDC(void) {
     u8 state = LD8(R5 + 8);
     SET_FLAGS_CMP((u32)state, 0x3F);
     if (!ZERO_FLAG()) {
@@ -272,30 +272,30 @@ Next sub_803ABDC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803AD20 ── */
-/* sub_803AD20: dispatcher for "battle chip select" sub-states.
+/* ── chipSelect_dispatchState_803AD20 ── */
+/* chipSelect_dispatchState_803AD20: dispatcher for "battle chip select" sub-states.
  *
  *   The chip-slot state byte at r5+8 selects one of seven handlers via
  *   the table at off_803AD60; any unrecognised value falls through to
- *   the last entry (sub_803AE98). The original tail-calls the chosen
+ *   the last entry (menuSelectElement_803AE98). The original tail-calls the chosen
  *   handler, so we save the real caller's LR (which GUEST_CALL will
  *   clobber) and restore it before returning. r4-r7 are preserved by the
  *   handlers themselves (AAPCS callee-saved).
  */
-Next sub_803AD20(void) {
+Next chipSelect_dispatchState_803AD20(void) {
     u32 caller_lr = LR;
     u8  state = LD8(R5 + 8);
 
     /* Tail-dispatch to the handler chosen by the state byte. */
     switch (state) {
-    case 0x3F: GUEST_CALL(sub_803AD80); break;
+    case 0x3F: GUEST_CALL(handleMenuAction90_803AD80); break;
     case 0x40: GUEST_CALL(sub_803ADB8); break;
     case 0x3C: GUEST_CALL(sub_803ADDA); break;
     case 0x3A: GUEST_CALL(sub_803AE04); break;
     case 0x3B: GUEST_CALL(sub_803AE2A); break;
     case 0x3D: GUEST_CALL(sub_803AE50); break;
     case 0x3E: GUEST_CALL(sub_803AE78); break;
-    default:   GUEST_CALL(sub_803AE98); break;
+    default:   GUEST_CALL(menuSelectElement_803AE98); break;
     }
 
     /* Restore the real caller's return address before returning. */
@@ -303,8 +303,8 @@ Next sub_803AD20(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803AD80 ── */
-/* sub_803AD80: menu-input handler.
+/* ── handleMenuAction90_803AD80 ── */
+/* handleMenuAction90_803AD80: menu-input handler.
  * Tries to perform action 0x90 (sub_803C248). On success, plays the menu-select cue,
  * triggers a related menu command (0x17), writes sub-menu coords (0x90, 0xD0, 0x20),
  * and sets r5[1] = 0x34. On failure, plays the can't-jack-in cue, triggers 0x15,
@@ -315,7 +315,7 @@ Next sub_803AD20(void) {
  *   clobbers (unused by callers): nz c v r0 r1 r2 r3 lr
  *   preserved: r4 r5 r6 r7 r10
  */
-Next sub_803AD80(void) {
+Next handleMenuAction90_803AD80(void) {
     R0 = 0x90;
     GUEST_CALL(sub_803C248);
     if (ZERO_FLAG()) {
@@ -346,13 +346,13 @@ Next sub_803AD80(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803AE98 ── */
-/* sub_803AE98: Menu "select" handler for some list element (R5 = element).
+/* ── menuSelectElement_803AE98 ── */
+/* menuSelectElement_803AE98: Menu "select" handler for some list element (R5 = element).
  * If element->field_0x11 < element->field_0x26, play a select sound, clear
  * field_0x13, then call sub_803BF70(0x11, 0x90) and sub_803A878().
  * Otherwise, fall through to sub_803AEC0().
  * Outputs r10 (preserved by this function's preserved set). */
-Next sub_803AE98(void) {
+Next menuSelectElement_803AE98(void) {
     u8  current = LD8(R5 + 0x11);
     u16 target  = LD16(R5 + 0x26);
 
@@ -431,7 +431,7 @@ Next sub_803C248(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803C352 ── */
+/* ── initStateBlock_803C352 ── */
 /* Clear the 0x48-byte state block at A_word_2006770, fill two 0x20-byte regions with
  * 0xE5E5 halfwords, write the terminator byte 0xE6 after each region, then call
  * sub_802D150. */
@@ -472,10 +472,10 @@ static void init_state_block(void) {
     call_sub_802D150();
 }
 
-/* sub_803C352: clear & prefill the state block at A_word_2006770, then call sub_802D150.
+/* initStateBlock_803C352: clear & prefill the state block at A_word_2006770, then call sub_802D150.
  * The original's pop {pc} returns directly to the caller, so the C/V outputs are
  * whatever sub_802D150 leaves behind. */
-Next sub_803C352(void) {
+Next initStateBlock_803C352(void) {
     init_state_block();
     RETURN_TO_CALLER();
 }
@@ -752,7 +752,7 @@ Next pet_addCurNaviStat0x3ECapped_803CF3C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803D02C ── */
+/* ── protectZenny_803D02C ── */
 /* register form: calls encryption_zenny_8006f78 outside this file, which has no typed C interface yet */
 static bool call_encryption_78(u32 arg0, u32 arg1, u32 arg2, u32 arg3,
                                u32 arg4, u32 arg5, u32 arg6, u32 arg7,
@@ -790,14 +790,14 @@ static void protect_zenny(u32 arg0, u32 arg1, u32 arg2, u32 arg3,
                        arg4, arg5, arg6, arg7, toolkit);
 }
 
-/* sub_803D02C(r0..r7 = caller state, r10 = Toolkit)
+/* protectZenny_803D02C(r0..r7 = caller state, r10 = Toolkit)
  *   -> r0..r7 preserved, r1 = last callee result, nz/c/v from callee */
-Next sub_803D02C(void) {
+Next protectZenny_803D02C(void) {
     protect_zenny(R0, R1, R2, R3, R4, R5, R6, R7, R10);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803D06C ── */
+/* ── protectedZennyOrZero_803D06C ── */
 /* register form: calls encryption_zenny_8006f78 outside this file, which has no typed C interface yet */
 static bool encrypted_zenny_check_failed(u32 zenny, u32 arg1, u32 toolkit) {
     R0 = zenny; R1 = arg1; R10 = toolkit;
@@ -818,8 +818,8 @@ static u32 protected_zenny_or_zero(u32 zenny, u32 arg1, u32 toolkit) {
     return LD32(game_state + oGameState_ProtectedZenny);
 }
 
-/* sub_803D06C(r0 = zenny, r1 = arg1, r10 = toolkit) -> r0 = protected zenny or 0 */
-Next sub_803D06C(void) {
+/* protectedZennyOrZero_803D06C(r0 = zenny, r1 = arg1, r10 = toolkit) -> r0 = protected zenny or 0 */
+Next protectedZennyOrZero_803D06C(void) {
     R0 = protected_zenny_or_zero(R0, R1, R10);
     RETURN_TO_CALLER();
 }
@@ -885,16 +885,16 @@ Next logoScreen_dispatch_803D1CA(void) {
 
     switch (index) {
     case 0x00: /* logo fade-in / init */
-        GUEST_CALL(sub_803D1FC);
+        GUEST_CALL(logoScreen_init_803D1FC);
         break;
     case 0x04:
         GUEST_CALL(sub_803D24C);
         break;
     case 0x08:
-        GUEST_CALL(sub_803D274);
+        GUEST_CALL(tickLogoScreenFade_803D274);
         break;
     case 0x0C:
-        GUEST_CALL(sub_803D298);
+        GUEST_CALL(logoScreen_handleFade_803D298);
         break;
     case 0x10: /* done -- hand control back to the scene manager */
         GUEST_CALL(logoScreen_finish_803D2A6);
@@ -912,11 +912,11 @@ Next logoScreen_dispatch_803D1CA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803D1FC ── */
-/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+/* ── logoScreen_init_803D1FC ── */
+/* register form: calls toolkit_applyOverlayPalette_80015FC outside this file, which has no typed C interface yet */
 static void call_sub_80015FC(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_80015FC);
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 }
 
 /* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
@@ -999,15 +999,15 @@ static u32 logoScreen_init(u32 state) {
     return fade_mode;
 }
 
-/* sub_803D1FC(r5 = *LogoScreenState) -> r0=4, r4=fade_mode, nz/c/v */
-Next sub_803D1FC(void) {
+/* logoScreen_init_803D1FC(r5 = *LogoScreenState) -> r0=4, r4=fade_mode, nz/c/v */
+Next logoScreen_init_803D1FC(void) {
     R4 = logoScreen_init(R5);
     R0 = 4;
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803D274 ── */
+/* ── tickLogoScreenFade_803D274 ── */
 /* LogoScreenState field offsets */
 #define oLogoScreenState_Index_00_sub_803D274   0   /* u8: dispatch state index */
 #define oLogoScreenState_Counter    4   /* u8: fade countdown */
@@ -1061,15 +1061,15 @@ static u32 logo_fade_tick(u32 state) {
     return FADE_NEXT_DURATION;       /* 0x0C */
 }
 
-/* sub_803D274(r5 = LogoScreenState*) -> (r0, nz c v, r1 r2 r3, lr) */
-Next sub_803D274(void) {
+/* tickLogoScreenFade_803D274(r5 = LogoScreenState*) -> (r0, nz c v, r1 r2 r3, lr) */
+Next tickLogoScreenFade_803D274(void) {
     u32 r0 = logo_fade_tick(R5);
     R0 = r0;
     SET_FLAGS_NZ(r0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803D298 ── */
+/* ── logoScreen_handleFade_803D298 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static u32 call_is_screen_fade_active_sub_803D298(bool *fade_active) {
     GUEST_CALL(IsScreenFadeActive);
@@ -1089,8 +1089,8 @@ static u32 logo_screen_update(u32 self) {
     return 0x10;
 }
 
-/* sub_803D298(r5 = LogoScreenState ptr) -> r0 r1 r3 lr, nz c v */
-Next sub_803D298(void) {
+/* logoScreen_handleFade_803D298(r5 = LogoScreenState ptr) -> r0 r1 r3 lr, nz c v */
+Next logoScreen_handleFade_803D298(void) {
     R0 = logo_screen_update(R5);
     RETURN_TO_CALLER();
 }
@@ -1410,12 +1410,12 @@ Next startScreen_DecrementPressStartPauseAnimationTimer(void) {
 /* ── runPendingWorkIfFlagged_803EA1C ── */
 /* runPendingWorkIfFlagged_803EA1C: service the pending work flagged by byte_200AD04.
  * If notZero_eByte200AD04 reports the flag byte is non-zero, run
- * sub_803F560 to process it; otherwise do nothing. Flags and R0-R3
+ * battle_getLinkStateCode_803F560 to process it; otherwise do nothing. Flags and R0-R3
  * are whatever the (last) callee leaves behind. */
 Next runPendingWorkIfFlagged_803EA1C(void) {
     GUEST_CALL(notZero_eByte200AD04);
     if (R0 != 0)
-        GUEST_CALL(sub_803F560);
+        GUEST_CALL(battle_getLinkStateCode_803F560);
     RETURN_TO_CALLER();
 }
 
@@ -1505,15 +1505,15 @@ Next sub_803EF84(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803EFCC ── */
-/* sub_803EFCC:
+/* ── battle_clearScratchBuffers_803EFCC ── */
+/* battle_clearScratchBuffers_803EFCC:
  *   Clear four small scratch/working buffers used by the battle state
  *   machinery (a 0x20-byte struct at 0x0200AC20, a 0x40-byte one at
  *   0x02009AC0, and two 0x200-byte ones at 0x0200BC70 and 0x0200A010)
  *   by ZeroFillByWord.
  *   No register inputs; clobbers r0, r1, nz. Preserves r2, r3 and the
  *   carry/overflow flags. */
-Next sub_803EFCC(void) {
+Next battle_clearScratchBuffers_803EFCC(void) {
     /* The original does push {lr} / pop {pc}; no stack reservation is
      * used (the buffer is only stored below SP after the call returns),
      * so we just leave the stack alone and return via LR. */
@@ -1590,10 +1590,10 @@ Next notZero_eByte200AD04(void) {
 /* ── tickCountdownGate_803F530 ── */
 /* tickCountdownGate_803F530: countdown gate attached to the flag byte at byte_200AD04.
  *
- * While the flag byte is set, consults sub_803F560 each tick; when it
+ * While the flag byte is set, consults battle_getLinkStateCode_803F560 each tick; when it
  * approves, decrements the halfword counter at 200AD06. The flag byte is
  * rewritten (via setByte_200AD04_803F4EC) either when the counter reaches
- * zero or when sub_803F560 vetoes immediately. On return, the Z flag
+ * zero or when battle_getLinkStateCode_803F560 vetoes immediately. On return, the Z flag
  * reports whether the countdown is still active (r6 == 1 internally means
  * "still counting"); r4/r6 themselves are callee-saved and restored. */
 Next tickCountdownGate_803F530(void) {
@@ -1605,7 +1605,7 @@ Next tickCountdownGate_803F530(void) {
 
     if (R0 != 0) {                      /* flag byte at 200AD04 is set */
         R4 = 1;
-        GUEST_CALL(sub_803F560); /* answers in Z; the original branches on it */
+        GUEST_CALL(battle_getLinkStateCode_803F560); /* answers in Z; the original branches on it */
 
         if (!ZERO_FLAG()) {
             /* Approved: count one step down. */
@@ -1639,8 +1639,8 @@ Next tickCountdownGate_803F530(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803F560 ── */
-/* Result of sub_803F560: the code left in r0, the value left in r1, and the
+/* ── battle_getLinkStateCode_803F560 ── */
+/* Result of battle_getLinkStateCode_803F560: the code left in r0, the value left in r1, and the
  * saved r4/r6/r7 that the original pushes and pops (so they end unchanged). */
 struct sub_803F560_result {
     u32 value;     /* r0: 0xFF / 0x80 / 0 */
@@ -1718,12 +1718,12 @@ static struct sub_803F560_result probe_link_state(u32 entry_r4, u32 entry_r6, u3
     return out;
 }
 
-/* sub_803F560: returns a link-state code in r0 (0xFF, 0x80 or 0).
+/* battle_getLinkStateCode_803F560: returns a link-state code in r0 (0xFF, 0x80 or 0).
  * N/Z come from the code; C/V are clear, as the original's trailing
  * "mov r0,r6" (a flag-setting ADDS with 0) plus TST leave them.
  * r1 varies by path; r2, r3, r5 and r8-r12 keep whatever the callees left;
  * r4/r6/r7 are restored to their entry values. */
-Next sub_803F560(void) {
+Next battle_getLinkStateCode_803F560(void) {
     struct sub_803F560_result out = probe_link_state(R4, R6, R7);
     R0 = out.value;
     R1 = out.r1;
@@ -1734,7 +1734,7 @@ Next sub_803F560(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803F740 ── */
+/* ── link_getSlotState_803F740 ── */
 #define MODE_TABLE_ADDR   0x0803F774u
 #define eLinkState_ADDR   0x20099D0u
 
@@ -1773,8 +1773,8 @@ static ModeLookupResult mode_table_lookup(u32 index) {
     return res;
 }
 
-/* sub_803F740(r0 = link index) -> r0, r1, r2, c, v */
-Next sub_803F740(void) {
+/* link_getSlotState_803F740(r0 = link index) -> r0, r1, r2, c, v */
+Next link_getSlotState_803F740(void) {
     ModeLookupResult res = mode_table_lookup(R0);
     R0 = res.r0;
     R1 = res.r1;
@@ -1989,17 +1989,17 @@ Next save_CommitWorkBufferToGamePak_803FB04(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── cb_803FB3C ── */
-/* cb_803FB3C: Dispatch the S200F348 game-state callback.
+/* ── cb_dispatchS200F348State_803FB3C ── */
+/* cb_dispatchS200F348State_803FB3C: Dispatch the S200F348 game-state callback.
  * Reads the state index from the first byte of eS200F348, jumps to the
  * matching handler (index 0 = init, 4 = playGameOver, 8 = update), then
- * runs the common post-handler sub_803FC14.  r4-r7 are preserved (the
+ * runs the common post-handler renderInfo_applyScrollDelta_803FC14.  r4-r7 are preserved (the
  * original uses push/pop). */
 
-/* register form: calls sub_803FB64 outside this file, which has no typed C interface yet */
+/* register form: calls scene_gameOverSetup_803FB64 outside this file, which has no typed C interface yet */
 static void call_state_init(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_803FB64);
+    GUEST_CALL(scene_gameOverSetup_803FB64);
 }
 
 /* register form: calls playGameOver_803FB9C outside this file, which has no typed C interface yet */
@@ -2008,15 +2008,15 @@ static void call_play_game_over(u32 self) {
     GUEST_CALL(playGameOver_803FB9C);
 }
 
-/* register form: calls sub_803FBC2 outside this file, which has no typed C interface yet */
+/* register form: calls maybeResetStartScreen_803FBC2 outside this file, which has no typed C interface yet */
 static void call_state_update(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_803FBC2);
+    GUEST_CALL(maybeResetStartScreen_803FBC2);
 }
 
-/* register form: calls sub_803FC14 outside this file, which has no typed C interface yet */
+/* register form: calls renderInfo_applyScrollDelta_803FC14 outside this file, which has no typed C interface yet */
 static void call_post_dispatch(void) {
-    GUEST_CALL(sub_803FC14);
+    GUEST_CALL(renderInfo_applyScrollDelta_803FC14);
 }
 
 /* register form: GUEST_CALL callees modify preserved registers as side effects;
@@ -2043,12 +2043,12 @@ static void dispatch_s200f348(void) {
     R7 = saved_r7;
 }
 
-Next cb_803FB3C(void) {
+Next cb_dispatchS200F348State_803FB3C(void) {
     dispatch_s200f348();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803FB64 ── */
+/* ── scene_gameOverSetup_803FB64 ── */
 /* register form: calls chatbox_8040818 outside this file, which has no typed C interface yet */
 static void call_show_chatbox(u32 context, u32 self) {
     R1 = context;
@@ -2056,10 +2056,10 @@ static void call_show_chatbox(u32 context, u32 self) {
     GUEST_CALL(chatbox_8040818);
 }
 
-/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+/* register form: calls toolkit_applyOverlayPalette_80015FC outside this file, which has no typed C interface yet */
 static void call_set_display_mode(u32 mode) {
     R0 = mode;
-    GUEST_CALL(sub_80015FC);
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 }
 
 /* register form: calls copyTileData_803FC64 outside this file, which has no typed C interface yet */
@@ -2117,8 +2117,8 @@ static u32 game_over_setup(u32 self, u32 context_r1) {
     return 0xB4;
 }
 
-/* sub_803FB64(self: r5, context: r1) -> r0=0xB4 */
-Next sub_803FB64(void) {
+/* scene_gameOverSetup_803FB64(self: r5, context: r1) -> r0=0xB4 */
+Next scene_gameOverSetup_803FB64(void) {
     R0 = game_over_setup(R5, R1);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -2190,7 +2190,7 @@ Next playGameOver_803FB9C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803FBC2 ── */
+/* ── maybeResetStartScreen_803FBC2 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active(void) {
     GUEST_CALL(IsScreenFadeActive);
@@ -2236,19 +2236,19 @@ static void maybe_reset_start_screen(void) {
     set_render_info_lcd_control(0x40);
 }
 
-/* sub_803FBC2: THUMB, 0803FBC2 */
-Next sub_803FBC2(void) {
+/* maybeResetStartScreen_803FBC2: THUMB, 0803FBC2 */
+Next maybeResetStartScreen_803FBC2(void) {
     maybe_reset_start_screen();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803FC14 ── */
+/* ── renderInfo_applyScrollDelta_803FC14 ── */
 typedef struct {
     u32 r0, r1, r2, r3;
     u32 cmp_a, cmp_b;
 } Sub803FC14Out;
 
-/* sub_803FC14: refresh the OAM attribute buffer for one frame.
+/* renderInfo_applyScrollDelta_803FC14: refresh the OAM attribute buffer for one frame.
  *
  * Decrements the toolkit's render-info vertical offset (at offset 0x10)
  * by 4 and stores it back, then writes that offset into the decomp
@@ -2309,7 +2309,7 @@ static Sub803FC14Out apply_vram_offset(u32 toolkit_ptr, u32 r1_in) {
     }
 }
 
-Next sub_803FC14(void) {
+Next renderInfo_applyScrollDelta_803FC14(void) {
     Sub803FC14Out out = apply_vram_offset(R10, R1);
 
     R0 = out.r0;

@@ -105,7 +105,7 @@ Next onUpdateInRealWorld_8033A96(void) {
  * Runs the four initialization steps in order:
  *   1. sub_8033B80 with r0 = 0
  *   2. sub_8033F80 with r0 = 0
- *   3. sub_8033C68
+ *   3. updateChipSlotGfx_8033C68
  *   4. sub_8033BE8
  * Register state (r0-r3, flags) after the call is whatever sub_8033BE8 leaves. */
 Next battle_resetState_8033AC4(void) {
@@ -115,7 +115,7 @@ Next battle_resetState_8033AC4(void) {
     R0 = 0;
     GUEST_CALL(sub_8033F80);
 
-    GUEST_CALL(sub_8033C68);
+    GUEST_CALL(updateChipSlotGfx_8033C68);
     GUEST_CALL(sub_8033BE8);
 
     RETURN_TO_CALLER();
@@ -198,7 +198,7 @@ Next doPETEffect_8033fc0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8033FDC ── */
+/* ── resetPetNaviSetup_8033FDC ── */
 /* register form: calls reloadCurNaviStatBoosts_813c3ac outside this file, which has no typed C interface yet */
 static void reload_navi_stat_boosts(void) {
     GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
@@ -235,9 +235,9 @@ static void set_event_flag_range(u32 entry, u32 byte_idx, u32 count) {
     GUEST_CALL(SetEventFlagRangeFromImmediate);
 }
 
-/* register form: calls sub_809F9DC outside this file, which has no typed C interface yet */
+/* register form: calls mysteryData_processMapGroups_809F9DC outside this file, which has no typed C interface yet */
 static void call_sub_809F9DC(void) {
-    GUEST_CALL(sub_809F9DC);
+    GUEST_CALL(mysteryData_processMapGroups_809F9DC);
 }
 
 /* register form: calls SetCurNaviHPToFull outside this file, which has no typed C interface yet */
@@ -255,9 +255,9 @@ static void zero_all_navi_stats_mood(void) {
     GUEST_CALL(ZeroAllNaviStatsMood);
 }
 
-/* register form: calls sub_800A908 outside this file, which has no typed C interface yet */
+/* register form: calls clearBattleStateCounter_800A908 outside this file, which has no typed C interface yet */
 static void call_sub_800A908(void) {
-    GUEST_CALL(sub_800A908);
+    GUEST_CALL(clearBattleStateCounter_800A908);
 }
 
 /* register form: calls sub_8001172 outside this file, which has no typed C interface yet */
@@ -331,13 +331,13 @@ static void reset_pet_navi_setup(u32 toolkit) {
     }
 }
 
-/* sub_8033FDC(r10 = toolkit ptr) — resets PET Nav and clears related event flags */
-Next sub_8033FDC(void) {
+/* resetPetNaviSetup_8033FDC(r10 = toolkit ptr) — resets PET Nav and clears related event flags */
+Next resetPetNaviSetup_8033FDC(void) {
     reset_pet_navi_setup(R10);
     RETURN_TO_CALLER();
 }
 
-/* ── navi_80340F6 ── */
+/* ── endOfSection_NaviSetup_80340F6 ── */
 /* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
 static bool test_event_flag_navi_80340F6(u32 group, u32 bit) {
     R0 = group;
@@ -401,9 +401,9 @@ static void zero_all_navi_stats_mood_navi_80340F6(void) {
     GUEST_CALL(ZeroAllNaviStatsMood);
 }
 
-/* register form: calls sub_800A908 outside this file, which has no typed C interface yet */
+/* register form: calls clearBattleStateCounter_800A908 outside this file, which has no typed C interface yet */
 static void sub_800a908_call(void) {
-    GUEST_CALL(sub_800A908);
+    GUEST_CALL(clearBattleStateCounter_800A908);
 }
 
 /* register form: calls loadGameProgressFromGameProgressBuffer_8035354 outside this file, which has no typed C interface yet */
@@ -412,8 +412,8 @@ static void load_game_progress_from_buffer(u32 slot) {
     GUEST_CALL(loadGameProgressFromGameProgressBuffer_8035354);
 }
 
-/* End-of-section Navi setup tail. Called by the adapter so that sub_800A908's
- * GUEST_CALL leaves the final R0..R3 (and nz/c/v flags) that navi_80340F6
+/* End-of-section Navi setup tail. Called by the adapter so that clearBattleStateCounter_800A908's
+ * GUEST_CALL leaves the final R0..R3 (and nz/c/v flags) that endOfSection_NaviSetup_80340F6
  * returns to its caller -- per the convention, the registers the helper's
  * callee left behind stay there as the function's outputs. */
 static void navi_tail(void) {
@@ -470,7 +470,7 @@ static void navi_80340F6_impl(u32 toolkit_ptr) {
     set_beast_out_counter_to_3();
 }
 
-Next navi_80340F6(void) {
+Next endOfSection_NaviSetup_80340F6(void) {
     navi_80340F6_impl((u32)R10);
     navi_tail();
     RETURN_TO_CALLER();
@@ -542,7 +542,7 @@ Next map_setupEnterMapAfterWarp_803423C(void) {
     /* The warp handler leaves the game state pointer unchanged in r0;
      * the enter-map setup below is given it explicitly. */
     R0 = gameState;
-    GUEST_CALL(sub_8033FDC);
+    GUEST_CALL(resetPetNaviSetup_8033FDC);
 
     /* Update the area music for the new map; it receives whatever r0
      * the previous call returned, exactly as the original does. */
@@ -551,7 +551,7 @@ Next map_setupEnterMapAfterWarp_803423C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80342A4 ── */
+/* ── fadeTimerTick_80342A4 ── */
 /* Offset within the screen-fade state structure (pointed to by R5) */
 #define FADE_PHASE    1
 #define FADE_TIMER    4
@@ -593,8 +593,8 @@ static void fade_timer_tick(u32 fade_state) {
     post_fade_update();               /* final callee sets r0-r3 and flags */
 }
 
-/* sub_80342A4 (r5 = fade state ptr) → void */
-Next sub_80342A4(void) {
+/* fadeTimerTick_80342A4 (r5 = fade state ptr) → void */
+Next fadeTimerTick_80342A4(void) {
     fade_timer_tick(R5);
     RETURN_TO_CALLER();
 }
@@ -626,7 +626,7 @@ Next sub_80342E4(void) {
  * programs the fade-in parameters for arriving on the new map, then
  * runs the warp-entry logic and the navi update step.
  * On entry r10 holds the toolkit pointer; it is copied to r7, which
- * the callees (map_triggerEnterMapOnWarp, navi_80340F6) read. */
+ * the callees (map_triggerEnterMapOnWarp, endOfSection_NaviSetup_80340F6) read. */
 Next map_beginEnterMapOnWarpStep4_80342EC(void) {
     R7 = R10;
 
@@ -648,10 +648,10 @@ Next map_beginEnterMapOnWarpStep4_80342EC(void) {
     R1 = 0x10;
     GUEST_CALL(map_triggerEnterMapOnWarp_8005C04);
 
-    /* navi_80340F6(gameState) — r0 is restored to the game state pointer
+    /* endOfSection_NaviSetup_80340F6(gameState) — r0 is restored to the game state pointer
      * that the previous call may have clobbered. */
     R0 = gameState;
-    GUEST_CALL(navi_80340F6);
+    GUEST_CALL(endOfSection_NaviSetup_80340F6);
 
     RETURN_TO_CALLER();
 }
@@ -701,7 +701,7 @@ Next decompJackInAnimationGfx_8034314(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8034C36 ── */
+/* ── check_playerCanAdvanceForward_8034C36 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active_sub_8034C36(void) {
     GUEST_CALL(IsScreenFadeActive);
@@ -754,14 +754,14 @@ static bool player_advance_allowed(void) {
     return true;
 }
 
-/* sub_8034C36() -> r0 (0 or 1), flags from final MOV */
-Next sub_8034C36(void) {
+/* check_playerCanAdvanceForward_8034C36() -> r0 (0 or 1), flags from final MOV */
+Next check_playerCanAdvanceForward_8034C36(void) {
     R0 = (u32)player_advance_allowed();
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8034C6E ── */
+/* ── playerAdvanceForwardCheck_8034C6E ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active_sub_8034C6E(void) {
     GUEST_CALL(IsScreenFadeActive);
@@ -812,8 +812,8 @@ static u32 can_player_advance_forward(void) {
     return 1;
 }
 
-/* sub_8034C6E() -> r0 (1 or 0), flags nz */
-Next sub_8034C6E(void) {
+/* playerAdvanceForwardCheck_8034C6E() -> r0 (1 or 0), flags nz */
+Next playerAdvanceForwardCheck_8034C6E(void) {
     R0 = can_player_advance_forward();
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -852,7 +852,7 @@ Next IsNotSlipRunningAndNotInCutscene(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8034F68 ── */
+/* ── maybeStartEntranceCutscene_8034F68 ── */
 /* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
 static bool cutscene_script_non_null_sub_8034F68(void) {
     GUEST_CALL(IsCutsceneScriptNonNull);
@@ -911,7 +911,7 @@ static void maybe_start_entrance_cutscene(u32 toolkit_r10, u32 saved_r2) {
     start_cutscene_sub_8034F68(A_CutsceneScriptEntranceInteract_8098384, LD32(slot_addr));
 }
 
-Next sub_8034F68(void) {
+Next maybeStartEntranceCutscene_8034F68(void) {
     /* inputs: r4..r12, lr; outputs: r2, r4..r12 */
     u32 r2_in = R2;
     u32 r10_in = R10;
@@ -1039,7 +1039,7 @@ Next enableGhostNavi_80351C8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803522E ── */
+/* ── handleDriveOutEvents_803522E ── */
 /* register form: calls SetEventFlag outside this file, which has no typed C interface yet */
 static void set_event_flag_sub_803522E(u32 flag) {
     R0 = flag;
@@ -1065,7 +1065,7 @@ static u16 handle_drive_out_events(u32 event) {
     return r1;
 }
 
-Next sub_803522E(void) {
+Next handleDriveOutEvents_803522E(void) {
     u16 r1 = handle_drive_out_events(R0);
     R1 = r1;
     SET_FLAGS_CMP(r1, 0xFF);
@@ -1211,7 +1211,7 @@ Next initGameProgressBuffer_803532c(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8035424 ── */
+/* ── battle_loadDeathAnims_8035424 ── */
 /* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
 static bool event_28_active(void) {
     R0 = 0;
@@ -1242,7 +1242,7 @@ static void gate_load_death_gfx_anims(void) {
     load_gfx_anims(A_off_8035448);
 }
 
-Next sub_8035424(void) {
+Next battle_loadDeathAnims_8035424(void) {
     gate_load_death_gfx_anims();
     RETURN_TO_CALLER();
 }

@@ -1,0 +1,115 @@
+name: queueGFXTransfersFromTable_811EC68
+address: '0x0811EC68'
+kind: function
+status: confirmed
+summary: Builds the per-frame GFX transfer list in the staging buffer at unk_20096E0 (packing two source-table
+  entries via sub_811FB84, then appending the trailing off_811ECB4 table verbatim) and submits it via
+  QueueGFXTransfersInList.
+interface: void sub_811EC68(void /* uses r10/lr as inputs per lifter, no meaningful args */)
+details: 'Walks a small packed source table at off_811ECFC containing two records of 4 words each
+
+  { src, size, dest, size }; for each it calls sub_811FB84(src, size) to compute a
+
+  "packed" 32-bit header (returned in r0) and writes it into the staging buffer at
+
+  unk_20096E0, followed by the trailing two words { dest, size } of that record copied
+
+  verbatim. The first loop is bounded by srcOff < 0x20 (exactly two records, matching
+
+  the 0x20-byte table). Then it appends a second table at off_811ECB4 word-for-word
+
+  until a NULL terminator (off_811ECB4 lists five { ptr, dst, size } triples plus NULL,
+
+  pointing at VRAM regions like 0x600D000/0x340, 0x600D340/0xB40, 0x6016E80/0x180,
+
+  0x6017000/0x160 plus a small OBJ/unk_3001B10 region). Finally it passes the
+
+  staging buffer to QueueGFXTransfersInList, which presumably kicks off DMA into the
+
+  queued VRAM/OBJ/OAM regions for the upcoming frame.
+
+  Quirks: register form really is just a staged-DMA build; the function takes no
+
+  arguments and returns nothing. The lifter flags nz as clobbered because the tail
+
+  `tst r0, r0` (r0 = the NULL terminator) sets Z.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-003727);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c
+    sub_811EC68
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811EC68
+
+    ./wf verify --function sub_811EC68 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-003727-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811EC68
+
+    ./wf verify --function sub_811EC68 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003727-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811EC68
+
+    ./wf verify --function sub_811EC68 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003727-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0811ec68 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp bdefe69
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811EC68 -> queueGFXTransfersFromTable_811EC68
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What sub_811FB84 actually computes (some kind of packed source/size header, possibly 1bpp/4bpp bitmap
+  or tile-count encoding); its return value is opaque here.
+- Who calls this and when (looks like a per-frame GFX loader, probably the battle or scene transition
+  setup).
+- Exact layout/meaning of the staging list entry expected by QueueGFXTransfersInList.
+sources:
+- tools/wf run convert-20261011-003727
+- recomp bdefe69
+previous_names:
+- sub_811EC68

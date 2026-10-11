@@ -1,0 +1,97 @@
+name: setupNaviDisplay_802C34E
+address: '0x0802C34E'
+kind: function
+status: confirmed
+summary: Build the per-navi display struct from the current battle slot and queue all associated portrait,
+  tile-sheet, background and PET-chip GFX transfers for the navi info screen.
+interface: void setupNaviDisplay_802C34E(u32 r0 /*naviAttributeBase*/, u32 r10 /*toolkit*/, int /*lr*/);
+  preserves r4-r7; clobbers r0-r3, NZCV, lr
+details: "Reads the current navi slot from oBattleState_Unk_0d (offset 0x0D of the battle-state ptr stored\
+  \ at oToolkit_BattleStatePtr in the toolkit), indexes a 12-byte-per-entry attribute array (12 = '0xc')\
+  \ passed in r0, and copies selected bytes/dwords into the 32-byte navi display struct at eS20364C0 (offsets\
+  \ +0x04 sprite-selector, +0x08 palette/sub-type, +0x0D flag, +0x14 and +0x1C tile-data words). The two\
+  \ halfwords at +0x14/+0x16 are then pushed to eStruct200A008 via setUnk04/setUnk06. Writes 'BATTLEDISPLAY_FLAG\
+  \ 0xE2' to +0x06 to flag the struct as active. After zero-filling the struct it:\n  • Picks a tile-sheet\
+  \ source from TILE_SRC_TABLE indexed by the sprite-selector byte and CopyByEightWords copies 0x360 bytes\
+  \ into the EWRAM staging buffer unk_2034B30.\n  • Reads a 12-byte (src, VRAM-dest, size) entry from\
+  \ off_802C3FC indexed by the same byte and queues the portrait GFX.\n  • Queues the fixed background\
+  \ tile transfer from off_802C424 (src dword_8732814 → unk_3001A80, 0x60 bytes, no scaling – R0*0x60+R1\
+  \ path uses R0=0).\n  • Queues the extra tile-sheet transfer from off_802C448 (src dword_8732874 → 0x6009400,\
+  \ 0x5E0 bytes).\n  • Calls GetCurPETNavi + getIndexed80hRecordPtr_8028164 and queues 0x80 bytes to VRAM\
+  \ 0x6014000.\n  • Calls GetCurPETNavi + getPermutedRecord32_8028172 and queues 0x20 bytes to WRAM 0x30016B0.\n\
+  Notable quirk: the first QueueEightWordAlignedGFXTransfer computes R0 = 0*0x60 + LD32(BG_XFER_ENTRY),\
+  \ i.e. the R0 mul-add path is dead code – the BG transfer always reads the entry's first word as the\
+  \ source.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c
+    sub_802C34E
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802C34E
+
+    ./wf verify --function sub_802C34E --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802C34E
+
+    ./wf verify --function sub_802C34E --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802C34E
+
+    ./wf verify --function sub_802C34E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802c34e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_802C34E -> setupNaviDisplay_802C34E
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which navi info screen / battle-state phase calls this (slot value at oBattleState_Unk_0d)?
+- What is the meaning of attribute bytes 0,1,3 and the two dwords at +4/+8 (sprite/palette/tile data)?
+- Why is the index for the BG transfer hard-loaded to 0 instead of using the navi type like the portrait
+  table?
+- What exactly lives in eS20364C0 + the eStruct200A008 "Unk04/Unk06" setters that the two halfwords feed?
+- Do the two GFX transfers for 80h chip data and the permuted record target any other battle UI, or only
+  this navi display?
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
+previous_names:
+- sub_802C34E

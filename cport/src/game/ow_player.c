@@ -88,7 +88,7 @@ Next calledWhenUsingSlipRun_809D6BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809D75E ── */
+/* ── ow_player_processAction_809D75E ── */
 /* Offsets within the animation/event struct at eStruct200ace0 (0x200ACE0). */
 #define oAnimState_TransitionFlag      0x01
 #define oAnimState_PendingAnimation    0x1C
@@ -152,8 +152,8 @@ static u32 ow_player_process_action(u32 player_obj, u32 toolkit) {
     return call_set_jumptable(0x10, game_state);
 }
 
-/* sub_809D75E(r5 = player object, r10 = toolkit) -> r0, nz, c, v */
-Next sub_809D75E(void) {
+/* ow_player_processAction_809D75E(r5 = player object, r10 = toolkit) -> r0, nz, c, v */
+Next ow_player_processAction_809D75E(void) {
     R0 = ow_player_process_action(R5, R10);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -222,7 +222,7 @@ Next event_TestPlayerAdvanceForward_809DB50(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DB60 ── */
+/* ── owPlayerInputTick_809DB60 ── */
 /* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
 static bool event_flag_set_u16(u16 bank, u16 flag) {
     R0 = bank;
@@ -231,11 +231,11 @@ static bool event_flag_set_u16(u16 bank, u16 flag) {
     return !ZERO_FLAG();          /* !Z if the flag is set */
 }
 
-/* register form: calls sub_809DBC4 outside this file, which has no typed C interface yet */
+/* register form: calls createOWPlayerInteractionArea_809DBC4 outside this file, which has no typed C interface yet */
 static void call_809DBC4(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
-    GUEST_CALL(sub_809DBC4);
+    GUEST_CALL(createOWPlayerInteractionArea_809DBC4);
 }
 
 /* Run the player's overworld input/animation tick:
@@ -273,13 +273,13 @@ static void ow_player_input_tick(u32 player_r5, u32 toolkit_r10) {
     ST32(player_r5 + oOWPlayerObject_Unk_50, 0);
 }
 
-Next sub_809DB60(void) {
+Next owPlayerInputTick_809DB60(void) {
     /* r5 must be preserved (per contract). */
     ow_player_input_tick(R5, R10);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DBC4 ── */
+/* ── createOWPlayerInteractionArea_809DBC4 ── */
 /* register form: calls createOWObjectInteractionArea_80037ac outside this file,
  * which has no typed C interface yet */
 static void call_create_ow_interaction_area(s32 world_x, s32 world_y, s32 world_z,
@@ -320,8 +320,8 @@ static void setup_ow_player_interaction_area(u32 area_ptr, u32 output_ptr,
                                     output_ptr, area_ptr);
 }
 
-/* sub_809DBC4(r0 = interaction-area struct, r1 = output handle ptr, r5 = player object) */
-Next sub_809DBC4(void) {
+/* createOWPlayerInteractionArea_809DBC4(r0 = interaction-area struct, r1 = output handle ptr, r5 = player object) */
+Next createOWPlayerInteractionArea_809DBC4(void) {
     setup_ow_player_interaction_area(R0, R1, R5);
     /* r1, r2, r4, r6, r7, c, v left in registers by the callee's GUEST_CALL; r5 preserved */
     RETURN_TO_CALLER();
@@ -354,7 +354,7 @@ Next owPlayer_TickCountdownOrWait_809DDCC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DDF0 ── */
+/* ── oowExitSlipRun_809DDF0 ── */
 /* Event flags (page 0x17) used by this routine */
 #define FLAG_PAGE_sub_809DDF0                  0x17
 #define FLAG_EVENT_1716            0x16
@@ -418,13 +418,13 @@ static void sliprun_state_exit(u32 player) {
     run_sliprun_transition();
 }
 
-/* sub_809DDF0(r5 = player object) → r0-r3, r6, r7, nz, c, v, lr */
-Next sub_809DDF0(void) {
+/* oowExitSlipRun_809DDF0(r5 = player object) → r0-r3, r6, r7, nz, c, v, lr */
+Next oowExitSlipRun_809DDF0(void) {
     sliprun_state_exit(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DE30 ── */
+/* ── endSlipRunState_809DE30 ── */
 /* Event-flag page byte used by all four flags in this routine */
 #define FLAG_PAGE_sub_809DE30           0x17u
 #define EVENT_1716_BYTE     0x16u   /* gate: must be set to proceed */
@@ -469,12 +469,12 @@ static void end_sliprun_state(void) {
     flag_clear(FLAG_PAGE_sub_809DE30, EVENT_173E_BYTE);
 }
 
-Next sub_809DE30(void) {
+Next endSlipRunState_809DE30(void) {
     end_sliprun_state();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DED4 ── */
+/* ── ow_gatePendingTileInteraction_809DED4 ── */
 /* register form: calls TestPETMenuDataFlag outside this file, which has no typed C interface yet */
 static bool pet_menu_data_flag_set(u32 flag) {
     R0 = flag;
@@ -518,8 +518,8 @@ static u32 ow_gate_tile_interaction(u32 player_obj) {
     return ow_try_tile_interaction(table_offset, player_obj);
 }
 
-/* sub_809DED4(r5 = player-object pointer) -> r0; flags left by callees */
-Next sub_809DED4(void) {
+/* ow_gatePendingTileInteraction_809DED4(r5 = player-object pointer) -> r0; flags left by callees */
+Next ow_gatePendingTileInteraction_809DED4(void) {
     R0 = ow_gate_tile_interaction(R5);
     RETURN_TO_CALLER();
 }
@@ -1192,7 +1192,7 @@ Next resetStruct2000aa0State_809E3B2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809E3D6 ── */
+/* ── clampPlayerPosition_809E3D6 ── */
 /* Clamp the overworld player object's position against the bounding box held in
  * the eStruct2000aa0 structure. Reads through the toolbox to find the player
  * object, then pushes primary/secondary coordinates towards the limits stored
@@ -1240,7 +1240,7 @@ static void clamp_player_position(u32 toolbox_ptr) {
     }
 }
 
-Next sub_809E3D6(void) {
+Next clampPlayerPosition_809E3D6(void) {
     clamp_player_position(R10);
     RETURN_TO_CALLER();
 }

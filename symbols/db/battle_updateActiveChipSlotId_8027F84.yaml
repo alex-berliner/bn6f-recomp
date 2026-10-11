@@ -1,0 +1,111 @@
+name: battle_updateActiveChipSlotId_8027F84
+address: '0x08027F84'
+kind: function
+status: probable
+summary: Looks up and stores the chip ID for the currently highlighted battle-chip slot, with a special
+  swap for slots 5/9.
+interface: "void sub_8027F84(u32 r6_slotIndex, void* r7_chipSlotStruct);\n  // in: r6 = slot index (0..11,\
+  \ can be 0xA for out-of-range), r7 -> chip slot struct\n  //   r7[0] = slot byte (compared against 5\
+  \ and 9)\n  //   r7[2] = chip ID field (read for getLocOfActiveChips lookup, written on exit)\n  //\
+  \ out: r7[2] updated to either the looked-up chip ID or 0xFF clamp\n  // clobbers: r0, r1, r6, r7, LR,\
+  \ flags N Z C V\n  // preserved: r4\n"
+details: "Uses [r7+2] (chip pointer kind) to call getLocOfActiveChips_8027E1C and inspect\nthe active\
+  \ chip kind byte. Only acts when kind is 0xA or 0xB; otherwise\nreturns without writing [r7+2].\n\n\
+  Selects a pointer table:\n  - kind == 0xA: r6 == 0xA uses off_802A7FC (A-table). r6 in 5..9 uses\n \
+  \   byte_802A804 (B-table) and may subtract 1 from r6 if [r7] == 5 or 9.\n    r6 < 5 still uses the\
+  \ A-table.\n  - kind == 0xB: always uses byte_802A804, with the same [r7] == 5 or 9\n    -> r6 -= 1\
+  \ swap.\n\nThe final index into chip_slot_table[12] (byte_8027FD0) is r6 (possibly\nswapped), added\
+  \ to the chosen base, and passed to sub_8028034. If\nsub_8028034 returns the same slot index unchanged,\
+  \ the ID is clamped to\n0xFF. Otherwise the returned byte is stored into [r7+2].\n\nTouched data:\n\
+  \  - byte_8027FD0: 12-entry chip slot index table\n    (07 06 05 04 02 11 10 0F 07 01 00 00).\n  - off_802A7FC\
+  \ / byte_802A804: chip-pointer tables (A and B variants).\n  - r7 structure: byte[0] = slot tag, byte[2]\
+  \ = chip pointer index.\n\nQuirks: the B-table branch uses `sub r6, #1` before the lookup, so the\n\
+  effective index fed into chip_slot_table is one less than the original\nslot when the swap applies.\
+  \ Behavior for r6 >= 0xA (e.g. exactly 0xA is\nhandled via the A-table early-out; values above 0xA read\
+  \ past\nchip_slot_table but are bounded by the chip-kind checks above).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-001226);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 48' --file inbox_farm_48.c
+    sub_8027F84
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8027F84
+
+    ./wf verify --function sub_8027F84 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    176 out of domain (verify run convert-20261011-001226-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8027F84
+
+    ./wf verify --function sub_8027F84 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-001226-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8027F84
+
+    ./wf verify --function sub_8027F84 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001226-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08027f84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp a6b6c1a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm03_0.c after review against the assembly (the lifted
+    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
+    differs from the original: Chip kind 0xB takes the wrong path. In the asm, kind 0xA and kind 0xB both
+    branch to loc_8027F98 (`cmp r0,#0xa; beq loc_8027F98; cmp r0,#0xb; bne locret`). There `ldr r0,=off_802A7FC;
+    cmp r6,#0xa; beq loc_8027FB0; cmp r6,#5; blt loc_8027FB0` keeps base off_802A7FC and r6 unchanged
+    when r6==0xA or r6<5. The C runs those r6 checks only for kind 0xA. Its else branch, kind 0xB, does
+    `base = A_byte_802...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8027F84 -> battle_updateActiveChipSlotId_8027F84
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What sub_8028034 actually does — it returns either a looked-up chip ID or echoes the index, which suggests
+  a "pick next selectable chip" walk.
+- Exact meaning of the 0xA/0xB chip-pointer kinds (likely folder A vs. folder B / custom-board split,
+  but not confirmed).
+- Semantics of the slot-byte 5/9 swap (paired slot rearrangement?).
+sources:
+- tools/wf run convert-20261011-001226
+- recomp a6b6c1a
+previous_names:
+- sub_8027F84

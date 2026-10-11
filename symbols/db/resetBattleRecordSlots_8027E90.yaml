@@ -1,0 +1,93 @@
+name: resetBattleRecordSlots_8027E90
+address: '0x08027E90'
+kind: function
+status: confirmed
+summary: Initializes the 12-entry battle-record slot array from a ROM template and sets the panel-mode/panel-flag
+  header bytes based on the current battle mode.
+interface: 'void resetBattleRecordSlots_8027E90(u32* slotArray)  // in: r4=slot array base; clobbers r0..r3,
+  r6, lr; preserves r4, r5; sets NZCV'
+details: "Clears 12 slots of size 0xC at the pointer in r4, copying a 4-byte panel-id pointer\nfrom each\
+  \ entry of the ROM template table at dword_802A7CC into slot[+0] and zeroing\nslot[+4] and slot[+8].\
+  \ Then branches on the result of GetBattleMode():\n  * If mode == 1 (single-player): only when BATTLE_CONFIG_PTR+0x4\
+  \ (a \"0/non-zero\" flag\n    at byte_20349A4) is zero, writes 3 to slot_array[0x84] (PANEL_MODE).\n\
+  \  * Otherwise: if sub_8029FB4() returns true, writes 2 to slot_array[0x84] and\n    sub_802A57E()'s\
+  \ truth value (inverted: true->0, false->1) to slot_array[0x8B]\n    (PANEL_FLAG).\nr6 is used purely\
+  \ as a scratch byte for the second-branch flag. The final return value\nis the address one past the\
+  \ last slot (r4 + 12*0xC).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-001226);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 48' --file inbox_farm_48.c
+    sub_8027E90
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8027E90
+
+    ./wf verify --function sub_8027E90 --snapshots build-snapshots'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-001226-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8027E90
+
+    ./wf verify --function sub_8027E90 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-001226-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8027E90
+
+    ./wf verify --function sub_8027E90 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-001226-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08027e90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp a6b6c1a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8027E90 -> resetBattleRecordSlots_8027E90
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What sub_8029FB4 and sub_802A57E test (team/mode/result condition driving the panel flag).
+- Meaning of the BATTLE_CONFIG_PTR+0x4 byte in the single-player branch (likely a "panel mode already
+  set" / "use default" gate, since the write is skipped when nonzero).
+- What the 4-byte pointer copied from dword_802A7CC actually points to (per-panel sprite/ navi setup template).
+sources:
+- tools/wf run convert-20261011-001226
+- recomp a6b6c1a
+previous_names:
+- sub_8027E90

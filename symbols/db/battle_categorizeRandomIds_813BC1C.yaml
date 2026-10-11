@@ -1,0 +1,103 @@
+name: battle_categorizeRandomIds_813BC1C
+address: '0x0813BC1C'
+kind: function
+status: confirmed
+summary: Picks seven random IDs, classifies the corresponding toolkit objects by type, and writes them
+  into two global target arrays (unk_2006CC0 for type-1/2, unk_2006CF8 for other types), while incrementing
+  per-ID occurrence counters for type-1 objects in a caller-supplied byte array.
+interface: void battle_categorizeRandomIds_813BC1C(void *byte_array_ptr /* r0 */) — preserves r4-r7; clobbers
+  r0-r3, flags, lr
+details: 'Allocates a 24-byte stack frame holding seven sentinel bytes (0xFF) used as a "already-seen"
+  set. For each slot idx from 6 down to 0, calls get_random_id(idx, 3) (sub_813B9B4) to obtain a candidate
+  ID. Duplicates and zero IDs are skipped. Non-zero IDs are stored in the seen-set, then resolved through
+  toolkit_getUnk2004190EntryPtr_813B9FC(id-1) to get a 16-bit flag word; if the flag is zero the ID is
+  discarded. The flag is fed to sub_813B780 which returns an object pointer. The object''s type byte (offset
+  +1) determines routing: type 1 writes the ID into unk_2006CC0[idx] AND increments the occurrence counter
+  at byte_array_ptr + object.offset (+4); type 2 writes into unk_2006CC0[idx]; all other types write into
+  unk_2006CF8[idx]. The caller-provided byte_array_ptr (r0, saved at sp+0x1c) is a per-ID counter table
+  that tracks how many times each type-1 object has been selected. Two literal-pool pointers (off_813BD20
+  / off_813BD18) resolve to unk_2006CC0 and unk_2006CF8 respectively.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c
+    sub_813BC1C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_813BC1C
+
+    ./wf verify --function sub_813BC1C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_813BC1C
+
+    ./wf verify --function sub_813BC1C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_813BC1C
+
+    ./wf verify --function sub_813BC1C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0813bc1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_813BC1C -> battle_categorizeRandomIds_813BC1C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What game subsystem calls this — Dark Area random encounter, shop restock, or NaviCust selection?
+- What do unk_2006CC0 and unk_2006CF8 represent (two candidate lists for what feature)?
+- get_random_id passes 3 as a 'count' parameter to sub_813B9B4 — what does that parameter select (pool
+  size? RNG range?)
+- What is the exact layout of the object returned by sub_813B780 (fields at +1 type, +4 offset into counter
+  array)?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c
+previous_names:
+- sub_813BC1C

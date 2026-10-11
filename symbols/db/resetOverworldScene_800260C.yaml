@@ -1,0 +1,93 @@
+name: resetOverworldScene_800260C
+address: '0x0800260C'
+kind: function
+status: confirmed
+summary: Resets overworld scene state by zeroing OAM and sound RAM, then reinitializing player/NPC/map
+  object structs, sprite variables, and a small RAM buffer.
+interface: void resetOverworldScene_800260C(void)
+details: "Called once on a fresh scene/load. Performs the following in order:\n  * ZeroFillByEightWords(0x07000000,\
+  \ 0x400) - clears OAM (sprites/affine).\n  * ZeroFillByEightWords(0x06010000, 0x8000) - clears sound\
+  \ RAM region (DirectSound buffers).\n  * copy_8002668 - extra copy/loader helper (palette/VRAM setup;\
+  \ unknown exact role).\n  * InitializeOWPlayerObjectStruct - zeroes the player overworld object struct.\n\
+  \  * InitializeOverworldNPCObjectStructs - zeroes NPC object structs.\n  * InitializeOverworldMapObjectStructs\
+  \ - zeroes map object structs.\n  * sprite_resetObjVars_800289C - resets sprite engine variables.\n\
+  \  * ZeroFillByByte(unk_200F388, 7) - clears a 7-byte RAM buffer at 0x0200F388.\nOnly lr is consumed\
+  \ as input; r4/r7 are preserved across the call. No return value, no flags\nset on return. Quoted addresses:\
+  \ \"0x07000000\", \"0x400\", \"0x06010000\", \"0x8000\",\n\"unk_200F388:7 bytes\".\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c
+    copy_800260C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function copy_800260C
+
+    ./wf verify --function copy_800260C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function copy_800260C
+
+    ./wf verify --function copy_800260C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function copy_800260C
+
+    ./wf verify --function copy_800260C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0800260c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename copy_800260C -> resetOverworldScene_800260C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What exactly does copy_8002668 do (palette/VRAM/tilemap copy)?
+- What is the 7-byte unk_200F388 buffer used for (flag/state field for overworld init)?
+- Is this called only on title/new-game or also on map transitions?
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f
+previous_names:
+- copy_800260C

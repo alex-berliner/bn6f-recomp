@@ -1,0 +1,130 @@
+name: fillOamTileStripes_8001930
+address: '0x08001930'
+kind: function
+status: confirmed
+summary: Fills a stripe of OAM attribute pairs (two linked rows per row index) with consecutive tile IDs.
+interface: "void sub_8001930(u32 tile_id_base /* r0, low 12b */,\n                 u32 high_bits /* r1,\
+  \ placed into bits 12+ */,\n                 u32 stride_entries /* r2, multiplied by 4 to get byte stride\
+  \ */,\n                 s32 strip_count /* r3, decremented; 0 loops again, <0 means loop again */,\n\
+  \                 OamEntry* dst /* r4 */);\n// clobbers nz c v r0 r1 r2 r3; preserves r4 r5 r6 r7; returns\
+  \ via lr.\n"
+details: 'Builds an OAM-region tile-ID table where each "slot" is actually a pair
+
+  of OAM entries (4 bytes each, i.e. attr0/attr1 or attr2/attr3 depending
+
+  on the OAM table layout in use). For each step of the inner loop it
+
+  advances four consecutive tile IDs and writes them as two
+
+  halfword pairs: the first pair at the running row cursor, the second
+
+  pair at the same cursor offset by `stride` (i.e. the partner row that
+
+  shares this row index in the typical battle OAM pairing).
+
+
+  The outer control is unusual: after the inner cursor finishes one
+
+  "stride" of 4-byte entries (checked by `cmp r5, r2` -> `blt`), r3 is
+
+  decremented and the code branches back to `loc_800193A` if r3 went
+
+  negative (`sub r3,#1` / `blt`). The effect is that an r3 of 0 means
+
+  "loop once more" (because 0-1 underflows to negative and re-branches),
+
+  while r3 >= 1 (originally 1 -> 0 after decrement) falls through to
+
+  the `pop`. Callers therefore pass r3 = 0 to fill a single strip and
+
+  bail; passing 1 or more keeps looping.
+
+
+  Inputs are split deliberately: tile_id_base is the low 12 bits of the
+
+  tile ID, high_bits provides the upper bits (palette/bank/rot-scaling
+
+  flag depending on OAM mode), so callers don''t have to assemble the
+
+  full ID themselves. r4 is preserved across the call (used as the
+
+  destination base only via push/pop), so it survives as the user''s
+
+  pointer.
+
+
+  No flags are meaningfully communicated to the caller; the only
+
+  preserved register of interest is r4 (dst pointer).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed;
+  tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file
+    inbox_farm_old_2.c sub_8001930
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8001930
+
+    ./wf verify --function sub_8001930 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    268 out of domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8001930
+
+    ./wf verify --function sub_8001930 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 6 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8001930
+
+    ./wf verify --function sub_8001930 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^08001930 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8001930 -> fillOamTileStripes_8001930
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- Which OAM table (OBJ/affine) is the second-row offset (`row_cursor + stride`) intended for? It matches
+  the battle/field "OAM doubled per row" layout used elsewhere in the engine, but the caller decides whether
+  the second pair is attr0/1 or attr2/3.
+- The `sub r3,#1` / `blt` pattern is awkward; is r3 really meant as a trip count (>=1 = loop N times)
+  or was 0 a sentinel for "one strip"? Worth tagging whichever caller is the canonical invoker.
+- high_bits is shifted by 12 but no mask is applied before OR; callers must have already cleared the low
+  12 bits of r1. Confirm against call sites.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c
+previous_names:
+- sub_8001930

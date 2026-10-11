@@ -1,0 +1,124 @@
+name: battle_queueScoreAndTiles_801E838
+address: '0x0801E838'
+kind: function
+status: confirmed
+summary: Battle graphics helper that queues VRAM OBJ-tile transfers from a 5×4 source-tile list, optionally
+  draws a 2-digit BCD score into the score-digit tile area, and always copies a fixed background tile.
+interface: void sub_801E838(u32 tile_list /* r4 */, u32 battle_state /* r5 */); // preserves r4–r7; clobbers
+  r0–r3, NZCV from final QueueEightWordAlignedGFXTransfer
+details: 'Walks a u32 source-tile pointer list at r4 (treated as r4+4 cursor in r7), performing
+
+  5 outer × 4 inner = 20 tile-pair transfers via QueueEightWordAlignedGFXTransfer
+
+  into the OBJ tile region at 0x6016E00. Inner loop walks cursor r7; when the entry
+
+  is the "null-tile" sentinel at byte_801FDC0, the cursor is NOT advanced and that
+
+  tile is re-issued (i.e. repeats the last real entry). Each pair transfers 32 B
+
+  (0x20) at the cursor source, then 32 B at src+0x20 → dest+0x80, giving the two
+
+  8×8 rows of one OBJ tile slot, after which the OBJ dest advances 0x20; the outer
+
+  loop then jumps 0x80 to skip to the next group. After the 5 groups, if
+
+  battle_state[+8] (BS_DISPLAY_MODE) == 1, a 16-bit score-data word is read from
+
+  the next list entry and written to battle_state[+4] (BS_SCORE_DATA), the BCD score
+
+  byte at battle_state[+9] (BS_BCD_SCORE) is converted to binary by
+
+  memory_bcdConvert, split into tens/ones, and four 0x20 transfers queue the two
+
+  digit tiles (looked up by index into the u32 table at off_801FD64, with index 10
+
+  used as a "0" for the tens place when score < 10) into the score-digit VRAM
+
+  region 0x6017300; the tens==0 case also subtracts 4 from BS_SCORE_DATA to
+
+  left-shift the digit graphics. Finally, a fixed 0x20-byte copy from
+
+  byte_86F2900 → byte_30016B0 is always queued. QueueEightWordAlignedGFXTransfer
+
+  is the only GFX-queue primitive used.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c
+    sub_801E838
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801E838
+
+    ./wf verify --function sub_801E838 --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    280 out of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801E838
+
+    ./wf verify --function sub_801E838 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801E838
+
+    ./wf verify --function sub_801E838 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0801e838 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_801E838 -> battle_queueScoreAndTiles_801E838
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the null-tile sentinel at byte_801FDC0 supposed to be (a "leave previous tile in place" marker,
+  or an end-of-list terminator with off-by-one)?
+- Which battle-state struct owns fields at offsets 4 / 8 / 9, and what is the wider battle context (this
+  routine's lack of a state-machine index in the argument list suggests it is called from a known state
+  for, e.g., the result-screen or battle-end panel)?
+- What is the player-visible scenario for "mode == 1" – is the BCD byte [0x00,0x99] a turn count, victory
+  point, damage total, or something else?
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
+previous_names:
+- sub_801E838

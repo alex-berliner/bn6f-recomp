@@ -1,0 +1,88 @@
+name: submenu_HandleInput_8127B18
+address: '0x08127B18'
+kind: function
+status: confirmed
+summary: 'Submenu screen input handler: B cancels/exits (with fade), A activates (when state allows),
+  Start toggles, and held-input refresh redraws the background.'
+interface: "void submenu_HandleInput_8127B18(/*in*/ u32 submenuStatePtr in r5,\n                     \
+  \              /*in*/ u32 toolkitPtr in r10,\n                                   /*in*/ u32 ignored\
+  \ in r2,\n                                   /*out/clobber*/ r4 r5 r6 r7 r8 r9 r10 r11 r12 + nz c v)\n"
+details: "Dispatches B/A/Start plus a refresh-on-held-input tail for one submenu screen whose state\n\
+  struct lives at r5 and whose toolkit ptr is r10. Field r5+0x1E is a \"can-activate\" gate; the\nfunction\
+  \ only honors A/Start/refresh when it is non-zero, while B always cancels.\n  - JOYPAD_B -> submenu_ConfirmExitAndFade_811FB64(8):\
+  \ back out and trigger a fade-out (value 8\n    is the exit code, matching the SOUND_MENU_SELECT-style\
+  \ magic numbers used elsewhere).\n  - JOYPAD_A -> sub_8128318 (open/confirmation action), sub_8128008\
+  \ (rebuild list/menu items),\n    bg_ReloadBackgroundRegion_5_3_81281C0 (redraw BG region 5_3), PlaySoundEffect(SOUND_MENU_SELECT).\n\
+  \  - JOYPAD_START -> store 0x0C at r5+2 (set next state/phase to 0x0C), PlaySoundEffect(SOUND_MENU_SELECT),\n\
+  \    then sub_8120CC8(0, &dword_8127980) returning two bytes that are stored at r5+0xF and r5+0x10\n\
+  \    (cursor/selection snapshot).\n  - Held-input tail: reads toolkit->oToolkit_JoypadPtr->oJoypad_LowSensitivityHeld\
+  \ and calls\n    sub_811F7F8(held, 4, 0, 0); if it returns non-zero the menu is rebuilt via sub_8128008\
+  \ and\n    bg_ReloadBackgroundRegion_5_3_81281C0 (auto-scroll / repeat navigation).\nFunction is called\
+  \ via tail of a `bl sub_8127B18` from a submenu screen loop; r5 and r10 are\nthe caller-owned working\
+  \ pointers (r5 = per-screen state, r10 = oToolkit from the caller).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-011652);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 66' --file inbox_farm_66.c
+    sub_8127B18
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8127B18
+
+    ./wf verify --function sub_8127B18 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-011652-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8127B18
+
+    ./wf verify --function sub_8127B18 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 10 out of domain (verify run convert-20261011-011652-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8127B18
+
+    ./wf verify --function sub_8127B18 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011652-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story1, story2, story8.'
+  reproduce: grep -l '^08127b18 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp e2ce7a9
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8127B18 -> submenu_HandleInput_8127B18
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- What dword_8127980 / sub_8120CC8(0,...) actually represent (the two bytes written back to r5+0xF/r5+0x10
+  look like a cursor pair, but the source is an opaque dword).
+- Whether sub_8128008 + bg_ReloadBackgroundRegion_5_3_81281C0 on A is "confirm selection" or "enter edit/list"
+  — it shares the redraw path with the held-input refresh.
+- Exact meaning of the 0x0C value written to r5+2 on Start (likely a state machine phase id such as "name
+  entry" or "confirm").
+sources:
+- tools/wf run convert-20261011-011652
+- recomp e2ce7a9
+previous_names:
+- sub_8127B18

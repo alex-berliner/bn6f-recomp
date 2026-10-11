@@ -401,7 +401,7 @@ Next InitializeOverworldMapObjectStructs(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800362C ── */
+/* ── projectObjectToScreen_800362C ── */
 /* Address of the mirror-x flag (eCamera.unk_4C = eCamera + 0x4C). */
 #define CAMERA_MIRROR_FLAG 0x20099CCu
 
@@ -460,9 +460,9 @@ static ScreenProjection project_object_to_screen(u32 object, u32 toolkit)
     return out;
 }
 
-/* sub_800362C(r0 = object ptr, r10 = toolkit) -> r0 = screen x, r1 = screen y,
+/* projectObjectToScreen_800362C(r0 = object ptr, r10 = toolkit) -> r0 = screen x, r1 = screen y,
  * r2 = visible flag, r3 = camera ptr; r4-r7 preserved. */
-Next sub_800362C(void) {
+Next projectObjectToScreen_800362C(void) {
     ScreenProjection out = project_object_to_screen(R0, R10);
     R0 = out.x;
     R1 = out.y;
@@ -713,9 +713,9 @@ Next gameMode_switchToMode2_80046F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8004702 ── */
+/* ── npc_clearOverworldNpcStateWord_8004702 ── */
 /* ---------------------------------------------------------------------------
- * sub_8004702 — reset one state word of every overworld NPC object.
+ * npc_clearOverworldNpcStateWord_8004702 — reset one state word of every overworld NPC object.
  *
  * The original walks the 16 fixed slots of the overworld NPC object table
  * (0xD8 bytes per slot) and clears the u32 at slot + 0xC4 (reached in the
@@ -762,8 +762,8 @@ static NpcResetResult clear_overworld_npc_active_words(void)
     return result;
 }
 
-/* sub_8004702() -> r0..r3, nz c v (no inputs) */
-Next sub_8004702(void)
+/* npc_clearOverworldNpcStateWord_8004702() -> r0..r3, nz c v (no inputs) */
+Next npc_clearOverworldNpcStateWord_8004702(void)
 {
     NpcResetResult result = clear_overworld_npc_active_words();
 
@@ -826,7 +826,7 @@ Next sub_80049B0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8004D48 ── */
+/* ── scenario_prepareEnterMap_8004D48 ── */
 /* Event flag identifiers (page<<8 | bit) */
 #define EVT_1703  0x1703u
 #define EVT_171B  0x171Bu
@@ -855,10 +855,10 @@ static void call_set_player_can_move(u32 gs) {
     GUEST_CALL(SetPlayerCanMoveEventFlag);
 }
 
-/* register form: calls sub_8004702 outside this file, which has no typed C interface yet */
+/* register form: calls npc_clearOverworldNpcStateWord_8004702 outside this file, which has no typed C interface yet */
 static void call_sub_8004702(u32 gs) {
     R5 = gs;
-    GUEST_CALL(sub_8004702);
+    GUEST_CALL(npc_clearOverworldNpcStateWord_8004702);
 }
 
 /* register form: calls scenario_ClearEffectActiveFlag_800399A outside this file, which has no typed C interface yet.
@@ -964,8 +964,8 @@ static void reset_state_for_new_location(u32 toolkit) {
     call_shop_copy_item_table(gs);
 }
 
-/* sub_8004D48(r10 = Toolkit) — preserves r4-r7; r2/r3 from callees are free */
-Next sub_8004D48(void) {
+/* scenario_prepareEnterMap_8004D48(r10 = Toolkit) — preserves r4-r7; r2/r3 from callees are free */
+Next scenario_prepareEnterMap_8004D48(void) {
     u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
     reset_state_for_new_location(R10);
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;
@@ -1014,8 +1014,8 @@ static void call_encryption_init(void) { GUEST_CALL(encryption_initAll_8006d00);
 /* register form: calls keyItems_ResetInventoryAndGrantScenarioItems_803CD74 outside this file, which has no typed C interface yet */
 static void call_reset_key_items(void) { GUEST_CALL(keyItems_ResetInventoryAndGrantScenarioItems_803CD74); }
 
-/* register form: calls sub_802F2C8 outside this file, which has no typed C interface yet */
-static void call_sub_802F2C8(void) { GUEST_CALL(sub_802F2C8); }
+/* register form: calls resetPaletteScratch_802F2C8 outside this file, which has no typed C interface yet */
+static void call_sub_802F2C8(void) { GUEST_CALL(resetPaletteScratch_802F2C8); }
 
 /* register form: calls sub_81284A4 outside this file, which has no typed C interface yet */
 static void call_sub_81284A4(void) { GUEST_CALL(sub_81284A4); }
@@ -1053,14 +1053,14 @@ static void call_zero_fill_e2004348(void) { GUEST_CALL(zeroFill_e2004348); }
 /* register form: calls mysteryData_InitMapGroupTables_809FAF4 outside this file, which has no typed C interface yet */
 static void call_mystery_init(void) { GUEST_CALL(mysteryData_InitMapGroupTables_809FAF4); }
 
-/* register form: calls sub_809F9DC outside this file, which has no typed C interface yet */
-static void call_sub_809F9DC(void) { GUEST_CALL(sub_809F9DC); }
+/* register form: calls mysteryData_processMapGroups_809F9DC outside this file, which has no typed C interface yet */
+static void call_sub_809F9DC(void) { GUEST_CALL(mysteryData_processMapGroups_809F9DC); }
 
-/* register form: calls sub_8049CF8 outside this file, which has no typed C interface yet */
-static void call_sub_8049CF8(void) { GUEST_CALL(sub_8049CF8); }
+/* register form: calls chatbox_initTextLineBuffer_8049CF8 outside this file, which has no typed C interface yet */
+static void call_sub_8049CF8(void) { GUEST_CALL(chatbox_initTextLineBuffer_8049CF8); }
 
-/* register form: calls sub_804A17A outside this file, which has no typed C interface yet */
-static void call_sub_804A17A(void) { GUEST_CALL(sub_804A17A); }
+/* register form: calls textScript_buildFolderNameBuffers_804A17A outside this file, which has no typed C interface yet */
+static void call_sub_804A17A(void) { GUEST_CALL(textScript_buildFolderNameBuffers_804A17A); }
 
 /* register form: calls clearS2001c04Byte6_811FB78 outside this file, which has no typed C interface yet */
 static void call_clear_s2001c04_b6(void) { GUEST_CALL(clearS2001c04Byte6_811FB78); }
@@ -1127,10 +1127,10 @@ static void call_reqbbs_2(void) { GUEST_CALL(reqBBS_8140984); }
 
 /* ---------- parameterized helpers ---------- */
 
-/* register form: calls sub_80AA004 outside this file, which has no typed C interface yet */
+/* register form: calls copyOamEntry_80AA004 outside this file, which has no typed C interface yet */
 static void call_sub_80aa004(u32 table_idx) {
     R0 = table_idx;
-    GUEST_CALL(sub_80AA004);
+    GUEST_CALL(copyOamEntry_80AA004);
 }
 
 /* register form: calls palette_copyTableRow_80AA104 outside this file, which has no typed C interface yet */
@@ -1380,15 +1380,15 @@ static void call_subsystem_handler(u32 index, u32 game_state) {
     case 0x08: GUEST_CALL(battle_init_80052D8); break;
     case 0x0C: GUEST_CALL(HandlesBattleMainUntilEndOfBattleThenTriggersEnterMap); break;
     case 0x10: GUEST_CALL(sub_800536E); break;
-    case 0x14: GUEST_CALL(sub_80053E4); break;
+    case 0x14: GUEST_CALL(scene_nextOrUpdate_80053E4); break;
     case 0x18: GUEST_CALL(sub_8005462); break;
     case 0x1C: GUEST_CALL(sub_800555A); break;
-    case 0x20: GUEST_CALL(sub_8005642); break;
+    case 0x20: GUEST_CALL(scenario_finalizeFrameOrRestart_8005642); break;
     case 0x24: GUEST_CALL(sub_80056B8); break;
     case 0x28: GUEST_CALL(sub_800572C); break;
     case 0x2C: GUEST_CALL(sub_80057A0); break;
     case 0x30: GUEST_CALL(sub_80055CE); break;
-    case 0x34: GUEST_CALL(sub_8005814); break;
+    case 0x34: GUEST_CALL(mainState_runFrame_8005814); break;
     case 0x38: GUEST_CALL(sub_800585A); break;
     }
 }
@@ -1513,9 +1513,9 @@ static void clear_cutscene_script_pos_if_magic_value_1(void) {
     GUEST_CALL(clearCutsceneScriptPosIfMagicValue0x1_8036F24);
 }
 
-/* register form: calls sub_809F90C outside this file, which has no typed C interface yet */
+/* register form: calls clearBattleStateIfEvent1708Pending_809F90C outside this file, which has no typed C interface yet */
 static void call_sub_809F90C(void) {
-    GUEST_CALL(sub_809F90C);
+    GUEST_CALL(clearBattleStateIfEvent1708Pending_809F90C);
 }
 
 /* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
@@ -2016,14 +2016,14 @@ static bool is_screen_fade_active_battle_init_80052D8(void) {
     return !ZERO_FLAG();
 }
 
-/* register form: calls sub_800531C outside this file, which has no typed C interface yet */
+/* register form: calls endBattleAndEnterMap_800531C outside this file, which has no typed C interface yet */
 static void call_sub_800531C(void) {
-    GUEST_CALL(sub_800531C);
+    GUEST_CALL(endBattleAndEnterMap_800531C);
 }
 
 /* Battle scene init: runs the per-frame dispatch and the various sub-systems, then, once the
  * start countdown has finished and the screen fade is still in progress, hands control to the
- * battle main loop (sub_800531C). */
+ * battle main loop (endBattleAndEnterMap_800531C). */
 static void do_battle_init(void) {
     call_dispatch_80339CC();
     call_sub_80039AA();
@@ -2048,7 +2048,7 @@ Next battle_init_80052D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800531C ── */
+/* ── endBattleAndEnterMap_800531C ── */
 /* Register-form helpers: every callee in this sequence is a game function that
  * has no typed C interface yet, so each is invoked through the guest registers. */
 
@@ -2063,9 +2063,9 @@ static void free_objects_of_type(u32 typeBits) {
     GUEST_CALL(FreeAllObjectsOfSpecifiedTypes);
 }
 
-/* register form: calls sub_8004702 outside this file, which has no typed C interface yet */
+/* register form: calls npc_clearOverworldNpcStateWord_8004702 outside this file, which has no typed C interface yet */
 static void call_sub_8004702_sub_800531C(void) {
-    GUEST_CALL(sub_8004702);
+    GUEST_CALL(npc_clearOverworldNpcStateWord_8004702);
 }
 
 /* register form: calls zeroFill_80024A2 outside this file, which has no typed C interface yet */
@@ -2128,12 +2128,12 @@ static void finish_battle_and_enter_map(u32 toolkit) {
     word_fill(A_eLogoScreenState, 0x2180, ~0u);
 }
 
-Next sub_800531C(void) {
+Next endBattleAndEnterMap_800531C(void) {
     finish_battle_and_enter_map(R10);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80053E4 ── */
+/* ── scene_nextOrUpdate_80053E4 ── */
 /* register form: calls dispatch_80339CC outside this file, which has no typed C interface yet */
 static void call_dispatch(void) { GUEST_CALL(dispatch_80339CC); }
 
@@ -2278,8 +2278,8 @@ static u32 scene_update(u32 gamestate, u32 toolkit) {
     return LD32(toolkit + oToolkit_GameStatePtr);
 }
 
-/* sub_80053E4(r5 = gamestate, r10 = toolkit) -> r5 */
-Next sub_80053E4(void) {
+/* scene_nextOrUpdate_80053E4(r5 = gamestate, r10 = toolkit) -> r5 */
+Next scene_nextOrUpdate_80053E4(void) {
     R5 = scene_update(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -2297,7 +2297,7 @@ Next mainState_resetGameAndGoto28_8005524(void) {
     R0 = 0x21; /* object type to free */
     GUEST_CALL(FreeAllObjectsOfSpecifiedTypes);
 
-    GUEST_CALL(sub_8004702);
+    GUEST_CALL(npc_clearOverworldNpcStateWord_8004702);
     GUEST_CALL(resetAllGraphicsState_8005F40);
     GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
     GUEST_CALL(sub_80027C4);
@@ -2319,8 +2319,8 @@ Next mainState_resetGameAndGoto28_8005524(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8005642 ── */
-/* Main-jumptable state that sub_8005642 switches into once the scenario restart
+/* ── scenario_finalizeFrameOrRestart_8005642 ── */
+/* Main-jumptable state that scenario_finalizeFrameOrRestart_8005642 switches into once the scenario restart
  * sequence has run. */
 #define MAIN_STATE_SCENARIO_RESTART 0x2C
 
@@ -2431,9 +2431,9 @@ static void free_all_objects_of_specified_types(u32 types) {
     GUEST_CALL(FreeAllObjectsOfSpecifiedTypes);
 }
 
-/* register form: calls sub_8004702 outside this file, which has no typed C interface yet */
+/* register form: calls npc_clearOverworldNpcStateWord_8004702 outside this file, which has no typed C interface yet */
 static void call_sub_8004702_sub_8005642(void) {
-    GUEST_CALL(sub_8004702);
+    GUEST_CALL(npc_clearOverworldNpcStateWord_8004702);
 }
 
 /* register form: calls resetAllGraphicsState_8005F40 outside this file, which has no typed C interface yet */
@@ -2536,8 +2536,8 @@ static struct ScenarioRestartResult restart_scenario(u32 toolkit, u32 r5_in, u32
     return res;
 }
 
-/* sub_8005642: (r10 = toolkit, r5/r7 = live across the call) -> r0 r1 r5 r7, nz */
-Next sub_8005642(void) {
+/* scenario_finalizeFrameOrRestart_8005642: (r10 = toolkit, r5/r7 = live across the call) -> r0 r1 r5 r7, nz */
+Next scenario_finalizeFrameOrRestart_8005642(void) {
     struct ScenarioRestartResult res = restart_scenario(R10, R5, R7);
     R0 = res.r0;
     R1 = res.r1;
@@ -2547,12 +2547,12 @@ Next sub_8005642(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8005814 ── */
-/* sub_8005814: per-frame main loop dispatch for the current game state.
+/* ── mainState_runFrame_8005814 ── */
+/* mainState_runFrame_8005814: per-frame main loop dispatch for the current game state.
  * Calls the state handlers in order; if a screen fade is not active, also
  * runs the chatbox/overlay updates and the "reset game and go to state 28"
  * path (e.g. title -> title). */
-Next sub_8005814(void) {
+Next mainState_runFrame_8005814(void) {
     GUEST_CALL(dispatch_80339CC);
     GUEST_CALL(sub_80039AA);
     GUEST_CALL(sub_8003AFA);
@@ -2710,9 +2710,9 @@ static u32 chatbox_flag_set(u32 mask) {
     return !ZERO_FLAG();     /* NE = any of the masked chatbox flags is set */
 }
 
-/* register form: calls sub_80AA4C0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_tryEncounter_80AA4C0 outside this file, which has no typed C interface yet */
 static u32 get_battle_settings(void **settings_out) {
-    GUEST_CALL(sub_80AA4C0);
+    GUEST_CALL(battle_tryEncounter_80AA4C0);
     *settings_out = (void *)R0;
     return !ZERO_FLAG();     /* NE = pending battle settings are available */
 }

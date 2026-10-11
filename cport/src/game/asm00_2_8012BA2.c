@@ -86,7 +86,7 @@ Next battle_getNaviTypeFamilyConstant_8012C7C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8012DFC ── */
+/* ── battle_updateNaviAIJoypad_8012DFC ── */
 /* Register offsets in the per-navi joypad table (stride 8, based at dword_2036820). */
 #define NAVI_JOYPAD_STRIDE  8
 #define NAVI_JOYPAD_OFFSET  2
@@ -185,10 +185,10 @@ static JoypadResult update_navi_ai_joypad(u32 navi) {
     return (JoypadResult){ r1_ts, old_unk, navi_buttons, navi };
 }
 
-/* sub_8012DFC(r0 = navi_index) -> r1, r2, r3, r7, c, v
+/* battle_updateNaviAIJoypad_8012DFC(r0 = navi_index) -> r1, r2, r3, r7, c, v
  * Flags are produced by the last register-form helper on each path
  * (tst-equivalent, cmp-equivalent, or the callee's own flags). */
-Next sub_8012DFC(void) {
+Next battle_updateNaviAIJoypad_8012DFC(void) {
     JoypadResult r = update_navi_ai_joypad(R0);
     R1 = r.r1;
     R2 = r.r2;
@@ -376,7 +376,7 @@ Next aiTrySelectChipFromHand_801336C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8013396 ── */
+/* ── aiAttackingBuster_8013396 ── */
 /* register form: calls returnBoolIfAIDataFlagsAreSet_8012F3E outside this file,
  * which has no typed C interface yet. Z set => AI data flags are set. */
 static bool ai_flags_set(u32 battle_object) {
@@ -395,8 +395,8 @@ static u32 ai_attacking_buster(u32 battle_object) {
     return ai_flags_set(battle_object) ? 1 : 0;
 }
 
-/* sub_8013396: r5 = battle object, lr = return -> nz c v r0 */
-Next sub_8013396(void) {
+/* aiAttackingBuster_8013396: r5 = battle object, lr = return -> nz c v r0 */
+Next aiAttackingBuster_8013396(void) {
     R0 = ai_attacking_buster(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -763,7 +763,7 @@ Next battle_aiAddCounterFromCollision_8013B20(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8013DA0 ── */
+/* ── battle_naviAI_tick_8013DA0 ── */
 /* register form: calls battle_isPaused outside this file, which has no typed C interface yet */
 static bool is_battle_paused(void) {
     GUEST_CALL(battle_isPaused);
@@ -889,8 +889,8 @@ static void ai_navi_update(u32 battle_obj) {
     }
 }
 
-/* sub_8013DA0(r5 = battle object) – AI tick */
-Next sub_8013DA0(void) {
+/* battle_naviAI_tick_8013DA0(r5 = battle object) – AI tick */
+Next battle_naviAI_tick_8013DA0(void) {
     ai_navi_update(R5);
     RETURN_TO_CALLER();
 }
@@ -901,7 +901,7 @@ Next nullsub_45(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8013F1E ── */
+/* ── handlePanelDamage_8013F1E ── */
 /* Jump table at off_8013F70, indexed by the result of
  * GetBattleNaviStatsByte_AllianceFromBattleObject(r5, 0x16). */
 enum {
@@ -982,7 +982,7 @@ static void handle_panel_damage(u32 obj) {
         get_navi_stats_byte_alliance_g(obj, 0x16));
 }
 
-Next sub_8013F1E(void) {
+Next handlePanelDamage_8013F1E(void) {
     handle_panel_damage(R5);
     RETURN_TO_CALLER();
 }
@@ -1398,7 +1398,7 @@ Next battle_tickPoisonHpLoss_8014498(void) {
  *
  * sub_80144CA is a second entry point that shares the whole body below; it
  * enters with r7 = 1 where this entry clears r7 to 0 first.  On the shared
- * tail that flag only decides whether sub_800FEEC runs, so it is kept in the
+ * tail that flag only decides whether battleObject_initAIData_800FEEC runs, so it is kept in the
  * guest r7 register exactly as the original does. */
 Next battle_beginTurnOpenProcess_80144C0(void) {
     u32 savedR4 = R4;
@@ -1445,7 +1445,7 @@ Next battle_beginTurnOpenProcess_80144C0(void) {
 
     /* the sub_80144CA entry (r7 = 1) skips this call */
     if (R7 == 0)
-        GUEST_CALL(sub_800FEEC);
+        GUEST_CALL(battleObject_initAIData_800FEEC);
 
     GUEST_CALL(sub_8014536);
     GUEST_CALL(sub_801086C);
@@ -1802,7 +1802,7 @@ Next ZeroAllNaviStatsMood(void) {
  *
  * Reads the object's current phase byte and tail-calls the matching
  * handler from the table at off_80163A8:
- *   phase 0 -> sub_80163B4   phase 4 -> sub_801641A   phase 8 -> battle_objectIntroEntryAndActedSetup_8016460
+ *   phase 0 -> battleObject_joinAlly_80163B4   phase 4 -> battle_object_tickHitFlashAlpha_801641A   phase 8 -> battle_objectIntroEntryAndActedSetup_8016460
  *
  * The phase value doubles as the byte offset into the table (Thumb loads
  * cannot scale the index register), which is why the stored phase values
@@ -1825,15 +1825,15 @@ Next battle_object_runPhaseHandler_8016396(void) {
     R1 = LD32(A_off_80163A8 + R0);
 
     switch (R0) {
-    case 0: GUEST_CALL(sub_80163B4); break;
-    case 4: GUEST_CALL(sub_801641A); break;
+    case 0: GUEST_CALL(battleObject_joinAlly_80163B4); break;
+    case 4: GUEST_CALL(battle_object_tickHitFlashAlpha_801641A); break;
     case 8: GUEST_CALL(battle_objectIntroEntryAndActedSetup_8016460); break;
     }
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80163B4 ── */
+/* ── battleObject_joinAlly_80163B4 ── */
 /* register form: calls list_tryAddUniqueEntry_800AA1A outside this file, which has no typed C interface yet */
 static void list_tryAddUniqueEntry(u32 arg) {
     R0 = arg;
@@ -1941,7 +1941,7 @@ static R0R1 sub_80163B4_typed(u32 obj, u32 toolkit) {
     return out;
 }
 
-Next sub_80163B4(void) {
+Next battleObject_joinAlly_80163B4(void) {
     R0R1 result = sub_80163B4_typed(R5, R10);
     R0 = result.r0;
     R1 = result.r1;
@@ -1949,7 +1949,7 @@ Next sub_80163B4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801641A ── */
+/* ── battle_object_tickHitFlashAlpha_801641A ── */
 /* register form: calls sprite_setMosaicSize outside this file, which has no typed C interface yet */
 static void sprite_setMosaicSize_guest(u32 r0, u32 r1) {
     R0 = r0;
@@ -1975,7 +1975,7 @@ static void sprite_clearMosaic_guest(void) {
 
 /* register form: calls sub_800AA40 outside this file, which has no typed C interface yet.
  * Original captures this callee's final C/V (they survive to the end of
- * sub_801641A because MOV/STRH don't touch flags), so forward them. */
+ * battle_object_tickHitFlashAlpha_801641A because MOV/STRH don't touch flags), so forward them. */
 static u32 sub_800AA40_guest(u32 r0, bool *out_c, bool *out_v) {
     R0 = r0;
     GUEST_CALL(sub_800AA40);
@@ -2046,7 +2046,7 @@ static struct sub_801641A_out sub_801641A_impl(u32 r5, u32 in_r1) {
     return res;
 }
 
-Next sub_801641A(void) {
+Next battle_object_tickHitFlashAlpha_801641A(void) {
     struct sub_801641A_out res = sub_801641A_impl(R5, R1);
     R0 = res.r0;
     R1 = res.r1;
@@ -2143,7 +2143,7 @@ Next battle_ResetObjectActionState_80165B8(void) {
  * - Otherwise, if the battle is currently paused, do nothing this frame.
  * - Otherwise tail-call the object's current phase handler, looked up in the
  *   table off_80165F0 by oBattleObject_CurPhase:
- *       phase 0 -> sub_80165F8
+ *       phase 0 -> battle_teardownObject_80165F8
  *       phase 1 -> sub_801664E
  *   The handler's results (R0, R1 and the flags) are passed straight through
  *   to our caller; the original achieves this by returning into a `pop {pc}`
@@ -2166,14 +2166,14 @@ Next battle_objectUpdateDispatchPhase_80165C2(void) {
     R0 = phase;                            /* the original passes these to the */
     R1 = handler;                          /* handler in r0/r1 */
     if (phase == 0)
-        GUEST_CALL(sub_80165F8);
+        GUEST_CALL(battle_teardownObject_80165F8);
     else                                   /* phase 1: the only other entry */
         GUEST_CALL(sub_801664E);
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80165F8 ── */
+/* ── battle_teardownObject_80165F8 ── */
 /* register form: calls object_clearCollisionRegion outside this file, which has no typed C interface yet */
 static void clear_collision_region(void) {
     GUEST_CALL(object_clearCollisionRegion);
@@ -2269,7 +2269,7 @@ static u32 teardown_battle_object(u32 obj_ptr) {
     return 4;
 }
 
-Next sub_80165F8(void) {
+Next battle_teardownObject_80165F8(void) {
     R0 = teardown_battle_object(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -2356,7 +2356,7 @@ Next battle_applyStateSpriteColorShader_801690A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8016BFC ── */
+/* ── stepBattleObjectWobble_8016BFC ── */
 /* register form: calls AddRandomVarianceToTwoCoords outside this file, which has no typed C interface yet */
 static void apply_random_variance(u32 amplitude, u32 x16, u32 y, u32 z16,
                                   u32 *out_x, u32 *out_y, u32 *out_z) {
@@ -2422,7 +2422,7 @@ static u32 step_battle_object_wobble(u32 obj, u32 r1_in, u32 r2_in, u32 r3_in, u
     return wobble;
 }
 
-Next sub_8016BFC(void) {
+Next stepBattleObjectWobble_8016BFC(void) {
     u32 out_r1, out_r2, out_r3, out_r4;
     u32 nz_src = step_battle_object_wobble(R5, R1, R2, R3, R4,
                                            &out_r1, &out_r2, &out_r3, &out_r4);
@@ -2457,7 +2457,7 @@ Next object_genericDestroy(void) {
  * adds the index register unscaled), so the three handlers are selected by
  * offsets 0, 4 and 8:
  *
- *   off_8016CFC + 0 -> sub_8016D08
+ *   off_8016CFC + 0 -> battleAdvanceObjectPhase_8016D08
  *   off_8016CFC + 4 -> sub_8016D8C
  *   off_8016CFC + 8 -> battle_objectCountdownPhaseOrReset_8016E3C
  *
@@ -2474,7 +2474,7 @@ Next battleObjectStateDispatcher_8016CE8(void) {
 
     switch (state) {
     case 0:
-        GUEST_CALL(sub_8016D08);
+        GUEST_CALL(battleAdvanceObjectPhase_8016D08);
         break;
     case 4:
         GUEST_CALL(sub_8016D8C);
@@ -2487,7 +2487,7 @@ Next battleObjectStateDispatcher_8016CE8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8016D08 ── */
+/* ── battleAdvanceObjectPhase_8016D08 ── */
 #define MOVE_FLAG_BIT     (1u << 20)   /* "this object is in motion" */
 #define PHASE_CLEAR_BIT   0x1000u
 #define X_VEL_PER_STEP    0xA0000u
@@ -2604,8 +2604,8 @@ static u32 battle_phase_advance(u32 obj) {
     return 8;
 }
 
-/* sub_8016D08(r5 = battle object ptr) -> r0 (4 or 8), r1/r2 from callee, nz */
-Next sub_8016D08(void) {
+/* battleAdvanceObjectPhase_8016D08(r5 = battle object ptr) -> r0 (4 or 8), r1/r2 from callee, nz */
+Next battleAdvanceObjectPhase_8016D08(void) {
     R0 = battle_phase_advance(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -2650,7 +2650,7 @@ Next battle_objectCountdownPhaseOrReset_8016E3C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8016E64 ── */
+/* ── battleObject_updateSprite_8016E64 ── */
 /* register form: calls sprite_update outside this file, which has no typed C interface yet */
 static u32 call_sprite_update(void) {
     GUEST_CALL(sprite_update);
@@ -2739,7 +2739,7 @@ static void update_battle_object_sprite(u32 obj) {
     call_sprite_update();
 }
 
-Next sub_8016E64(void) {
+Next battleObject_updateSprite_8016E64(void) {
     update_battle_object_sprite(R5);
     RETURN_TO_CALLER();
 }

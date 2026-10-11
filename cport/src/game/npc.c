@@ -265,7 +265,7 @@ Next npc_waitMysteryDataTaken_809eaa0(void) {
  * action handler picked by CurAction (field at offset 9) out of the table
  * at off_809EAFC (its only entry is npc_inChatbox_curAction_809EB04), then
  * refreshes the NPC's sprite and interaction areas. If bit 0x40 of
- * UnkFlags_60 is set, sub_809F922 runs afterwards as well. */
+ * UnkFlags_60 is set, recordCapsule_809F922 runs afterwards as well. */
 Next npc_inChatbox_809EADA(void) {
     /* oOverworldNPCObject_CurAction is at offset 9 */
     u32 action = LD8(R5 + 9);
@@ -282,7 +282,7 @@ Next npc_inChatbox_809EADA(void) {
     R0 = LD32(R5 + oOverworldNPCObject_UnkFlags_60);
     R1 = OW_NPC_UNK_FLAGS_60_0x40;
     if (R0 & R1) {
-        GUEST_CALL(sub_809F922);
+        GUEST_CALL(recordCapsule_809F922);
     } else {
         /* leave NZ as the TST r0, r1 left them (C/V untouched) */
         SET_FLAGS_NZ(R0 & R1);
@@ -310,11 +310,11 @@ static void call_load_animation_data(u32 *out_r0, u32 *out_r3) {
     *out_r0 = R0; *out_r3 = R3;
 }
 
-/* register form: calls sub_809FC96 outside this file; passes r0 and r7, returns r0/r1/r2/r3 */
+/* register form: calls mysteryData_lookupForNavi_809FC96 outside this file; passes r0 and r7, returns r0/r1/r2/r3 */
 static void call_mystery_setup(u32 chatbox_data, u32 chatbox_ptr,
                                u32 *out_r0, u32 *out_r1, u32 *out_r2, u32 *out_r3) {
     R0 = chatbox_data; R7 = chatbox_ptr;
-    GUEST_CALL(sub_809FC96);
+    GUEST_CALL(mysteryData_lookupForNavi_809FC96);
     *out_r0 = R0; *out_r1 = R1; *out_r2 = R2; *out_r3 = R3;
 }
 
@@ -1582,7 +1582,7 @@ Next ReadNPCScriptHalfword(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809F68C ── */
+/* ── npc_clearAllBusyFlags_809F68C ── */
 /* Result registers the original leaves behind for its callers. */
 typedef struct {
     u32 r1;   /* constant 1 mask used by the BIC */
@@ -1612,10 +1612,10 @@ static Sub809F68C_Result clear_npc_busy_flags(void) {
     return result;
 }
 
-/* sub_809F68C: clear bit 0 of Unk_50 for all overworld NPC objects.
+/* npc_clearAllBusyFlags_809F68C: clear bit 0 of Unk_50 for all overworld NPC objects.
  * Outputs: r1 = 1, r2 = array end, r3 = loop exit cursor,
  * c/v from the final CMP r3, r2 (r0, nz clobbered). */
-Next sub_809F68C(void) {
+Next npc_clearAllBusyFlags_809F68C(void) {
     Sub809F68C_Result result = clear_npc_busy_flags();
     R1 = result.r1;
     R2 = result.r2;
@@ -1624,7 +1624,7 @@ Next sub_809F68C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809F90C ── */
+/* ── clearBattleStateIfEvent1708Pending_809F90C ── */
 /* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
 static bool event_1708_set(void) {
     R0 = 0x17;  /* EVENT_1708 byte index */
@@ -1642,14 +1642,14 @@ static void clear_battle_state_if_pending(void) {
     ST32(A_byte_2000210 + 8, 0);
 }
 
-/* sub_809F90C() – clobbers r0, r1, nz; outputs c, v, r3 (left by GUEST_CALL) */
-Next sub_809F90C(void) {
+/* clearBattleStateIfEvent1708Pending_809F90C() – clobbers r0, r1, nz; outputs c, v, r3 (left by GUEST_CALL) */
+Next clearBattleStateIfEvent1708Pending_809F90C(void) {
     clear_battle_state_if_pending();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809F922 ── */
-/* sub_809F922: Try to record a value in the cap-table.
+/* ── recordCapsule_809F922 ── */
+/* recordCapsule_809F922: Try to record a value in the cap-table.
  * inputs:  r5 = value to store
  *          r10 (unused body, but in contract)
  *          lr = return address
@@ -1662,7 +1662,7 @@ Next sub_809F90C(void) {
  * reached 0x10, we bump it and store r5 into the next slot of the
  * table (slot table lives right after the index byte, at offset 0x10
  * from the same address, 4 bytes per entry). */
-Next sub_809F922(void) {
+Next recordCapsule_809F922(void) {
     /* bail when flag EVENT_1708 is set (TestEventFlag returns !zf) */
     R0 = 0x17;
     R1 = 0x08;

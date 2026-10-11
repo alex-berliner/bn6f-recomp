@@ -8,9 +8,9 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_812345C ── */
+/* ── chipFolder_screenInit_812345C ── */
 /*
- * sub_812345C — one-time setup of the chip folder screen.
+ * chipFolder_screenInit_812345C — one-time setup of the chip folder screen.
  *
  * Everything here is calls into other modules (screen state, graphics,
  * text engine, sprite/window registration), so the whole body is a
@@ -41,14 +41,14 @@ static void call_sub_80465A0_sub_812345C(u32 table) {   /* table: guest address 
     GUEST_CALL(sub_80465A0);
 }
 
-/* register form: calls sub_8123A80 outside this file, which has no typed C interface yet */
+/* register form: calls refreshChipUseStats_8123A80 outside this file, which has no typed C interface yet */
 static void call_sub_8123A80(void) {
-    GUEST_CALL(sub_8123A80);
+    GUEST_CALL(refreshChipUseStats_8123A80);
 }
 
-/* register form: calls sub_8123AB8 outside this file, which has no typed C interface yet */
+/* register form: calls drawBattleBackground_8123AB8 outside this file, which has no typed C interface yet */
 static void call_sub_8123AB8(void) {
-    GUEST_CALL(sub_8123AB8);
+    GUEST_CALL(drawBattleBackground_8123AB8);
 }
 
 /* register form: calls sub_81352A0 outside this file, which has no typed C interface yet */
@@ -61,14 +61,14 @@ static void call_sub_81352A0(u32 dst, u32 src, u32 x, u32 y, u32 param) {
     GUEST_CALL(sub_81352A0);
 }
 
-/* register form: calls sub_8135314 outside this file, which has no typed C interface yet */
+/* register form: calls battle_setupPETNavis_8135314 outside this file, which has no typed C interface yet */
 static void call_sub_8135314(u32 dst, u32 src, u32 x, u32 y, u32 table) {
     R0 = dst;
     R1 = src;
     R2 = x;
     R3 = y;
     R4 = table;
-    GUEST_CALL(sub_8135314);
+    GUEST_CALL(battle_setupPETNavis_8135314);
 }
 
 /* register form: calls sub_8123D24 outside this file, which has no typed C interface yet */
@@ -91,13 +91,13 @@ static void chip_folder_screen_init(void) {
     call_sub_8123D24();                                     /* screen-specific setup */
 }
 
-/* sub_812345C() -> r0-r7, lr, nz/c/v all as left by sub_8123D24 */
-Next sub_812345C(void) {
+/* chipFolder_screenInit_812345C() -> r0-r7, lr, nz/c/v all as left by sub_8123D24 */
+Next chipFolder_screenInit_812345C(void) {
     chip_folder_screen_init();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812349C ── */
+/* ── chipFolder_init_812349C ── */
 /* register form: calls sub_81237E0 outside this file, which has no typed C interface yet */
 static void call_sub_81237E0_sub_812349C(void) {
     R0 = 0;
@@ -120,14 +120,14 @@ static void call_sub_80465A0_sub_812349C(u32 a1) {
     GUEST_CALL(sub_80465A0);
 }
 
-/* register form: calls sub_8123A80 outside this file, which has no typed C interface yet */
+/* register form: calls refreshChipUseStats_8123A80 outside this file, which has no typed C interface yet */
 static void call_sub_8123A80_sub_812349C(void) {
-    GUEST_CALL(sub_8123A80);
+    GUEST_CALL(refreshChipUseStats_8123A80);
 }
 
-/* register form: calls sub_8123AB8 outside this file, which has no typed C interface yet */
+/* register form: calls drawBattleBackground_8123AB8 outside this file, which has no typed C interface yet */
 static void call_sub_8123AB8_sub_812349C(void) {
-    GUEST_CALL(sub_8123AB8);
+    GUEST_CALL(drawBattleBackground_8123AB8);
 }
 
 /* register form: calls sub_81352A0 outside this file, which has no typed C interface yet */
@@ -136,10 +136,10 @@ static void call_sub_81352A0_sub_812349C(u32 a1, u32 a2, u32 a3, u32 a4, u32 a5)
     GUEST_CALL(sub_81352A0);
 }
 
-/* register form: calls sub_8135314 outside this file, which has no typed C interface yet */
+/* register form: calls battle_setupPETNavis_8135314 outside this file, which has no typed C interface yet */
 static void call_sub_8135314_sub_812349C(u32 a1, u32 a2, u32 a3, u32 a4, u32 a5) {
     R0 = a1; R1 = a2; R2 = a3; R3 = a4; R4 = a5;
-    GUEST_CALL(sub_8135314);
+    GUEST_CALL(battle_setupPETNavis_8135314);
 }
 
 /* register form: calls sub_8123D24 outside this file, which has no typed C interface yet */
@@ -162,12 +162,12 @@ static void chip_folder_init_gfx(void) {
     call_sub_8123D24_sub_812349C();
 }
 
-Next sub_812349C(void) {
+Next chipFolder_init_812349C(void) {
     chip_folder_init_gfx();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8123558 ── */
+/* ── battle_updateFrame_8123558 ── */
 /* register form: calls sub_8123BC0 outside this file, which has no typed C interface yet */
 static void call_8123bc0(void) {
     GUEST_CALL(sub_8123BC0);
@@ -219,8 +219,8 @@ static BattleUpdateResult battle_state_update(u32 battle_obj) {
     return res;
 }
 
-/* sub_8123558(r5 = battle object ptr) -> r0, nz c v */
-Next sub_8123558(void) {
+/* battle_updateFrame_8123558(r5 = battle object ptr) -> r0, nz c v */
+Next battle_updateFrame_8123558(void) {
     BattleUpdateResult res = battle_state_update(R5);
     R0 = res.r0;
     SET_FLAGS_NZ(res.nz_source);
@@ -263,7 +263,7 @@ Next sub_8123574(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8123644 ── */
+/* ── chatbox_resetIfFading_8123644 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool query_screen_fade(u32 *out_r0) {
     GUEST_CALL(IsScreenFadeActive);
@@ -292,8 +292,8 @@ static u32 clear_chatbox_during_fade(u32 status_ptr) {
     return 0;                     /* mov r0, #0 does NOT set flags */
 }
 
-/* sub_8123644(r5 = status_ptr) -> r0, nzcv */
-Next sub_8123644(void) {
+/* chatbox_resetIfFading_8123644(r5 = status_ptr) -> r0, nzcv */
+Next chatbox_resetIfFading_8123644(void) {
     R0 = clear_chatbox_during_fade(R5);
     RETURN_TO_CALLER();
 }
@@ -316,8 +316,8 @@ Next sub_812365C(void) {
         R0 = 0x08123679;            /* off_8123670[0] = sub_8123678 (Thumb) */
         GUEST_CALL(sub_8123678);
     } else {
-        R0 = 0x0812368D;            /* off_8123670[1] = sub_812368C (Thumb) */
-        GUEST_CALL(sub_812368C);
+        R0 = 0x0812368D;            /* off_8123670[1] = petNaviMenuFrame_812368C (Thumb) */
+        GUEST_CALL(petNaviMenuFrame_812368C);
     }
 
     RETURN_TO_CALLER();
@@ -340,7 +340,7 @@ Next sub_8123678(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812368C ── */
+/* ── petNaviMenuFrame_812368C ── */
 /* Sub-menu struct offsets (r5 points to this structure) */
 #define oMenu_State         2
 #define oMenu_NaviIndex     0xC
@@ -418,11 +418,11 @@ static void set_pet_stat(u32 pet_slot, u32 stat_idx, u32 value,
     GUEST_CALL(SetCurPETNaviStatsByte);
 }
 
-/* register form: calls sub_8120D10 outside this file, which has no typed C interface yet;
+/* register form: calls petNaviTryGiveElementFolder_8120D10 outside this file, which has no typed C interface yet;
  * R4 carries the saved stat as context */
 static bool call_8120D10_is_zero(u32 flag, u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) {
     R0 = flag; R4 = r4; R5 = r5; R6 = r6; R7 = r7; R10 = r10;
-    GUEST_CALL(sub_8120D10);
+    GUEST_CALL(petNaviTryGiveElementFolder_8120D10);
     return ZERO_FLAG();
 }
 
@@ -541,9 +541,9 @@ static void pet_navi_menu_frame(u32 r2, u32 r3, u32 r4, u32 menu_ptr,
     call_8123D70(r4, menu_ptr, r6, r7, toolkit_ptr);
 }
 
-/* sub_812368C: PET navi sub-menu frame handler
+/* petNaviMenuFrame_812368C: PET navi sub-menu frame handler
  * inputs: r2 r3 r4 r5 r6 r7 r10 lr; preserved: r4 r5 r6 r7 r10 */
-Next sub_812368C(void) {
+Next petNaviMenuFrame_812368C(void) {
     u32 sr4 = R4, sr5 = R5, sr6 = R6, sr7 = R7, sr10 = R10;
     pet_navi_menu_frame(R2, R3, R4, R5, R6, R7, R10);
     R4 = sr4; R5 = sr5; R6 = sr6; R7 = sr7; R10 = sr10;
@@ -587,14 +587,14 @@ Next sub_8123790(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81237BC ── */
+/* ── pet_menu_runFrame_81237BC ── */
 /* register form: stack-saved lr is needed across the frame's helper calls (original `push {lr}` / `pop {pc}`); no typed C equivalent. */
 static u32 pet_menu_frame(void) {
     SP -= 4;
     ST32(SP, LR);
 
-    /* register form: calls sub_8123A50 outside this file, which has no typed C interface yet */
-    GUEST_CALL(sub_8123A50);
+    /* register form: calls sfx_playChipUseSound_8123A50 outside this file, which has no typed C interface yet */
+    GUEST_CALL(sfx_playChipUseSound_8123A50);
     /* register form: calls sub_8123C98 outside this file, which has no typed C interface yet */
     GUEST_CALL(sub_8123C98);
     /* register form: calls sub_8123E58 outside this file, which has no typed C interface yet */
@@ -618,17 +618,17 @@ static u32 pet_menu_frame(void) {
 /* Pet menu's per-frame main loop: tick the menu's own update helpers, run the
  * entity update pass, then either keep going or exit back to the field map once
  * any screen fade has finished. */
-Next sub_81237BC(void) {
+Next pet_menu_runFrame_81237BC(void) {
     LR = pet_menu_frame();
     RETURN_TO_CALLER();
 }
 
 /* ── chipFolder_initGfx_812386C ── */
-/* Register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+/* Register form: calls getKeyedTableEntry_811FB84 outside this file, which has no typed C interface yet */
 static u32 resolve_decomp_pointer(u32 source, u32 size) {
     R0 = source;
     R1 = size;
-    GUEST_CALL(sub_811FB84);
+    GUEST_CALL(getKeyedTableEntry_811FB84);
     return R0;
 }
 
@@ -703,7 +703,7 @@ Next chipFolder_initGfx_812386C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8123A50 ── */
+/* ── sfx_playChipUseSound_8123A50 ── */
 /* Values that the original loaded from the literal pool at 0x08123A6C..0x08123A7C. */
 #define SUB_811FA98_ARG0 0x00DA003Du
 #define SUB_811FA98_ARG1 0x00020002u
@@ -737,7 +737,7 @@ static void play_chip_use_sound(u32 r5)
     GUEST_CALL(sub_811FA98);
 }
 
-Next sub_8123A50(void) {
+Next sfx_playChipUseSound_8123A50(void) {
     /* The contract requires r4..r7 to be preserved across the call.
      * Restore them from the input values after sub_811FA98 has run. */
     u32 r4_in = R4, r5_in = R5, r6_in = R6, r7_in = R7;
@@ -751,8 +751,8 @@ Next sub_8123A50(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8123A80 ── */
-/* Game state pointers used by sub_8123A80. */
+/* ── refreshChipUseStats_8123A80 ── */
+/* Game state pointers used by refreshChipUseStats_8123A80. */
 #define gBattleFieldState A_unk_201D220
 #define gBattleOrderList   A_unk_20343E0
 
@@ -787,12 +787,12 @@ static void refresh_chip_stats(u32 me_addr) {
     ST32(me_addr + 0x64, (u32)atk + (u32)next);
 }
 
-Next sub_8123A80(void) {
+Next refreshChipUseStats_8123A80(void) {
     refresh_chip_stats(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8123AB8 ── */
+/* ── drawBattleBackground_8123AB8 ── */
 /* The tileset ID for the current field: byte at obj+0xC indexes a ROM table
  * of u16 offsets; the u16 at (obj + offset) is the tileset number. */
 static u32 get_tileset_id(u32 battle_obj) {
@@ -825,7 +825,7 @@ static void call_prep_narrow(u32 tileset_id, u32 battle_obj) {
     R4 = 0x6007200;
     R5 = 5;
     R7 = battle_obj;
-    GUEST_CALL(sub_8120390);
+    GUEST_CALL(battle_loadFolderChipGfx_8120390);
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;
 }
 
@@ -902,8 +902,8 @@ static void draw_battle_background(u32 battle_obj) {
     call_copy_tiles(0x19, 8, A_unk_201D84C, 2, 0xA);
 }
 
-/* sub_8123AB8(r5 = battle_object_ptr) — preserves r4–r7, c/v from last callee */
-Next sub_8123AB8(void) {
+/* drawBattleBackground_8123AB8(r5 = battle_object_ptr) — preserves r4–r7, c/v from last callee */
+Next drawBattleBackground_8123AB8(void) {
     draw_battle_background(R5);
     RETURN_TO_CALLER();
 }
@@ -1092,7 +1092,7 @@ Next submenu_subchip_81242D8(void) {
         R0 = LD16(R5 + 0x10);
         R1 = 1;
         GUEST_CALL(TakeItem);
-        GUEST_CALL(sub_8124384);
+        GUEST_CALL(buildKeyItemFlagsTable_8124384);
 
         /* Decrement the cursor index by one; clamp so it doesn't exceed the new (lower) count. */
         u32 new_cursor = (u32)LD8(R5 + 0xC) - 1;
@@ -1106,7 +1106,7 @@ Next submenu_subchip_81242D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8124384 ── */
+/* ── buildKeyItemFlagsTable_8124384 ── */
 /* Register-form call helpers for game functions outside this file */
 
 /* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
@@ -1141,8 +1141,8 @@ static void fill_key_item_table(void) {
     }
 }
 
-/* sub_8124384() — no meaningful args or return; preserves r2–r7 via push/pop. */
-Next sub_8124384(void) {
+/* buildKeyItemFlagsTable_8124384() — no meaningful args or return; preserves r2–r7 via push/pop. */
+Next buildKeyItemFlagsTable_8124384(void) {
     fill_key_item_table();
     RETURN_TO_CALLER();
 }
@@ -1153,16 +1153,16 @@ Next sub_8124384(void) {
  *
  * Builds a table of "init refs" at unk_20096E0 from a static template
  * table: each template entry is { source ptr, size, word, word } and
- * becomes { sub_811FB84(ptr, size), word, word } in the output table,
+ * becomes { getKeyedTableEntry_811FB84(ptr, size), word, word } in the output table,
  * terminated by a 0 word. The ref tables are then decompressed and
  * the subchip background tiles are copied into the text layer.
  * ------------------------------------------------------------------ */
 
-/* register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+/* register form: calls getKeyedTableEntry_811FB84 outside this file, which has no typed C interface yet */
 static u32 make_gfx_ref(u32 source, u32 size) {
     R0 = source;
     R1 = size;
-    GUEST_CALL(sub_811FB84);
+    GUEST_CALL(getKeyedTableEntry_811FB84);
     return R0;
 }
 
@@ -1276,9 +1276,9 @@ Next chatbox_runScript201C100_812474C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812475C ── */
+/* ── background_updateSceneStrips_812475C ── */
 /* ---------------------------------------------------------------------------
- * Background strip refresh for the current scene (sub_812475C).
+ * Background strip refresh for the current scene (background_updateSceneStrips_812475C).
  *
  * Three 8x2-tile strips at column j=0x15 (rows i=8, i=5 and i=2) are either
  * filled from a tile-id table or cleared, depending on the scene state:
@@ -1343,10 +1343,10 @@ static void update_background_strips(u32 toolkit_r10) {
         clear_background_tiles(0x15, 2, 2, 0, 8, 2);
 }
 
-/* sub_812475C(r4, r5, r6, r7, r10) -> nz c v r0 r1 r2 r3 r4 r5 r6 r7 lr
+/* background_updateSceneStrips_812475C(r4, r5, r6, r7, r10) -> nz c v r0 r1 r2 r3 r4 r5 r6 r7 lr
  * r4-r7 are saved and restored around the calls, exactly like the original's
  * push/pop; r0-r3 and the flags are left as the last callee left them. */
-Next sub_812475C(void) {
+Next background_updateSceneStrips_812475C(void) {
     u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
     update_background_strips(R10);
     R4 = r4;
@@ -1365,9 +1365,9 @@ static void dispatch_library_menu(void) {
     u32 state = LD8(R5 + 1);
     R1 = state;
     switch (state) {
-        case 0: R0 = 0x08124B5D; GUEST_CALL(sub_8124B5C); break;
+        case 0: R0 = 0x08124B5D; GUEST_CALL(battle_init_8124B5C); break;
         case 4: R0 = 0x08124C31; GUEST_CALL(sub_8124C30); break;
-        case 8: R0 = 0x08125255; GUEST_CALL(sub_8125254); break;
+        case 8: R0 = 0x08125255; GUEST_CALL(chatbox_flagResolve_8125254); break;
     }
 }
 
@@ -1378,7 +1378,7 @@ Next HandleLibraryMenu8124B3C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8124B5C ── */
+/* ── battle_init_8124B5C ── */
 /* register form: calls zeroFillVRAM outside this file, which has no typed C interface yet */
 static void call_zeroFillVRAM(void) {
     GUEST_CALL(zeroFillVRAM);
@@ -1394,10 +1394,10 @@ static void call_zeroFillGFXData(void) {
     GUEST_CALL(ZeroFillGFX30025c0);
 }
 
-/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+/* register form: calls toolkit_applyOverlayPalette_80015FC outside this file, which has no typed C interface yet */
 static void call_sub_80015FC(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_80015FC);
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 }
 
 /* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
@@ -1416,40 +1416,40 @@ static void call_sub_81254FC(void) {
     GUEST_CALL(sub_81254FC);
 }
 
-/* register form: calls sub_81207F8 outside this file, which has no typed C interface yet */
+/* register form: calls countEventFlagChips_81207F8 outside this file, which has no typed C interface yet */
 static u32 call_sub_81207F8(u32 index) {
     R0 = index;
-    GUEST_CALL(sub_81207F8);
+    GUEST_CALL(countEventFlagChips_81207F8);
     return R0;
 }
 
-/* register form: calls sub_81258F8 outside this file, which has no typed C interface yet */
+/* register form: calls buildChipAvailabilityTable_81258F8 outside this file, which has no typed C interface yet */
 static u32 call_sub_81258F8(void) {
-    GUEST_CALL(sub_81258F8);
+    GUEST_CALL(buildChipAvailabilityTable_81258F8);
     return R0;
 }
 
-/* register form: calls sub_8125994 outside this file, which has no typed C interface yet */
+/* register form: calls buildChipCatalogByType_8125994 outside this file, which has no typed C interface yet */
 static u32 call_sub_8125994(void) {
-    GUEST_CALL(sub_8125994);
+    GUEST_CALL(buildChipCatalogByType_8125994);
     return R0;
 }
 
-/* register form: calls sub_8125A6C outside this file, which has no typed C interface yet */
+/* register form: calls packBuildChipLibraryTable_8125A6C outside this file, which has no typed C interface yet */
 static u32 call_sub_8125A6C(void) {
-    GUEST_CALL(sub_8125A6C);
+    GUEST_CALL(packBuildChipLibraryTable_8125A6C);
     return R0;
 }
 
-/* register form: calls sub_8125B3C outside this file, which has no typed C interface yet */
+/* register form: calls library_rebuildCollectedChipList_8125B3C outside this file, which has no typed C interface yet */
 static u32 call_sub_8125B3C(void) {
-    GUEST_CALL(sub_8125B3C);
+    GUEST_CALL(library_rebuildCollectedChipList_8125B3C);
     return R0;
 }
 
-/* register form: calls sub_8125C08 outside this file, which has no typed C interface yet */
+/* register form: calls buildComChipFilter_8125C08 outside this file, which has no typed C interface yet */
 static u32 call_sub_8125C08(void) {
-    GUEST_CALL(sub_8125C08);
+    GUEST_CALL(buildComChipFilter_8125C08);
     return R0;
 }
 
@@ -1561,15 +1561,15 @@ static u32 init_battle_data(u32 battle_data, u32 toolkit) {
     return 0;
 }
 
-/* sub_8124B5C(r5 = battle_data, r10 = toolkit) -> r0=0 */
-Next sub_8124B5C(void) {
+/* battle_init_8124B5C(r5 = battle_data, r10 = toolkit) -> r0=0 */
+Next battle_init_8124B5C(void) {
     R0 = init_battle_data(R5, R10);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8124D30 ── */
-/* sub_8124D30 — per-object update step.
+/* ── battle_objTickTimerAndRefreshSpritePairs_8124D30 ── */
+/* battle_objTickTimerAndRefreshSpritePairs_8124D30 — per-object update step.
  *
  * The object/work pointer arrives in r5; the function body itself only ever
  * reads r5, so every other register is pure pass-through: its exit value is
@@ -1637,15 +1637,15 @@ static void update_object_timer_and_sprite_pairs(u32 obj) {
     set_sprite_halfword_pair(second, pair7_value, 7);
 }
 
-/* sub_8124D30: object pointer in r5; r0-r3, the flags and every other
+/* battle_objTickTimerAndRefreshSpritePairs_8124D30: object pointer in r5; r0-r3, the flags and every other
  * register are left exactly as the last guest callee leaves them. */
-Next sub_8124D30(void) {
+Next battle_objTickTimerAndRefreshSpritePairs_8124D30(void) {
     update_object_timer_and_sprite_pairs(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8124DCC ── */
-/* sub_8124DCC: shield/sprite update for a boss or boss component.
+/* ── sprite_shieldUpdate_8124DCC ── */
+/* sprite_shieldUpdate_8124DCC: shield/sprite update for a boss or boss component.
  * Reads/writes fields on the struct whose address is passed in R5, refreshes
  * a few sprite halfword slots, and calls the related update routines. */
 
@@ -1686,9 +1686,9 @@ static void call_sub_8125D94_sub_8124DCC(void) {
     GUEST_CALL(sub_8125D94);
 }
 
-/* register form: calls sub_8125E78 outside this file, which has no typed C interface yet */
+/* register form: calls bg_drawArenaTiles_8125E78 outside this file, which has no typed C interface yet */
 static void call_sub_8125E78(void) {
-    GUEST_CALL(sub_8125E78);
+    GUEST_CALL(bg_drawArenaTiles_8125E78);
 }
 
 /* register form: calls sprite_setStructHalfwordPairOnThree_8117084 outside this file,
@@ -1761,22 +1761,22 @@ static void run_shield_sprite_update(u32 struct_ptr) {
     set_sprite_halfword_pair_sub_8124DCC(ptr_b, hw_b, SLOT_STATE_FRAME);
 }
 
-Next sub_8124DCC(void) {
+Next sprite_shieldUpdate_8124DCC(void) {
     run_shield_sprite_update(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812509C ── */
+/* ── battle_runIntro_812508C_812509C ── */
 /* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
 static void sub_8126818_reg(u32 arg) {
     R0 = arg;
     GUEST_CALL(sub_8126818);
 }
 
-/* register form: calls sub_8125784 outside this file, which has no typed C interface yet */
+/* register form: calls battle_input_tick_8125784 outside this file, which has no typed C interface yet */
 static void sub_8125784_reg(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_8125784);
+    GUEST_CALL(battle_input_tick_8125784);
 }
 
 /* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
@@ -1840,12 +1840,12 @@ static void do_battle_intro(u32 obj_ptr) {
     sub_81267F0_reg();
 }
 
-Next sub_812509C(void) {
+Next battle_runIntro_812508C_812509C(void) {
     do_battle_intro(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81250E0 ── */
+/* ── battle_runUpdatesAndCheckFade_81250E0 ── */
 /* Run five battle sub-updates, then check if a screen fade is active.
  * If active: write 8 to [ptr+1] and output r0=8 (flags N=0,Z=0 from MOV).
  * If not active: output r0 from IsScreenFadeActive (flags N=0,Z=1).
@@ -1903,8 +1903,8 @@ static u32 battle_update_and_fade_check(u32 fade_ptr, u32 *out_r0) {
     return 0;         /* SET_FLAGS_NZ(0) → N=0, Z=1, matching IsScreenFadeActive's Z */
 }
 
-/* sub_81250E0() → nz, r0, c, v */
-Next sub_81250E0(void) {
+/* battle_runUpdatesAndCheckFade_81250E0() → nz, r0, c, v */
+Next battle_runUpdatesAndCheckFade_81250E0(void) {
     u32 r0_val;
     u32 flag_enc = battle_update_and_fade_check(R5, &r0_val);
     R0 = r0_val;
@@ -1912,7 +1912,7 @@ Next sub_81250E0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8125170 ── */
+/* ── battle_transitionTick_8125170 ── */
 /* register form: calls sub_812674C outside this file, which has no typed C interface yet */
 static void call_812674C(void) {
     GUEST_CALL(sub_812674C);
@@ -1972,13 +1972,13 @@ static u32 battle_transition_tick(u32 battle_obj) {
     return fade_check_and_store(battle_obj);
 }
 
-/* sub_8125170(r5 = battle-object pointer) -> r0; flags from IsScreenFadeActive path */
-Next sub_8125170(void) {
+/* battle_transitionTick_8125170(r5 = battle-object pointer) -> r0; flags from IsScreenFadeActive path */
+Next battle_transitionTick_8125170(void) {
     R0 = battle_transition_tick(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8125254 ── */
+/* ── chatbox_flagResolve_8125254 ── */
 #define EVENT_CHATBOX_FLAG 0x1711
 
 /* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
@@ -2026,8 +2026,8 @@ static u32 handle_chatbox_flag_action(void) {
     return 0;
 }
 
-/* sub_8125254() -> r0, nz (c,v left by last callee) */
-Next sub_8125254(void) {
+/* chatbox_flagResolve_8125254() -> r0, nz (c,v left by last callee) */
+Next chatbox_flagResolve_8125254(void) {
     R0 = handle_chatbox_flag_action();
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -2039,7 +2039,7 @@ Next sub_8125254(void) {
  * blobs that follow it.
  *
  * The source table holds 5 entries of 4 words each (0x50 bytes total):
- *   word 0..1 - passed to sub_811FB84, whose result is stored instead
+ *   word 0..1 - passed to getKeyedTableEntry_811FB84, whose result is stored instead
  *   word 2..3 - copied verbatim
  * A final 0 word terminates the assembled table. r4-r7 are preserved. */
 Next initRefs_buildAndDecompressTable_8125280(void) {
@@ -2051,7 +2051,7 @@ Next initRefs_buildAndDecompressTable_8125280(void) {
         src += 4;
         R1 = LD32(src);
         src += 4;
-        GUEST_CALL(sub_811FB84);
+        GUEST_CALL(getKeyedTableEntry_811FB84);
         ST32(dst, R0);
         dst += 4;
 
@@ -2101,7 +2101,7 @@ Next playSoundEffect_7A_81258E8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81258F8 ── */
+/* ── buildChipAvailabilityTable_81258F8 ── */
 /* Chip availability table: 8 bytes per slot (u16 chip_id, u8 status, u8 pad) */
 #define CHIP_TABLE_ADDR        A_unk_201DC20
 #define CHIP_TABLE_SIZE        0x320
@@ -2204,15 +2204,15 @@ static ChipTableResult build_chip_availability_table(void) {
     return (ChipTableResult){count, r2};
 }
 
-/* sub_81258F8() -> r0 = chip count, r2 = loop leftover */
-Next sub_81258F8(void) {
+/* buildChipAvailabilityTable_81258F8() -> r0 = chip count, r2 = loop leftover */
+Next buildChipAvailabilityTable_81258F8(void) {
     ChipTableResult res = build_chip_availability_table();
     R0 = (u32)res.count;
     R2 = res.r2_out;
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8125994 ── */
+/* ── buildChipCatalogByType_8125994 ── */
 /* Collect available chips into a category-indexed buffer, then compact it.
  *
  * Scans chip IDs 1..0x13F. A chip qualifies if its kind (field 7) is 1,
@@ -2321,14 +2321,14 @@ static s32 scan_chips_into_buffer(void) {
     return count;
 }
 
-/* sub_8125994() -> r0 = chip count, r2 = 0 (left by compaction loop) */
-Next sub_8125994(void) {
+/* buildChipCatalogByType_8125994() -> r0 = chip count, r2 = 0 (left by compaction loop) */
+Next buildChipCatalogByType_8125994(void) {
     R0 = (u32)scan_chips_into_buffer();
     R2 = 0;   /* the compaction inner loop always leaves r2 cleared */
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8125A6C ── */
+/* ── packBuildChipLibraryTable_8125A6C ── */
 /* Field offsets within the ChipData struct (base returned by getChip8021DA8). */
 #define oChipData_PackType   0x15
 #define oChipData_Flags      9
@@ -2450,16 +2450,16 @@ static u32 build_pack_data(void) {
     return count;
 }
 
-/* sub_8125A6C() -> r0 = accepted chip count, r2 = 0 (compaction scratch).
+/* packBuildChipLibraryTable_8125A6C() -> r0 = accepted chip count, r2 = 0 (compaction scratch).
  * r3 is a callee side-effect from the last TestEventFlag/…FromImmediate call.
  * r4-r7 are preserved by the original's push/pop (never modified here). */
-Next sub_8125A6C(void) {
+Next packBuildChipLibraryTable_8125A6C(void) {
     R0 = build_pack_data();
     R2 = 0;
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8125B3C ── */
+/* ── library_rebuildCollectedChipList_8125B3C ── */
 /* Chip collection list at dword_201F420: one u32 entry per library slot,
  * halfword chip id at +0, "how obtained" byte at +2, 0x578 bytes total
  * (list end = unk_201F998). Standard chip ids run 1..0x13F. */
@@ -2576,17 +2576,17 @@ static ChipListResult rebuild_chip_collection_list(void) {
     return result;
 }
 
-/* sub_8125B3C() -> r0 = number of collected chips, r2 = leftover scratch.
+/* library_rebuildCollectedChipList_8125B3C() -> r0 = number of collected chips, r2 = leftover scratch.
  * r3 keeps whatever the last event-flag probe left in it; r4-r7 (including
  * the entry count in r5) are popped unchanged, no flags are returned. */
-Next sub_8125B3C(void) {
+Next library_rebuildCollectedChipList_8125B3C(void) {
     ChipListResult result = rebuild_chip_collection_list();
     R0 = result.count;
     R2 = result.scratch_r2;
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8125C08 ── */
+/* ── buildComChipFilter_8125C08 ── */
 /* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
 static void zero_fill_sub_8125C08(u32 addr, u32 bytes) {
     R0 = addr;
@@ -2706,8 +2706,8 @@ static FilterResult build_chip_filter(void) {
     return res;
 }
 
-/* sub_8125C08(r2 r3 r4 r5 r6 r7 r10 lr in) -> (r0 r2 r3 r4 r5 r6 r7 out; r4-r7 preserved) */
-Next sub_8125C08(void) {
+/* buildComChipFilter_8125C08(r2 r3 r4 r5 r6 r7 r10 lr in) -> (r0 r2 r3 r4 r5 r6 r7 out; r4-r7 preserved) */
+Next buildComChipFilter_8125C08(void) {
     FilterResult res = build_chip_filter();
     R0 = res.count;
     R2 = res.r2;

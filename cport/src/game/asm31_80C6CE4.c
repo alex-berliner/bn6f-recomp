@@ -73,12 +73,12 @@ Next battle_objectDispatchPanelChange_80C6CFC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C80B8 ── */
-/* sub_80C80B8: Initialize a battle object on entry to its action phase.
+/* ── battleObject_initActionPhase_80C80B8 ── */
+/* battleObject_initActionPhase_80C80B8: Initialize a battle object on entry to its action phase.
  * Sets Z to 0, builds collision data, plays spawn VFX/sfx, and marks
  * the state action phase as CUR_STATE_UPDATE. inputs: r5 r8 r10 lr
  * outputs: r5 r8 r10  clobbers: nz c v r0 r1 r2 r3 lr  preserved: r4 */
-Next sub_80C80B8(void) {
+Next battleObject_initActionPhase_80C80B8(void) {
     u32 saved_r4 = R4;
 
     /* Sync panel coordinates into the object's pos from its grid panel. */
@@ -129,13 +129,13 @@ Next sub_80C80B8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C81F0 ── */
-/* sub_80C81F0: initialize the battle object's sprite from panel coordinates,
+/* ── battleObject_initSpriteAndEnterUpdate_80C81F0 ── */
+/* battleObject_initSpriteAndEnterUpdate_80C81F0: initialize the battle object's sprite from panel coordinates,
  * set its Z, load sprites/animations, configure flip and apply update phase.
  * Inputs:  r5 = battle object pointer, lr
  * Outputs: r5 (preserved)
  * Clobbers: r0, r1, r2, r3, lr, flags */
-Next sub_80C81F0(void) {
+Next battleObject_initSpriteAndEnterUpdate_80C81F0(void) {
     /* Position the object based on its panel grid coordinates. */
     GUEST_CALL(object_setCoordinatesFromPanels);
 
@@ -179,10 +179,10 @@ Next sub_80C81F0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C8268 ── */
-/* sub_80C8268: Battle object phase-4 state — seed timer once from Param2,
+/* ── battleObject_runPhase4AndDestroy_80C8268 ── */
+/* battleObject_runPhase4AndDestroy_80C8268: Battle object phase-4 state — seed timer once from Param2,
  * tick it each frame, dispatch Param3 while it lasts, then destroy. */
-Next sub_80C8268(void) {
+Next battleObject_runPhase4AndDestroy_80C8268(void) {
     if (LD8(R5 + oBattleObject_CurPhase) == 0) {
         /* First entry: set phase, init Param3, seed timers, run setup. */
         ST8(R5 + oBattleObject_CurPhase, 4);
@@ -206,7 +206,7 @@ Next sub_80C8268(void) {
     if ((s32)new_timer > 0) {
         /* Timer still positive: dispatch the Param3 sub-handler. */
         R0 = LD8(R5 + oBattleObject_Param3);
-        GUEST_CALL(sub_80C8310);
+        GUEST_CALL(battleObject_highlightFrontPanels_80C8310);
     } else {
         /* Timer expired: move to the destroy state. */
         ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
@@ -215,13 +215,13 @@ Next sub_80C8268(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C8310 ── */
-/* sub_80C8310(r0 = panel_count, r5 = battle_object):
+/* ── battleObject_highlightFrontPanels_80C8310 ── */
+/* battleObject_highlightFrontPanels_80C8310(r0 = panel_count, r5 = battle_object):
  *   Highlight the front-facing panels of a battle object, one per step.
  *   Starting from the panel directly in front of the object, highlight
  *   `panel_count` consecutive panels in that direction.
  */
-Next sub_80C8310(void) {
+Next battleObject_highlightFrontPanels_80C8310(void) {
     u32 panel_count = R0;
     u32 obj = R5;
     u32 step;
@@ -241,11 +241,11 @@ Next sub_80C8310(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C8368 ── */
-/* sub_80C8368(r5 = array of object pointers at base+0x60 stride 4, count 5):
+/* ── battle_runObjects_80C8368 ── */
+/* battle_runObjects_80C8368(r5 = array of object pointers at base+0x60 stride 4, count 5):
  * For each of the 5 slots, if the pointer is non-NULL, dispatch sub_80E1B3C on it.
  * Used to update/draw the 5 battle-object slots attached to r5. */
-Next sub_80C8368(void) {
+Next battle_runObjects_80C8368(void) {
     for (u32 slot = 0; slot < 5; slot++) {
         u32 ptr = LD32(R5 + (slot * 4 + 0x60));
         if (ptr != 0) {
@@ -469,7 +469,7 @@ Next sub_80C9774(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C97E0 ── */
+/* ── battle_spawnLinkedObjectType2B_80C97E0 ── */
 /* register form: calls object_spawnType3 outside this file, which has no typed C interface yet */
 static u32 call_object_spawnType3(u32 type, u32 arg1, u32 arg2, u32 arg3) {
     R0 = type;
@@ -508,12 +508,12 @@ static u32 spawn_linked_battle_object(u32 arg1, u32 arg2, u32 arg3, u32 owner, u
     return spawned;
 }
 
-/* sub_80C97E0: spawn object type 0x2B and link it to the requesting object.
+/* battle_spawnLinkedObjectType2B_80C97E0: spawn object type 0x2B and link it to the requesting object.
  * r1-r3: pass-through arguments for object_spawnType3
  * r5: the requesting (owner) object; r7: owner's link-slot pointer
  * Outputs r3 (as left by object_spawnType3) and c/v from the null check;
  * r4-r7 are preserved (r5 restored exactly as the original's pop does). */
-Next sub_80C97E0(void) {
+Next battle_spawnLinkedObjectType2B_80C97E0(void) {
     u32 owner = R5;
     u32 spawned = spawn_linked_battle_object(R1, R2, R3, owner, R7);
     R5 = owner;          /* the original pop {r5} undoes the spawn call's r5 */
@@ -688,7 +688,7 @@ Next battle_objectDestroyWithRelated2Unlink_80CAC44(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CAC82 ── */
+/* ── battle_aiPickMovePanels_80CAC82 ── */
 typedef struct { u32 column; u32 row; } PanelPos;
 typedef struct { u32 r0, r1, r2, r3, r7; } Out5;
 
@@ -772,7 +772,7 @@ static Out5 sub_80CAC82_impl(u32 r4, u32 r5, u32 r6, u32 r7) {
     return res;
 }
 
-Next sub_80CAC82(void) {
+Next battle_aiPickMovePanels_80CAC82(void) {
     Out5 o = sub_80CAC82_impl(R4, R5, R6, R7);
     R0 = o.r0; R1 = o.r1; R2 = o.r2; R3 = o.r3; R7 = o.r7;
     RETURN_TO_CALLER();
@@ -813,7 +813,7 @@ Next battle_applyElementAttackModIfEnabled_80CAD14(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CAF14 ── */
+/* ── battle_initShipSprite_80CAF14 ── */
 /* Tables indexed by (param1 << 2) for ship extra-variable offsets. */
 #define SHIP_EXTRA_TABLE_1  A_byte_80CAF78
 #define SHIP_EXTRA_TABLE_2  A_byte_80CAF8C
@@ -925,8 +925,8 @@ static ShipInitResult init_ship(u32 obj) {
     return r;
 }
 
-/* sub_80CAF14(r5 = battle object) -> r0=CUR_STATE_UPDATE_sub_80CAF14, r1=extra2, nz from r0 */
-Next sub_80CAF14(void) {
+/* battle_initShipSprite_80CAF14(r5 = battle object) -> r0=CUR_STATE_UPDATE_sub_80CAF14, r1=extra2, nz from r0 */
+Next battle_initShipSprite_80CAF14(void) {
     ShipInitResult res = init_ship(R5);
     R0 = res.phase;
     R1 = res.r1;
@@ -943,7 +943,7 @@ Next object_destroyWrapper_80CB078(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CB080 ── */
+/* ── battle_spawnAndConfigureNextObject_80CB080 ── */
 /* register form: calls object_spawnType3 outside this file, which has no typed C interface yet */
 static u32 spawn_object_type3(u32 type) {
     u32 saved_r5 = R5;
@@ -1001,9 +1001,9 @@ static struct SpawnConfigResult configure_spawned_object(
     return res;
 }
 
-/* sub_80CB080(r0=futureX, r1=futureY, r2=element, r5=sourceObj, r6=damageDisabler)
+/* battle_spawnAndConfigureNextObject_80CB080(r0=futureX, r1=futureY, r2=element, r5=sourceObj, r6=damageDisabler)
  * Outputs r1, r2, r3; r4–r7 preserved. */
-Next sub_80CB080(void) {
+Next battle_spawnAndConfigureNextObject_80CB080(void) {
     struct SpawnConfigResult res = configure_spawned_object(
         R0, R1, R2, R5, R6);
     R1 = res.r1;
@@ -1012,7 +1012,7 @@ Next sub_80CB080(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CB0AE ── */
+/* ── battle_spawnCollisionForObject_80CB0AE ── */
 #define COLLISION_REGION_TYPE    0x4050101u
 #define COLLISION_SPAWN_MODE     3u
 #define COLLISION_REGION_TIMER   5u
@@ -1063,18 +1063,18 @@ static u32 spawn_collision_for_object(u32 obj) {
     return spawn_collision_region_call(panel_x, panel_y, element, obj, dmg_disable);
 }
 
-/* sub_80CB0AE(r5 = battle object) -> c, v (region spawn + timer init) */
-Next sub_80CB0AE(void) {
+/* battle_spawnCollisionForObject_80CB0AE(r5 = battle object) -> c, v (region spawn + timer init) */
+Next battle_spawnCollisionForObject_80CB0AE(void) {
     u32 region = spawn_collision_for_object(R5);
     SET_FLAGS_NZ(region);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CE138 ── */
-/* sub_80CE138: Initialize a battle object sprite, set its flags, load
+/* ── battleObject_spawnEntry_80CE138 ── */
+/* battleObject_spawnEntry_80CE138: Initialize a battle object sprite, set its flags, load
  * its graphics and animation, place it on the panel grid, and queue
  * the "update" state for the next frame. */
-Next sub_80CE138(void) {
+Next battleObject_spawnEntry_80CE138(void) {
     /* Mark the object as active (flag bit 1). */
     u8 flags = LD8(R5);
     ST8(R5, flags | 0x02);
@@ -1106,8 +1106,8 @@ Next sub_80CE138(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D84DE ── */
-/* sub_80D84DE: respawn / reinitialize a battle object.
+/* ── battleObject_respawn_80D84DE ── */
+/* battleObject_respawn_80D84DE: respawn / reinitialize a battle object.
  * inputs:  r2 r4 r5 r8 r9 r10 r11 r12 lr
  * outputs: r5 r8 r9 r10 r11 r12
  * clobbers: nz c v r0 r1 r2 r3 r4 lr
@@ -1118,7 +1118,7 @@ Next sub_80CE138(void) {
  * generic post-death hook, sets HP to 1, installs the standard list of
  * per-state handler functions, refreshes collision data and the timestop
  * sprite bookkeeping. */
-Next sub_80D84DE(void) {
+Next battleObject_respawn_80D84DE(void) {
     SP -= 4;
     ST32(SP, LR);
 
@@ -1143,7 +1143,7 @@ Next sub_80D84DE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80DA834 ── */
+/* ── battle_initObject_80DA834 ── */
 struct U32Pair { u32 first, second; };
 
 /* register form: calls object_setCoordinatesFromPanels outside this file, which has no typed C interface yet */
@@ -1252,8 +1252,8 @@ static void init_battle_object(u32 obj) {
     call_sub_80DA886(arg_r0, arg_r1, action);
 }
 
-/* sub_80DA834(r5 = battle object) -> void (outputs R0-R2, flags from sub_80DA886) */
-Next sub_80DA834(void) {
+/* battle_initObject_80DA834(r5 = battle object) -> void (outputs R0-R2, flags from sub_80DA886) */
+Next battle_initObject_80DA834(void) {
     init_battle_object(R5);
     RETURN_TO_CALLER();
 }
@@ -1435,19 +1435,19 @@ Next battle_spawnTypeD3ObjectWithPanelElementAndDamage_80DFF84(void) {
 /* ── t4_0x0_80E0548 ── */
 /* t4_0x0_80E0548: battle-object state dispatcher (ROM jump table at off_80E055C) */
 
-/* register form: calls sub_80E0568 outside this file, which has no typed C interface yet */
+/* register form: calls battle_objectInitAction_80E0568 outside this file, which has no typed C interface yet */
 static u32 call_sub_80E0568(u32 state, u32 handler_addr) {
     R0 = state;
     R1 = handler_addr;
-    GUEST_CALL(sub_80E0568);
+    GUEST_CALL(battle_objectInitAction_80E0568);
     return R0;
 }
 
-/* register form: calls sub_80E05C4 outside this file, which has no typed C interface yet */
+/* register form: calls battle_objectTickTimer_80E05C4 outside this file, which has no typed C interface yet */
 static u32 call_sub_80E05C4(u32 state, u32 handler_addr) {
     R0 = state;
     R1 = handler_addr;
-    GUEST_CALL(sub_80E05C4);
+    GUEST_CALL(battle_objectTickTimer_80E05C4);
     return R0;
 }
 
@@ -1477,7 +1477,7 @@ Next t4_0x0_80E0548(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E0568 ── */
+/* ── battle_objectInitAction_80E0568 ── */
 /* Register-form helpers — used by the typed function below. Declared up-front so the
  * C compiler sees them before they're called. Each one matches one external game
  * function that has no typed C interface yet. */
@@ -1588,14 +1588,14 @@ static void rf_battle_MirrorRelatedObjectFlag1_80E0616(void) {
     GUEST_CALL(battle_MirrorRelatedObjectFlag1_80E0616);
 }
 
-Next sub_80E0568(void) {
+Next battle_objectInitAction_80E0568(void) {
     R0 = battle_object_init_action(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E05C4 ── */
-/* sub_80E05C4: Battle-object timer tick – decrement timer, possibly destroy, update sprite. */
+/* ── battle_objectTickTimer_80E05C4 ── */
+/* battle_objectTickTimer_80E05C4: Battle-object timer tick – decrement timer, possibly destroy, update sprite. */
 
 #define CUR_STATE_DESTROY_sub_80E05C4 8
 #define oBattleObject_FrameData 0x20  /* signed per-frame data, offset from battle-object base */
@@ -1647,7 +1647,7 @@ static void battle_object_timer_update(u32 object) {
     call_sprite_update(object);
 }
 
-Next sub_80E05C4(void) {
+Next battle_objectTickTimer_80E05C4(void) {
     battle_object_timer_update(R5);
     /* sprite_update's GUEST_CALL already left r0–r3, nz, c, v in place */
     RETURN_TO_CALLER();

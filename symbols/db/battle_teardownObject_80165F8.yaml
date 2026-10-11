@@ -1,0 +1,105 @@
+name: battle_teardownObject_80165F8
+address: '0x080165F8'
+kind: function
+status: confirmed
+summary: 'Teardown routine for a single battle object: clears its collision region and result, releases
+  its slot, blanks chip/related-object state, clears AI/barrier data, dispatches a version-specific actor
+  init based on the enemy record, optionally signals the battle is over, and sets the object''s phase
+  to 4.'
+interface: "void battle_teardownObject_80165F8(void);\n  // r5 = oBattleObject * (input; not written through)\n\
+  \  // lr = return address (preserved across the call, popped as pc at end)\n  // returns in r0 the value\
+  \ 4 (0x4) and sets nz/c/v\n"
+details: "Operates on a battle object whose pointer lives in r5 throughout. Calls, in order:\n  object_clearCollisionRegion,\
+  \ battle_ClearObjectCollisionResult_801A5E2,\n  battle_resetCollisionState_80101C4, releaseSlotByValue_801DC36,\n\
+  \  then writes 0 to oBattleObject_ChipsHeld, -1 (0xFFFF) to oBattleObject_Chip,\n  and 0 to oBattleObject_RelatedObject1Ptr.\
+  \ Calls battle_clearAIDataAndBarrier_801A7F4.\nReads oBattleObject_NameID and uses GetVerActorTyAndAIIdx_80182B4\
+  \ to fetch a\n3-byte record {version, actor_type, ai_index}. Only when actor_type == 0\ndoes it dispatch\
+  \ on version: if version < 4 it calls sub_802D644(ai_index),\nelse sub_802D65E(ai_index) (presumably\
+  \ the low/high two entries of the same\nactor-init dispatcher family).\nIf oBattleObject_Param2 < 1,\
+  \ calls relatedToIsBattleOver_800A11C\n(used to signal the battle is over to its related object).\n\
+  Always calls sub_802EF5C and finally stores 4 into\noBattleObject_CurPhaseAndPhaseInitialized, then\
+  \ returns 4 in r0.\nQuirks: r4/r6/r7 are callee-preserved across the call; the function tail\npops {pc}\
+  \ directly from {lr}, so it is a leaf-style jump-out rather than a\nbx lr. The \"battle is over\" notification\
+  \ is gated on Param2 < 1, not <=.\nCurPhaseAndPhaseInitialized field is the same 16-bit field used elsewhere\
+  \ to\nencode both the current phase and a \"phase initialized\" flag; here only the\nconstant 4 is written,\
+  \ which (in the project's encoding for this struct)\nrepresents the \"ObjectHiddenDone\" / released\
+  \ state.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-005019);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c
+    sub_80165F8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80165F8
+
+    ./wf verify --function sub_80165F8 --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-005019-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80165F8
+
+    ./wf verify --function sub_80165F8 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-005019-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80165F8
+
+    ./wf verify --function sub_80165F8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-005019-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story8, story9.'
+  reproduce: grep -l '^080165f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 1a91c64
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80165F8 -> battle_teardownObject_80165F8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What does the version < 4 vs >= 4 split in sub_802D644 / sub_802D65E actually distinguish (region lock,
+  animation table, ...)?
+- Is Param2's "<1" check the correct reversal, or is the original condition "Param2 == 0" that the decompiler
+  lifted as a parity-style bge?
+- What is the meaning of the constant 4 written into CurPhaseAndPhaseInitialized in this struct's flag
+  encoding (full / half / init bits)?
+- Does the "return 4" have any meaning to the caller, or is it just leftover from the original register
+  state at the strh that happens to live in r0?
+- What does sub_802EF5C ("post_teardown_hook") actually do -- a destruction audit, a particle/VFX spawn,
+  or an audio cue?
+sources:
+- tools/wf run convert-20261011-005019
+- recomp 1a91c64
+previous_names:
+- sub_80165F8

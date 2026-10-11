@@ -14,7 +14,7 @@
  *   - redrawBGTileMapWholeWindow_803086C is the maps' redraw callback (+0x20 in every callback
  *     table): it redraws the same window straight from the tilemap, one
  *     layer at a time through copyTilemapLayerRowsToWindow_8030892 — each on-map row is copied by
- *     sub_80018E0, each off-map row is filled with tile 0 by
+ *     bg_writeTileIdRow_80018E0, each off-map row is filled with tile 0 by
  *     call_sub_3005EBA. Only the row (map y) is bounds-checked.
  *
  * lr is never set here on purpose: each function ends right after its last
@@ -142,7 +142,7 @@ static void fill_window_row(u32 window_row, u32 layer) {
 }
 
 /* Copy 32 tilemap entries starting at row_start into the window row at
- * (window_x & 31, window_row) through sub_80018E0; row is the redraw's row
+ * (window_x & 31, window_row) through bg_writeTileIdRow_80018E0; row is the redraw's row
  * counter, which the original passes on in r5. */
 static void copy_tilemap_row(u32 window_x, u32 window_row, u32 layer,
                              u32 row_start, u32 row) {
@@ -152,12 +152,12 @@ static void copy_tilemap_row(u32 window_x, u32 window_row, u32 layer,
     R3 = row_start;
     R4 = WINDOW_TILES;
     R5 = row;
-    GUEST_CALL(sub_80018E0);
+    GUEST_CALL(bg_writeTileIdRow_80018E0);
 }
 
 /* Copy one tilemap layer's rows into the window: the 32 rows the window
  * shows when its origin is camera tile (window_x, window_y). On-map rows
- * go to sub_80018E0 as a tilemap row pointer, off-map rows are filled with
+ * go to bg_writeTileIdRow_80018E0 as a tilemap row pointer, off-map rows are filled with
  * tile 0 through call_sub_3005EBA. */
 static void copy_layer_rows(u32 layer_data, u32 layer, u32 map_width, u32 map_height,
                             u32 window_x, u32 window_y) {

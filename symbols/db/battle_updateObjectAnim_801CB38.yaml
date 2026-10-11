@@ -1,0 +1,102 @@
+name: battle_updateObjectAnim_801CB38
+address: '0x0801CB38'
+kind: function
+status: confirmed
+summary: Advances a battle object's animation state machine and queues its tile, cell, and pattern GFX
+  transfers to VRAM.
+interface: void sub_801CB38(u32 /* saved */ r0, u32 obj /* r5 */, u32 /* r10 */) -> u32 r0, u32 r3, u32
+  r4, u32 r5, u32 r6, u32 r7 (clobbers nzcv, r1, r2, lr)
+details: "Operates on a per-object struct passed in r5 with byte-offset fields:\n  +0x0D OBJ_PREV_FRAME,\
+  \ +0x0E OBJ_FRAME, +0x10 OBJ_ANIM_STATE,\n  +0x11 OBJ_PREV_ANIM_STATE, +0x13 OBJ_ANIM_COUNTER, +0x14\
+  \ OBJ_ANIM_LOCKED,\n  +0x16 OBJ_FLAG_16, +0x17 OBJ_FLAG_17, +0x4C OBJ_BUSY_FLAG.\nThree entry paths:\n\
+  \  1) Counter == 0xFF -> initialise: clear counter, call sub_801E6A8 (advance-frame helper) and seed\
+  \ prev/cur state and frame.\n  2) Busy flag (+0x4C) set -> hold: copy busy flag into state, reuse stored\
+  \ frame.\n  3) Normal: pick sub_801E6A8 (advance) when +0x17 clear and +0x16 clear, else sub_801E69C\
+  \ (hold). If locked, only refresh state; otherwise detect state change (init prev_prev, set +0x13 counter\
+  \ to 0xC) or frame change (update prev frame).\nAfter state/frame update, a countdown phase runs (skipped\
+  \ for state >=5 or ==3): decrements +0x13 each tick, and when its bit 1 is set, swaps OBJ_PREV_ANIM_STATE\
+  \ in for the active state and OBJ_PREV_FRAME for the cell selection.\nThen queues three QueueEightWordAlignedGFXTransfer\
+  \ DMA jobs:\n  - 0x100-byte tile sheet from off_801CD08[state*4] -> VRAM 0x6017680;\n  - 0x80-byte cell\
+  \ row from 0x6017780 (either dword_872D914 filler, or dword_872E994+(0xA-cell)*0x80 when sub_801D814\
+  \ returns true; prev cell used when counter bit 1 was set);\n  - 0x20-byte pattern row from dword_872F114+state*0x20\
+  \ (or byte_801CD80 if state==3 and counter bit 1 set) -> work buffer 0x30016D0.\nQuirks: r0 is stashed\
+  \ on the stack and restored on return so callers' r0 survives. VRAM tile bank index shifts by 0x100\
+  \ between the tile sheet and cell transfer destinations.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c
+    sub_801CB38
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801CB38
+
+    ./wf verify --function sub_801CB38 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-223925-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801CB38
+
+    ./wf verify --function sub_801CB38 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 21 out of domain (verify run convert-20261010-223925-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801CB38
+
+    ./wf verify --function sub_801CB38 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0801cb38 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 9704c25
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_801CB38 -> battle_updateObjectAnim_801CB38
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- The two animation helpers sub_801E6A8 / sub_801E69C are opaque here; their semantics (e.g. advance vs.
+  hold, parameterisation) are inferred only from call sites.
+- The meaning of OBJ_FLAG_16 / OBJ_FLAG_17 gating the advance path is unclear.
+- Whether the +0x13 counter is wall-clock ticks, frames, or animation-step indices.
+- Identity of off_801CD08, dword_872D914, dword_872E994, dword_872F114, byte_801CD80.
+sources:
+- tools/wf run convert-20261010-223925
+- recomp 9704c25
+previous_names:
+- sub_801CB38

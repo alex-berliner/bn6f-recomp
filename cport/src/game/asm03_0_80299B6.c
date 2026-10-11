@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_80299B6 ── */
+/* ── battle_getPrepStatus_80299B6 ── */
 /* Returns the navi-cust battle preparation status for the given battle object pointer.
  * r3_out reports the final r3 value the original leaves behind: unchanged (r3_in) on the
  * early-exit paths, 0x48 after the mode-1 path, 0x49 after the mode-2+ path. */
@@ -56,8 +56,8 @@ static PrepResult get_prep_status(u32 obj_ptr, u32 r3_in) {
     return r;
 }
 
-/* sub_80299B6(r5 = battle object pointer) -> r0 = prep status, r3 = 0x48/0x49 read */
-Next sub_80299B6(void) {
+/* battle_getPrepStatus_80299B6(r5 = battle object pointer) -> r0 = prep status, r3 = 0x48/0x49 read */
+Next battle_getPrepStatus_80299B6(void) {
     PrepResult r = get_prep_status(R5, R3);
     R0 = r.status;
     R3 = r.r3_out;
@@ -65,16 +65,16 @@ Next sub_80299B6(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8029A56 ── */
-/* register form: calls sub_8029AAA outside this file, which has no typed C interface yet */
+/* ── firstBattleTutorial_step_8029A56 ── */
+/* register form: calls battle_getObjectStatusCode_8029AAA outside this file, which has no typed C interface yet */
 static u32 sub_8029AAA_register_form(void) {
-    GUEST_CALL(sub_8029AAA);
+    GUEST_CALL(battle_getObjectStatusCode_8029AAA);
     return R0;
 }
 
-/* register form: calls sub_8029ADA outside this file, which has no typed C interface yet */
+/* register form: calls entity_getActionIndex_8029ADA outside this file, which has no typed C interface yet */
 static u32 sub_8029ADA_register_form(void) {
-    GUEST_CALL(sub_8029ADA);
+    GUEST_CALL(entity_getActionIndex_8029ADA);
     return R0;
 }
 
@@ -93,7 +93,7 @@ static void chatbox_runScript_register_form(u32 script_archive, u32 script_idx) 
 
 /* Drive one step of the first-battle tutorial chatbox.
  * Reads the driver state at (obj + 0xC). When the state is 0/1/3, the matching
- * predicate (sub_8029AAA/ADA/B16) is consulted; a non-zero result runs the
+ * predicate (battle_getObjectStatusCode_8029AAA/ADA/B16) is consulted; a non-zero result runs the
  * tutorial script indexed by `state` from TextScriptFirstBattleTutorials, then
  * stores the current chatbox state byte into offset 0xD, sets the new state to
  * 0x34 and clears the timer at offset 0x2. */
@@ -126,12 +126,12 @@ static void driver_step(u32 obj) {
     ST16(obj + 2, 0);
 }
 
-Next sub_8029A56(void) {
+Next firstBattleTutorial_step_8029A56(void) {
     driver_step(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8029AAA ── */
+/* ── battle_getObjectStatusCode_8029AAA ── */
 /* Compute a status code for a battle object based on its mode byte (+7) and sub-state byte (+8).
  * Mode 0 or 2 → depends on sub-state (1→9, else→14).
  * Mode 10 → 16.
@@ -150,13 +150,13 @@ static u32 get_battle_object_status_code(u32 obj_ptr) {
     return ((s32)sub_state > 2) ? 0 : 0x16;
 }
 
-/* sub_8029AAA(r5 = battle object ptr) -> r0 */
-Next sub_8029AAA(void) {
+/* battle_getObjectStatusCode_8029AAA(r5 = battle object ptr) -> r0 */
+Next battle_getObjectStatusCode_8029AAA(void) {
     R0 = get_battle_object_status_code(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8029B1C ── */
+/* ── battleTutorial_first_checkTextStep_8029B1C ── */
 /*
  * First-battle tutorial chatbox trigger (r5 = tutorial work struct):
  *   +0x01  state/timer byte
@@ -232,7 +232,7 @@ static u32 tutorial_text_update(u32 work)
     return 1;
 }
 
-Next sub_8029B1C(void) {
+Next battleTutorial_first_checkTextStep_8029B1C(void) {
     R0 = tutorial_text_update(R5);
     RETURN_TO_CALLER();
 }
@@ -261,7 +261,7 @@ Next sub_8029D80(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8029FB4 ── */
+/* ── checkBattleEventGate_8029FB4 ── */
 /* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
 static u32 get_battle_mode_sub_8029FB4(void) {
     GUEST_CALL(GetBattleMode);
@@ -320,8 +320,8 @@ static u32 check_event_gate(u32 battle_state_ptr) {
     return 1;
 }
 
-/* sub_8029FB4(r5 = battle state pointer) -> r0 = gate open? */
-Next sub_8029FB4(void) {
+/* checkBattleEventGate_8029FB4(r5 = battle state pointer) -> r0 = gate open? */
+Next checkBattleEventGate_8029FB4(void) {
     R0 = check_event_gate(R5);
     RETURN_TO_CALLER();
 }
@@ -512,8 +512,8 @@ Next sound_playCrossTransformationJingle_802A3CC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802A40C ── */
-/* sub_802A40C: compute the beast-out counter and store it to dest+6.
+/* ── battle_updateBeastOutCounter_802A40C ── */
+/* battle_updateBeastOutCounter_802A40C: compute the beast-out counter and store it to dest+6.
  * Reads battle mode, Navi stats, and global overflow to decide how many
  * turns the current Navi has left before a beast transformation expires. */
 
@@ -607,8 +607,8 @@ static void beast_update_out_counter(u32 toolkit, u32 dest) {
     ST8(dest + 6, counter);
 }
 
-/* sub_802A40C(r5 = dest, r10 = toolkit) -> writes dest[6]; r4/r5/r6/r7 preserved */
-Next sub_802A40C(void) {
+/* battle_updateBeastOutCounter_802A40C(r5 = dest, r10 = toolkit) -> writes dest[6]; r4/r5/r6/r7 preserved */
+Next battle_updateBeastOutCounter_802A40C(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     beast_update_out_counter(R10, saved_r5);
     R4 = saved_r4;
@@ -749,7 +749,7 @@ Next battle_checkActiveSlot8NaviStatReady_802A5DA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802A646 ── */
+/* ── expireBattleFlag_802A646 ── */
 /* If the battle-state flag at offset 0x44 is set and the counter at offset 0x45
  * is strictly less than the byte at r5+6, clear the flag. */
 static void expire_battle_flag(u32 battle_state_ptr, u32 source) {
@@ -763,7 +763,7 @@ static void expire_battle_flag(u32 battle_state_ptr, u32 source) {
 /* register form: r5, r10 and lr arrive in guest registers; the body dereferences
  * a guest struct pointer (battle state) and a guest object, which has no typed
  * C interface, so the typed helper takes raw guest addresses. */
-Next sub_802A646(void) {
+Next expireBattleFlag_802A646(void) {
     expire_battle_flag(LD32(R10 + oToolkit_BattleStatePtr), R5);
     RETURN_TO_CALLER();
 }
@@ -826,7 +826,7 @@ Next objStepFinishSetState4_802BE0C(void) {
 /* custMenu_handleInputQueuePop_802BED4(r5 = custom-menu object):
  * Pop the next halfword from the menu input queue and act on it.
  *  - Queue empty (value 0): run the "back out" path — set the jump offset
- *    (r5+1) to 8, which routes the next state step to sub_8026BF4 via the
+ *    (r5+1) to 8, which routes the next state step to scrollStrip_update_8026BF4 via the
  *    menu main handler, and clear the halfword at r5+2.
  *  - Otherwise: store the popped value into Unk_10, choose the hold timer
  *    for Unk_0b (1 frame when the byte at Unk_0c is set, otherwise 30
@@ -909,7 +909,7 @@ Next battle_pickObjectAnimState_802BF0C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802BF4C ── */
+/* ── dispatchBattleObjectBehavior_802BF4C ── */
 /* register form: calls one of three behavior handlers outside this file via a
  * 3-entry Thumb function-pointer table indexed by the byte at [object+3].
  * The callee receives R0=selector, R1=its own function pointer, and a stack
@@ -925,7 +925,7 @@ static void dispatch_behavior_vtable(void) {
     SP -= 4; ST32(SP, LR);
 
     if (selector == 0)
-        GUEST_CALL(sub_802BF6C);
+        GUEST_CALL(setupChipListVisual_802BF6C);
     else if (selector == 4)
         GUEST_CALL(sub_802C044);
     else
@@ -935,13 +935,13 @@ static void dispatch_behavior_vtable(void) {
     SP += 4;
 }
 
-/* sub_802BF4C: vtable tail-dispatch to a battle-object behavior handler */
-Next sub_802BF4C(void) {
+/* dispatchBattleObjectBehavior_802BF4C: vtable tail-dispatch to a battle-object behavior handler */
+Next dispatchBattleObjectBehavior_802BF4C(void) {
     dispatch_behavior_vtable();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802BF6C ── */
+/* ── setupChipListVisual_802BF6C ── */
 #define CHIP_LIST_SIZE 0x2A
 #define GFX_VRAM_PRIMARY 0x600BD00
 #define GFX_PRIMARY_SIZE (CHIP_LIST_SIZE << 6)   /* 0xA80 */
@@ -1044,8 +1044,8 @@ static u32 setup_chip_soul_visual(u32 toolkit) {
     return r7_val;
 }
 
-/* sub_802BF6C(r5 = toolkit ptr) -> r7, flags; r0=4 */
-Next sub_802BF6C(void) {
+/* setupChipListVisual_802BF6C(r5 = toolkit ptr) -> r7, flags; r0=4 */
+Next setupChipListVisual_802BF6C(void) {
     R7 = setup_chip_soul_visual(R5);
     R0 = 4;
     SET_FLAGS_NZ(R0);
@@ -1112,8 +1112,8 @@ Next initShuffledOrderTable42_802C1F0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802C328 ── */
-/* sub_802C328: 0802C328-0802C348 THUMB, bn6f asm03_0.s:12588 */
+/* ── battle_advanceFade_802C328 ── */
+/* battle_advanceFade_802C328: 0802C328-0802C348 THUMB, bn6f asm03_0.s:12588 */
 /*   inputs:  r5 lr
  *   outputs: nz c v r0 r1 r2 r3 r5 lr
  *   clobbers (unused by callers): -
@@ -1162,7 +1162,7 @@ static u32 advance_battle_fade(u32 battle_state) {
     return fade_r0;
 }
 
-Next sub_802C328(void) {
+Next battle_advanceFade_802C328(void) {
     R0 = advance_battle_fade(R5);
     RETURN_TO_CALLER();
 }
@@ -1178,7 +1178,7 @@ Next sub_802C348(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802C34E ── */
+/* ── setupNaviDisplay_802C34E ── */
 /* ── Data-table addresses (ROM-side literal-pool entries) ─────────────────── */
 #define NAVI_DISPLAY_BASE   0x20364C0u  /* eS20364C0 – 32-byte navi display struct in EWRAM */
 #define PORTRAIT_TABLE      0x0802C3FCu /* 3 × (src, VRAM dest, size) for navi portraits */
@@ -1304,8 +1304,8 @@ static void setup_navi_display(u32 attr_base, u32 toolkit) {
 
 /* ── Thin adapter ─────────────────────────────────────────────────────────── */
 
-/* sub_802C34E(r0 = navi-attribute base, r10 = toolkit) → (r4-r7 preserved) */
-Next sub_802C34E(void) {
+/* setupNaviDisplay_802C34E(r0 = navi-attribute base, r10 = toolkit) → (r4-r7 preserved) */
+Next setupNaviDisplay_802C34E(void) {
     setup_navi_display(R0, R10);
     RETURN_TO_CALLER();
 }
@@ -1820,8 +1820,8 @@ Next battle_ClearAllianceTargetSlotIfSelf_802CDD0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802CDE6 ── */
-/* sub_802CDE6: Detach the BattleObject pointed to by r5 from whatever
+/* ── battleObject_DetachFromAllianceSlot_802CDE6 ── */
+/* battleObject_DetachFromAllianceSlot_802CDE6: Detach the BattleObject pointed to by r5 from whatever
  * battle-state slot is currently holding it (so it stops being tracked).
  * r5 = BattleObject pointer, lr = return address.
  *
@@ -1830,7 +1830,7 @@ Next battle_ClearAllianceTargetSlotIfSelf_802CDD0(void) {
  * Each slot has a pointer at +4 (the current owner) and a flag/field at +8.
  * If r5 is the current owner of its alliance's slot, both the pointer and
  * the secondary field are cleared. */
-Next sub_802CDE6(void) {
+Next battleObject_DetachFromAllianceSlot_802CDE6(void) {
     u32 slot_base = A_dword_203CFB0;
     u8 alliance = LD8(R5 + oBattleObject_Alliance);
 
@@ -1887,8 +1887,8 @@ Next sub_802CE10(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802CE30 ── */
-Next sub_802CE30(void) {
+/* ── checkBattleOrderMatch_802CE30 ── */
+Next checkBattleOrderMatch_802CE30(void) {
     u32 base = A_dword_203CFB0;
     if (!((u32)LD8(R5 + oBattleObject_Alliance) & 0xFF))
         base += 0xc;
@@ -1975,7 +1975,7 @@ Next runPendingHandlerForEntryPair_802CEC8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802CFF8 ── */
+/* ── battleObject_handleImpact_802CFF8 ── */
 /* Returns true if the battle object has the 0x40 bit set in its collision
  * data field at offset 0x76 (the "shockwave / impact" trigger flag). */
 static bool has_impact_flag(u32 battle_object) {
@@ -2021,7 +2021,7 @@ static void handle_battle_object_impact(u32 battle_object) {
     play_sound_effect(0x8E);
 }
 
-Next sub_802CFF8(void) {
+Next battleObject_handleImpact_802CFF8(void) {
     handle_battle_object_impact(R5);
     /* Original's final instruction is a function epilogue (pop {r4,pc}); it
      * leaves flags from PlaySoundEffect (c/v) and leaves R2 untouched. */

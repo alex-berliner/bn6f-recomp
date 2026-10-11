@@ -1,0 +1,95 @@
+name: adjustSpriteByOffset_811BE9C
+address: '0x0811BE9C'
+kind: function
+status: confirmed
+summary: Repositions a sprite by its per-type (x,y) offset and tags it normal or special based on a per-type
+  flag table.
+interface: 'void sub_811BE9C(struct SpriteObj *r5_sprite);
+
+  // returns in r0 = flag table byte, r1 = attr byte written,
+
+  // r2 = flag table address; r3 left from sprite_setCoordinates;
+
+  // clobbers r0,r1,r2,r3,lr and flags N,Z (from TST) plus C,V (left by sprite_setCoordinates).
+
+  '
+details: 'Reads the sprite''s current position via sprite_getCoordinates (r5 -> r0=x, r1=y saved on stack).
+
+  Uses the sprite''s type byte at obj+0xC as an index into a signed-16 dx/dy offset table at
+
+  byte_811BF0C and adds the corresponding offset to (x,y), then writes the result back via
+
+  sprite_setCoordinates.
+
+  Re-reads the type byte (sprite_setCoordinates may rewrite obj+0xC) and looks it up in a
+
+  per-type flag table at byte_811BF94: if the byte is non-zero the sprite is tagged
+
+  0x23 ("special") via strb at obj+0, otherwise it is tagged 0x01 ("normal").
+
+  Outputs the flag byte in r0, the written attr in r1, and the flag-table base in r2 so the
+
+  caller can inspect/dispatch on the sprite''s variant.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-003552);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 55' --file inbox_farm_55.c
+    sub_811BE9C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811BE9C
+
+    ./wf verify --function sub_811BE9C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    183 out of domain (verify run convert-20261011-003552-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811BE9C
+
+    ./wf verify --function sub_811BE9C --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261011-003552-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811BE9C
+
+    ./wf verify --function sub_811BE9C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003552-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^0811be9c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 788e88e
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811BE9C -> adjustSpriteByOffset_811BE9C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+- story2
+open_questions:
+- Which subsystem/call site owns this sprite repositioning (battle field entity? menu icon? cursor?).
+- Whether the "special" 0x23 tag has a defined meaning elsewhere (e.g. animation/animation bank).
+- Why sprite_setCoordinates may rewrite the type byte at obj+0xC (table drive? swap?).
+sources:
+- tools/wf run convert-20261011-003552
+- recomp 788e88e
+previous_names:
+- sub_811BE9C

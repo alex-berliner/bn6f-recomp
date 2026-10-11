@@ -1,0 +1,80 @@
+name: battle_dispatchNextCmd_81272C4
+address: '0x081272C4'
+kind: function
+status: confirmed
+summary: Queues the next battle-object command for the object being updated, choosing between CMD_A and
+  CMD_B based on the object's state bytes.
+interface: void battle_dispatchNextCmd_81272C4(u32 obj_ptr /*r5*/); clobbers r0-r3,r6-r7,nzcv; preserves
+  r4,r5
+details: 'Called as a per-frame ''next'' handler for a battle object at r5. Reads obj+0x10 (active flag):
+  if zero, queues CMD_B (source 0xE8, type 0x34, flag 0x12, pool offset 0) via helper sub_812730C. If
+  non-zero, first queues CMD_A (source 4, type 0x34, flag 0x13, pool offset 0x10000000), then checks obj+0x0F
+  (state): if state==2 the function returns early; if obj+0x10==1 (re-read) it falls through to also queue
+  CMD_B, otherwise returns after CMD_A alone. The helper receives r4=A_byte_81268FC and r7=A_dword_81268F8
+  as command-queue parameters. Both return paths after the helper leave a CMP in flags, so callers must
+  not rely on flag state.'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c
+    sub_81272C4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81272C4
+
+    ./wf verify --function sub_81272C4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    209 out of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81272C4
+
+    ./wf verify --function sub_81272C4 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81272C4
+
+    ./wf verify --function sub_81272C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^081272c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_81272C4 -> battle_dispatchNextCmd_81272C4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story2
+related:
+- sub_8126FF0
+open_questions:
+- What do state values 0/1/2 at obj+0x0F and the active-flag values at obj+0x10 represent in gameplay
+  terms?
+- What are CMD_A (source 4, flag 0x13) and CMD_B (source 0xE8, flag 0x12) in terms of the command queue
+  consumed by sub_812730C?
+- Why is type 0x34 shared by both commands—is it a category or a queue index?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c
+previous_names:
+- sub_81272C4

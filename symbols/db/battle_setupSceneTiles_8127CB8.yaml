@@ -1,0 +1,84 @@
+name: battle_setupSceneTiles_8127CB8
+address: '0x08127CB8'
+kind: function
+status: confirmed
+summary: Builds tile-descriptor arrays, decompresses scene graphics, selects a tile-set variant from battle_state+0xD,
+  and blits a 30×20 background grid into VRAM for the current battle encounter.
+interface: void battle_setupSceneTiles(u32 *battle_state /* r5 */); // preserves r4-r7, clobbers r0-r3,
+  flags
+details: 'Reads bit 0 of the byte at battle_state+0xD as a variant selector. Loops over a 3-entry source
+  table (off_8127DB8, 0x30 bytes): for each entry the first two words are passed to sub_811FB84 to compute
+  a tile descriptor stored into unk_20096E0, and the next two words (destination pointer, size) are copied
+  verbatim; the list is null-terminated at offset 0x24. Calls decompAndCopyData on the descriptor table
+  (unk_20096E0) and on byte_8127DF0 (a compressed pointer referencing eTextScript201C700). Then selects
+  between two initRefs blobs (off_8127D78 for variant 0, dword_8127D98 for variant 1—differing in their
+  source compressed data dword_86C9108 vs dword_86C9128) and decompresses it. Calls sub_8123300 to decompress
+  a 13-entry compressed-pointer table (byte_8127D38) into eTextScript201BA00 using eDecompBuffer2013A00.
+  Finally calls CopyBackgroundTiles(0,0,1, tile_ids, 0x1E, 0x14) where tile_ids is unk_2028690 (variant
+  1) or unk_201C200 (variant 0), loading a 30-wide by 20-tall tile block into VRAM screen block 1.'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c
+    sub_8127CB8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8127CB8
+
+    ./wf verify --function sub_8127CB8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8127CB8
+
+    ./wf verify --function sub_8127CB8 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8127CB8
+
+    ./wf verify --function sub_8127CB8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: menus3, story1, story2, story8.'
+  reproduce: grep -l '^08127cb8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8127CB8 -> battle_setupSceneTiles_8127CB8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- What exactly does sub_811FB84 compute for each (source,size) pair—likely a compressed-LZ pointer with
+  offset baked in?
+- Are the two variants (off_8127D78 vs dword_8127D98) corresponding to Cybeast vs normal boss backgrounds?
+- What are unk_201C200 / unk_2028690 relative to eDecompBuffer2013A00—pre-resolved tile-ID arrays or still
+  compressed at call time?
+- Is byte_8127DF0's eTextScript201C700 destination a sprite-palette or tile-metatile blob?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c
+previous_names:
+- sub_8127CB8

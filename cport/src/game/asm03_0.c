@@ -138,7 +138,7 @@ Next sub_8026A50(void) {
 Next object_runFrameUpdate_8026A6C(void) {
     u32 self = R5;
 
-    GUEST_CALL(sub_8027D78);
+    GUEST_CALL(battle_customGauge_EndTurn_8027D78);
 
     R0 = LD8(self + 0x0E);
     GUEST_CALL(flags_clearFlagWordBit_802FE6A);
@@ -160,9 +160,9 @@ Next object_runFrameUpdate_8026A6C(void) {
  * as the original's jump-table dispatch leaves the registers. */
 
 /* register form: calls the custom-menu state handlers (sub_8026B04,
- * custMenuUpdateWaitSelectionState_8026CCC, sub_8026BF4, sub_8026D06,
+ * custMenuUpdateWaitSelectionState_8026CCC, scrollStrip_update_8026BF4, sub_8026D06,
  * sub_8026DB0, sub_8026DC4, chatbox_stateMaybeFinishText_8026E4C,
- * battle_updateObjectByKind_8026E98, sub_8026FC0, sub_8027044, sub_80271F8,
+ * battle_updateObjectByKind_8026E98, battle_runTutorialDialog_8026FC0, sub_8027044, sub_80271F8,
  * sub_802728C, sub_80273A4, chatbox_resetTextStateIfHidden_80273EC,
  * sub_8027406, sub_802753E, sub_8027548, sub_80275EC, sub_802770C,
  * sub_8027834, sub_802790C, sub_802794A, sub_8026E78, sub_8027A58) outside
@@ -180,13 +180,13 @@ static void run_state_handler(u32 state_offset, u32 self) {
     switch (state_offset) {
     case 0x00: GUEST_CALL(sub_8026B04); break;
     case 0x04: GUEST_CALL(custMenuUpdateWaitSelectionState_8026CCC); break;
-    case 0x08: GUEST_CALL(sub_8026BF4); break;
+    case 0x08: GUEST_CALL(scrollStrip_update_8026BF4); break;
     case 0x0C: GUEST_CALL(sub_8026D06); break;
     case 0x10: GUEST_CALL(sub_8026DB0); break;
     case 0x14: GUEST_CALL(sub_8026DC4); break;
     case 0x18: GUEST_CALL(chatbox_stateMaybeFinishText_8026E4C); break;
     case 0x1C: GUEST_CALL(battle_updateObjectByKind_8026E98); break;
-    case 0x20: GUEST_CALL(sub_8026FC0); break;
+    case 0x20: GUEST_CALL(battle_runTutorialDialog_8026FC0); break;
     case 0x24: GUEST_CALL(sub_8027044); break;
     case 0x28: GUEST_CALL(sub_80271F8); break;
     case 0x2C: GUEST_CALL(sub_802728C); break;
@@ -419,7 +419,7 @@ Next sub_8026B04(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8026BF4 ── */
+/* ── scrollStrip_update_8026BF4 ── */
 /* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
 static void call_dispatch_801DACC(u32 flags) {
     R0 = flags;
@@ -528,8 +528,8 @@ static void sub_8026BF4_impl(u32 self, u32 toolkit) {
     call_sub_8029C08(self);
 }
 
-/* sub_8026BF4(self: * S20364C0 $r5, toolkit: * $r10) */
-Next sub_8026BF4(void) {
+/* scrollStrip_update_8026BF4(self: * S20364C0 $r5, toolkit: * $r10) */
+Next scrollStrip_update_8026BF4(void) {
     sub_8026BF4_impl(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -568,7 +568,7 @@ Next custMenuUpdateWaitSelectionState_8026CCC(void) {
         GUEST_CALL(sub_8028820);
         GUEST_CALL(sub_8029C08);                 /* (self) */
         GUEST_CALL(sub_802899C);
-        GUEST_CALL(sub_8029D34);
+        GUEST_CALL(battle_endingBgUpdate_8029D34);
 
         u32 counter = LD32(R5 + 0x40);
         R0 = counter + 1;
@@ -649,7 +649,7 @@ Next battle_updateObjectByKind_8026E98(void) {
     R0 = kind;
     R1 = LD32(A_off_8026EBC + kind); /* thumb handler pointer from the ROM table */
     switch (kind) {
-    case 0: GUEST_CALL(sub_8026EC8); break;
+    case 0: GUEST_CALL(runBattleDialog_8026EC8); break;
     case 4: GUEST_CALL(sub_8026F1A); break;
     case 8: GUEST_CALL(sub_8026FAA); break;
     }
@@ -659,7 +659,7 @@ Next battle_updateObjectByKind_8026E98(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8026EC8 ── */
+/* ── runBattleDialog_8026EC8 ── */
 /* Register form: GetBattleEffects has no typed C interface yet. */
 static u32 get_battle_effects(void) {
     GUEST_CALL(GetBattleEffects);
@@ -713,12 +713,12 @@ static void run_battle_dialog(u32 base_r4, u32 state_ptr) {
     play_sound_effect_sub_8026EC8(SOUND_UNSELECT_7B);
 }
 
-Next sub_8026EC8(void) {
+Next runBattleDialog_8026EC8(void) {
     run_battle_dialog(R4, R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8026FC0 ── */
+/* ── battle_runTutorialDialog_8026FC0 ── */
 /* Struct offsets for the battle-run tutorial state object (S20364C0). */
 #define oBattleRunSelf_Timer  1
 #define oBattleRunSelf_State  2
@@ -779,7 +779,7 @@ static u32 run_battle_run_tutorial(u32 self) {
     return 0;
 }
 
-Next sub_8026FC0(void) {
+Next battle_runTutorialDialog_8026FC0(void) {
     u32 result = run_battle_run_tutorial(R5);
     SET_FLAGS_NZ(result);
     RETURN_TO_CALLER();
@@ -966,7 +966,7 @@ Next battle_countFolderChips_8027D58(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8027E90 ── */
+/* ── resetBattleRecordSlots_8027E90 ── */
 /* Battle mode flag used to select the panel-status branch. */
 enum {
     BATTLE_MODE_SINGLE = 1,
@@ -992,9 +992,9 @@ static u32 get_battle_mode_sub_8027E90(void) {
     return R0;
 }
 
-/* register form: calls sub_8029FB4 outside this file, which has no typed C interface yet */
+/* register form: calls checkBattleEventGate_8029FB4 outside this file, which has no typed C interface yet */
 static bool sub_8029FB4_retbool(void) {
-    GUEST_CALL(sub_8029FB4);
+    GUEST_CALL(checkBattleEventGate_8029FB4);
     return R0 != 0;
 }
 
@@ -1004,7 +1004,7 @@ static bool sub_802A57E_retbool(void) {
     return R0 != 0;
 }
 
-/* sub_8027E90: initialise the 12 battle-record slots from the ROM template, then set the
+/* resetBattleRecordSlots_8027E90: initialise the 12 battle-record slots from the ROM template, then set the
  * panel-status byte on the slot array header according to the current battle mode.
  * slot_array_ptr (r4) points to the slot array. Returns the address one past the last slot
  * (r4 + 12 * 0xC), matching the original's final r2. */
@@ -1036,7 +1036,7 @@ static u32 reset_battle_record(u32 slot_array_ptr) {
     return slot_addr;
 }
 
-Next sub_8027E90(void) {
+Next resetBattleRecordSlots_8027E90(void) {
     R2 = reset_battle_record(R4);
     RETURN_TO_CALLER();
 }
@@ -1607,10 +1607,10 @@ Next beastout_LoadSelectionScreenSpriteSheets_802869E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80286D4 ── */
-/* register form: calls sub_80287D2 outside this file, which has no typed C interface yet */
+/* ── beastout_QueuePaletteGFXAndSheets_80286D4 ── */
+/* register form: calls loadOneSpriteTileRow_80287D2 outside this file, which has no typed C interface yet */
 static void call_sub_80287D2(void) {
-    GUEST_CALL(sub_80287D2);
+    GUEST_CALL(loadOneSpriteTileRow_80287D2);
 }
 
 /* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
@@ -1638,12 +1638,12 @@ static void do_palette_gfx_and_sheets(u32 state) {
     load_selection_screen_sprite_sheets();
 }
 
-Next sub_80286D4(void) {
+Next beastout_QueuePaletteGFXAndSheets_80286D4(void) {
     do_palette_gfx_and_sheets(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80287D2 ── */
+/* ── loadOneSpriteTileRow_80287D2 ── */
 /* register form: calls sub_802868C outside this file, which has no typed C interface yet */
 static void sprite_descriptor_fill(void) {
     /* Copy 8 bytes of sprite descriptor table (byte_802A6C0) into the
@@ -1671,8 +1671,8 @@ static void load_one_sprite_tile_row(void) {
     queue_sprite_tile_gfx();
 }
 
-/* sub_80287D2(r2, r4, r5, r6, r7, lr) -> r4 r5 r6 r7 (preserved) */
-Next sub_80287D2(void) {
+/* loadOneSpriteTileRow_80287D2(r2, r4, r5, r6, r7, lr) -> r4 r5 r6 r7 (preserved) */
+Next loadOneSpriteTileRow_80287D2(void) {
     load_one_sprite_tile_row();
     RETURN_TO_CALLER();
 }
@@ -1762,7 +1762,7 @@ Next custMenuPressOK_8028D3A(void) {
 Next customScreen_ExitSequence_8028E32(void) {
     u32 return_address = LR;
 
-    GUEST_CALL(sub_8028E4C);
+    GUEST_CALL(classifyActiveChipElements_8028E4C);
     GUEST_CALL(updateCustomScreen_WhenUnselectingChip_8028EC8);
     GUEST_CALL(battle_updateActiveChipSlotB_state_8028F48);
     GUEST_CALL(battle_updateExtraSlotChipKeepFlag_8028F84);
@@ -1774,7 +1774,7 @@ Next customScreen_ExitSequence_8028E32(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8028E4C ── */
+/* ── classifyActiveChipElements_8028E4C ── */
 /* register form: calls getLocOfActiveChips_8027E1C outside this file, which has no typed C interface yet */
 static u32 get_loc_of_active_chips_sub_8028E4C(u32 index) {
     R0 = index;
@@ -1862,11 +1862,11 @@ done:
     ST8(r5_in + 9, (u8)r7);
 }
 
-/* sub_8028E4C: walks the active-chip list in r5, classifying chips by element code.
+/* classifyActiveChipElements_8028E4C: walks the active-chip list in r5, classifying chips by element code.
  *   inputs:  r2 r4 r5 r6 r7 r10 lr
  *   outputs: r2 r3 r4 r5 r6 r7
  * No flag outputs are required by callers. */
-Next sub_8028E4C(void) {
+Next classifyActiveChipElements_8028E4C(void) {
     scan_chip_elements(R5);
     RETURN_TO_CALLER();
 }
@@ -2103,7 +2103,7 @@ Next battle_updateExtraSlotChipKeepFlag_8028F84(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8029032 ── */
+/* ── customScreen_ExitAction_8029032 ── */
 #define TILE_VRAM_SLOT    0x1FF
 #define SOUND_CONFIRM     0x1D2  /* 0xd3 + 0xff */
 #define CHIP_ATTR_OFFSET  0x55   /* base offset for pending-jack-in attribute */
@@ -2214,15 +2214,15 @@ static void custom_screen_exit_action(u32 state_ptr) {
     play_sound_sub_8029032(SOUND_EXIT_SUBMENU);
 }
 
-/* sub_8029032(r5 = screen state ptr) -> outputs r2 r3 r5 r6 r7 r8 r9 r10 r11 r12; preserves r4 r7 */
-Next sub_8029032(void) {
+/* customScreen_ExitAction_8029032(r5 = screen state ptr) -> outputs r2 r3 r5 r6 r7 r8 r9 r10 r11 r12; preserves r4 r7 */
+Next customScreen_ExitAction_8029032(void) {
     u32 saved_r4 = R4;
     custom_screen_exit_action(R5);
     R4 = saved_r4;
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8029224 ── */
+/* ── processChipCommandQueue_8029224 ── */
 /* Chip command queue base in work RAM. */
 #define CHIP_QUEUE_BASE 0x2033000
 
@@ -2313,8 +2313,8 @@ static void process_chip_command_queue(u32 target_obj) {
     }
 }
 
-/* sub_8029224(r3 = target object) — no outputs, clobbers r0–r3, flags, lr */
-Next sub_8029224(void) {
+/* processChipCommandQueue_8029224(r3 = target object) — no outputs, clobbers r0–r3, flags, lr */
+Next processChipCommandQueue_8029224(void) {
     process_chip_command_queue(R3);
     RETURN_TO_CALLER();
 }
@@ -2357,7 +2357,7 @@ Next battle_compactFolderChipList_802945A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80295C8 ── */
+/* ── battle_scanChipSeq_80295C8 ── */
 /* Scans a chip/program u16 sequence in a battle buffer.
  * First verifies `count` consecutive words all match the target at [data_ptr+4],
  * then walks backwards through a trailing region validating a descending value
@@ -2426,8 +2426,8 @@ static SeqScanResult scan_chip_sequence(u32 count, u32 data_ptr, u32 offset, u32
     return (SeqScanResult){r0, r1, r6, 8, r1};
 }
 
-/* sub_80295C8(r2 = count, r3 = data_ptr, r6 = buffer_offset, r7 = buffer_base) -> r0 r1 nzcv */
-Next sub_80295C8(void) {
+/* battle_scanChipSeq_80295C8(r2 = count, r3 = data_ptr, r6 = buffer_offset, r7 = buffer_base) -> r0 r1 nzcv */
+Next battle_scanChipSeq_80295C8(void) {
     SeqScanResult res = scan_chip_sequence(R2, R3, R6, R7);
     R0 = res.r0;
     R1 = res.r1;
@@ -2502,10 +2502,10 @@ static u32 tutorial_script_0(u32 state) {
     return R0;
 }
 
-/* register form: calls sub_80299B6 outside this file, which has no typed C interface yet */
+/* register form: calls battle_getPrepStatus_80299B6 outside this file, which has no typed C interface yet */
 static u32 tutorial_script_1(u32 state) {
     R0 = state;
-    GUEST_CALL(sub_80299B6);
+    GUEST_CALL(battle_getPrepStatus_80299B6);
     return R0;
 }
 

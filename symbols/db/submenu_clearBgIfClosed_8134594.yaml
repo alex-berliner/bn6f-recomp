@@ -1,0 +1,96 @@
+name: submenu_clearBgIfClosed_8134594
+address: '0x08134594'
+kind: function
+status: confirmed
+summary: Clears the submenu background tile area when the in-game submenu (menu window) is not currently
+  open.
+interface: "void submenu_clearBgIfClosed_8134594(void);\n  /* takes no arguments; trashes r0-r3, r4-r6,\
+  \ lr; clobbers N, Z, C, V */\n"
+details: 'Guards on submenu_isOpen_81355D8: if it returns non-zero (submenu open) the function
+
+  early-returns without touching anything. Otherwise it issues a tile-clear style call into
+
+  sub_813468C with the fixed tile range (0xE7, 0x16, 0x00, 0x10) and a static pointer
+
+  byte_81331EC held in r4, with r6 = 0 (likely a destination/palette/scratch slot).
+
+  The pushed {r4-r7,lr} / pop {r4-r7,pc} envelope means the function preserves r4-r7 across
+
+  the early-return path but, per the contract, the active path lets submenu_set calls win
+
+  (callers see r4-r7 as outputs). The call to sub_813468C uses the standard "fill/draw
+
+  tile rectangle" calling shape used elsewhere in the submenu code, suggesting this routine
+
+  is invoked when transitioning into or out of the submenu to wipe the menu''s BG tiles so
+
+  the map underneath is visible again.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_8134594
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8134594
+
+    ./wf verify --function sub_8134594 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8134594
+
+    ./wf verify --function sub_8134594 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8134594
+
+    ./wf verify --function sub_8134594 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08134594 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8134594 -> submenu_clearBgIfClosed_8134594
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Exact destination buffer / structure that byte_81331EC + (r6 == 0) indexes into.
+- Whether 0xE7/0x16 is a tile range or a (x,y,width,height) quad.
+- What event drives callers (menu close transition vs. periodic re-clear).
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_8134594

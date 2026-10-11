@@ -97,7 +97,7 @@ Next ai_DealQueuedAttackDamage_8112F34(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8112FBA ── */
+/* ── ai_attackState_SetupSpecial_8112FBA ── */
 /* register form: calls sub_80C4038 outside this file, which has no typed C interface yet */
 static u32 call_sub_80C4038(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4) {
     R0 = a0; R1 = a1; R2 = a2; R3 = a3; R4 = a4;
@@ -162,7 +162,7 @@ static u32 do_ai_special_attack(u32 attacker, u32 ai_vars) {
     return final_r0;
 }
 
-Next sub_8112FBA(void) {
+Next ai_attackState_SetupSpecial_8112FBA(void) {
     u32 result = do_ai_special_attack(R5, R7);
     R0 = result;
     SET_FLAGS_CMP(result, 0);
@@ -224,7 +224,7 @@ Next battle_initAttackFromPreset_8113162(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116944 ── */
+/* ── petMenu_initSprite_8116944 ── */
 /* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
 static void init_gui_sprite_sub_8116944(int type) {
     R0 = 1;
@@ -321,8 +321,8 @@ static void pet_menu_init_sprite(u32 obj, int gui_type) {
     pet_menu_update_object(6);
 }
 
-/* sub_8116944(r1 = gui type, r5 = pet-menu object) -> r0 = petMenu_updateObject's return; flags from it */
-Next sub_8116944(void) {
+/* petMenu_initSprite_8116944(r1 = gui type, r5 = pet-menu object) -> r0 = petMenu_updateObject's return; flags from it */
+Next petMenu_initSprite_8116944(void) {
     u32 obj = R5;
     int gui_type = (int)R1;
     pet_menu_init_sprite(obj, gui_type);
@@ -638,7 +638,7 @@ Next record_getNthSubRecordPtr_8116CD4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116D00 ── */
+/* ── battle_initSpriteType23_8116D00 ── */
 /* Object offsets for the battle sprite record pointed to by R5 */
 #define oBattleSprite_Type       0x00   /* class/type ID byte */
 #define oBattleSprite_Animation  0x04   /* animation index */
@@ -766,8 +766,8 @@ static void init_battle_sprite_and_run_step(u32 gui_arg, u32 obj) {
     call_battle_objectRunBehaviorStep(y_offset);
 }
 
-/* sub_8116D00(r5 = battle sprite ptr, r1 = gui arg) */
-Next sub_8116D00(void) {
+/* battle_initSpriteType23_8116D00(r5 = battle sprite ptr, r1 = gui arg) */
+Next battle_initSpriteType23_8116D00(void) {
     init_battle_sprite_and_run_step(R1, R5);
     RETURN_TO_CALLER();
 }
@@ -895,7 +895,7 @@ Next battle_stepForwardAnimWait_8116DEC(void) {
  *
  * Reads the word offset of the current state from [R5+8] and tail-calls the
  * matching handler out of the table at off_8116E24:
- *   offset 0 -> sub_8116E30, 4 -> battle_objectUpdateByKind_8116F34, 8 -> sub_8116FD4.
+ *   offset 0 -> battle_objectInit_8116E30, 4 -> battle_objectUpdateByKind_8116F34, 8 -> sub_8116FD4.
  *
  * The original does this with `mov lr, pc; bx r0` followed by `pop {pc}`,
  * so the handler returns straight to this function's caller: it is a tail
@@ -913,7 +913,7 @@ Next stateDispatcher_3states_8116E10(void) {
 
     switch (sel) {
     case 0:
-        GUEST_CALL(sub_8116E30);
+        GUEST_CALL(battle_objectInit_8116E30);
         break;
     case 4:
         GUEST_CALL(battle_objectUpdateByKind_8116F34);
@@ -926,7 +926,7 @@ Next stateDispatcher_3states_8116E10(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116E30 ── */
+/* ── battle_objectInit_8116E30 ── */
 /* Struct/object layout offsets for battle objects (from disassembly) */
 #define oBattleObject_kind       0   /* kind byte stored here */
 #define oBattleObject_flag       4   /* flag byte at offset 4 */
@@ -1077,8 +1077,8 @@ static void battle_object_setup_and_update(u32 obj) {
 
 /* ---- Thin adapter ---- */
 
-/* sub_8116E30(r5 = battle object) -> r0..r12, lr clobbered by callees (per disasm contract) */
-Next sub_8116E30(void) {
+/* battle_objectInit_8116E30(r5 = battle object) -> r0..r12, lr clobbered by callees (per disasm contract) */
+Next battle_objectInit_8116E30(void) {
     battle_object_setup_and_update(R5);
     RETURN_TO_CALLER();
 }
@@ -1147,7 +1147,7 @@ Next battle_objectUpdateWithFieldC_8116F8C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116FDC ── */
+/* ── sprite_positionSubmenuEntries_8116FDC ── */
 /* register form: calls getStructFrom2008450 outside this file, which has no typed C interface yet */
 static u32 lookupPoolEntry(u32 index) {
     R0 = index;
@@ -1210,9 +1210,9 @@ static u32 moveSubmenuEntrySprites(u32 baseX, u32 baseY, u32 firstIndex, u32 r5)
     return r5;
 }
 
-/* sub_8116FDC(r0 = anchor x, r1 = anchor y, r2 = first pool index) -> r3 left
+/* sprite_positionSubmenuEntries_8116FDC(r0 = anchor x, r1 = anchor y, r2 = first pool index) -> r3 left
  * by the sprite callee, r5 restored, r4/r6/r7 untouched. */
-Next sub_8116FDC(void) {
+Next sprite_positionSubmenuEntries_8116FDC(void) {
     R5 = moveSubmenuEntrySprites(R0, R1, R2, R5);
     RETURN_TO_CALLER();
 }
@@ -1269,13 +1269,13 @@ Next sub_81176B0(void) {
 }
 
 /* ── sub_81176C0 ── */
-/* sub_81176C0: tail-call wrapper for sub_81176D0. */
+/* sub_81176C0: tail-call wrapper for battle_playObjectTripleSound_81176D0. */
 Next sub_81176C0(void) {
-    GUEST_CALL(sub_81176D0);
+    GUEST_CALL(battle_playObjectTripleSound_81176D0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81176D0 ── */
+/* ── battle_playObjectTripleSound_81176D0 ── */
 /* register form: calls one of three known object getters selected by loop index;
    the callees read R5 (object pointer) and may clobber R4, so save/restore R4-R7 */
 static u32 call_object_getter(u32 obj_ptr, u32 index) {
@@ -1329,10 +1329,10 @@ static u32 battle_play_object_sounds(u32 obj_ptr) {
     return 0x00080000;
 }
 
-/* sub_81176D0(r5 = battle-object pointer) -> r0 = 0x80000;
+/* battle_playObjectTripleSound_81176D0(r5 = battle-object pointer) -> r0 = 0x80000;
  * flags from CMP r6, 3 with r6 = 3 (Z=1, N=0, C=1, V=0).
  * r4-r7 preserved (push/pop in original). */
-Next sub_81176D0(void) {
+Next battle_playObjectTripleSound_81176D0(void) {
     R0 = battle_play_object_sounds(R5);
     SET_FLAGS_CMP(3, 3);
     RETURN_TO_CALLER();
@@ -1374,7 +1374,7 @@ Next sub_8117764(void) {
  *
  * The byte at [R5+8] is the object's mode, stored already scaled as a byte
  * offset into the handler pointer table at off_81178EC (the game only uses
- * 0, 4 or 8, which select sub_81178FC / sub_811794C / sub_8117990). The word
+ * 0, 4 or 8, which select sprite_slotInitKind23_81178FC / sub_811794C / sub_8117990). The word
  * read from the table is the handler's Thumb entry address (odd). That word
  * is the call target and is also passed to the handler itself in R0, along
  * with the mode byte in R1 and the shared work-area address in R7; R2-R6 and
@@ -1386,7 +1386,7 @@ Next sub_8117764(void) {
  * which handler runs.
  */
 
-#define HANDLER_SUB_81178FC 0x081178FDu /* = sub_81178FC + 1 (Thumb) */
+#define HANDLER_SUB_81178FC 0x081178FDu /* = sprite_slotInitKind23_81178FC + 1 (Thumb) */
 #define HANDLER_SUB_811794C 0x0811794Du /* = sub_811794C + 1 (Thumb) */
 #define HANDLER_SUB_8117990 0x08117991u /* = sub_8117990 + 1 (Thumb) */
 
@@ -1403,7 +1403,7 @@ Next object_dispatchModeHandler_81178D8(void) {
     R0 = handler;
 
     if (handler == HANDLER_SUB_81178FC) {
-        GUEST_CALL(sub_81178FC);
+        GUEST_CALL(sprite_slotInitKind23_81178FC);
     } else if (handler == HANDLER_SUB_811794C) {
         GUEST_CALL(sub_811794C);
     } else if (handler == HANDLER_SUB_8117990) {
@@ -1416,7 +1416,7 @@ Next object_dispatchModeHandler_81178D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81178FC ── */
+/* ── sprite_slotInitKind23_81178FC ── */
 /* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
 static void set_animation_sub_81178FC(u8 anim)               { R0 = anim;             GUEST_CALL(sprite_setAnimation); }
 /* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
@@ -1465,8 +1465,8 @@ static u32 init_sprite_slot(u32 slot_ptr) {
     return call_sub_811794C();
 }
 
-/* sub_81178FC(r5 = slot ptr) -> flags from sub_811794C */
-Next sub_81178FC(void) {
+/* sprite_slotInitKind23_81178FC(r5 = slot ptr) -> flags from sub_811794C */
+Next sprite_slotInitKind23_81178FC(void) {
     R0 = init_sprite_slot(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -1516,7 +1516,7 @@ Next dispatchStateHandler_81179AE(void) {
     switch (state) {
     case 0: GUEST_CALL(sub_81179E0); break;
     case 1: GUEST_CALL(keyItemMenu_renderDescription_81179E4); break;
-    case 2: GUEST_CALL(sub_8117A14); break;
+    case 2: GUEST_CALL(folder_DrawSelectedChipCodeCounts_8117A14); break;
     default: GUEST_CALL(sub_8117AB4); break; /* state 3; larger values are unreachable */
     }
 
@@ -1567,7 +1567,7 @@ Next keyItemMenu_renderDescription_81179E4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8117A14 ── */
+/* ── folder_DrawSelectedChipCodeCounts_8117A14 ── */
 /* Folder screen, selected-entry redraw: render the four code letters of the
  * chip shown at *entry (chip id halfword at +2) into the 0x200-byte tile
  * buffer at unk_2016300, then draw the per-code "copies in folder" tallies
@@ -1690,10 +1690,10 @@ static struct FolderCodeResult build_code_counter_tiles(u32 entry, u32 r5_in, u3
     return out;
 }
 
-/* sub_8117A14(r4 -> folder cursor entry, chip id at +2; r5-r7 untouched inputs)
+/* folder_DrawSelectedChipCodeCounts_8117A14(r4 -> folder cursor entry, chip id at +2; r5-r7 untouched inputs)
  * -> r0-r3 as left by QueueEightWordAlignedGFXTransfer, nz/c/v likewise,
  * r4-r7 preserved. */
-Next sub_8117A14(void) {
+Next folder_DrawSelectedChipCodeCounts_8117A14(void) {
     struct FolderCodeResult out = build_code_counter_tiles(R4, R5, R6, R7);
     R0 = out.r0, R1 = out.r1, R2 = out.r2, R3 = out.r3, R4 = out.r4, R5 = out.r5, R6 = out.r6, R7 = out.r7;
     RETURN_TO_CALLER();
@@ -1769,7 +1769,7 @@ Next copyTwoDigitNumberTiles_8117B94(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8117BE8 ── */
+/* ── sprite_initGuiSlotA_8117BE8 ── */
 /* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
 static void call_initGuiSprite_sub_8117BE8(int a1, int a2) {
     R0 = a1; R1 = a2;
@@ -1859,8 +1859,8 @@ static u32 initGuiSpriteRecord(u32 recordPtr) {
     return call_postInit();                            /* post-init → r0, flags */
 }
 
-/* sub_8117BE8(r5 = sprite record pointer) -> r0 */
-Next sub_8117BE8(void) {
+/* sprite_initGuiSlotA_8117BE8(r5 = sprite record pointer) -> r0 */
+Next sprite_initGuiSlotA_8117BE8(void) {
     R0 = initGuiSpriteRecord(R5);
     RETURN_TO_CALLER();
 }
@@ -1949,7 +1949,7 @@ Next battle_refreshObjectSprite_8117E20(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8118F44 ── */
+/* ── sprite_initBattle_8118F44 ── */
 /* Coordinate table for battle sprites (x,y pairs, indexed by sprite field +5 * 4) */
 #define SPRITE_TYPE_INIT        0x23
 #define COORD_TABLE_ADDR        A_byte_8118FA4
@@ -2058,8 +2058,8 @@ static void init_battle_sprite(u32 sprite) {
     call_dispatchUpdate(COORD_TABLE_ADDR);
 }
 
-/* sub_8118F44(r5 = sprite record pointer) -> void (registers preserved per callee chain) */
-Next sub_8118F44(void) {
+/* sprite_initBattle_8118F44(r5 = sprite record pointer) -> void (registers preserved per callee chain) */
+Next sprite_initBattle_8118F44(void) {
     init_battle_sprite(R5);
     RETURN_TO_CALLER();
 }
@@ -2095,7 +2095,7 @@ Next nullsub_8118FE0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8119018 ── */
+/* ── battle_dispatchEventScript_8119018 ── */
 /* register form: calls sub_8137884 outside this file, which has no typed C interface yet */
 static u32 lookup_script_entry(u32 index, u32 obj_ptr, u32 script_data) {
     R0 = index;
@@ -2145,8 +2145,8 @@ static void do_battle_event_script(u32 object) {
     run_text_script(validated, obj_table_val, script_table_val);
 }
 
-/* sub_8119018(r5 = battle object ptr) -> r0-r3, flags via tail call to sub_3006B94 */
-Next sub_8119018(void) {
+/* battle_dispatchEventScript_8119018(r5 = battle object ptr) -> r0-r3, flags via tail call to sub_3006B94 */
+Next battle_dispatchEventScript_8119018(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7, saved_lr = LR;
     do_battle_event_script(saved_r5);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7; LR = saved_lr;
@@ -2199,7 +2199,7 @@ Next sprite_testFrameParamsMaskC0_81190F8(void) {
 /* ── npc_StateModeDispatcher_8119364 ── */
 /* npc_StateModeDispatcher_8119364: dispatcher for the state machine object in r5. Reads the mode
  * byte at [r5+8] and calls one of three handlers via the table at
- * off_8119378 (sub_8119384 / sub_81196A0 / sub_8119804).
+ * off_8119378 (battle_spriteInit_8119384 / sub_81196A0 / sub_8119804).
  *
  * Note the table is indexed with the raw mode byte (`ldr r0, [r0, r1]`), so
  * the byte itself holds the byte offset: 0, 4 or 8, one entry per 4-byte
@@ -2218,7 +2218,7 @@ Next npc_StateModeDispatcher_8119364(void) {
 
     switch (mode) {
     case 0:
-        GUEST_CALL(sub_8119384);
+        GUEST_CALL(battle_spriteInit_8119384);
         break;
     case 4:
         GUEST_CALL(sub_81196A0);
@@ -2235,9 +2235,9 @@ Next npc_StateModeDispatcher_8119364(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8119384 ── */
+/* ── battle_spriteInit_8119384 ── */
 /*
- * sub_8119384: Initialize a battle sprite object from its character/team indices.
+ * battle_spriteInit_8119384: Initialize a battle sprite object from its character/team indices.
  *
  * Reads char_idx [obj+4] and team_idx [obj+5].  Clears bit 0x10 ("forced")
  * from char_idx if present and marks [obj+0xA].  Writes a sprite-type byte
@@ -2396,8 +2396,8 @@ static void init_battle_sprite_sub_8119384(u32 obj) {
     finalize_sprite();
 }
 
-/* sub_8119384(r5 = battle sprite object pointer) -> r0-r5, lr, nz/c/v via callee */
-Next sub_8119384(void) {
+/* battle_spriteInit_8119384(r5 = battle sprite object pointer) -> r0-r5, lr, nz/c/v via callee */
+Next battle_spriteInit_8119384(void) {
     init_battle_sprite_sub_8119384(R5);
     RETURN_TO_CALLER();
 }

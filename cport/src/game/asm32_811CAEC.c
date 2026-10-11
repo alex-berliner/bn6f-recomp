@@ -298,7 +298,7 @@ Next pet_initMenu_811EC10(void) {
  * Calls the five update steps in order; register and flag state on return
  * is whatever drawCurrentMapName_811F08C (the last callee) leaves behind. */
 Next sub_811EC50(void) {
-    GUEST_CALL(sub_811EC68);
+    GUEST_CALL(queueGFXTransfersFromTable_811EC68);
     GUEST_CALL(sub_811EFB8);
     GUEST_CALL(updateMapNameDisplay_811F014);
     GUEST_CALL(drawMapNamesScreen_811F050);
@@ -306,17 +306,17 @@ Next sub_811EC50(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811EC68 ── */
+/* ── queueGFXTransfersFromTable_811EC68 ── */
 /* Build a list of GFX resource records into the staging buffer at unk_20096E0 and queue
  * them for DMA. The source is a table of triples whose first word is run through
- * sub_811FB84 to produce the "packed" header; then the trailing table at off_811ECB4 is
+ * getKeyedTableEntry_811FB84 to produce the "packed" header; then the trailing table at off_811ECB4 is
  * copied verbatim until a NULL terminator. Finally QueueGFXTransfersInList is called. */
 
-/* register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+/* register form: calls getKeyedTableEntry_811FB84 outside this file, which has no typed C interface yet */
 static u32 derive_packed_size(u32 src, u32 size) {
     R0 = src;
     R1 = size;
-    GUEST_CALL(sub_811FB84);
+    GUEST_CALL(getKeyedTableEntry_811FB84);
     return R0;
 }
 
@@ -370,7 +370,7 @@ static void build_and_queue_gfx_list(void) {
     queue_gfx_transfers_in_list((u32 *)staging);
 }
 
-Next sub_811EC68(void) {
+Next queueGFXTransfersFromTable_811EC68(void) {
     build_and_queue_gfx_list();
     /* The last flag-setting instruction in the original is `tst r0, r0` with r0 == 0
      * (the NULL terminator), so Z is set. The lifter lists nz as clobbered and the
@@ -380,7 +380,7 @@ Next sub_811EC68(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811EE98 ── */
+/* ── battle_state_tick_811EE98 ── */
 /* Floor value for the battle countdown (loaded as a 32-bit constant 0xFFFFFFE0 = -32). */
 #define COUNTDOWN_FLOOR (-32)
 
@@ -396,9 +396,9 @@ static void call_sub_811F0C8_sub_811EE98(void) {
     GUEST_CALL(sub_811F0C8);
 }
 
-/* register form: calls sub_811F11C outside this file, which has no typed C interface yet */
+/* register form: calls petCommSaveInit_811F11C outside this file, which has no typed C interface yet */
 static void call_sub_811F11C_sub_811EE98(void) {
-    GUEST_CALL(sub_811F11C);
+    GUEST_CALL(petCommSaveInit_811F11C);
 }
 
 /* register form: calls CopyBackgroundTiles_PET_811EF70 outside this file, which has no typed C interface yet */
@@ -431,9 +431,9 @@ static void process_battle_state_tick(u32 state) {
     call_copy_bg_navi_select();
 }
 
-/* sub_811EE98(r5 = battle state ptr) -> void
+/* battle_state_tick_811EE98(r5 = battle state ptr) -> void
  * Output r0-r3 / nz / c / v are left by CopyBackgroundTiles_onNaviSelect via GUEST_CALL. */
-Next sub_811EE98(void) {
+Next battle_state_tick_811EE98(void) {
     process_battle_state_tick(R5);
     RETURN_TO_CALLER();
 }
@@ -447,13 +447,13 @@ Next naviSelect_SetupBackgrounds_811EF0C(void) {
     GUEST_CALL(sub_811F1B8);
     GUEST_CALL(sub_811F214);
     GUEST_CALL(sub_811F0C8);
-    GUEST_CALL(sub_811F11C);
+    GUEST_CALL(petCommSaveInit_811F11C);
     GUEST_CALL(CopyBackgroundTiles_PET_811EF70);
     GUEST_CALL(CopyBackgroundTiles_onNaviSelect_811F54C);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811EF28 ── */
+/* ── initPetSelectScreen_811EF28 ── */
 /* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
 static void call_sub_8046664_sub_811EF28(void) {
     GUEST_CALL(sub_8046664);
@@ -486,9 +486,9 @@ static void call_sub_811F0C8(void) {
     GUEST_CALL(sub_811F0C8);
 }
 
-/* register form: calls sub_811F11C outside this file, which has no typed C interface yet */
+/* register form: calls petCommSaveInit_811F11C outside this file, which has no typed C interface yet */
 static void call_sub_811F11C(void) {
-    GUEST_CALL(sub_811F11C);
+    GUEST_CALL(petCommSaveInit_811F11C);
 }
 
 /* register form: calls CopyBackgroundTiles_PET_811EF70 outside this file, which has no typed C interface yet */
@@ -520,8 +520,8 @@ static void init_pet_select_screen(void *state) {
     call_CopyBackgroundTiles_onNaviSelect_811F54C();
 }
 
-/* sub_811EF28(r5 = screen state) -> void */
-Next sub_811EF28(void) {
+/* initPetSelectScreen_811EF28(r5 = screen state) -> void */
+Next initPetSelectScreen_811EF28(void) {
     init_pet_select_screen((void *)R5);
     RETURN_TO_CALLER();
 }
@@ -529,11 +529,11 @@ Next sub_811EF28(void) {
 /* ── updateMapNameDisplay_811F014 ── */
 /* updateMapNameDisplay_811F014: refresh the map-name display.
  *
- * 1. sub_803D06C yields a pointer (the current map's name/script data) that
+ * 1. protectedZennyOrZero_803D06C yields a pointer (the current map's name/script data) that
  *    the scene state keeps at +8.
  * 2. The map name table text is rendered as graphics into the tile block at
  *    0x6015240 via the scratch text buffer unk_200C0E0.
- * 3. sub_811F5DC copies the rendered name into the byte_200CF20 buffer. */
+ * 3. sprite_repackAndQueueTiles_811F5DC copies the rendered name into the byte_200CF20 buffer. */
 Next updateMapNameDisplay_811F014(void) {
     /* r4-r7 are used as call arguments below but must be preserved for the
      * caller, so keep the entry values aside and restore them before returning. */
@@ -543,7 +543,7 @@ Next updateMapNameDisplay_811F014(void) {
     u32 savedR7 = R7;
 
     /* Current map name pointer -> scene state +8. */
-    GUEST_CALL(sub_803D06C);
+    GUEST_CALL(protectedZennyOrZero_803D06C);
     u32 sceneState = LD32(R10 + oToolkit_Unk200a220_Ptr);
     ST32(sceneState + 8, R0);
 
@@ -563,7 +563,7 @@ Next updateMapNameDisplay_811F014(void) {
     R1 = A_byte_200CF20;
     R2 = 0x6015240;
     R3 = 7;
-    GUEST_CALL(sub_811F5DC);
+    GUEST_CALL(sprite_repackAndQueueTiles_811F5DC);
 
     R4 = savedR4;
     R5 = savedR5;
@@ -605,7 +605,7 @@ Next drawMapNamesScreen_811F050(void) {
     R1 = A_byte_200D220;
     R2 = 0x6015400;
     R3 = 6;
-    GUEST_CALL(sub_811F5DC);
+    GUEST_CALL(sprite_repackAndQueueTiles_811F5DC);
 
     R4 = savedR4;
     R5 = savedR5;
@@ -617,9 +617,9 @@ Next drawMapNamesScreen_811F050(void) {
 /* ── drawCurrentMapName_811F08C ── */
 /* drawCurrentMapName_811F08C: redraw the name of the current map in the map-name display.
  *
- * sub_811F290 resolves the text-script entry for the map the player is
+ * getCurrentMapBgm_811F290 resolves the text-script entry for the map the player is
  * currently on; renderTextGfx_8045F8C draws that name into the text work
- * buffer at byte_200C620; sub_811F5DC then blits the rendered tiles into
+ * buffer at byte_200C620; sprite_repackAndQueueTiles_811F5DC then blits the rendered tiles into
  * the map-name VRAM slot at 0x6015780. */
 Next drawCurrentMapName_811F08C(void) {
     /* The original pushes/pops r4-r7 around the calls, so they must come
@@ -630,7 +630,7 @@ Next drawCurrentMapName_811F08C(void) {
     u32 savedR7 = R7;
 
     /* Look up which map-name string to show. */
-    GUEST_CALL(sub_811F290);
+    GUEST_CALL(getCurrentMapBgm_811F290);
     u32 mapNameString = R0;
 
     /* renderTextGfx_8045F8C(stringTable, stringIndex, workBuffer,
@@ -646,13 +646,13 @@ Next drawCurrentMapName_811F08C(void) {
     R7 = 0;
     GUEST_CALL(renderTextGfx_8045F8C);
 
-    /* sub_811F5DC(source, sourceMap, vramDest, tileCount):
+    /* sprite_repackAndQueueTiles_811F5DC(source, sourceMap, vramDest, tileCount):
      * upload the rendered name tiles to VRAM. */
     R0 = A_byte_200C620;
     R1 = A_byte_200C920;
     R2 = 0x6015780;
     R3 = 0xC;
-    GUEST_CALL(sub_811F5DC);
+    GUEST_CALL(sprite_repackAndQueueTiles_811F5DC);
 
     R4 = savedR4;
     R5 = savedR5;
@@ -700,7 +700,7 @@ Next sub_811F0C8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811F11C ── */
+/* ── petCommSaveInit_811F11C ── */
 /* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
 static bool event_flag_set(u16 flag) {
     R0 = flag;
@@ -727,7 +727,7 @@ static void pet_comm_save_init(u32 state_addr) {
     }
 }
 
-Next sub_811F11C(void) {
+Next petCommSaveInit_811F11C(void) {
     /* Preserve the original's r4 (saved on stack) and call the typed helper.
      * After the call, R0..R3/R4 hold the same values as on entry, matching the
      * original which had r4 = ptr_tbl on entry, used it locally, and then
@@ -805,11 +805,11 @@ Next sub_811F214(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811F24C ── */
-/* sub_811F24C: tick a counter at r5+0xC (clamped to max 3) and replay the first
+/* ── replaySpriteFrames_811F24C ── */
+/* replaySpriteFrames_811F24C: tick a counter at r5+0xC (clamped to max 3) and replay the first
  * (count+1) sprite/animation pairs into sub_802FE28. Each pair is two u32 entries
  * from the table at dword_811F278 (8 bytes per entry). */
-Next sub_811F24C(void) {
+Next replaySpriteFrames_811F24C(void) {
     /* Bump the local tick counter, clamped so it never exceeds 3 (i.e. count 0..3). */
     u32 count = LD8(R5 + 0xC);
     count = count + 1;
@@ -834,7 +834,7 @@ Next sub_811F24C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811F290 ── */
+/* ── getCurrentMapBgm_811F290 ── */
 #define off_811F2B0 0x0811F2B0u
 
 /* Return the BGM id for the current map (0xFF = no BGM assigned). */
@@ -856,7 +856,7 @@ static u32 game_state_from_toolkit(void) {
     return LD32(toolkit + oToolkit_GameStatePtr);
 }
 
-Next sub_811F290(void) {
+Next getCurrentMapBgm_811F290(void) {
     R0 = current_map_bgm(game_state_from_toolkit());
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -941,7 +941,7 @@ Next CopyBackgroundTiles_onNaviSelect_811F54C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811F5DC ── */
+/* ── sprite_repackAndQueueTiles_811F5DC ── */
 /* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
 static void queue_gfx_transfer(u32 r0_val, u32 r1_val, u32 r2_val) {
     R0 = r0_val;
@@ -1011,8 +1011,8 @@ static void transfer_tiles(u32 src, u32 dst, u32 width, u32 height) {
     }
 }
 
-/* sub_811F5DC(r0=src, r1=dst, r2=width, r3=height) -> c v r0 r1 r2 r3 */
-Next sub_811F5DC(void) {
+/* sprite_repackAndQueueTiles_811F5DC(r0=src, r1=dst, r2=width, r3=height) -> c v r0 r1 r2 r3 */
+Next sprite_repackAndQueueTiles_811F5DC(void) {
     transfer_tiles(R0, R1, R2, R3);
     RETURN_TO_CALLER();
 }
@@ -1131,10 +1131,10 @@ Next next_exitToMap_811F728(void) {
 
     /* play sound effect 6 */
     R0 = 6;
-    GUEST_CALL(sub_80015FC);
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 
     /* reset the chatbox state, then refresh the text window */
-    GUEST_CALL(sub_809F68C);
+    GUEST_CALL(npc_clearAllBusyFlags_809F68C);
     GUEST_CALL(chatbox_8040818);
 
     /* clear chatbox event flag 0x40 */
@@ -1307,8 +1307,8 @@ Next clearS2001c04Byte6_811FB78(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811FB84 ── */
-/* sub_811FB84: look up an ID in one of five key tables and hand back the
+/* ── getKeyedTableEntry_811FB84 ── */
+/* getKeyedTableEntry_811FB84: look up an ID in one of five key tables and hand back the
  * pointer stored for it. tableIndex selects a (key list, slot-list table)
  * pair from two parallel tables of pointers; the key list is a series of
  * word-sized IDs terminated by 0xFFFFFFFF. When the key is found, the
@@ -1360,7 +1360,7 @@ static KeyLookup find_key_entry(u32 key, u32 tableIndex, u32 inR4, u32 inR5, u32
     }
 }
 
-Next sub_811FB84(void) {
+Next getKeyedTableEntry_811FB84(void) {
     KeyLookup out = find_key_entry(R0, R1, R4, R5, R6, R7, R10);
     R0 = out.value;
     R2 = out.lastKey, R3 = out.slotList;
@@ -1378,7 +1378,7 @@ Next battle_ClearBuffer_811FE34(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811FE48 ── */
+/* ── registerHitCounter_811FE48 ── */
 /* Register a hit on a 30-slot, 4-bytes-per-entry counter array.
  *
  *   entry[i] : u16 id at offset +0, u16 count at offset +2, for i in [0, 30).
@@ -1411,12 +1411,12 @@ static u32 register_counter_hit(u32 counter_array, u32 source) {
     return offset;  /* 0x78: array full, nothing matched */
 }
 
-Next sub_811FE48(void) {
+Next registerHitCounter_811FE48(void) {
     R3 = register_counter_hit(R0, R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811FE7C ── */
+/* ── buildChipSearchTable_811FE7C ── */
 /* Register-form helpers for external game functions */
 
 /* register form: calls zeroFill_0xA000Words_811FF6C outside this file, which has no typed C interface yet */
@@ -1522,8 +1522,8 @@ static u32 build_chip_search_table(u32 dest, u32 mode) {
     return (cur - dest) / 0x20;
 }
 
-/* sub_811FE7C(r0 = dest buffer, r1 = mode) -> r0 = entry count */
-Next sub_811FE7C(void) {
+/* buildChipSearchTable_811FE7C(r0 = dest buffer, r1 = mode) -> r0 = entry count */
+Next buildChipSearchTable_811FE7C(void) {
     u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
     R0 = build_chip_search_table(R0, R1);
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;
@@ -1612,7 +1612,7 @@ Next sub_81202B4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8120390 ── */
+/* ── battle_loadFolderChipGfx_8120390 ── */
 /* register form: calls CopyWords outside this file, which has no typed C interface yet */
 static void copy_words(u32 src, u32 dest, u32 byte_size) {
     R0 = src;
@@ -1671,16 +1671,16 @@ static void load_folder_chip_gfx(u32 first_entry, u32 entry_array,
     }
 }
 
-/* sub_8120390(r0 = first entry index, r1 = entry array, r2 = dest record,
+/* battle_loadFolderChipGfx_8120390(r0 = first entry index, r1 = entry array, r2 = dest record,
  *              r3 = template source, r4 = GFX slot base, r5 = entry count)
  * The original pushes/pops r4-r7, so r6/r7 (listed as outputs) simply keep
  * their entry values; the typed function never touches them. */
-Next sub_8120390(void) {
+Next battle_loadFolderChipGfx_8120390(void) {
     load_folder_chip_gfx(R0, R1, R2, R3, R4, (s32)R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81207F8 ── */
+/* ── countEventFlagChips_81207F8 ── */
 /* Register layout for the event-flag table (per iteration):
  *   [0] base flag 1, [2] base flag 2, [4] base flag 3, [6] entry count */
 #define TABLE_FLAG1 0
@@ -1789,16 +1789,16 @@ static u32 count_event_chips(s32 chip_type) {
     return count;
 }
 
-/* sub_81207F8(r0 = chip_type) -> r0 = qualifying chip count; r1/r2/r3 = callee scratch.
+/* countEventFlagChips_81207F8(r0 = chip_type) -> r0 = qualifying chip count; r1/r2/r3 = callee scratch.
  * r4-r7 and lr are preserved via the function-level push/pop in the original;
  * the GUEST_CALLs' callees also preserve them per SYNC_SNAP.
  * r1/r2/r3 are clobbered by the last external call or TST, matching the original. */
-Next sub_81207F8(void) {
+Next countEventFlagChips_81207F8(void) {
     R0 = count_event_chips((s32)R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8120900 ── */
+/* ── scoreboard_buildScoreBcdTilemap_8120900 ── */
 /* register form: memory_bcdConvert is an external callee; it reads r7
  * (tile-map pointer) and preserves r4-r6, so we pass r7 and restore
  * all preserved registers after the call */
@@ -1893,8 +1893,8 @@ static void build_bcd_tilemap(u32 tile_map, u32 val1, u32 val2,
     copy_bg_tiles_sub_8120900(bg_j, bg_i, tile_map, shadow_map);
 }
 
-/* sub_8120900(r0=tile_map, r1=val1, r2=val2, r3=base_tile, r4=j, r6=i) */
-Next sub_8120900(void) {
+/* scoreboard_buildScoreBcdTilemap_8120900(r0=tile_map, r1=val1, r2=val2, r3=base_tile, r4=j, r6=i) */
+Next scoreboard_buildScoreBcdTilemap_8120900(void) {
     build_bcd_tilemap(R0, R1, R2, R3, R4, R6);
     RETURN_TO_CALLER();
 }

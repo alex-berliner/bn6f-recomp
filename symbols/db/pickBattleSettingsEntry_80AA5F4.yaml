@@ -1,0 +1,121 @@
+name: pickBattleSettingsEntry_80AA5F4
+address: '0x080AA5F4'
+kind: function
+status: probable
+summary: Picks a random encounter's battle-settings entry for the current map, filtered by a caller-supplied
+  bitmask and chosen via event-flag-bank-6 table selection plus iCurrFrame round-robin.
+interface: u32 pickBattleSettingsEntry_80AA5F4(u32 filter /*r2*/, struct Toolkit *toolkit /*r10*/) ->
+  u32 entry /*r0*/, plus r1/flags from callees
+details: 'Selects one of four battle-settings tables by testing event flags 6:0x7F,
+
+  6:0x80, 6:0x81 (falling through to a default at off_8020170). Reads the
+
+  current map-group/map-number from the game state at oToolkit_GameStatePtr
+
+  (fields oGameState_MapGroup, oGameState_MapNumber); if MapGroup >= 0x80 the
+
+  alternate table column is used (table_addr += 4, map_group -= 0x80).
+
+  Two-level indirection: table -> row by map_group -> entry-list pointer by
+
+  map_number. Walks 0x10-byte records; a 0xFF first byte is the list terminator.
+
+  Each candidate is gated by sub_80AA6A4 on its byte-7, then masked by
+
+  sub_80AA824 against the caller''s r2 filter; matches are stashed on the
+
+  stack up to SETTINGS_MAX (29) entries. The winner is picked by
+
+  LD16(iCurrFrame) % match_count, giving simple round-robin cycling. Returns
+
+  the selected record pointer in r0 (0 when no match). The C wrapper
+
+  fabricates r1/flags from the last comparison in the original scan loop
+
+  (BLT sets C=0,V=0 with r1=0xFFFFFFFF on hit; the no-match path exits via
+
+  CMP #0xFF,#0xFF giving C=1,V=0) to match caller expectations, but the
+
+  arm version encodes these in the actual instruction stream.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c
+    sub_80AA5F4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AA5F4
+
+    ./wf verify --function sub_80AA5F4 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AA5F4
+
+    ./wf verify --function sub_80AA5F4 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AA5F4
+
+    ./wf verify --function sub_80AA5F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus3, story2, story4, story5, story6, story8,
+    story9.'
+  reproduce: grep -l '^080aa5f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm29.c after review against the assembly (the lifted
+    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
+    differs from the original: sub_80AA6A4 reads r7 (contract inputs: r0 r7 r10), and the original calls
+    it with r7 = the current BattleSettings entry: asm `mov r7, r0` ... `loc_80AA648: ldrb r1, [r7]` ...
+    `ldrb r0, [r7,#7]; bl sub_80AA6A4`. The C helper entry_condition_ok() sets only `R0 = cond;` before
+    `GUEST_CALL(sub_80AA6A4)`. The loop cursor `list` is a C local, so guest R7 still holds the caller''s
+    r7. Condition 1 dispatch...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80AA5F4 -> pickBattleSettingsEntry_80AA5F4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- Are the matching record fields really 16/32/32 (used, pad, ptr) or is the stack layout reused scratch?
+- Does sub_80AA6A4 truly take byte-7, and what condition does it check?
+- What does sub_80AA824's returned mask actually represent (encounter mask? area permission bits?)?
+- Is "iCurrFrame" really the encounter seed, or just the system frame counter reused opportunistically?
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd
+previous_names:
+- sub_80AA5F4

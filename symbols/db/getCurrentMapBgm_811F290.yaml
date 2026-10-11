@@ -1,0 +1,112 @@
+name: getCurrentMapBgm_811F290
+address: '0x0811F290'
+kind: function
+status: confirmed
+summary: Returns the BGM id assigned to the player's current overworld map (0xFF if none).
+interface: 'u8 getCurrentMapBgm_811F290(void);
+
+  // inputs: r10 (toolkit pointer, used to fetch the game-state pointer)
+
+  // outputs: r0 = BGM id for (mapGroup, mapNumber)
+
+  // clobbers: r1, r2; flags N,Z (set via the final ldrb)
+
+  '
+details: 'Reads the GameState pointer through the toolkit (r10 -> oToolkit_GameStatePtr) and
+
+  inspects oGameState_MapGroup / oGameState_MapNumber. Groups >= 0x80 are remapped by
+
+  subtracting 0x80 and adding 7, suggesting the top half of the group range holds
+
+  special/internal maps that share the same per-map BGM table layout. The group value
+
+  is then used as an index (shifted left by 2) into the 32-entry pointer table at
+
+  off_811F2B0; the resulting pointer is a 16-byte array indexed by mapNumber whose
+
+  entries are BGM ids (0xFF = "no BGM"). Several table rows are entirely 0xFF
+
+  (byte_811F3F8, byte_811F408, byte_811F428, byte_811F438, byte_811F448,
+
+  byte_811F478, byte_811F488), meaning those map groups contain no maps with custom
+
+  BGMs (they presumably fall back to the area/default music).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-003727);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c
+    sub_811F290
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811F290
+
+    ./wf verify --function sub_811F290 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-003727-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811F290
+
+    ./wf verify --function sub_811F290 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003727-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811F290
+
+    ./wf verify --function sub_811F290 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003727-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0811f290 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp bdefe69
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811F290 -> getCurrentMapBgm_811F290
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which mapGroup values >= 0x80 correspond to which special areas (the +7 offset suggests they alias with
+  the late-game map tables, e.g. underworld maps)?
+- Are unused 0xFF slots truly empty or reserved for unused maps whose IDs were never assigned a BGM?
+- What is the exact mapping between returned BGM id and the music engine's sound bank entry?
+sources:
+- tools/wf run convert-20261011-003727
+- recomp bdefe69
+previous_names:
+- sub_811F290

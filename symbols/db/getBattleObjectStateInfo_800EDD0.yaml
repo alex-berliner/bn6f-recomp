@@ -1,0 +1,109 @@
+name: getBattleObjectStateInfo_800EDD0
+address: '0x0800EDD0'
+kind: function
+status: probable
+summary: Gather state/info fields for a battle object, branching on whether it is an actor (type 2) —
+  actor path reads hand-slot data and calls sub_800EF34, otherwise returns chip metadata.
+interface: '// In:  r0 = battle object ptr, r1 = caller-saved value forwarded to sub_800EF34,
+
+  //      r4 = preserved-through value, r10 / lr used by caller
+
+  // Out: r0..r4 = (see details); nz/c/v/lr clobbered; r5..r7 preserved
+
+  SubEdd0Out getBattleObjectStateInfo_800EDD0(u32 obj, u32 callerR1, u32 r4_in);
+
+  '
+details: "Pulls the object's NameID (oBattleObject_NameID) and unpacks it via\nunpackVerActorTyAndAIIdx_800F29C;\
+  \ if the actor type is 2 it takes the\n\"actor\" branch, otherwise the \"non-actor\" branch.\n\nActor\
+  \ branch (type == 2):\n  - Reads oBattleObject_Alliance, passes to getBattleHandAddr_8010018 to\n  \
+  \  obtain a hand/team struct pointer (R4 = hand).\n  - slot = hand + idx*2 + 2 (idx = (byte)hand[0]).\n\
+  \  - Calls sub_800EF34(slot[0], r1) -> r0=ret0, r1=ret1.\n  - Builds r2 = LD16(slot+0x18) + ret0 + LD16(slot+0x24).\n\
+  \  - r3 = ret1.\n  - r0 = LD16(slot+0), r1 = LD16(slot+0xC).\n  - r4 = (LD8(hand+idx+0x3E) << 8) | LD8(hand+0x44+idx).\n\
+  \nNon-actor branch:\n  - r0 = LD16(obj + oBattleObject_Chip).\n  - r1 = 0; r2 = 0; r3 = LD8(obj + oBattleObject_ChipsHeld).\n\
+  \  - r4 is passed through unchanged from the caller's r4.\n\nPush {r5-r7, lr} / sub sp,#4 / str r1,[sp]\
+  \ / pop preserves r5..r7 and lr;\nr0..r4 are returned, matching the contract.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c
+    sub_800EDD0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800EDD0
+
+    ./wf verify --function sub_800EDD0 --snapshots build-snapshots'
+  result: 'captured calls: 20 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    182 out of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800EDD0
+
+    ./wf verify --function sub_800EDD0 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800EDD0
+
+    ./wf verify --function sub_800EDD0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800edd0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm00_2.c after review against the assembly (the lifted
+    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
+    differs from the original: The object pointer is not passed to sub_800EF34 in r5. The asm does `mov
+    r5, r0` at entry, so on the actor (type 2) path sub_800EF34 runs with r5 = the object from r0. sub_800EF34''s
+    contract lists r5 as an input, and its first call, GetBattleNaviStatsByte_AllianceFromBattleObject,
+    does `ldrb r0, [r5,#oBattleObject_Alliance]` (asm00_2.s:10580); sub_800F09E also reads r5. The C never
+    sets R5: sub_80...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_800EDD0 -> getBattleObjectStateInfo_800EDD0
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does getBattleHandAddr_8010018 actually return — a player's hand struct, a team slot array, or
+  something else? Field offsets 0x3E and 0x44 relative to its base are guessed at by indices.
+- Meaning of the five returned values (r0..r4) at the call site — likely (current HP, max HP, damage/state
+  value, some status, slot id), but only the chip-fallback hints at role.
+- Identity of sub_800EF34; its signature here appears to be (u16 slot0, u32 caller-r1) -> (u32, u32) but
+  that is inferred.
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f
+previous_names:
+- sub_800EDD0

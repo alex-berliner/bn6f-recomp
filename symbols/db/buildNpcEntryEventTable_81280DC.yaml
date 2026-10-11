@@ -1,0 +1,94 @@
+name: buildNpcEntryEventTable_81280DC
+address: '0x081280DC'
+kind: function
+status: probable
+summary: Initializes the NPC entry-event table at unk_2026700 (zero-fills 0x170 bytes) and stamps sequential
+  16-bit event numbers into each NPC's two u16 arrays, using three sub-runs with flag masks 0x7000, 0x9000,
+  and 0x7000, with per-entry event/flag derived from npc_checkEntryEventFlagOrHidden.
+interface: "void buildNpcEntryEventTable_81280DC(u32 start_event /* r0 */, u32 count /* r1 */);\n  //\
+  \ out: r2 = 0x7000, r3 = count (event-loop return)\n  // clobbers r0, r2, r3, lr; preserves r1, r4,\
+  \ r5, r6, r7; NZCV set by final r3 vs r1 compare\n"
+details: "- Zero-fills the table at unk_2026700 with size 0x170 via ZeroFillByByte.\n- Each NPC entry\
+  \ occupies 0x5C bytes; the \"high\" half sits at offset 0x2E (= 0x17 << 1) within the entry, mirroring\
+  \ the low half.\n- For each of `count` entries, calls npc_checkEntryEventFlagOrHidden with args (event,\
+  \ byte_off, 0x7000, idx), returning an adjusted event number in r0 and a (possibly-modified) flag mask\
+  \ in r2.\n- Three per-entry sub-runs write paired u16s into the low and high halves:\n    * run 1: 11\
+  \ pairs (offsets 0..0x14), mask = callee r2\n    * run 2: 8 pairs (offsets 0x18..0x26), mask = 0x9000\n\
+  \    * run 3: 3 pairs (offsets 0x2A..0x2E), mask = 0x7000\n- Each pair stores `event | mask` into the\
+  \ low half and `event | mask + 1` into the high half; event then advances by 2 (plus 2 padding between\
+  \ runs), and the global event counter carries across entries (never reloaded from the stack).\n- When\
+  \ count == 0, the function returns early without any per-entry work.\n- Output r2 = 0x7000 (the run-3\
+  \ mask); r3 echoes the loop-end `count`; the final `cmp r3, r1` therefore leaves NZCV reflecting \"\
+  count == count\" (ZF set, others cleared).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_81280DC
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81280DC
+
+    ./wf verify --function sub_81280DC --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    297 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81280DC
+
+    ./wf verify --function sub_81280DC --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 9 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81280DC
+
+    ./wf verify --function sub_81280DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: menus3, story1, story2, story8.'
+  reproduce: grep -l '^081280dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm33_81263D0.c after review against the assembly (the
+    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
+    that differs from the original: Minor; cannot be reached from the only caller. The outer-loop exit
+    test is signed in the asm and unsigned in the C. Asm: `ldr r1,[sp,#8]; tst r1,r1; beq loc_8128168`
+    then a do-while ending `add r3, #1; ldr r1, [sp,#8]; cmp r3, r1; blt loc_81280FC` (signed). C: `for
+    (u32 idx = 0; idx < count; idx++)`. Input r1 >= 0x80000000 (e.g. 0xFFFFFFFF): the asm builds entry
+    0 and returns (1 < -1 is false). Th...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_81280DC -> buildNpcEntryEventTable_81280DC
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- Meaning of the low/high u16 split per entry (likely a present/absent or paired-event variant field).
+- Whether the per-entry flag from npc_checkEntryEventFlagOrHidden encodes "hidden" or other NPC state,
+  as the callee's name suggests.
+- Layout/use of the 0x5C byte NPC entry beyond offsets 0x00-0x2F written here.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_81280DC

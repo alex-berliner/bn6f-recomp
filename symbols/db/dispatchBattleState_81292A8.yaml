@@ -1,0 +1,90 @@
+name: dispatchBattleState_81292A8
+address: '0x081292A8'
+kind: function
+status: confirmed
+summary: Dispatches to a battle state handler via a 7-entry jump table indexed by the sub-state byte at
+  [r5+2]
+interface: '/* trampoline: all guest registers and flags are forwarded to the callee */
+
+  void dispatchBattleState_81292A8(void /* r5 = state object */);
+
+  '
+details: 'Reads the sub-state selector byte from [r5+2] (r5 is the battle state object).
+
+  Uses that byte as an offset into a 7-entry jump table (off_81292BC) of
+
+  Thumb function pointers (sub_81292D8, sub_812933C, sub_8129400, sub_8129454,
+
+  sub_812952C, sub_812954C, sub_812956C). Loads the selected handler into r0
+
+  with the raw byte offset preserved in r1, then tail-calls via `mov lr, pc;
+
+  bx r0` and re-enters via `pop {pc}`. All caller-provided registers and flags
+
+  pass through unchanged to the selected handler — no work is done in this
+
+  function other than the dispatch.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_81292A8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81292A8
+
+    ./wf verify --function sub_81292A8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81292A8
+
+    ./wf verify --function sub_81292A8 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81292A8
+
+    ./wf verify --function sub_81292A8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, menus3, story2.'
+  reproduce: grep -l '^081292a8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_81292A8 -> dispatchBattleState_81292A8
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- Is [r5+2] a packed sub-state index, or a raw byte offset that happens to map to index*4?
+- What the 7 handler sub_ names map to in terms of high-level battle phases (intro, turn, attack, etc.)
+  needs cross-referencing with the battle subsystem.
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_81292A8

@@ -1,0 +1,134 @@
+name: battle_object_collisionPhase_80C4F02
+address: '0x080C4F02'
+kind: function
+status: confirmed
+summary: 'Battle object collision-phase handler: removes old collision data, spawns a hit effect, then
+  either advances the object one panel per tick along its facing direction or reacts to the panel/object
+  it hit (cracking/breaking panels, rewriting panel types based on the related object''s state and alliance),
+  finally re-presenting collision data and transitioning to the destroy state.'
+interface: void sub_80C4F02(void /* r5 = obj */); // clobbers r0,r1,r2,r3,lr; trashes NZCV
+details: "The function is invoked as a battle object's per-tick phase routine (the object's\npointer arrives\
+  \ in r5 from the dispatcher and is preserved across the call).\n\nEntry sequence (always runs):\n  -\
+  \ object_removeCollisionData(r5) clears whatever the object registered last tick.\n  - object_spawnCollisionEffect(r5)\
+  \ spawns the visual hit/impact effect.\n  - battle_isBattleOver(r5): if the battle ended, skip to the\
+  \ destroy path.\n\nIt then reads r5->oBattleObject_CollisionDataPtr->oCollisionData_FlagsFromCollision\n\
+  to decide between two branches:\n\n1) NO COLLISION (FlagsFromCollision == 0): the object is moving freely.\n\
+  \   - On first entry of this phase, PhaseInitialized is 0; the routine copies\n     oBattleObject_Timer2\
+  \ into oBattleObject_Timer and sets PhaseInitialized = 4\n     (so the timer only initialises once).\n\
+  \   - Each tick it decrements oBattleObject_Timer; while it stays >= 0 it just\n     re-presents collision\
+  \ data and returns (no movement yet).\n   - When the timer goes negative, the object steps one panel:\n\
+  \       PanelX += object_getFrontDirection()\n       PanelY += (signed) oBattleObject_Param2\n     then\
+  \ Param2 is cleared to 0.\n   - If the new (PanelX, PanelY) is a valid panel (object_isValidPanel):\n\
+  \       object_setCoordinatesFromPanels, battle_objectStepUpOntoElevatedPanel_80C5090,\n       object_updateCollisionPanels\
+  \ run, PhaseInitialized is reset to 0, and\n       collision data is re-presented (the object will move\
+  \ again next tick\n       with a fresh timer).\n   - If invalid: when oBattleObject_Param1 == 0xC, sub_80C5014\
+  \ is called; then\n     the object is destroyed.\n\n2) COLLISION (FlagsFromCollision != 0): the object\
+  \ hit something.\n   - When oBattleObject_Param1 == 0xC, sub_80C5050 is called first.\n   - Param1 then\
+  \ selects the panel reaction:\n       0x07 or 0x15 -> object_crackPanel(PanelX, PanelY)\n       0x16\
+  \         -> object_breakPanel_dup2(PanelX, PanelY)\n       0x22         -> if panel is solid, set the\
+  \ panel type to\n                       oBattleObject_RelatedObject1Ptr->oBattleObject_CurState,\n \
+  \                      or to 0xC if oBattleObject_Alliance != 0 (NPC owner).\n       0x24         ->\
+  \ same as 0x22 but substitutes type 0xB for the non-zero\n                       alliance case.\n  \
+  \     default      -> if panel is solid and the related object's CurState is\n                     \
+  \  not 0xFF, set the panel type to that CurState.\n   - In every case the object is destroyed afterwards.\n\
+  \nDestroy path (shared by every exit except the \"re-present and continue\" ones):\n  - object_clearCollisionRegion(r5).\n\
+  \  - oBattleObject_CurStateActionPhaseAndPhaseInitialized is overwritten with\n    CUR_STATE_DESTROY\
+  \ (8), and the routine still falls through to\n    object_presentCollisionData before returning.\n\n\
+  Quirks / data touches:\n  - The collision flags branch reads the indirection\n    r5->oBattleObject_CollisionDataPtr->oCollisionData_FlagsFromCollision\n\
+  \    rather than a flag on the object itself, so the dispatcher must have\n    attached a fresh collision-data\
+  \ block.\n  - oBattleObject_Timer2 is treated as an initial delay / step count; only\n    sampled once\
+  \ when PhaseInitialized is 0 and copied into the live Timer.\n  - oBattleObject_Param2 is a signed Y\
+  \ offset applied each panel step and is\n    then zeroed, so it is effectively a one-shot vertical kick\
+  \ parameter.\n  - oBattleObject_Param1 doubles as both the special \"0xC\" branch selector\n    for\
+  \ sub_80C5014/sub_80C5050 and as the panel-type code (0x07, 0x15, 0x16,\n    0x22, 0x24, ...) used to\
+  \ pick the reaction.\n  - In the 0x22 / 0x24 / default cases the new panel type is sourced from\n  \
+  \  oBattleObject_RelatedObject1Ptr->oBattleObject_CurState, with alliance-\n    dependent overrides\
+  \ (0xC for 0x22, 0xB for 0x24), strongly suggesting\n    the \"related object\" is the player (whose\
+  \ CurState encodes element/type\n    that should be left on the panel) while alliance != 0 means the\
+  \ object\n    is an enemy and stamps a fixed NPC-type panel.\n  - In the default case the related object's\
+  \ CurState value 0xFF is treated\n    as \"do not modify\" and the panel is left alone.\n  - The function\
+  \ always ends by calling object_presentCollisionData; even\n    the destroy path does, which is the\
+  \ standard engine pattern of\n    re-registering collision data one last time so the object can be\n\
+  \    collected on the next pass.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c
+    sub_80C4F02
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C4F02
+
+    ./wf verify --function sub_80C4F02 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-223922-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C4F02
+
+    ./wf verify --function sub_80C4F02 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 21 out of domain (verify run convert-20261010-223922-verify-5)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C4F02
+
+    ./wf verify --function sub_80C4F02 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080c4f02 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp c2085cd
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80C4F02 -> battle_object_collisionPhase_80C4F02
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What real entity spawns a battle-object phase routine of this shape (a thrown projectile? a wind/blast
+  attack? a movement object pushed by a panel effect?). The 0xC Param1 sentinel feeding sub_80C5014/sub_80C5050
+  and the panel-type stamping behaviour suggest it is some kind of panel-altering effect, but the exact
+  origin is not derivable from this function alone.
+- What the numeric panel types 0x07, 0x15, 0x16, 0x22, 0x24 map to in the game's panel table (cracked
+  normal, broken normal, etc.) — the C code only has the raw constants.
+- What sub_80C5014 and sub_80C5050 do (they appear to be the "hit something invalid vs hit something solid"
+  callbacks for the Param1 == 0xC case).
+- Whether "0xC" in the Param1 comparison is the same constant as the 0xC panel type stamped in the 0x22
+  alliance branch, or just a numeric coincidence.
+sources:
+- tools/wf run convert-20261010-223922
+- recomp c2085cd
+previous_names:
+- sub_80C4F02

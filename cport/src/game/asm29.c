@@ -45,7 +45,7 @@ Next ho_80A4984(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A4A98 ── */
+/* ── battle_dispatchState4Handler_80A4A98 ── */
 /* register form: calls battle_objectEnterState4LatchTilePos_80A4AB8 outside this file,
  * which has no typed C interface yet */
 static void call_latch_tile_pos(void) {
@@ -75,8 +75,8 @@ static void dispatch_battle_state(u32 r5) {
         call_state_handler_4bd4();
 }
 
-/* sub_80A4A98(r5 = battle object ptr) -> all registers, flags (passed through / set by callee) */
-Next sub_80A4A98(void) {
+/* battle_dispatchState4Handler_80A4A98(r5 = battle object ptr) -> all registers, flags (passed through / set by callee) */
+Next battle_dispatchState4Handler_80A4A98(void) {
     dispatch_battle_state(R5);
     RETURN_TO_CALLER();
 }
@@ -117,7 +117,7 @@ Next menu_stateDispatch_80A4BDC(void) {
     R0 = LD32(A_off_80A4BF0 + sel); /* handler address from the dispatch table */
 
     switch (sel) {
-    case 0: GUEST_CALL(sub_80A4BFC); break;
+    case 0: GUEST_CALL(sprite_setupEffect_80A4BFC); break;
     case 4: GUEST_CALL(sprite_tickWithFlagReset_80A4C46); break;
     case 8: GUEST_CALL(sub_80A4C5C); break;
     /* other byte values would index past the table and never occur */
@@ -126,7 +126,7 @@ Next menu_stateDispatch_80A4BDC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A4BFC ── */
+/* ── sprite_setupEffect_80A4BFC ── */
 /* register form: calls sprite_load outside this file, which has no typed C interface yet */
 static void call_sprite_load(u32 tile_count, u32 tile_slot, u32 pal_slot) {
     R0 = tile_count;
@@ -217,11 +217,11 @@ static u32 setup_effect_sprite(u32 obj) {
     return saved_z;
 }
 
-/* sub_80A4BFC: sprite setup for a shockwave/effect overworld object (writes the
+/* sprite_setupEffect_80A4BFC: sprite setup for a shockwave/effect overworld object (writes the
  * state byte, loads the sprite, applies Z/layer transforms, sets up animation+palette,
  * kicks off the per-frame tick). r5 holds the object pointer; r6 is clobbered with
  * the original Z value loaded from offset 0x14. */
-Next sub_80A4BFC(void) {
+Next sprite_setupEffect_80A4BFC(void) {
     R6 = setup_effect_sprite(R5);
     RETURN_TO_CALLER();
 }
@@ -248,7 +248,7 @@ Next sprite_tickWithFlagReset_80A4C46(void) {
  * the byte at r5+4, then calls one of five handlers selected by the byte at
  * r5+8, which indexes the table at off_80A51E0 bytewise (entries are 4 bytes
  * apart, so the selector holds 0x00/0x04/0x08/0x0C/0x10):
- *   +0x00 sub_80A51F8   +0x04 sub_80A5268   +0x08 sub_80A52E4
+ *   +0x00 mapEntry_update_80A51F8   +0x04 sub_80A5268   +0x08 sub_80A52E4
  *   +0x0C sub_80A5304   +0x10 sub_80A5350
  * The original branches through r0, so the handler is entered with
  * r0 = handler address, r1 = raw selector byte, r7 = selected record. */
@@ -266,7 +266,7 @@ Next npc_stateDispatchStep_80A51C4(void) {
     R1 = sel;
 
     switch (sel) {
-    case 0x00: GUEST_CALL(sub_80A51F8); break;
+    case 0x00: GUEST_CALL(mapEntry_update_80A51F8); break;
     case 0x04: GUEST_CALL(sub_80A5268); break;
     case 0x08: GUEST_CALL(sub_80A52E4); break;
     case 0x0C: GUEST_CALL(sub_80A5304); break;
@@ -278,7 +278,7 @@ Next npc_stateDispatchStep_80A51C4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A51F8 ── */
+/* ── mapEntry_update_80A51F8 ── */
 /* ---------- register-form helpers for game functions with no typed C interface yet ---------- */
 
 /* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
@@ -399,7 +399,7 @@ static u32 update_entry(u32 ctrl_addr, u32 entry_addr) {
 
 /* ---------- thin adapter ---------- */
 
-Next sub_80A51F8(void) {
+Next mapEntry_update_80A51F8(void) {
     R0 = update_entry(R5, R7);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -542,8 +542,8 @@ Next sub_80A5350(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A54A4 ── */
-/* sub_80A54A4(r10 = Toolkit*, r5 = ?):
+/* ── lookupMapEntryPair_80A54A4 ── */
+/* lookupMapEntryPair_80A54A4(r10 = Toolkit*, r5 = ?):
  * Looks up a per-map entry table for the current map; returns a base pointer and a
  * string/secondary pointer to one of six fixed tables (two arrays of three pointers each).
  *
@@ -554,7 +554,7 @@ Next sub_80A5350(void) {
  *
  * Outputs: r0 = first pointer + sub-offset; r1 = second pointer + sub-offset.
  */
-Next sub_80A54A4(void) {
+Next lookupMapEntryPair_80A54A4(void) {
     u32 toolkit_base = R10;
     u32 game_state = LD32(toolkit_base + oToolkit_GameStatePtr);
     u32 idx;
@@ -596,7 +596,7 @@ Next sub_80A54A4(void) {
  * the 0x80 chatbox flag is set, or sub_809E462 returns non-zero, skip everything
  * (including sprite_update). Otherwise call sub_80A55D4, then test EVENT_4EA /
  * EVENT_4EB; if either is set skip to sprite_update. Otherwise, when the byte
- * at r6+8 is not 2, call sub_80A5744. sprite_update always runs past the
+ * at r6+8 is not 2, call checkBbsReqFlag_80A5744. sprite_update always runs past the
  * early-out block.
  */
 Next sub_80A5588(void) {
@@ -645,7 +645,7 @@ Next sub_80A5588(void) {
 
     /* Inner block: only when the r6+8 byte is not 2. */
     if (LD8(R6 + 8) != 2) {
-        GUEST_CALL(sub_80A5744);
+        GUEST_CALL(checkBbsReqFlag_80A5744);
     }
 
 update_and_return:
@@ -653,15 +653,15 @@ update_and_return:
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A5744 ── */
-/* sub_80A5744: Check if BBS response byte is equal to a sentinel; if not,
+/* ── checkBbsReqFlag_80A5744 ── */
+/* checkBbsReqFlag_80A5744: Check if BBS response byte is equal to a sentinel; if not,
  * set an event flag (4, 234 -> EVENT_4EA).
  *
  *   inputs:  r5, r6, r10, lr
  *   outputs: r5, r10, r11 (preserved)
  *   clobbers: r0, r1, r2, r3, lr, nz, c, v
  */
-Next sub_80A5744(void) {
+Next checkBbsReqFlag_80A5744(void) {
     u8 response;
 
     /* Skip everything if no BBS request is pending. */
@@ -685,8 +685,8 @@ done:
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A5764 ── */
-/* sub_80A5764: picks one of two small tables of (u32, u32) pairs based on the current
+/* ── pickBBSMsgForMapGroup_80A5764 ── */
+/* pickBBSMsgForMapGroup_80A5764: picks one of two small tables of (u32, u32) pairs based on the current
  * map group, then returns the second word of the entry selected by reqBBS_81409D0(4).
  *
  * The two source tables each hold 5 (id, msg) pairs laid out as 5 little-endian u32s.
@@ -698,7 +698,7 @@ done:
  *   clobbers: nz c v r1 r2 r3
  *   preserved: r4 r5 r6 r7
  */
-Next sub_80A5764(void) {
+Next pickBBSMsgForMapGroup_80A5764(void) {
     u32 game_state = LD32(R10 + oToolkit_GameStatePtr);
     u32 map_group  = LD8(game_state + 4);
 
@@ -732,16 +732,16 @@ Next battle_dispatchObjectBehaviorStep_80A9B70(void) {
     R0 = LD32(A_off_80A9B8C + handlerOffset);
 
     switch (handlerOffset) {
-    case 0: GUEST_CALL(sub_80A9B9C); break;
-    case 4: GUEST_CALL(sub_80A9C26); break;
+    case 0: GUEST_CALL(ow_spawnObjectFromConfig_80A9B9C); break;
+    case 4: GUEST_CALL(eventFlagNpcUpdate_80A9C26); break;
     case 8: GUEST_CALL(sub_80A9CA6); break;
     }
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9B9C ── */
-/* sub_80A9B9C — bring a freshly spawned overworld object live.
+/* ── ow_spawnObjectFromConfig_80A9B9C ── */
+/* ow_spawnObjectFromConfig_80A9B9C — bring a freshly spawned overworld object live.
  *
  * r5 = object state block, r7 = spawn config table entry. The routine:
  *   - marks the object "spawning" (state 3) and clears its timer (+0x24),
@@ -751,10 +751,10 @@ Next battle_dispatchObjectBehaviorStep_80A9B70(void) {
  *   - loads the sprite described by the config (+6/+7) and applies the
  *     animation (+8), unk0x2c (+0xA), palette (+0xB), priority (+0xC, with
  *     0xFF meaning "derive from the object's layer/z") and flip (+0xD),
- *   - marks the object active (state 4 at +8) and calls sub_80A9C26 to finish.
+ *   - marks the object active (state 4 at +8) and calls eventFlagNpcUpdate_80A9C26 to finish.
  *
  * Everything the original leaves behind in r0-r3, r6 and the flags on exit is
- * produced by its last callee (sub_80A9C26), so it stays in the guest registers
+ * produced by its last callee (eventFlagNpcUpdate_80A9C26), so it stays in the guest registers
  * untouched; r4/r5/r7-r12 are never written.
  */
 
@@ -844,11 +844,11 @@ static void set_sprite_flip(u32 flip) {
     GUEST_CALL(sprite_setFlip);
 }
 
-/* register form: calls sub_80A9C26 outside this file, which has no typed C interface yet.
+/* register form: calls eventFlagNpcUpdate_80A9C26 outside this file, which has no typed C interface yet.
  * It continues initialising the object still held in r5 (with r6/r7 alongside) and is the
  * last call of the original, so its r0-r2 leftovers and flags are this function's outputs. */
 static void finish_object_init(void) {
-    GUEST_CALL(sub_80A9C26);
+    GUEST_CALL(eventFlagNpcUpdate_80A9C26);
 }
 
 /* Initialise a just-spawned overworld object from its config entry. */
@@ -894,12 +894,12 @@ static void spawn_ow_object(u32 obj, u32 cfg) {
     finish_object_init();
 }
 
-Next sub_80A9B9C(void) {
+Next ow_spawnObjectFromConfig_80A9B9C(void) {
     spawn_ow_object(R5, R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9C26 ── */
+/* ── eventFlagNpcUpdate_80A9C26 ── */
 /* ------------------------------------------------------------------ */
 /* Register-form helpers: thin wrappers for game functions that have  */
 /* no typed C interface yet.                                          */
@@ -1011,17 +1011,17 @@ static void update_event_flag_object(u32 obj, u32 script) {
     run_sprite_update();
 }
 
-/* sub_80A9C26(r5 = object, r7 = flag script record)
+/* eventFlagNpcUpdate_80A9C26(r5 = object, r7 = flag script record)
  *
  * All register outputs (r0-r3 and nz/c/v) are whatever the final
  * sprite_update call leaves behind, and r4/r6/r10/lr are untouched,
  * so the adapter only forwards r5/r7 and returns. */
-Next sub_80A9C26(void) {
+Next eventFlagNpcUpdate_80A9C26(void) {
     update_event_flag_object(R5, R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA004 ── */
+/* ── copyOamEntry_80AA004 ── */
 /* Copy 16 bytes from the indexed entry in the oam-related table at byte_80AA01C
  * into the chip/pet header buffer at byte_2001130. Index is the low nybble of r0;
  * each entry is 16 bytes. */
@@ -1033,7 +1033,7 @@ static void copy_oam_template(u32 index) {
     GUEST_CALL(CopyBytes);
 }
 
-Next sub_80AA004(void) {
+Next copyOamEntry_80AA004(void) {
     copy_oam_template(R0);
     R0 = 0;
     SET_FLAGS_NZ(R0);
@@ -1058,7 +1058,7 @@ Next palette_copyTableRow_80AA104(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA2D8 ── */
+/* ── battle_object_dispatchSpriteState3_80AA2D8 ── */
 /* Byte offset in the battle-object struct that selects the sprite-state-3 handler. */
 #define oSpriteState3_Sel 8
 
@@ -1089,8 +1089,8 @@ static void dispatch_sprite_state3(u32 obj) {
         call_sprite_state3_done();
 }
 
-/* sub_80AA2D8(r5 = battle object) -> tail-dispatch to a sprite-state-3 handler */
-Next sub_80AA2D8(void) {
+/* battle_object_dispatchSpriteState3_80AA2D8(r5 = battle object) -> tail-dispatch to a sprite-state-3 handler */
+Next battle_object_dispatchSpriteState3_80AA2D8(void) {
     dispatch_sprite_state3(R5);
     RETURN_TO_CALLER();
 }
@@ -1121,7 +1121,7 @@ Next object_initSpriteState3_80AA2F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA6A4 ── */
+/* ── dispatchGameHandlerByIndex_80AA6A4 ── */
 /* Jump-table dispatcher. Picks one of 12 handlers indexed by R0 from
  * JumpTable80AA6B8, then tail-calls it. r2..r12/lr are forwarded to the
  * handler and the handler's result comes back in r0 (the original lists
@@ -1137,9 +1137,9 @@ static void dispatch_handler(u32 index) {
     GUEST_CALL_ADDR(target);
 }
 
-/* sub_80AA6A4(r0 = handler index) -> r0 (handler's return value),
+/* dispatchGameHandlerByIndex_80AA6A4(r0 = handler index) -> r0 (handler's return value),
  *                                    r2..r12 forwarded from handler */
-Next sub_80AA6A4(void) {
+Next dispatchGameHandlerByIndex_80AA6A4(void) {
     dispatch_handler(R0);
     RETURN_TO_CALLER();
 }
@@ -1175,8 +1175,8 @@ Next isEventFlag212Set_80AA764(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA78C ── */
-/* sub_80AA78C: decides whether the EVENT_214 encounter is "lucky".
+/* ── tryEvent214LuckyRoll_80AA78C ── */
+/* tryEvent214LuckyRoll_80AA78C: decides whether the EVENT_214 encounter is "lucky".
  * Returns 1 when the event flag (immediate 2) is set and a roll in [0,255]
  * is <= 0xC0 (i.e. with probability ~75% when the flag is set).
  *
@@ -1185,7 +1185,7 @@ Next isEventFlag212Set_80AA764(void) {
  *   clobbers: nz c v r1 r3 lr
  *   preserved: r4 r7
  */
-Next sub_80AA78C(void) {
+Next tryEvent214LuckyRoll_80AA78C(void) {
     u32 lucky = 0;
 
     /* TestEventFlagFromImmediate takes the flag index in R1 (low 16 bits used):
@@ -1210,7 +1210,7 @@ Next sub_80AA78C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA88C ── */
+/* ── battle_rollRandomItemDrops_80AA88C ── */
 /* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */
 static u32 get_positive_rng(void) {
     GUEST_CALL(GetPositiveSignedRNG);
@@ -1266,8 +1266,8 @@ static u32 roll_random_drop(u32 toolkit) {
     return i;
 }
 
-/* sub_80AA88C(r10 = toolkit) -> flags c/v from the loop exit compare */
-Next sub_80AA88C(void) {
+/* battle_rollRandomItemDrops_80AA88C(r10 = toolkit) -> flags c/v from the loop exit compare */
+Next battle_rollRandomItemDrops_80AA88C(void) {
     SET_FLAGS_CMP(roll_random_drop(R10), 4);
     RETURN_TO_CALLER();
 }
@@ -1318,7 +1318,7 @@ Next sub_80AA8E0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AAA98 ── */
+/* ── damage_jitter_80AAA98 ── */
 /* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */
 static u32 get_positive_signed_rng(void) {
     GUEST_CALL(GetPositiveSignedRNG);
@@ -1367,8 +1367,8 @@ static u32 damage_jitter(u32 param1, s32 bonus, u32 raw_mag, u32 mode) {
     }
 }
 
-/* sub_80AAA98(r0=param1, r1=bonus, r2=raw_mag, r3=mode, r4=preserved) -> c v r0 r4 */
-Next sub_80AAA98(void) {
+/* damage_jitter_80AAA98(r0=param1, r1=bonus, r2=raw_mag, r3=mode, r4=preserved) -> c v r0 r4 */
+Next damage_jitter_80AAA98(void) {
     u32 out_r0 = damage_jitter(R0, (s32)R1, R2, R3);
     R0 = out_r0;
     /* Original's last flag-setting instruction on every exit path is

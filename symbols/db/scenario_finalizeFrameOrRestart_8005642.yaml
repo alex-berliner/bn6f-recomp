@@ -1,0 +1,85 @@
+name: scenario_finalizeFrameOrRestart_8005642
+address: '0x08005642'
+kind: function
+status: confirmed
+summary: Main-jumptable step that finalizes the current frame's effects/draws, and if the screen fade
+  is no longer active tears the scenario down and advances the main jumptable to state 0x2C (scenario
+  restart).
+interface: void sub_8005642(void /* r10=toolkit, r5/r7 live, returns r0/r1/r5/r7 and sets N/Z */);
+details: "Runs an unconditional tail block (dispatch_80339CC; sub_80039AA; sub_8003AFA; sub_80027B4; sub_800286C;\
+  \ sub_8003BF4; sub_8003E98; npc_drawSprites_800467C; sub_8004298; sub_8004590; sub_8004934; event_runArmedCallback_80024AE)\
+  \ that finishes pending effects and draws the final scene of the current frame.\n\nThen calls IsScreenFadeActive;\
+  \ if it returns zero (Z set) the function returns immediately, leaving r5/r7 and r0/r1 from the fade\
+  \ check otherwise unmodified.\n\nOtherwise it tears down and re-initialises the scenario:\n  - chatbox_8040818\
+  \ (close/hide chatbox)\n  - FreeAllObjectsOfSpecifiedTypes(0x21)\n  - sub_8004702 (sprite/object reset)\n\
+  \  - resetAllGraphicsState_8005F40\n  - runSetupStepAndClearWorkArea_8005F6C\n  - sub_80027C4, zeroFill_80024A2\n\
+  \  - scenario_initEffectState_8003962, zeroFill_8003AB2\n  - RandomizeExtraToolkitPointers\n  - reloadCurNaviStatBoosts_813c3ac,\
+  \ still with r0 = 0x21 (the same value left in r0 by FreeAllObjectsOfSpecifiedTypes is reused here as\
+  \ a parameter)\n\nFinally reads r10->oToolkit_GameStatePtr into r5, r10->oToolkit_MainJumptableIndexPtr\
+  \ into r0/r7, and stores the byte 0x2C (MAIN_STATE_SCENARIO_RESTART) at that index, advancing the main\
+  \ jumptable.\n\nTouched offsets: oToolkit_GameStatePtr, oToolkit_MainJumptableIndexPtr on the toolkit\
+  \ object pointed to by r10.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261011-013440);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 71' --file inbox_farm_71.c
+    sub_8005642
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8005642
+
+    ./wf verify --function sub_8005642 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-013440-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8005642
+
+    ./wf verify --function sub_8005642 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 0 out of domain (verify run convert-20261011-013440-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8005642
+
+    ./wf verify --function sub_8005642 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013440-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^08005642 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 53a1df4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8005642 -> scenario_finalizeFrameOrRestart_8005642
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- What does IsScreenFadeActive returning zero mean here — is the early-exit path used to delay the reset
+  until the fade finishes, or is the opposite true (reset only while fading)?
+- What does reloadCurNaviStatBoosts_813c3ac do with the 0x21 argument; is it really the same as FreeAllObjectsOfSpecifiedTypes'
+  type mask, or just coincidence due to beq/bne?
+- Which state 0x2C main-loop handler consumes the toolkit+game_state values left behind in r7/r5?
+sources:
+- tools/wf run convert-20261011-013440
+- recomp 53a1df4
+previous_names:
+- sub_8005642

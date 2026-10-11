@@ -1,0 +1,95 @@
+name: battle_setupPETNavis_8135314
+address: '0x08135314'
+kind: function
+status: confirmed
+summary: 'Battle setup: populates the two PET navi slots, accumulates their HP, and stores the total in
+  the battle object.'
+interface: u32 sub_8135314(u32 navi_data, u32 stats_arr, u32 arg2, u32 arg3, u32 ptr_array, u32 battle_obj);
+  clobbers nz c v r0 r1 r2 r3 lr; preserves r4 r5 r6 r7
+details: "Iterates over the two PET navi slots (0 and 1). For each slot it reads a stat-type index from\
+  \ byte_81353B4 indexed by battle_obj+0x0C, adds the slot index to get a stat-column offset, calls GetCurPETNavi\
+  \ to fetch the current PET navi ID, then GetCurPETNaviStatsByte(navi_id, stat_offset) to retrieve the\
+  \ navi's stat byte for that column. If the result is 0xFF the slot is skipped (no navi). Otherwise:\n\
+  \  - Accumulates the upper 16 bits of navi_data[stat*0x20 + 0x18] into a running total_hp.\n  - Initializes\
+  \ the per-slot entry pointer from stats_arr[slot] using sub_80465A0.\n  - Writes the stat byte as a\
+  \ u16 at battle_obj + offset_813539C[slot] (offsets 0x5C and 0x60).\n  - Calls sub_8134930 with kind=0x24,\
+  \ passing r2, r3, the slot, a constant 6 (via r4), battle_obj in r5, the stat byte in r6, and a pointer\
+  \ from ptr_array[slot] in r7.\n  - ORs flag bit byte_81353A8[slot] (0x20 for slot 0, 0x40 for slot 1)\
+  \ into battle_obj+0x4C to mark the slot as active.\nAfter the loop, writes the accumulated total_hp\
+  \ to battle_obj+0x64 and returns r3 (the last spawn call's return, or the input r3 if both slots were\
+  \ 0xFF).\nNote the call to sub_8134930 temporarily clobbers r4 via push/pop so the original r4 is preserved\
+  \ across the loop, matching the stated preserved-register contract.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_8135314
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8135314
+
+    ./wf verify --function sub_8135314 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8135314
+
+    ./wf verify --function sub_8135314 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8135314
+
+    ./wf verify --function sub_8135314 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08135314 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8135314 -> battle_setupPETNavis_8135314
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What are the exact meanings of battle_obj fields 0x5C/0x60 (the per-slot stat byte stores) and 0x4C
+  (active-navI flag bits 0x20/0x40)?
+- What does sub_8134930 actually do with (kind=0x24, slot, 6, battle_obj, stat, navi_ptr) — likely spawns
+  the navi's battle sprite/actor?
+- What is the semantic of r2/r3 (arg2/arg3) forwarded into sub_8134930 — position, parent object, or something
+  else?
+- Is the upper-16-bit-of-HP interpretation correct, or is the lower 16 bits something else (e.g., max
+  HP paired with current HP)?
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_8135314

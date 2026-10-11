@@ -1,0 +1,86 @@
+name: battle_aiAttack_stepGlide_80FE1B4
+address: '0x080FE1B4'
+kind: function
+status: confirmed
+summary: Advance a battle object along its X/Y velocity each frame, refresh panel and collision data while
+  the move's glide timer (Unk_10) remains non-negative, then on landing commit the future panel as the
+  current panel, release the panel reservation, resync coordinates and collision panels, toggle the post-move
+  object flags and advance the AI attack state to substate 0x0C.
+interface: void sub_80FE1B4(u32 object /* r5 */, u32 aiAttackVars /* r7 */)
+details: "Object (r5) fields touched:\n  - oBattleObject_X (ldr + add XVelocity, str back)\n  - oBattleObject_XVelocity\
+  \ (read)\n  - oBattleObject_Y (ldr + add YVelocity, str back)\n  - oBattleObject_YVelocity (read)\n\
+  \  - oBattleObject_FuturePanelX / FuturePanelY (read into PanelX/PanelY on landing)\n  - oBattleObject_PanelX\
+  \ / PanelY (written on landing)\nAI attack vars (r7) fields touched:\n  - oAIAttackVars_Unk_10 (u16\
+  \ glide timer, decremented each call; bge early return)\n  - oAIAttackVars_Unk_00 (u16, set to 0x0C\
+  \ on landing)\nCall sequence per tick:\n  object_setPanelsFromCoordinates(y+vy, vy)\n  object_updateCollisionPanels()\n\
+  \  decrement Unk_10; if still >= 0 return.\nOn landing (Unk_10 underflow):\n  PanelX/Y := FuturePanelX/Y\n\
+  \  object_removePanelReserve(fx, fy)\n  object_setCoordinatesFromPanels()\n  object_setCollisionPanelsToCurrent()\n\
+  \  object_clearFlag(0x40)\n  object_setFlag1(1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT)\n  Unk_00 :=\
+  \ 0x0C\nPreserves r4, r5, r6. Clobbers r0, r1, r2, r3, lr and flags (N/Z/C/V).\nNote: r5 and r1 are\
+  \ listed as outputs only because the lifter sees the final\nldr/pop restoring r5; r5 is the preserved\
+  \ object pointer, not a real return.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-013539);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 72' --file inbox_farm_72.c
+    sub_80FE1B4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FE1B4
+
+    ./wf verify --function sub_80FE1B4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-013539-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FE1B4
+
+    ./wf verify --function sub_80FE1B4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-013539-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FE1B4
+
+    ./wf verify --function sub_80FE1B4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013539-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080fe1b4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 59fc480
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80FE1B4 -> battle_aiAttack_stepGlide_80FE1B4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- Which battle AI attack drives this; oAIAttackVars_Unk_10 looks like a glide- duration counter rather
+  than a generic timer.
+- Meaning of object flag 0x40 that is cleared alongside setting the CURRENTLY_MOVING_1_BIT flag (likely
+  the "moving in flight" / "in transit" bit).
+- Why the pass-in to object_setPanelsFromCoordinates is y+vy and vy (no x arg) - possibly the function
+  only updates Y panel bookkeeping.
+sources:
+- tools/wf run convert-20261011-013539
+- recomp 59fc480
+previous_names:
+- sub_80FE1B4

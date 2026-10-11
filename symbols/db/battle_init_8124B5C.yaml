@@ -1,0 +1,94 @@
+name: battle_init_8124B5C
+address: '0x08124B5C'
+kind: function
+status: confirmed
+summary: 'Initializes the battle scene state struct: clears VRAM/GFX, resets the render-info header, builds
+  the battle lookup tables, sets initial timers/mode/lookup slots, and triggers the screen fade-in.'
+interface: 'void battle_init_8124B5C(void);  // in: r5 = battle_data struct ptr, r10 = toolkit ptr; out:
+  r0 = 0; clobbers nz, r4; preserves r5/r6/r8/r9'
+details: "Entry-point style setup routine for the battle subsystem (r5 holds the battle_data\nstruct,\
+  \ r10 the toolkit whose oToolkit_RenderInfoPtr points at the render header).\nSequence of work:\n  1.\
+  \ zeroFillVRAM / ZeroFill_byte_3001960 / ZeroFillGFX30025c0 to wipe prior\n     graphics state; then\
+  \ sub_80015FC(0x10).\n  2. Reset the toolkit render-info header: first u16 = 0x7F40, the next six u16s\n\
+  \     (offsets 0x10..0x1A) cleared to 0. Calls sub_8126818(0).\n  3. Initializes battle_data fields:\
+  \ [r5+1]=4, [r5+2]=0; runs\n     initRefs_buildAndDecompressTable_8125280 and sub_81254FC to build the\n\
+  \     battle references / compressed sprite tables.\n  4. Sets the two timers at +0x74 and +0x78 to\
+  \ 0xA0.\n  5. Fills the lookup-table slots via sub_81207F8: indices 0/1/2 go to +0x58/0x5C/0x60,\n \
+  \    index 4 to +0x68, index 5 to +0x64. The slot at +0x64 doubles as a \"mode\" flag:\n     its low\
+  \ byte becomes the battle mode at [r5+0xE] (4 if non-zero, else 3).\n  6. Populates several u16 sub-fields\
+  \ by calling the dedicated initializers\n     sub_81258F8, sub_8125994, sub_8125A6C, sub_8125B3C, sub_8125C08\
+  \ into\n     [r5+0x12], +0x1C, +0x26, +0x30, +0x3A respectively.\n  7. Misc subsystem kicks: sub_8046664(),\
+  \ sub_80465A0(byte_8124AE0),\n     sub_81252C0, sub_8125D10, sub_812546C.\n  8. Calls sub_8120CC8(0,\
+  \ dword_8124A94); combines its r0/r1 outputs as\n     (r0 | (r1<<4)) and stores the byte at [r5+0xC].\n\
+  \  9. SetScreenFade(8, 0x10) to fade the screen in, then returns 0.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
+    sub_8124B5C
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8124B5C
+
+    ./wf verify --function sub_8124B5C --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-231345-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8124B5C
+
+    ./wf verify --function sub_8124B5C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8124B5C
+
+    ./wf verify --function sub_8124B5C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08124b5c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 9fdb4a7
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8124B5C -> battle_init_8124B5C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+related:
+- sub_81207F8
+- sub_81258F8
+- sub_8125994
+- sub_8125A6C
+- sub_8125C08
+open_questions:
+- Exact semantics of the dword_8124A94 packed byte stored at +0xC (r0 | (r1<<4)).
+- Whether [r5+1]=4 selects a chip-selection / menu phase vs. an enemy-turn phase (the [r5+0xE] mode flag
+  is distinct from this).
+- Meaning of the six zeroed render-info u16s at offsets 0x10..0x1A (window/layer regs?).
+- What sub_81254FC and sub_812546C add beyond initRefs_buildAndDecompressTable_8125280 (one runs at init,
+  the other post-init).
+- Identity of byte_8124AE0 handed to sub_80465A0 (palette/animation table?).
+sources:
+- tools/wf run convert-20261010-231345
+- recomp 9fdb4a7
+previous_names:
+- sub_8124B5C

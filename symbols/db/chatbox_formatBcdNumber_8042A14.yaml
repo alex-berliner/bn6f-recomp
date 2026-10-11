@@ -1,0 +1,85 @@
+name: chatbox_formatBcdNumber_8042A14
+address: '0x08042A14'
+kind: function
+status: confirmed
+summary: Format a BCD-converted integer into a chatbox glyph string with optional padding and right-alignment,
+  then write a 3-byte terminator.
+interface: void chatbox_formatBcdNumber_8042A14(u32 r0=value, u32 r1=flags, u32 r2=dstBuf); outputs r3=padRemainder,
+  r6=fillGlyph, r7=0, r8=bcdValue; preserves r1,r4,r5; clobbers NZCV,r0,r2
+details: "Converts the input integer to BCD via memory_bcdConvert (passing flags through in r1), obtains\
+  \ the\ndigit count via countHexDigits_8000C5C, then emits each BCD nibble into dstBuf as a font glyph\n\
+  index (nibble + 1, since glyph 0 is the terminator slot). r1 flags are interpreted as:\n  - bits 0-3:\
+  \ minimum field width; 0 = use natural digit count\n  - bit 6:    pad glyph (0 = glyph 0, 1 = glyph\
+  \ 1, \"space\")\n  - bit 7:    alignment (0 = left-align with trailing pad, 1 = right-align with leading\
+  \ pad)\nAfter writing the digit run (and any padding), writes a 3-byte terminator 0xE6, 0x00, 0x00 at\
+  \ the\nwrite cursor (advancing dstBuf by 3 in the process). Final emitted register state: r3 = padding\n\
+  remainder (0 or negative-as-u32 from the final `cmp r3,#0 ; ble` exit), r6 = fill glyph byte,\nr7 =\
+  \ 0, r8 = cached BCD value. Stack frame saves r4/r5/lr and preserves r1 across both helper calls\nso\
+  \ the caller's flags register is not disturbed.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c
+    chatbox_8042A14
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_8042A14
+
+    ./wf verify --function chatbox_8042A14 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    178 out of domain (verify run convert-20261011-003940-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_8042A14
+
+    ./wf verify --function chatbox_8042A14 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-003940-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_8042A14
+
+    ./wf verify --function chatbox_8042A14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story2, story4, story5, story6, story8, story9.'
+  reproduce: grep -l '^08042a14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp b7f44a3
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename chatbox_8042A14 -> chatbox_formatBcdNumber_8042A14
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/chatbox.c
+coverage:
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What the terminator sequence 0xE6,0x00,0x00 means to the chatbox engine (control code vs. style sentinel).
+- Whether r3's "pad remainder" output is ever consumed by callers or is just an artefact of returning
+  the loop counter.
+- Whether the flags bits 1-5 and 8-31 carry any meaning passed through to memory_bcdConvert.
+sources:
+- tools/wf run convert-20261011-003940
+- recomp b7f44a3
+previous_names:
+- chatbox_8042A14

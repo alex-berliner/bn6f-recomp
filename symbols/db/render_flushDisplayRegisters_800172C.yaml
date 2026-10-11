@@ -1,0 +1,97 @@
+name: render_flushDisplayRegisters_800172C
+address: '0x0800172C'
+kind: function
+status: confirmed
+summary: Flushes cached display-register state (DISPCNT, BG0CTL, MOSAIC, WIN0X, BLDCNT/BLDCOL) from the
+  toolkit's RenderInfo tables into GBA hardware I/O.
+interface: render_800172C(/* Toolkit * */ r10, /* preserved */ r3, r4, r5, r6, r7) -> /* sets ADDS from
+  ri+4 */ v, nz, c; clobbers r0, r1, r2, lr; preserves r3-r7.
+details: "Retrieves the RenderInfo pointer from toolkit field oToolkit_RenderInfoPtr.\nThen, in order:\n\
+  \  1. Writes the mosaic size halfword (RenderInfo+0x02) into the MOSAIC register.\n  2. Copies 0x38\
+  \ bytes of BG0/layer-control data from RenderInfo+4 into the BG0Control hardware region via CopyWords.\n\
+  \  3. Copies 12 halfwords of window0 horizontal dimensions from the toolkit's 0x200f3a0 table into WIN0X\
+  \ hardware via CopyHalfwords.\n  4. Loads a color-effects pointer from toolkit field oToolkit_Unk2009740_Ptr;\
+  \ writes its word into BLDCNT (ColorSpecialEffectsSelection) and its +4 halfword into the fade coefficient\
+  \ (BLDCOL equivalent, offset 0x4000050).\n  5. Re-reads RenderInfo, writes its low halfword (DISPCNT)\
+  \ into the LCDControl hardware register.\nThe final value in r3 (RenderInfo pointer) is left as an output;\
+  \ the caller's ADDS-on-4 pattern is reconstructed by the return.\nNo parameters are read from r3-r7\
+  \ on entry; they are simply pushed/popped to keep them preserved.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-235157);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 43' --file inbox_farm_43.c
+    render_800172C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function render_800172C
+
+    ./wf verify --function render_800172C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-235157-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function render_800172C
+
+    ./wf verify --function render_800172C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235157-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function render_800172C
+
+    ./wf verify --function render_800172C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235157-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0800172c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp fd1e593
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename render_800172C -> render_flushDisplayRegisters_800172C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does the caller do with the returned RenderInfo pointer (r3) and the ADDS-from-+4 flag?
+- Is the 0x38-byte BG0Control block a single layer or does it span BG0CTL through OBJCTL?
+- Why is the window table sourced from a separate 0x200f3a0 pointer rather than from RenderInfo itself?
+sources:
+- tools/wf run convert-20261010-235157
+- recomp fd1e593
+previous_names:
+- render_800172C

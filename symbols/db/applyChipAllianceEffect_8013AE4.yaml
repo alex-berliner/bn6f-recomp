@@ -1,0 +1,93 @@
+name: applyChipAllianceEffect_8013AE4
+address: '0x08013AE4'
+kind: function
+status: probable
+summary: Applies a chip-driven alliance adjustment to a navi's alliance stat, capped at 7, when the chip's
+  collision-data byte 0xA4 indicates an alliance-modifying chip (0x18 or 0x19).
+interface: 'void sub_8013AE4(u32 battle_object /* r5 */);
+
+  // reads r5 in, no return value; clobbers r0-r3, lr; preserves r6, r7
+
+  '
+details: "Loads the battle object's collision-data pointer (offset oBattleObject_CollisionDataPtr),\n\
+  then inspects byte 0xA4 of that structure to decide whether/how to modify the navi's\nalliance stat.\n\
+  \  - byte 0xA4 == 0: function returns immediately (no effect).\n  - byte 0xA4 == 0x18 or 0x19: reads\
+  \ byte 0xA5, adds the current navi alliance stat\n    (obtained via GetBattleNaviStatsByte_AllianceFromBattleObject),\
+  \ clamps the sum to\n    a maximum of 7, and -- only if byte 0xA4 is also < 0x64 when treated as signed\
+  \ --\n    writes the result back via SetBattleNaviStatsByte_AllianceFromBattleObject.\nThe < 0x64 signed\
+  \ check is effectively a guard: once the chip-effect counter reaches\n0x64 the adjustment is suppressed,\
+  \ so repeated applications of the same chip hit a\nceiling instead of stacking past +7. Clamp at 7 matches\
+  \ the in-battle alliance scale\nfor chips like AppleDay/Alliance-related chips in the Battle Network\
+  \ series.\nBytes 0xA4/0xA5 of the collision data are a per-chip-effect scratch pair (effect kind\nand\
+  \ magnitude) embedded in the chip's collision payload.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-005019);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c
+    sub_8013AE4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8013AE4
+
+    ./wf verify --function sub_8013AE4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261011-005019-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8013AE4
+
+    ./wf verify --function sub_8013AE4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-005019-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8013AE4
+
+    ./wf verify --function sub_8013AE4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-005019-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, story7.'
+  reproduce: grep -l '^08013ae4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 1a91c64
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-11'
+  what: 'readable C taken out of cport/src/game/asm00_2_8012BA2.c after review against the assembly (the
+    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
+    that differs from the original: Wrong callee inputs for both calls. GetBattleNaviStatsByte_AllianceFromBattleObject
+    reads r1 (stat offset) + r5; asm calls it with r1 = byte 0xA4 (`ldrb r1,[r3,r1]` ... `beq loc_8013B02`
+    -> `bl Get...`, r1 still 0x18/0x19). The C helper sets only `R0 = battle_object;` and leaves R1 =
+    the caller''s entry r1, so it reads the wrong NaviStats byte. SetBattleNaviStatsByte_AllianceFromBattleObject
+    reads ...'
+  tool: review (Claude, workstream J)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_8013AE4 -> applyChipAllianceEffect_8013AE4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+coverage:
+- battle
+- battlesweep
+- chips
+- story7
+open_questions:
+- Exact identity of chips using effect codes 0x18 and 0x19 (likely +1 and +2 alliance chips).
+- Why the < 0x64 guard exists (preventing cumulative alliance over multiple stacks?).
+- What the other potential effect codes stored at 0xA4 represent for non-alliance chips.
+sources:
+- tools/wf run convert-20261011-005019
+- recomp 1a91c64
+previous_names:
+- sub_8013AE4

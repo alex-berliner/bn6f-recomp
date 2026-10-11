@@ -1,0 +1,95 @@
+name: battle_setAIAttackDamage_80FDFE4
+address: '0x080FDFE4'
+kind: function
+status: confirmed
+summary: Computes a 32-bit AI damage value by combining a versioned damage-table entry (low 16) with a
+  versioned constant-modifier entry (high 16, always 0x000A) and writes it into the BattleObject's AI
+  attack-data block.
+interface: void battle_setAIAttackDamage(u16 tableIndex /*r0*/, BattleObject *obj /*r5*/); /* clobbers
+  r0-r3,r6; r4,r6 preserved; r3 returns damage-sub-block ptr; r2 from callee; NZCV destroyed */
+details: 'r4 and r6 are push/pop scratch. r0 holds a row index into three per-version
+
+  tables (selected by battle_aiGetVersionedTableEntry_800FE12).
+
+  First lookup – damage table (byte_80FE020/28/30, stride 8, four 16-bit rows per
+
+  version): values range from 0x0A (10) up to 0x114 (276), giving the low half-word.
+
+  Second lookup – modifier table (byte_80FE044/4C/54): every entry is 0x000A, so
+
+  the high half-word is always 0x000A in practice; the table still goes through the
+
+  versioned accessor, leaving room for per-version modifiers.
+
+  The two halves are combined as (hi << 16) | lo and stored via
+
+  *(obj->AI_data_ptr + 0xA0 + oAIAttackVars_Damage) = combined.
+
+  oAIAttackVars_Damage is the field inside the AI attack-variables sub-structure
+
+  that the battle AI later reads to apply actual hit damage.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c
+    sub_80FDFE4
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FDFE4
+
+    ./wf verify --function sub_80FDFE4 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261010-221358-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FDFE4
+
+    ./wf verify --function sub_80FDFE4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261010-221358-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FDFE4
+
+    ./wf verify --function sub_80FDFE4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080fdfe4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 74e906c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80FDFE4 -> battle_setAIAttackDamage_80FDFE4
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- Is 0x000A in the modifier table always a fixed multiplier, or is it meant to vary per-version/per-index
+  in later game data?
+- Who calls this function and what does 'tableIndex' correspond to (attack slot number, enemy type row)?
+- What are the meanings of the four columns per version row (e.g. damage tiers or sub-attack indices)?
+sources:
+- tools/wf run convert-20261010-221358
+- recomp 74e906c
+previous_names:
+- sub_80FDFE4

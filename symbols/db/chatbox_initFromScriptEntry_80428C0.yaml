@@ -1,0 +1,93 @@
+name: chatbox_initFromScriptEntry_80428C0
+address: '0x080428C0'
+kind: function
+status: confirmed
+summary: Initializes a chatbox's display state (char index, cursor, row, derived row, text-pointer slot)
+  from a 5-byte script entry and advances the script pointer by 5.
+interface: void chatbox_initFromScriptEntry_80428C0(const u8 *entry /* r4 */, struct Chatbox *chatbox
+  /* r5 */) -> returns 1 in r0; clobbers r1, r2, r3, r4, NZCV.
+details: 'Reads entry[2] -> chatbox->TextScriptCharIdx (and also writes to chatbox+0x94, the text-pointer
+  slot).
+
+  Sets chatbox->CursorIdx = charIdx + 0xAF.
+
+  Reads entry[3] -> chatbox->Unk_19 (row).
+
+  Reads entry[4] (stride), then writes chatbox->Unk_1B = row + 0xC * stride (a derived row index, wrap-by-u8).
+
+  Returns 1 in r0 and bumps the caller-provided r4 by +5 so the caller''s entry pointer advances past
+  this 5-byte record.
+
+  Used by the chatbox/script dispatcher to load a line description; returns 1 to signal "entry consumed,
+  keep going".
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed;
+  tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-003240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 2' --file
+    inbox_farm_old_2.c sub_80428C0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80428C0
+
+    ./wf verify --function sub_80428C0 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    258 out of domain (verify run convert-20261011-003240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80428C0
+
+    ./wf verify --function sub_80428C0 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261011-003240-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80428C0
+
+    ./wf verify --function sub_80428C0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003240-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, menus3.'
+  reproduce: grep -l '^080428c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 9b76b4c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_80428C0 -> chatbox_initFromScriptEntry_80428C0
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/chatbox.c
+coverage:
+- maps
+- menus3
+open_questions:
+- What exactly is entry[0]/entry[1]? They are skipped here, suggesting each entry is at least 5 bytes
+  with two leading bytes owned by the caller (e.g., opcode + param).
+- What is the unit of entry[3] vs. entry[4]? Likely a base row plus a stride into a tile/window table
+  (0xC stride fits a 12-row chatbox face grid).
+- Why is charIdx additionally stored at chatbox+0x94? Probably the cached "current glyph" pointer slot
+  for the text renderer.
+- Is 0xAF in CursorIdx an offset into a sprite/tile table or a character-form mapping constant?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted
+  again as typed C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-003240
+- recomp 9b76b4c
+previous_names:
+- sub_80428C0

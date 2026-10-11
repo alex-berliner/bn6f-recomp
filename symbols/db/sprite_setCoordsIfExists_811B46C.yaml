@@ -1,0 +1,87 @@
+name: sprite_setCoordsIfExists_811B46C
+address: '0x0811B46C'
+kind: function
+status: confirmed
+summary: Set a sprite's screen X/Y coordinates only if the sprite id resolves to a live sprite struct.
+interface: void sub_811B46C(u32 x /*r0*/, u32 y /*r1*/, u32 sprite_id /*r2*/, u32 preserve_r5 /*out*/)
+details: 'Saves r0/r1 (x, y) on the stack, passes r2 (sprite_id) to getStructFrom2008450 to look up
+
+  the sprite''s struct pointer (returned in r1). If the lookup fails (Z set, struct == 0),
+
+  the function returns immediately without touching the sprite. On success, r5 is set to
+
+  the struct pointer, and the saved x/y are reloaded into r0/r1 before calling
+
+  sprite_setCoordinates to update the sprite''s screen position. r4-r7 are preserved across
+
+  the call; r5 is both an input (preserved via the stack frame) and an output (clobbered by
+
+  the callee and restored on return). The C-style wrapper "set_sprite_coords_if_found" in
+
+  the verified source captures the intent: this is a guarded sprite-position setter.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-003552);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 55' --file inbox_farm_55.c
+    sub_811B46C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811B46C
+
+    ./wf verify --function sub_811B46C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    185 out of domain (verify run convert-20261011-003552-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811B46C
+
+    ./wf verify --function sub_811B46C --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261011-003552-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811B46C
+
+    ./wf verify --function sub_811B46C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003552-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^0811b46c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 788e88e
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-11'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 27d1cdb8
+  tool: tools/symdoc.py
+- date: '2026-10-11'
+  what: rename sub_811B46C -> sprite_setCoordsIfExists_811B46C
+  where: bn6f 4e85acae
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+- story2
+open_questions:
+- Where does the sprite struct live? getStructFrom2008450 is called by name but its table base is unknown
+  from this function alone.
+- Does getStructFrom2008450 ever set the zero flag with a non-null r1 (e.g. error code)? Treated here
+  as "null on fail" per the verified C.
+- Is the r5 output meaningful to the caller, or is it just preserved register state passing through? The
+  contract lists r5 as an output but the body only writes it as a pass-through to sprite_setCoordinates.
+sources:
+- tools/wf run convert-20261011-003552
+- recomp 788e88e
+previous_names:
+- sub_811B46C
