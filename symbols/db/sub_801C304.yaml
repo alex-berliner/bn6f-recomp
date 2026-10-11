@@ -1,0 +1,93 @@
+name: sub_801C304
+address: '0x0801C304'
+kind: function
+status: hypothesis
+summary: Decompresses four battle-portrait tile pairs into VRAM, selecting the source table by an effect index,
+  skipping tile index 0xB.
+interface: 'inputs: r3: preserved (input, untouched, must survive); r4: effect-index struct (byte at +8 selects
+  one of three source-pointer tables); r5: destination VRAM pointer (advances by 0x20 per tile pair); r7: pointer
+  to four tile-index bytes (walked from offset 3 down to 0); lr: return address; outputs: r3: preserved; r4: clobbered
+  in body (rebased to the resolved source table), caller-visible; r5: final dst pointer (advanced four times by
+  0x20); r6: clobbered (loop counter, caller-visible); r7: clobbered (caller-visible); flags: nz, c, v clobbered'
+details: 'Effect index = byte at r4+8; multiplied by 4 and used to fetch a pointer from
+
+  off_801C34C (-> off_801D854 / off_801D880 / off_801D8AC, three sub-tables).
+
+  Loop index `i` runs 3..0 over the four tile-index bytes at r7+i. For any
+
+  tile index != 0xB, the function reads a base source pointer from the chosen
+
+  sub-table and queues two 0x20-byte (32-byte) word-aligned DMA transfers:
+
+  the first to dst, the second to dst+0x80. r5 advances by 0x20 per iteration
+
+  regardless, so skipping 0xB still reserves that tile slot. r3 is pushed and
+
+  popped, so callers can rely on r3 surviving.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_801C304
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801C304
+
+    ./wf verify --function sub_801C304 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801C304
+
+    ./wf verify --function sub_801C304 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801C304
+
+    ./wf verify --function sub_801C304 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0801c304 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What struct r4 points to (the +8 byte selects an "effect"/slot).
+- Why tile index 0xB is treated specially (likely "no tile / transparent" marker for portrait frames).
+- Is r4 after the call meaningful to the caller, or just incidentally trashed?
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

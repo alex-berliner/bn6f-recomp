@@ -1,0 +1,117 @@
+name: sub_801C296
+address: '0x0801C296'
+kind: function
+status: confirmed
+summary: Render an HP readout into a 4-nibble buffer, masking unchanged digits and precomputing a right-justified
+  x offset.
+interface: void sub_801C296(u32 r3, void* src_obj /* r4 */, u32 r6, void* dst_readout /* r7 */); preserves r3, r4,
+  r6, r7; clobbers r0, r1, r2, lr, nzcv.
+details: 'Operates on a "source object" (r4) that owns the live HP state and a "destination readout"
+
+  buffer (r7) that the upper layers blit each frame. Three things happen in sequence.
+
+  (1) BCD conversion of the displayed value: the source object''s u16 at +2 is the current HP;
+
+  if bit 4 of its u8 flags at +0 is set, the value used is (LD16(LD32(r4+0xC)+0x26) - hp),
+
+  i.e. "missing HP" mode using the max-HP reference. memory_bcdConvert is called on the
+
+  chosen value and the resulting 16-bit BCD is unpacked into r7[0..3] as four 4-bit glyph
+
+  indices (one nibble per byte).
+
+  (2) Layout: countHexDigits_8000C5C(<bcd>) yields the leading-digit count; an s32 x pixel
+
+  offset is stored at r7+4 as -(0x20 - digits*4), which right-justifies the four-glyph field
+
+  in a 0x20-pixel-wide slot. Nibble slots r7[digits..3] are filled with the blank glyph 0xA.
+
+  (3) Damage flash mask: r4+0x10 holds the snapshot of the previous r7[0..3] word. The new
+
+  value at r7[0..3] is first written into r4+0x10, then each nibble is compared against the
+
+  prior nibble at the same slot; where they differ the new nibble is left in place, where
+
+  they match the slot is overwritten with 0xB (the "no-change" tile). Because the comparison
+
+  walks nibbles packed in 8-bit-aligned bytes via the >>=8 shift, the diff is effectively
+
+  per-nibble across the four glyph slots.
+
+  Quirks: r3 and r6 are passed only because the ABI preserves them; the typed body ignores
+
+  them (r6 unused, r3 returned unchanged). The diff loop stores both cur and prev through
+
+  the same pointer arithmetic but offsets differ, so the snapshot at r4+0x10 is the raw
+
+  pre-mask value, not the masked r7 output.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_801C296
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801C296
+
+    ./wf verify --function sub_801C296 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 275 out
+    of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801C296
+
+    ./wf verify --function sub_801C296 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801C296
+
+    ./wf verify --function sub_801C296 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0801c296 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact glyph indices 0xA (blank) and 0xB (unchanged-flash) need a sprite-sheet lookup to confirm they map to "
+  " and a "no-damage" tile in the HP font.
+- Whether +0xC always points into a battle-entity struct or can also be a parent object (battle shared HP pools)
+  is not visible from this function alone.
+- The 0x20-pixel slot width suggests 4 glyphs at 8 px each on the standard font; whether this is the same routine
+  used for non-HP 4-digit readouts is unconfirmed.
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

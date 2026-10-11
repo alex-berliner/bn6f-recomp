@@ -1,0 +1,68 @@
+name: sub_811A29C
+address: '0x0811A29C'
+kind: function
+status: hypothesis
+summary: Tweaks a sprite's unk0x2c field based on the current menu-state table entry (sets a per-state bit otherwise
+  clears/OR-in default bits)
+interface: 'return: void; clobbers: r0 r1 r2 r3 lr; flags NZCV; preserved: r4 r5 r6 r7; stack: pushes {r4-r7,lr};
+  pops {r4-r7,pc}'
+details: "Calls menu_getTableEntryForStateIndex_811A268 to fetch three outputs (r0=index/ptr-ish, r1, r2). The\n\
+  \"active\" branch fires when r0 != 0 AND (r2 != 0 OR r1 == 0):\n  * Loads a state byte from byte_8124B1C indexed\
+  \ by (r0 - 0x140).\n  * Builds a single-bit mask by shifting 0x40 right by that byte (ARM `lsr` so >=32 yields\
+  \ 0).\n  * ORs sprite.unk0x2c with 0x7E, then clears the bit at that mask position.\nOtherwise (\"inactive\" branch)\
+  \ clears the 0x7E bits and ORs in 0x3E.\nBoth paths go through sprite_getUnk0x2c / sprite_setUnk0x2c. The `0x7E`\
+  \ constant (bits 1..6) and\n`0x3E` (bits 1..5) suggest toggling a 6-bit field on the sprite; the active path picks\
+  \ one of those\n6 bits per state index. Likely called once per menu state update to keep the sprite's state flags\n\
+  in sync with the menu table. Only entry in byte_8124B1C sampled here; the full 6-state table is\nimplied by `0x140`\
+  \ being the state index offset.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_811A29C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811A29C
+
+    ./wf verify --function sub_811A29C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 282 out
+    of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811A29C
+
+    ./wf verify --function sub_811A29C --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811A29C
+
+    ./wf verify --function sub_811A29C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^0811a29c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- story2
+open_questions:
+- What unk0x2c on the sprite actually represents (animation flag, visibility, alpha blend?, frame slot?)
+- Identity of byte_8124B1C (likely a 6-byte state -> bit-index table for the 0x7E field)
+- Why the "active" condition requires r0!=0 AND (r2!=0 OR r1==0) - whether r2 is a "has-data" flag and r1 a "was-zero"
+  flag from the table entry
+- Whether this runs every frame or only on menu state transitions
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

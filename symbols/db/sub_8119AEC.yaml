@@ -1,0 +1,78 @@
+name: sub_8119AEC
+address: '0x08119AEC'
+kind: function
+status: confirmed
+summary: Build and display the PET-Navi status (style/element) icon sprite for the current PET Navi, choosing the
+  sprite form from a table based on the active Navi or its stats.
+interface: 'void sub_8119AEC(void /* obj ptr in r5 */);
+
+  // inputs: r5 (object ptr)
+
+  // outputs: r2 r3 r5
+
+  // clobbers: r0 r1 lr; flags n z c v
+
+  '
+details: "Tags the object in r5 by writing 0x23 to [r5]. Selects a sprite-form ID from\nthe kSpriteFormTable (byte_8119B74,\
+  \ 32-bit words) either by:\n  - direct index = get_cur_pet_navi() when a real Navi is out, or\n  - when no Navi\
+  \ is out: index 0; if byte 0x200AD04 is non-zero AND event\n    \"0:0x63\" (EVENT_163) is clear, index = 0x0C\
+  \ + stats_byte_0x17\n    (stats read via GetCurPETNaviStatsByte). Otherwise a fallback index\n    of 0x1B is used\
+  \ via the explicit mov r0,#0x1b dead branch.\nInitialises the sprite via initGuiSprite_8002770(formId, ?), sets\
+  \ animation\n0, loads animation data, disables shadow, calls sub_8119C08 to lay out\ncompanion/companion-related\
+  \ sprites (its r0 is forwarded as the palette\nindex to sprite_setPalette), sets priority 2, calls\nslotList_storeHalfwordAndClearField_800306C\
+  \ with 0, sets sub-entry palette\nbank 0, sets sub-record field A = 3, writes 0x4 to [r5+8], and finally\ncalls\
+  \ sprite_applyComputedPaletteAndUpdate_8119BD0.\nSprite-form table values observed: 0x1B, 0x3F, 0x40, 0x41, 0x42,\
+  \ 0x43,\n0x44, 0x45, 0x46, 0x47, 0x48, 0x62, 0x5F, 0x54, 0x55, 0x56, 0x57, 0x58,\n0x59, 0x5A, 0x5B, 0x5C, 0x5D\
+  \ (indexed by either Navi ID or derived\nstats index).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_8119AEC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8119AEC
+
+    ./wf verify --function sub_8119AEC --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8119AEC
+
+    ./wf verify --function sub_8119AEC --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8119AEC
+
+    ./wf verify --function sub_8119AEC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^08119aec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+- story2
+open_questions:
+- Exact meaning of [r5] = 0x23 / [r5+8] = 4 tags (sprite type/phase?).
+- What state / screen this icon builder is reached from (battle PET menu, overworld PET UI, etc.).
+- Why the explicit `mov r0,#0x1b` branch at loc_8119B30 exists; appears unreachable in the current control flow
+  but is the same value as the table's index 0 entry.
+- Exact identity of event "0:0x63" (EVENT_163) and gba-byte 0x200AD04 (style/unlock flag).
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

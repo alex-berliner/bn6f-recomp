@@ -1,0 +1,96 @@
+name: sub_813BF1C
+address: '0x0813BF1C'
+kind: function
+status: confirmed
+summary: Returns 1 if event flag 0x1720 is set, 0 otherwise, leaving it for the caller to branch on via NZ (the
+  dead EVENT_1723 test in the assembly is never reached).
+interface: void eventFlag1720IsSet_813BF1C(void); // r4-r7 preserved; result is in NZ (R0 = 0/1); clobbers R0-R3,
+  LR, C, V
+details: 'Loads R6=1, then calls TestEventFlagFromImmediate for the 16-bit flag 0x1720 (passed
+
+  split as R0=0x17, R1=0x20 per the EventFlag 16-bit convention). If the flag is set (!Z)
+
+  it jumps past a label; if clear it falls into loc_813BF36 which clears R6 to 0. Then
+
+  moves R6 into R0 and tst''s it, so NZ reflects 1 vs 0.
+
+  The intermediate block (movflag EVENT_1723, TestEventFlagFromImmediate, bne loc_813BF38)
+
+  sits between the bne loc_813BF38 and loc_813BF36 in the listing but is unreachable: the
+
+  only path into it is via the b loc_813BF38 which is unconditional from the BNE branch —
+
+  the disassembly comment notes this as a fused-out/dead region. So in game terms only
+
+  flag 0x1720 matters here.
+
+  R10/LR are listed as inputs by the lifter because of the call into the helper; r4/r5/r6/r7
+
+  are preserved across the call (the helper does not touch them). Caller convention reads
+
+  NZ and consumes R4/R5 as scratch from the helper''s frame.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_813BF1C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_813BF1C
+
+    ./wf verify --function sub_813BF1C --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_813BF1C
+
+    ./wf verify --function sub_813BF1C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_813BF1C
+
+    ./wf verify --function sub_813BF1C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0813bf1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Why does the EVENT_1723 path exist at all (dead code / fused macro expansion)?
+- Is flag 0x1720 a 'gate' flag (e.g. a story/dungeon unlock) given the helper name check_gate_flag?
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

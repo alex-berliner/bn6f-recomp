@@ -1,0 +1,110 @@
+name: sub_813388C
+address: '0x0813388C'
+kind: function
+status: confirmed
+summary: 'One frame of the folder-edit object step: passes three outer guards, checks an input-locked flag and the
+  held-joypad buttons for a folder-edit gesture, otherwise delegates L/R handling to the folder-edit helper, and
+  saves state into state 8 when handled.'
+interface: void sub_813388C(void); /* uses r5 = folder_obj, r10 = toolkit; clobbers nz c v r0 r1 r2 r3 r4 r6 r12;
+  preserves r7 r8 r10 */
+details: 'Acts as the per-frame dispatcher for the folder-edit object. Inputs are
+
+  r5 = folder object pointer and r10 = toolkit pointer (the standard
+
+  caller convention documented for this subsystem).
+
+
+  Body runs three sequential guards (sub_8133BB4, sub_8133C0C, sub_8134A3C);
+
+  each must return 0 (Z set) for execution to continue. Any non-zero return
+
+  short-circuits to the post-step tail.
+
+
+  On continuation it reads folder_obj->0x28 as the input-locked word
+
+  (tst/beq branches). When non-zero it fetches toolkit->oToolkit_JoypadPtr,
+
+  dereferences the joypad struct''s oJoypad_LowSensitivityHeld word, and
+
+  passes it plus (r1=7, r2=0, r3=0xA) into sub_811F7F8, which appears to be
+
+  a generic joypad-gesture matcher. A match (r0 != 0) skips the rest of the
+
+  body.
+
+
+  Otherwise it calls checkLeftRightInputForFolderEdit_8133E3C with r0=3.
+
+  A non-zero return means L/R was handled and the save is skipped; a zero
+
+  return means save state and set state 8 via
+
+  object_saveStateAndSetState8_8133E7C.
+
+
+  Tail sub_8134310, sub_81345B0, sub_8134548 run unconditionally on every
+
+  path, so post-step bookkeeping always happens regardless of which branch
+
+  was taken.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_813388C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_813388C
+
+    ./wf verify --function sub_813388C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_813388C
+
+    ./wf verify --function sub_813388C --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 12 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_813388C
+
+    ./wf verify --function sub_813388C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^0813388c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What sub_8133BB4 / sub_8133C0C / sub_8134A3C actually gate (mode/state/animation guards)?
+- Meaning of oToolkit_JoypadPtr and oJoypad_LowSensitivityHeld offsets and the (id=7, arg2=0, arg3=0xA) triple into
+  sub_811F7F8.
+- Semantics of folder_obj->0x28 input-locked flag and what state 8 represents.
+- Roles of the three post-step helpers sub_8134310 / sub_81345B0 / sub_8134548 (animation tick, render, sound?).
+- Behaviour beyond the joypad check on the non-locked branch (the beq simply skips the locked-only block).
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

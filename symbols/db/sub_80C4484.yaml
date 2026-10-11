@@ -1,0 +1,82 @@
+name: sub_80C4484
+address: '0x080C4484'
+kind: function
+status: confirmed
+summary: 'Per-frame sprite update for a battle object: applies mosaic scaling + alpha, then runs the standard object
+  update unless Param3 is set or the battle is time-stopped.'
+interface: void sub_80C4484(u32 battle_obj /* r5 */); // preserves r4, r5, r7, r10, lr; clobbers nz/c/v, r0-r3
+details: 'Operates on the battle-object struct pointed to by r5. Reads
+
+  `[r5 + oBattleObject_RelatedObject1Ptr]` and passes it to
+
+  `sprite_getMosaicScalingParameters`, then calls `sprite_setAlpha` to
+
+  configure the related sprite''s rendering. Dispatches on
+
+  `[r5 + oBattleObject_Param3]`: if non-zero, jumps to `sub_801BCD0` (an
+
+  alternate object update path); if zero, calls `battle_isTimeStop` and,
+
+  when the battle is NOT time-stopped, calls `object_updateSprite`. When
+
+  time is stopped with Param3 == 0, the sprite update is skipped entirely.
+
+  Preserves r4/r5/r7 across the call; r10 is passed in but not used
+
+  directly here. Note: register contract lists r5 as an input, but the
+
+  function never writes r5, matching the adapter''s claim.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_80C4484
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C4484
+
+    ./wf verify --function sub_80C4484 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C4484
+
+    ./wf verify --function sub_80C4484 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C4484
+
+    ./wf verify --function sub_80C4484 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080c4484 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- What is `sub_801BCD0`? Likely the "no-rendering" / hidden / frozen variant of the standard object update, used
+  while a battle object is in a suppressed state (Param3 != 0).
+- What state does `oBattleObject_Param3` encode? Possibly "frozen" / "hidden" / "custom update owner" flag, since
+  selecting it bypasses both time-stop gating and the default sprite update.
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

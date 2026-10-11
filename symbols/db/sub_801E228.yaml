@@ -1,0 +1,106 @@
+name: sub_801E228
+address: '0x0801E228'
+kind: function
+status: confirmed
+summary: Draws a scripted message/text window onto the eStruct2035280 VRAM target for a given display mode, falling
+  back to a default mode when the caller passes 2.
+interface: 'u8 mode /* r0, rewritten to 0x13 when == 2 */;
+
+  r4..r7 preserved; flags clobbered (nz/c/v).
+
+  '
+details: 'Operates on the global eStruct2035280 ("eStruct") at 0x2035280, whose layout begins with
+
+  a flags word at +0x40. The function checks bit8 (0x100) of that flags word and, if set,
+
+  first drains that request by calling dispatch_801DACC(0x100), which presumably completes
+
+  any pending eStruct sub-task that exposes the 0x100 flag.
+
+
+  It then sets eStruct timers/counters at +0xB = 0x3C (=60, likely a frame countdown or
+
+  fade-in delay) and +0xC = 0 (paired field, probably an index or step counter).
+
+
+  It renders TextScript86F0374 (the standard text-drawing script blob at 0x86F0374) into
+
+  the VRAM tile buffer at byte_203C4E0, using palette/attr 0x6009560, ASCII-speed 0x11,
+
+  arrow/mode 1, font-table pointer A_dword_86B7AE0, and r7 = 0; r0 carries the mode
+
+  (the rewritten 0x13 value when caller passed 2). The mode argument selects which of the
+
+  text script''s variants (size, color, etc.) is used.
+
+
+  Finally it requests bit8 via eStruct2035280_SetRequestBits_801BECC(0x100) and dispatches
+
+  the same bit through dispatch_801DA48(0x100), which kicks off the eStruct task that
+
+  will present the freshly drawn text. In essence this is the "draw + queue" entry point
+
+  for an eStruct message slot whose render target is byte_203C4E0.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_801E228
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801E228
+
+    ./wf verify --function sub_801E228 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801E228
+
+    ./wf verify --function sub_801E228 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 15 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801E228
+
+    ./wf verify --function sub_801E228 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, menus2, menus3, story2, story5, story6, story8, story9.'
+  reproduce: grep -l '^0801e228 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battles1
+- battles2
+- menus2
+- menus3
+- story2
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- The exact meaning of the 0x13 default mode and the mode argument (likely font size or window-style index passed
+  into TextScript86F0374).
+- Whether the +0xB/+0xC fields are a delay countdown and frame counter, or row/col cursor state for the message
+  window.
+- Identity of A_dword_86B7AE0 (font or CG table) and A_byte_203C4E0 (which BG layer / VRAM region of the eStruct
+  object the text is rendered into).
+- What dispatch_801DACC vs. dispatch_801DA48 actually do (drain vs. queue for the same bit8 request on eStruct2035280).
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

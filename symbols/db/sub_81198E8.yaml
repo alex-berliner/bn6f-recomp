@@ -1,0 +1,83 @@
+name: sub_81198E8
+address: '0x081198E8'
+kind: function
+status: confirmed
+summary: Writes the sprite's unk0x2c field via sprite_setUnk0x2c, choosing base 0x40000000 when oSprite+0xC is 0xFF,
+  otherwise 0.
+interface: 'void sub_81198E8(u32 *oSprite)  /* in: r5=oSprite; out: none; clobbers r0,r1,r3,lr,NZCV */'
+details: 'Reads the byte at oSprite+0xC. If it equals 0xFF, loads r0 = 0x40000000 (a
+
+  hardware/IO base in the GBA memory map); otherwise loads r0 = 0. The byte
+
+  itself is forwarded in r1. It then tail-calls (bl) sprite_setUnk0x2c and
+
+  returns via `pop {pc}`. The function does not read the oSprite pointer
+
+  itself from memory - r5 is supplied by the caller, so this is a per-entity
+
+  helper invoked from an existing sprite loop. The 0x40000000 constant
+
+  suggests the 0xFF sentinel selects a VRAM/PALETTE-style base address for
+
+  the unk0x2c field write.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_81198E8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81198E8
+
+    ./wf verify --function sub_81198E8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81198E8
+
+    ./wf verify --function sub_81198E8 --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81198E8
+
+    ./wf verify --function sub_81198E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story2, story4, story6, story8, story9.'
+  reproduce: grep -l '^081198e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What is the meaning of the byte at oSprite+0xC (the "loader byte"), and which loader/field-mask table it indexes
+  inside sprite_setUnk0x2c.
+- Why the 0xFF case picks 0x40000000 specifically (VRAM? OAM? a chip base?).
+- Whether unk0x2c is a tile/gfx pointer, a palette bank, or an animation loader index - needs the body of sprite_setUnk0x2c
+  to confirm.
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

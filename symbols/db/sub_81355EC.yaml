@@ -1,0 +1,75 @@
+name: sub_81355EC
+address: '0x081355EC'
+kind: function
+status: confirmed
+summary: Registers the Battle Start battle-script block with the script engine
+interface: void sub_81355EC(void); // r5, r10, lr passed through from callee; r5 returned; clobbers nz,c,v r0-r3,
+  lr; preserves r4-r7
+details: "Thin wrapper that calls sub_8135314 (the script-block registrar) with fixed arguments drawn\nfrom this\
+  \ object's literal pool:\n  r0 = word_202A020 (per-battle / runtime script-record scratch area)\n  r1 = off_8135604\
+  \ -> {byte_813315C, byte_8133164}  (start/end of a static instruction/data\n         byte pool used as the script's\
+  \ source table)\n  r2 = 0xA5  (total script length in bytes)\n  r3 = 0x28  (script step / op count)\n  r4 = byte_8135610\
+  \  (8-byte init/header record; values 5 and 6 in the first two words)\nThe context comment in the C draft (\"\
+  Register the Battle Start script\") and the byte_813315C /\nbyte_8133164 / 0xA5 / 0x28 / record-with-5-and-6 layout\
+  \ match the battle-opening script block\nregistered when a battle initializes. No fields of any C struct are written\
+  \ here directly;\nall side effects happen inside sub_8135314.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_81355EC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81355EC
+
+    ./wf verify --function sub_81355EC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81355EC
+
+    ./wf verify --function sub_81355EC --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81355EC
+
+    ./wf verify --function sub_81355EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081355ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Confirm via trace that word_202A020 is the BattleState/battle-script scratch pointer and not a generic engine
+  pool.
+- Verify that byte_813315C..byte_8133164 is specifically the Battle Start / encounter-open script range (and not,
+  say, a shared "intro" script shared with link/Trade).
+- Resolve the meaning of the two '5' and '6' words in the init record at byte_8135610 (script ID and step count,
+  or palette/scene indices).
+- Confirm r5 / r10 inputs are merely callee-pass-through (no dependency on this routine).
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

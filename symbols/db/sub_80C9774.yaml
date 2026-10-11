@@ -1,0 +1,103 @@
+name: sub_80C9774
+address: '0x080C9774'
+kind: function
+status: hypothesis
+summary: Advance a parent battle object's position by its child's velocity plus the child's own position, mirror
+  one flag bit from the child, and end the action when the first ExtraVars dword is zero.
+interface: 'void sub_80C9774(struct BattleObject* self /* r5 */);
+
+  // clobbers r0..r3 and N/Z/C/V; preserves nothing
+
+  '
+details: '`self` (r5) is a parent battle object with a non-null `RelatedObject1Ptr` (r3).
+
+  For each axis (X, Y, Z) it reads the child''s coordinate from the related
+
+  object and the parent''s velocity from itself, summing into a new parent
+
+  coordinate and storing it back. So the parent trails/follows the child by
+
+  its velocity - typical "follow the leader while moving" behavior for a
+
+  dual-object battle entity.
+
+
+  Then it copies bit 1 (`0x02`) of the child''s `oObjectHeader_Flags` into the
+
+  parent''s header flags, clearing bit 1 in the parent first. Bit 1 of the
+
+  header flags is the standard "object is hidden / invisible" bit in this
+
+  engine, so this keeps the parent''s visibility in sync with the child''s.
+
+
+  If the first dword of `oBattleObject_ExtraVars` (i.e. `ExtraVars[0]`) is
+
+  zero, the action terminates immediately: `CurAction` is set to 4 and the
+
+  combined `CurPhaseAndPhaseInitialized` halfword is zeroed. The non-zero
+
+  branch leaves the action running and the ExtraVars pointer alone.
+
+
+  r0/r1/r2/r3 returned to the caller hold: (r0 = ExtraVars[0] or 0;
+
+  r1 = related_flags & 2; r2 = 2; r3 = related object pointer), and N/Z are
+
+  set from r0 (C/V cleared by the preceding AND).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_80C9774
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C9774
+
+    ./wf verify --function sub_80C9774 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C9774
+
+    ./wf verify --function sub_80C9774 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C9774
+
+    ./wf verify --function sub_80C9774 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story8, story9.'
+  reproduce: grep -l '^080c9774 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles1
+- battles2
+- story8
+- story9
+open_questions:
+- Which callers consume the r0..r3 return values? r3 in particular looks like it could be a related-object pointer
+  handed on to the next stage of the action loop.
+- Is action 4 a sentinel 'done' state, or does it name a specific follow-up animation/phase?
+- What does `ExtraVars[0]` signify here (a duration counter, a pending effect, etc.)? A non-zero value keeps the
+  action alive, zero ends it.
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

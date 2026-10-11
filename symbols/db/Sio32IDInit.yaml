@@ -1,0 +1,86 @@
+name: Sio32IDInit
+address: '0x0814CCFC'
+kind: function
+status: confirmed
+summary: Initializes the GBA serial I/O hardware into multiplayer-link mode, readying the link-cable ID buffer before
+  the handshake begins.
+interface: void linkCable_sio32Init_814CCFC(void);
+details: 'Runs at the very start of the SIO32 (multiplayer-link) bring-up. Disables master IRQs while it clears
+  the multiplayer-SIO enable bit (computed as 8 << save-data multiplayer id, read from A_dword_2010CCC + 0xA) and
+  the generic SIO bit 0x80 from A_InterruptEnableRegister, then re-enables master IRQs. Switches A_SIOModeSelect_GeneralPurposeData
+  to 0 (general-purpose data mode) and programs RCNT (= A_InterruptEnableRegister - 0xD8) to 0x1000, then ORs in
+  0x4080 to enter multiplayer mode with parent-to-child transfer enabled, using the original read-modify-write sequence.
+  Zero-fills the 12-byte link ID buffer at A_byte_2010CD0 via SWI_CpuSet (a 3-u32 stack-source copy) and finally
+  acknowledges the SIO interrupt by writing 0x80 to A_InterruptRequestFlags_IRQAcknowledge. Called once during link
+  initialization; no registers are meaningful on input or output (only r4/r5 are saved and restored around the stack
+  frame).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c Sio32IDInit
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function Sio32IDInit
+
+    ./wf verify --function Sio32IDInit --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function Sio32IDInit
+
+    ./wf verify --function Sio32IDInit --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function Sio32IDInit
+
+    ./wf verify --function Sio32IDInit --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814ccfc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- The exact role of the byte at A_dword_2010CCC + 0xA (a per-save multiplayer ID slot?) and whether byte_2010CD0
+  is later overwritten by the link handshake or only used as scratch.
+- Whether RCNT's 0x4000 bit is deliberately left clear (parent only) or whether the code will be flipped on the
+  child side later.
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

@@ -1,0 +1,84 @@
+name: sub_8116A44
+address: '0x08116A44'
+kind: function
+status: hypothesis
+summary: On initialization, drives sub_802FE28 over three small packed (a1,a2) tables (3+3+2 entries) with notUsed=0
+  and a4=1.
+interface: void sub_8116A44(void);  // no inputs; clobbers r0-r3, lr, N/Z/C/V; preserves r4-r7, r5 is reported output
+  by caller analysis but not set here
+details: "Three loops walk packed 8-byte-pair tables embedded in the rodata immediately after each pointer:\n  *\
+  \ dword_8116A94 .. 3 entries (terminated by the second loop at offset 0x18)\n  * dword_8116AB0 .. 3 entries\n\
+  \  * dword_8116ACC .. 2 entries\nEach entry is read as (r0=[base+0], r1=[base+4]) and passed to sub_802FE28 with\
+  \ r2=0, r3=1.\nThe tabular data is inline ARM-style opcodes/words (e.g. \"0x80904022\", \"0x80E20000\", \"0x2240B080\"\
+  ,\n\"0x88E20000\", \"0x2280D000\", \"0x90E20000\") suggesting the pairs are small \"task\" or \"command\"\ndescriptors\
+  \ whose exact meaning depends on sub_802FE28's contract (still untyped). The\nrepeating pattern across the three\
+  \ tables and the fixed (0,1) trailing args suggest this is\none-shot setup work (hence no r4/r5/r6/r7 inputs from\
+  \ callers).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_8116A44
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8116A44
+
+    ./wf verify --function sub_8116A44 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 59 out of
+    domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8116A44
+
+    ./wf verify --function sub_8116A44 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8116A44
+
+    ./wf verify --function sub_8116A44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08116a44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does sub_802FE28 actually do with (a1, a2, 0, 1)? Without its typed interface the semantic of these tables
+  (task init? callback registration? sound/SE config?) is unknown.
+- Why three separate tables with distinct counts (3,3,2) and slightly different constant prefixes (0x80..., 0x80A0...,
+  0x80A8...)? Likely they index three subsystems or banks.
+- Why is r5 listed as an output by the caller contract if this function neither reads nor writes r5? Likely an artifact
+  of the lifter's caller analysis rather than real output.
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e

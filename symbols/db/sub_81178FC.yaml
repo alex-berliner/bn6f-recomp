@@ -1,0 +1,74 @@
+name: sub_81178FC
+address: '0x081178FC'
+kind: function
+status: confirmed
+summary: Initializes a sprite state slot as kind 0x23, runs its byte script, loads its animation/graphics/palette/priority,
+  then jumps to sub_811794C.
+interface: void sub_81178FC(u8 *slot_ptr /* r5 */);
+details: "Operates on a sprite state slot pointed to by r5 (preserved across the function):\n  * [r5+0]   = 0x23\
+  \ (kind/state byte).\n  * [r5+4]   is read as sub_kind (used to pick the palette bank).\n  * [r5+5]   is overwritten\
+  \ with the animation index returned by sub_8117998.\n  * [r5+8]   = 4 (phase / sub-state).\n\nCalls performed\
+  \ (in order):\n  * loc_8002774(0x10, byte_2030204) - runs a byte script with arg 0x10 pointing at byte_2030204.\n\
+  \  * sub_8117998() -> anim -> stored at [r5+5].\n  * sprite_setAnimation(anim); sprite_loadAnimationData(); sprite_noShadow();\
+  \ standard sprite setup for the just-chosen anim.\n  * sprite_setSubEntryPaletteBank_800304A(9 + sub_kind) - palette\
+  \ bank derived from slot sub_kind.\n  * slotList_storeHalfwordAndClearField_800306C(0x180) - writes halfword 0x180\
+  \ into the slot list / sub-record area.\n  * sprite_setSubRecordFieldA_8003060(1) - sets the 0x1 flag on the sub-record.\n\
+  \  * sprite_setPriority_8002E14(0) - BG/sprite priority 0.\n  * sub_811794C() (tail). Its return value (r0) is\
+  \ forwarded to the caller and NZ flags are set from it.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_81178FC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81178FC
+
+    ./wf verify --function sub_81178FC --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-101418-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81178FC
+
+    ./wf verify --function sub_81178FC --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-101418-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81178FC
+
+    ./wf verify --function sub_81178FC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^081178fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 5c8470e
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- What is the byte script at byte_2030204 doing under the 0x10 opcode (loc_8002774 command 0x10)?
+- What does sub_8117998 choose between - is it really an animation index, or a state that gets stored then mapped
+  to animation?
+- Why is the palette bank offset = 9 + sub_kind; is sub_kind a sprite class/team ID selecting one of several 16-color
+  banks?
+- What does slotList_storeHalfwordAndClearField_800306C actually clear (its name says "and clear a field" - which
+  field of which list)?
+- The 0x1 written via sprite_setSubRecordFieldA_8003060 and the 4 stored at [r5+8] - together with kind 0x23, do
+  they form a standard "busy / animating sprite" triple used elsewhere?
+sources:
+- tools/wf run convert-20261011-101418
+- recomp 5c8470e
