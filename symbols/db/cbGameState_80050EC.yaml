@@ -1,0 +1,87 @@
+name: cbGameState_80050EC
+address: '0x080050EC'
+kind: function
+status: confirmed
+summary: Top-level game-state tick — runs the active subsystem handler selected via GameStateJumptable, then advances
+  both hardware RNGs.
+interface: "void cbGameState_80050EC(void)\n  // inputs:  r10 = GameToolkit pointer (other r4-r9/r11/r12/lr as caller\
+  \ left them)\n  // outputs: r0-r3, NZCV = state of GetRNGSecondary (last callee)\n  // preserved: r4-r7 (push/pop)\n"
+details: "Reads the current GameState via oToolkit_GameStatePtr off the toolkit, then\nindexes GameStateJumptable\
+  \ by oGameState_SubsystemIndex to dispatch a\nthumb-target handler (the +1 in every entry patches the LSB for\
+  \ BX). Jump\ntable entries (subsystem index -> handler):\n  0x00 EnterMap (gamestate_OnInit?)\n  0x04 gamestate_OnMapUpdate_8005268\n\
+  \  0x08 battle_init_80052D8\n  0x0C HandlesBattleMainUntilEndOfBattleThenTriggersEnterMap\n  0x10/0x14/0x18 sub_800536E\
+  \ / sub_80053E4 / sub_8005462\n  0x1C/0x20/0x24/0x28/0x2C sub_800555A / sub_8005642 / sub_80056B8 / sub_800572C\
+  \ / sub_80057A0\n  0x30 sub_80055CE\n  0x34/0x38 sub_8005814 / sub_800585A\nAfter dispatch, unconditionally calls\
+  \ GetRNG and GetRNGSecondary to tick\nboth RNG counters every frame. cbGameState_ prefix suggests this is the\n\
+  main-loop callback registered with the BIOS-like tick framework.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261011-003728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 51' --file inbox_farm_51.c cbGameState_80050EC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function cbGameState_80050EC
+
+    ./wf verify --function cbGameState_80050EC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003728-verify-7)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function cbGameState_80050EC
+
+    ./wf verify --function cbGameState_80050EC --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 2 out of domain (verify run convert-20261011-003728-verify-7)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function cbGameState_80050EC
+
+    ./wf verify --function cbGameState_80050EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003728-verify-7)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080050ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 7abf99b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which of the 15 jump table entries correspond to which high-level "subsystem" (map, battle, menu, link, trade,
+  tutorial, ending, etc.).
+- Exact ABI between handlers and the toolkit/GameState pointers (R5 is the GameState self the comments imply; R0/R1
+  carry table index bytes).
+- Why GetRNG + GetRNGSecondary are unconditionally ticked even on subsys handlers that don't consume RNG — likely
+  BIOS/main-loop RNG bias scheme.
+sources:
+- tools/wf run convert-20261011-003728
+- recomp 7abf99b

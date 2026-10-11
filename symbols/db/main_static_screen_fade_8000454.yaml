@@ -1,0 +1,88 @@
+name: main_static_screen_fade_8000454
+address: '0x08000454'
+kind: function
+status: confirmed
+summary: Main-loop soft-reset (A+B+Select+Start) handler that runs while a screen fade is active and triggers a
+  toolkit reboot on the combo.
+interface: void main_softResetHandler_8000454(void); /* reads toolkit via r10, returns final r3 = 0xF on idle paths
+  or callee leftover on reboot; caller writes subindex 0xA via strb after the reboot path */
+details: 'Invoked from the main loop while a screen fade is active. Guards: bails (leaving r3 = IsScreenFadeActive''s
+  leftover) if test0x200bc50_0x5_813D60C is nonzero, or if the main jumptable index byte equals 0x10 ("static screen"
+  state). Otherwise reads the joypad pressed/held words via oToolkit_JoypadPtr. Treats the byte at MainJumptableIndexPtr
+  + 4 as a countdown: while positive it is decremented and stored back; once it hits 0, it watches for the soft-reset
+  combo (all four low-nibble keys held, at least one newly pressed). If the combo is not yet held it writes 0 and
+  returns with r3 = 0xF. On the combo it calls start_800023C, main_initToolkitAndOtherSubsystems and clear_e200AD04
+  (rebooting the toolkit), then writes subindex 0xA back to that same counter byte and returns the final callee-leftover
+  r3. Preserves r4-r7 via push/pop around the reboot path''s callee clobbers.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261011-003728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/main.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 51' --file inbox_farm_51.c main_static_screen_fade_8000454
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function main_static_screen_fade_8000454
+
+    ./wf verify --function main_static_screen_fade_8000454 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-003728-verify-7)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function main_static_screen_fade_8000454
+
+    ./wf verify --function main_static_screen_fade_8000454 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003728-verify-7)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function main_static_screen_fade_8000454
+
+    ./wf verify --function main_static_screen_fade_8000454 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003728-verify-7)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08000454 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/main.c
+  where: recomp 7abf99b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/main.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact semantics of test0x200bc50_0x5_813D60C (why bit 5 blocks this handler).
+- Whether state 0x10 is actually "static screen fade" or a different main state that owns fade handling.
+- What start_800023C, main_initToolkitAndOtherSubsystems and clear_e200AD04 actually do on the reboot path.
+- Why r3 = 0xF is the deliberate return value on the "combo not held yet" path (vs. the fade-leftover r3 on the
+  other early-out paths).
+sources:
+- tools/wf run convert-20261011-003728
+- recomp 7abf99b

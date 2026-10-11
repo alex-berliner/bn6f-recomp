@@ -1,0 +1,96 @@
+name: InitializeStructsOfObjectType
+address: '0x08003490'
+kind: function
+status: confirmed
+summary: Clears and seeds the per-object pool (active bitfield, raw array, and per-object header bytes) for one
+  object type selected from the initialization table.
+interface: void initObjectTypeStructs_8003490(u32 object_type /* r0 */) -> r0 = cursor past last object, r1 = final
+  counter (== object_count when count>0), r2 = sprite_data byte, r3 = object_count; N/Z from CMP r1, r3 (Z when
+  counter == object_count, i.e. count was nonzero and the loop ran to completion); C and V undefined on exit. r4,
+  r7 preserved.
+details: 'Looks up a 16-byte entry in `.ObjectInitializationTable` indexed by `object_type` (r0 * 16). The entry
+  layout is: +0 ptr used as the "raw object array" base passed to ZeroFillByWord with size from +8 (array_size =
+  hword); +4 ptr is the cursor walked object-by-object; +0xA byte is the sprite-data tag ORed into the constant
+  (see `OVERWORLD_PLAYER_OBJECT`, `T1_BATTLE_OBJECT`, `OVERWORLD_NPC_OBJECT`, `T3_BATTLE_OBJECT`, `T4_BATTLE_OBJECT`,
+  `OVERWORLD_MAP_OBJECT`); +0xB byte is the per-object stride (object_size); +0xC byte is the number of objects
+  and is also used (rounded up to words via `(byte+0x1F)>>5` then *4) to size the zeroing of the matching active-object
+  bitfield pointed to by `[ActiveObjectBitfieldPointers + object_type*4]`. After zeroing the bitfield and the array,
+  it loops `object_count` times writing `sprite_data` at object+2 and the loop index (0-based, via r1) at object+3,
+  advancing the cursor by `object_size`. The loop is do/while so one object is always written even when object_count==0;
+  on exit r0 is the cursor just past the last object, r1 the post-increment counter (equal to object_count when
+  nonzero), r2 the sprite-data byte, r3 the object_count. Types 1/3/4 battle objects use a separate linked-list
+  pointer for the zeroed array (entries at +0) distinct from the walked cursor at +4; OWPlayer, OW NPC and OW map
+  entries happen to alias the two pointers.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261011-003728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 51' --file inbox_farm_51.c InitializeStructsOfObjectType
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function InitializeStructsOfObjectType
+
+    ./wf verify --function InitializeStructsOfObjectType --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 295 out
+    of domain (verify run convert-20261011-003728-verify-7)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function InitializeStructsOfObjectType
+
+    ./wf verify --function InitializeStructsOfObjectType --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261011-003728-verify-7)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function InitializeStructsOfObjectType
+
+    ./wf verify --function InitializeStructsOfObjectType --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003728-verify-7)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08003490 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 7abf99b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Why two pointers (+0 vs +4) in the table for some entries — is +0 a free/linked list head while +4 is the contiguous
+  object storage?
+- What do the +2 and +3 header bytes represent in each object struct (sprite-data tag vs object index in some internal
+  list)?
+- Is the active-object bitfield sized by the same +0xC count (so 1 bit per object) or is the +0xC byte reused for
+  two purposes (count and bitfield width)?
+- The entry padding/comment line "byte 1 is struct offset part 2?" in the asm listing is unverified; the literal
+  byte at +0xA is the OR-ed sprite-data constant.
+sources:
+- tools/wf run convert-20261011-003728
+- recomp 7abf99b

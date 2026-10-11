@@ -1,0 +1,92 @@
+name: memory_bcd_8000D84
+address: '0x08000D84'
+kind: function
+status: confirmed
+summary: Converts the save/play-time frame counter into a packed-BCD HH:MM:SS.cc value used by the play-time display,
+  capping at 99:59:59.99.
+interface: u32 playtime_framesToPackedBcd(u32 frames /*r0*/); /* returns packed BCD in r0; r2 = minutes<<16, r3
+  = seconds<<8 on normal path (preserved on overflow); clobbers nzcv/r1; preserves r4,r7 */
+details: 'Saturates inputs above 0x1499727 frames to the BCD sentinel 0x99595999
+
+  (== 99:59:59.99). Otherwise calls clock_breakPlayTimeIntoHMSF_8000DE0 to get
+
+  hours/minutes/seconds/frames, BCD-encodes each via memory_bcdConvert, converts
+
+  the sub-second "frames" (1/60 s) into hundredths with swi 6 Div (frames*100/60,
+
+  signed), then packs the four BCD fields into one word as
+
+  (hours<<24)|(minutes<<16)|(seconds<<8)|centis. Leaves minutes<<16 in r2 and
+
+  seconds<<8 in r3 so callers that only need those fields can skip unpacking.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261011-003728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 51' --file inbox_farm_51.c memory_bcd_8000D84
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function memory_bcd_8000D84
+
+    ./wf verify --function memory_bcd_8000D84 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-003728-verify-7)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function memory_bcd_8000D84
+
+    ./wf verify --function memory_bcd_8000D84 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003728-verify-7)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function memory_bcd_8000D84
+
+    ./wf verify --function memory_bcd_8000D84 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003728-verify-7)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08000d84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 7abf99b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Why does the function expose minutes<<16 in r2 and seconds<<8 in r3 separately from the packed r0 result — is
+  there a caller that reads them individually?
+- Is the 0x1499727 frame cap exactly 100 hours of frames (i.e. ~99:56:39.95 of real play time), and is the 0x99595999
+  sentinel a fixed game-side constant or a coincidence of the BCD saturation?
+- Does memory_bcdConvert clamp inputs to two decimal digits, and does it handle values >= 100 by itself?
+sources:
+- tools/wf run convert-20261011-003728
+- recomp 7abf99b
