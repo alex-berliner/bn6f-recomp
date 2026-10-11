@@ -2,7 +2,9 @@
 §4). One `farm` run is one function and one model: the model
 writes readable C, the farm's acceptance test checks it against the lifted
 original on the captured calls and random inputs, failures go back to the
-model for repair. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
+model for repair. `--prompt old` asks with the prompt before the typed one (register-form C, no
+register check; docs/reviews/2026-10-10-benchmark.md): its rounds and candidates are filed under the
+model tagged `+old` (FUNC.minimax_MiniMax-M3+old.c), a pair of its own. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
 plan's quota rather than the farm model's.) Earlier: an accepted function got its symbols/db entry drafted
 by the same model. A `farm batch` run builds the host difftest once, skips
 pairs that are already finished, and runs the rest as its child runs."""
@@ -15,9 +17,9 @@ from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.tools.build import build_host_difftest, committed_tree
-from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, accept, already_accepted,
-                             ask_model, conversion_context, first_prompt, log_round, logged_rounds,
-                             out_of_rounds_before, repair_prompt, test_candidate)
+from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, PromptKind, accept,
+                             already_accepted, ask_model, conversion_context, first_prompt, log_round, logged_rounds,
+                             out_of_rounds_before, repair_prompt, test_candidate, with_prompt)
 from wf.tools.sources import first_up, models_for, out_for_long
 from wf.types import BuildFailure, FunctionName, ModelSpec, NotRun, Result, SnapshotDir, ToolMessage
 
@@ -77,6 +79,7 @@ class FarmState(BaseModel):
     snapshots: SnapshotDir
     difftest: Path
     rounds: int                                  # repair rounds after the first attempt
+    prompt: PromptKind = PromptKind.TYPED        # which prompt it is asked with
     context: ConversionContext | NotRun | None = None
     attempts: tuple[Attempt, ...] = ()
     accepted: Path | None = None
@@ -109,6 +112,7 @@ def gather_context(given: GatherInput) -> GatherOutput:
 class AskInput(Result):
     context: ConversionContext
     model: ModelSpec
+    prompt: PromptKind
     attempts: tuple[Attempt, ...]
 
 
@@ -123,13 +127,14 @@ def ask_model_for_c(given: AskInput) -> AskOutput:
     if given.attempts:
         last = given.attempts[-1]
         failure = last.test.report if last.test else ToolMessage("the reply had no ```c code block")
-        prompt = repair_prompt(given.context, failure, last.reply.candidate)
+        prompt = repair_prompt(given.context, failure, last.reply.candidate, given.prompt)
     else:
-        prompt = first_prompt(given.context)
+        prompt = first_prompt(given.context, given.prompt)
     round_number = len(given.attempts)
     models = models_for(given.model)   # one model, or a tier: the first source that is up answers
     tag = f"{given.context.function} round {round_number}"
-    _, reply = first_up(models, lambda model: ask_model(model, prompt, tag, wait_out_limits=len(models) == 1),
+    _, reply = first_up(models, lambda model: ask_model(model, prompt, tag, wait_out_limits=len(models) == 1,
+                                                        kind=given.prompt),
                         lambda reply: reply.error)
     attempt = Attempt(round_number=round_number, prompt=prompt, reply=reply, test=None)
     return AskOutput(attempts=(*given.attempts, attempt))
@@ -138,6 +143,7 @@ def ask_model_for_c(given: AskInput) -> AskOutput:
 class TestInput(Result):
     context: ConversionContext
     model: ModelSpec
+    prompt: PromptKind
     snapshots: SnapshotDir
     difftest: Path
     attempts: tuple[Attempt, ...]
@@ -149,18 +155,21 @@ class TestOutput(Result):
 
 @farm.step
 def test_reply(given: TestInput) -> TestOutput:
-    """Test the model's candidate the way farm.py accepts one, and log the round as farm.py does."""
+    """Test the model's candidate the way farm.py accepts one (the register check only for the typed
+    prompt), and log the round as farm.py does."""
     latest = given.attempts[-1]
-    test = (test_candidate(given.context, latest.reply.candidate, given.snapshots, given.difftest)
+    test = (test_candidate(given.context, latest.reply.candidate, given.snapshots, given.difftest,
+                           check_registers=given.prompt.checks_registers)
             if latest.reply.candidate is not None else None)
     log_round(given.context.function, latest.reply.model or given.model, latest.round_number, latest.reply, test,
-              given.difftest)
+              given.difftest, given.prompt)
     return TestOutput(attempts=(*given.attempts[:-1], latest.model_copy(update={"test": test})))
 
 
 class AcceptInput(Result):
     function: FunctionName
     model: ModelSpec
+    prompt: PromptKind
     attempts: tuple[Attempt, ...]
 
 
@@ -171,10 +180,12 @@ class AcceptOutput(Result):
 
 @farm.step
 def accept_candidate(given: AcceptInput) -> AcceptOutput:
-    """Keep the passing candidate in tools/convert/accepted for review."""
+    """Keep the passing candidate in tools/convert/accepted for review (filed under the model tagged with
+    its prompt when that is not the typed one)."""
     reply = given.attempts[-1].reply
     assert reply.candidate is not None
-    return AcceptOutput(accepted=accept(given.function, reply.model or given.model, reply.candidate),
+    return AcceptOutput(accepted=accept(given.function, with_prompt(reply.model or given.model, given.prompt),
+                                        reply.candidate),
                         outcome=FarmOutcome.ACCEPTED)
 
 
@@ -183,6 +194,7 @@ def accept_candidate(given: AcceptInput) -> AcceptOutput:
 class GiveUpInput(Result):
     function: FunctionName
     model: ModelSpec
+    prompt: PromptKind
     context: ConversionContext | NotRun
     attempts: tuple[Attempt, ...]
 
@@ -198,7 +210,8 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
         return GiveUpOutput(outcome=FarmOutcome.NOTHING_TO_CONVERT)
     if given.attempts and given.attempts[-1].reply.error is not None:
         last = given.attempts[-1]
-        log_round(given.function, last.reply.model or given.model, last.round_number, last.reply, None)
+        log_round(given.function, last.reply.model or given.model, last.round_number, last.reply, None,
+                  prompt=given.prompt)
         return GiveUpOutput(outcome=FarmOutcome.MODEL_ERROR)
     if given.attempts and given.attempts[-1].reply.candidate is None:
         return GiveUpOutput(outcome=FarmOutcome.RUNAWAY)
@@ -264,6 +277,7 @@ class FarmBatchState(BaseModel):
     snapshots: SnapshotDir
     rounds: int = 3
     jobs: int = 4
+    prompt: PromptKind = PromptKind.TYPED
     difftest: Path | BuildFailure | None = None
     pairs: tuple[PairResult, ...] = ()
     tallies: tuple[ModelTally, ...] = ()
@@ -274,6 +288,7 @@ batch = Workflow[FarmBatchState](FarmBatchState, project=PROJECT)
 
 class BuildDifftestInput(Result):
     run_dir: Path
+    prompt: PromptKind
 
 
 class BuildDifftestOutput(Result):
@@ -283,9 +298,11 @@ class BuildDifftestOutput(Result):
 @batch.step
 def build_difftest(given: BuildDifftestInput) -> BuildDifftestOutput:
     """Build the host difftest once, from the last commit in a worktree of its own (a stale one once
-    accepted bad candidates; one built from the main tree saw a conversion's verify half done)."""
+    accepted bad candidates; one built from the main tree saw a conversion's verify half done). Each
+    prompt's batches have a tree of their own, so batches of the two can run side by side."""
+    name = "farm" if given.prompt is PromptKind.TYPED else f"farm-{given.prompt.value}"
     return BuildDifftestOutput(difftest=build_host_difftest(given.run_dir, build_dir="build-wf-farm-host",
-                                                            tree=committed_tree("farm")))
+                                                            tree=committed_tree(name)))
 
 
 class ConvertPairsInput(Result):
@@ -293,6 +310,7 @@ class ConvertPairsInput(Result):
     models: tuple[ModelSpec, ...]
     snapshots: SnapshotDir
     rounds: int
+    prompt: PromptKind
     jobs: int
     difftest: Path
 
@@ -304,17 +322,19 @@ class ConvertPairsOutput(Result):
 @batch.step
 def convert_each_pair(given: ConvertPairsInput) -> ConvertPairsOutput:
     """Run one farm run per function and model (in parallel), skipping pairs finished before
-    (accepted, or out of rounds: farm.py's resume rule)."""
+    (accepted, or out of rounds: farm.py's resume rule). A pair is a model and a prompt: a model that
+    tried a function with the typed prompt may still try it with the old one."""
     batch_run_id = current_run_id()
 
     def convert(function: FunctionName, model: ModelSpec) -> PairResult:
         sources = models_for(model)   # a tier's pair is finished by any of its models
-        accepted = next((path for path in (already_accepted(function, source) for source in sources) if path), None)
+        filed = tuple(with_prompt(source, given.prompt) for source in sources)   # as its logs and files are named
+        accepted = next((path for path in (already_accepted(function, source) for source in filed) if path), None)
         if accepted is not None:
             return PairResult(function=function, model=model, run_id=None, outcome=FarmOutcome.ACCEPTED,
                               accepted=accepted)
-        if (out_of_rounds_before(function, model, given.rounds) if len(sources) == 1
-                else sum(logged_rounds(function, source) for source in sources) > given.rounds):
+        if (out_of_rounds_before(function, filed[0], given.rounds) if len(sources) == 1
+                else sum(logged_rounds(function, source) for source in filed) > given.rounds):
             return PairResult(function=function, model=model, run_id=None, outcome=FarmOutcome.OUT_OF_ROUNDS,
                               accepted=None)
         if out_for_long(sources):
@@ -322,7 +342,7 @@ def convert_each_pair(given: ConvertPairsInput) -> ConvertPairsOutput:
                               accepted=None)
         run_id = f"{batch_run_id}-{function}-{model.replace('/', '_')}"   # tier/cheap -> tier_cheap
         start = FarmState(function=function, model=model, snapshots=given.snapshots, difftest=given.difftest,
-                          rounds=given.rounds)
+                          rounds=given.rounds, prompt=given.prompt)
         outcome = farm_graph().start(start, run_id)
         if not isinstance(outcome, Finished) or outcome.state.outcome is None:
             raise RuntimeError(f"farm run {run_id} did not finish")

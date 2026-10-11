@@ -8,7 +8,7 @@ from wf.burr_typed import Finished
 from wf.graphs import farm
 from wf.graphs.farm import FarmBatchState, FarmOutcome, FarmState, farm_batch_graph, farm_graph
 from wf.tools.models import (AssemblyText, CandidateC, CandidateTest, Contract, ConversionContext, LiftedC,
-                             ModelReply, Prompt)
+                             ModelReply, Prompt, PromptKind, base_model, prompt_of, with_prompt)
 from wf.types import BuildFailure, FunctionName, GuestAddress, LogPath, ModelSpec, SnapshotDir, ToolMessage
 
 FUNCTION = FunctionName("leafFunction")
@@ -106,7 +106,51 @@ def test_a_batch_stops_when_difftest_does_not_build(monkeypatch: pytest.MonkeyPa
     assert isinstance(outcome, Finished) and outcome.state.pairs == ()
 
 
+def test_the_old_prompt_is_its_own_pair_without_the_register_check(monkeypatch: pytest.MonkeyPatch,
+                                                                     tmp_path: Path) -> None:
+    calls = fake_tools(monkeypatch, tmp_path, test_results=[True, True])
+    typed_done = FunctionName("typedTriedBefore")
+    asked_for: list[ModelSpec] = []
+
+    def accepted_before(function: FunctionName, model: ModelSpec) -> Path | None:
+        asked_for.append(model)
+        return tmp_path / "accepted.c" if function == typed_done and prompt_of(model) is PromptKind.TYPED else None
+
+    def build_host_difftest(log_dir: Path, build_dir: str = "", tree: Path | None = None) -> Path:
+        assert tree == tmp_path / "farm-old"   # not the typed batches' tree, which may be in use
+        return tmp_path / "difftest"
+
+    monkeypatch.setattr(farm, "committed_tree", lambda name: tmp_path / name)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(farm, "already_accepted", accepted_before)
+    monkeypatch.setattr(farm, "build_host_difftest", build_host_difftest)
+    for function in (FUNCTION, typed_done):
+        (tmp_path / "snapshots" / function).mkdir(parents=True)
+
+    start = FarmBatchState(run_dir=tmp_path, functions=(FUNCTION, typed_done), models=(MODEL,),
+                           snapshots=SnapshotDir(tmp_path / "snapshots"), jobs=1, prompt=PromptKind.OLD)
+    outcome = farm_batch_graph().start(start, run_id="batch-old", tracked=False)
+
+    assert isinstance(outcome, Finished)
+    assert all(pair.run_id is not None for pair in outcome.state.pairs)   # the typed acceptance does not count
+    assert set(asked_for) == {ModelSpec("cheap/model+old")}
+    assert calls == ["first old", "first old"]
+    assert calls.register_checks == [False, False] and calls.filed == ["cheap/model+old"] * 2
+
+
+def test_prompt_tags_round_trip() -> None:
+    tagged = with_prompt(MODEL, PromptKind.OLD)
+    assert tagged == "cheap/model+old" and prompt_of(tagged) is PromptKind.OLD and base_model(tagged) == MODEL
+    assert with_prompt(MODEL, PromptKind.TYPED) == MODEL and prompt_of("hyper_qwen3.8-flash") is PromptKind.TYPED
+    assert prompt_of("minimax_MiniMax-M3+old") is PromptKind.OLD
+
+
 # ── helpers ────────────────────────────────────────────────────────────
+
+class Calls(list[Prompt]):
+    """The prompts the fake model was given, and what the fake tools were asked."""
+    register_checks: list[bool]
+    filed: list[ModelSpec]
+
 
 def farm_run(tmp_path: Path, rounds: int = 3, with_snapshots: bool = True) -> FarmState:
     snapshots = tmp_path / "snapshots"
@@ -120,9 +164,10 @@ def farm_run(tmp_path: Path, rounds: int = 3, with_snapshots: bool = True) -> Fa
 
 
 def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: list[bool],
-               provider_fails: bool = False, no_code: bool = False) -> list[Prompt]:
+               provider_fails: bool = False, no_code: bool = False) -> Calls:
     """Fake model and acceptance test; returns the prompts the model was given."""
-    prompts: list[Prompt] = []
+    prompts = Calls()
+    prompts.register_checks, prompts.filed = [], []
     results = iter(test_results)
 
     def conversion_context(function: FunctionName) -> ConversionContext:
@@ -130,7 +175,8 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
                                  lifted=LiftedC("Next f(void) {}"),
                                  contract=Contract(inputs=(), outputs=(), clobbers=(), preserved=()))
 
-    def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True) -> ModelReply:
+    def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True,
+                  kind: PromptKind = PromptKind.TYPED) -> ModelReply:
         prompts.append(prompt)
         if provider_fails:
             return ModelReply(candidate=None, seconds=1.0, error=ToolMessage("model error: HTTP 500"))
@@ -138,15 +184,18 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
             return ModelReply(candidate=None, seconds=1.0)
         return ModelReply(candidate=CandidateC("Next leafFunction(void) { RETURN_TO_CALLER(); }"), seconds=1.0)
 
-    def repair_prompt(context: ConversionContext, failure: ToolMessage, candidate: CandidateC | None) -> Prompt:
+    def repair_prompt(context: ConversionContext, failure: ToolMessage, candidate: CandidateC | None,
+                      prompt: PromptKind = PromptKind.TYPED) -> Prompt:
         return Prompt(f"repair: {failure}")
 
     def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots: SnapshotDir,
-                       difftest: Path) -> CandidateTest:
+                       difftest: Path, check_registers: bool = True) -> CandidateTest:
+        prompts.register_checks.append(check_registers)
         passed = next(results)
         return CandidateTest(passed=passed, report=ToolMessage("ok" if passed else "memory differs"))
 
     def accept(function: FunctionName, model: ModelSpec, candidate: CandidateC) -> Path:
+        prompts.filed.append(model)
         return tmp_path / f"{function}.c"
 
     def nothing_before(function: FunctionName, model: ModelSpec) -> None:
@@ -155,11 +204,12 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
     def not_out_of_rounds(function: FunctionName, model: ModelSpec, rounds: int) -> bool:
         return False
 
-    def first_prompt(context: ConversionContext) -> Prompt:
-        return Prompt("first")
+    def first_prompt(context: ConversionContext, prompt: PromptKind = PromptKind.TYPED) -> Prompt:
+        return Prompt("first" if prompt is PromptKind.TYPED else f"first {prompt.value}")
 
     def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply: ModelReply,
-                  test: CandidateTest | None, difftest: Path | None = None) -> None:
+                  test: CandidateTest | None, difftest: Path | None = None,
+                  prompt: PromptKind = PromptKind.TYPED) -> None:
         return None
 
     fakes: dict[str, object] = {

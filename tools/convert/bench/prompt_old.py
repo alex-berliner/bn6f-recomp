@@ -1,9 +1,12 @@
 """The farm's prompt texts as they were before commit 329fbfd (farm: typed functions with thin adapters,
 and the register check), copied verbatim from `git show 329fbfd^:tools/convert/farm.py` for the
-benchmark's "old" arm (tools/convert/bench/bench.py). This prompt allows register-form C (bodies that
-read and write R0..R12 and GUEST_CALL directly); its candidates are tested without the register check
-and are never installed. The farm's live prompt is tools/convert/farm.py; do not edit this copy (a
-changed copy is a different arm: add it as a new file and arm instead)."""
+benchmark's "old" arm (tools/convert/bench/bench.py) and the farm's `--prompt old` (plan B after the
+benchmark: tools/wf/wf/tools/models.py PromptKind reads this one copy). This prompt allows register-form
+C (bodies that read and write R0..R12 and GUEST_CALL directly); its candidates are tested without the
+register check. The benchmark never installs its candidates; the farm files its own under the model
+tagged `+old`, and installing one queues it for retype (tools/abi/retype_queue.tsv). The farm's typed
+prompt is tools/convert/farm.py; do not edit this copy (a changed copy is a different prompt: its hash
+changes; add it as a new file, arm and PromptKind instead)."""
 
 SYSTEM = (
     "You convert functions of the Game Boy Advance game Mega Man Battle Network 6 from machine-"

@@ -5,7 +5,7 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   python -m wf verify  [--function NAME]... [--all-readable] [--snapshots DIR] [--route NAME]... [--battle-code]
                        [--trials N]   # it says first what it will compare: no functions, no difftest or oracle
   python -m wf capture --function NAME... [--route NAME]... [--calls N]   # into build-snapshots/NAME
-  python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] FUNCTION...
+  python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] [--prompt typed|old] FUNCTION...
   python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--jobs N] [FUNCTION...]   # entries for accepted candidates
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
@@ -44,6 +44,7 @@ from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify
 from wf.repo import REPO, RUNS, SNAPSHOTS
 from wf.tools.archive import ARCHIVE, archive_cited_runs
 from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
+from wf.tools.models import PromptKind
 from wf.tools.sources import models_for
 from wf.routes import ALL_ROUTES, route_named
 from wf.status import all_runs, workflow_of_run
@@ -74,6 +75,7 @@ class FarmCommand(BaseModel):
     snapshots: SnapshotDir
     rounds: int
     jobs: int
+    prompt: PromptKind
 
 
 class DraftsCommand(BaseModel):
@@ -209,7 +211,8 @@ def start_capture(command: CaptureCommand) -> None:
 def start_farm(command: FarmCommand) -> None:
     run_id, run_dir = new_run("farm-batch")
     start = FarmBatchState(run_dir=run_dir, functions=command.functions, models=command.models,
-                           snapshots=command.snapshots, rounds=command.rounds, jobs=command.jobs)
+                           snapshots=command.snapshots, rounds=command.rounds, jobs=command.jobs,
+                           prompt=command.prompt)
     print_outcome(farm_batch_graph().start(start, run_id))
 
 
@@ -373,6 +376,9 @@ def parse_command() -> Command:
     farm.add_argument("--snapshots", type=Path, required=True)
     farm.add_argument("--rounds", type=int, default=3)
     farm.add_argument("--jobs", type=int, default=4)
+    farm.add_argument("--prompt", choices=[kind.value for kind in PromptKind], default=PromptKind.TYPED.value,
+                      help="typed (default): typed C with thin adapters, register check on; old: the prompt before "
+                           "it (register-form C, no register check; installs are queued for retype)")
 
     drafts = commands.add_parser("drafts", help="a farm model drafts symbol entries for its accepted candidates")
     drafts.add_argument("functions", nargs="*")

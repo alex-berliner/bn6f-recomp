@@ -20,9 +20,49 @@ from wf.types import FunctionName, GuestAddress, ModelSpec, Result, SnapshotDir,
 
 sys.path.insert(0, str(REPO / "tools/convert"))
 import farm  # noqa: E402  # pyright: ignore[reportMissingImports]
+sys.path.insert(0, str(REPO / "tools/convert/bench"))
+import prompt_old  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 FARM = cast(ModuleType, farm)  # farm.py's own pieces: prompts, flags, test
 _farm = FARM
+
+
+class PromptKind(Enum):
+    """Which prompt the farm asks with (`wf farm --prompt`; docs/reviews/2026-10-10-benchmark.md, plan B)."""
+    TYPED = "typed"   # farm.py's live texts: typed functions and thin adapters, register check on
+    OLD = "old"       # the benchmark's copy of the prompt before 329fbfd (tools/convert/bench/prompt_old.py):
+                      # register-form C allowed, no register check; installs go to tools/abi/retype_queue.tsv
+
+    @property
+    def texts(self) -> ModuleType:
+        """SYSTEM, CONVENTIONS, TEMPLATE and REPAIR."""
+        return FARM if self is PromptKind.TYPED else cast(ModuleType, prompt_old)
+
+    @property
+    def checks_registers(self) -> bool:
+        return self is PromptKind.TYPED
+
+
+# A model's candidates under another prompt than the typed one carry the prompt in their model tag, so every
+# consumer of tools/convert/log and tools/convert/accepted tells them apart: FUNC.minimax_MiniMax-M3+old.c.
+# The same tagged spec names them elsewhere (wf convert --farm-model minimax/MiniMax-M3+old, commit messages).
+PROMPT_MARK = "+"
+
+
+def with_prompt(model: ModelSpec, prompt: PromptKind) -> ModelSpec:
+    """The model as its candidates under PROMPT are filed: minimax/MiniMax-M3+old (the typed prompt: unchanged)."""
+    return model if prompt is PromptKind.TYPED else ModelSpec(f"{model}{PROMPT_MARK}{prompt.value}")
+
+
+def prompt_of(model: str) -> PromptKind:
+    """The prompt a tagged model spec or file tag names (no mark: typed)."""
+    base, mark, kind = model.rpartition(PROMPT_MARK)
+    return PromptKind(kind) if mark and base and kind in {k.value for k in PromptKind} else PromptKind.TYPED
+
+
+def base_model(model: ModelSpec) -> ModelSpec:
+    """The model to ask, without a prompt mark."""
+    return model if prompt_of(model) is PromptKind.TYPED else ModelSpec(model.rpartition(PROMPT_MARK)[0])
 
 AssemblyText = NewType("AssemblyText", str)   # a function's bn6f assembly
 LiftedC = NewType("LiftedC", str)             # a function's machine-translated C, with its contract header
@@ -46,10 +86,12 @@ class Outcome(Enum):
     MODEL_ERROR = "model error"  # the provider failed (HTTP error, timeout)
 
 
-def prompt_hash() -> str:
-    """Which prompt text a round used (farm.py's system prompt, conventions, template and repair text)."""
-    texts = (cast(str, _farm.SYSTEM), cast(str, _farm.CONVENTIONS), cast(str, _farm.TEMPLATE),  # pyright: ignore[reportAny]
-             cast(str, _farm.REPAIR))  # pyright: ignore[reportAny]
+def prompt_hash(prompt: PromptKind = PromptKind.TYPED) -> str:
+    """Which prompt text a round used (its system prompt, conventions, template and repair text; the
+    benchmark's prompt_hash gives the same for the same texts)."""
+    module = prompt.texts
+    texts = (cast(str, module.SYSTEM), cast(str, module.CONVENTIONS), cast(str, module.TEMPLATE),  # pyright: ignore[reportAny]
+             cast(str, module.REPAIR))  # pyright: ignore[reportAny]
     return hashlib.sha1("\0".join(texts).encode()).hexdigest()[:12]
 
 
@@ -143,25 +185,28 @@ def provider_blocked_until(model: ModelSpec) -> float | None:
     return cast(float | None, llm.blocked_until(model))  # pyright: ignore[reportAny]
 
 
-def first_prompt(context: ConversionContext) -> Prompt:
+def first_prompt(context: ConversionContext, prompt: PromptKind = PromptKind.TYPED) -> Prompt:
     contract_text = "\n".join(f"  {part}: {' '.join(names) or '-'}" for part, names in context.contract.by_part().items())
-    template = cast(str, _farm.TEMPLATE)  # pyright: ignore[reportAny]
-    return Prompt(template.format(conventions=cast(str, _farm.CONVENTIONS), name=context.function,  # pyright: ignore[reportAny]
+    template = cast(str, prompt.texts.TEMPLATE)  # pyright: ignore[reportAny]
+    return Prompt(template.format(conventions=cast(str, prompt.texts.CONVENTIONS), name=context.function,  # pyright: ignore[reportAny]
                                   addr=context.address, contract=contract_text, asm=context.assembly,
                                   lifted=context.lifted))
 
 
-def repair_prompt(context: ConversionContext, failure: ToolMessage, candidate: CandidateC | None) -> Prompt:
-    repair = cast(str, _farm.REPAIR)  # pyright: ignore[reportAny]
-    return Prompt(first_prompt(context) + "\n\n" + repair.format(failure=failure[:3000], code=candidate or ""))
+def repair_prompt(context: ConversionContext, failure: ToolMessage, candidate: CandidateC | None,
+                  prompt: PromptKind = PromptKind.TYPED) -> Prompt:
+    repair = cast(str, prompt.texts.REPAIR)  # pyright: ignore[reportAny]
+    return Prompt(first_prompt(context, prompt) + "\n\n" + repair.format(failure=failure[:3000], code=candidate or ""))
 
 
-def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True) -> ModelReply:
-    """wait_out_limits=False: a rate limit comes back as an error at once (another source can answer)."""
+def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True,
+              kind: PromptKind = PromptKind.TYPED) -> ModelReply:
+    """wait_out_limits=False: a rate limit comes back as an error at once (another source can answer).
+    KIND: whose system prompt goes with it."""
     llm = cast(ModuleType, _farm.llm)  # pyright: ignore[reportAny]
     started = time.monotonic()
     try:
-        reply = cast(str, llm.complete(model, prompt, system=cast(str, _farm.SYSTEM), max_tokens=MAX_TOKENS,  # pyright: ignore[reportAny]
+        reply = cast(str, llm.complete(model, prompt, system=cast(str, kind.texts.SYSTEM), max_tokens=MAX_TOKENS,  # pyright: ignore[reportAny]
                                        tag=tag, usage_log=str(USAGE_LOG), wait_out_limits=wait_out_limits))
     except Exception as error:  # the provider's own errors: HTTP, timeouts, bad JSON
         return ModelReply(candidate=None, seconds=round(time.monotonic() - started, 1),
@@ -172,15 +217,16 @@ def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool 
 
 
 def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots: SnapshotDir,
-                   difftest: Path) -> CandidateTest:
+                   difftest: Path, check_registers: bool = True) -> CandidateTest:
     """farm.py's acceptance test: compiles, not lifted style, matches the lifted original
-    on the captured calls (some compared) and on random inputs."""
+    on the captured calls (some compared) and on random inputs; and (CHECK_REGISTERS) uses guest
+    registers only in thin adapters and noted helpers."""
     setattr(_farm, "DIFFTEST", str(difftest))
     contract = {part: list(names) for part, names in context.contract.by_part().items()}
     with tempfile.TemporaryDirectory() as workdir:
         try:
             passed, report = cast(tuple[bool, str], _farm.test(context.function, candidate, str(snapshots),  # pyright: ignore[reportAny]
-                                                               contract, workdir))
+                                                               contract, workdir, check_registers=check_registers))
         except subprocess.TimeoutExpired:
             return CandidateTest(passed=False, report=ToolMessage("difftest timed out (900 s)"))
     return CandidateTest(passed=passed, report=ToolMessage(report))
@@ -195,23 +241,24 @@ def round_outcome(reply: ModelReply, test: CandidateTest | None) -> Outcome:
 
 
 def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply: ModelReply,
-              test: CandidateTest | None, difftest: Path | None = None) -> None:
-    """One row in tools/convert/log/FUNC.MODEL.jsonl: farm.py's fields (round, ok, seconds, report,
-    code) and where it came from (review 3 Area 6: time, prompt and test-environment hashes, cap, the
-    function's input key, outcome), failed provider calls included."""
+              test: CandidateTest | None, difftest: Path | None = None, prompt: PromptKind = PromptKind.TYPED) -> None:
+    """One row in tools/convert/log/FUNC.MODEL.jsonl (FUNC.MODEL+old.jsonl for the old prompt): farm.py's
+    fields (round, ok, seconds, report, code) and where it came from (review 3 Area 6: time, prompt kind and
+    hashes, test-environment hash, cap, the function's input key, outcome), failed provider calls included."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     report = reply.error or (test.report if test else "the reply had no ```c code block")
     row = {"round": round_number, "ok": bool(test and test.passed), "seconds": round(reply.seconds),
            "report": report, "code": reply.candidate,
            "time": datetime.now().isoformat(timespec="seconds"), "model": reply.model or model, "kind": "farm",
-           "outcome": round_outcome(reply, test).value, "prompt_hash": prompt_hash(),
+           "outcome": round_outcome(reply, test).value, "prompt": prompt.value, "prompt_hash": prompt_hash(prompt),
            "environment_hash": environment_hash(difftest), "max_tokens": MAX_TOKENS,
            "input_key": cast(str | None, _farm.input_key(function))}  # pyright: ignore[reportAny]
-    with open(LOG_DIR / f"{function}.{_tag(model)}.jsonl", "a") as log:
+    with open(LOG_DIR / f"{function}.{_tag(with_prompt(model, prompt))}.jsonl", "a") as log:
         log.write(json.dumps(row) + "\n")
 
 
 def accept(function: FunctionName, model: ModelSpec, candidate: CandidateC) -> Path:
+    """MODEL as filed: with_prompt(model, prompt) for another prompt than the typed one."""
     ACCEPTED_DIR.mkdir(parents=True, exist_ok=True)
     path = ACCEPTED_DIR / f"{function}.{_tag(model)}.c"
     path.write_text(candidate.strip() + "\n")
