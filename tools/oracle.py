@@ -76,7 +76,7 @@ def io_template(base):
         return ex[IO + 0x58:IO + 0x400]
 
 
-def explained(d, name, k):
+def explained(d, name, k, contract=None, difftest=None):
     """Why a differing state is out of the port's domain, or None. Readable code
     is typed C, held to what the game's real calls do; three kinds of random
     state leave that, and the difference they make is the harness's:
@@ -102,12 +102,12 @@ def explained(d, name, k):
     for r in range(13):
         if FREE_STACK <= hdr[2 + r] < sp:
             return f"free stack (r{r} = {hdr[2 + r]:#x}, SP = {sp:#x})"
-    if lifted_cannot_run(d, name, k):
+    if lifted_cannot_run(d, name, k, contract, difftest):
         return "the lifted original cannot run it either (e.g. a jump-table index past the table)"
     return None
 
 
-def lifted_cannot_run(d, name, k):
+def lifted_cannot_run(d, name, k, contract=None, difftest=None):
     """A fourth kind, for readable functions: the port's lifted original (its executable model of the
     original) faults or leaves the domain on this state too, e.g. when a random index sends the original
     through a word past its jump table, which on the GBA happens to land in code. The difftest counts a
@@ -121,95 +121,151 @@ def lifted_cannot_run(d, name, k):
             if not os.path.exists(src):
                 return False
             shutil.copy(src, os.path.join(one, f"snap_{name}_{k}{suffix}"))
-        env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=CONTRACT, ORACLE_LIFTED="1")
-        r = subprocess.run([os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", one,
+        env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=contract or CONTRACT, ORACLE_LIFTED="1")
+        r = subprocess.run([difftest or os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", one,
                             name], capture_output=True, text=True, cwd=HOST, env=env)
         return bool(re.search(rf"snap_{name}_{k}\.bin: out of domain", r.stdout))
 
 
+def write_states(work, bases, pool, seed, d, io, states):
+    """STATES entry states per function of WORK in D (snap_NAME_K.bin), drawn from SEED."""
+    rng = random.Random(seed)
+    for name, addr, thumb, mask, flags in work:
+        for k in range(states):
+            hdr, mem = bases[rng.randrange(len(bases))]
+            regs = list(hdr[2:17])
+            for r in range(13):
+                if r == 10:
+                    continue                        # the toolkit pointer, as in every call
+                x = rng.random()
+                if x < 0.5:
+                    regs[r] = rng.choice(pool[r])
+                elif x < 0.75:
+                    regs[r] = rng.randrange(17)
+                elif x < 0.9:
+                    regs[r] = rng.choice(pool[rng.randrange(13)])
+                else:
+                    regs[r] = rng.getrandbits(32)
+            regs[14] = MAGIC_LR if thumb else MAGIC_LR & ~1
+            cpsr = (rng.getrandbits(4) << 28) | 0x9F | (0x20 if thumb else 0)
+            h = [0x53364E42, 1] + regs + [addr, cpsr]
+            with open(os.path.join(d, f"snap_{name}_{k}.bin"), "wb") as f:
+                f.write(struct.pack("<19I", *h))
+                f.write(mem)
+                # interrupts off on both sides (mgba_run --call-snaps runs with IME = IE = 0)
+                for off in (IO + 0x200, IO + 0x202, IO + 0x208):
+                    f.seek(76 + off)
+                    f.write(b"\0\0")
+                # non-display I/O as mGBA reads it back (sound, timers, serial, DMA...)
+                f.seek(76 + IO + 0x58)
+                f.write(io)
+                # write-only display registers read back as 0 (BG offsets and affine
+                # parameters, window coordinates, MOSAIC, BLDY)
+                for lo, hi in ((0x10, 0x48), (0x4C, 0x50), (0x54, 0x58)):
+                    f.seek(76 + IO + lo)
+                    f.write(bytes(hi - lo))
+
+
+def run_original(d):
+    """The original game's side: mGBA runs every state in D to its return (snap_*.exit.bin)."""
+    try:   # calls without an exit snapshot (no return, or cut off here) are not counted
+        subprocess.run([gamepaths.MGBA_RUN, gamepaths.ORIG_ROM, "--quiet",
+                        "--frames", "1", "--bios", gamepaths.GBA_BIOS,
+                        "--call-snaps", d, "200000"], capture_output=True, text=True,
+                       timeout=300)   # seconds normally; a call stuck inside one emulator step never ends
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def compare(d, work, keep_dir, contract, difftest=None):
+    """The port's side: the host difftest (-G) runs the same states and compares them with the
+    original's exits. Returns NAME -> {ok, fail, ood, why, explained}; keeps the snapshots of
+    failing and explained states under KEEP_DIR (none kept if KEEP_DIR is None). D is only read,
+    so one set of states (and the original's exits) can be compared with several builds."""
+    results = {}
+    env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=contract)
+    r = subprocess.run([difftest or os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", d],
+                       capture_output=True, text=True,
+                       cwd=HOST, env=env)
+    detail = {}
+    for line in r.stdout.splitlines():
+        m = re.match(r"\s+snap_(\w+?)_(\d+)\.bin: (.*)", line)
+        if m:
+            detail.setdefault(m.group(1), []).append(m.group(3))
+            continue
+        m = re.match(r"snap_(\w+?)_(\d+)\.bin: (ok|MEM|REG|out of domain)", line)
+        if not m:
+            continue
+        name, k, verdict = m.group(1), m.group(2), m.group(3)
+        res = results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": [], "explained": []})
+        why = explained(d, name, k, contract, difftest) if verdict in ("MEM", "REG") else None
+        if verdict == "ok":
+            res["ok"] += 1
+        elif verdict == "out of domain" or why:
+            res["ood"] += 1
+        else:
+            res["fail"] += 1
+            if len(res["why"]) < 3:
+                res["why"].append(f"{verdict}: " + "; ".join(detail.get(name, [])[:3]))
+        if why:
+            res["explained"].append(f"{name} {k} {why}: {verdict}: " + "; ".join(detail.get(name, [])[:3]))
+        if verdict in ("MEM", "REG") and keep_dir is not None:
+            keep = os.path.join(os.path.dirname(keep_dir), "explained") if why else keep_dir
+            os.makedirs(keep, exist_ok=True)
+            for suffix in (".bin", ".exit.bin", ".bus"):
+                src = os.path.join(d, f"snap_{name}_{k}{suffix}")
+                if os.path.exists(src):
+                    shutil.copy(src, os.path.join(keep, f"snap_{name}_{k}{suffix}"))
+        detail.pop(name, None)
+    for name, *_ in work:
+        results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": [], "explained": []})
+    return results
+
+
 def batch(args):
     work, bases, pool, seed, keep_dir, io = args
-    rng = random.Random(seed)
-    results = {}
     with tempfile.TemporaryDirectory(dir=os.environ.get("ORACLE_TMP")) as d:
-        for name, addr, thumb, mask, flags in work:
-            for k in range(STATES):
-                hdr, mem = bases[rng.randrange(len(bases))]
-                regs = list(hdr[2:17])
-                for r in range(13):
-                    if r == 10:
-                        continue                        # the toolkit pointer, as in every call
-                    x = rng.random()
-                    if x < 0.5:
-                        regs[r] = rng.choice(pool[r])
-                    elif x < 0.75:
-                        regs[r] = rng.randrange(17)
-                    elif x < 0.9:
-                        regs[r] = rng.choice(pool[rng.randrange(13)])
-                    else:
-                        regs[r] = rng.getrandbits(32)
-                regs[14] = MAGIC_LR if thumb else MAGIC_LR & ~1
-                cpsr = (rng.getrandbits(4) << 28) | 0x9F | (0x20 if thumb else 0)
-                h = [0x53364E42, 1] + regs + [addr, cpsr]
-                with open(os.path.join(d, f"snap_{name}_{k}.bin"), "wb") as f:
-                    f.write(struct.pack("<19I", *h))
-                    f.write(mem)
-                    # interrupts off on both sides (mgba_run --call-snaps runs with IME = IE = 0)
-                    for off in (IO + 0x200, IO + 0x202, IO + 0x208):
-                        f.seek(76 + off)
-                        f.write(b"\0\0")
-                    # non-display I/O as mGBA reads it back (sound, timers, serial, DMA...)
-                    f.seek(76 + IO + 0x58)
-                    f.write(io)
-                    # write-only display registers read back as 0 (BG offsets and affine
-                    # parameters, window coordinates, MOSAIC, BLDY)
-                    for lo, hi in ((0x10, 0x48), (0x4C, 0x50), (0x54, 0x58)):
-                        f.seek(76 + IO + lo)
-                        f.write(bytes(hi - lo))
-        try:   # calls without an exit snapshot (no return, or cut off here) are not counted
-            subprocess.run([gamepaths.MGBA_RUN, gamepaths.ORIG_ROM, "--quiet",
-                            "--frames", "1", "--bios", gamepaths.GBA_BIOS,
-                            "--call-snaps", d, "200000"], capture_output=True, text=True,
-                           timeout=300)   # seconds normally; a call stuck inside one emulator step never ends
-        except subprocess.TimeoutExpired:
-            pass
-        env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=CONTRACT)
-        r = subprocess.run([os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", d],
-                           capture_output=True, text=True,
-                           cwd=HOST, env=env)
-        detail = {}
-        for line in r.stdout.splitlines():
-            m = re.match(r"\s+snap_(\w+?)_(\d+)\.bin: (.*)", line)
-            if m:
-                detail.setdefault(m.group(1), []).append(m.group(3))
-                continue
-            m = re.match(r"snap_(\w+?)_(\d+)\.bin: (ok|MEM|REG|out of domain)", line)
-            if not m:
-                continue
-            name, k, verdict = m.group(1), m.group(2), m.group(3)
-            res = results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": [], "explained": []})
-            why = explained(d, name, k) if verdict in ("MEM", "REG") else None
-            if verdict == "ok":
-                res["ok"] += 1
-            elif verdict == "out of domain" or why:
-                res["ood"] += 1
-            else:
-                res["fail"] += 1
-                if len(res["why"]) < 3:
-                    res["why"].append(f"{verdict}: " + "; ".join(detail.get(name, [])[:3]))
-            if why:
-                res["explained"].append(f"{name} {k} {why}: {verdict}: " + "; ".join(detail.get(name, [])[:3]))
-            if verdict in ("MEM", "REG"):
-                keep = os.path.join(os.path.dirname(keep_dir), "explained") if why else keep_dir
-                os.makedirs(keep, exist_ok=True)
-                for suffix in (".bin", ".exit.bin", ".bus"):
-                    src = os.path.join(d, f"snap_{name}_{k}{suffix}")
-                    if os.path.exists(src):
-                        shutil.copy(src, os.path.join(keep, f"snap_{name}_{k}{suffix}"))
-            detail.pop(name, None)
-        for name, *_ in work:
-            results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": [], "explained": []})
-    return results
+        write_states(work, bases, pool, seed, d, io, STATES)
+        run_original(d)
+        return compare(d, work, keep_dir, CONTRACT)
+
+
+def promised_contracts(cfg):
+    """Hand-written functions promise what cport/host/difftest.cfg compares (compare=rA,...,nz,c,v),
+    not everything the lifted contract lists: NAME -> (register mask, flags)."""
+    promised = {}
+    for line in open(cfg):
+        f = line.split()
+        if f and not line.startswith("#") and f[-1].startswith("compare="):
+            items = f[-1][len("compare="):].split(",")
+            promised[f[0]] = (sum(1 << int(r[1:]) for r in items if r[0] == "r"),
+                              (1 if "nz" in items else 0) | (2 if "c" in items else 0) | (4 if "v" in items else 0))
+    return promised
+
+
+def write_contract(path, us, cfg=os.path.join(HOST, "host", "difftest.cfg")):
+    """The ORACLE_CONTRACT file for units US: what each function's callers rely on."""
+    promised = promised_contracts(cfg)
+    with open(path, "w") as f:
+        for name, addr, thumb, mask, flags in us:
+            if name in promised:
+                mask, flags = promised[name]
+            f.write(f"{addr:08x} {mask:x} {flags:x}\n")
+
+
+def bases_and_pool(base_dir):
+    """The memory the entry states start from (8 captured calls of the snapshot store, chosen with
+    seed 1) and the register values seen in real calls (a sample of about 300), per register."""
+    snaps = sorted(p for p in glob.glob(os.path.join(base_dir, "*", "snap_*.bin")) if not p.endswith(".exit.bin"))
+    rng = random.Random(1)
+    base_paths = rng.sample(snaps, min(8, len(snaps)))
+    bases = [load_snap(p) for p in base_paths]
+    pool = [set() for _ in range(13)]
+    for p in snaps[:: max(1, len(snaps) // 300)]:
+        hdr, _ = load_snap(p)
+        for r in range(13):
+            pool[r].add(hdr[2 + r])
+    return bases, [sorted(s) for s in pool]
 
 
 STATES = 4
@@ -236,30 +292,8 @@ def main():
     if args.funcs:
         us = [u for u in us if u[0] in set(args.funcs)]
     CONTRACT = os.path.join(args.out, "contract.txt")
-    # hand-written functions promise what cport/host/difftest.cfg compares
-    # (compare=rA,...,nz,c,v), not everything the lifted contract lists
-    promised = {}
-    for line in open(os.path.join(HOST, "host", "difftest.cfg")):
-        f = line.split()
-        if f and not line.startswith("#") and f[-1].startswith("compare="):
-            items = f[-1][len("compare="):].split(",")
-            promised[f[0]] = (sum(1 << int(r[1:]) for r in items if r[0] == "r"),
-                              (1 if "nz" in items else 0) | (2 if "c" in items else 0) | (4 if "v" in items else 0))
-    with open(CONTRACT, "w") as f:
-        for name, addr, thumb, mask, flags in us:
-            if name in promised:
-                mask, flags = promised[name]
-            f.write(f"{addr:08x} {mask:x} {flags:x}\n")
-    snaps = sorted(p for p in glob.glob(os.path.join(args.base, "*", "snap_*.bin")) if not p.endswith(".exit.bin"))
-    rng = random.Random(1)
-    base_paths = rng.sample(snaps, min(8, len(snaps)))
-    bases = [load_snap(p) for p in base_paths]
-    pool = [set() for _ in range(13)]
-    for p in snaps[:: max(1, len(snaps) // 300)]:
-        hdr, _ = load_snap(p)
-        for r in range(13):
-            pool[r].add(hdr[2 + r])
-    pool = [sorted(s) for s in pool]
+    write_contract(CONTRACT, us)
+    bases, pool = bases_and_pool(args.base)
     chunks = [us[i:i + args.batch] for i in range(0, len(us), args.batch)]
     print(f"{len(us)} functions, {args.states} states each, {len(chunks)} batches", flush=True)
     totals = {}
