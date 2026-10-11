@@ -1,0 +1,88 @@
+name: spawn_t1_0x5_tempAttackObject_80B8E30
+address: '0x080B8E30'
+kind: function
+status: confirmed
+summary: Spawns a type-1 attack object (subtype 5), links it to a related battle object, inherits panel XY and alliance/direction,
+  sets header flag 0x14, and stores the result pointer.
+interface: "/* r0: caller's original r0 (restored into r1 on failure)\n   r1: x\n   r2: y\n   r3: z\n   r4: params\n\
+  \   r5: related BattleObject* (parent)\n   r6: preserved across call\n   r7: result output pointer (BattleObject**)\n\
+  \   returns r0: spawned object ptr (0 on failure)\n           r1: 0x14 on success, caller's orig r0 on failure\n\
+  \           r2: header flags on success, leftover on failure\n           NZ flag set from r0\n           C/V cleared\
+  \ */\nvoid spawn_t1_0x5_tempAttackObject_80B8E30(u32 r0, u32 x, u32 y, u32 z, u32 params,\n                  \
+  \                          BattleObject *related, u32 r6_unused,\n                                           \
+  \ BattleObject **out);\n"
+details: "- Saves lr then pushes r0 plus callee-saved r5-r7 so r5 (related object), r6, r7\n  (result slot) all\
+  \ survive a call.\n- Calls the well-known spawner object_spawnType1 with kind index 5; on return\n  r0/r1/r2/r3\
+  \ are clobbered and r5 holds the new object pointer.\n- Restores r1 from the saved r0 and re-reads r5 into r0\
+  \ for the success branch.\n- On success: writes related pointer to new+oBattleObject_RelatedObject1Ptr,\n  stores\
+  \ the result slot pointer at new+oBattleObject_ExtraVars, copies\n  oBattleObject_PanelXY (2 bytes) and oBattleObject_AllianceAndDirectionFlip\n\
+  \  (2 bytes) from related into the new object, and ORs 0x14 into\n  oObjectHeader_Flags.\n- Always falls through\
+  \ to loc_80B8E54 which writes the spawned pointer\n  (or 0) to *r7 regardless of success.\n- The \"mov r0, r5\"\
+  \ uses an ADDS encoding (clears C/V); the final ORRS then\n  only sets N/Z, so C and V end up cleared on either\
+  \ path.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221355);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 36' --file inbox_farm_36.c spawn_t1_0x5_tempAttackObject_80B8E30
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function spawn_t1_0x5_tempAttackObject_80B8E30
+
+    ./wf verify --function spawn_t1_0x5_tempAttackObject_80B8E30 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-221355-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function spawn_t1_0x5_tempAttackObject_80B8E30
+
+    ./wf verify --function spawn_t1_0x5_tempAttackObject_80B8E30 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261010-221355-verify-2)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function spawn_t1_0x5_tempAttackObject_80B8E30
+
+    ./wf verify --function spawn_t1_0x5_tempAttackObject_80B8E30 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-221355-verify-2)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080b8e30 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp fd627cb
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What gameplay effect does object type 1 index 5 represent (a temp projectile/animation helper)?
+- Is the ExtraVars self-pointer intentional (new.oBattleObject_ExtraVars -> &new from the caller's slot), and does
+  the caller rely on it?
+- Which header flag bits 0x14 enables (visible/hitbox/anim-update semantics).
+- Why the caller passes its own r0 through; is r1 meant to be a discriminator on the failure path?
+sources:
+- tools/wf run convert-20261010-221355
+- recomp fd627cb
