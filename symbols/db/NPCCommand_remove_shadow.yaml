@@ -1,0 +1,87 @@
+name: NPCCommand_remove_shadow
+address: '0x0809EFD8'
+kind: function
+status: confirmed
+summary: NPC command-list handler that clears an overworld NPC's shadow by toggling the UnkFlags_60 shadow bit pair
+  (set 0x80, clear 0x100), calling sprite_removeShadow, and advancing the command cursor by one.
+interface: "void NPCCommand_remove_shadow(void);\n  // inputs:  r5 = current OverworldNPCObject*, r6 = command-list\
+  \ cursor\n  // outputs: r6 = cursor + 1; cpsr N/Z set from r6, V untouched\n  // otherwise:  r0/r3/lr clobbered;\
+  \ r5/r6 overwritten by caller convention\n"
+details: 'Runs as one entry in the overworld NPC command list. Reads the NPC''s
+
+  oOverworldNPCObject_UnkFlags_60 word (offset 0x60 in the NPC object),
+
+  ORs in the shadow bit OW_NPC_UNK_FLAGS_60_SHADOW_FLAG_0x80, then BICs out
+
+  OW_NPC_UNK_FLAGS_60_SHADOW_FLAG_0x100 and stores the result back. The two
+
+  bits are interpreted together as an NPC shadow control pair: 0x80 set,
+
+  0x100 clear → "no shadow" state. Immediately afterwards it calls
+
+  sprite_removeShadow (presumably to detach the shadow sprite child of the
+
+  NPC''s main sprite), then increments the command-list cursor (r6) by one
+
+  so the next NPC command is dispatched on the following tick. Tail-pops
+
+  via `pop {pc}` and references an external pool entry at 809EFF4 holding
+
+  the 0x100 shadow-flag mask.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-002359);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 49' --file inbox_farm_49.c NPCCommand_remove_shadow
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function NPCCommand_remove_shadow
+
+    ./wf verify --function NPCCommand_remove_shadow --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261011-002359-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function NPCCommand_remove_shadow
+
+    ./wf verify --function NPCCommand_remove_shadow --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-002359-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function NPCCommand_remove_shadow
+
+    ./wf verify --function NPCCommand_remove_shadow --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002359-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, story3, story4, story5.'
+  reproduce: grep -l '^0809efd8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp 52c01c1
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/npc.c
+coverage:
+- maps
+- story3
+- story4
+- story5
+open_questions:
+- Exact semantics of the (0x80 set, 0x100 clear) combination vs the other three combinations in UnkFlags_60; the
+  function name only describes removing the shadow, not what the pair encodes.
+- Whether sprite_removeShadow is passed the NPC's sprite handle in r0 or resolves it via the global sprite list;
+  the assembly passes no argument, so likely the latter.
+- Whether r5 is preserved across the sprite_removeShadow call by the caller or reloaded each tick by the NPC command
+  dispatcher.
+sources:
+- tools/wf run convert-20261011-002359
+- recomp 52c01c1

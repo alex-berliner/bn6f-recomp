@@ -1,0 +1,99 @@
+name: sub_80A4BFC
+address: '0x080A4BFC'
+kind: function
+status: confirmed
+summary: Overworld sprite "setup" handler for an effect/shockwave entity — loads tile/palette, applies Z and layer-effect
+  transforms, sets animation/priority/palette, and kicks off the per-frame tick.
+interface: 'void sub_80A4BFC(void);
+
+  /* r5  in:  pointer to overworld effect-object (r10, lr inherited from caller; only r5 is meaningful) */
+
+  /* r2  out: clobbered */
+
+  /* r5  out: preserved across the call (caller''s object pointer) */
+
+  /* r6  out: original Z value loaded from obj+0x14 (clobbered; caller observes it) */
+
+  /* r10 out: preserved */
+
+  /* r11 out: clobbered */
+
+  /* clobbers: N Z C V, r0, r1, r3, r6, lr; preserves r4, r5, r7, r8, r9, r12 */
+
+  '
+details: 'Writes the "state" byte at obj+0x0 to 3 (the "sprite loaded" sentinel used elsewhere in the
+
+  overworld object lifecycle). Calls sprite_load with tile_count=0x80, tile_slot=byte at
+
+  obj+6, palette_slot=byte at obj+7, then runs the standard post-load chain on the coord
+
+  triple at obj+0xC: checkZCoordModifiers_8031612 produces a Z modifier that is shifted left
+
+  16 and stored at obj+0x14, applyLayerEffectToOWObject_8035694 reads that shifted value,
+
+  and the original obj+0x14 word is then restored (saved into r6, which is why r6 is clobbered
+
+  and ends up holding the unmodified Z for the caller). Continues with sprite_setPriority,
+
+  sprite_setAnimation(byte at obj+4), sprite_loadAnimationData, sprite_noShadow, and
+
+  sprite_setPalette(byte at obj+5), writes the animation-step field at obj+8 to 4, then calls
+
+  sprite_tickWithFlagReset_80A4C46 to begin per-frame ticking. Field layout used: obj+0x0
+
+  state, obj+4 animation id, obj+5 palette id, obj+6 tile slot, obj+7 palette slot,
+
+  obj+8 animation step, obj+0xC coord triple, obj+0x14 Z bias word.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-002359);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 49' --file inbox_farm_49.c sub_80A4BFC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A4BFC
+
+    ./wf verify --function sub_80A4BFC --snapshots build-snapshots'
+  result: 'captured calls: 39 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-002359-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A4BFC
+
+    ./wf verify --function sub_80A4BFC --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 22 out of domain (verify run convert-20261011-002359-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A4BFC
+
+    ./wf verify --function sub_80A4BFC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002359-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus2, story4.'
+  reproduce: grep -l '^080a4bfc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 52c01c1
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm29.c
+coverage:
+- menus2
+- story4
+open_questions:
+- The exact object kind (shockwave vs. other transient effect) is inferred from the use of checkZCoordModifiers
+  + applyLayerEffectToOWObject + sprite_noShadow plus a 0x80 tile load; callers would pin it down.
+- Why r6 is preserved across the call rather than reloaded from obj+0x14 — likely the unmodified baseline is wanted
+  by the caller (e.g. for shadow-disable bookkeeping).
+sources:
+- tools/wf run convert-20261011-002359
+- recomp 52c01c1

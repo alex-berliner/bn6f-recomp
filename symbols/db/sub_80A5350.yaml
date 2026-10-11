@@ -1,0 +1,100 @@
+name: sub_80A5350
+address: '0x080A5350'
+kind: function
+status: hypothesis
+summary: Thin trampoline that tail-calls FreeOverworldMapObject via a `push {lr}` / `pop {pc}` shim, used as the
+  cleanup hook stored in the overworld map-object vtable slot it sits adjacent to.
+interface: void freeOverworldMapObject_80A5350(void);  /* clobbers r0-r3, r5, lr; sets NZCV per FreeOverworldMapObject
+  */
+details: 'The function prologue pushes only lr and immediately BLs FreeOverworldMapObject,
+
+  then returns by popping pc (so the branch is logically a tail-call). Because
+
+  r5 is listed both as an input and as preserved across the call, callers expect
+
+  r5 to survive; the BL itself does not preserve it, so this is either relied
+
+  upon by FreeOverworldMapObject or by hidden convention in a single inlined
+
+  caller. The bytes that immediately follow at 0x80A5358 onward are deliberately
+
+  4-byte-aligned raw data tables (two identical 10-entry tables of 12-byte
+
+  rows resembling (u16, u16, u16) triplets with value "1C 0C 00", and two more
+
+  10-byte tables of (s8, s8) signed offsets), suggesting this label was placed
+
+  at the start of an overworld-object data block that doubles as the
+
+  "free" function pointer slot for the object type. Without a typed signature
+
+  for FreeOverworldMapObject the relationship to those tables is inferred from
+
+  layout only.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-002359);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 49' --file inbox_farm_49.c sub_80A5350
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A5350
+
+    ./wf verify --function sub_80A5350 --snapshots build-snapshots'
+  result: 'captured calls: 21 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261011-002359-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A5350
+
+    ./wf verify --function sub_80A5350 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-002359-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A5350
+
+    ./wf verify --function sub_80A5350 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002359-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus3, story1, story2, story5, story6, story7, story8,
+    story9.'
+  reproduce: grep -l '^080a5350 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 52c01c1
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm29.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus3
+- story1
+- story2
+- story5
+- story6
+- story7
+- story8
+- story9
+related:
+- sub_80A51F8
+open_questions:
+- Confirm that sub_80A5350 is in fact the function pointer stored in an overworld map-object descriptor (likely
+  at byte_80A5358) and that FreeOverworldMapObject consumes r5 as the object pointer.
+- Identify which table (byte_80A5358, byte_80A5384, byte_80A53B0, byte_80A53DC, byte_80A5408) corresponds to map-object
+  geometry vs. palette/animation data; the two longer tables look like signed offset/animation streams while the
+  shorter paired ones look like uniform 12-byte slot records.
+sources:
+- tools/wf run convert-20261011-002359
+- recomp 52c01c1
