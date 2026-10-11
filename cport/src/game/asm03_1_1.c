@@ -253,25 +253,6 @@ Next shopBuyMenu_confirm_803ABB4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── markBattleObjCurDone_803ABDC ── */
-/* markBattleObjCurDone_803ABDC(r2, r5 = object ptr, lr):
- * If [r5+8] != 0x3F, play the cur-move sound, clear [r5+0x13] and set
- * [r5+8] = 0x3F (mark this battle object as finished/cur-done). */
-Next markBattleObjCurDone_803ABDC(void) {
-    u8 state = LD8(R5 + 8);
-    SET_FLAGS_CMP((u32)state, 0x3F);
-    if (!ZERO_FLAG()) {
-        R0 = SOUND_CUR_MOVE_80;
-        GUEST_CALL(PlaySoundEffect);
-
-        R0 = 0;
-        ST8(R5 + 0x13, R0);
-        R0 = 0x3F;
-        ST8(R5 + 8, R0);
-    }
-    RETURN_TO_CALLER();
-}
-
 /* ── chipSelect_dispatchState_803AD20 ── */
 /* chipSelect_dispatchState_803AD20: dispatcher for "battle chip select" sub-states.
  *
