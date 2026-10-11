@@ -1,0 +1,77 @@
+name: chatbox_80425F0
+address: '0x080425F0'
+kind: function
+status: confirmed
+summary: Chatbox option-launcher that, on first tick, sets chatbox flag 0x3E bit "FLAGS_3E_UNK_0001" and opens the
+  mail subsystem using the mail index stored at [r4+2], then marks the text-script state byte so it only fires once.
+interface: 'void chatbox_launchMailOption_80425F0(void); /* r4: chatbox object (mail index at +2); r5: text-script
+  state (guard byte at +4); r10/lr: callers'' frame/link; returns r0 = 0 (nz set), r2/r3 trashed, r4/r5 preserved
+  */'
+details: 'Sets a chatbox flag mask via chatbox_setflags_3e with FLAGS_3E_UNK_0001. Then, only if the guard
+
+  byte at oChatbox_TextScriptState_04 in r5 is zero (first activation), it reads the mail index
+
+  from [r4+2] into r0 and calls subsystem_launchMail, finally writing 1 to that guard byte so the
+
+  branch is never taken again on subsequent ticks. The function always returns with r0 = 0
+
+  (nz from the mov). The trailing `.byte 0, 0` is alignment padding after the thumb return.
+
+  Touches: chatbox flags (via chatbox_setflags_3e), chatbox object [r4+2] (mail index), and the
+
+  text-script state byte at oChatbox_TextScriptState_04 in r5.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    chatbox_80425F0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_80425F0
+
+    ./wf verify --function chatbox_80425F0 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 185 out
+    of domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_80425F0
+
+    ./wf verify --function chatbox_80425F0 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_80425F0
+
+    ./wf verify --function chatbox_80425F0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story8.'
+  reproduce: grep -l '^080425f0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- story8
+open_questions:
+- What is the exact semantics of FLAGS_3E_UNK_0001 in the chatbox flag word?
+- Is [r4+2] definitely an oChatbox_ field, or is r4 something other than the chatbox object?
+- What does the chatbox flag "3E" index refer to in the broader script-driven chatbox state?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

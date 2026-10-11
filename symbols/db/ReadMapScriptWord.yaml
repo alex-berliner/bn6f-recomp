@@ -1,0 +1,111 @@
+name: ReadMapScriptWord
+address: '0x080360C8'
+kind: function
+status: confirmed
+summary: Reads a 32-bit big-endian word from the map script stream and advances the cursor.
+interface: "u32 mapScript_ReadWord(void);\n  // inputs:  r6 = byte offset into script, r7 = script base pointer\n\
+  \  // outputs: r4 = 32-bit big-endian word read from [base+offset]\n  //          r7 = restored base pointer (r7\
+  \ += r6, then restored on return)\n  //          r6 = trashed (last byte of the word)\n  // flags:    N/Z set\
+  \ per the result value; C/V clobbered\n"
+details: 'Computes the effective address by adding the caller-provided offset (r6) to
+
+  the script base pointer (r7), then reads four bytes in big-endian order at
+
+  [base+3], [base+2], [base+1], [base+0], accumulating them into r4 via
+
+  shift/or. The routine is paired with the r7=base/r6=offset convention used
+
+  throughout the map script interpreter: r7 points at the current command,
+
+  and r6 holds the size of that command''s arguments, so the same r7 value
+
+  returned by the caller plus r6 will land on the start of the next script
+
+  word. r7 is restored on pop (the base pointer is preserved across the
+
+  call), while r6 is left holding the last byte read -- callers must reload
+
+  their offset before the next call. Only the final LSL in the chain updates
+
+  flags (N/Z reflect the assembled 32-bit result); C/V are clobbered by the
+
+  shifts/orrs. The body comment notes this flag behavior but it does not
+
+  appear to be relied on by any documented caller.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    ReadMapScriptWord
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ReadMapScriptWord
+
+    ./wf verify --function ReadMapScriptWord --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 196 out
+    of domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ReadMapScriptWord
+
+    ./wf verify --function ReadMapScriptWord --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ReadMapScriptWord
+
+    ./wf verify --function ReadMapScriptWord --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080360c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+related:
+- MapScriptCmd_jump_if_map_group_compare_last_map_group
+open_questions:
+- Is the convention r6=offset strictly hard-coded, or can r7 already include the offset (i.e. some callers pass
+  r6=0 to read at the current cursor)?
+- Do any callers actually consume the N/Z flags from the final shift, or is the flag update an incidental side effect
+  of the last LSL?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

@@ -1,0 +1,79 @@
+name: CheckIfThunderObjectFindsOpponentByGoingRight
+address: '0x080C9620'
+kind: function
+status: confirmed
+summary: Scans rightward from a battle object's panel column across 4 rows looking for an opponent (used by Thunder
+  chip's pathing).
+interface: u32 thunderScanRightForOpponent_80C9620(u8 opponentMask, const BattleObject* obj); /* returns panelX
+  in r6, last-y in r7; r4 preserved */
+details: 'Reads `oBattleObject_PanelX` from the battle object in r5, then iterates columns from that x to 6 inclusive.
+
+  For each column, iterates y = 3 down to 0 and calls `object_getPanelParameters(x, y)`. If the returned bitmask
+
+  (in r0) ANDs with the opponent mask in r4, the search succeeds and exits with r6=x, r7=y.
+
+  If the column index would reach 7, sets it to 0 (presumably wrapping to column 0 / no-op column) and exits
+
+  with the fail sentinel (r6=0). Note that y is never actually decremented to 0 in the failing case — the
+
+  inner loop''s break on y==0 still leaves r7=0 implicitly, but only the success path is relied upon.
+
+  The "rightward" traversal and the role of r4 as an opponent-side mask suggest this is the right-going leg
+
+  of a Thunder chip''s bolt path finding (the symmetric left-going helper would be a sibling routine).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    CheckIfThunderObjectFindsOpponentByGoingRight
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CheckIfThunderObjectFindsOpponentByGoingRight
+
+    ./wf verify --function CheckIfThunderObjectFindsOpponentByGoingRight --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out of
+    domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CheckIfThunderObjectFindsOpponentByGoingRight
+
+    ./wf verify --function CheckIfThunderObjectFindsOpponentByGoingRight --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 1 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CheckIfThunderObjectFindsOpponentByGoingRight
+
+    ./wf verify --function CheckIfThunderObjectFindsOpponentByGoingRight --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story8.'
+  reproduce: grep -l '^080c9620 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles2
+- story8
+open_questions:
+- Is the column wrap at x==7 → x==0 intentional (panels 0..6 then back to 0 to mark "not found"), or a quirk?
+- Is there a matching left-going counterpart, and is the opponent mask in r4 always the "enemy" panel mask?
+- Does the inner loop's reliance on `y--` setting Z actually imply a row-count assumption (always 4 rows)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

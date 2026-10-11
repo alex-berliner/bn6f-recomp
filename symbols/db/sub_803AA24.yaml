@@ -1,0 +1,85 @@
+name: sub_803AA24
+address: '0x0803AA24'
+kind: function
+status: confirmed
+summary: 'Handles closing/exiting a submenu: confirms the close, clears a state byte, plays the exit-submenu sound,
+  and runs sub_803A84E.'
+interface: 'void handleExitSubmenu_803AA24(void);
+
+  // inputs:  r2, r5, lr
+
+  // outputs: r5, r10
+
+  // clobbers: NZCV, r0, r1, r2, r3, lr
+
+  '
+details: 'Calls sub_803C068(0x10, 0x30) as a gating/confirmation step; only proceeds if it returns
+
+  non-zero (Z clear). On success, zeroes the byte at r5 + 0x13 (likely a menu state/flag byte
+
+  inside an object pointed to by r5), plays sound effect "SOUND_EXIT_SUBMENU" via PlaySoundEffect,
+
+  then dispatches to sub_803A84E (probably the submenu''s teardown/destructor for the contents
+
+  it was managing). Function is short and r5/r10-preserving, consistent with being an event
+
+  hook on an in-engine "object" (this address range, 0803Axxx, is shared with sub_803A84E and
+
+  sub_803C068 which are all in the same menu/object subsystem).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    sub_803AA24
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803AA24
+
+    ./wf verify --function sub_803AA24 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 246 out of
+    domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803AA24
+
+    ./wf verify --function sub_803AA24 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 4 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803AA24
+
+    ./wf verify --function sub_803AA24 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps.'
+  reproduce: grep -l '^0803aa24 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+open_questions:
+- What is the object/struct referenced via r5, and which field exactly is byte 0x13?
+- What does sub_803C068(0x10, 0x30) actually check or do — the 0x10/0x30 pair likely identifies a submenu/UI element
+  being closed.
+- What is sub_803A84E's role here — finalizer, free, or transition to another state?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

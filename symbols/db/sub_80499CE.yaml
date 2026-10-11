@@ -1,0 +1,76 @@
+name: sub_80499CE
+address: '0x080499CE'
+kind: function
+status: confirmed
+summary: Chatbox cleanup/reset handler gated on the screen-fade state (resets fade flag, clears VRAM/GFX, reinitializes
+  chatbox state machine when not fading; otherwise takes an alternate early-out path).
+interface: void sub_80499CE(u16* fadeState_r5, ... r6 r7 r8 r9 r10 r11 r12 lr) -> clobbers nz cv r0 r1 r2 r3 r8
+  r9 r10 r11 r12 lr; preserves r4 r5 r6 r7
+details: "Tests IsScreenFadeActive(); ZF clear (fade not currently running) means the \"reset\" path.\nOn the reset\
+  \ path:\n  - Calls sub_8049D42 and stores its boolean result as a byte at r5+4 (a \"fade_state\" or \"dirty\"\
+  \ flag\n    on the structure pointed to by r5, mirroring the r5+0/r5+4 layout common to chatbox/battle objects).\n\
+  \  - Then chains sub_8049D70 -> sub_8049D4A -> sub_8049D3A (clear/setup sequence for chatbox-related\n    buffers),\
+  \ sub_803F79E (palette/OBJ clear), zeroFillVRAM, ZeroFillGFX30025c0, copyMemory_8001850\n    (CPU->VRAM copy /\
+  \ DMA-style helper), SetRenderInfoLCDControl with 0x40 (DISPSTAT/forced blank\n    bits), chatbox_8040818 (chatbox\
+  \ init/reinit), and sub_811F758 (scene/state teardown).\n  - r4 is used only as a local scratch for the boolean;\
+  \ r5 is the input struct pointer and survives.\nIf IsScreenFadeActive() returns true (ZF set), control falls through\
+  \ to sub_803A820 which is the\n\"wait for fade to finish\" path; the saved r7 slot is overwritten by 0x20093b0\
+  \ by that callee and\nsurfaces on the epilogue pop (preserved-register quirk, not a real read).\nUses the chatbox_8040818\
+  \ helper, strongly suggesting a chatbox/state-machine subsystem role.\nLCDControl 0x40 = bit 6 (forced blank in\
+  \ BG mode 1/2/3/4/5), used while clearing VRAM.\n\nRegister form, old prompt; queued for retype (the farm's prompt\
+  \ 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    sub_80499CE
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80499CE
+
+    ./wf verify --function sub_80499CE --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80499CE
+
+    ./wf verify --function sub_80499CE --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 0 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80499CE
+
+    ./wf verify --function sub_80499CE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^080499ce ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+related:
+- sub_8049D4A
+open_questions:
+- What exactly lives at r5 (chatbox control struct? scene controller?); only r5+4 is touched here.
+- Which fields the helpers sub_8049D42 / sub_8049D70 / sub_8049D4A / sub_8049D3A manipulate.
+- Meaning of sub_811F758 (scene teardown vs. fade-complete callback).
+- Why the else-path clobbers the saved r7 with 0x20093b0.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

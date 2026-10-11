@@ -1,0 +1,66 @@
+name: sub_80C5D84
+address: '0x080C5D84'
+kind: function
+status: hypothesis
+summary: On battle-object destruction, spawns a sword-flavor (Param1==1) or wind-flavor (Param1==2) panel-area hit
+  using the object's panel/element/damage fields, then sets state to destroy.
+interface: "void sub_80C5D84(void);\n    // inputs:  r4, r5 (oBattleObject*), lr\n    // outputs: r1, r5\n    //\
+  \ clobbers: NZ CV, r0, r2, r3, r4, r6, lr\n"
+details: "Clears the object's collision region via object_clearCollisionRegion().\nBranches on oBattleObject_Param1:\n\
+  \  - == 1: packet for sub_80C6018 (sword-style spread); passes panel X/Y,\n    element, R3=0, R4=0x3C<<8 (shape/extent\
+  \ magic), and the\n    oBattleObject_DamageAndStaminaDamageCounterDisabler word.\n  - == 2: packet for sub_80C68B0\
+  \ (wind-style row spread); same X/Y/element,\n    R3=0, and the damage word (no R4 shape constant).\nAlways writes\
+  \ CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,\nqueuing the object for cleanup.\n\
+  \nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    sub_80C5D84
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C5D84
+
+    ./wf verify --function sub_80C5D84 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C5D84
+
+    ./wf verify --function sub_80C5D84 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C5D84
+
+    ./wf verify --function sub_80C5D84 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story6.'
+  reproduce: grep -l '^080c5d84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story6
+open_questions:
+- Exact battle objects/objects that reach this deinit with Param1 of 1 or 2.
+- Meaning of the R4=0x3C<<8 value passed to sub_80C6018 (panel range vs. width).
+- Whether Param1 values other than 1/2 are silently discarded (no else branch).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

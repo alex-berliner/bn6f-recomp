@@ -1,0 +1,70 @@
+name: sub_8049808
+address: '0x08049808'
+kind: function
+status: hypothesis
+summary: Thumb-side jump-table dispatcher that calls sub_803AFC2(0), tail-dispatches on its nonzero return through
+  a 5-entry Thumb function table, and otherwise falls through to sub_803A7B8 + sub_803BC7C(0).
+interface: void sub_8049808(void); // r2/r4/r5/r10/lr caller-saved; r4-r7 preserved; c/v out, n/z clobbered
+details: 'r0 is forced to 0 before calling sub_803AFC2 (a guest-side query). On a nonzero index it is used as a
+  1..5 dispatch into dword_804982C, whose entries are Thumb-function addresses stored as +1 (so `bx r0` correctly
+  switches to Thumb). The `lsl r0, r0, #2` only exists to set flags for the switch; the table is actually loaded
+  with `ldr r0, [r1, r0]` (note the missing shift). Before the bx, LR is set to 0x0804981C so the chosen handler
+  returns via the cleanup tail (sub_803A7B8 + sub_803BC7C(0)). On a zero result, the cleanup is run directly. Entry
+  0 of dword_804982C is NULL (no case 0). Callers must preserve r4-r7; the dispatcher clobbers r0-r3, r8-r12, lr
+  and the c/v flags.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    sub_8049808
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8049808
+
+    ./wf verify --function sub_8049808 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8049808
+
+    ./wf verify --function sub_8049808 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 1 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8049808
+
+    ./wf verify --function sub_8049808 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08049808 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- What does sub_803AFC2 return, and which subsystem owns these 5 handlers (sub_803AA24 / sub_803AA40 / sub_803ABF4
+  / sub_803AB6C / sub_803AB94)?
+- Why is the cleanup tail called regardless of branch (handers return into it) instead of being duplicated?
+- Is this dispatcher per-frame, per-scene, or per-state-machine event?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

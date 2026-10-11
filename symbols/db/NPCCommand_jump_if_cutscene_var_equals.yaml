@@ -1,0 +1,76 @@
+name: NPCCommand_jump_if_cutscene_var_equals
+address: '0x0809F2A2'
+kind: function
+status: confirmed
+summary: 'NPC script opcode: conditional jump to a script word when a cutscene-state byte equals a script-provided
+  expected value, else advance past the 7-byte instruction.'
+interface: void NPCCommand_jump_if_cutscene_var_equals(u32* r10 /*toolkit*/, u8* r6 /*script cursor*/) -> (u8* r6
+  /*new script cursor*/); clobbers r0,r1,r2,r3,r4,lr; flags NZCV set by cmp.
+details: 'Pulls a 32-bit cutscene-state pointer from the toolkit struct at oToolkit_CutsceneStatePtr
+
+  (via r10). Reads two script bytes at r6+1 (var_index) and r6+2 (expected) and indexes the
+
+  cutscene state array by var_index, comparing the actual byte to expected. On match, hands
+
+  (r6+3) to ReadNPCScriptWord, whose return value becomes the new script cursor in r6; on
+
+  mismatch, simply bumps r6 by 7 to step over the whole 7-byte instruction. Instruction
+
+  layout is therefore [op, varIndex, expected, offsetWord(3 bytes)].
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    NPCCommand_jump_if_cutscene_var_equals
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function NPCCommand_jump_if_cutscene_var_equals
+
+    ./wf verify --function NPCCommand_jump_if_cutscene_var_equals --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function NPCCommand_jump_if_cutscene_var_equals
+
+    ./wf verify --function NPCCommand_jump_if_cutscene_var_equals --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function NPCCommand_jump_if_cutscene_var_equals
+
+    ./wf verify --function NPCCommand_jump_if_cutscene_var_equals --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story5, story6.'
+  reproduce: grep -l '^0809f2a2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/npc.c
+coverage:
+- story5
+- story6
+open_questions:
+- Whether the offset read by ReadNPCScriptWord is a relative signed displacement or an absolute script address;
+  the readable C only treats it as the next cursor value.
+- Exact identity of oToolkit_CutsceneStatePtr within the toolkit struct and whether the indexed array is bytes,
+  shorts, or longer (LD8 in the readable C suggests bytes).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

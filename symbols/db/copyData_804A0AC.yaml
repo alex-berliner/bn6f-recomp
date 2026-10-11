@@ -1,0 +1,73 @@
+name: copyData_804A0AC
+address: '0x0804A0AC'
+kind: function
+status: confirmed
+summary: 'Scene init: zero VRAM/GFX buffers, decompress init data table, shrink render-info box, call sub_803B91C(3)'
+interface: void copyData_804A0AC(void) /* uses r10 (toolkit ptr) inherited from caller */
+details: "Scene/setup routine. Sequence of work:\n  1. zeroFillVRAM - clears VRAM.\n  2. ZeroFillGFX30025c0 - clears\
+  \ a GFX buffer at 0x030025c0.\n  3. copyMemory_8001850 - generic copy.\n  4. decompAndCopyData(byte_804A0E8) -\
+  \ walks the initRefs table at 0x804A0E8 and\n     decompresses/copies each entry to its destination (VRAM/buffer\
+  \ ranges like\n     0x06004000, 0x0600D600, 0x06010020, 0x06010300, palette at 0x03001980, OBJs at\n     0x03001550;\
+  \ sizes 0x240, 0x100, 0x20, 0xA0). Sources are compressed blobs in\n     ROM (0x87E50D4, 0x87E5550, 0x87F24FC,\
+  \ 0x87E56A0), an uncompressed dword block\n     at 0x87F25B4, a byte array at 0x86A4D40, and dword blocks at 0x86A4A40\
+  \ /\n     0x86A5500. Decompression sink is DecompBuf_2027A00 / unk_2028200.\n  5. Reads r10 (toolkit, via oToolkit_RenderInfoPtr)\
+  \ and shrinks the render-info\n     rectangle stored in r10->RenderInfo by 4 on left/right and 2 on top/bottom\n\
+  \     (offsets 0x14/0x16/0x18/0x1a are left/right/top/bottom in toolkit's struct).\n  6. Calls sub_803B91C(3).\n\
+  No struct names confirmed; render-info box fields are toolkit-relative offsets.\n\nRegister form, old prompt;\
+  \ queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    copyData_804A0AC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function copyData_804A0AC
+
+    ./wf verify --function copyData_804A0AC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function copyData_804A0AC
+
+    ./wf verify --function copyData_804A0AC --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function copyData_804A0AC
+
+    ./wf verify --function copyData_804A0AC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps.'
+  reproduce: grep -l '^0804a0ac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles2
+- maps
+open_questions:
+- Which scene/state is this initializer for? (e.g. battle intro, title screen, map load).
+- What does sub_803B91C(3) do (render update, fade, page flip)? Probably the matching "draw scene 3" after the GFX
+  upload.
+- The "shrink by 4x2" looks like fitting a frame or letterbox around a viewport; what sub-rectangle is being reserved
+  (HUD, dialog box, viewport)?
+- Is zeroFillVRAM and ZeroFillGFX30025c0 truly needed every call, or just on first entry per scene?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

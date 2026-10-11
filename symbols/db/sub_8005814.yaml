@@ -1,0 +1,87 @@
+name: sub_8005814
+address: '0x08005814'
+kind: function
+status: confirmed
+summary: 'Per-frame main loop dispatcher for the current game state: runs all state handlers, then if no screen
+  fade is active also drives chatbox/overlay updates and the reset-and-jump-to-state-28 path.'
+interface: void sub_8005814(void);  // no usable inputs/outputs; trashes r0-r3, r7, lr; preserves r4-r6
+details: 'Tail of the main loop, called once per VBlank/frame. Issues a fixed sequence of
+
+  guest subroutines in order: dispatch_80339CC (likely the per-frame game-state
+
+  dispatch), then a chain of subsystem ticks (sub_80039AA, sub_8003AFA,
+
+  sub_80027B4, sub_800286C, sub_8003BF4, sub_8003E98, npc_drawSprites_800467C,
+
+  sub_8004298, sub_8004590, sub_8004934) and finally event_runArmedCallback_80024AE
+
+  (fires any armed one-shot script callback). After that it reads the screen-fade
+
+  status via IsScreenFadeActive; only when no fade is in progress does it call
+
+  the chatbox updater chatbox_8040818, an overlay/helper sub_811F6E0, and
+
+  mainState_resetGameAndGoto28_8005524 ("reset game and go to state 28",
+
+  matches the title-screen / soft-reset flow). No globals beyond those touched
+
+  by the callees are referenced here; r4-r6 are preserved across the whole
+
+  sequence, so this is a frame coordinator rather than a state mutator.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    sub_8005814
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8005814
+
+    ./wf verify --function sub_8005814 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8005814
+
+    ./wf verify --function sub_8005814 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 6 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8005814
+
+    ./wf verify --function sub_8005814 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story8.'
+  reproduce: grep -l '^08005814 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- story8
+open_questions:
+- Which state machine owns the r5 "GameState" base pointer indicated by the register contract (unused in the prologue/epilogue
+  of this function but live across all callees).
+- Whether sub_811F6E0 is an overlay/UI driver or a debug/menu path.
+- Exact identity of the "state 28" target in mainState_resetGameAndGoto28_8005524 (title screen vs. some other boot
+  state).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

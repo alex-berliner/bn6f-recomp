@@ -1,0 +1,78 @@
+name: spawnMetalCube_800748A
+address: '0x0800748A'
+kind: function
+status: confirmed
+summary: Conditionally spawns a MetalCube object into the EnemySetup's spawn slot table when the target panel is
+  a metal-cube hole.
+interface: void spawnMetalCube_800748A(u32 spawnSlotTable /* r5 */, const EnemySetup* setup /* r6 */); // returns
+  void; clobbers r0,r1,r2,r3,lr,nzcv; preserves r4,r5,r6,r7
+details: 'R5 points at a spawn-slot table whose primary slot lives at offset 0xB8 and secondary at 0xBC. R6 points
+  at an EnemySetup whose byte at +1 is a packed coordinate (high nibble = column, low 3 bits = row). The routine
+  first checks the primary slot: if it is empty, R7 is set to it; if it is occupied, the secondary slot is checked,
+  and the function returns when both are filled, otherwise R7 advances to the empty secondary slot. With R7 = the
+  slot pointer, it then reads the (col, row) from the EnemySetup, calls object_getPanelParameters to retrieve the
+  panel parameter, and tests bit 5 of that word; this bit is the "metal cube hole" tile flag. The (row, col) are
+  repacked into R0/R1 (R0 = row, R1 = col, per object_getPanelParameters convention), R2 is cleared, R6 is forced
+  to 0x64 (likely a MetalCube object ID), and sub_80D85F0 is called to allocate/construct the cube. The returned
+  handle is stored into the slot pointed at by R7. The function effectively says "if there is a free slot and the
+  EnemySetup''s panel is a metal-cube hole, spawn a MetalCube there."
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    spawnMetalCube_800748A
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function spawnMetalCube_800748A
+
+    ./wf verify --function spawnMetalCube_800748A --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function spawnMetalCube_800748A
+
+    ./wf verify --function spawnMetalCube_800748A --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function spawnMetalCube_800748A
+
+    ./wf verify --function spawnMetalCube_800748A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story5, story6, story7.'
+  reproduce: grep -l '^0800748a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battlesweep
+- story5
+- story6
+- story7
+open_questions:
+- Confirm that sub_80D85F0 is the object-spawn function and that R6 = 0x64 is the MetalCube template/object ID.
+- Confirm the bit-5 meaning ("hole tile") from the panel-parameter encoding returned by object_getPanelParameters.
+- Verify whether the secondary slot at +0xBC is intentionally a fallback, or whether the early branch is actually
+  "primary occupied -> try secondary, else return".
+- Whether R4 (the bit-5 boolean) is consumed by callers or merely side-channel state.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c

@@ -1,0 +1,85 @@
+name: sub_8049F32
+address: '0x08049F32'
+kind: function
+status: confirmed
+summary: Advances an in-progress screen-fade animation one step and then chains into the next screen/fade update
+  routine.
+interface: 'void screenFadeUpdateTick_8049F32(void); // inputs: r4 r5 r10 lr; outputs: r8 r9 r10 r11 r12; clobbers:
+  nz c v r0 r1 r2 r3 lr
+
+  '
+details: 'Called once per update tick from a screen-state loop (r5 points to the screen struct, whose
+
+  state byte at offset 1 is overwritten with 8). If IsScreenFadeActive() reports a fade is
+
+  currently running, it drives the fade animation forward by calling sub_803BB2C with arg 0x14
+
+  (likely a fade timer/duration parameter) and sub_803BB7C with arg 0x0F (likely a fade draw or
+
+  blend update), then writes 8 to r5+1 to mark the new screen-state phase. Regardless of
+
+  whether a fade is active, control then tails into sub_8049F70, which presumably handles the
+
+  next stage of the screen update (e.g. drawing or continuing the state flow). The pair
+
+  sub_803BB2C(0x14) + sub_803BB7C(0x0F) followed by writing 8 to r5->state1 is the routine''s
+
+  main observable effect, and matches a "step the fade, mark state 8" pattern typical of
+
+  MegaMan Battle Network screen transitions.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-053933);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 4' --file inbox_farm_old_4.c
+    sub_8049F32
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8049F32
+
+    ./wf verify --function sub_8049F32 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-053933-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8049F32
+
+    ./wf verify --function sub_8049F32 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-053933-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8049F32
+
+    ./wf verify --function sub_8049F32 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-053933-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps.'
+  reproduce: grep -l '^08049f32 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp c87843c
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles2
+- maps
+open_questions:
+- Exact meaning of the 0x14 and 0x0F arguments (timer count vs. blend strength vs. slot index).
+- What state value 8 in r5+1 represents in the screen-state machine.
+- Whether sub_8049F70 is the "no fade active" branch or a shared continuation.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-053933
+- recomp c87843c
