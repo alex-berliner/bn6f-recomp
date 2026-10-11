@@ -2034,6 +2034,32 @@ Next battle_ClearAllianceTargetSlotIfSelf_802CDD0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802CDE6 ── */
+/* sub_802CDE6: Detach the BattleObject pointed to by r5 from whatever
+ * battle-state slot is currently holding it (so it stops being tracked).
+ * r5 = BattleObject pointer, lr = return address.
+ *
+ * Two slots live back-to-back in the arena array at 0x203CFB0:
+ *   [0x00] alliance 0's slot      [0x0C] alliance 1's slot
+ * Each slot has a pointer at +4 (the current owner) and a flag/field at +8.
+ * If r5 is the current owner of its alliance's slot, both the pointer and
+ * the secondary field are cleared. */
+Next sub_802CDE6(void) {
+    u32 slot_base = A_dword_203CFB0;
+    u8 alliance = LD8(R5 + oBattleObject_Alliance);
+
+    if ((s32)alliance == 0) {
+        slot_base += 0xC;
+    }
+
+    if (LD32(slot_base + 4) == R5) {
+        ST32(slot_base + 4, 0);
+        ST32(slot_base + 8, 0);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── wrapCountersAt203CFB0ToU16_802CDFE ── */
 /* wrapCountersAt203CFB0ToU16_802CDFE: clear the upper halves of the two 32-bit counters at
  * dword_203CFB0 and dword_203CFB0+0xC, keeping only the low 16 bits. */
