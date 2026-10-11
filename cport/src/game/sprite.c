@@ -320,6 +320,36 @@ Next sprite_getMosaicScalingParameters(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sprite_makeScalable ── */
+/* register form: calls loc_8002D22 outside this file, which has no typed C interface yet.
+   The original push {r5,lr} must be replicated because loc_8002D22's pop {r5,lr}
+   restores the caller's r5 and return address. */
+static void tail_cont_scalable(u32 scaled_ptr, u32 rounded_offset) {
+    SP -= 8;
+    ST32(SP, R5);
+    ST32(SP + 4, LR);
+    R5 = scaled_ptr;
+    R3 = rounded_offset;
+    GUEST_CALL(loc_8002D22);
+    /* loc_8002D22 pops {r5,lr} and returns to sprite_makeScalable's caller. */
+}
+
+/* Round the sprite offset in an object header down to a 16-byte boundary
+ * and add it to the object pointer, yielding the scalable sprite data pointer.
+ * Then tail-jump into the continuation routine at loc_8002D22. */
+static void sprite_make_scalable(u32 obj_ptr) {
+    u32 raw_off = LD8(obj_ptr + oObjectHeader_SpriteOffset);
+    u32 rounded = (raw_off >> 4) << 4;
+    u32 scaled  = obj_ptr + rounded;
+    tail_cont_scalable(scaled, rounded);
+}
+
+/* sprite_makeScalable(r5 = object ptr) → tail-calls loc_8002D22 */
+Next sprite_makeScalable(void) {
+    sprite_make_scalable(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_makeUnscalable ── */
 /* Offset of the type/sprite-offset byte in an object header (the disassembly
  * reads it as [r5,#oObjectHeader_TypeAndSpriteOffset], i.e. byte 2). */
