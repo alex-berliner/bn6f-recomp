@@ -986,6 +986,84 @@ Next stub_returnZero_8000E30(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── GetTitleScreenIconCount ── */
+/* Title-screen icon bitmask thresholds */
+#define TITLE_ICON_E00  0x0E00
+#define TITLE_ICON_370  0x0370
+#define TITLE_ICON_340  0x0340
+#define TITLE_ICON_3BD  0x03BD
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set(u16 flag) {
+    R0 = flag >> 8;
+    R1 = flag & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_81207F8 outside this file, which has no typed C interface yet */
+static u32 get_progress_stat(u32 index) {
+    R0 = index;
+    GUEST_CALL(sub_81207F8);
+    return R0;
+}
+
+/* register form: calls TestEventFlagRangeFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_range_set(u16 flag, u32 count) {
+    R0 = flag >> 8;
+    R1 = flag & 0xFF;
+    R2 = count;
+    GUEST_CALL(TestEventFlagRangeFromImmediate);
+    return !ZERO_FLAG();
+}
+
+typedef struct { u32 count; u32 bitmask; } TitleScreenIcons;
+
+/* Tally the icons the player has earned for the title screen.
+ * Returns the count and a bitmask indicating which of 9 possible slots are filled. */
+static TitleScreenIcons count_title_screen_icons(void) {
+    u32 count = 0;
+    u32 mask = 0;
+
+    /* Flag E00: special side-story event */
+    if (event_flag_set(TITLE_ICON_E00)) { count++; mask |= 0x80; }
+
+    /* Nav progress stat 0 >= 200 (full map explored) */
+    if (get_progress_stat(0) >= 200) { count++; mask |= 0x40; }
+
+    /* Nav progress stat 1 >= 39 (PET level threshold) */
+    if (get_progress_stat(1) >= 39) { count++; mask |= 0x20; }
+
+    /* Nav progress stat 2 >= 5 (chip count threshold) */
+    if (get_progress_stat(2) >= 5) { count++; mask |= 0x10; }
+
+    /* Nav progress stat 5 >= 15 (CP count threshold) */
+    if (get_progress_stat(5) >= 15) { count++; mask |= 0x08; }
+
+    /* Nav progress stat 4 >= 29 (PET level threshold) */
+    if (get_progress_stat(4) >= 29) { count++; mask |= 0x04; }
+
+    /* Flag 370: completed event (icon bit 1) */
+    if (event_flag_set(TITLE_ICON_370)) { count++; mask |= 0x02; }
+
+    /* Flag 340: completed event (icon bit 8) */
+    if (event_flag_set(TITLE_ICON_340)) { count++; mask |= 0x100; }
+
+    /* Flag range 3BD, 5 events: all story flags cleared (icon bit 9) */
+    if (event_flag_range_set(TITLE_ICON_3BD, 5)) { count++; mask |= 0x200; }
+
+    TitleScreenIcons result = { count, mask };
+    return result;
+}
+
+/* GetTitleScreenIconCount() -> r0 = icon count, r1 = icon bitmask */
+Next GetTitleScreenIconCount(void) {
+    TitleScreenIcons icons = count_title_screen_icons();
+    R0 = icons.count;
+    R1 = icons.bitmask;
+    RETURN_TO_CALLER();
+}
+
 /* ── updatePlayerGameState_800107A ── */
 /* updatePlayerGameState_800107A: copy the overworld player object's position
  * (and facing direction) into the game state, e.g. to record where the player

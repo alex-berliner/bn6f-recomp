@@ -51,6 +51,85 @@ Next subsystem_launchShop(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8005DBE ── */
+/* register form: calls FreeAllObjectsOfSpecifiedTypes outside this file, which has no typed C interface yet */
+static void free_objects_of_type(u32 type_mask, u32 game_state) {
+    R0 = type_mask;
+    R5 = game_state;
+    GUEST_CALL(FreeAllObjectsOfSpecifiedTypes);
+}
+
+/* register form: calls resetAllGraphicsState_8005F40 outside this file, which has no typed C interface yet */
+static void reset_all_graphics_state(void) {
+    GUEST_CALL(resetAllGraphicsState_8005F40);
+}
+
+/* register form: calls runSetupStepAndClearWorkArea_8005F6C outside this file, which has no typed C interface yet */
+static void run_setup_step_and_clear_work_area(void) {
+    GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
+}
+
+/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+static void call_sub_80027C4_sub_8005DBE(void) {
+    GUEST_CALL(sub_80027C4);
+}
+
+/* register form: calls zeroFill_80024A2 outside this file, which has no typed C interface yet */
+static void zero_fill_80024A2(void) {
+    GUEST_CALL(zeroFill_80024A2);
+}
+
+/* register form: calls scenario_initEffectState_8003962 outside this file, which has no typed C interface yet */
+static void scenario_init_effect_state(void) {
+    GUEST_CALL(scenario_initEffectState_8003962);
+}
+
+/* register form: calls zeroFill_8003AB2 outside this file, which has no typed C interface yet */
+static void zero_fill_8003AB2(void) {
+    GUEST_CALL(zeroFill_8003AB2);
+}
+
+/* register form: calls sub_803FB28 outside this file, which has no typed C interface yet */
+static void call_sub_803FB28(void) {
+    GUEST_CALL(sub_803FB28);
+}
+
+/* register form: calls reloadCurNaviStatBoosts_813c3ac outside this file, which has no typed C interface yet */
+static void reload_cur_navi_stat_boosts(void) {
+    GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
+}
+
+/* Full battle-entry setup sequence: clear the secondary game-state pointer,
+ * free all objects of type 0x25, then run each subsystem's init step in order. */
+static void battle_setup_sequence(u32 toolkit) {
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+
+    /* Clear the auxiliary state pointer so later code knows it is not yet built. */
+    ST32(game_state + oGameState_Ptr_20, 0);
+
+    /* register form: save/restore R5 across the helper call; the original's
+     * push {r4-r7,lr}/pop preserves R5 even though FreeAllObjectsOfSpecifiedTypes
+     * may leave it at a different value. */
+    u32 saved_r5 = R5;
+    free_objects_of_type(0x25, game_state);
+    R5 = saved_r5;
+
+    reset_all_graphics_state();
+    run_setup_step_and_clear_work_area();
+    call_sub_80027C4_sub_8005DBE();
+    zero_fill_80024A2();
+    scenario_init_effect_state();
+    zero_fill_8003AB2();
+    call_sub_803FB28();
+    reload_cur_navi_stat_boosts();
+}
+
+/* sub_8005DBE(r10 = toolkit) -> preserves r4-r12 */
+Next sub_8005DBE(void) {
+    battle_setup_sequence(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── warp_ArmPendingTransition_8005EEC ── */
 /* warp_ArmPendingTransition_8005EEC(r0 = warp data ptr, r1 = warp index, r2 = map group transition type,
  *              r10 = toolkit):
@@ -376,6 +455,112 @@ Next sub_8006910(void) {
  * through untouched. */
 Next SetPrimaryToolkitPointersWrapper(void) {
     GUEST_CALL(SetPrimaryToolkitPointers);
+    RETURN_TO_CALLER();
+}
+
+/* ── encryption_initAll_8006d00 ── */
+/* ── helpers for external game functions ── */
+
+/* register form: calls GetRNG outside this file, which has no typed C interface yet */
+static u32 get_rng(void) {
+    GUEST_CALL(GetRNG);
+    return R0;
+}
+
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word(u32 addr, u32 num_bytes) {
+    R0 = addr;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls encryption_zenny_8006f54 outside this file, which has no typed C interface yet */
+static void init_zenny_encryption(void) {
+    GUEST_CALL(encryption_zenny_8006f54);
+}
+
+/* register form: calls encryption_bugfrags_8006fac outside this file, which has no typed C interface yet */
+static void init_bugfrags_encryption(void) {
+    GUEST_CALL(encryption_bugfrags_8006fac);
+}
+
+/* register form: calls anticheat_modCardsInit_8007036 outside this file, which has no typed C interface yet */
+static void init_modcards_anticheat(void) {
+    GUEST_CALL(anticheat_modCardsInit_8007036);
+}
+
+/* ── internal helpers ── */
+
+/* Fill a byte array with random XOR-keyed values, storing the bitwise complement
+ * in the corresponding toolkit buffer.  Retries each byte until the masked/XORed
+ * result is non-zero.  Iterates from count-1 down to 0 to match RNG call order. */
+static void fill_encryption_bytes(u32 toolkit, u32 field_off,
+                                  u32 target, u32 count, u32 xor_key) {
+    u32 buffer = LD32(toolkit + field_off);
+    for (u32 i = count; i-- > 0; ) {
+        u32 val;
+        do {
+            val = (get_rng() & 0xFF) ^ xor_key;
+        } while (val == 0);
+        ST8(target + i, val);
+        ST8(buffer + i, ~val);
+    }
+}
+
+/* Produce a non-zero 12-bit-random XOR encryption key. */
+static u32 make_encryption_key(u32 xor_const) {
+    u32 val;
+    do {
+        val = ((get_rng() << 12) >> 12) ^ xor_const;
+    } while (val == 0);
+    return val;
+}
+
+/* ── main logic ── */
+
+/* Initialize all encryption subsystems:
+ *   - zero and seed the toolkit extra-block pointers area
+ *   - fill three byte-arrays (item names, pet names, short strings) with
+ *     keyed random data mirrored into toolkit buffers
+ *   - derive Zenny and BugFrag obfuscation keys, then run their inits
+ *   - run the mod-cards anti-cheat initialization */
+static void encryption_init_all(u32 toolkit) {
+    u32 ptrs_addr = A_eUnusedExtraToolkitPtrsOffset;
+
+    /* Clear the extra-block pointer table and seed the RNG slot. */
+    zero_fill_by_word(ptrs_addr, 0x80);
+    ST32(ptrs_addr, 0);
+    ST32(ptrs_addr + 4, get_rng());
+
+    /* Fill 0x200-byte item-name table (XOR 0x6F) and 0x200-byte pet table (XOR 0x81). */
+    fill_encryption_bytes(toolkit, oToolkit_Unk2004a8c_Ptr,
+                          A_byte_20004E0, 0x200, 0x6F);
+    fill_encryption_bytes(toolkit, oToolkit_Unk2004c20_Ptr,
+                          A_byte_20008A0, 0x200, 0x81);
+
+    /* Fill 4-byte short-string table (XOR 0xFE). */
+    fill_encryption_bytes(toolkit, oToolkit_Unk2004e24_Ptr,
+                          A_byte_2001600, 4, 0xFE);
+
+    /* Zenny obfuscation key → initialize Zenny encryption state. */
+    ST32(A_dword_2000060, make_encryption_key(0x802412C));
+    init_zenny_encryption();
+
+    /* BugFrag obfuscation key → initialize BugFrag encryption state. */
+    ST32(A_dword_20018B8, make_encryption_key(0x803ED90));
+    init_bugfrags_encryption();
+
+    /* Mod-card anti-cheat tables. */
+    init_modcards_anticheat();
+}
+
+/* ── thin adapter ── */
+
+/* encryption_initAll_8006d00(r10 = toolkit ptr)
+ * Outputs r2-r7 are pass-through (r4-r7 restored via callee-saved convention,
+ * r2-r3 never written).  No flag outputs. */
+Next encryption_initAll_8006d00(void) {
+    encryption_init_all(R10);
     RETURN_TO_CALLER();
 }
 
@@ -780,6 +965,212 @@ Next spawnMegaMan_80073CC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800753C ── */
+/* sub_800753C: spawn a battle object at a panel, initialize it, allocate AI data,
+ * resolve its NameID, and register it in the alliance entry list.
+ * (panel_x: u8, panel_y: u8, alliance: bool) */
+
+/* register form: calls object_spawnType1 outside this file, which has no typed C interface yet */
+static u32 helper_spawn_type1(void) {
+    R0 = 0; R4 = 0;
+    GUEST_CALL(object_spawnType1);
+    return R5;
+}
+
+/* register form: calls object_getCoordinatesForPanels outside this file, which has no typed C interface yet */
+static void helper_panel_to_coords(u32 px, u32 py, u32 *x, u32 *y) {
+    R0 = px; R1 = py;
+    GUEST_CALL(object_getCoordinatesForPanels);
+    *x = R0; *y = R1;
+}
+
+/* register form: calls object_createAIData outside this file, which has no typed C interface yet */
+static u32 helper_create_aidata(void) {
+    GUEST_CALL(object_createAIData);
+    return R0;
+}
+
+/* register form: calls object_freeMemory outside this file, which has no typed C interface yet */
+static void helper_free_memory(void) {
+    GUEST_CALL(object_freeMemory);
+}
+
+/* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+static u32 helper_navi_stats_byte(u32 alliance, u32 stat) {
+    R0 = alliance; R1 = stat;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return R0;
+}
+
+/* register form: calls modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778 outside this file, which has no typed C interface yet */
+static u32 helper_check_alive_state(void) {
+    GUEST_CALL(modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778);
+    return R0;
+}
+
+/* register form: calls sub_800ED80 outside this file, which has no typed C interface yet */
+static void helper_teardown_aidata(u32 ptr) {
+    R0 = ptr;
+    GUEST_CALL(sub_800ED80);
+}
+
+/* register form: calls GetVerActorTyAndAIIdx_80182B4 outside this file, which has no typed C interface yet */
+static u32 helper_ver_actor_ty_ai(u32 enemy_idx) {
+    R0 = enemy_idx;
+    GUEST_CALL(GetVerActorTyAndAIIdx_80182B4);
+    return R0;
+}
+
+/* register form: calls enemy_getStruct1 outside this file, which has no typed C interface yet */
+static u32 helper_enemy_get_struct1(u32 name_id) {
+    R0 = name_id;
+    GUEST_CALL(enemy_getStruct1);
+    return R0;
+}
+
+/* register form: calls battle_addObjectToAllianceEntryList_80077D2 outside this file, which has no typed C interface yet */
+static void helper_add_to_alliance_list(u32 ai, u32 obj) {
+    R4 = ai; R5 = obj;
+    GUEST_CALL(battle_addObjectToAllianceEntryList_80077D2);
+}
+
+static void spawn_battle_object(u32 panel_x, u32 panel_y, u32 alliance) {
+    /* register form: save preserved R4/R5 that callees will modify (original uses push {r4,r5,lr}) */
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    /* Request a free object slot for a new battle actor at the panel. */
+    u32 obj = helper_spawn_type1();
+
+    if (obj == 0) {
+        /* register form: replicate original's pop {r0-r2} and tst r5,r5; callee clobbered R0-R2 */
+        R0 = panel_x; R1 = panel_y; R2 = alliance;
+        SET_FLAGS_NZ(obj);
+        /* register form: restore preserved regs (original's pop {r4,r5,pc}) */
+        R4 = saved_r4; R5 = saved_r5;
+        return;
+    }
+
+    /* Stamp panel position and alliance onto the new object. */
+    ST8(obj + oBattleObject_Alliance, alliance);
+    ST8(obj + oBattleObject_PanelX, panel_x);
+    ST8(obj + oBattleObject_PanelY, panel_y);
+    ST8(obj + oBattleObject_FuturePanelX, panel_x);
+    ST8(obj + oBattleObject_FuturePanelY, panel_y);
+
+    /* Convert panel indices to pixel coordinates. */
+    u32 coord_x, coord_y;
+    helper_panel_to_coords(panel_x, panel_y, &coord_x, &coord_y);
+    ST32(obj + oBattleObject_X, coord_x);
+    ST32(obj + oBattleObject_Y, coord_y);
+    ST32(obj + oBattleObject_Z, 0);
+
+    /* Pause the object's per-frame update while it initialises. */
+    ST8(obj + oObjectHeader_Flags,
+        LD8(obj + oObjectHeader_Flags) | OBJECT_FLAG_PAUSE_UPDATE);
+
+    /* Allocate AI data for this object. */
+    u32 ai = helper_create_aidata();
+    ST32(obj + oBattleObject_AIDataPtr, ai);
+
+    if (ai == 0) {
+        /* AI allocation failed: free the slot and return; callee sets R0/R1/R2/flags. */
+        helper_free_memory();
+        /* register form: restore preserved regs (original's pop {r4,r5,pc}) */
+        R4 = saved_r4; R5 = saved_r5;
+        return;
+    }
+
+    /* AI data type 2 = standard Navi behaviour. */
+    ST8(ai, 2);
+
+    /* Derive NameID from the alliance's Navi stats table. */
+    u32 stats = helper_navi_stats_byte(LD8(obj + oBattleObject_Alliance), 0x29);
+    u32 name_id = (stats + 0xFF + 0xA1) & 0xFFFF;
+    ST16(obj + oBattleObject_NameID, name_id);
+
+    /* If no living actors remain (special condition), tear down and free AI data. */
+    if (helper_check_alive_state() == 0) {
+        helper_teardown_aidata(LD32(obj + oBattleObject_AIDataPtr));
+        helper_free_memory();
+    }
+
+    /* Populate AI fields from the version/actor-type/AI-index lookup table. */
+    u32 ver_entry = helper_ver_actor_ty_ai(name_id);
+    ST8(ai + 0x16, LD8(ver_entry));
+    ST8(ai + 0x17, LD8(ver_entry));
+    ST8(ai, LD8(ver_entry + 1));
+    ST8(ai + 1, LD8(ver_entry + 2));
+
+    /* Store enemy struct category and mark slot as unassigned. */
+    u32 es = helper_enemy_get_struct1(name_id);
+    ST8(ai + 3, LD8(es + 2));
+    ST8(ai + 0xE, 0xFF);
+
+    /* Register the object in the alliance's entry list; callee sets final R0/R1/R2/flags. */
+    helper_add_to_alliance_list(ai, obj);
+
+    /* register form: restore preserved regs (original's pop {r4,r5,pc}) */
+    R4 = saved_r4; R5 = saved_r5;
+}
+
+/* sub_800753C(r0=panel_x, r1=panel_y, r2=alliance) -> r0 r1 r2 r3, nz c v, r4 r5 r6 r7 preserved */
+Next sub_800753C(void) {
+    spawn_battle_object(R0, R1, R2);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8007628 ── */
+/* Table-driven init of two display memory regions from toolkit pointers.
+ * Each table is a sequence of (u16 byte-offset, u16 value) pairs terminated by offset 0xFF. */
+
+typedef struct {
+    u32 base_ptr;    /* r0: second destination region */
+    u32 table_end;   /* r1: address of the 0xFF terminator in table 2 */
+    u16 offset;      /* r2: terminator marker (always 0xFF on return) */
+    u16 value;       /* r3: last value written to the second region */
+} InitTablesResult;
+
+static InitTablesResult init_toolkit_display_tables(u32 toolkit) {
+    InitTablesResult result;
+    u16 offset;
+    u16 value;
+
+    /* Initialize BG control / render-info registers */
+    u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
+    u32 table = A_word_800765C;
+    while ((offset = LD16(table)) != 0xFF) {
+        value = LD16(table + 2);
+        ST16(render_info + offset, value);
+        table += 4;
+    }
+
+    /* Initialize palette / BG character-data region */
+    result.base_ptr = LD32(toolkit + oToolkit_Unk200f3a0_Ptr);
+    table = A_word_8007672;
+    while ((offset = LD16(table)) != 0xFF) {
+        value = LD16(table + 2);
+        ST16(result.base_ptr + offset, value);
+        table += 4;
+    }
+
+    result.table_end = table;
+    result.offset = 0xFF;
+    result.value = value;
+    return result;
+}
+
+/* sub_8007628(r10 = toolkit base) -> r0-r3, nzcv */
+Next sub_8007628(void) {
+    InitTablesResult result = init_toolkit_display_tables(R10);
+    R0 = result.base_ptr;
+    R1 = result.table_end;
+    R2 = result.offset;
+    R3 = result.value;
+    SET_FLAGS_CMP(result.offset, 0xFF);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_spawnEnemyObject_800768C ── */
 /* battle_spawnEnemyObject_800768C(r0 = enemy idx, r1 = panel x, r2 = panel y, r3 = alliance,
  * r5 = extra argument) -> BattleObject pointer in r0.
@@ -1085,6 +1476,83 @@ Next battle_RevealFieldColumnsStep_80079F0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8007A0C ── */
+/* register form: calls collision_resetAllHitData_801986C outside this file, which has no typed C interface yet */
+static void call_reset_all_hit_data(void) {
+    GUEST_CALL(collision_resetAllHitData_801986C);
+}
+
+/* register form: calls sub_800C8F0 outside this file, which has no typed C interface yet */
+static void call_sub_800C8F0(void) {
+    GUEST_CALL(sub_800C8F0);
+}
+
+/* register form: calls clearBattleObjectLinkedLists_800318C outside this file, which has no typed C interface yet */
+static void call_clear_object_lists(void) {
+    GUEST_CALL(clearBattleObjectLinkedLists_800318C);
+}
+
+/* register form: calls panel_800BFC4 outside this file, which has no typed C interface yet */
+static void call_panel_update(void) {
+    GUEST_CALL(panel_800BFC4);
+}
+
+/* register form: calls initUncompSpriteState_80028d4 outside this file, which has no typed C interface yet */
+static void call_init_sprite_state(u32 screen_state) {
+    R0 = screen_state;
+    GUEST_CALL(initUncompSpriteState_80028d4);
+}
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 call_get_battle_effects(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls decompSprites_80029A8 outside this file, which has no typed C interface yet */
+static void call_decomp_sprites(u32 data) {
+    R0 = data;
+    GUEST_CALL(decompSprites_80029A8);
+}
+
+/* register form: calls battle_clearEnemyFadeinList outside this file, which has no typed C interface yet */
+static void call_clear_enemy_fadein_list(void) {
+    GUEST_CALL(battle_clearEnemyFadeinList);
+}
+
+/* Perform all one-time setup when entering a new battle.
+ * Clears hit data, resets object/panel lists, initialises the logo-sprite
+ * decompressor, optionally loads extra sprite data (unless bit 3 of the
+ * battle-effects flags is set), empties the enemy fade-in queue, and
+ * writes index 4 so the main loop advances to battle_update_8007A44. */
+static void setup_battle_entry(u32 battle_state) {
+    call_reset_all_hit_data();
+    call_sub_800C8F0();
+    call_clear_object_lists();
+    call_panel_update();
+    call_init_sprite_state(A_eLogoScreenState_Index_00);
+
+    /* Skip sprite decomp when bit 3 of the battle-effects word is set */
+    u32 effects = call_get_battle_effects();
+    if (!(effects & 8)) {
+        u32 battle_settings = LD32(battle_state + oBattleState_BattleSettings);
+        call_decomp_sprites(LD32(battle_settings + 0xC));
+    }
+
+    call_clear_enemy_fadein_list();
+
+    /* Set the phase index to 4 → battle_main dispatches battle_update_8007A44 */
+    ST32(battle_state + oBattleState_Index_00, 4);
+}
+
+/* sub_8007A0C(r5 = *BattleState) -> r0 = 4, r1 from callee, nz/c/v */
+Next sub_8007A0C(void) {
+    setup_battle_entry(R5);
+    R0 = 4;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_stateCountdownTick_8007BD0 ── */
 /* battle_stateCountdownTick_8007BD0: battle-state countdown tick.
  * r5 = battle state object. If its phase byte (offset 3) is still zero,
@@ -1205,5 +1673,360 @@ Next battle_stepSubstateToState4_8007C14(void) {
     R0 = 0;
     ST16(R5 + 2, R0);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8007CA0 ── */
+/* register form: calls musicGameState_8000784 outside this file, which has no typed C interface yet */
+static void tick_music_game_state(void) {
+    GUEST_CALL(musicGameState_8000784);
+}
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 get_battle_effects_sub_8007CA0(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls battle_getStateByteNibbles_800A832 outside this file */
+static u32 get_state_nibbles(void) {
+    GUEST_CALL(battle_getStateByteNibbles_800A832);
+    return R0;
+}
+
+/* register form: sub_800AF50 reads the S2001C04 pointer from r4, no typed C interface yet */
+static u32 check_battle_completion(u32 s2001c04) {
+    R4 = s2001c04;
+    GUEST_CALL(sub_800AF50);
+    return R0;
+}
+
+/* register form: calls SetDummyBGScrollCallbacks outside this file */
+static void set_dummy_bg_scroll(void) {
+    GUEST_CALL(SetDummyBGScrollCallbacks);
+}
+
+/* register form: calls zeroFill_e20094C0 outside this file */
+static void zero_fill_94c0(void) {
+    GUEST_CALL(zeroFill_e20094C0);
+}
+
+/* register form: calls palette_clearEPalette20097a0_80023A8 outside this file */
+static void clear_palette(void) {
+    GUEST_CALL(palette_clearEPalette20097a0_80023A8);
+}
+
+/* register form: calls battleSettings_802D2B2 outside this file */
+static u32 get_battle_settings_ptr(void) {
+    GUEST_CALL(battleSettings_802D2B2);
+    return R0;
+}
+
+/* register form: calls loc_8007204 outside this file, which has no typed C interface yet */
+static void init_battle_display(u32 settings) {
+    R0 = settings;
+    GUEST_CALL(loc_8007204);
+}
+
+/* register form: calls setTwoStructs_800A840 outside this file */
+static void set_two_structs(u32 mode) {
+    R0 = mode;
+    GUEST_CALL(setTwoStructs_800A840);
+}
+
+/* register form: calls setByte_200AD04_803F4EC outside this file */
+static void set_byte_200ad04(u32 val) {
+    R0 = val;
+    GUEST_CALL(setByte_200AD04_803F4EC);
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file (flag 0x1733) */
+static bool flag_1733_set(void) {
+    R0 = 0x17;
+    R1 = 0x33;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls loc_80071FE outside this file */
+static void restore_battle_settings(u32 settings) {
+    R0 = settings;
+    GUEST_CALL(loc_80071FE);
+}
+
+/* register form: calls battle_snapshotPlayerHP_800FAE0 outside this file */
+static void snapshot_player_hp(void) {
+    GUEST_CALL(battle_snapshotPlayerHP_800FAE0);
+}
+
+/* register form: calls sub_800A86E outside this file */
+static void battle_sub_800A86E(void) {
+    GUEST_CALL(sub_800A86E);
+}
+
+/* register form: calls GetCurPETNavi outside this file */
+static u32 get_cur_pet_navi_sub_8007CA0(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return R0;
+}
+
+/* register form: calls SetCurPETNaviStatsHword outside this file */
+static void set_pet_navi_hword(u32 navi, u32 offset, u32 value) {
+    R0 = navi;
+    R1 = offset;
+    R2 = value;
+    GUEST_CALL(SetCurPETNaviStatsHword);
+}
+
+/* register form: callPossiblyGetBattleEmotion_8015B54 returns the emotion value in r2 */
+static u32 get_emotion_value(u8 alliance) {
+    R0 = alliance;
+    GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
+    return R2;
+}
+
+/* register form: calls SetCurPETNaviStatsByte outside this file */
+static void set_pet_navi_byte(u32 navi, u32 field, u32 value) {
+    R0 = navi;
+    R1 = field;
+    R2 = value;
+    GUEST_CALL(SetCurPETNaviStatsByte);
+}
+
+/* register form: calls GetBattleNaviStatsByte outside this file */
+static u32 get_battle_navi_byte(u32 alliance, u32 field) {
+    R0 = alliance;
+    R1 = field;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return R0;
+}
+
+/* register form: calls table_GetByte16Row_203EAE0_800AB3A outside this file */
+static u32 table_get_byte16_row(u32 alliance, u32 row) {
+    R0 = alliance;
+    R1 = row;
+    GUEST_CALL(table_GetByte16Row_203EAE0_800AB3A);
+    return R0;
+}
+
+/* register form: calls battle_updateSlotBestRecords_802C9B8 outside this file */
+static void update_slot_best_records(void) {
+    GUEST_CALL(battle_updateSlotBestRecords_802C9B8);
+}
+
+/* register form: calls SetCurNaviHPToFull outside this file */
+static void set_navi_hp_full(void) {
+    GUEST_CALL(SetCurNaviHPToFull);
+}
+
+/* register form: calls eStruct200A008_redrawOnDirtyFlags_802CA82 outside this file */
+static void redraw_on_dirty_flags(void) {
+    GUEST_CALL(eStruct200A008_redrawOnDirtyFlags_802CA82);
+}
+
+/* register form: calls zeroFill_e20097A0 outside this file */
+static void zero_fill_97a0(void) {
+    GUEST_CALL(zeroFill_e20097A0);
+}
+
+/* register form: calls SetRenderInfoLCDControl outside this file */
+static void set_render_lcd(u16 ctrl) {
+    R0 = ctrl;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* register form: calls battle_tickCustomScreenEffect_800A892 outside this file */
+static void tick_screen_effect(void) {
+    GUEST_CALL(battle_tickCustomScreenEffect_800A892);
+}
+
+/* register form: calls clear_flags32_20093A4 outside this file */
+static void clear_flags32_one(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(clear_flags32_20093A4);
+}
+
+/* register form: calls ClearEventFlagFromImmediate outside this file (flag 0x1722) */
+static void clear_flag_1722(void) {
+    R0 = 0x17;
+    R1 = 0x22;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+/* register form: calls SetPrimaryToolkitPointers outside this file */
+static void set_primary_toolkit_ptrs(void) {
+    GUEST_CALL(SetPrimaryToolkitPointers);
+}
+
+/*
+ * Main battle state tick.  Called each frame while the state is "battle".
+ * Handles battle-end detection, link/battle mode setup, Navi stat updates
+ * (emotion, mood, HP), and post-battle cleanup.
+ *
+ * battle_state: pointer to the active BattleState (was r5)
+ * toolkit:      pointer to the Toolkit struct      (was r10)
+ */
+static void battle_state_tick(u32 battle_state, u32 toolkit) {
+    /* Advance music game-state */
+    tick_music_game_state();
+
+    /* Load commonly-used toolkit sub-pointers */
+    u32 s2001c04 = LD32(toolkit + oToolkit_S2001c04_Ptr);
+    u32 jumptable = LD32(toolkit + oToolkit_MainJumptableIndexPtr);
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+
+    /* --- Battle-end check (effect bit 0x400) --- */
+    u32 effects = get_battle_effects_sub_8007CA0();
+    if (effects & 0x400) {
+        u32 state = get_state_nibbles();
+        if (state != 5 && state != 9 && state != 0xA) {
+            u32 completion = check_battle_completion(s2001c04);
+            if (completion == 0) {
+                /* Battle finished: clear the visual and restore settings */
+                set_dummy_bg_scroll();
+                zero_fill_94c0();
+                clear_palette();
+                u32 saved_settings = LD32(battle_state + oBattleState_Unk_18);
+                u32 ptr = get_battle_settings_ptr();
+                (void)ptr; /* callee result unused, call still needed for side-effects */
+                init_battle_display(LD32(battle_state + oBattleState_Unk_18));
+                ST32(battle_state + oBattleState_Unk_18, saved_settings);
+                return;
+            } else {
+                /* Determine link/battle mode from completion code */
+                u32 mode;
+                if (completion == 2)
+                    mode = 3;
+                else if (completion == 1)
+                    mode = 1;
+                else
+                    mode = 2;
+                set_two_structs(mode);
+            }
+        }
+    }
+
+    /* --- Intro state: increment a counter while state == 1 --- */
+    u32 state = get_state_nibbles();
+    if (state == 1) {
+        u32 counter_addr = A_dword_2000B30;
+        u32 counter = LD16(counter_addr);
+        if ((s32)counter < 0x11) {
+            ST16(counter_addr, counter + 1);
+        }
+    }
+
+    /* --- State 5: post-battle / transition handling --- */
+    if (state == 5) {
+        effects = get_battle_effects_sub_8007CA0();
+        if (effects & 8) {
+            goto cleanup;
+        }
+        set_byte_200ad04(0);
+        if (!flag_1733_set()) {
+            goto cleanup;
+        }
+        /* Flag set: tear down the battle display */
+        set_dummy_bg_scroll();
+        zero_fill_94c0();
+        clear_palette();
+        u32 settings = LD32(battle_state + oBattleState_BattleSettings);
+        restore_battle_settings(settings);
+        return;
+    }
+
+    /* --- State != 5: active-battle logic --- */
+    snapshot_player_hp();
+    battle_sub_800A86E();
+
+    /* Effect bit 0x40: update Navi HP hword */
+    effects = get_battle_effects_sub_8007CA0();
+    if (effects & 0x40) {
+        u32 navi = get_cur_pet_navi_sub_8007CA0();
+        u32 hword_val = LD16(battle_state + oBattleState_Unk_34);
+        if (hword_val == 0) hword_val = 1;
+        set_pet_navi_hword(navi, 0x40, hword_val);
+    }
+
+    /* Effect bit 8: skip Navi mood/emotion block entirely */
+    effects = get_battle_effects_sub_8007CA0();
+    if (!(effects & 8)) {
+        /* --- Emotion / mood handling --- */
+        u32 emotion_r2 = 0x80;
+        if (!(effects & 0x10000)) {
+            u8 alliance = (u8)LD8(battle_state + oBattleState_Unk_0d);
+            emotion_r2 = get_emotion_value(alliance);
+        }
+        u32 navi = get_cur_pet_navi_sub_8007CA0();
+        set_pet_navi_byte(navi, 0xE, emotion_r2);
+
+        /* --- Mood byte (field 0x21): default 3, or stats+1 if table row == 0 --- */
+        u32 mood = 3;
+        effects = get_battle_effects_sub_8007CA0();
+        if (!(effects & 0x400000)) {
+            u8 alliance = (u8)LD8(battle_state + oBattleState_Unk_0d);
+            mood = get_battle_navi_byte(alliance, 0x21);
+            u32 tbl = table_get_byte16_row(alliance, 2);
+            if (tbl == 0 && (s32)mood < 3) {
+                mood = mood + 1;
+            }
+        }
+        navi = get_cur_pet_navi_sub_8007CA0();
+        set_pet_navi_byte(navi, 0x21, mood);
+
+        /* If entering a new battle (state 1), update best records */
+        state = get_state_nibbles();
+        if (state == 1) {
+            update_slot_best_records();
+        }
+
+        /* Clear S2001C04 transition counters */
+        ST16(s2001c04 + 0x12, 0);
+        ST16(s2001c04 + 0x14, 0);
+    }
+
+    /* --- Navi HP / special stats when state == 2 (link completed) --- */
+    state = get_state_nibbles();
+    if (state == 2) {
+        effects = get_battle_effects_sub_8007CA0();
+        if (effects & 0x800000) {
+            u32 tmp = effects; /* preserve effects across callee that clobbers r2 */
+            (void)tmp;
+            set_navi_hp_full();
+        }
+        if (effects & 0x1000) {
+            u32 navi = get_cur_pet_navi_sub_8007CA0();
+            set_pet_navi_byte(navi, 0x21, 3);
+        }
+        if (effects & 0x40000) {
+            u32 navi = get_cur_pet_navi_sub_8007CA0();
+            set_pet_navi_byte(navi, 0xE, 0x80);
+        }
+    }
+
+    /* Effect bit 0x10: unconditional full HP */
+    effects = get_battle_effects_sub_8007CA0();
+    if (effects & 0x10) {
+        set_navi_hp_full();
+    }
+
+    /* Redraw the Navi HUD */
+    redraw_on_dirty_flags();
+
+cleanup:
+    /* --- Post-battle teardown and screen reset --- */
+    ST8(game_state + oGameState_BattlePaused, 0);
+    zero_fill_97a0();
+    set_render_lcd(0x40);
+    tick_screen_effect();
+    clear_flags32_one(1);
+    clear_flag_1722();
+    ST8(battle_state + oBattleState_Unk_0a, 0);
+    set_primary_toolkit_ptrs();
+}
+
+/* sub_8007CA0(self: BattleState* r5, Toolkit* r10) -> void */
+Next sub_8007CA0(void) {
+    battle_state_tick(R5, R10);
     RETURN_TO_CALLER();
 }

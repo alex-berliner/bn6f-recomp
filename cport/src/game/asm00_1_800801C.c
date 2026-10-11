@@ -646,6 +646,102 @@ Next battle_isBattleOver(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800A1D0 ── */
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
+static bool time_is_stopped(u32 *r1_out) {
+    GUEST_CALL(battle_isTimeStop);
+    *r1_out = R1;                /* callee modifies r1; caller never overwrites before returning */
+    return !ZERO_FLAG();         /* bne taken when Z=0 → time is stopped */
+}
+
+/* register form: calls battle_isBattleOver outside this file, which has no typed C interface yet */
+static bool battle_is_over(u32 *r1_out) {
+    GUEST_CALL(battle_isBattleOver);
+    *r1_out = R1;
+    return R0 != 0;             /* tst r0, r0; bne → non-zero means the battle ended */
+}
+
+/* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+static u32 get_navi_stat_byte(u32 navi, u32 offset) {
+    R0 = navi;
+    R1 = offset;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return R0;
+}
+
+/* register form: calls battle_getFlags outside this file, which has no typed C interface yet */
+static u32 get_battle_flags(void) {
+    GUEST_CALL(battle_getFlags);
+    return R0;
+}
+
+/* Freeze/slowdown status values in navi stat byte 0x2c (offset from battle navi table). */
+#define STAT_FREEZE_1   0x17
+#define STAT_FREEZE_2   0x18
+#define STAT_BYTE       0x2C
+
+/* Battle flag bits queried when a freeze status is active. */
+#define FLAG_FREEZE     2
+#define FLAG_SLOWDOWN   0x10
+
+struct FreezeResult {
+    u32 active;   /* 1 = freeze/slowdown condition is in effect, 0 = not */
+    u32 mask;     /* r1: flag bit used, or callee-passthrough value on early exits */
+};
+
+/* Determine whether the battle navi freeze/slowdown condition is active.
+ * Checks the player's and enemy's status byte (0x17 or 0x18 = frozen/stopped),
+ * then verifies the corresponding battle flag bit.
+ * r1_in is passed through on early-exit paths (callee overwrites it in practice). */
+static struct FreezeResult check_navi_freeze(u32 r1_in) {
+    u32 r1 = r1_in;
+
+    /* If time is stopped, the freeze check is irrelevant – bail out. */
+    if (time_is_stopped(&r1))
+        return (struct FreezeResult){ 0, r1 };
+
+    /* If the battle already ended, same early exit. */
+    if (battle_is_over(&r1))
+        return (struct FreezeResult){ 0, r1 };
+
+    /* Player navi (index 0) must have freeze status 0x17 or 0x18,
+     * or else check enemy navi (index 1) for the same values.
+     * Neither matching → skip the bit-2 check and go straight to bit-0x10 check. */
+    u32 pstat = get_navi_stat_byte(0, STAT_BYTE);
+    bool any_freeze = (pstat == STAT_FREEZE_1 || pstat == STAT_FREEZE_2);
+
+    if (!any_freeze) {
+        u32 estat = get_navi_stat_byte(1, STAT_BYTE);
+        any_freeze = (estat == STAT_FREEZE_1 || estat == STAT_FREEZE_2);
+    }
+
+    /* Path A: at least one navi has freeze status – check FLAG_FREEZE (bit 1). */
+    if (any_freeze) {
+        r1 = FLAG_FREEZE;
+        u32 flags = get_battle_flags();
+        if (flags & FLAG_FREEZE)
+            return (struct FreezeResult){ 1, FLAG_FREEZE };
+        /* Bit not set – fall through to the slowdown check. */
+    }
+
+    /* Path B: check FLAG_SLOWDOWN (bit 4). */
+    r1 = FLAG_SLOWDOWN;
+    u32 flags = get_battle_flags();
+    if (flags & FLAG_SLOWDOWN)
+        return (struct FreezeResult){ 1, FLAG_SLOWDOWN };
+
+    return (struct FreezeResult){ 0, FLAG_SLOWDOWN };
+}
+
+/* sub_800A1D0(r6, r10) -> r0 (freeze active), r1, flags nz */
+Next sub_800A1D0(void) {
+    struct FreezeResult res = check_navi_freeze(R1);
+    R0 = res.active;
+    R1 = res.mask;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_setFlags ── */
 /* battle_setFlags(r0 = flag bits):
  * Sets the given bits in the battle state's flags halfword
@@ -801,6 +897,161 @@ Next battle_getNaviStatsByte_800A540(void) {
         R1 = arg1;
         GUEST_CALL(GetCurPETNaviStatsByte);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800A570 ── */
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_data(u32 chip_id) {
+    R0 = chip_id;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls ShuffleHwordList_SecondaryRNG outside this file, which has no typed C interface yet */
+static void shuffle_hword_list(u32 list_ptr, u32 count, u32 count_copy) {
+    R0 = list_ptr;
+    R1 = count;
+    R2 = count_copy;
+    GUEST_CALL(ShuffleHwordList_SecondaryRNG);
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode_sub_800A570(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls GetPositiveSignedRNGSecondary outside this file, which has no typed C interface yet */
+static u32 get_positive_rng_secondary(void) {
+    GUEST_CALL(GetPositiveSignedRNGSecondary);
+    return R0;
+}
+
+/* register form: calls sub_800A672 outside this file, which has no typed C interface yet */
+static u32 insert_chip_in_list(u32 list_ptr, u32 list_len, u16 chip, u32 pos) {
+    R0 = list_ptr;
+    R1 = list_len;
+    R2 = chip;
+    R3 = pos;
+    GUEST_CALL(sub_800A672);
+    return R0;
+}
+
+/* register form: calls CopyHalfwords outside this file, which has no typed C interface yet */
+static void copy_halfwords_gba(u32 src, u32 dest, u32 count) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    GUEST_CALL(CopyHalfwords);
+}
+
+/* register form: BIOS ARM unsigned division svc 6 – quotient in R1 after divide */
+static u32 arm_divide_quotient(u32 dividend, u32 divisor) {
+    R0 = dividend;
+    R1 = divisor;
+    swi_call(6);
+    return R1;
+}
+
+/* Shuffle a 30-chip folder: split into normal/giga pools, shuffle each,
+ * then re-insert gigas at random positions into the normal pool.
+ * folder_ptr  – address of the 30-entry (60-byte) halfword folder to shuffle
+ * reg_flag    – nonzero: skip the first non-giga entry when shuffling
+ * tag_flag    – nonzero: skip last two entries and tag-insert specific chips
+ * toolkit     – toolkit pointer (used to reach battle state in tag path) */
+static void shuffle_folder(u32 folder_ptr, u32 reg_flag, u32 tag_flag, u32 toolkit) {
+    u32 non_giga_count = 0;
+    u32 giga_count = 0;
+    u32 walk = folder_ptr;
+
+    /* Separate the 30 chips into the non-giga buffer (0x2033000) and giga buffer (0x2033040) */
+    for (int i = 0; i < 30; i++) {
+        u16 chip = LD16(walk);
+        u32 chip_id = chip & 0x1FF;
+        u32 data = get_chip_data(chip_id);
+        u8 elem = LD8(data + 7);
+        if (elem == 2) {
+            ST16(A_word_2033040 + giga_count * 2, chip);
+            giga_count++;
+        } else {
+            ST16(A_dword_2033000 + non_giga_count * 2, chip);
+            non_giga_count++;
+        }
+        walk += 2;
+    }
+
+    /* Shuffle non-giga pool (optionally excluding reg/tag boundary entries) */
+    if (non_giga_count != 0) {
+        u32 shuffle_ptr = A_dword_2033000;
+        u32 count = non_giga_count;
+        if (reg_flag != 0) {
+            shuffle_ptr = A_dword_2033000 + 2;
+            count -= 1;
+        }
+        if (tag_flag != 0) {
+            count -= 2;
+        }
+        shuffle_hword_list(shuffle_ptr, count, count);
+    }
+
+    /* Shuffle giga pool and interleave each giga into the non-giga list */
+    u32 current_len = non_giga_count;
+    if (giga_count != 0) {
+        shuffle_hword_list(A_word_2033040, giga_count, giga_count);
+
+        u32 mode = get_battle_mode_sub_800A570();
+        u32 divisor;
+        u32 offset;
+
+        if (mode != 1) {
+            /* Normal mode: spread gigas evenly among (len-12) slots, offset 10 */
+            divisor = current_len - 12;
+            offset = 10;
+        } else {
+            /* Crossover mode: 11 slots, offset 8 */
+            divisor = 11;
+            offset = 8;
+        }
+
+        for (u32 i = 0; i < giga_count; i++) {
+            u32 rng = get_positive_rng_secondary();
+            u32 quotient = arm_divide_quotient(rng, divisor);
+            u32 insert_pos = offset + quotient;
+            u16 giga_chip = LD16(A_word_2033040 + i * 2);
+            current_len = insert_chip_in_list(A_dword_2033000, current_len, giga_chip, insert_pos);
+        }
+    }
+
+    /* Tag path: randomly choose two chips to pin at the last two folder slots */
+    if (tag_flag != 0) {
+        u32 rng = get_positive_rng_secondary();
+        u32 quotient = arm_divide_quotient(rng, 19);
+        u32 chip_pos = quotient + 1;
+
+        u32 battle_state = LD32(toolkit + oToolkit_BattleStatePtr);
+        ST8(battle_state + 0x45, chip_pos);
+
+        /* Swap chosen chip into slot 28 and its neighbour into slot 29 */
+        u32 base = A_dword_2033000;
+        u32 off = chip_pos * 2;
+        u16 tmp = LD16(base + 0x38);
+        ST16(base + 0x38, LD16(base + off));
+        ST16(base + off, tmp);
+
+        off += 2;
+        tmp = LD16(base + 0x3A);
+        ST16(base + 0x3A, LD16(base + off));
+        ST16(base + off, tmp);
+    }
+
+    /* Write the 30-entry result back into the original folder */
+    copy_halfwords_gba(A_dword_2033000, folder_ptr, 0x3C);
+}
+
+/* sub_800A570(r0=folder_ptr, r1=reg_flag, r2=tag_flag, r10=toolkit) */
+Next sub_800A570(void) {
+    shuffle_folder(R0, R1, R2, R10);
     RETURN_TO_CALLER();
 }
 
@@ -1680,6 +1931,301 @@ Next encryption_applyPackList_800B110(void) {
     }
 
     R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800B144 ── */
+#define NAVA_STATS_OFF   0xC
+#define NAVA_STATS_WORDS 0x64
+#define EVENT_FLAGS_OFF  0x3C4
+#define SENTINEL         0x12345678u
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 get_battle_effects_sub_800B144(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode_sub_800B144(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u32 get_cur_pet_navi_sub_800B144(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return R0;
+}
+
+/* register form: calls GetNaviStatsAddrGivenCurPETNavi outside this file, which has no typed C interface yet */
+static u32 get_navi_stats_addr(u32 pet_id) {
+    R0 = pet_id;
+    GUEST_CALL(GetNaviStatsAddrGivenCurPETNavi);
+    return R0;
+}
+
+/* register form: calls GetNaviStats203CCE0Addr outside this file, which has no typed C interface yet */
+static u32 get_navi_stats_backup_addr(u32 index) {
+    R0 = index;
+    GUEST_CALL(GetNaviStats203CCE0Addr);
+    return R0;
+}
+
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words_sub_800B144(u32 src, u32 dest, u32 count) {
+    R0 = src; R1 = dest; R2 = count;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls CopyBytes outside this file, which has no typed C interface yet */
+static void copy_bytes(u32 src, u32 dest, u32 count) {
+    R0 = src; R1 = dest; R2 = count;
+    GUEST_CALL(CopyBytes);
+}
+
+/* register form: calls sub_80134C8 outside this file, which has no typed C interface yet */
+static void init_navi_stats_battle1(u32 navi_stats, u32 battle_buf) {
+    R0 = navi_stats; R4 = battle_buf;
+    GUEST_CALL(sub_80134C8);
+}
+
+/* register form: calls initNaviStats_WithDefaultStatsMaybe_8013438 outside this file, which has no typed C interface yet */
+static void init_navi_stats_default(u32 navi_stats, u32 battle_buf) {
+    R0 = navi_stats; R4 = battle_buf;
+    GUEST_CALL(initNaviStats_WithDefaultStatsMaybe_8013438);
+}
+
+/* register form: calls sub_8013554 outside this file, which has no typed C interface yet */
+static void init_navi_stats_battle7(u32 navi_stats, u32 battle_buf) {
+    R0 = navi_stats; R4 = battle_buf;
+    GUEST_CALL(sub_8013554);
+}
+
+/* register form: calls sub_80135E8 outside this file, which has no typed C interface yet */
+static void init_navi_stats_battle9(u32 navi_stats, u32 battle_buf) {
+    R0 = navi_stats; R4 = battle_buf;
+    GUEST_CALL(sub_80135E8);
+}
+
+/* register form: calls battle_testFlag0x40_800A8F8 outside this file, which has no typed C interface yet */
+static u32 battle_flag_0x40_test(u32 battle_buf) {
+    R4 = battle_buf;
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+    return R0;
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_163_set(void) {
+    R0 = 1; R1 = 0x63;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_81209DC outside this file, which has no typed C interface yet */
+static void get_byte_pair(u32 arg, u32 r6_val, u32 *lo, u32 *hi) {
+    R0 = arg; R6 = r6_val;
+    GUEST_CALL(sub_81209DC);
+    *lo = R0; *hi = R1;
+}
+
+/* register form: calls stub_alwaysReturnsFalse_8010D20 outside this file, which has no typed C interface yet */
+static u32 stub_false(u32 battle_buf) {
+    R4 = battle_buf;
+    GUEST_CALL(stub_alwaysReturnsFalse_8010D20);
+    return R0;
+}
+
+/* register form: calls sub_8121198 outside this file, which has no typed C interface yet */
+static u32 get_flag_163_result(void) {
+    GUEST_CALL(sub_8121198);
+    return R0;
+}
+
+/* register form: calls sub_803D0F4 outside this file, which has no typed C interface yet */
+static u32 battle_state_query(u32 val, u32 offset) {
+    R0 = val; R1 = offset;
+    GUEST_CALL(sub_803D0F4);
+    return R0;
+}
+
+/* register form: calls sub_80200A4 outside this file, which has no typed C interface yet */
+static void battle_sfx_call(u32 id) {
+    R0 = id;
+    GUEST_CALL(sub_80200A4);
+}
+
+/* Fill count halfword-slots starting at addr with the given value. */
+static void fill_halfwords(u32 addr, u32 value, u32 count) {
+    for (u32 i = 0; i < count; i++)
+        ST16(addr + i * 2, value);
+}
+
+/* Initialize the battle state buffer for the upcoming battle.
+ * r6_input: caller's R6 at entry, used for sub_81209DC calls on non-default paths. */
+static void init_battle_state(u32 toolkit_ptr, u32 r6_input) {
+    u32 buf = A_dword_203CBE0;
+    u32 navi_stats = buf + NAVA_STATS_OFF;
+
+    ST32(buf + 4, LD32(A_ePrimaryRngSeed));
+    ST32(buf + 8, LD32(LD32(toolkit_ptr + oToolkit_BattleStatePtr) + oBattleState_BattleSettings));
+
+    bool use_backup = (get_battle_effects_sub_800B144() & 0x200000) != 0;
+    bool skip_aux_copies = false;
+    u32 r6_for_pairs = r6_input;
+
+    if (use_backup) {
+        /* Copy backup Navi stats and fill weapon arrays with 0x474 */
+        u32 src = get_navi_stats_backup_addr(0);
+        copy_words_sub_800B144(src, navi_stats, NAVA_STATS_WORDS);
+        fill_halfwords(buf + 0x70, 0x474, 0x14);
+        fill_halfwords(buf + 0x98, 0x474, 0x14);
+        skip_aux_copies = true;
+    } else {
+        u32 mode = get_battle_mode_sub_800B144();
+        if (mode == 1) {
+            init_navi_stats_battle1(navi_stats, buf);
+        } else if (mode == 2 || mode == 3 || mode == 4) {
+            init_navi_stats_default(navi_stats, buf);
+        } else if (mode == 5 || mode == 8) {
+            init_navi_stats_default(navi_stats, buf);
+            u32 src = get_navi_stats_addr(0);
+            ST16(navi_stats + 0x3E, LD16(src + 0x3E));
+            u32 word = LD32(src + 0x40);
+            u32 hi = word >> 16;
+            ST32(navi_stats + 0x40, (hi << 16) | hi);
+        } else if (mode == 7) {
+            init_navi_stats_battle7(navi_stats, buf);
+        } else if (mode == 9) {
+            init_navi_stats_battle9(navi_stats, buf);
+        } else {
+            /* Default: copy current PET-Navi stats */
+            u32 pet = get_cur_pet_navi_sub_800B144();
+            u32 src = get_navi_stats_addr(pet);
+            copy_words_sub_800B144(src, navi_stats, NAVA_STATS_WORDS);
+
+            if (get_battle_effects_sub_800B144() & 8)
+                ST8(navi_stats + 0x21, 3);
+
+            /* Special handling when battle flag 0x40 set, EVENT_163 clear, no PET */
+            if (battle_flag_0x40_test(buf) && !event_flag_163_set()) {
+                if (get_cur_pet_navi_sub_800B144() == 0)
+                    ST8(navi_stats + 0x17, 0xC);
+            }
+            r6_for_pairs = navi_stats;
+        }
+    }
+
+    if (!skip_aux_copies) {
+        copy_words_sub_800B144(A_unk_20018C0, buf + 0x70, 0x28);
+        copy_words_sub_800B144(A_unk_2000260, buf + 0x98, 0x28);
+    }
+
+    /* Query byte pairs (sub_81209DC reads R6) */
+    u32 lo, hi;
+    get_byte_pair(1, r6_for_pairs, &lo, &hi);
+    ST8(buf + 0xC8, lo);
+    ST8(buf + 0xC9, hi);
+
+    get_byte_pair(1, r6_for_pairs, &lo, &hi);
+    ST8(buf + 0xCA, lo);
+    ST8(buf + 0xCB, hi);
+
+    /* Snapshot event flags into buffer */
+    copy_bytes(LD32(toolkit_ptr + oToolkit_EventFlagsPtr) + EVENT_FLAGS_OFF,
+               buf + 0xCC, 0x28);
+
+    ST32(buf + 0xF4, stub_false(buf));
+
+    /* EVENT_163 determines navi ID query result */
+    u32 flag_result;
+    if (event_flag_163_set())
+        flag_result = get_flag_163_result();
+    else
+        flag_result = 0xFF;
+    ST32(buf + 0xC0, flag_result);
+
+    ST32(buf + 0xC4, battle_state_query(flag_result, 0xC0));
+
+    ST32(buf, SENTINEL);
+    battle_sfx_call(0x3E);
+}
+
+/* sub_800B144(r10 = toolkit, r6 = caller R6) -> c v r1 r2 r3 (r4/r6/r7/r5 preserved) */
+Next sub_800B144(void) {
+    u32 saved_r4 = R4, saved_r6 = R6;
+    init_battle_state(R10, saved_r6);
+    R4 = saved_r4;
+    R6 = saved_r6;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_copyStructsIncludingBattleStats_800b2d8 ── */
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words_battle_copyStructsIncludingBattleStats_800b2d8(u32 src, u32 dest, u32 size) {
+    R0 = src; R1 = dest; R2 = size;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 get_battle_effects_battle_copyStructsIncludingBattleStats_800b2d8(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls util_nandByteArray40 outside this file, which has no typed C interface yet */
+static void nand_byte_arrays(u32 a, u32 b, u32 c) {
+    R0 = a; R1 = b; R2 = c;
+    GUEST_CALL(util_nandByteArray40_80AAB88);
+}
+
+/* Copy the working navi-stats buffer into all four battle slots, optionally
+ * the secondary buffer when a specific battle-effect bit is active, then
+ * transfer auxiliary data (RNG seed, 40-byte arrays, battle-result dwords). */
+static void copy_battle_structs(void) {
+    /* Copy working stats into the four active navi slots */
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats,        oNaviStats_Size);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats203CB10, oNaviStats_Size);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats2034A60, oNaviStats_Size);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_eBattleNaviStats203F4AC, A_eBattleNaviStats203C980_Size, oNaviStats_Size);
+
+    /* If battle-effect bit 3 is set, also propagate the secondary stats buffer */
+    if (get_battle_effects_battle_copyStructsIncludingBattleStats_800b2d8() & 8) {
+        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats0_Size,          oNaviStats_Size);
+        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats203CB10_Size,    oNaviStats_Size);
+        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats2034A60_End,     oNaviStats_Size);
+        copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F5AC, A_eBattleNaviStats203C980,         oNaviStats_Size);
+    }
+
+    /* Snapshot the RNG seed from the working copy */
+    ST32(A_ePrimaryRngSeed, LD32(A_byte_203F4A4));
+
+    /* Copy four auxiliary 0x28-byte data arrays */
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F510, A_byte_203EB00, 0x28);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F610, A_byte_203EB28, 0x28);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F538, A_unk_2036790,  0x28);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F638, A_unk_20367B8,  0x28);
+
+    /* Copy a single dword counter */
+    ST32(A_byte_203CA50, LD32(A_dword_203F568));
+
+    /* NAND three 40-byte battle-availability arrays */
+    nand_byte_arrays(A_byte_203F56C, A_byte_203F66C, A_unk_2036750);
+
+    /* Write paired dwords into the battle-result structure */
+    ST32(A_dword_203CDF0,     LD32(A_byte_203F594));
+    ST32(A_dword_203CDF0 + 4, LD32(A_byte_203F694));
+    ST32(A_dword_203CFA0,     LD32(A_dword_203F560));
+    ST32(A_dword_203CFA0 + 4, LD32(A_dword_203F660));
+    ST32(A_dword_203F7E0,     LD32(A_dword_203F564));
+    ST32(A_dword_203F7E0 + 4, LD32(A_byte_203F664));
+
+    R2 = A_dword_203F7E0; /* register form: the trailing LDR r2,[pc] pool reads leave R2 at this address for the caller */
+}
+
+/* battle_copyStructsIncludingBattleStats_800b2d8() */
+Next battle_copyStructsIncludingBattleStats_800b2d8(void) {
+    copy_battle_structs();
     RETURN_TO_CALLER();
 }
 
