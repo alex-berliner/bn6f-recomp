@@ -168,12 +168,22 @@ static void gen_state_handler_81179AE(Cpu *in, u32 (*rnd)(void)) {
     U8(work) = (u8)(rnd() % 4);
 }
 
-/* submenu_runModeHandler_811BD64 jumps through the three-entry table off_811BD7C on the mode byte at
- * [r5+8], a byte offset (0, 4 or 8); a random byte indexes past the table into the literal pools that
- * follow it (0x6C lands on sub_811BDEC). Give it a work area in EWRAM and a mode the game has. */
-static void gen_submenu_mode_811BD64(Cpu *in, u32 (*rnd)(void)) {
-    in->r[5] = 0x02010000u + (rnd() % 0x1000) * 4;
-    U8(in->r[5] + 8) = (u8)((rnd() % 3) * 4);
+/* Functions that jump through a table on a selector byte at [rB + OFF] (tools/abi/jump_tables.py writes
+ * the list): the game only stores selectors the table has; a random byte indexes past it, where the
+ * original jumps through whatever word follows (now and then code, so it returns: 0x6C sends
+ * submenu_runModeHandler_811BD64 to sub_811BDEC) and readable C that switches on the table's values does
+ * nothing. Give rB a work area in EWRAM and the selector a value the table has. */
+typedef struct { const char *name; u8 base, off, entries; } JumpTableInput;
+static const JumpTableInput kJumpTables[] = {
+#define JT(n, b, o, e) { #n, b, o, e },
+#include "jump_tables.h"
+#undef JT
+};
+static const JumpTableInput *g_jump_table;
+static void gen_jump_table(Cpu *in, u32 (*rnd)(void)) {
+    u32 area = 0x02010000u + (rnd() % 0x1000) * 4;
+    in->r[g_jump_table->base] = area;
+    U8(area + g_jump_table->off) = (u8)((rnd() % g_jump_table->entries) * 4);
 }
 
 /* scriptListRun_8001158 walks {command, argument} pairs to a zero command, queueing each through
@@ -204,7 +214,11 @@ GenFn difftest_generator(const char *name) {
     if (!strcmp(name, "SoundMainRAM_iwram_03005700")) return gen_mixer;
     if (!strcmp(name, "menu_moveCursor_811FA36")) return gen_cursor_body;
     if (!strcmp(name, "dispatchStateHandler_81179AE")) return gen_state_handler_81179AE;
-    if (!strcmp(name, "submenu_runModeHandler_811BD64")) return gen_submenu_mode_811BD64;
     if (!strcmp(name, "scriptListRun_8001158")) return gen_script_list_8001158;
+    for (size_t i = 0; i < sizeof kJumpTables / sizeof kJumpTables[0]; i++)
+        if (!strcmp(name, kJumpTables[i].name)) {
+            g_jump_table = &kJumpTables[i];
+            return gen_jump_table;
+        }
     return 0;
 }
