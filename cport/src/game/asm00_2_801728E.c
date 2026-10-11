@@ -8,6 +8,67 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_801728E ── */
+/* register form: calls battle_testFlag0x40_800A8F8 outside this file, which has no typed C interface yet */
+static bool battle_test_flag_0x40(void) {
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls getEntryPtr_2036120_1D0_802E070 outside this file, which has no typed C interface yet */
+static u8 get_entry_flag_byte(u8 alliance) {
+    R0 = alliance;
+    GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
+    return LD8(R0 + 0x50);
+}
+
+/* register form: calls battle_getStateUnk40_800A704 outside this file, which has no typed C interface yet */
+static u32 battle_get_state_unk40(void) {
+    GUEST_CALL(battle_getStateUnk40_800A704);
+    return R0;
+}
+
+/* register form: calls sprite_setColorShader outside this file, which has no typed C interface yet */
+static void sprite_set_color_shader(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sprite_setColorShader);
+}
+
+/* 32-entry palette ramp used to drive the dimmer shader. */
+static const u8 kPalRamp[32] = {
+    0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E,
+    0x10, 0x12, 0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E,
+    0x1E, 0x1C, 0x1A, 0x18, 0x16, 0x14, 0x12, 0x10,
+    0x0E, 0x0C, 0x0A, 0x08, 0x06, 0x04, 0x02, 0x00,
+};
+
+/* Apply the per-battle dimmer shader to the current object's sprite when the
+ * global test-flag 0x40 is set, the object has a non-idle current action, and
+ * its alliance's entry table byte at offset 0x50 is non-zero. The shader input
+ * is ramp[idx]*33, where idx = (battleState & 0x1F). */
+static u32 sub_801728E_core(u32 r3_in, u32 battle_obj, u32 r10_unused) {
+    (void)r10_unused;
+    if (!battle_test_flag_0x40())
+        return r3_in;
+    if (LD8(battle_obj + oBattleObject_CurAction) == 0)
+        return r3_in;
+    u8 alliance = LD8(battle_obj + oBattleObject_Alliance);
+    if (get_entry_flag_byte(alliance) == 0)
+        return r3_in;
+    u32 state = battle_get_state_unk40();
+    u8 ramp_idx = (u8)(state & 0x1F);
+    u8 ramp_val = kPalRamp[ramp_idx];
+    u32 shader_arg = (u32)ramp_val + ((u32)ramp_val << 5);
+    sprite_set_color_shader(shader_arg);
+    return r3_in;
+}
+
+Next sub_801728E(void) {
+    R3 = sub_801728E_core(R3, R5, R10);
+    SET_FLAGS_NZ(R3);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectTickTimerAndSetPhaseC_80174AA ── */
 /* battle_objectTickTimerAndSetPhaseC_80174AA (r5 = battle object): tick the object's action timer down by
  * one. When it reaches zero, reset the timer and advance the object to
@@ -29,6 +90,92 @@ Next battle_objectTickTimerAndSetPhaseC_80174AA(void) {
         ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, R0);
         SET_FLAGS_NZ(R0);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80174BE ── */
+/* register form: calls sprite_setMosaicSize outside this file, which has no typed C interface yet
+ * (original sets both r0 and r1 to the halved timer before the call) */
+static void call_sprite_setMosaicSize(u32 half) {
+    R0 = half;
+    R1 = half;
+    GUEST_CALL(sprite_setMosaicSize);
+}
+
+/* register form: calls sprite_setAlpha_8002c7a outside this file, which has no typed C interface yet */
+static u32 call_sprite_setAlpha(u32 alpha) {
+    R0 = alpha;
+    GUEST_CALL(sprite_setAlpha_8002c7a);
+    return R0;
+}
+
+/* register form: calls sprite_clearMosaic outside this file, which has no typed C interface yet */
+static void call_sprite_clearMosaic(void) {
+    GUEST_CALL(sprite_clearMosaic);
+}
+
+/* register form: calls sprite_disableAlpha outside this file, which has no typed C interface yet */
+static void call_sprite_disableAlpha(void) {
+    GUEST_CALL(sprite_disableAlpha);
+}
+
+/* register form: calls battle_ClearAllianceTargetSlotIfSelf_802CDD0 outside this file, which has no typed C interface yet */
+static void call_battle_ClearAllianceTargetSlotIfSelf(void) {
+    GUEST_CALL(battle_ClearAllianceTargetSlotIfSelf_802CDD0);
+}
+
+/* register form: calls battle_getObjectNameID_8011020 outside this file, which has no typed C interface yet */
+static void call_battle_getObjectNameID(void) {
+    GUEST_CALL(battle_getObjectNameID_8011020);
+}
+
+/* Per-branch output: the value to leave in R0 plus the CMP operands whose subtraction
+ * reproduces the original's outgoing flags, so the adapter can apply a single SET_FLAGS. */
+typedef struct {
+    u32 r0;
+    u32 cmp_a;
+    u32 cmp_b;
+} IntroResult;
+
+/* Tick a battle object's appearance timer. While it ramps from 0 to 0x20, shrink the sprite
+ * mosaic and fade its alpha. At 0x20 the intro finishes: clear the effects, drop the alive
+ * flag, refresh the object's name, and mark the state action phase as initialized. */
+static IntroResult tick_intro(u32 object_ptr) {
+    u32 timer = (u32)LD16(object_ptr + oBattleObject_Timer) + 1;
+    ST16(object_ptr + oBattleObject_Timer, (u16)timer);
+
+    if (timer == 0x20) {
+        call_sprite_clearMosaic();
+        call_sprite_disableAlpha();
+        call_battle_ClearAllianceTargetSlotIfSelf();
+
+        u8 flags = LD8(object_ptr + oObjectHeader_Flags);
+        ST8(object_ptr + oObjectHeader_Flags, flags & (u8)~2);
+
+        call_battle_getObjectNameID();
+        ST32(object_ptr + oBattleObject_CurStateActionPhaseAndPhaseInitialized, 8);
+
+        /* Flags inherited from CMP r0,#0x20 (equal: Z=1, C=1). The trailing `mov r0,#8`
+         * does not update flags, so the outgoing state matches CMP(0x20, 0x20). */
+        IntroResult r = { 8, 0x20, 0x20 };
+        return r;
+    }
+
+    /* Mid-fade: mosaic halves each tick, alpha ramps from 0x10 toward 0. */
+    u32 half = timer >> 1;
+    call_sprite_setMosaicSize(half);
+    u32 r0 = call_sprite_setAlpha(0x10 - half);
+
+    /* Flags come from `neg r0,r0` (RSBS r0,r0,#0) where r0 had just been (half - 0x10);
+     * that's equivalent to CMP #0, (half - 0x10). R0 is the clobbered return from setAlpha. */
+    IntroResult res = { r0, 0, half - 0x10 };
+    return res;
+}
+
+Next sub_80174BE(void) {
+    IntroResult res = tick_intro(R5);
+    R0 = res.r0;
+    SET_FLAGS_CMP(res.cmp_a, res.cmp_b);
     RETURN_TO_CALLER();
 }
 

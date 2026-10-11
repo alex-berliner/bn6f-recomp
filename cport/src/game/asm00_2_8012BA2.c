@@ -505,6 +505,47 @@ Next GetCurPETNaviStatsHword(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8013AE4 ── */
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file,
+ * which has no typed C interface yet */
+static u32 get_navi_stats_byte_alliance(u32 battle_object) {
+    R0 = battle_object;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls SetBattleNaviStatsByte_AllianceFromBattleObject outside this file,
+ * which has no typed C interface yet */
+static void set_navi_stats_byte_alliance(u32 battle_object, u32 value) {
+    R0 = battle_object;
+    R1 = value;
+    GUEST_CALL(SetBattleNaviStatsByte_AllianceFromBattleObject);
+}
+
+/* Apply chip-effect alliance adjustment based on byte 0xA4 of the collision data.
+ *  - If byte 0xA4 == 0: nothing to do.
+ *  - If byte 0xA4 == 0x18 or 0x19: new alliance = min(7, byte_0xA5 + navi_stats_alliance),
+ *    but only if byte 0xA4 < 0x64 (signed). */
+static void apply_chip_alliance_effect(u32 battle_object) {
+    u32 collision = LD32(battle_object + oBattleObject_CollisionDataPtr);
+    u8  byte_a4   = LD8(collision + 0xA4);
+    if (byte_a4 == 0)
+        return;
+
+    u8 byte_a5 = LD8(collision + 0xA5);
+    if (byte_a4 == 0x18 || byte_a4 == 0x19) {
+        s32 sum = (s32)byte_a5 + (s32)get_navi_stats_byte_alliance(battle_object);
+        u32 alliance = (sum > 7) ? 7u : (u32)sum;
+        if ((s8)byte_a4 < 0x64)
+            set_navi_stats_byte_alliance(battle_object, alliance);
+    }
+}
+
+Next sub_8013AE4(void) {
+    apply_chip_alliance_effect(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiAddCounterFromCollision_8013B20 ── */
 /* battle_aiAddCounterFromCollision_8013B20(r5 = battle object):
  * Checks two bytes of the object's collision data. When byte 0xA4 reports the
@@ -541,9 +582,209 @@ Next battle_aiAddCounterFromCollision_8013B20(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8013CC4 ── */
+/* data table: per panel-change sound-effect ids, indexed by (newType*2) */
+static const u16 PanelChangeSfxTable[] = {
+    0x0000, 0x0000, 0x0000, 0x0000,   /* 0..3 */
+    0x0090, 0x0000, 0x00A4, 0x0000,   /* 4..7 */
+    0x011B, 0x0118, 0x011C, 0x01FC,   /* 8..11 */
+    0x00FC, 0x00FC, 0x00FC, 0x00FC,   /* 12..15 */
+};
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject
+ * outside this file, which has no typed C interface yet */
+static u32 battle_navi_stats_byte(u32 battle_object, u32 stat_index) {
+    R0 = battle_object;
+    R1 = stat_index;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls GetPositiveSignedRNG outside this file,
+ * which has no typed C interface yet */
+static u32 get_positive_signed_rng(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return R0;
+}
+
+/* register form: calls object_getPanelDataOffset outside this file,
+ * which has no typed C interface yet */
+static u32 object_get_panel_data_offset(u32 obj, u32 param) {
+    R0 = obj;
+    R1 = param;
+    GUEST_CALL(object_getPanelDataOffset);
+    return R0;
+}
+
+/* register form: calls object_breakPanel_dup2 outside this file,
+ * which has no typed C interface yet */
+static void object_break_panel(u32 obj, u32 param) {
+    R0 = obj;
+    R1 = param;
+    GUEST_CALL(object_breakPanel_dup2);
+}
+
+/* register form: calls object_crackPanelDup1 outside this file,
+ * which has no typed C interface yet */
+static void object_crack_panel(u32 obj, u32 param) {
+    R0 = obj;
+    R1 = param;
+    GUEST_CALL(object_crackPanelDup1);
+}
+
+/* register form: calls object_setPanelType outside this file,
+ * which has no typed C interface yet */
+static void object_set_panel_type(u32 obj, u32 param, u32 new_type) {
+    R0 = obj;
+    R1 = param;
+    R2 = new_type;
+    GUEST_CALL(object_setPanelType);
+}
+
+/* register form: calls PlaySoundEffect outside this file,
+ * which has no typed C interface yet */
+static void play_sound_effect(u32 sfx_id) {
+    R0 = sfx_id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* Navi-AI panel-change behavior. Picks an effect (cracked/broken/recolored)
+ * for the panel under the Navi's feet, gated on the Navi's type and a small
+ * random roll, then applies it and may play a sound effect. */
+static void navi_ai_change_panel(u32 obj, u32 param, u32 battle_object) {
+    u32 ai_data = LD32(battle_object + oBattleObject_AIDataPtr);
+    u32 actor_type = LD8(ai_data);
+    if (actor_type != 2)
+        return;
+
+    u32 prob = battle_navi_stats_byte(battle_object, 0x13);
+    if (prob == 0)
+        return;
+
+    u32 roll = get_positive_signed_rng() & 7;
+    prob -= 1;
+    if ((s32)roll > (s32)prob)
+        return;
+
+    u32 new_type = battle_navi_stats_byte(battle_object, 0x12);
+    u32 panel_data = object_get_panel_data_offset(obj, param);
+    u32 current_type = LD8(panel_data + oPanelData_Type);
+    if (current_type == 1 || current_type == 0)
+        return;
+
+    if (new_type == 1) {
+        object_break_panel(obj, param);
+        return;
+    }
+    if (new_type == 3) {
+        object_crack_panel(obj, param);
+        return;
+    }
+
+    object_set_panel_type(obj, param, new_type);
+    if (new_type == current_type)
+        return;
+
+    u32 sfx_id = PanelChangeSfxTable[new_type];
+    if (sfx_id == 0)
+        return;
+    play_sound_effect(sfx_id);
+}
+
+Next sub_8013CC4(void) {
+    navi_ai_change_panel(R0, R1, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_45 ── */
 /* nullsub_45: does nothing; presumably a stub for a removed feature call. */
 Next nullsub_45(void) {
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8013F1E ── */
+/* Jump table at off_8013F70, indexed by the result of
+ * GetBattleNaviStatsByte_AllianceFromBattleObject(r5, 0x16). */
+enum {
+    DAMAGE_HANDLER_NULL    = 0,  /* nullsub_46  */
+    DAMAGE_HANDLER_F82     = 1,  /* sub_8013F82  */
+    DAMAGE_HANDLER_F8C     = 2,  /* sub_8013F8C  */
+    DAMAGE_HANDLER_F96     = 3,  /* sub_8013F96  */
+};
+
+/* register form: calls object_getFlag2 outside this file, which has no typed C interface yet */
+static u32 object_getFlag2_g(u32 obj) {
+    R0 = obj;
+    GUEST_CALL(object_getFlag2);
+    return R0;
+}
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file,
+ * which has no typed C interface yet */
+static u32 get_navi_stats_byte_alliance_g(u32 obj, u32 index) {
+    R0 = obj;
+    R1 = index;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls sub_8013F82 outside this file, which has no typed C interface yet */
+static void call_sub_8013F82(void)  { GUEST_CALL(sub_8013F82); }
+/* register form: calls sub_8013F8C outside this file, which has no typed C interface yet */
+static void call_sub_8013F8C(void)  { GUEST_CALL(sub_8013F8C); }
+/* register form: calls sub_8013F96 outside this file, which has no typed C interface yet */
+static void call_sub_8013F96(void)  { GUEST_CALL(sub_8013F96); }
+
+/* Run the per-team damage handler selected by the alliance byte of the attacker. */
+static void dispatch_damage_handler(u32 handler_index) {
+    switch (handler_index) {
+        case DAMAGE_HANDLER_NULL: break;
+        case DAMAGE_HANDLER_F82:  call_sub_8013F82(); break;
+        case DAMAGE_HANDLER_F8C:  call_sub_8013F8C(); break;
+        case DAMAGE_HANDLER_F96:  call_sub_8013F96(); break;
+        default: break;
+    }
+}
+
+/* If this navi dealt panel damage this hit, run its per-team damage handler
+ * (and stamp the AI "did damage" latch). Called once per successful hit. */
+static void handle_panel_damage(u32 obj) {
+    /* Bit 0x104 in object_getFlag2 marks "this object can be damaged". */
+    if (!(object_getFlag2_g(obj) & 0x104))
+        return;
+
+    u32 collision = LD32(obj + oBattleObject_CollisionDataPtr);
+    if (LD32(collision + oCollisionData_FlagsFromCollision) == 0)
+        return;
+
+    /* Sum the three panel-damage slots (each holds two targets' damage). */
+    u32 dmg_base = collision + oCollisionData_PanelDamage1;
+    s32 total = (s32)LD32(dmg_base + 0)
+              + (s32)LD32(dmg_base + 4)
+              + (s32)LD32(dmg_base + 8);
+    if (total == 0)
+        return;
+
+    u32 ai = LD32(obj + oBattleObject_AIDataPtr);
+    u8 prevent_anim = LD8(obj + oBattleObject_PreventAnim);
+
+    /* Update the AI's "we hit something" latch:
+     *   normal path  -> reset to 0
+     *   anim-locked  -> set to 1, unless it's already 1 (then bail) */
+    if (prevent_anim == 0) {
+        ST8(ai + oAIData_Unk_1c, 0);
+    } else {
+        if (LD8(ai + oAIData_Unk_1c) != 0)
+            return;
+        ST8(ai + oAIData_Unk_1c, 1);
+    }
+
+    dispatch_damage_handler(
+        get_navi_stats_byte_alliance_g(obj, 0x16));
+}
+
+Next sub_8013F1E(void) {
+    handle_panel_damage(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1101,6 +1342,69 @@ Next battle_isObjectInSpecialAiState_80159A2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80159C6 ── */
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 call_GetBattleMode_sub_80159C6(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 call_GetBattleNaviStatsByte_AllianceFromBattleObject(u32 battle_obj, u32 offset) {
+    R0 = battle_obj;
+    R1 = offset;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls sub_801443C outside this file, which has no typed C interface yet */
+static void call_sub_801443C(void) {
+    GUEST_CALL(sub_801443C);
+}
+
+/* Decide whether the alliance battle object is allowed to cross over/beast-out. */
+static u32 sub_80159C6_impl(u32 battle_obj) {
+    if (battle_obj == 0)
+        return 0;
+
+    u32 battle_mode = call_GetBattleMode_sub_80159C6();
+    if (battle_mode != 1) {
+        u32 ai_data = LD32(battle_obj + oBattleObject_AIDataPtr);
+        u32 unk_0f = LD8(ai_data + oAIData_Unk_0f);
+        if (unk_0f != 0)
+            return 0;
+        ST8(ai_data + oAIData_Unk_0f, 2);
+
+        if (call_GetBattleNaviStatsByte_AllianceFromBattleObject(
+                battle_obj, oNaviStats_BeastOutCounter) != 0)
+            return 0;
+
+        call_sub_801443C();
+    }
+
+    u32 transformation = call_GetBattleNaviStatsByte_AllianceFromBattleObject(
+        battle_obj, oNaviStats_Transformation);
+    if ((s32)transformation < 0xB)
+        return 0;
+    if ((s32)transformation > 0x18)
+        return 0;
+
+    if (call_GetBattleMode_sub_80159C6() != 1) {
+        if (call_GetBattleNaviStatsByte_AllianceFromBattleObject(
+                battle_obj, oNaviStats_BeastOutCounter) != 0)
+            return 0;
+    }
+
+    return 1;
+}
+
+/* sub_80159C6(r0 = battle object) -> r0, sets NZ from the returned value */
+Next sub_80159C6(void) {
+    R0 = sub_80159C6_impl(R0);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_TickAIDataTimer0f_8015A16 ── */
 /* battle_TickAIDataTimer0f_8015A16(r0 = battle object):
  * Counts down the one-byte timer at oAIData_Unk_0f of the object's AI data.
@@ -1393,6 +1697,234 @@ Next battle_object_runPhaseHandler_8016396(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80163B4 ── */
+/* register form: calls list_tryAddUniqueEntry_800AA1A outside this file, which has no typed C interface yet */
+static void list_tryAddUniqueEntry(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(list_tryAddUniqueEntry_800AA1A);
+}
+
+/* register form: calls battle_getStateUnk5c_800139A outside this file, which has no typed C interface yet */
+static u32 battle_getStateUnk5c(void) {
+    GUEST_CALL(battle_getStateUnk5c_800139A);
+    return R0;
+}
+
+/* register form: calls sub_800AA06 outside this file, which has no typed C interface yet */
+static u32 sub_800AA06_query(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_800AA06);
+    return R0;
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound(u32 id) {
+    R0 = id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls sprite_setAlpha_8002c7a outside this file, which has no typed C interface yet.
+ * Sprite alpha sets R1; the original returns immediately after, leaving whatever the callee put in R1. */
+static u32 sprite_setAlpha_capture(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sprite_setAlpha_8002c7a);
+    return R1;
+}
+
+/* On the "join same alliance" path the ORR sets r0 = oldFlags | 2, with r1 preloaded to 2.
+ * The original's pop path leaves r0 = 8 (the value just written) and r1 = 2. */
+static u8 join_same_alliance(u32 obj) {
+    u8 flags = LD8(obj) | (u8)2;
+    ST8(obj, flags);
+    ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 8);
+    return 8;
+}
+
+/* Common fall-through path: clear bit 1 of oObjectHeader_Flags. The original sets r1 = 2
+ * before the BIC, so the function exits with r1 = 2 regardless of r0. */
+static u8 clear_flag_bit1(u32 obj) {
+    u8 flags = LD8(obj);
+    u8 cleared = flags & (u8)~2;
+    ST8(obj, cleared);
+    return cleared;
+}
+
+typedef struct { u32 r0; u32 r1; } R0R1;
+
+/* Phase-initialization step for a battle object.
+ *
+ * - phaseInitialized == 0 (first entry):
+ *     - if the object's alliance differs from the opposing side (`oBattleState_Unk_0d`),
+ *       try to add a unique entry to the battle list, store 4 into phaseInitialized,
+ *       and fall through to the common BIC path;
+ *     - else set bit 1 of oObjectHeader_Flags, write 8 to
+ *       oBattleObject_CurPhaseAndPhaseInitialized, and return.
+ * - phaseInitialized != 0 (ongoing handling):
+ *     - if battle-state bit 0 is set and sub_800AA06(0) is nonzero, play the join
+ *       sound effect (0x94), set Timer = 2, Timer2 = 0x10, sprite alpha = 0,
+ *       set CurPhase = 4, and return (r1 left as sprite_setAlpha left it).
+ *     - otherwise fall through to the common BIC path.
+ *
+ * On the fall-through paths, r1 is 2 (set by `mov r1, #2` before the BIC). On the
+ * same-alliance path, r1 is also 2 (set by `mov r1, #2` before the ORR). The
+ * final returns mirror those immediate-r1 setups. */
+static R0R1 sub_80163B4_typed(u32 obj, u32 toolkit) {
+    u8 phaseInit = LD8(obj + oBattleObject_PhaseInitialized);
+    R0R1 out;
+
+    if (phaseInit == 0) {
+        u32 battleState = LD32(toolkit + oToolkit_BattleStatePtr);
+        u8 allianceObj      = LD8(obj + oBattleObject_Alliance);
+        u8 opposingAlliance = LD8(battleState + oBattleState_Unk_0d);
+
+        if (allianceObj == opposingAlliance) {
+            out.r0 = join_same_alliance(obj);
+            out.r1 = 2;
+            return out;
+        }
+        list_tryAddUniqueEntry(0);
+        ST8(obj + oBattleObject_PhaseInitialized, 4);
+        /* fall through to common BIC path */
+    } else {
+        if ((battle_getStateUnk5c() & 1u) != 0 && sub_800AA06_query(0) != 0) {
+            play_sound(0x94);
+            ST16(obj + oBattleObject_Timer, 2);
+            ST16(obj + oBattleObject_Timer2, 0x10);
+            out.r1 = sprite_setAlpha_capture(0);
+            ST8(obj + oBattleObject_CurPhase, 4);
+            out.r0 = 4;
+            return out;
+        }
+        /* fall through to common BIC path */
+    }
+
+    /* Common fall-through: clear bit 1 of oObjectHeader_Flags; r1 was set to 2
+     * immediately before the BIC, so the function exits with r1 = 2. */
+    out.r0 = clear_flag_bit1(obj);
+    out.r1 = 2;
+    return out;
+}
+
+Next sub_80163B4(void) {
+    R0R1 result = sub_80163B4_typed(R5, R10);
+    R0 = result.r0;
+    R1 = result.r1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801641A ── */
+/* register form: calls sprite_setMosaicSize outside this file, which has no typed C interface yet */
+static void sprite_setMosaicSize_guest(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sprite_setMosaicSize);
+}
+
+/* register form: calls sprite_setAlpha_8002c7a outside this file, which has no typed C interface yet */
+static void sprite_setAlpha_8002c7a_guest(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_setAlpha_8002c7a);
+}
+
+/* register form: calls sprite_disableAlpha outside this file, which has no typed C interface yet */
+static void sprite_disableAlpha_guest(void) {
+    GUEST_CALL(sprite_disableAlpha);
+}
+
+/* register form: calls sprite_clearMosaic outside this file, which has no typed C interface yet */
+static void sprite_clearMosaic_guest(void) {
+    GUEST_CALL(sprite_clearMosaic);
+}
+
+/* register form: calls sub_800AA40 outside this file, which has no typed C interface yet.
+ * Original captures this callee's final C/V (they survive to the end of
+ * sub_801641A because MOV/STRH don't touch flags), so forward them. */
+static u32 sub_800AA40_guest(u32 r0, bool *out_c, bool *out_v) {
+    R0 = r0;
+    GUEST_CALL(sub_800AA40);
+    *out_c = CARRY_FLAG();
+    *out_v = OVERFLOW_FLAG();
+    return R1;
+}
+
+struct sub_801641A_out {
+    u32 r0;
+    u32 r1;
+    bool c;
+    bool v;
+};
+
+/* Per-tick update for a battle object. Decrements the frame timer; when
+ * it elapses, plays the hit-flash (mosaic + alpha) for `timer2` frames
+ * with the in-flash flag set, then on expiry clears the flash effects,
+ * runs sub_800AA40(0), and advances the phase word to 8. */
+static struct sub_801641A_out sub_801641A_impl(u32 r5, u32 in_r1) {
+    struct sub_801641A_out res;
+    res.r1 = in_r1;
+
+    u16 timer    = LD16(r5 + oBattleObject_Timer);
+    u16 old_time = timer;
+    timer -= 1;
+    ST16(r5 + oBattleObject_Timer, timer);
+
+    if (timer != 0) {
+        /* SUBS r0, #1: r0 = old_time - 1 = timer.
+         * C = NOT borrow = (old_time >= 1 unsigned).
+         * V = 0 (old_time came from a u16, can't hit INT_MIN). */
+        res.r0 = timer;
+        res.c  = (old_time >= 1);
+        res.v  = false;
+        return res;
+    }
+
+    /* Frame timer elapsed: reload it and tick the flash duration. */
+    ST16(r5 + oBattleObject_Timer, 2);
+    u16 timer2 = LD16(r5 + oBattleObject_Timer2);
+    timer2 -= 1;
+    ST16(r5 + oBattleObject_Timer2, timer2);
+
+    if (timer2 == 0) {
+        /* Flash done: clear visual effects, run sub_800AA40(0), then
+         * store 8 into the phase word. Final flags = sub_800AA40's. */
+        sprite_disableAlpha_guest();
+        sprite_clearMosaic_guest();
+        res.r1 = sub_800AA40_guest(0, &res.c, &res.v);
+        ST16(r5 + oBattleObject_CurPhaseAndPhaseInitialized, 8);
+        res.r0 = 8;
+        return res;
+    }
+
+    /* Mid-flash frame: mosaic = timer2, alpha = 0x10 - timer2.
+     *   sub r0, #0x10 ; neg r0, r0  =>  r0 = -(timer2 - 0x10).
+     * Final ORR r0, r1 sets NZ from result and clears C, V. */
+    sprite_setMosaicSize_guest(timer2, timer2);
+    u32 alpha = (u32)(-(s32)((s32)timer2 - 0x10));
+    sprite_setAlpha_8002c7a_guest(alpha);
+    u8 flags = LD8(r5 + oObjectHeader_Flags) | 0x2;
+    ST8(r5 + oObjectHeader_Flags, flags);
+    res.r0 = flags;
+    res.r1 = 2;
+    res.c  = false;
+    res.v  = false;
+    return res;
+}
+
+Next sub_801641A(void) {
+    struct sub_801641A_out res = sub_801641A_impl(R5, R1);
+    R0 = res.r0;
+    R1 = res.r1;
+    SET_FLAGS_NZ(R0);
+    /* Original's tail differs per path: SUBS (C depends on old_time) for
+     * the early return, ORR (C=V=0) mid-flash, or the callee's tail on
+     * phase advance. SET_FLAGS_NZ fixes N/Z from R0; C/V are forwarded
+     * from the typed function because no single SET_FLAGS_* macro can
+     * reproduce all three paths' final flags. */
+    cpu.c = res.c;
+    cpu.v = res.v;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectIntroEntryAndActedSetup_8016460 ── */
 /* battle_objectIntroEntryAndActedSetup_8016460 — turn-start setup for one battle object (r5 = object, r10 = toolkit).
  *
@@ -1502,6 +2034,108 @@ Next battle_objectUpdateDispatchPhase_80165C2(void) {
     else                                   /* phase 1: the only other entry */
         GUEST_CALL(sub_801664E);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80165F8 ── */
+/* register form: calls object_clearCollisionRegion outside this file, which has no typed C interface yet */
+static void clear_collision_region(void) {
+    GUEST_CALL(object_clearCollisionRegion);
+}
+
+/* register form: calls battle_ClearObjectCollisionResult_801A5E2 outside this file, which has no typed C interface yet */
+static void clear_object_collision_result(void) {
+    GUEST_CALL(battle_ClearObjectCollisionResult_801A5E2);
+}
+
+/* register form: calls battle_resetCollisionState_80101C4 outside this file, which has no typed C interface yet */
+static void reset_collision_state(void) {
+    GUEST_CALL(battle_resetCollisionState_80101C4);
+}
+
+/* register form: calls releaseSlotByValue_801DC36 outside this file, which has no typed C interface yet */
+static void release_slot_by_value(void) {
+    GUEST_CALL(releaseSlotByValue_801DC36);
+}
+
+/* register form: calls battle_clearAIDataAndBarrier_801A7F4 outside this file, which has no typed C interface yet */
+static void clear_ai_data_and_barrier(void) {
+    GUEST_CALL(battle_clearAIDataAndBarrier_801A7F4);
+}
+
+/* register form: calls GetVerActorTyAndAIIdx_80182B4 outside this file, which has no typed C interface yet */
+static const u8 *get_ver_actor_ty_and_ai_idx(u16 enemy_idx) {
+    R0 = enemy_idx;
+    GUEST_CALL(GetVerActorTyAndAIIdx_80182B4);
+    return (const u8 *)(u32)R0;
+}
+
+/* register form: calls sub_802D644 outside this file, which has no typed C interface yet */
+static void dispatch_actor_init_low(u8 ai_index) {
+    R0 = ai_index;
+    GUEST_CALL(sub_802D644);
+}
+
+/* register form: calls sub_802D65E outside this file, which has no typed C interface yet */
+static void dispatch_actor_init_high(u8 ai_index) {
+    R0 = ai_index;
+    GUEST_CALL(sub_802D65E);
+}
+
+/* register form: calls relatedToIsBattleOver_800A11C outside this file, which has no typed C interface yet */
+static void maybe_signal_battle_over(void) {
+    GUEST_CALL(relatedToIsBattleOver_800A11C);
+}
+
+/* register form: calls sub_802EF5C outside this file, which has no typed C interface yet */
+static void post_teardown_hook(void) {
+    GUEST_CALL(sub_802EF5C);
+}
+
+/* Tear down one battle object (r5 = object ptr): clear collision region, drop slot,
+ * blank chip/related-object state, clear AI and barrier, dispatch a version-specific
+ * actor init based on the enemy's (version, actor_type, ai_index) record, optionally
+ * signal the battle is over (when param2 < 1), then run a post-teardown hook and
+ * set curPhaseAndPhaseInitialized = 4. Returns 4. */
+static u32 teardown_battle_object(u32 obj_ptr) {
+    clear_collision_region();
+    clear_object_collision_result();
+    reset_collision_state();
+    release_slot_by_value();
+
+    ST8(obj_ptr + oBattleObject_ChipsHeld, 0);
+    ST16(obj_ptr + oBattleObject_Chip, (u16)(0 - 1));
+    ST32(obj_ptr + oBattleObject_RelatedObject1Ptr, 0);
+
+    clear_ai_data_and_barrier();
+
+    u16 name_id = LD16(obj_ptr + oBattleObject_NameID);
+    const u8 *rec = get_ver_actor_ty_and_ai_idx(name_id);
+
+    u8 version = LD8(rec + 0);
+    u8 actor_type = LD8(rec + 1);
+
+    if (actor_type == 0) {
+        u8 ai_index = LD8(rec + 2);
+        if (version < 4) {
+            dispatch_actor_init_low(ai_index);
+        } else {
+            dispatch_actor_init_high(ai_index);
+        }
+    }
+
+    if (LD8(obj_ptr + oBattleObject_Param2) < 1) {
+        maybe_signal_battle_over();
+    }
+
+    post_teardown_hook();
+    ST16(obj_ptr + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+    return 4;
+}
+
+Next sub_80165F8(void) {
+    R0 = teardown_battle_object(R5);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -1675,5 +2309,99 @@ Next battle_objectCountdownPhaseOrReset_8016E3C(void) {
     SET_FLAGS_NZ(R0);
     ST32(R5 + oBattleObject_Unk_5c, R0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8016E64 ── */
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static u32 call_sprite_update(void) {
+    GUEST_CALL(sprite_update);
+    return R0;
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_sprite_setAnimation(u32 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_sprite_loadAnimationData(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
+static bool call_battle_isTimeStop(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls battle_isPaused outside this file, which has no typed C interface yet */
+static bool call_battle_isPaused(void) {
+    GUEST_CALL(battle_isPaused);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 call_GetBattleMode_sub_8016E64(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls object_getFlag outside this file, which has no typed C interface yet */
+static u32 call_object_getFlag(void) {
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+/* register form: calls object_getFlag2 outside this file, which has no typed C interface yet */
+static u32 call_object_getFlag2(void) {
+    GUEST_CALL(object_getFlag2);
+    return R0;
+}
+
+/* Drives one battle object's sprite animation, gated on several conditions.
+ * Side effect: writes oBattleObject_CurAnimCopy, calls sprite_update. */
+static void update_battle_object_sprite(u32 obj) {
+    /* TST header_flags, #8  -> bne early-out (no r0/r1/flags change in adapter) */
+    u8 header_flags = LD8(obj + oObjectHeader_Flags);
+    if (header_flags & 8)
+        return;
+
+    if (call_battle_isTimeStop())                 /* bne early-out */
+        return;
+
+    u16 name_id = LD16(obj + oBattleObject_NameID);
+    if (name_id < 0x49 || name_id > 0x4E) {
+        u16 hp = LD16(obj + oBattleObject_HP);
+        if (hp == 0)                              /* TST hp,hp -> beq early-out */
+            return;
+    }
+
+    u32 mode = call_GetBattleMode_sub_8016E64();
+    if (mode != 1) {                              /* CMP #1 -> beq skip_pause */
+        if (call_battle_isPaused())               /* bne early-out */
+            return;
+    }
+
+    /* TST getFlag, #0x80110C00 */
+    if (call_object_getFlag() & 0x80110C00)
+        return;
+    /* TST getFlag2, #8 */
+    if (call_object_getFlag2() & 8)
+        return;
+
+    u8 cur_anim = LD8(obj + oBattleObject_CurAnim);
+    if (cur_anim != LD8(obj + oBattleObject_CurAnimCopy)) {
+        call_sprite_setAnimation(cur_anim);
+        call_sprite_loadAnimationData();
+        ST8(obj + oBattleObject_CurAnimCopy, cur_anim);
+    }
+
+    call_sprite_update();
+}
+
+Next sub_8016E64(void) {
+    update_battle_object_sprite(R5);
     RETURN_TO_CALLER();
 }
