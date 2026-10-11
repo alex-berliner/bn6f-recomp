@@ -227,6 +227,42 @@ Next sub_8123558(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8123574 ── */
+/* sub_8123574: Initialize/advance some battle object state.
+ *
+ * Sets the object's mode field to 2, runs a chain of setup helpers, kicks off
+ * a fade/sound effect via sub_811B314(1, 3), and then if the screen is not
+ * currently fading transitions the object's sub-state to 0xC / 0.
+ *
+ * Inputs:  r5 = object pointer, r6, r10, lr
+ * Outputs: r5 preserved (caller-visible scratch).
+ * Clobbers: r0-r3, lr, nz/c/v.
+ */
+Next sub_8123574(void) {
+    /* Mode = 2. */
+    ST16(R5 + 0x20, 2);
+
+    /* Chain of setup routines (they read r5 implicitly via R5). */
+    GUEST_CALL(sub_8123BC0);
+    GUEST_CALL(sub_8123BE0);
+    GUEST_CALL(sub_8123C00);
+    GUEST_CALL(sub_8123D70);
+
+    /* sub_811B314(1, 3). */
+    R0 = 1;
+    R1 = 3;
+    GUEST_CALL(sub_811B314);
+
+    /* If a screen fade is already active, leave the sub-state alone. */
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        ST8(R5 + 2, 0xC);
+        ST8(R5 + 3, 0);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8123644 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool query_screen_fade(u32 *out_r0) {
@@ -511,6 +547,43 @@ Next sub_812368C(void) {
     u32 sr4 = R4, sr5 = R5, sr6 = R6, sr7 = R7, sr10 = R10;
     pet_navi_menu_frame(R2, R3, R4, R5, R6, R7, R10);
     R4 = sr4; R5 = sr5; R6 = sr6; R7 = sr7; R10 = sr10;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8123790 ── */
+/* sub_8123790: chatbox state-restore triggered while a screen fade is active.
+ * inputs:  r5, r10, lr
+ * outputs: r5
+ * clobbers: nz, c, v, r0, r1, r2, r3, lr
+ * preserved: r4, r5, r6, r7
+ *
+ * When a fade is in progress, advance the chatbox step, then copy the
+ * chatbox object at r5 into unk_2037780 (0x80 bytes), notify the
+ * subsystem using the slot byte at +0xC from r5, and zero the snapshot
+ * buffer (0x80 bytes). */
+Next sub_8123790(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    if (ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    GUEST_CALL(chatbox_8040818);
+
+    /* CopyWords(src=r5, dst=unk_2037780, size=0x80). */
+    R0 = R5;
+    R1 = A_unk_2037780;
+    R2 = 0x80;
+    GUEST_CALL(CopyWords);
+
+    /* Notify the subsystem using the chatbox slot index byte at r5+0xC. */
+    R0 = LD8(R5 + 0xC);
+    GUEST_CALL(sub_8049DDC);
+
+    /* ZeroFillByWord(r5, 0x80) — clear the chatbox object itself. */
+    R0 = R5;
+    R1 = 0x80;
+    GUEST_CALL(ZeroFillByWord);
+
     RETURN_TO_CALLER();
 }
 

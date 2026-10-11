@@ -1054,6 +1054,34 @@ Next pet_prepareMenuOnReturn_811F6C0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811F6E0 ── */
+Next sub_811F6E0(void) {
+    /* Open the PET submenu: clear its 0x80-byte buffer, seed default state,
+     * and remember the current map group so it can be restored on close. */
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    u32 submenu = LD32(R10 + oToolkit_SubmenuPtr);
+    u32 game_state_ptr_addr = R10 + oToolkit_GameStatePtr;
+
+    R0 = submenu;
+    R1 = 0x80;
+    GUEST_CALL(ZeroFillByWord);
+
+    R5 = A_ePETMenuData;
+
+    ST8(submenu, 0x10);
+    ST8(submenu + 0xD, 1);
+
+    u32 game_state = LD32(game_state_ptr_addr);
+    u16 map_group = LD16(game_state + oGameState_MapGroup);
+    ST16(game_state + oGameState_LastMapGroup, map_group);
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── pet_menuExitToMap_811F708 ── */
 /* pet_menuExitToMap_811F708: begin the "exit to map" fade and reset the PET menu.
  * Runs the shared fade-entry helper first, sets the game state's map-enter

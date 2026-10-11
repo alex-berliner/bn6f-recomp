@@ -857,6 +857,48 @@ Next sub_813388C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8133944 ── */
+Next sub_8133944(void) {
+    /* State-query gate: if sub_8133C0C returns non-zero (state mismatch), skip the
+     * input-handling block and go straight to the tail-end draws/updates. */
+    GUEST_CALL(sub_8133C0C);
+    if (ZERO_FLAG()) {
+        /* sub_81347A4 gates the joypad cursor movement block. If non-zero, skip it. */
+        GUEST_CALL(sub_81347A4);
+        if (ZERO_FLAG()) {
+            u32 toolkit   = R10;
+            u32 joypadPtr = LD32(toolkit + oToolkit_JoypadPtr);
+            u32 held      = LD16(joypadPtr + oJoypad_LowSensitivityHeld);
+            u32 cursor    = LD16(R5 + 0x34);
+            R0 = held;
+            R1 = 7;
+            R2 = 1;
+            R3 = cursor;
+            GUEST_CALL(menu_moveCursorUpDown_811FA22);
+            ST16(R5 + 0x34, (u16)R0);
+        }
+        GUEST_CALL(sub_813471C);
+        GUEST_CALL(sub_8134740);
+    }
+
+    /* Always-run scene updates. */
+    GUEST_CALL(sub_8134594);
+    GUEST_CALL(sub_81345B0);
+    GUEST_CALL(sub_8134538);
+    GUEST_CALL(sub_8134548);
+    GUEST_CALL(sub_81341A0);
+    GUEST_CALL(sub_8134310);
+    GUEST_CALL(sub_81353DC);
+
+    /* Two palette/OBJ-bank setups: slot 5 in low (0), slot 6 in high (1). */
+    R0 = 5; R1 = 0;
+    GUEST_CALL(sub_81353F0);
+    R0 = 6; R1 = 1;
+    GUEST_CALL(sub_81353F0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_813399C ── */
 /* sub_813399C: virtual-method dispatch on the object at r5, followed by a
  * fixed tail call.

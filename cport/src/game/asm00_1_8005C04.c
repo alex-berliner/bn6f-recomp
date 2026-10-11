@@ -314,6 +314,41 @@ Next sub_8005DBE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── subsystem_launchMail ── */
+/* subsystem_launchMail(r0 = ?, r10 = toolkit, lr = ret):
+ *   inputs:  r0 r10 lr
+ *   outputs: r2 r3 r4 r5
+ *   clobbers: nz c v r0 r1 lr
+ *   preserved: r4 r5
+ *
+ * Hand off the player's current overworld position to the mail subsystem:
+ * copy X/Y/Z and facing from the overworld player object into the game
+ * state, then request the mail subsystem (0x34) and a screen fade. Returns 0. */
+Next subsystem_launchMail(void) {
+    GUEST_CALL(sub_8127990);
+
+    u32 toolkit = R10;
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 playerObj = LD32(gameState + oGameState_OverworldPlayerObjectPtr);
+
+    /* mirror player position/heading into the game state */
+    ST32(gameState + oGameState_PlayerX,      LD32(playerObj + 0x1C));
+    ST32(gameState + oGameState_PlayerY,      LD32(playerObj + 0x20));
+    ST32(gameState + oGameState_PlayerZ,      LD32(playerObj + 0x24));
+    ST8 (gameState + oGameState_FacingDirectionAfterWarp, LD8(playerObj + 0x10));
+
+    /* ask the game loop to switch to subsystem 0x34 (mail) */
+    ST8(gameState + oGameState_SubsystemIndex, 0x34);
+
+    /* fade the screen out (palette target 0xC, frames 0x10) */
+    R0 = 0x0C;
+    R1 = 0x10;
+    GUEST_CALL(SetScreenFade);
+
+    R0 = 0;
+    RETURN_TO_CALLER();
+}
+
 /* ── warp_ArmPendingTransition_8005EEC ── */
 /* warp_ArmPendingTransition_8005EEC(r0 = warp data ptr, r1 = warp index, r2 = map group transition type,
  *              r10 = toolkit):

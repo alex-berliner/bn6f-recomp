@@ -8,6 +8,62 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_810D970 ── */
+/* sub_810D970: Battle object per-phase hook.
+ * On phase 0, clear the +0xC extra-var slot; if the +8 extra-var pointer is
+ * non-null, reset the object's frame timer. Then dispatch the standard
+ * per-phase update. */
+Next sub_810D970(void) {
+    if ((u8)LD8(R5 + oBattleObject_CurPhase) == 0) {
+        ST32(R5 + oBattleObject_ExtraVars + 0xC, 0);
+        R0 = LD32(R5 + oBattleObject_ExtraVars + 8);
+        SET_FLAGS_NZ(R0);
+        if (!ZERO_FLAG()) {
+            GUEST_CALL(battle_ResetObjectTimerTo8_80C4072);
+        }
+    }
+    GUEST_CALL(battle_objectUpdateDispatchPhase_80165C2);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_810DA00 ── */
+/* sub_810DA00: AI helper that runs a forward probe from an object.
+ * Inputs:  r5 = battle object pointer, r6 = AI state pointer
+ * Outputs: r1, r5
+ * If the probe succeeds (sub_8109708 returns nonzero), the AI sets
+ * state 0->0xC. Otherwise it writes 0 to state+2 and 8 to state+0. */
+Next sub_810DA00(void) {
+    /* SP/PC bookkeeping left to the caller (the original here pushes {lr}
+     * and pops into PC; the readable harness returns via RETURN_TO_CALLER()). */
+
+    /* object_getFrontDirection() -> forward panel delta */
+    R0 = 0;
+    GUEST_CALL(object_getFrontDirection);
+    u32 forward = R0;
+
+    /* panel X/Y of the object, plus the ExtraVars+4 word */
+    u32 panelX  = LD8(R5 + oBattleObject_PanelX);
+    u32 panelY  = LD8(R5 + oBattleObject_PanelY);
+    u32 extra4  = LD32(R5 + oBattleObject_ExtraVars + 4);
+
+    /* probe (panelX + forward, panelY, extra4) */
+    R0 = panelX + forward;
+    R1 = panelY;
+    R2 = extra4;
+    GUEST_CALL(sub_8109708);
+
+    if (R0 != 0) {
+        /* probe hit: move to AI state 0x0C */
+        ST8(R6 + oAIState_Unk_00, 0x0C);
+    } else {
+        /* probe missed: clear state+2, transition to state 0x08 */
+        ST8(R6 + oAIState_Unk_02, (u8)R0);
+        ST8(R6 + oAIState_Unk_00, 0x08);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_DealQueuedAttackDamage_8112F34 ── */
 /* ai_DealQueuedAttackDamage_8112F34(r7 = AI attack vars):
  * Fire one of the AI opponent's queued attacks: hand the attack's target

@@ -293,6 +293,61 @@ Next battle_aiWindRackAttackStep_80EBFF4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80EC81E ── */
+/* sub_80EC81E(r5 = battle object, r7 = AI attack vars):
+ * Tick the wind-up timer on the AI attack state. On first entry (when the flag
+ * byte at Unk_01 is 0), initialise the timer to 30 frames and set Unk_01 = 4.
+ * Each call decrements the timer; once it underflows, clear the battle object's
+ * "related object 1" pointer and the AI data's Unk_68 field, then leave the
+ * attack state via object_exitAttackState. */
+Next sub_80EC81E(void) {
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        ST16(R7 + oAIAttackVars_Unk_10, 0x1E);
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+    }
+
+    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+    ST16(R7 + oAIAttackVars_Unk_10, timer - 1);
+
+    /* BGE after SUBS r0, #1: branches when the pre-decrement value was >= 1
+     * as a signed 32-bit quantity (LDRH zero-extends, so the high half is 0). */
+    if ((s32)timer >= 1) {
+        RETURN_TO_CALLER();
+    }
+
+    R0 = 0;
+    ST32(R5 + oBattleObject_RelatedObject1Ptr, R0);
+    R1 = LD32(R5 + oBattleObject_AIDataPtr);
+    ST32(R1 + oAIData_Unk_68, 0);
+    GUEST_CALL(object_exitAttackState);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80EC844 ── */
+/* sub_80EC844: AI attack handler. Looks up a value in a table indexed by an AI byte,
+ * updates a counter on the battle object, and exits the attack state. */
+Next sub_80EC844(void) {
+    /* Index table at byte_80EC870 by (AI byte * 2), read the entry as a u16. */
+    u8 aiByte = (u8)LD8(R7 + oAIAttackVars_Unk_03);
+    u16 amount = LD16(A_byte_80EC870 + (aiByte * 2));
+
+    /* Attempt to apply the value; result is ignored on failure. */
+    R0 = amount;
+    R1 = 1;
+    GUEST_CALL(sub_800E2FC);
+    /* Original does TST r0,r0; BNE loc_80EC85A — both paths land at the same label. */
+
+    /* Add 5 (capped) to the battle object's alliance byte, then leave attack state. */
+    R0 = (u8)LD8(R5 + oBattleObject_Alliance);
+    R1 = 5;
+    R2 = 1;
+    GUEST_CALL(tableAddSaturatedByte_800AB46);
+
+    GUEST_CALL(object_exitAttackState);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiAttackStateDispatch_80EC884 ── */
 /* The disassembly names the mode byte at offset 0 of the AI attack-vars block
  * oAIAttackVars_Unk_00_sub_80EC884; the shared header only carries the later fields, so
@@ -378,6 +433,42 @@ Next aiAttack_tickTimerAndExitWhenDone_80ECA0C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80ECAA4 ── */
+/* sub_80ECAA4(r5 = battleObject, r6 = ?, r7 = aiAttackVars):
+ * Tick an AI attack-state machine step. On entry, the AI attack vars' state byte
+ * (offset 0x01) gates a one-time initialisation of a 10-tick countdown. While
+ * the countdown is positive it just decrements; once it expires, the function
+ * clears two pointer slots and exits the current attack state via
+ * object_exitAttackState. r1 is left as it was read from the AIData pointer
+ * (callers branch on it), but since the function explicitly loads r1 we restore
+ * the same value here. */
+Next sub_80ECAA4(void) {
+    /* One-shot init: if the state byte at offset 1 is zero, kick off a 10-tick
+     * countdown (offset 0x10) and mark the state byte as in-progress (4). */
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        ST16(R7 + oAIAttackVars_Unk_10, 0xA);
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+    }
+
+    /* Decrement the countdown. */
+    u32 countdown = LD16(R7 + oAIAttackVars_Unk_10) - 1;
+    ST16(R7 + oAIAttackVars_Unk_10, (u16)countdown);
+
+    /* While the countdown is still positive, just return (r1 unchanged). */
+    if ((s32)countdown >= 0) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Countdown expired: clear related-object pointer on the battle object,
+     * clear an AIData slot, then exit the attack state. */
+    ST32(R5 + oBattleObject_RelatedObject1Ptr, 0);
+    R1 = LD32(R5 + oBattleObject_AIDataPtr);
+    ST32(R1 + oAIData_Unk_68, 0);
+    GUEST_CALL(object_exitAttackState);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80ED13E ── */
 /* register form: calls sub_80ED154 outside this file, which has no typed C interface yet */
 static void call_attack_type_handler(u32 idx, u32 target, u32 ai_vars,
@@ -440,6 +531,245 @@ static void nullsub_106_impl(void) {
  * preserved: - */
 Next nullsub_106(void) {
     nullsub_106_impl();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD27A ── */
+/* sub_80FD27A: return pointer to some object's "battle state" record, optionally
+ * advanced past a 0x3C-byte header when a flag bit is set.
+ *
+ *   inputs:  r5 lr
+ *   outputs: r0
+ *   clobbers: nz c v r1 r2 lr
+ *   preserved: r4
+ */
+Next sub_80FD27A(void) {
+    u32 saved_r4 = R4;
+    R0 = A_dword_80FD298;
+    GUEST_CALL(sub_800FE28);
+    u32 result = R0;
+    GUEST_CALL(object_getFlag);
+    if (R0 & 0xA000) {
+        result += 0x3c;
+    }
+    R0 = result;
+    R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD29C ── */
+/* sub_80FD29C: get a battle-related object pointer, offset by 0x3C if flag 0xA000 is set.
+ *   inputs:  r5 lr
+ *   outputs: r0
+ *   clobbers: nz c v r1 r2 lr
+ *   preserved: r4 */
+Next sub_80FD29C(void) {
+    R0 = A_dword_80FD2BC;
+    GUEST_CALL(sub_800FE28);            /* returns a battle object pointer in R0 */
+    u32 obj = R0;
+
+    GUEST_CALL(object_getFlag);          /* fetch flags for the current object */
+    SET_FLAGS_NZ(R0 & 0xA000);           /* TST R0, #0xA000 */
+    if (R0 & 0xA000) {
+        obj += 0x3C;
+    }
+
+    R0 = obj;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD2C0 ── */
+/* sub_80FD2C0(r5 = current object) -> r0 = pointer into the object's handler
+ * table. Base pointer comes from sub_800FE28(dword_80FD2E0); the standard
+ * offset 0x3C is added when object_getFlag() has bits 0xA000 set. */
+Next sub_80FD2C0(void) {
+    u32 base;
+    u32 flags;
+
+    /* Fetch the handler-table base pointer for this object. */
+    R0 = A_dword_80FD2E0;
+    GUEST_CALL(sub_800FE28);
+    base = R0;
+
+    /* Read the object's flag bits and check the 0xA000 mask. */
+    GUEST_CALL(object_getFlag);
+    flags = R0;
+
+    if (flags & 0xA000)
+        base += 0x3C;
+
+    R0 = base;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD3CC ── */
+/* sub_80FD3CC(r0 = moveIndex, r5 = battleObject):
+ * Looks up two versioned damage tables (base and bonus) for the chosen move
+ * and packs them into the AI attack vars' Damage field (low 16 = base,
+ * high 16 = bonus) of the battle object's AI data. */
+Next sub_80FD3CC(void) {
+    u32 moveIndex = R0;
+
+    /* First table: base damage values. Compute pointer = tableBase + moveIndex*8,
+     * then call with (R0 = pointer, R1 = table base, R2 = element size). */
+    R0 = A_byte_80FD408 + moveIndex * 8;
+    R1 = A_byte_80FD408;
+    R2 = 8;
+    GUEST_CALL(battle_aiGetVersionedTableEntry_800FE12);
+    u32 damageBase = R0;
+
+    /* Second table: bonus damage values, same layout, shifted into upper 16 bits. */
+    R0 = A_byte_80FD42C + moveIndex * 8;
+    R1 = A_byte_80FD42C;
+    R2 = 8;
+    GUEST_CALL(battle_aiGetVersionedTableEntry_800FE12);
+    u32 packed = damageBase | (R0 << 16);
+
+    /* Write to oAIAttackVars_Damage within the AI data block (offset 0xA0
+     * within the AI data pointer from the battle object). */
+    u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
+    ST32(aiData + 0xA0 + oAIAttackVars_Damage, packed);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD6F4 ── */
+/* sub_80FD6F4(r5 = battle object ptr, r7 = attack vars ptr):
+ * AI attack behaviour: on first call, snapshot a timer from oAIAttackVars_Unk_18 and start
+ * counting; once the timer reaches zero, clear the current animation and exit the attack
+ * state. Leaves R1 as the output (unchanged here, so callers' R1 flows through). */
+Next sub_80FD6F4(void) {
+    u8 state = LD8(R7 + oAIAttackVars_Unk_01);
+    if (state == 0) {
+        /* First invocation: latch the countdown. */
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST16(R7 + oAIAttackVars_Unk_10, LD16(R7 + oAIAttackVars_Unk_18));
+    } else {
+        /* Subsequent calls: tick the countdown. */
+        u16 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
+        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        if (timer == 0) {
+            ST8(R5 + oBattleObject_CurAnim, 0);
+            R0 = 0;
+            GUEST_CALL(object_exitAttackState);
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD7A8 ── */
+/* sub_80FD7A8: tick an AI attack object's "approach" countdown.
+ *   inputs:  r5 = battle object, r7 = AI attack vars
+ *   outputs: r1 = (preserved -- see comment)
+ *   clobbers: nz, c, v, r0, r2, r3, lr
+ *
+ * Decrements oAIAttackVars_Unk_10. While it stays strictly positive (signed),
+ * the function is a no-op. When it reaches zero or goes negative the object
+ * is snapped onto its pre-reserved FuturePanel, the panel reservation is
+ * released, its coordinates and collision panels are refreshed, animation 3
+ * is set, and the next phase is armed (Unk_10 = 4, Unk_00 = 8).
+ *
+ * R1 is the function's documented output register. On the early-return
+ * path the original never writes R1, so output R1 == input R1. On the
+ * body path the original also leaves R1 untouched after the last `bl`
+ * (object_updateCollisionPanels), so output R1 == that callee's tail R1
+ * in either case. Our version matches both because no synthetic write to
+ * R1 is introduced. */
+Next sub_80FD7A8(void) {
+    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+
+    /* ldrh r0, [r7,#oAIAttackVars_Unk_10]; sub r0, #1; strh r0, [r7,...] */
+    SET_FLAGS_CMP(timer, 1);
+    timer -= 1;
+    ST16(R7 + oAIAttackVars_Unk_10, timer);
+
+    /* bgt locret_80FD7D2 -- skip the body while the decremented timer is
+     * still strictly positive (BGT = N==V && Z==0). */
+    if (NEGATIVE_FLAG() == OVERFLOW_FLAG() && !ZERO_FLAG()) {
+        R0 = timer; /* match original r0 on return (SUBS result) */
+        RETURN_TO_CALLER();
+    }
+
+    /* Countdown elapsed: commit the pre-reserved future panel. */
+    /* mov r0, #3; strb r0, [r5,#oBattleObject_CurAnim] */
+    R0 = 3;
+    ST8(R5 + oBattleObject_CurAnim, R0);
+
+    /* ldrb r0,[r5,#FPx]; ldrb r1,[r5,#FPy]; strb r0,[r5,#Px]; strb r1,[r5,#Py] */
+    R0 = LD8(R5 + oBattleObject_FuturePanelX);
+    R1 = LD8(R5 + oBattleObject_FuturePanelY);
+    ST8(R5 + oBattleObject_PanelX, R0);
+    ST8(R5 + oBattleObject_PanelY, R1);
+
+    GUEST_CALL(object_removePanelReserve);
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    GUEST_CALL(object_updateCollisionPanels);
+
+    /* mov r0, #4; strh r0, [r7,#oAIAttackVars_Unk_10] */
+    R0 = 4;
+    ST16(R7 + oAIAttackVars_Unk_10, R0);
+
+    /* mov r0, #8; strh r0, [r7,#oAIAttackVars_Unk_00] */
+    R0 = 8;
+    ST16(R7 + oAIAttackVars_Unk_00, R0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD7D4 ── */
+/* sub_80FD7D4: tick down an AI attack timer; when it reaches zero, clear the
+ * 0x40 flag bit on the battle object, raise the "currently moving" flag, and
+ * reset another AI attack variable to 0xC.
+ *
+ * Inputs:  r5, r7 (pointer to AI attack vars), lr
+ * Outputs: r1
+ * Clobbers: nz, c, v, r0, r2, lr
+ */
+Next sub_80FD7D4(void) {
+    u16 counter = LD16(R7 + oAIAttackVars_Unk_10);
+    counter--;
+    ST16(R7 + oAIAttackVars_Unk_10, counter);
+    SET_FLAGS_NZ(counter);
+
+    if (!NEGATIVE_FLAG() && !ZERO_FLAG()) {
+        /* Counter still positive: nothing more to do. */
+        RETURN_TO_CALLER();
+    }
+
+    /* Counter hit zero (or wrapped): clear flag 0x40, raise the moving flag,
+     * and seed Unk_00 with 0xC. */
+    R0 = 0x40;
+    GUEST_CALL(object_clearFlag);
+
+    R0 = 1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT;
+    GUEST_CALL(object_setFlag1);
+
+    ST16(R7 + oAIAttackVars_Unk_00, 0xC);
+    SET_FLAGS_NZ(0xC);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD8B0 ── */
+/* sub_80FD8B0(r5 = battle object, r6 = ?, r7 = AI attack vars):
+ *  If the AI-attack init flag is 0, set it to 4, reset the object's
+ *  current animation to 0, and copy the timer from Unk_18 into Unk_10
+ *  (i.e. arm a timed attack sub-state). Otherwise count Unk_10 down
+ *  each call; when it reaches 0, exit the attack state.
+ *  Returns in r1 (untouched by this function). */
+Next sub_80FD8B0(void) {
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R5 + oBattleObject_CurAnim, 0);
+        ST16(R7 + oAIAttackVars_Unk_10, LD16(R7 + oAIAttackVars_Unk_18));
+    } else {
+        u32 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
+        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        if ((s32)timer <= 0) {
+            R0 = timer;  /* preserve r0 for callee */
+            GUEST_CALL(object_exitAttackState);
+        }
+    }
     RETURN_TO_CALLER();
 }
 
