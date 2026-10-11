@@ -1,0 +1,76 @@
+name: t4_0x30_80E3B70
+address: '0x080E3B70'
+kind: function
+status: confirmed
+summary: 'Per-frame dispatcher for a BattleObject: jumps to the handler selected by its current state, then refreshes
+  its sprite.'
+interface: 'void t4_0x30_80E3B70(void); // in: r5 = BattleObject*; out: r5, r8-r12 (per callees); clobbers nz,cv,r0-r4,r6-r7,lr
+
+  '
+details: 'Reads the CurState byte from the BattleObject at r5+oBattleObject_CurState and uses it to index a three-entry
+  jump table at 0x080E3B88 (sub_80E3B94 for state 0, battle_objectUpdatePosAndRunAction_80E3BEA for state 4, object_freeMemory
+  for state 8). The dispatch is done via the literal "ldr r1,[r1,r0]; mov lr,pc; bx r1" Thumb-thunk pattern; r5
+  itself is preserved across the dispatch because the callee inherits the same register file. After the state handler
+  returns, object_updateSprite is called unconditionally so the BattleObject''s sprite reflects any motion/pose
+  change the handler performed. Out-of-range CurState values would index past the table (the readable notes this
+  and falls through, but the original would jump to a garbage address).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-002400);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 52' --file inbox_farm_52.c t4_0x30_80E3B70
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x30_80E3B70
+
+    ./wf verify --function t4_0x30_80E3B70 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-002400-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x30_80E3B70
+
+    ./wf verify --function t4_0x30_80E3B70 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 4 out of domain (verify run convert-20261011-002400-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x30_80E3B70
+
+    ./wf verify --function t4_0x30_80E3B70 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002400-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, battlesweep, fuzz, menus3, story2, story4, story5, story8, story9.'
+  reproduce: grep -l '^080e3b70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp b90027b
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battles2
+- battlesweep
+- fuzz
+- menus3
+- story2
+- story4
+- story5
+- story8
+- story9
+open_questions:
+- Is the jump-table size genuinely three (states 0/4/8) with the gaps meaning "no handler", or are missing slots
+  reserved for unimplemented states?
+- What is the meaning of each state (0 idle/spawn?, 4 moving/acting?, 8 freed/cleanup?) and which fields of the
+  BattleObject do sub_80E3B94 and battle_objectUpdatePosAndRunAction_80E3BEA advance?
+sources:
+- tools/wf run convert-20261011-002400
+- recomp b90027b

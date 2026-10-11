@@ -1,0 +1,97 @@
+name: t4_0x0_80E0548
+address: '0x080E0548'
+kind: function
+status: confirmed
+summary: Battle-object per-state dispatcher that uses the object's current state byte to index a ROM jump table
+  and tail-call the matching handler (init/draw at state 0, the heavy handler at state 4, or free memory at state
+  8).
+interface: "void dispatchBattleObjectState_80E0548(struct BattleObject *battle_obj /* r5 */);\n  /* in:  r5 = battle\
+  \ object pointer (state byte read from r5+oBattleObject_CurState) */\n  /* out: r5 preserved (battle_obj); r0..r4/r6/r7\
+  \ clobbered by tail-called handler */\n  /* clobbers: N Z C V (tail-called handler), r0 r1 r2 r3 r4 r6 r7 lr */\n"
+details: 'Function reads a single byte state at offset oBattleObject_CurState on the
+
+  passed-in BattleObject (r5), multiplies by 4 implicitly via the word-sized
+
+  table, and loads the target address from ROM table off_80E055C (three
+
+  entries: sub_80E0568, sub_80E05C4, object_freeMemory). It then performs
+
+  a "mov lr,pc / bx r1" thumb-tail-call so the chosen handler runs with
+
+  `pop {pc}` of this function as its return; effectively the dispatcher''s
+
+  own `pop {pc}` becomes the return-to-caller for the handler, so the
+
+  caller''s preserved register contract (r5, r8..r12 out) is what this
+
+  dispatcher also produces. Pure dispatcher, no other memory access;
+
+  no inputs beyond oBattleObject_CurState; defensively(?) the
+
+  read-C is "r5 = battle_obj".
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-002400);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 52' --file inbox_farm_52.c t4_0x0_80E0548
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x0_80E0548
+
+    ./wf verify --function t4_0x0_80E0548 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-002400-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x0_80E0548
+
+    ./wf verify --function t4_0x0_80E0548 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 4 out of domain (verify run convert-20261011-002400-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x0_80E0548
+
+    ./wf verify --function t4_0x0_80E0548 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002400-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080e0548 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp b90027b
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact semantics of states 0 vs 4 (init vs step) — handlers sub_80E0568 and sub_80E05C4 are not yet typed.
+- Whether state values 0/4/8 are the only legal values in practice, or the table simply has no entry for higher
+  states (a real-world case would crash on bx with r1 loaded from uninitialised RAM).
+sources:
+- tools/wf run convert-20261011-002400
+- recomp b90027b

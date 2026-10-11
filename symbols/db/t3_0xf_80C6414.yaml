@@ -1,0 +1,66 @@
+name: t3_0xf_80C6414
+address: '0x080C6414'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's CurState to one of three handlers via a ROM jump table, then refreshes the
+  object's sprite for timestop visibility.
+interface: "void battleObject_dispatchState_80C6414(\n    /* r5 = BattleObject* (in) */\n    /* r2, r10 = unused/trashed\
+  \ callers? */\n    /* r5, r8-r12 out; nzcv + r0-r4, r6, r7, lr clobbered */\n);\n"
+details: "Reads oBattleObject_CurState (byte) from the object in r5, indexes a 3-entry\nROM word table at off_80C642C\
+  \ (handlers stored with +1 for Thumb), and\ntail-calls through the selected entry with the original r5 preserved:\n\
+  \  - state 0 -> sub_80C6438 (init)\n  - state 4 -> sub_80C647C (active)\n  - else    -> object_genericDestroy\n\
+  After the dispatched handler returns, calls object_updateSpriteTimestop\nso the sprite reflects timestop state,\
+  \ then returns to the caller via\npop {pc}. Lives in the battle-object subsystem (see t3_* prefix and the\noBattleObject_*\
+  \ field naming). The C-version's GUEST_CALL wrappers hide\nthat this is a single bx r1 dispatch, not three separate\
+  \ calls; the\n\"if/else if/else\" decoding in dispatch_state is conceptual only.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-002400);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 52' --file inbox_farm_52.c t3_0xf_80C6414
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0xf_80C6414
+
+    ./wf verify --function t3_0xf_80C6414 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-002400-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0xf_80C6414
+
+    ./wf verify --function t3_0xf_80C6414 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 0 out of domain (verify run convert-20261011-002400-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0xf_80C6414
+
+    ./wf verify --function t3_0xf_80C6414 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002400-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus2, menus3, story2.'
+  reproduce: grep -l '^080c6414 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp b90027b
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- menus2
+- menus3
+- story2
+open_questions:
+- What do states 0 and 4 represent specifically? sub_80C6438/sub_80C647C lack the open_typing to confirm "init"/"active".
+- Are r2 and r10 actually meaningful inputs, or are they just inherited from the caller's contract and ignored here?
+- Why is `pop {pc}` used instead of `pop {lr}; bx lr`? Compiler quirk.
+sources:
+- tools/wf run convert-20261011-002400
+- recomp b90027b

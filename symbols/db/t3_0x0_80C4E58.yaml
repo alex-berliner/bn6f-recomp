@@ -1,0 +1,83 @@
+name: t3_0x0_80C4E58
+address: '0x080C4E58'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's per-state handler via a small jump table on CurState, then refreshes the object's
+  sprite.
+interface: 'void t3_0x0_80C4E58(void);  // in: r5=object ptr  out: r5/r8-r12, NZCV clobbered; r7/r10 preserved across
+  call? (caller-saved in callees)'
+details: "Reads the byte at r5+oBattleObject_CurState and uses it as an index into a\n3-entry thumb dispatch table\
+  \ at off_80C4E70 (loaded via off_80C4E6C):\n  state 0 -> sub_80C4E7C  (idle handler, called via ARM BX with lr=pc\
+  \ trick)\n  state 4 -> sub_80C4F02  (active handler)\n  state 8 -> object_genericDestroy\nOnly those three CurState\
+  \ values are handled; other states fall through with no\nhandler call. After the dispatch it tail-calls object_updateSprite,\
+  \ so every\ninvocation also refreshes the sprite. R5 (object pointer) is the implicit input\nthreaded into all\
+  \ four callees; the C mockup passes state in R0 as well, but the\nraw asm only loads CurState into r0 for the\
+  \ switch — r5 carries the object.\nSaved lr and pops pc (Thumb-2 BX-style return). Lives in the t3_0x0 area that\n\
+  handles tertiary battle-object logic; call sites set up r5 and r7 typically.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-002400);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 52' --file inbox_farm_52.c t3_0x0_80C4E58
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x0_80C4E58
+
+    ./wf verify --function t3_0x0_80C4E58 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-002400-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x0_80C4E58
+
+    ./wf verify --function t3_0x0_80C4E58 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 7 out of domain (verify run convert-20261011-002400-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x0_80C4E58
+
+    ./wf verify --function t3_0x0_80C4E58 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002400-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080c4e58 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp b90027b
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which CurState values besides 0/4/8 are valid and which simply skip dispatch?
+- Are sub_80C4E7C / sub_80C4F02 the standard "idle" and "active" object handlers used by all battle objects, or
+  specific to one object template?
+- What object templates route their update through this dispatch (i.e., t3_0x0 suggests "tertiary, offset 0" — enemy
+  field object? panel? chip?)
+- Why is object_updateSprite called unconditionally even for state 8 (destroy)?
+sources:
+- tools/wf run convert-20261011-002400
+- recomp b90027b

@@ -1,0 +1,87 @@
+name: t3_0x33_80CA544
+address: '0x080CA544'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current state through a 3-entry jump table (init/step/destroy), then calls
+  object_updateSprite.
+interface: void t3_0x33_80CA544(u32 r4, u32 r5 /*battle obj*/, u32 r7, u32 r8, u32 r10) -> r5 r8 r9 r10 r11 r12
+  (NZCV clobbered, all guest regs pass through to state handlers)
+details: 'Reads the byte at r5 + oBattleObject_CurState, uses it as a direct 4-byte
+
+  stride index into a 3-entry table at off_80CA55C, and tail-calls (via bx via
+
+  lr/mov trick) the selected handler. The table contains sub_80CA568,
+
+  sub_80CA61A, object_genericDestroy — i.e. setup, update/think, destroy
+
+  states. Falls through to bl object_updateSprite afterwards. Return is
+
+  performed with `pop {pc}` instead of the usual `pop {r4-r7, pc}`, so the
+
+  state handlers are expected to clobber most guest registers; r5 r8 r9 r10
+
+  r11 r12 reach the caller as the live values left by object_updateSprite
+
+  (r4 r6 r7 are trashed by it per register contract).
+
+  Subsystem: battle object state machine.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-002400);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 52' --file inbox_farm_52.c t3_0x33_80CA544
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x33_80CA544
+
+    ./wf verify --function t3_0x33_80CA544 --snapshots build-snapshots'
+  result: 'captured calls: 34 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-002400-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x33_80CA544
+
+    ./wf verify --function t3_0x33_80CA544 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 12 out of domain (verify run convert-20261011-002400-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x33_80CA544
+
+    ./wf verify --function t3_0x33_80CA544 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002400-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, story2, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080ca544 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp b90027b
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- story2
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact semantics of each of the three states (e.g. which corresponds to "just spawned", "active", "marked for delete")
+  — names sub_80CA568 and sub_80CA61A would benefit from renaming.
+- Whether state values other than 0/1/2 are ever stored (the +1 thumb-swap trick is used on every table entry).
+- Whether callers rely on any register being preserved across this call.
+sources:
+- tools/wf run convert-20261011-002400
+- recomp b90027b

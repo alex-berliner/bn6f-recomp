@@ -1,0 +1,65 @@
+name: t4_0x14_80E1CF8
+address: '0x080E1CF8'
+kind: function
+status: confirmed
+summary: Per-frame battle-object dispatcher that reads CurState and jumps to the matching update/free handler.
+interface: void battle_objectTick(BattleObject* r5);  // state passed in r0 to callee, all other regs pass through
+details: "Pushes lr, then indexes a 3-entry jump table (off_80E1D0C) by the byte\nat r5+oBattleObject_CurState (offset\
+  \ 0x08) and bx's into the selected\nhandler. The three known states are:\n  0 -> sub_80E1D18          (running\
+  \ anim/state update)\n  4 -> battle_objectFlyAnimUpdateAndDestroy_80E1D54\n  8 -> battle_objectFreeWrapper_80E1D72\
+  \  (teardown)\nThe pop {pc} epilogue matches the push {lr}; no registers are preserved.\nr0 is loaded with the\
+  \ state index and r1 with the resolved handler\npointer (matching the bx r1 convention) before the tail call,\
+  \ but the\ncallee's actual contract depends on which handler runs. Clobbers\neverything except r5/r8-r12 (callers\
+  \ must save those).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-002400);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 52' --file inbox_farm_52.c t4_0x14_80E1CF8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x14_80E1CF8
+
+    ./wf verify --function t4_0x14_80E1CF8 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-002400-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x14_80E1CF8
+
+    ./wf verify --function t4_0x14_80E1CF8 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 2 out of domain (verify run convert-20261011-002400-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x14_80E1CF8
+
+    ./wf verify --function t4_0x14_80E1CF8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-002400-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, story2, story9.'
+  reproduce: grep -l '^080e1cf8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp b90027b
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battles1
+- story2
+- story9
+open_questions:
+- What are the full semantics of sub_80E1D18 (case 0) and which other CurState values (besides 0/4/8) the table
+  currently holds?
+- Is the table actually density-checked, or are gaps (e.g. 1..3, 5..7) treated as undefined jumps?
+- Does the caller re-enter with the same r5 each tick, or is this a one-shot invoked from a per-frame list walker?
+sources:
+- tools/wf run convert-20261011-002400
+- recomp b90027b
