@@ -154,6 +154,8 @@ class ModelReply(Result):
     seconds: float
     error: ToolMessage | None = None  # the provider failed (HTTP error, timeout)
     model: ModelSpec | None = None    # who answered (a farm run on a tier asks whichever source is up)
+    budget: int | None = None         # the reasoning budget it ran with (wf/tools/budgets.py; None: the cap alone)
+    stopped_at: int | None = None     # a runaway stopped in the stream: its reasoning tokens when it was stopped
 
 
 class CandidateTest(Result):
@@ -224,20 +226,38 @@ def repair_prompt(context: ConversionContext, failure: ToolMessage, candidate: C
 
 
 def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True,
-              kind: PromptKind = PromptKind.TYPED) -> ModelReply:
+              kind: PromptKind = PromptKind.TYPED, budget: int | None = None) -> ModelReply:
     """wait_out_limits=False: a rate limit comes back as an error at once (another source can answer).
-    KIND: whose system prompt goes with it."""
+    KIND: whose system prompt goes with it. BUDGET (wf/tools/budgets.py): the reply streams, and once its
+    reasoning passes the budget with no code begun it is stopped (a runaway, `stopped_at` set; llm.py logs
+    the call with its estimated tokens). The usage row carries the function, round and prompt version."""
     llm = cast(ModuleType, _farm.llm)  # pyright: ignore[reportAny]
+    budget_spent = cast(type[Exception], llm.ReasoningBudgetSpent)  # pyright: ignore[reportAny]
+    function, _, number = tag.rpartition(" round ")
+    fields: dict[str, str | int] = {"prompt": kind.value, "prompt_version": prompt_version(kind), "max_tokens": MAX_TOKENS}
+    if number.isdigit():
+        fields.update(function=function, round=int(number))
     started = time.monotonic()
     try:
         reply = cast(str, llm.complete(model, prompt, system=cast(str, kind.texts.SYSTEM), max_tokens=MAX_TOKENS,  # pyright: ignore[reportAny]
-                                       tag=tag, usage_log=str(USAGE_LOG), wait_out_limits=wait_out_limits))
+                                       tag=tag, usage_log=str(USAGE_LOG), wait_out_limits=wait_out_limits,
+                                       reasoning_budget=budget, fields=fields))
+    except budget_spent as stopped:
+        return ModelReply(candidate=None, seconds=round(time.monotonic() - started, 1), model=model, budget=budget,
+                          stopped_at=cast(int, getattr(stopped, "reasoning_tokens")))
     except Exception as error:  # the provider's own errors: HTTP, timeouts, bad JSON
         return ModelReply(candidate=None, seconds=round(time.monotonic() - started, 1),
-                          error=ToolMessage(f"model error: {error}"[:500]), model=model)
+                          error=ToolMessage(f"model error: {error}"[:500]), model=model, budget=budget)
     code = cast(str | None, _farm.extract_code(reply))  # pyright: ignore[reportAny]
     return ModelReply(candidate=CandidateC(code) if code else None, seconds=round(time.monotonic() - started, 1),
-                      model=model)
+                      model=model, budget=budget)
+
+
+def no_code_report(reply: ModelReply) -> ToolMessage:
+    """What a reply without code is logged as: stopped at its budget, or ended without a code block."""
+    if reply.stopped_at is not None:
+        return ToolMessage(f"stopped: about {reply.stopped_at} reasoning tokens and no code yet (budget {reply.budget})")
+    return ToolMessage("the reply had no ```c code block")
 
 
 def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots: SnapshotDir,
@@ -269,15 +289,17 @@ def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply
               test: CandidateTest | None, difftest: Path | None = None, prompt: PromptKind = PromptKind.TYPED) -> None:
     """One row in tools/convert/log/FUNC.MODEL.jsonl (FUNC.MODEL+old.jsonl for the old prompt): farm.py's
     fields (round, ok, seconds, report, code) and where it came from (review 3 Area 6: time, prompt kind and
-    hashes, test-environment hash, cap, the function's input key, outcome), failed provider calls included."""
+    hashes, test-environment hash, cap, the function's input key, outcome), failed provider calls included; a
+    runaway stopped at its reasoning budget has outcome "runaway" and `stopped_at`."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    report = reply.error or (test.report if test else "the reply had no ```c code block")
+    report = reply.error or (test.report if test else no_code_report(reply))
     row = {"round": round_number, "ok": bool(test and test.passed), "seconds": round(reply.seconds),
            "report": report, "code": reply.candidate,
            "time": datetime.now().isoformat(timespec="seconds"), "model": reply.model or model, "kind": "farm",
            "outcome": round_outcome(reply, test).value, "prompt": prompt.value, "prompt_version": prompt_version(prompt),
            "prompt_hash": prompt_hash(prompt),
            "environment_hash": environment_hash(difftest), "max_tokens": MAX_TOKENS,
+           "reasoning_budget": reply.budget, "stopped_at": reply.stopped_at,
            "input_key": cast(str | None, _farm.input_key(function))}  # pyright: ignore[reportAny]
     with open(LOG_DIR / f"{function}.{_tag(with_prompt(model, prompt))}.jsonl", "a") as log:
         log.write(json.dumps(row) + "\n")

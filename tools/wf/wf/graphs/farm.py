@@ -18,6 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
+from wf.tools.budgets import reasoning_budget
 from wf.tools.build import build_host_difftest, committed_tree
 from wf.tools.handover import Tried, best_start, earlier_attempts, tried
 from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, PromptKind, accept,
@@ -83,6 +84,8 @@ class FarmState(BaseModel):
     difftest: Path
     rounds: int                                  # repair rounds after the first attempt
     prompt: PromptKind = PromptKind.TYPED        # which prompt it is asked with
+    source_wait: float = 7200                    # seconds to wait for a provider that is down (the queue: 0,
+                                                 # it gives the job to another provider instead)
     context: ConversionContext | NotRun | None = None
     earlier: tuple[Tried, ...] = ()              # what other models (and runs) wrote, tested today, best first
     attempts: tuple[Attempt, ...] = ()
@@ -123,6 +126,7 @@ class AskInput(Result):
     context: ConversionContext
     model: ModelSpec
     prompt: PromptKind
+    source_wait: float
     earlier: tuple[Tried, ...]
     attempts: tuple[Attempt, ...]
 
@@ -149,9 +153,14 @@ def ask_model_for_c(given: AskInput) -> AskOutput:
     round_number = len(given.attempts)
     models = models_for(given.model)   # one model, or a tier: the first source that is up answers
     tag = f"{given.context.function} round {round_number}"
-    _, reply = first_up(models, lambda model: ask_model(model, prompt, tag, wait_out_limits=len(models) == 1,
-                                                        kind=given.prompt),
-                        lambda reply: reply.error)
+    waits = len(models) == 1 and given.source_wait > 0
+
+    def ask(model: ModelSpec) -> ModelReply:
+        """A reply whose reasoning passes the model's budget with no code begun is stopped (a runaway)."""
+        budget = reasoning_budget(model, given.prompt, given.context.function).tokens
+        return ask_model(model, prompt, tag, wait_out_limits=waits, kind=given.prompt, budget=budget)
+
+    _, reply = first_up(models, ask, lambda reply: reply.error, horizon=given.source_wait)
     attempt = Attempt(round_number=round_number, prompt=prompt, reply=reply, test=None)
     return AskOutput(attempts=(*given.attempts, attempt))
 

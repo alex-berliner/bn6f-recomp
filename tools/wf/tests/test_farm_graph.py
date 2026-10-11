@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from wf.burr_typed import Finished
+from wf.tools.budgets import Budget
 from wf.graphs import farm
 from wf.graphs.farm import FarmBatchState, FarmOutcome, FarmState, farm_batch_graph, farm_graph
 from wf.tools.handover import Tried, tried
@@ -83,12 +84,13 @@ def test_out_of_rounds_gives_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
 
 
 def test_a_reply_without_code_is_not_asked_again(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    fake_tools(monkeypatch, tmp_path, test_results=[], no_code=True)
+    calls = fake_tools(monkeypatch, tmp_path, test_results=[], no_code=True)
 
     state = farm_run(tmp_path)
 
     assert state.outcome is FarmOutcome.RUNAWAY
     assert len(state.attempts) == 1
+    assert calls.budgets == [12_000]   # each call is asked with its model's reasoning budget
 
 
 def test_a_provider_error_gives_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -197,6 +199,7 @@ class Calls(list[Prompt]):
     filed: list[ModelSpec]
     kept: list[str]
     earlier_asked: int
+    budgets: list[int | None]
 
 
 def farm_run(tmp_path: Path, rounds: int = 3, with_snapshots: bool = True) -> FarmState:
@@ -217,7 +220,7 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
     differs"), and EARLIER attempts of other models; returns the prompts the model was given."""
     prompts = Calls()
     prompts.register_checks, prompts.filed, prompts.kept, prompts.earlier_asked = [], [], [], 0
-    prompts.first_failure_only = []
+    prompts.first_failure_only, prompts.budgets = [], []
     results = iter(test_results)
     texts = iter(reports or [])
 
@@ -227,8 +230,9 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
                                  contract=Contract(inputs=(), outputs=(), clobbers=(), preserved=()))
 
     def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True,
-                  kind: PromptKind = PromptKind.TYPED) -> ModelReply:
+                  kind: PromptKind = PromptKind.TYPED, budget: int | None = None) -> ModelReply:
         prompts.append(prompt)
+        prompts.budgets.append(budget)
         if provider_fails:
             return ModelReply(candidate=None, seconds=1.0, error=ToolMessage("model error: HTTP 500"))
         if no_code:
@@ -277,7 +281,11 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
                   prompt: PromptKind = PromptKind.TYPED) -> None:
         return None
 
+    def reasoning_budget(model: ModelSpec, prompt: PromptKind, function: FunctionName) -> Budget:
+        return Budget(tokens=12_000, basis="test")
+
     fakes: dict[str, object] = {
+        "reasoning_budget": reasoning_budget,
         "conversion_context": conversion_context, "ask_model": ask_model, "first_prompt": first_prompt,
         "repair_prompt": repair_prompt, "test_candidate": test_candidate, "accept": accept,
         "already_accepted": nothing_before, "out_of_rounds_before": not_out_of_rounds, "log_round": log_round,
