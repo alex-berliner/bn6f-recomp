@@ -2101,6 +2101,21 @@ Next sub_802CE10(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802CE30 ── */
+Next sub_802CE30(void) {
+    u32 base = A_dword_203CFB0;
+    if (!((u32)LD8(R5 + oBattleObject_Alliance) & 0xFF))
+        base += 0xc;
+
+    if (LD32(base + 4) == R5 && LD32(base + 8) != 0)
+        R0 = 1;
+    else
+        R0 = 0;
+
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── zeroFill_802CE54 ── */
 /* zeroFill_802CE54: clear the 0x20-byte work buffer unk_2036720.
  * Inputs: r2/r3 (preserved, forwarded unchanged). Flags on exit are

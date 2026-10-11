@@ -142,6 +142,25 @@ Next sub_803A886(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803AA24 ── */
+/* sub_803AA24: Exit-submenu handler.
+ * - inputs:  r2, r5, lr
+ * - outputs: r5, r10
+ * If sub_803C068(0x10, 0x30) returns non-zero (success), clears [r5+0x13],
+ * plays the exit-submenu sound, then runs sub_803A84E. */
+Next sub_803AA24(void) {
+    R0 = 0x10;
+    R1 = 0x30;
+    GUEST_CALL(sub_803C068);
+    if (!ZERO_FLAG()) {
+        ST8(R5 + 0x13, 0);
+        R0 = SOUND_EXIT_SUBMENU;
+        GUEST_CALL(PlaySoundEffect);
+        GUEST_CALL(sub_803A84E);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803AA40 ── */
 /* sub_803AA40: dispatch on a battle-object substate byte ([r5+8]).
  * Inputs:  r2 r4 r5 r10 lr
@@ -231,6 +250,25 @@ Next sub_803ABB4(void) {
         GUEST_CALL(sub_803ABDC);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803ABDC ── */
+/* sub_803ABDC(r2, r5 = object ptr, lr):
+ * If [r5+8] != 0x3F, play the cur-move sound, clear [r5+0x13] and set
+ * [r5+8] = 0x3F (mark this battle object as finished/cur-done). */
+Next sub_803ABDC(void) {
+    u8 state = LD8(R5 + 8);
+    SET_FLAGS_CMP((u32)state, 0x3F);
+    if (!ZERO_FLAG()) {
+        R0 = SOUND_CUR_MOVE_80;
+        GUEST_CALL(PlaySoundEffect);
+
+        R0 = 0;
+        ST8(R5 + 0x13, R0);
+        R0 = 0x3F;
+        ST8(R5 + 8, R0);
+    }
     RETURN_TO_CALLER();
 }
 

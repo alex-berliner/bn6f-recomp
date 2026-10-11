@@ -1414,6 +1414,111 @@ Next sub_80311F4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803123E ── */
+/* sub_803123E: initialize camera and mark it as ready/active.
+ * inputs:  r0 r5 r12 lr
+ * outputs: r0 r1 r2 r3 r5 r12
+ * clobbers: r4 r6 r7 r8 r9 lr, nz c v
+ * preserved: r0 r1 r2 r5
+ *
+ * Captures caller-saved regs (r0, r1, r2, r5, lr) onto the stack, lets
+ * sub_8031122 set up the camera context, queries the current X/Y position
+ * via sub_8030E8C with a (0, 0x20, 0x20, 1) window, halves both coordinates
+ * and feeds the delta into camera_moveByDelta_80310B0. Finally ORs 3 into
+ * r12 (bit 0 = active, bit 1 = ready) and restores the original r0..r2, r5. */
+Next sub_803123E(void) {
+    /* Snapshot r0..r2, r5, lr on the guest stack so the pop can restore them. */
+    u32 saved_lr = LR;
+    u32 saved_r0 = R0;
+    u32 saved_r1 = R1;
+    u32 saved_r2 = R2;
+    u32 saved_r5 = R5;
+
+    /* sub_8031122: prepare / init the camera context for this caller. */
+    GUEST_CALL(sub_8031122);
+
+    /* Query the current camera/scene coordinates with a small window:
+     *   result_x = r0, result_y = r1, args: r2=0, r3=0x20, r5=0x20, r6=1. */
+    R2 = 0;
+    R4 = 0;
+    R3 = 0x20;
+    R5 = 0x20;
+    R6 = 1;
+    GUEST_CALL(sub_8030E8C);
+
+    /* Halve the returned X (unsigned) and Y (signed) to get the per-frame delta. */
+    R0 = (u32)((u32)R0 >> 1);
+    R1 = (u32)((s32)R1 >> 1);
+
+    /* Apply that delta to the camera position. */
+    GUEST_CALL(camera_moveByDelta_80310B0);
+
+    /* Mark r12 (camera state word): set bits 0 and 1 (active + ready). */
+    u32 state = R12 | 3;
+    SET_FLAGS_NZ(state);
+    R12 = state;
+
+    /* Restore caller's r0..r2 and r5, then return via the saved lr. */
+    R0 = saved_r0;
+    R1 = saved_r1;
+    R2 = saved_r2;
+    R5 = saved_r5;
+    LR = saved_lr;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803135E ── */
+/* sub_803135E: recenter camera and set bits 0-1 of the r12 control word.
+ *
+ * Pushes r0..r2, r5 and lr; calls sub_80311B6 to seed a view; calls
+ * sub_8030F7C to compute a delta against a 64x32 box anchored at (0x20, 0x20)
+ * with layer 1; halves the delta and feeds it to camera_moveByDelta_80310B0;
+ * then ORs 3 into the r12 control word and tail-returns through the saved
+ * lr so the caller sees the original r0/r1/r2/r5 intact. */
+Next sub_803135E(void) {
+    /* Reserve the same 20 bytes the original's push {r0-r2,r5,lr} uses,
+     * so any callee that peeks at the frame sees the same layout. */
+    u32 sp = SP -= 20;
+    ST32(sp,      R0);
+    ST32(sp + 4,  R1);
+    ST32(sp + 8,  R2);
+    ST32(sp + 12, R5);
+    ST32(sp + 16, LR);
+
+    /* Seed the base view via sub_80311B6 (return values ignored). */
+    GUEST_CALL(sub_80311B6);
+
+    /* Ask sub_8030F7C for a delta against a 64x32 box at (0x20, 0x20),
+     * layer 1. The function returns the dx/dy in r0/r1. */
+    R2 = 0;
+    R4 = 0x40;   /* 0x20 + 0x20 */
+    R3 = 0x20;
+    R5 = 0x20;   /* 0 + 0x20 */
+    R6 = 1;
+    GUEST_CALL(sub_8030F7C);
+
+    /* Halve the delta (logical >>1) and apply it to the camera. */
+    R0 = R0 >> 1;
+    R1 = R1 >> 1;
+    GUEST_CALL(camera_moveByDelta_80310B0);
+
+    /* Merge bits 0 and 1 into the r12 control word; flags come from
+     * the ORR result so callers can branch on nz if they care. */
+    R0 = R12 | 3;
+    SET_FLAGS_NZ(R0);
+    R12 = R0;
+
+    /* pop {r0-r2,r5,pc} -- restore the snapshot and return to caller. */
+    R0  = LD32(sp);
+    R1  = LD32(sp + 4);
+    R2  = LD32(sp + 8);
+    R5  = LD32(sp + 12);
+    LR  = LD32(sp + 16);
+    SP = sp + 20;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8031388 ── */
 /* sub_8031388(r0-r2 = parameters, r5 = parameter, r12 = state flags):
  * Runs the three-step sequence shared by this family of routines:

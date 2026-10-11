@@ -1733,6 +1733,36 @@ Next sub_8048F9C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8049808 ── */
+/* sub_8049808(r2, r4, r5, r10, lr): jump-table dispatcher.
+ *   Calls sub_803AFC2(0); if it returns nonzero, the result indexes a small Thumb
+ *   function-pointer table (dword_804982C: entry 1 = sub_803AA24, 2 = sub_803AA40,
+ *   3 = sub_803ABF4, 4 = sub_803AB6C, 5 = sub_803AB94) which is tail-called with
+ *   LR = 0x0804981C (the fallthrough into the default cleanup). On zero it skips
+ *   the table, runs sub_803A7B8, then sub_803BC7C(0), and returns to the caller. */
+Next sub_8049808(void) {
+    R0 = 0;
+    GUEST_CALL(sub_803AFC2);
+    if (!ZERO_FLAG()) {
+        u32 idx = R0;
+        /* `lsl r0, r0, #2` -> table offset. Replicated for flag-setting only;
+         * the switch handles the actual dispatch. */
+        SET_FLAGS_NZ(idx << 2);
+        switch (idx) {
+            case 1: GUEST_CALL(sub_803AA24); break;
+            case 2: GUEST_CALL(sub_803AA40); break;
+            case 3: GUEST_CALL(sub_803ABF4); break;
+            case 4: GUEST_CALL(sub_803AB6C); break;
+            case 5: GUEST_CALL(sub_803AB94); break;
+        }
+    }
+    /* Fallthrough / zero path: default cleanup. */
+    GUEST_CALL(sub_803A7B8);
+    R0 = 0;
+    GUEST_CALL(sub_803BC7C);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8049888 ── */
 /* sub_8049888: chatbox input handler dispatcher.
  * Inputs:  r5 = chatbox state struct, r10, lr
@@ -1791,6 +1821,64 @@ Next sub_8049984(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80499CE ── */
+/* sub_80499CE: 080499CE-08049A18 THUMB
+ * Inputs:  r5 r6 r7 r8 r9 r10 r11 r12 lr
+ * Outputs: c v r3 r8 r9 r10 r11 r12
+ * Clobbers: nz r0 r1 r2 lr
+ * Preserved: r4 r5 r6 r7
+ *
+ * The original push {r4-r7,lr} / pop {r4-r7,pc} is reproduced because
+ * the callee in the else-path (sub_803A820) writes 0x20093b0 to the
+ * saved r7 slot on the stack, and the final pop surfaces that value in r7.
+ */
+Next sub_80499CE(void) {
+    /* push {r4-r7,lr} */
+    u32 sp = SP - 20;
+    ST32(sp,     R4);
+    ST32(sp + 4, R5);
+    ST32(sp + 8, R6);
+    ST32(sp + 12, R7);
+    ST32(sp + 16, LR);
+    SP = sp;
+
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        /* Screen fade not active: full reset path. */
+        u32 fade_state = 0;
+        GUEST_CALL(sub_8049D42);
+        if (!ZERO_FLAG()) {
+            fade_state = 1;
+        }
+        ST8(R5 + 4, fade_state);
+        GUEST_CALL(sub_8049D70);
+        GUEST_CALL(sub_8049D4A);
+        GUEST_CALL(sub_8049D3A);
+        GUEST_CALL(sub_803F79E);
+        GUEST_CALL(zeroFillVRAM);
+        GUEST_CALL(ZeroFillGFX30025c0);
+        GUEST_CALL(copyMemory_8001850);
+        R0 = 0x40;
+        GUEST_CALL(SetRenderInfoLCDControl);
+        GUEST_CALL(chatbox_8040818);
+        GUEST_CALL(sub_811F758);
+    } else {
+        /* Screen fade still active: bail out via the alternate path. */
+        GUEST_CALL(sub_803A820);
+    }
+
+    /* pop {r4-r7,pc} */
+    u32 a = SP;
+    R4 = LD32(a);
+    R5 = LD32(a + 4);
+    R6 = LD32(a + 8);
+    R7 = LD32(a + 12);
+    u32 ret = LD32(a + 16);
+    SP = a + 20;
+    LR = ret;
+    RETURN_TO_CALLER();
+}
+
 /* ── copyData_8049A18 ── */
 /* copyData_8049A18: clear VRAM, decompress init data, shrink the screen viewport,
  * and trigger a screen transition. r10 holds a Toolkit pointer whose render info
@@ -1831,6 +1919,45 @@ Next copyData_8049A18(void) {
     /* Kick off transition effect #3 with the new viewport in place. */
     R0 = 3;
     GUEST_CALL(sub_803B91C);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049CBC ── */
+/* sub_8049CBC: Copy two 0x20-byte blocks from word_2001800 into the caller's
+ * struct (r5), then fill in two small fields at offsets 0x10 and 0x11 by
+ * calling sub_803C132(0x10, 0x30) and sub_803C132(0x11, 0x90).
+ *
+ * Inputs:  r5 = destination struct pointer
+ * Outputs: r1, r2, r3, r5 unchanged; r0 garbage
+ */
+Next sub_8049CBC(void) {
+    /* base = word_2001800 */
+    u32 base = A_word_2001800;
+
+    /* CopyBytes(base + 0x08, r5 + 0x30, 0x20) */
+    R0 = base + 0x08;
+    R1 = R5 + 0x30;
+    R2 = 0x20;
+    GUEST_CALL(CopyBytes);
+
+    /* CopyBytes(base + 0x28, r5 + 0x90, 0x20) */
+    R0 = base + 0x28;
+    R1 = R5 + 0x90;
+    R2 = 0x20;
+    GUEST_CALL(CopyBytes);
+
+    /* r5[0x10] = sub_803C132(0x10, 0x30) */
+    R0 = 0x10;
+    R1 = 0x30;
+    GUEST_CALL(sub_803C132);
+    ST8(R5 + 0x10, R0);
+
+    /* r5[0x11] = sub_803C132(0x11, 0x90) */
+    R0 = 0x11;
+    R1 = 0x90;
+    GUEST_CALL(sub_803C132);
+    ST8(R5 + 0x11, R0);
 
     RETURN_TO_CALLER();
 }
@@ -1891,6 +2018,220 @@ Next sub_8049CF8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8049D4A ── */
+/* sub_8049D4A: Copy two 0x20-byte blocks from eS200A290 into word_2001800.
+ *   inputs:  lr
+ *   outputs: r2 r3 r4 r5 r6 r7
+ *   clobbers (unused by callers): nz c v r0 r1 lr
+ *   preserved: r4 r5 r6 r7 */
+Next sub_8049D4A(void) {
+    /* First block: A_eS200A290 + 0x70  ->  A_word_2001800 + 0x08  (0x20 bytes) */
+    R0 = A_eS200A290 + 0x70;
+    R1 = A_word_2001800 + 0x08;
+    R2 = 0x20;
+    GUEST_CALL(CopyBytes);
+
+    /* Second block: A_eS200A290 + 0xD0  ->  A_word_2001800 + 0x28  (0x20 bytes) */
+    R0 = A_eS200A290 + 0xD0;
+    R1 = A_word_2001800 + 0x28;
+    R2 = 0x20;
+    GUEST_CALL(CopyBytes);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049E28 ── */
+/* sub_8049E28: chatbox/dialog init for a new screen — clears chatbox state,
+ * sets up render info and LCD control, then resets the graphics subsystem
+ * and writes the initial chatbox state bytes at the object pointed to by R5.
+ *   inputs:  r5 = pointer to chatbox state struct
+ *   outputs: -
+ *   clobbers: r0 r1 r2 r3 lr (nz c v from callees)
+ *   preserved: r4 r6 r7 */
+Next sub_8049E28(void) {
+    GUEST_CALL(chatbox_8040818);
+
+    R0 = 0x40;
+    GUEST_CALL(SetRenderInfoLCDControl);
+
+    GUEST_CALL(renderInfo_8001788);
+    GUEST_CALL(renderInfo_80017A0);
+
+    R0 = 0x11;
+    GUEST_CALL(sub_80015FC);
+
+    GUEST_CALL(resetAllGraphicsState_8005F40);
+    GUEST_CALL(sub_803BEC0);
+    GUEST_CALL(sub_804A14C);
+
+    /* Initialize the chatbox state struct: state = 8 (opening/animating in),
+     * sub-state = 0 (frame 0). */
+    ST8(R5, 8);
+    ST8(R5 + 1, 0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049F32 ── */
+/* sub_8049F32: 08049F32-08049F50 THUMB, bn6f asm03_2.s:6567
+ *
+ * Screen-fade update tick. If a screen fade is currently active, advance
+ * its animation (timer/draw) and update a state byte held in r5+1; then
+ * fall through to sub_8049F70 to continue with the next stage of update.
+ *
+ *   inputs:  r4 r5 r10 lr
+ *   outputs: r8 r9 r10 r11 r12
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r5 r6 r7 r8 r9 r12
+ */
+Next sub_8049F32(void) {
+    /* IsScreenFadeActive() -> zf */
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        /* Fade is mid-animation: nudge the fade one step further. */
+        R0 = 0x14;
+        GUEST_CALL(sub_803BB2C);
+
+        R0 = 0x0F;
+        GUEST_CALL(sub_803BB7C);
+
+        /* Stamp "8" into the second byte of r5's struct as the new state. */
+        ST8(R5 + 1, 8);
+    }
+
+    /* Continue to the next screen/fade update routine. */
+    GUEST_CALL(sub_8049F70);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049F50 ── */
+Next sub_8049F50(void) {
+    GUEST_CALL(sub_803BA64);
+    R0 = 0;
+    GUEST_CALL(sub_803BAE2);
+    R0 = 0x0A;
+    GUEST_CALL(sub_803B522);
+    R0 = 0x28;
+    GUEST_CALL(sub_803B674);
+    R0 = 1;
+    GUEST_CALL(sub_803A8B4);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804A024 ── */
+/* sub_804A024: Handle a chatbox state transition for the script runner.
+ * r5 = state struct pointer; r10 = some context used by sub_8049F70.
+ * Drives either a flag-clear path (sets r5[1]=0x0C) or a fade-and-finalize path
+ * (SetScreenFade(0x0C, 0x10) then r5[1]=0x20), then runs sub_8049F70. */
+Next sub_804A024(void) {
+    /* If chatbox flag 0x80 is set, skip the state-change logic entirely. */
+    R0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    if (!ZERO_FLAG())
+        goto done_with_state;
+
+    GUEST_CALL(chatbox_GetState_8045F4C);
+    if (R0 != 0) {
+        /* Chatbox still busy: signal that and leave. */
+        ST8(R5 + 1, 0x0C);
+    } else {
+        /* Chatbox idle: trigger a screen fade, then mark this state complete. */
+        R0 = 0x0C;
+        R1 = 0x10;
+        GUEST_CALL(SetScreenFade);
+        ST8(R5 + 1, 0x20);
+    }
+
+done_with_state:
+    GUEST_CALL(sub_8049F70);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804A078 ── */
+/* sub_804A078: scene-update hook.
+ * inputs:  r5, r10, lr
+ * outputs: r8, r9, r10, r11, r12
+ * clobbers: r0, r1, r2, r3, lr, nz, c, v
+ *
+ * If a screen fade is in progress, tear down the current scene's graphical
+ * state (clear VRAM, clear GFX buffer, restore tile memory, set LCD mode,
+ * reset chatbox, run system init). Otherwise delegate to sub_8049F70. */
+Next sub_804A078(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        R0 = LD16(R5 + 0x22);
+        GUEST_CALL(sub_804A230);
+        GUEST_CALL(zeroFillVRAM);
+        GUEST_CALL(ZeroFillGFX30025c0);
+        GUEST_CALL(copyMemory_8001850);
+        R0 = 0x40;
+        GUEST_CALL(SetRenderInfoLCDControl);
+        GUEST_CALL(chatbox_8040818);
+        GUEST_CALL(sub_8123408);
+    } else {
+        GUEST_CALL(sub_8049F70);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── copyData_804A0AC ── */
+/* copyData_804A0AC: reset GFX/VRAM, decompress init data, shrink render info box by 4x2. */
+Next copyData_804A0AC(void) {
+    GUEST_CALL(zeroFillVRAM);
+    GUEST_CALL(ZeroFillGFX30025c0);
+    GUEST_CALL(copyMemory_8001850);
+
+    /* Walk the initRefs table and decompress/copy each entry. */
+    R0 = (u32)A_byte_804A0E8;
+    GUEST_CALL(decompAndCopyData);
+
+    /* Shrink the render info rectangle by (4,2) on each side. */
+    u32 renderInfo = LD32(R10 + oToolkit_RenderInfoPtr);
+
+    u16 rightEdge = LD16(renderInfo + 0x16) - 4;
+    ST16(renderInfo + 0x16, rightEdge);
+
+    u16 leftEdge = LD16(renderInfo + 0x14) - 2;
+    ST16(renderInfo + 0x14, leftEdge);
+
+    u16 bottomEdge = LD16(renderInfo + 0x1a) - 2;
+    ST16(renderInfo + 0x1a, bottomEdge);
+
+    u16 topEdge = LD16(renderInfo + 0x18) - 4;
+    ST16(renderInfo + 0x18, topEdge);
+
+    R0 = 3;
+    GUEST_CALL(sub_803B91C);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804A14C ── */
+Next sub_804A14C(void) {
+    /* Look up a per-id offset from byte_804A178, copy 0x20 bytes from unk_2001850+offset
+     * into the object at R5+0x30, then play SFX 0x10/0x30 and stash the handle at R5+0x10. */
+    u32 table = A_unk_2001850;
+    u32 offsets = A_byte_804A178;
+    u32 sprite_id = LD16(R5 + 0x22);
+    u8  offset   = LD8(offsets + sprite_id);
+    u8 *src      = (u8 *)(table + offset);
+    u8 *dest     = (u8 *)(R5 + 0x30);
+
+    /* CopyBytes(src, dest, n) */
+    R0 = (u32)src;
+    R1 = (u32)dest;
+    R2 = 0x20;
+    GUEST_CALL(CopyBytes);
+
+    /* sub_803C132(0x10, 0x30) -> sound handle */
+    R0 = 0x10;
+    R1 = 0x30;
+    GUEST_CALL(sub_803C132);
+
+    ST8(R5 + 0x10, (u8)R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── textScript_copyFolderNameToWide_804A1FC ── */
 /* textScript_copyFolderNameToWide_804A1FC(r0 = folder index, r1 = destination buffer):
  * Copy a folder name from the text script folder-name table into the destination
@@ -1917,5 +2258,142 @@ Next textScript_copyFolderNameToWide_804A1FC(void) {
         }
         dst += 2;
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C11C ── */
+/* sub_804C11C: gates two chatbox/cutscene steps behind a flag test, a pair of cutscene
+ * position checks, and a chatbox flag mask. If all four pass, runs sub_804C144 then
+ * sub_804C298. Inputs: r5, r10, lr. Outputs: r2. Clobbers: nz, c, v, r0, r1, r3, lr.
+ * Preserved: r4, r5, r6, r7. */
+Next sub_804C11C(void) {
+    /* TestPETMenuDataFlag(1) must return zero (flag not set). */
+    R0 = 1;
+    GUEST_CALL(TestPETMenuDataFlag);
+    if (!ZERO_FLAG()) RETURN_TO_CALLER();
+
+    /* Original cutscene position must NOT match 8036F40. */
+    GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F40);
+    if (!ZERO_FLAG()) RETURN_TO_CALLER();
+
+    /* Original cutscene position must NOT match 8036F58. */
+    GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F58);
+    if (!ZERO_FLAG()) RETURN_TO_CALLER();
+
+    /* Chatbox flag 0x80 must be clear. */
+    R0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    if (!ZERO_FLAG()) RETURN_TO_CALLER();
+
+    /* All gates passed: run the two-step update. */
+    GUEST_CALL(sub_804C144);
+    GUEST_CALL(sub_804C298);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C1D4 ── */
+/* sub_804C1D4: applies a scroll offset to the RenderInfo X/Y scroll regs and
+ * to the caller's r5 object's local X/Y offsets, indexed by the
+ * screen/menu index byte at 0x2013965.
+ *   inputs:  r5 (object), r10 (toolkit), lr
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1 r2 r3
+ *   preserved: r4 r5 r6 r7
+ */
+Next sub_804C1D4(void) {
+    /* Parallel lookup tables at 0x0804C208 (X addend) and 0x0804C20C
+     * (Y addend), indexed by the menu/screen index byte at 0x2013965. */
+    u32 idx = LD8(A_unk_2013960 + 5);
+    u32 dx = LD8(A_dword_804C208 + idx);
+    u32 dy = LD8(A_byte_804C20C + idx);
+
+    u32 render = LD32(R10 + oToolkit_RenderInfoPtr);
+
+    /* X axis. The object offset add may overflow 8 bits; the original
+     * `add r0, r0, r3` uses the full 32-bit r3, so the carry bit must
+     * reach the RenderInfo scroll. Store the low byte to the object but
+     * add the full sum to the scroll. */
+    u32 sum_x = (u32)LD8(R5 + 0x15) + dx;
+    ST8(R5 + 0x15, (u8)sum_x);
+    ST16(render + 0x14, (u16)(LD16(render + 0x14) + sum_x));
+
+    /* Y axis: same pattern at +0x16 / +0x16. */
+    u32 sum_y = (u32)LD8(R5 + 0x16) + dy;
+    ST8(R5 + 0x16, (u8)sum_y);
+    ST16(render + 0x16, (u16)(LD16(render + 0x16) + sum_y));
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C214 ── */
+/* sub_804C214(r5 = battle object?, r10 = toolkit, lr):
+ *   Tick down the object's pending-action timer (offset 0x18).
+ *   When it expires, reset it to 2 and advance the toolkit's
+ *   animation/state counters at oToolkit_Unk2009740_Ptr:
+ *     - offset 2 is an index that wraps at 0x10 (then triggers state 4 at [0])
+ *     - offset 3 is a separate countdown that gets one step consumed each lap
+ */
+Next sub_804C214(void) {
+    u8 timer = LD8(R5 + 0x18);
+    timer--;
+    SET_FLAGS_NZ(timer);
+    ST8(R5 + 0x18, timer);
+    if (!ZERO_FLAG())
+        RETURN_TO_CALLER();
+
+    /* Timer hit zero: reload to 2. */
+    ST8(R5 + 0x18, 2);
+
+    u32 tk = LD32(R10 + oToolkit_Unk2009740_Ptr);
+    u8 idx = LD8(tk + 2);
+    if (idx >= 0x10) {
+        ST8(tk, 4);
+    } else {
+        idx++;
+        ST8(tk + 2, idx);
+        u8 sub = LD8(tk + 3);
+        if (sub != 0) {
+            sub--;
+            ST8(tk + 3, sub);
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C298 ── */
+/* sub_804C298:
+ *   inputs:  r5 (source struct), r10 (toolkit), lr
+ *   outputs: r2 (pointer to unk_2009740)
+ *   clobbers: r0, r3
+ *   preserved: r5
+ *
+ * Copies a handful of fields from the source struct (r5) and from the
+ * toolkit's render-info / unk_2009740 pointers into a global scratch buffer
+ * at unk_2000AC0, then returns the unk_2009740 pointer in r2.
+ */
+Next sub_804C298(void) {
+    u32 buf = A_unk_2000AC0;
+    u32 r10 = R10;
+
+    /* Bytes copied from the source struct (r5). */
+    ST8(buf + 0x0F, LD8(R5 + 0x10));
+    ST8(buf + 0x11, LD8(R5 + 0x11));
+    ST8(buf + 0x13, LD8(R5 + 0x13));
+    ST8(buf + 0x15, LD8(R5 + 0x15));
+    ST8(buf + 0x16, LD8(R5 + 0x17));
+    ST8(buf + 0x17, LD8(R5 + 0x18));
+
+    /* Two halfwords from toolkit->RenderInfo (offsets 0x14, 0x16). */
+    u32 renderInfo = LD32(r10 + oToolkit_RenderInfoPtr);
+    ST16(buf + 0x1A, LD16(renderInfo + 0x14));
+    ST16(buf + 0x1C, LD16(renderInfo + 0x16));
+
+    /* Two bytes from toolkit->Unk2009740 (offsets 2, 3); result in r2. */
+    u32 unk2009740 = LD32(r10 + oToolkit_Unk2009740_Ptr);
+    R2 = unk2009740;
+    ST8(buf + 0x18, LD8(unk2009740 + 2));
+    ST8(buf + 0x19, LD8(unk2009740 + 3));
+
     RETURN_TO_CALLER();
 }

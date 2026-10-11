@@ -73,6 +73,200 @@ Next battle_objectDispatchPanelChange_80C6CFC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C80B8 ── */
+/* sub_80C80B8: Initialize a battle object on entry to its action phase.
+ * Sets Z to 0, builds collision data, plays spawn VFX/sfx, and marks
+ * the state action phase as CUR_STATE_UPDATE. inputs: r5 r8 r10 lr
+ * outputs: r5 r8 r10  clobbers: nz c v r0 r1 r2 r3 lr  preserved: r4 */
+Next sub_80C80B8(void) {
+    u32 saved_r4 = R4;
+
+    /* Sync panel coordinates into the object's pos from its grid panel. */
+    GUEST_CALL(object_setCoordinatesFromPanels);
+
+    /* Reset Z so the object is drawn at panel height. */
+    ST32(R5 + oBattleObject_Z, 0);
+
+    /* Build the per-object collision data; bail if allocation failed. */
+    GUEST_CALL(object_createCollisionData);
+    if (R0 == 0) {
+        GUEST_CALL(object_freeMemory);
+        R4 = saved_r4;
+        RETURN_TO_CALLER();
+    }
+
+    /* Configure collision shape (4 wide, 5 tall, panel-step 3) and flash. */
+    R1 = 4;
+    R2 = 5;
+    R3 = 3;
+    GUEST_CALL(object_setupCollisionData);
+
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+    GUEST_CALL(object_setCollisionHitEffect);
+
+    /* Make the collision data visible this frame. */
+    GUEST_CALL(object_presentCollisionData);
+
+    /* Spawn the landing/entry effect at the object's current position,
+     * shifted upward by 0x20 pixels. */
+    R1 = LD32(R5 + oBattleObject_X);
+    R2 = LD32(R5 + oBattleObject_Y);
+    R3 = 0x20u << 16;
+    R4 = 0;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+
+    /* Play sound effect index 0x106 (0x07 + 0xFF). */
+    R0 = 0x07 + 0xFF;
+    GUEST_CALL(PlaySoundEffect);
+
+    /* Transition this object's action-phase state into the Update step. */
+    u32 next_state = CUR_STATE_UPDATE;
+    SET_FLAGS_NZ(next_state);
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, next_state);
+
+    R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C81F0 ── */
+/* sub_80C81F0: initialize the battle object's sprite from panel coordinates,
+ * set its Z, load sprites/animations, configure flip and apply update phase.
+ * Inputs:  r5 = battle object pointer, lr
+ * Outputs: r5 (preserved)
+ * Clobbers: r0, r1, r2, r3, lr, flags */
+Next sub_80C81F0(void) {
+    /* Position the object based on its panel grid coordinates. */
+    GUEST_CALL(object_setCoordinatesFromPanels);
+
+    /* Z16 (depth) is layered; 0 keeps the sprite on its normal plane. */
+    ST16(R5 + oBattleObject_Z16, 0);
+
+    /* sprite_load(tileCount=8, paletteCount=0xC, tileBase=0x80) */
+    R0 = 0x80;
+    R1 = 8;
+    R2 = 0xC;
+    GUEST_CALL(sprite_load);
+
+    /* This object shouldn't cast a shadow. */
+    GUEST_CALL(sprite_noShadow);
+
+    /* Set flag bit 1 in the object header flags. */
+    u8 flags = LD8(R5 + oObjectHeader_Flags);
+    flags |= 0x02;
+    ST8(R5 + oObjectHeader_Flags, flags);
+
+    /* Animation index 0xD, stored in both the current and pending anim slots. */
+    u8 anim = 0x0D;
+    ST8(R5 + oBattleObject_CurAnim, anim);
+    ST8(R5 + oBattleObject_CurAnimCopy, anim);
+
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+    GUEST_CALL(sprite_loadAnimationData);
+
+    /* Apply palette 0. */
+    R0 = 0;
+    GUEST_CALL(sprite_setPalette);
+
+    /* Mirror the sprite to match the object's facing. */
+    GUEST_CALL(object_getFlip);
+    GUEST_CALL(sprite_setFlip);
+
+    /* Advance into the Update sub-phase. */
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_BDT_update2_80c950c ── */
+/* battle_BDT_update2_80c950c:
+ *   inputs:  r5 lr
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r5 r6 r7
+ *
+ * Per-frame update for a battle object (BDT entry): apply velocity to
+ * position, refresh panel/collision state, tick down a timer, and when the
+ * timer expires decrement a sub-counter. When that counter reaches zero,
+ * advance the animation, clear the collision region and mark the object for
+ * destruction; otherwise hand off to battle_BDT_80c956c for the next phase.
+ */
+Next battle_BDT_update2_80c950c(void) {
+    /* Integrate X velocity into position. */
+    s32 x      = (s32)LD32(R5 + oBattleObject_X);
+    s32 x_vel  = (s32)LD32(R5 + oBattleObject_XVelocity);
+    ST32(R5 + oBattleObject_X, x + x_vel);
+
+    /* Integrate Y velocity into position. */
+    s32 y      = (s32)LD32(R5 + oBattleObject_Y);
+    s32 y_vel  = (s32)LD32(R5 + oBattleObject_YVelocity);
+    ST32(R5 + oBattleObject_Y, y + y_vel);
+
+    /* Re-derive the panels the object occupies and update its collision map. */
+    GUEST_CALL(object_setPanelsFromCoordinates);
+    GUEST_CALL(object_updateCollisionPanels);
+
+    /* Tick the per-frame timer; bail out if it hasn't elapsed yet. */
+    u32 timer = LD16(R5 + oBattleObject_Timer) - 1;
+    ST16(R5 + oBattleObject_Timer, (u16)timer);
+    SET_FLAGS_NZ(timer);
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Timer elapsed: decrement the remaining-hit counter. */
+    u32 remaining = LD8(R5 + oBattleObject_Param2) - 1;
+    ST8(R5 + oBattleObject_Param2, (u8)remaining);
+    SET_FLAGS_NZ(remaining);
+    if (!ZERO_FLAG()) {
+        /* More hits left: kick off the next phase. */
+        GUEST_CALL(battle_BDT_80c956c);
+        RETURN_TO_CALLER();
+    }
+
+    /* Last hit consumed: bump the animation, drop the collision region,
+     * and queue the object for destruction at the next state transition. */
+    u32 anim = LD8(R5 + oBattleObject_CurAnim) + 1;
+    ST8(R5 + oBattleObject_CurAnim, (u8)anim);
+
+    GUEST_CALL(object_clearCollisionRegion);
+
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+         CUR_STATE_DESTROY);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── CheckIfThunderObjectFindsOpponentByGoingRight ── */
+/* CheckIfThunderObjectFindsOpponentByGoingRight(r4 = opponent mask, r5 = battleObject):
+ * scans rightward from the object's current panelX, checking Y from 3 down to 0;
+ * returns the panelX where the opponent mask matches (or 0 if none found in x=panelX..6).
+ *   inputs:  r4 r5 lr
+ *   outputs: r4 r6 r7
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 */
+Next CheckIfThunderObjectFindsOpponentByGoingRight(void) {
+    u32 x = LD8(R5 + oBattleObject_PanelX);
+    u32 y;
+
+    for (;;) {
+        for (y = 3;; y--) {
+            R0 = x;
+            R1 = y;
+            GUEST_CALL(object_getPanelParameters);
+            if (R0 & R4) goto found;
+            if (y == 0) break;
+        }
+        x++;
+        if (x == 7) { x = 0; break; }
+    }
+found:
+    R6 = x;
+    R7 = y;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C97E0 ── */
 /* register form: calls object_spawnType3 outside this file, which has no typed C interface yet */
 static u32 call_object_spawnType3(u32 type, u32 arg1, u32 arg2, u32 arg3) {

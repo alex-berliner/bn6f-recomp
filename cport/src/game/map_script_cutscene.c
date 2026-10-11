@@ -246,6 +246,58 @@ Next MapScriptCmd_jump_if_coord_interaction_value_not_equal(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCmd_jump_if_map_group_compare_last_map_group ── */
+/* MapScriptCmd_jump_if_map_group_compare_last_map_group: 08035C6E-08035CA0 THUMB, bn6f map_script_cutscene.s:675
+ *   inputs:  r7 r10 lr
+ *   outputs: nz r7
+ *   clobbers: c v r0 r1 r4 r6 lr
+ *   preserved: -
+ *
+ * Map-script opcode that compares the current map group against the last map group.
+ * ReadMapScriptByte is called to fetch the comparison mode (R6 = 1 means "equal",
+ * anything else means "not equal"). On a match the script jumps forward by the offset
+ * given in the next two bytes (R6 = 2 for ReadMapScriptWord); otherwise execution just
+ * falls through the next 6-byte instruction.
+ */
+Next MapScriptCmd_jump_if_map_group_compare_last_map_group(void) {
+    u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
+    u32 currentMapGroup = LD16(gameState + oGameState_MapGroup);
+    u32 lastMapGroup    = LD16(gameState + oGameState_LastMapGroup);
+
+    /* Read the comparison mode byte; the result ends up in R4. */
+    R6 = 1;
+    GUEST_CALL(ReadMapScriptByte);
+
+    bool equal;
+    {
+        u32 r4 = R4;
+        if (r4 == 1) {
+            /* equal-branch: match when current == last */
+            SET_FLAGS_CMP(R0, R1);
+            equal = (currentMapGroup == lastMapGroup);
+        } else {
+            /* not-equal-branch: match when current != last */
+            equal = (currentMapGroup != lastMapGroup);
+        }
+    }
+
+    if (equal) {
+        /* Take the jump: read the 16-bit offset and put it in R7. */
+        R6 = 2;
+        GUEST_CALL(ReadMapScriptWord);
+        R7 = R4;
+    } else {
+        /* No jump: skip past the 2-byte mode + 2-byte offset + 2-byte opcode = 6 bytes. */
+        R7 = R7 + 6;
+    }
+
+    /* Both return paths leave R0 = 1, so nz is set. */
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── MapScriptCutsceneCmd_set_screen_fade ── */
 /* MapScriptCutsceneCmd_set_screen_fade: map-script command handler that starts
  * a screen fade. It takes two byte parameters, then calls SetScreenFade with
@@ -705,6 +757,34 @@ Next ReadMapScriptSignedHalfword(void) {
 
     R6 = low;
     R4 = (u32)((s32)((high << 8) | low) << 16 >> 16);
+    RETURN_TO_CALLER();
+}
+
+/* ── ReadMapScriptWord ── */
+/* ReadMapScriptWord: read a 32-bit big-endian word from the map script stream.
+ *   r6 = offset into script, r7 = script base pointer
+ *   returns the word in r4, leaves r6/r7 set up for the next word (r7 += r6) */
+Next ReadMapScriptWord(void) {
+    /* add r7, r6  -> combine base + offset */
+    u32 base = R7;
+    R7 = base + R6;
+
+    /* Build the 32-bit word big-endian: [base+3] [base+2] [base+1] [base] */
+    u32 r4 = LD8(R7 + 3);
+    R6 = LD8(R7 + 2);
+    r4 = (r4 << 8) | R6;
+    R6 = LD8(R7 + 1);
+    r4 = (r4 << 8) | R6;
+    R6 = LD8(R7);
+
+    /* Last shift: only this one updates flags (the last LSL before the ORR chain ends). */
+    u32 shifted = r4 << 8;
+    SET_FLAGS_NZ(shifted | R6);   /* equivalent: flags set after final LSL/ORR sequence */
+    r4 = shifted | R6;
+    R4 = r4;
+
+    /* pop {r7, pc} -- restore r7 (base pointer), return with r4 as result via R4 */
+    R7 = base;
     RETURN_TO_CALLER();
 }
 
@@ -2063,6 +2143,50 @@ Next MapScriptCutsceneCmd_sound_cmd_803810e(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCutsceneCmd_give_or_take_item ── */
+/* MapScriptCutsceneCmd_give_or_take_item:
+ *   inputs:  r5 r7 r8 r9 r10 r11 r12 lr
+ *   outputs: nz r1 r2 r4 r5 r7 r8 r9 r10 r11 r12
+ *   clobbers (unused by callers): c v r0 r3 r6 lr
+ *   preserved: r5
+ *
+ * Reads three script bytes (item id, count, and a mode flag), then either
+ * gives or takes the item based on the mode byte. r7 is advanced past the
+ * three-byte command header. Returns 1 in r0 (also sets nz).
+ *
+ * r7 on entry points at the cutscene command stream. The command layout is:
+ *   [op] [item] [count] [mode]
+ * r7 is bumped by 4 at the end to skip past it. */
+Next MapScriptCutsceneCmd_give_or_take_item(void) {
+    /* Read the item id (script byte 1). */
+    R6 = 2;
+    GUEST_CALL(ReadMapScriptByte);
+
+    /* Read the count (script byte 2) into r1. */
+    R0 = R4;
+    R6 = 3;
+    GUEST_CALL(ReadMapScriptByte);
+
+    /* Read the mode (script byte 3) into r4, then give or take. */
+    R1 = R4;
+    R6 = 1;
+    GUEST_CALL(ReadMapScriptByte);
+
+    if (R4 == 1) {
+        /* takeItem branch: r0 = item id, r1 = count. */
+        GUEST_CALL(TakeItem);
+    } else {
+        /* giveItem branch: r0 = item id, r1 = count. */
+        GUEST_CALL(GiveItem);
+    }
+
+    /* Skip past the 4-byte command header and signal success. */
+    R7 = R7 + 4;
+    SET_FLAGS_NZ(1);
+    R0 = 1;
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCmd_run_or_stop_cutscene_camera_script ── */
 /* CutsceneCmd_run_or_stop_cutscene_camera_script (0x0803816A): map-script
  * command handler for starting/stopping a cutscene camera script.
@@ -2105,6 +2229,48 @@ Next CutsceneCmd_run_or_stop_cutscene_camera_script(void) {
         SET_FLAGS_NZ(R0);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── CutsceneCmd_do_camera_shake ── */
+/* CutsceneCmd_do_camera_shake: 0803822A-08038246 THUMB
+ * Reads two bytes from the current map script: the shake magnitude and
+ * the shake duration, then kicks off the camera shake effect and advances
+ * the script pointer by 4. Returns 1.
+ *
+ * Contract:
+ *   inputs:  r7 r10 lr
+ *   outputs: nz r1 r2 r4 r7
+ *   clobbers: c v r0 r6 lr
+ */
+Next CutsceneCmd_do_camera_shake(void) {
+    u32 saved_lr = LR;
+
+    /* Read magnitude byte from the script, in slot 1. */
+    R6 = 1;
+    GUEST_CALL(ReadMapScriptByte);
+    /* R0 now holds the magnitude byte read from the script. */
+
+    /* R0 = byte read into R4 (this is the count/slot for the next read). */
+    R0 = R4;
+
+    /* Read duration byte from the script, in slot 2. */
+    R6 = 2;
+    GUEST_CALL(ReadMapScriptByte);
+
+    /* R1 = the duration byte the callee wrote into R4. */
+    R1 = R4;
+
+    /* Start the camera shake with the magnitude (R0) and duration (R1). */
+    GUEST_CALL(camera_initShakeEffect_80302a8);
+
+    /* Consume the two bytes that were just read. */
+    R7 = R7 + 4;
+
+    /* Return 1 to indicate the cutscene step was handled. */
+    R0 = 1;
+
+    LR = saved_lr;
     RETURN_TO_CALLER();
 }
 

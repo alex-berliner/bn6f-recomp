@@ -1238,6 +1238,32 @@ Next NPCCommand_write_cutscene_var(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── NPCCommand_jump_if_cutscene_var_equals ── */
+/* NPCCommand_jump_if_cutscene_var_equals(r6 = script ptr, r10 = toolkit):
+ *   Read the cutscene-state byte at the script's index (offset +1) and compare it
+ *   to the script's expected value (offset +2). If they match, jump the NPC script
+ *   to the word at (script + 3) (a relative offset via ReadNPCScriptWord).
+ *   Otherwise skip past the 7-byte instruction (fall through).
+ *   outputs: r6 = new script position, r2 unchanged. */
+Next NPCCommand_jump_if_cutscene_var_equals(void) {
+    u32 cutscene_state = LD32(R10 + oToolkit_CutsceneStatePtr);
+    u8 var_index = LD8(R6 + 1);
+    u8 expected  = LD8(R6 + 2);
+    u8 actual    = LD8(cutscene_state + var_index);
+
+    if (actual == expected) {
+        /* Match: jump to the offset stored at script+3. */
+        R0 = R6 + 3;
+        GUEST_CALL(ReadNPCScriptWord);
+        R6 = R0;
+    } else {
+        /* No match: skip past this 7-byte instruction. */
+        R6 += 7;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── NPCCommand_wait_cutscene_var ── */
 /* NPCCommand_wait_cutscene_var (0x0809F2DE):
  * NPC script command "wait for cutscene variable". Puts the NPC into the
@@ -1530,5 +1556,41 @@ static void clear_battle_state_if_pending(void) {
 /* sub_809F90C() – clobbers r0, r1, nz; outputs c, v, r3 (left by GUEST_CALL) */
 Next sub_809F90C(void) {
     clear_battle_state_if_pending();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809F922 ── */
+/* sub_809F922: Try to record a value in the cap-table.
+ * inputs:  r5 = value to store
+ *          r10 (unused body, but in contract)
+ *          lr = return address
+ * outputs: r3 (caller expects preserved)
+ * clobbers: nz, c, v, r0, r1
+ * preserved: r4, r6, r7
+ *
+ * Reads event flag 0x1708; if it's set we bail. Otherwise we look at
+ * byte_2000210, the cap-table slot index. If the index has not yet
+ * reached 0x10, we bump it and store r5 into the next slot of the
+ * table (slot table lives right after the index byte, at offset 0x10
+ * from the same address, 4 bytes per entry). */
+Next sub_809F922(void) {
+    /* bail when flag EVENT_1708 is set (TestEventFlag returns !zf) */
+    R0 = 0x17;
+    R1 = 0x08;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    u32 table = A_byte_2000210;
+    u32 slot  = LD8(table);
+    if ((s32)slot >= 0x10) {
+        RETURN_TO_CALLER();
+    }
+
+    /* claim slot: index++, then write r5 into slot[index] (4-byte entries) */
+    ST8(table, (u8)(slot + 1));
+    ST32(table + 0x10 + slot * 4, R5);
+
     RETURN_TO_CALLER();
 }

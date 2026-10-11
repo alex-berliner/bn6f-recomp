@@ -286,6 +286,205 @@ Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C08EE ── */
+/* sub_80C08EE: First-turn phase initialization / timer → next phase.
+ * Called from the battle object's phase driver while r5 points at the
+ * battle object. If the phase hasn't been initialized yet, set a 15-tick
+ * timer and mark it initialized. Otherwise count the timer down; on
+ * expiry, advance to action 4 and clear the phase/initialized flag so
+ * the phase restarts cleanly next time. */
+Next sub_80C08EE(void) {
+    u8 initialized = LD8(R5 + oBattleObject_PhaseInitialized);
+
+    if (initialized == 0) {
+        /* First entry into this phase: prime the countdown. */
+        ST16(R5 + oBattleObject_Timer, 15);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+        SET_FLAGS_NZ(4);
+    } else {
+        /* Already initialized: tick the timer down. */
+        u16 timer = LD16(R5 + oBattleObject_Timer) - 1;
+        ST16(R5 + oBattleObject_Timer, timer);
+        SET_FLAGS_NZ(timer);
+        if (timer > 0) {
+            /* Still counting. */
+        } else {
+            /* Expired: hand off to action 4 and reset the phase. */
+            ST8(R5 + oBattleObject_CurAction, 4);
+            ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+            SET_FLAGS_NZ(0);
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0938 ── */
+/* sub_80C0938(r5 = battle object pointer):
+ * Try to find a panel target via sub_80C0C9A.
+ * On success: stash the picked param bytes into the object's Param3/Param4 and set
+ *   its phase to 4 (the "execute panel effect" phase).
+ * On failure: set its current action to 0xC and its phase to 0 (idle / no target).
+ *   r5 is preserved; sub_80C0C9A may clobber nz/c/v and r0..r3. */
+Next sub_80C0938(void) {
+    GUEST_CALL(sub_80C0C9A);
+
+    if (R0 != 0) {
+        ST8(R5 + oBattleObject_Param3, (u8)R0);
+        ST8(R5 + oBattleObject_Param4, (u8)R1);
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+    } else {
+        ST8(R5 + oBattleObject_CurAction, 0xC);
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0988 ── */
+/* sub_80C0988: Z-axis pop-up animation for a battle object.
+ *
+ * First time through, arms the upward jump (Z velocity 0x0F0000, 4-frame
+ * period timer) and stamps the phase-init flag to 4. On later ticks it
+ * integrates Z by ZVelocity; once Z has risen past 0xA0 in the high half
+ * the object's phase advances to 0xC and we exit. The 4-frame period
+ * timer counts down each visit, calling sub_80C0DC2 every 5 frames.
+ */
+Next sub_80C0988(void) {
+    if (!LD8(R5 + oBattleObject_PhaseInitialized)) {
+        /* First time: launch the object upward and arm the period timer. */
+        ST16(R5 + oBattleObject_Timer, 4);
+        ST32(R5 + oBattleObject_ZVelocity, 0x0F0000);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+    } else {
+        /* Integrate Z position from velocity and check landing threshold. */
+        s32 z = (s32)LD32(R5 + oBattleObject_Z) + (s32)LD32(R5 + oBattleObject_ZVelocity);
+        ST32(R5 + oBattleObject_Z, (u32)z);
+        if (((s32)z >> 16) >= 0xA0) {
+            /* Landed: advance phase and exit. */
+            ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0xC);
+            RETURN_TO_CALLER();
+        }
+    }
+
+    /* Tick down the period timer; call sub_80C0DC2 on roll-over. */
+    u32 timer = (u32)((s32)LD16(R5 + oBattleObject_Timer) - 1);
+    ST16(R5 + oBattleObject_Timer, (u16)timer);
+    if ((s32)timer > 0) {
+        RETURN_TO_CALLER();
+    }
+    ST16(R5 + oBattleObject_Timer, 5);
+    GUEST_CALL(sub_80C0DC2);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0A6C ── */
+/* sub_80C0A6C — advance the phase-3 → phase-4 transition for a battle object.
+ *   inputs:  r5 = battle object pointer
+ *   outputs: -
+ *   clobbers: nz c v r0
+ *
+ * First call (PhaseInitialized == 0) starts the transition: anim 3 with a
+ * 9-frame timer. Subsequent calls count the timer down; when it reaches
+ * zero (signed), the combined phase/state field is set to 4 to land in
+ * phase 4.
+ */
+Next sub_80C0A6C(void) {
+    if (!LD8(R5 + oBattleObject_PhaseInitialized)) {
+        /* First entry into the transition: kick off the anim + timer. */
+        ST8(R5 + oBattleObject_CurAnim, 3);
+        ST16(R5 + oBattleObject_Timer, 9);
+        R0 = 4;
+        ST8(R5 + oBattleObject_PhaseInitialized, R0);
+    } else {
+        /* Count the timer down and, once it expires, move to phase 4.
+         * The subtraction and signed comparison must be done in 32 bits
+         * (mirroring `sub r0,#1` + `bgt` on the full register after the
+         * `ldrh` zero-extends into r0); using 16-bit signed math here
+         * disagrees for large timer values (e.g. 0xFFFF). */
+        u32 timer = (u32)LD16(R5 + oBattleObject_Timer) - 1;
+        ST16(R5 + oBattleObject_Timer, (u16)timer);
+        if ((s32)timer > 0) {
+            /* Still counting — leave the object in this sub-phase. */
+            R0 = timer;
+        } else {
+            /* Timer expired: advance to phase 4. */
+            R0 = 4;
+            ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, R0);
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0B90 ── */
+/* sub_80C0B90: per-frame update for a battle object's freeze/hit-react phase.
+ *
+ * PhaseInit byte acts as a tiny state machine:
+ *   0  -> first tick: kick off the reaction anim, play its SFX (0xBE), arm a
+ *         5-frame timer, then mark state = 4 so we don't re-enter.
+ *   !=0-> count the timer down each tick. When it reaches 0, clear flag 0x02
+ *         in the object's header flags and advance CurPhase to 4. */
+Next sub_80C0B90(void) {
+    u8 phaseInit = LD8(R5 + oBattleObject_PhaseInitialized);
+
+    if (phaseInit == 0) {
+        /* First entry: trigger the reaction. */
+        ST16(R5 + oBattleObject_CurAnimAndCurAnimCopy, 2);
+        R0 = 0xBE;
+        GUEST_CALL(PlaySoundEffect);
+        ST16(R5 + oBattleObject_Timer, 5);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+        SET_FLAGS_NZ(4);
+    } else {
+        /* Subsequent ticks: decrement the 16-bit timer (32-bit SUB on the
+         * loaded value so the high bits match the original's flags). */
+        u32 timerVal = LD16(R5 + oBattleObject_Timer);
+        u32 newVal = timerVal - 1;
+        SET_FLAGS_NZ(newVal);
+        ST16(R5 + oBattleObject_Timer, (u16)newVal);
+
+        /* BGT (signed > 0): taken while the timer still has frames left.
+         * For the subtraction here V is always 0, so this reduces to N==0
+         * and Z==0, i.e. the result is a positive nonzero 32-bit value. */
+        if (NEGATIVE_FLAG() || ZERO_FLAG()) {
+            /* Timer expired: clear the busy flag and hand off to phase 4. */
+            u8 flags = LD8(R5 + oObjectHeader_Flags);
+            flags &= (u8)~2;
+            ST8(R5 + oObjectHeader_Flags, flags);
+            ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+            SET_FLAGS_NZ(4);
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0C20 ── */
+/* sub_80C0C20: Battle-object phase-3 init/tick.
+ *   inputs:  r5 (battle object), lr
+ *   outputs: r5 (preserved)
+ *   clobbers: r0, r1, r2, r3, lr
+ *
+ * On first entry (phase != 4): set timer = 10 and mark phase initialized (=4).
+ * Otherwise: decrement timer; when it expires, reset the linked object via
+ * sub_80E1332(related_object_1, 0) and advance phase to 4. */
+Next sub_80C0C20(void) {
+    if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
+        ST16(R5 + oBattleObject_Timer, (u16)0xA);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+    } else {
+        u32 timer = LD16(R5 + oBattleObject_Timer) - 1;
+        ST16(R5 + oBattleObject_Timer, (u16)timer);
+        if ((s32)timer <= 0) {
+            R0 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+            R1 = 0;
+            GUEST_CALL(sub_80E1332);
+            ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, (u16)4);
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C3F00 ── */
 /* sub_80C3F00: initialize a battle object's sprite (panels, sprite, anim, palette, flip),
  * set the state phase to CUR_STATE_UPDATE_sub_80C3F00, then tail-call sub_80C3F52. */
@@ -1466,6 +1665,43 @@ static void handle_collision_event(u32 obj) {
 /* sub_80C5C40(r5 = battle object pointer) -> side effects; all registers are outputs via callees */
 Next sub_80C5C40(void) {
     handle_collision_event(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C5D84 ── */
+/* sub_80C5D84: destroy the battle object's collision region, then if its Param1
+ * indicates a sword or wind effect, spawn the corresponding panel-based area
+ * attack. Finally mark the object for destruction.
+ *
+ *   inputs:  r4 r5 lr
+ *   outputs: r1 r5
+ *   clobbers: nz c v r0 r2 r3 r4 r6 lr
+ */
+Next sub_80C5D84(void) {
+    GUEST_CALL(object_clearCollisionRegion);
+
+    u8 param1 = LD8(R5 + oBattleObject_Param1);
+
+    if (param1 == 1) {
+        /* Sword-like effect: spread damage across panels in a wide shape. */
+        R0 = LD8(R5 + oBattleObject_PanelX);
+        R1 = LD8(R5 + oBattleObject_PanelY);
+        R2 = LD8(R5 + oBattleObject_Element);
+        R3 = 0;
+        R4 = 0x3C << 8;
+        R6 = LD32(R5 + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+        GUEST_CALL(sub_80C6018);
+    } else if (param1 == 2) {
+        /* Wind-like effect: spread along the row in a single line. */
+        R0 = LD8(R5 + oBattleObject_PanelX);
+        R1 = LD8(R5 + oBattleObject_PanelY);
+        R2 = LD8(R5 + oBattleObject_Element);
+        R3 = 0;
+        R6 = LD32(R5 + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+        GUEST_CALL(sub_80C68B0);
+    }
+
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
     RETURN_TO_CALLER();
 }
 

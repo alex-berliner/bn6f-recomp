@@ -2547,6 +2547,33 @@ Next sub_8005642(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8005814 ── */
+/* sub_8005814: per-frame main loop dispatch for the current game state.
+ * Calls the state handlers in order; if a screen fade is not active, also
+ * runs the chatbox/overlay updates and the "reset game and go to state 28"
+ * path (e.g. title -> title). */
+Next sub_8005814(void) {
+    GUEST_CALL(dispatch_80339CC);
+    GUEST_CALL(sub_80039AA);
+    GUEST_CALL(sub_8003AFA);
+    GUEST_CALL(sub_80027B4);
+    GUEST_CALL(sub_800286C);
+    GUEST_CALL(sub_8003BF4);
+    GUEST_CALL(sub_8003E98);
+    GUEST_CALL(npc_drawSprites_800467C);
+    GUEST_CALL(sub_8004298);
+    GUEST_CALL(sub_8004590);
+    GUEST_CALL(sub_8004934);
+    GUEST_CALL(event_runArmedCallback_80024AE);
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        GUEST_CALL(chatbox_8040818);
+        GUEST_CALL(sub_811F6E0);
+        GUEST_CALL(mainState_resetGameAndGoto28_8005524);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── gameState_beginEndingSequence_800596C ── */
 /* gameState_beginEndingSequence_800596C (self: *GameState in r5): begin the ending sequence.
  *

@@ -1918,6 +1918,33 @@ Next chatbox_textScriptAction_openShop_80424BC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_80425F0 ── */
+/* chatbox_80425F0: launch the mail subsystem for a chatbox reply option.
+ * inputs:  r4 (chatbox object), r5 (text-script state), r10, lr
+ * outputs: r0 = 0 (with nz from it), r2/r3 unchanged, r4/r5 preserved
+ *
+ * First tick: marks FLAGS_3E_UNK_0001, reads the mail index from [r4+2], launches
+ * the mail subsystem, and sets the guard byte at [r5+4] so it only runs once. */
+Next chatbox_80425F0(void) {
+    /* mark FLAGS_3E_UNK_0001 */
+    R0 = 1;
+    GUEST_CALL(chatbox_setflags_3e);
+
+    if (LD8(R5 + oChatbox_TextScriptState_04) == 0) {
+        /* first tick: launch the mail subsystem with the index stored at [r4+2] */
+        R0 = LD8(R4 + 2);
+        GUEST_CALL(subsystem_launchMail);
+
+        /* mark the chatbox text-script state as having launched so we don't repeat */
+        ST8(R5 + oChatbox_TextScriptState_04, 1);
+    }
+
+    /* tail: r0 = 0, flags from that mov (nz set from the value) */
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_processScriptEntry_8042678 ── */
 /* chatbox_processScriptEntry_8042678: handle one chatbox script entry.
  *

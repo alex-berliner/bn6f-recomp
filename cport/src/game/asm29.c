@@ -542,6 +542,176 @@ Next sub_80A5350(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A54A4 ── */
+/* sub_80A54A4(r10 = Toolkit*, r5 = ?):
+ * Looks up a per-map entry table for the current map; returns a base pointer and a
+ * string/secondary pointer to one of six fixed tables (two arrays of three pointers each).
+ *
+ * If the current map group is 0x85 (a special case, likely a battle/mini-game area), the
+ * index used is 2; otherwise it comes from the map number byte. The index is then left-
+ * shifted by 2 to index a pair of pointer tables. A final byte at offset 4 of *r5 acts as
+ * a sub-index, multiplied by 4, and is added into both returned pointers.
+ *
+ * Outputs: r0 = first pointer + sub-offset; r1 = second pointer + sub-offset.
+ */
+Next sub_80A54A4(void) {
+    u32 toolkit_base = R10;
+    u32 game_state = LD32(toolkit_base + oToolkit_GameStatePtr);
+    u32 idx;
+    u32 sub;
+
+    /* Pick the table index: forced to 2 when the map group is 0x85,
+     * otherwise read it from the map number. */
+    if (LD8(game_state + oGameState_MapGroup) == 0x85) {
+        idx = 2;
+    } else {
+        idx = LD8(game_state + oGameState_MapNumber);
+    }
+
+    idx <<= 2;
+
+    /* The sub-offset is a byte at offset 4 of *r5, scaled by 4 (element size). */
+    sub = (u32)LD8(R5 + 4) * 4;
+
+    /* Two parallel pointer tables, each with three entries, stored as
+     * little-endian u32s in the ROM at the addresses the original ldr-pseudo loads.
+     *   0x80A54D8: { 0x80A5358, 0x80A5384, 0x80A5384 }
+     *   0x80A54E4: { 0x80A53B0, 0x80A53DC, 0x80A5408 }
+     * Index by `idx` (already shifted left by 2) and add `sub`. */
+    R0 = LD32(0x80A54D8 + idx) + sub;
+    R1 = LD32(0x80A54E4 + idx) + sub;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A5588 ── */
+/* sub_80A5588: cutscene/sprite step (bank 0x68).
+ *   inputs:  r5 r6 r10 lr
+ *   outputs: r2 r5 r10 r11
+ *   clobbers (scratch for callees): nz c v r0 r1 r3 lr
+ *   preserved: r4 r5 r6 r7 r8 r9 r12
+ *
+ * The original pushes only LR, so the stack frame is just the return address.
+ * Behaviour: if either of the two cutscene-script-pos checks is non-zero, or
+ * the 0x80 chatbox flag is set, or sub_809E462 returns non-zero, skip everything
+ * (including sprite_update). Otherwise call sub_80A55D4, then test EVENT_4EA /
+ * EVENT_4EB; if either is set skip to sprite_update. Otherwise, when the byte
+ * at r6+8 is not 2, call sub_80A5744. sprite_update always runs past the
+ * early-out block.
+ */
+Next sub_80A5588(void) {
+    /* If either cutscene-script-position probe is non-zero, bail entirely. */
+    GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F40);
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F58);
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Chatbox masked-flag 0x80 set?  bail entirely. */
+    R0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    /* sub_809E462 returns non-zero?  bail entirely. */
+    GUEST_CALL(sub_809E462);
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Run sub_80A55D4 unconditionally past the early-outs. */
+    GUEST_CALL(sub_80A55D4);
+
+    /* If EVENT_4EA is set, skip the inner block (still sprite_update). */
+    R0 = EVENT_4EA >> 8;
+    R1 = EVENT_4EA & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (!ZERO_FLAG()) {
+        goto update_and_return;
+    }
+
+    /* If EVENT_4EB is set, skip the inner block (still sprite_update). */
+    R0 = EVENT_4EB >> 8;
+    R1 = EVENT_4EB & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (!ZERO_FLAG()) {
+        goto update_and_return;
+    }
+
+    /* Inner block: only when the r6+8 byte is not 2. */
+    if (LD8(R6 + 8) != 2) {
+        GUEST_CALL(sub_80A5744);
+    }
+
+update_and_return:
+    GUEST_CALL(sprite_update);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A5744 ── */
+/* sub_80A5744: Check if BBS response byte is equal to a sentinel; if not,
+ * set an event flag (4, 234 -> EVENT_4EA).
+ *
+ *   inputs:  r5, r6, r10, lr
+ *   outputs: r5, r10, r11 (preserved)
+ *   clobbers: r0, r1, r2, r3, lr, nz, c, v
+ */
+Next sub_80A5744(void) {
+    u8 response;
+
+    /* Skip everything if no BBS request is pending. */
+    response = LD8(R5 + 5);
+    if (response == 0)
+        goto done;
+
+    /* Issue the BBS request and compare its return code (minus 0xC0) to
+     * the saved request byte; only set the event flag on mismatch. */
+    GUEST_CALL(reqBBS_81409E4);
+    R0 = (u32)R0 - 0xC0;
+    if ((u32)R0 == LD8(R6 + 5))
+        goto done;
+
+    /* Set event flag 4 / 234. */
+    R0 = 4;
+    R1 = 0xEA;
+    GUEST_CALL(SetEventFlagFromImmediate);
+
+done:
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A5764 ── */
+/* sub_80A5764: picks one of two small tables of (u32, u32) pairs based on the current
+ * map group, then returns the second word of the entry selected by reqBBS_81409D0(4).
+ *
+ * The two source tables each hold 5 (id, msg) pairs laid out as 5 little-endian u32s.
+ * The id is in the low 16 bits and the msg in the high 16 bits; reqBBS returns an
+ * index 0..4 into whichever table matches the area.
+ *
+ *   inputs:  r10 lr
+ *   outputs: r0 r5 r6
+ *   clobbers: nz c v r1 r2 r3
+ *   preserved: r4 r5 r6 r7
+ */
+Next sub_80A5764(void) {
+    u32 game_state = LD32(R10 + oToolkit_GameStatePtr);
+    u32 map_group  = LD8(game_state + 4);
+
+    /* Map group 0x85 (Beast+ gate links area) uses the alternate table. */
+    u32 table_addr = (map_group == 0x85) ? (u32)A_byte_80A579C : (u32)A_byte_80A578C;
+
+    R0 = 4;
+    GUEST_CALL(reqBBS_81409D0);
+    R0 = LD32(table_addr + (R0 << 2));
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchObjectBehaviorStep_80A9B70 ── */
 /* battle_dispatchObjectBehaviorStep_80A9B70: dispatch one battle-object behaviour step.
  *
@@ -1323,6 +1493,41 @@ Next isEventFlag212Set_80AA764(void) {
         result = 1;
 
     R0 = result;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AA78C ── */
+/* sub_80AA78C: decides whether the EVENT_214 encounter is "lucky".
+ * Returns 1 when the event flag (immediate 2) is set and a roll in [0,255]
+ * is <= 0xC0 (i.e. with probability ~75% when the flag is set).
+ *
+ *   inputs:  r10 lr
+ *   outputs: r0 r2 r4 r7
+ *   clobbers: nz c v r1 r3 lr
+ *   preserved: r4 r7
+ */
+Next sub_80AA78C(void) {
+    u32 lucky = 0;
+
+    /* TestEventFlagFromImmediate takes the flag index in R1 (low 16 bits used):
+     * the original lifts R0=2 (the EVENT_214 selector) and R1=0x14 (20),
+     * and TestEventFlagFromImmediate is the variant driven by R1 here. */
+    R0 = 2;
+    R1 = 0x14;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (ZERO_FLAG()) {
+        /* Flag not set: lucky stays 0, fall through. */
+    } else {
+        GUEST_CALL(GetPositiveSignedRNG);
+        /* Original: r0 = r0 & 0xff; cmp r0, #0xc0; bgt skip -> skip on signed >.
+         * Use the post-call R0 here; result fits in 0..255. */
+        if ((s32)(R0 & 0xFF) <= 0xC0) {
+            lucky = 1;
+        }
+    }
+
+    R0 = lucky;
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }

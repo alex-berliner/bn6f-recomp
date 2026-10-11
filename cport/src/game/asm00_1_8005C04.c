@@ -1013,6 +1013,69 @@ Next spawnMegaMan_80073CC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── spawnMetalCube_800748A ── */
+/* spawnMetalCube_800748A: maybe-spawn a MetalCube into the slot table
+ * pointed to by r5, based on the EnemySetup panel at r6.
+ *
+ *   r5 = spawn slot table; slot at +0xB8 is the primary handle,
+ *        slot at +0xBC is the secondary.
+ *   r6 = *EnemySetup; field1 is a packed byte (high nibble = col,
+ *        low 3 bits = row). Bit 5 of the panel parameter word marks
+ *        a "metal cube hole" tile.
+ *
+ * Spawns into [r7] when *either* slot is empty; only skips when both
+ * are already populated. The chosen slot pointer is held in r7 and
+ * passed (implicitly) into sub_80D85F0.
+ */
+Next spawnMetalCube_800748A(void) {
+    u32 entry_r4 = R4, entry_r5 = R5, entry_r6 = R6, entry_r7 = R7;
+
+    /* r7 = r5 + 0xB8 (primary slot). R7 carries through the callees. */
+    u32 r7 = R5 + 0xB8;
+    R7 = r7;
+
+    /* If primary is occupied, peek at secondary (+0xBC). Return only
+     * when both are populated; otherwise fall through with r7 pointing
+     * at the empty slot to fill. */
+    if (LD32(r7) != 0) {
+        if (LD32(r7 + 4) != 0) {
+            R4 = entry_r4;
+            R5 = entry_r5;
+            R6 = entry_r6;
+            R7 = entry_r7;
+            RETURN_TO_CALLER();
+        }
+        r7 += 4;
+        R7 = r7;
+    }
+
+    /* Unpack (col, row) from EnemySetup.field1 and ask the panel system. */
+    u32 packed = LD8(R6 + 1);
+    R0 = (packed << 29) >> 29;     /* low 3 bits -> row */
+    R1 = packed >> 4;              /* high nibble -> col */
+    GUEST_CALL(object_getPanelParameters);
+
+    /* "Hole" tile test = bit 5 of the returned panel parameter word. */
+    R4 = (R0 & 0x20) >> 5;
+
+    /* Rebuild (row, col) -- R0/R1 were clobbered -- and set spawn args. */
+    packed = LD8(R6 + 1);
+    R0 = (packed << 29) >> 29;
+    R1 = packed >> 4;
+    R2 = 0;
+    R6 = 0x64;
+    /* R7 already holds r7. */
+
+    GUEST_CALL(sub_80D85F0);
+    ST32(r7, R0);
+
+    R4 = entry_r4;
+    R5 = entry_r5;
+    R6 = entry_r6;
+    R7 = entry_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_800753C ── */
 /* sub_800753C: spawn a battle object at a panel, initialize it, allocate AI data,
  * resolve its NameID, and register it in the alliance entry list.

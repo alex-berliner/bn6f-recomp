@@ -1234,6 +1234,64 @@ Next object_getPanelsInRowFiltered(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_getClosestPanelMatchingRowFiltered ── */
+/* object_getClosestPanelMatchingRowFiltered(r0 = row):
+ * Scan rows starting from a panel six steps behind this object's row, walking in the
+ * direction opposite to the object's facing side. Return the first row whose panel passes
+ * both object_checkPanelParameters() and object_isValidPanel(); return 0 if none qualify.
+ * R1, R2, R3, R4, R5 are preserved across the call.
+ *
+ *   inputs:  r0 lr
+ *   outputs: nz c v r0 r1 r2 r3 r4 r5 lr
+ *   clobbers: -
+ *   preserved: r1 r2 r3 r4 r5
+ */
+Next object_getClosestPanelMatchingRowFiltered(void) {
+    u32 saved_row = R0;
+    u32 saved_r1 = R1, saved_r2 = R2, saved_r3 = R3;
+
+    /* bl object_getAllianceDirection -- step direction (1 toward alliance, -1 away). */
+    R0 = saved_row;
+    GUEST_CALL(object_getAllianceDirection);
+    u32 step = 0 - R0;
+    SET_FLAGS_NZ(step);
+
+    /* r0 = -5 * saved_row + 6: starting row offset for the scan. */
+    u32 row = 6 - 5 * saved_row;
+
+    for (;;) {
+        /* Restore R1..R3 in case the callee clobbered them, then call. */
+        R0 = row; R1 = saved_r1; R2 = saved_r2; R3 = saved_r3;
+        GUEST_CALL(object_checkPanelParameters);
+        u32 params_ok = R0;
+        if (params_ok) {
+            /* Parameters match at this row: return the row, with R1..R3 caller-preserved. */
+            R0 = row;
+            R1 = saved_r1; R2 = saved_r2; R3 = saved_r3;
+            SET_FLAGS_NZ(R0);
+            RETURN_TO_CALLER();
+        }
+
+        /* row += step: move to the next row in the opposite-facing direction. */
+        row = row + step;
+
+        /* Restore R1..R3 before calling object_isValidPanel. */
+        R0 = row; R1 = saved_r1; R2 = saved_r2; R3 = saved_r3;
+        GUEST_CALL(object_isValidPanel);
+        u32 valid = R0;
+        if (valid) {
+            /* Still a valid panel: re-check parameters at the new row. */
+            continue;
+        }
+
+        /* Panel invalid: give up, R1..R3 caller-preserved. */
+        R0 = 0;
+        R1 = saved_r1; R2 = saved_r2; R3 = saved_r3;
+        SET_FLAGS_NZ(R0);
+        RETURN_TO_CALLER();
+    }
+}
+
 /* ── battle_scanPanelsInFront_800D58C ── */
 /* battle_scanPanelsInFront_800D58C(r5 = battle object):
  * Sweep the panels in front of the acting object, one panel at a time in
