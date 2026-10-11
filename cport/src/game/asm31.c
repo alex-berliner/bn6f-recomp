@@ -8,6 +8,93 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── spawn_t1_0x5_tempAttackObject_80B8E30 ── */
+/* register form: calls object_spawnType1 outside this file, which has no typed C interface yet */
+static u32 call_spawn_type1(u32 x, u32 y, u32 z, u32 params, u32 *leftover_r2) {
+    u32 saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    R0 = 5;
+    R1 = x;
+    R2 = y;
+    R3 = z;
+    R4 = params;
+    GUEST_CALL(object_spawnType1);
+    u32 result = R5;
+    *leftover_r2 = R2;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    return result;
+}
+
+typedef struct {
+    u32 object;    /* spawned pointer (0 on failure) */
+    u32 r1;        /* final r1: 0x14 on success, caller's original r0 on failure */
+    u32 r2;        /* final r2: header flags on success, callee leftover on failure */
+    u32 nz_value;  /* value for the last flag-setting instruction */
+    u32 c_flag;    /* C flag: 0 on both paths (original uses ADDS/MOVS that clears C) */
+} SpawnResult;
+
+/* Spawn a temporary attack object (type 1, index 5), link it to a related
+ * object, inherit panel position and alliance, and set header flag bits 0x14.
+ * Writes the result pointer to *result_addr (caller's r7). */
+static SpawnResult spawn_temp_attack(u32 x, u32 y, u32 z, u32 params,
+                                     u32 related_obj, u32 result_addr,
+                                     u32 orig_r0) {
+    u32 leftover_r2;
+    u32 obj = call_spawn_type1(x, y, z, params, &leftover_r2);
+
+    SpawnResult res;
+    res.object = obj;
+
+    if (obj != 0) {
+        /* Link the new object back to its related object */
+        ST32(obj + oBattleObject_RelatedObject1Ptr, related_obj);
+        /* Store the result pointer as ExtraVars */
+        ST32(obj + oBattleObject_ExtraVars, result_addr);
+
+        /* Inherit panel position and alliance/direction from the related object */
+        u16 panel = LD16(related_obj + oBattleObject_PanelXY);
+        ST16(obj + oBattleObject_PanelXY, panel);
+        u16 alliance = LD16(related_obj + oBattleObject_AllianceAndDirectionFlip);
+        ST16(obj + oBattleObject_AllianceAndDirectionFlip, alliance);
+
+        /* Set flag bits 0x14 on the object header */
+        u8 flags = LD8(obj + oObjectHeader_Flags) | 0x14;
+        ST8(obj + oObjectHeader_Flags, flags);
+
+        res.r1 = 0x14;
+        res.r2 = (u32)flags;
+        res.nz_value = (u32)flags;
+        res.c_flag = 0;  /* C cleared by the original's flag-setting sequence */
+    } else {
+        res.r1 = orig_r0;
+        res.r2 = leftover_r2;
+        res.nz_value = 0;
+        res.c_flag = 0;  /* C cleared by mov r0, r5 (ADDS encoding) */
+    }
+
+    /* Publish the spawned pointer (or 0) to the caller's result slot */
+    ST32(result_addr, obj);
+
+    return res;
+}
+
+/* spawn_t1_0x5_tempAttackObject_80B8E30
+ * (r1=x, r2=y, r3=z, r4=params, r5=related_obj, r7=result_addr,
+ *  r0=orig_r0 [restored into r1 on failure], r6=saved) */
+Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
+    SpawnResult res = spawn_temp_attack(R1, R2, R3, R4, R5, R7, R0);
+    R0 = res.object;
+    R1 = res.r1;
+    R2 = res.r2;
+    SET_FLAGS_NZ(res.nz_value);
+    /* The original's "mov r0, r5" uses ADDS encoding (clears C and V);
+       the final ORRS only sets N/Z, so C stays 0 from that ADDS. */
+    cpu.c = res.c_flag;
+    cpu.v = 0;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_ResetObjectTimerTo8_80C4072 ── */
 /* battle_ResetObjectTimerTo8_80C4072(r0 = object pointer):
  * If the object exists, reset the field at offset +8 to 8 (likely a wait/counter).
@@ -346,6 +433,147 @@ Next battle_object_stepLifetimeDestroyOnHit_80C532E(void) {
     R0 = LD32(obj + oBattleObject_CollisionDataPtr);
     GUEST_CALL(object_freeCollisionData);
     GUEST_CALL(object_freeMemory);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C5C40 ── */
+/* Jump table address for collision action dispatch (entries at +0 and +4). */
+#define COLLISION_ACTION_TABLE  0x080C5C94u
+
+/* Handler addresses stored in the table (with Thumb bit). */
+#define COLLISION_HANDLER_0  (0x080C5C9C + 1)
+#define COLLISION_HANDLER_1  (0x080C5D84 + 1)
+
+/* Bit 1 in ObjectHeader_Flags marks the object as actively colliding. */
+#define OBJ_FLAG_COLLIDING  2
+
+/* Collision spawn parameters begin at object offset 0x34 (three words). */
+#define oBattleObject_CollisionSpawnParams  0x34
+
+/* Effect type passed to spawn_t1_0x0_EffectObject. */
+#define COLLISION_SPAWN_EFFECT_TYPE  0x14
+
+/* State value for the destroy path. */
+#define CUR_STATE_DESTROY_sub_80C5C40  8
+
+/* --- register-form helpers --- */
+
+/* register form: calls object_removeCollisionData outside this file */
+static void remove_collision_data(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_removeCollisionData);
+}
+
+/* register form: calls object_spawnCollisionEffect outside this file */
+static void spawn_collision_effect(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_spawnCollisionEffect);
+}
+
+/* register form: calls battle_isBattleOver outside this file, returns r0 != 0 */
+static bool battle_is_over(void) {
+    GUEST_CALL(battle_isBattleOver);
+    return R0 != 0;
+}
+
+/* register form: calls battle_isTimeStop outside this file, returns true if Z clear */
+static bool battle_time_stopped(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls object_presentCollisionData outside this file */
+static void present_collision_data(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_presentCollisionData);
+}
+
+/* register form: calls object_clearCollisionRegion then sets R0=CUR_STATE_DESTROY_sub_80C5C40
+   (the original does MOV R0,#8 after the BL, which the adapter cannot branch on) */
+static void clear_collision_region(u32 obj) {
+    R5 = obj;
+    GUEST_CALL(object_clearCollisionRegion);
+    R0 = CUR_STATE_DESTROY_sub_80C5C40;
+}
+
+/* register form: calls spawn_t1_0x0_EffectObject outside this file */
+static void spawn_collision_destroy_effect(u32 obj, u32 p0, u32 p1, u32 p2) {
+    R1 = p0;
+    R2 = p1;
+    R3 = p2;
+    R4 = COLLISION_SPAWN_EFFECT_TYPE;
+    R5 = obj;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+}
+
+/* register form: calls collision action handler (sub_80C5C9C) via bx r1 dispatch */
+static void call_collision_action_0(u32 obj, u32 action) {
+    R0 = action;
+    R5 = obj;
+    GUEST_CALL(sub_80C5C9C);
+}
+
+/* register form: calls collision action handler (sub_80C5D84) via bx r1 dispatch */
+static void call_collision_action_1(u32 obj, u32 action) {
+    R0 = action;
+    R5 = obj;
+    GUEST_CALL(sub_80C5D84);
+}
+
+/* --- typed logic --- */
+
+/* Destroy the collision object: clear its colliding flag, clear its region, set state to DESTROY. */
+static void destroy_collision_object(u32 obj) {
+    u8 flags = LD8(obj + oObjectHeader_Flags);
+    ST8(obj + oObjectHeader_Flags, flags & ~OBJ_FLAG_COLLIDING);
+    clear_collision_region(obj);
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY_sub_80C5C40);
+}
+
+/* Process a collision event on a battle object (r5 = object header pointer).
+ * Removes collision data, spawns the hit effect, and depending on game state either
+ * presents the data (return), dispatches an action callback, or destroys the object. */
+static void handle_collision_event(u32 obj) {
+    remove_collision_data(obj);
+    spawn_collision_effect(obj);
+
+    /* If the battle has ended, spawn a special visual effect then destroy. */
+    if (battle_is_over()) {
+        u32 p0 = LD32(obj + oBattleObject_CollisionSpawnParams);
+        u32 p1 = LD32(obj + oBattleObject_CollisionSpawnParams + 4);
+        u32 p2 = LD32(obj + oBattleObject_CollisionSpawnParams + 8);
+        spawn_collision_destroy_effect(obj, p0, p1, p2);
+        destroy_collision_object(obj);
+        return;
+    }
+
+    /* During time-stop, just re-present the collision and bail. */
+    if (battle_time_stopped()) {
+        present_collision_data(obj);
+        return;
+    }
+
+    /* Check the collision-data flags: if set, the collision was already resolved. */
+    u32 coll_data = LD32(obj + oBattleObject_CollisionDataPtr);
+    if (LD32(coll_data + oCollisionData_FlagsFromCollision) != 0) {
+        destroy_collision_object(obj);
+        return;
+    }
+
+    /* Dispatch the per-action collision handler from the jump table. */
+    u32 action = LD8(obj + oBattleObject_CurAction);
+    u32 handler = LD32(COLLISION_ACTION_TABLE + action);
+    if (handler == COLLISION_HANDLER_0)
+        call_collision_action_0(obj, action);
+    else
+        call_collision_action_1(obj, action);
+
+    present_collision_data(obj);
+}
+
+/* sub_80C5C40(r5 = battle object pointer) -> side effects; all registers are outputs via callees */
+Next sub_80C5C40(void) {
+    handle_collision_event(R5);
     RETURN_TO_CALLER();
 }
 
