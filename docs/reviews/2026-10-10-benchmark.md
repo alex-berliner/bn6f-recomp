@@ -246,3 +246,167 @@ tools/wf/.venv/bin/python tools/convert/bench/bench.py retest RUN    # after a h
 - **No test of the second stage:** the cost of the mechanical or model retype that would follow the old
   prompt is unknown until S3/S4 exist.
 - **No other models or round counts:** only M3 was measured, with one repair (the farm uses three).
+
+---
+
+## Re-run with the typed prompt typed-2 (2026-10-11)
+
+One versioned change to the farm's typed prompt, made from the fixes listed above, and benchmarked against
+today's typed prompt (now called typed-1) and the old prompt.
+
+**In short:**
+- typed-2 passed 22 of 120 attempts, typed-1 13 and old 18.
+- Paired on the same function and run, typed-2 passed where typed-1 failed 16 times, and the reverse
+  happened 7 times (sign test p ≈ 0.09).
+- Per accepted function, typed-2 and typed-1 cost about the same (115k and 119k tokens); old costs 74k.
+- **typed-2 is now the farm's default** (`wf farm`, `--prompt typed`). The old prompt stays as `--prompt old`.
+- The gain is concentrated in the <=10 band (8 of 16 against 0), where the hand-over gave M3 near-miss
+  candidates by other models. Above 10 lines typed-2 and typed-1 are level (14 and 13 of 104), and old is
+  still ahead at 11-40 lines.
+
+### What changed (version typed-2, hash fd38846da391)
+
+`tools/convert/farm.py` PROMPT_VERSION; every logged round records `prompt_version` next to `prompt_hash`.
+typed-1 (hash 8ad67e179f33) is kept verbatim in `tools/convert/bench/prompt_typed1.py`.
+
+1. **Every problem at once.** The test runs every check and lists them all, worst first: entry point,
+   compile errors, behaviour, register check, lifted style, review rules. The difftest runs whenever the
+   code compiles. An error inside a header macro names the candidate's line, and repeated errors appear once.
+2. **Generated callee wrappers.** For each function the lifted body calls, `tools/abi/gen.py`
+   `contract_wrapper()` writes a typed `call_NAME()` from the callee's lifted contract:
+   - one u32 per input register (r10 stays as on entry);
+   - it returns nothing, R0, or a struct of every output register and flag.
+
+   The prompt lists the declarations. The test compiles the candidate with the wrappers it calls. The kept
+   candidate includes them, with a `register form:` note, so it installs on its own.
+3. **Register-form notes by the tool.** A note in other words ("Register-form helper:") is put in the
+   lint's words. A one-call helper is noted by the tool (set R0.., one GUEST_CALL, GUEST_CALL_ADDR or
+   swi_call, return R0 or a flag). Any other register use is still reported.
+4. **Hand-over** (`tools/wf/wf/tools/handover.py`). Each round starts from the best attempt so far, other
+   models' earlier candidates included, with a one-line history of the others. The ranking: passed > behaves
+   the same but breaks a form rule > differs only on random inputs > fewer differing captured calls >
+   compares nothing > compile error > no entry point, then fewer form problems.
+5. **Texts.** The rules now say:
+   - calls go through the wrappers; GUEST_CALL_ADDR for a call through an address, swi_call for BIOS;
+   - labels are `A_LABEL` macros;
+   - signed loads are LDS8/LDS16, and ST* are statements;
+   - file-scope initializers must be constants.
+
+   The example uses a wrapper. The repair text says whose attempt it shows.
+
+Not changed: the convert workflow's subsystem prompt keeps typed-1's conventions. The farm's `--prompt old`
+keeps the test its benchmark arm ran (only the first failing check).
+
+### Setup
+
+- Same 60 functions, model, output cap, and one round plus one repair as the first run.
+- One difftest and one set of headers, from the lift of 33b5c61 (`--difftest`).
+- **Runs:** 20261010-t2-a and 20261010-t2-b, each with three arms, 23:50 to 04:08.
+- **Arms:**
+  - typed2: the farm's prompt and test, hand-over included. M3's own earlier candidates are left out
+    (they come from other arms and runs).
+  - typed: typed-1 with its test (the register check first, only the first failing check). Re-tested on 60
+    saved rounds of the first run, it gives the same class in all 60.
+  - old: unchanged.
+- **Data:** one row per attempt in `tools/convert/bench/results-20261011.tsv`; the rounds with their code
+  in `tools/convert/log/bench/20261010-t2-{a,b}/results.jsonl` (not in git).
+- **Reproduce:** `bench.py run RUN --arms typed2,typed,old --difftest PATH` (the default arms now), then
+  `bench.py summary RUN...`. The summary adds two tables for typed-2: every failing check, and what
+  round 0 started from.
+
+### Results per band
+
+Two runs pooled. Tokens: input (cache reads included) plus output, over the rounds asked.
+
+| band | attempts | typed2: first round | typed2: after repair | typed: first round | typed: after repair | old: first round | old: after repair | tokens per accepted: typed2 / typed / old |
+|---|---|---|---|---|---|---|---|---|
+| <=10 | 16 | 5 | 8 (50%) | 0 | 0 | 0 | 0 | 13k / - / - |
+| 11-20 | 20 | 4 | 6 (30%) | 2 | 5 (25%) | 5 | 7 (35%) | 41k / 35k / 17k |
+| 21-30 | 26 | 2 | 4 (15%) | 2 | 6 (23%) | 5 | 5 (19%) | 128k / 49k / 50k |
+| 31-40 | 30 | 1 | 1 (3%) | 0 | 1 (3%) | 1 | 5 (17%) | 782k / 414k / 81k |
+| 41-60 | 20 | 1 | 2 (10%) | 0 | 1 (5%) | 1 | 1 (5%) | 281k / 318k / 243k |
+| >60 | 8 | 0 | 1 (12%) | 0 | 0 | 0 | 0 | 326k / - / - |
+| all <=60 | 112 | 13 (12%) | 21 (19%) | 4 (4%) | 13 (12%) | 12 (11%) | 18 (16%) | 105k / 103k / 64k |
+| all | 120 | 13 (11%) | 22 (18%) | 4 (3%) | 13 (11%) | 12 (10%) | 18 (15%) | 115k / 119k / 74k |
+
+- **Paired** (passed after the repair):
+  - typed2 against typed: both 6, only typed2 16, only typed 7, neither 91 (p ≈ 0.09);
+  - typed2 against old: both 7, only typed2 15, only old 11, neither 87 (p ≈ 0.56).
+- **Against the first run:** typed-1 passed 13 here against 6 then, and old 18 against 21. The headers
+  and difftest changed in between (refined contracts), so compare arms within a run, not across runs.
+- **Per call:** typed2 reads 5.4k input tokens (typed-1 4.2k, old 3.8k) and writes 5.9k output on average
+  (typed-1 2.3k, old 2.0k). It hit the 40k cap in 11 rounds against 1. The hand-over's repair prompts are
+  longer, and the replies longer still.
+
+### What the fixes did
+
+- **The register check no longer eats the repair.** typed-1 stopped 126 of its 236 rounds at the register
+  check. typed-2 found register problems in 122 of 224 rounds, but only 15 had nothing else wrong; the
+  other 107 rounds' reports also carried the compile errors or behaviour differences. Two passing typed-2
+  candidates had a helper the tool noted.
+- **Invented call macros are mostly gone.** Implicit declarations of GUEST_CALL_INDIRECT and the like fell
+  from 20 rounds (typed-1) to 4 (old: 40). 173 of 221 typed-2 replies call a generated wrapper, and so do 12
+  of the 22 passes.
+- **New top compile problem: several drafts in one reply.** 31 of 221 typed-2 replies hold more than one
+  complete version in separate ```c blocks (typed-1 14, old 17). `extract_code` joins every block, so they
+  fail as redefinitions. Together with 7 rounds that named the typed function after the game function
+  (lifted.h already declares it as `Next NAME(void)`), they make up most of typed-2's 35 rounds with
+  "conflicting types" or "redefinition" errors.
+- **Undeclared names remain** (30 rounds): register-named locals (r0, r4), made-up constants, A_ names of
+  labels that are not in bn6f_syms.h.
+
+What round 0 started from (typed2), and how those attempts ended:
+
+| round 0 started from | attempts | passed in round 0 | passed after the repair |
+|---|---|---|---|
+| another model's candidate that differs on random inputs | 28 | 5 | 9 |
+| another model's candidate that behaves the same but breaks a form rule | 20 | 4 | 6 |
+| no earlier candidate (the first prompt) | 24 | 3 | 5 |
+| another model's candidate that differs on captured calls | 42 | 1 | 1 |
+| another model's candidate that does not compile | 6 | 0 | 1 |
+
+- All 8 passes at <=10 lines started from a candidate that differed on 1-3 of 300 random inputs (sub_8116CE0,
+  sub_8117690, sub_8117BC8, sub_8118F24, sub_811C9FC). Every arm without that start failed all 16.
+- A start that differs on captured calls almost never led to a pass (1 of 42).
+
+### Verdict per band: typed-2 against old
+
+The user's current choice is the old prompt for 11-30 lines while it is better. typed-2 output is typed C;
+old output is register form, which still needs the retype queue.
+
+| band | measured (passed after the repair, tokens per pass) | verdict |
+|---|---|---|
+| <=10 | typed2 8/16 at 13k; old 0/16 | typed-2 (the hand-over) |
+| 11-20 | typed2 6/20 at 41k; old 7/20 at 17k | old: as many passes at less than half the tokens |
+| 21-30 | typed2 4/26 at 128k; old 5/26 at 50k | old |
+| 31-40 | typed2 1/30; old 5/30 at 81k | old |
+| 41-60 | typed2 2/20; old 1/20 | neither does well; typed-2 if the band is farmed at all (its passes are typed) |
+| >60 | typed2 1/8; old 0/8 | not a farm band |
+
+The cells hold 0-8 passes, so a difference of one or two passes is noise.
+
+### Cost
+
+- **Benchmark calls:** 688 M3 calls, 5.4M tokens (3.08M input with cache reads, 2.33M output).
+  - By arm: typed2 2.53M, typed-1 1.55M, old 1.33M.
+  - By scorecard.py's measure (input without cache reads, plus output): 4.47M.
+- **Quota** (`tools/convert/quota.py`): MiniMax's weekly meter went from 80% (23:38) to 74% (05:15).
+  - In that window MiniMax served 692 benchmark calls (5.49M tokens) and 800 others (3.87M, mostly the
+    old-prompt M3 farm).
+  - The benchmark's share, about 59%, is about 3.5 points of the weekly quota: roughly 1.6M tokens per point.
+
+### Left undone
+
+- **Extraction of multi-draft replies:** keep the last block that defines the entry point. It is a tool
+  fix, not a prompt change, but it should come next: typed-2's longer replies make it its top compile
+  failure.
+- **Name the typed function apart from the game function** (a rule or a tool rename).
+- **Typed-2's output length:** 2.5 times typed-1's. Worth a look at what the replies spend it on before
+  the next prompt version.
+- **Still on typed-1:** the convert workflow's subsystem prompt.
+- **Not done yet:** generated adapters and the prefilled `abi:` line (review 3 Area 4.3), and reports in
+  game terms (Area 3.5).
+- **Duplicate wrappers:** two candidates in one farm group that call the same callee each carry its wrapper.
+  The convert workflow's renaming keeps them apart (`call_X_FUNC`); one shared copy would be tidier.
+- **Hand-over cost:** the farm tests every earlier candidate of a function once, at the start of its run,
+  which takes seconds to a minute per function.
