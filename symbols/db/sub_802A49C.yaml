@@ -1,0 +1,110 @@
+name: sub_802A49C
+address: '0x0802A49C'
+kind: function
+status: confirmed
+summary: Per-frame tick that increments a beast-out counter (clamped to 3) when the current battle emotion reads
+  5 or 0x11 under non-boss battle modes, and resets it otherwise.
+interface: 'void tickBeastOutCounter_802A49C(void);
+
+  // inputs:  r5 (battle entity object), r10 (toolkit/BTL state wrapper), r4/r6 preserved
+
+  // outputs: r1 = dword_20349A0 (address of the counter struct, left in r1 for caller)
+
+  // clobbers: r0, r2, r3, lr, flags N/Z/C/V
+
+  '
+details: 'Reads the current battle mode via GetBattleMode(); if the mode is 2, 3, 4, 5 or 8
+
+  (i.e. dialogue/communication/etc. screens rather than real battle), the counter is
+
+  reset to 0 and the function returns.
+
+  Also resets when r5_obj[0x10] (a per-entity emotion/state byte) is non-zero or when
+
+  that byte differs from r5_obj[0x15].
+
+  Otherwise queries the enemy''s alliance byte (toolkit->battleState->unk_0d) through
+
+  either callPossiblyGetBattleEmotion_8015B54 (r5_10 == r5_15 branch) or sub_8015B5C
+
+  (mismatched-branch variant) and inspects the returned emotion in r1. Only emotions
+
+  5 and 0x11 cause the counter to advance.
+
+  The counter lives at dword_20349A0 + 0x11 (byte_20349B1): it is incremented each
+
+  call in qualifying states, saturated at 3. The pointer to dword_20349A0 is returned
+
+  in r1 so callers can read the (now possibly advanced) counter via their own
+
+  +0x11 offset.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004616);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 59' --file inbox_farm_59.c sub_802A49C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802A49C
+
+    ./wf verify --function sub_802A49C --snapshots build-snapshots'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-004616-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802A49C
+
+    ./wf verify --function sub_802A49C --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-004616-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802A49C
+
+    ./wf verify --function sub_802A49C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004616-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802a49c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 10d1e63
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly dword_20349A0 represents (chip-use/animation counter? a beast-form timer?) and which caller reads
+  it back via the r1 handle.
+- The semantic meaning of r5_obj[0x10] vs [0x15] (seems to gate which emotion getter is used); unclear which entity
+  role owns this object.
+- Why emotion values 5 and 0x11 specifically; presumably hostile/roar states that feed an "enemy is enraged enough
+  to beast-out" gate elsewhere.
+sources:
+- tools/wf run convert-20261011-004616
+- recomp 10d1e63

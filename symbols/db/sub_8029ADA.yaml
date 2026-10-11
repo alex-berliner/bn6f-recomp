@@ -1,0 +1,67 @@
+name: sub_8029ADA
+address: '0x08029ADA'
+kind: function
+status: confirmed
+summary: Returns a small movement/action index (5, 6, 7, 10, 15, or 0) derived from the entity's primary state and
+  sub-state bytes.
+interface: u32 sub_8029ADA(struct Entity *r5_entity) -> u32 r0_index; clobbers nz,c,v (sets N/Z/C/V from r0)
+details: 'Reads the entity''s primary state byte at offset 0x7 and sub-state byte at offset 0x8 (entity-relative).
+  Dispatches on the primary state: primary==0x0A unconditionally returns 0xF (15); primary==0x00 with sub-state==0x01
+  returns 5; primary==0x01 with sub-state 0x01/0x02 returns 6 and 0xA respectively; any (primary, sub_state<2) other
+  pairing returns 7 (used as the walking/idle default); and any unrecognised combination with sub_state>=2 falls
+  through to 0. The 0 case appears to act as a guard/done sentinel, and the dispatched indices (5, 6, 7, 0xA, 0xF)
+  match the project''s enumerated action table.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004616);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 59' --file inbox_farm_59.c sub_8029ADA
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8029ADA
+
+    ./wf verify --function sub_8029ADA --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261011-004616-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8029ADA
+
+    ./wf verify --function sub_8029ADA --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261011-004616-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8029ADA
+
+    ./wf verify --function sub_8029ADA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004616-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, menus2.'
+  reproduce: grep -l '^08029ada ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 10d1e63
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battlesweep
+- menus2
+related:
+- sub_8029A56
+open_questions:
+- Which entity/object type r5 points to (the offsets 0x7/0x8 suggest a shared entity base with battle/field scripts).
+- Meaning of action indices in the consumer's action table (what 5/6/7/0xA/0xF actually drive).
+- Why the awkward `sub_state==0x01` arms sit inside `primary==0x00` and `primary==0x01` while the `default` branch
+  handles the `sub_state<2` cases — looks like it inlines a partial special case for clarity, but exact intent is
+  unclear.
+sources:
+- tools/wf run convert-20261011-004616
+- recomp 10d1e63
