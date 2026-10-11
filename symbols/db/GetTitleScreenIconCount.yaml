@@ -1,0 +1,83 @@
+name: GetTitleScreenIconCount
+address: '0x08000EE4'
+kind: function
+status: confirmed
+summary: Counts how many of 9 title-screen reward icons the player has earned and returns the count plus a bitmask
+  of which ones
+interface: void GetTitleScreenIconCount(void) -> (u32 count r0, u16 bitmask r1); clobbers r2-r7, nzcv
+details: 'Reads several story/event flags (0xE00, 0x370, 0x340) and a range of flags starting at 0x3BD
+
+  (5 consecutive flags) via TestEventFlagFromImmediate / TestEventFlagRangeFromImmediate, plus
+
+  five progress stats via sub_81207F8 (indices 0,1,2,5,4 against thresholds 200, 39, 5, 15, 29).
+
+  Each satisfied test increments a count and ORs the corresponding bit into a 9-bit mask. Bits
+
+  used are 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200 (i.e. bits 1..8 plus bits 9
+
+  and 10 of a 16-bit value). Returns (count, bitmask) in r0/r1; the title-screen menu uses these
+
+  to know which icons to display.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c GetTitleScreenIconCount
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function GetTitleScreenIconCount
+
+    ./wf verify --function GetTitleScreenIconCount --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function GetTitleScreenIconCount
+
+    ./wf verify --function GetTitleScreenIconCount --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function GetTitleScreenIconCount
+
+    ./wf verify --function GetTitleScreenIconCount --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, menus3, story1, story2, story3, story4, story5, story6, story7,
+    story8, story9.'
+  reproduce: grep -l '^08000ee4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact semantics of sub_81207F8 indices (NAV map%, PET level, chip count, etc.) are inferred from threshold patterns,
+  not confirmed.
+- Which story milestone each event flag (0xE00, 0x370, 0x340, 0x3BD range) represents is unknown.
+- The flag-number constants are quoted verbatim from the assembly (e.g. "EVENT_E00", "EVENT_370").
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55

@@ -1,0 +1,97 @@
+name: gamestate_OnMapUpdate_8005268
+address: '0x08005268'
+kind: function
+status: confirmed
+summary: 'Per-frame overworld tick: advances cutscenes, updates all map objects, resolves interactions, scrolls
+  camera and tilemap, draws sprites, fires event callbacks, and checks for random encounters.'
+interface: void gamestate_OnMapUpdate_8005268(GameState *self /* r5 */)
+details: 'Called each frame while the game state machine is in the on-map (overworld) mode. r5 holds the GameState
+  singleton and is preserved. The function is a sequential orchestrator—no branching except via callees: (1) clearCutsceneScriptPosIfMagicValue0x1_8036F24
+  – zeroes the cutscene scripting position marker if it holds the sentinel 0x1; (2) cutscene_8034BB8 – advances
+  the active cutscene state machine; (3) writes 0 to GameState.oGameState_CoordInteractionValue (byte) to reset
+  the per-frame "player stepped on a coordinate trigger" flag; (4) ZeroFillObjectInteractionAreas_800378C – wipes
+  the interaction-zone grid so only current-frame proximity is registered; (5-7) TryUpdateEach{OWPlayer,NPC,Map}Object_…
+  – iterates the object pool updating position, animation, and state for each category; (8) sub_809F942 – miscellaneous
+  poll (returns Nullable ptr, ignored); (9) dispatch_80339CC – processes the event queue for dispatched messages;
+  (10-11) sub_80039AA / sub_8003AFA – additional per-object update passes; (12) checkOWObjectInteractions_80037f4
+  – tests whether the player overlaps an interactive object''s zone; (13) camera_802FFF4 – updates camera position
+  toward the player; (14) scrollBGTileMapToCamera_8030580 – scrolls the background tilemap to match the camera;
+  (15-18) sub_80027B4 / sub_800286C / sub_8003BF4 / sub_8003E98 – other overworld subsystems (likely HUD, minimap,
+  tile effects, map objects); (19) npc_drawSprites_800467C – builds OAM entries for NPC sprites; (20-22) sub_8004298
+  / sub_8004590 / sub_8004934 – further sprite/object draw passes (player, map objects, particles); (23) event_runArmedCallback_80024AE
+  – fires the single armed event callback if its frame countdown has elapsed; (24) sub_80058D0 – miscellaneous map-state
+  housekeeping; (25) checkThenStartBattle_8005A8C – random-encounter roll; on hit, transitions game state into battle;
+  (26) nullsub_8005B6A – stub (likely a placeholder for a feature not in this version, e.g. an additional draw or
+  transition step); (27) sub_8005AF4 – final per-frame cleanup (likely OAM commit / DMA trigger).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c gamestate_OnMapUpdate_8005268
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function gamestate_OnMapUpdate_8005268
+
+    ./wf verify --function gamestate_OnMapUpdate_8005268 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function gamestate_OnMapUpdate_8005268
+
+    ./wf verify --function gamestate_OnMapUpdate_8005268 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 6 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function gamestate_OnMapUpdate_8005268
+
+    ./wf verify --function gamestate_OnMapUpdate_8005268 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08005268 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does sub_809F942 poll, and is its Nullable return used by a later callee via r0?
+- What are sub_80027B4 / sub_800286C / sub_8003BF4 / sub_8003E98 specifically (HUD? minimap? tile animation?)?
+- nullsub_8005B6A – is this a debug stub or a feature removed between game versions?
+- Does checkThenStartBattle_8005A8C actually change the game state pointer in r5, causing OnMapUpdate to not run
+  next frame?
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55

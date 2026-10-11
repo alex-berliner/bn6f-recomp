@@ -1,0 +1,87 @@
+name: sub_8005DBE
+address: '0x08005DBE'
+kind: function
+status: confirmed
+summary: 'Runs the complete battle-entry initialization sequence: clears the auxiliary game-state pointer, frees
+  all type-0x25 objects, then inits graphics, work areas, scenario effects, and NetNav stats in order.'
+interface: void battle_initFullSetup_8005DBE(void); /* r10 = toolkit pointer (preserved); clobbers r0-r3, lr; preserves
+  r4-r12 */
+details: 'Loads the game-state pointer from toolkit offset oToolkit_GameStatePtr, then
+
+  zeroes the secondary pointer at oGameState_Ptr_20 so downstream code knows the
+
+  auxiliary structure has not been rebuilt yet. Calls FreeAllObjectsOfSpecifiedTypes
+
+  with r0=0x25 (a type mask likely for transient battle entities such as PET objects
+
+  or chip-visual nodes) while passing the game state in r5; the enclosing push/pop
+
+  preserves r5 across that callee. Then sequentially calls eight subsystem init
+
+  helpers: resetAllGraphicsState_8005F40 (tilemap/OAM reset),
+
+  runSetupStepAndClearWorkArea_8005F6C (staged scene setup + work-area wipe),
+
+  sub_80027C4 (unnamed subsystem), zeroFill_80024A2 (buffer clear),
+
+  scenario_initEffectState_8003962 (per-scenario visual-effect state),
+
+  zeroFill_8003AB2 (second buffer clear), sub_803FB28 (unnamed subsystem), and
+
+  reloadCurNaviStatBoosts_813c3ac (re-applies the current NetNav''s stat modifiers
+
+  from save data). No return value; all callers treat it as void setup.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c sub_8005DBE
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8005DBE
+
+    ./wf verify --function sub_8005DBE --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8005DBE
+
+    ./wf verify --function sub_8005DBE --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8005DBE
+
+    ./wf verify --function sub_8005DBE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz.'
+  reproduce: grep -l '^08005dbe ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- What game objects does type mask 0x25 correspond to (PET visuals, chip sprites, or battle-entity pool)?
+- What do sub_80027C4 and sub_803FB28 initialise—could they be dialog-box and background-parallax setup respectively?
+- Is oGameState_Ptr_20 the same field later used by the battle loop to reach the scenario/entity list?
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55

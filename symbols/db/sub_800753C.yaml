@@ -1,0 +1,92 @@
+name: sub_800753C
+address: '0x0800753C'
+kind: function
+status: confirmed
+summary: Spawns and fully initialises a Navi battle object at a given panel, derives its NameID from alliance stats,
+  allocates AI data, and registers it in the alliance entry list.
+interface: 'battle_spawnNaviOnPanel_800753C(r0: u8 panel_x, r1: u8 panel_y, r2: bool alliance) -> void; clobbers
+  r0 r1 r2 r3 r10 lr, preserves r4 r5 r6 r7, sets nzcv flags'
+details: 'Calls object_spawnType1 with obj_idx=0 to request a free battle-object slot. Stamps PanelX/PanelY (and
+  the Future* mirror) and Alliance onto the new BattleObject. Converts panel indices to pixel coordinates via object_getCoordinatesForPanels
+  and writes X/Y/Z fields. Sets the OBJECT_FLAG_PAUSE_UPDATE bit so the object does not tick until fully ready.
+  Allocates AI data with object_createAIData; on failure the slot is freed via object_freeMemory and the function
+  returns. AI data word-0 is written as 2 (standard Navi behaviour). The NameID is derived by reading GetBattleNaviStatsByte(alliance,
+  0x29), then computing (val+0xFF+0xA1)&0xFFFF; for the normal player alliance (0) this yields 0x1A0 (MegaMan).
+  If modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778 returns 0 (no living actors under a special condition)
+  the AI data is torn down and the slot freed but execution continues. Populates AI fields from GetVerActorTyAndAIIdx_80182B4
+  (version at ai+0x16/0x17, actor_type at ai+0, ai_index at ai+1) and from enemy_getStruct1 (category byte at ai+3).
+  Writes 0xFF to ai+0xE (slot-assignment sentinel). Finally calls battle_addObjectToAllianceEntryList_80077D2 to
+  insert the object into the correct alliance''s entry list. r5 (object ptr) and r4 (AI ptr) are kept across calls
+  via push {r4,r5,lr}.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c sub_800753C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800753C
+
+    ./wf verify --function sub_800753C --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800753C
+
+    ./wf verify --function sub_800753C --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800753C
+
+    ./wf verify --function sub_800753C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800753c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly does stat index 0x29 represent in GetBattleNaviStatsByte, and does it differ per version?
+- The +0xFF/+0xA1 arithmetic maps raw stat to NameID; confirm the full range of values and which Navis beyond MegaMan
+  (0x1A0) it covers.
+- What is the 'special condition' checked by modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778 that can
+  cause early teardown?
+- sub_800ED80 tears down AI data; what resources does it release beyond the allocation from object_createAIData?
+- ai+0x16 and ai+0x17 both receive the same version byte; is one used for current frame and the other for next frame,
+  or is this redundant?
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55

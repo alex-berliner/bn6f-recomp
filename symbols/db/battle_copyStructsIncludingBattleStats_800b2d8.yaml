@@ -1,0 +1,97 @@
+name: battle_copyStructsIncludingBattleStats_800b2d8
+address: '0x0800B2D8'
+kind: function
+status: confirmed
+summary: Propagates the working navi-stats buffer into the four battle navi slots (and a secondary buffer when battle-effect
+  bit 3 is set), then snapshots RNG seed, four 0x28-byte auxiliary arrays, a counter, and three paired dwords into
+  the battle-result/availability structures.
+interface: 'void battle_propagateNaviStatsAndBattleData_800b2d8(void);
+
+  // no explicit inputs/outputs beyond memory; uses r10/lr of caller as scratch; nzcv clobbered
+
+  '
+details: "- Always copies the working navi-stats struct at eBattleNaviStats203F4AC into four navi-stat destinations\
+  \ of size oNaviStats_Size (slots corresponding to eBattleNaviStats0, eBattleNaviStats203CB10, eBattleNaviStats2034A60,\
+  \ eBattleNaviStats203C9E4).\n- If GetBattleEffects()'s bit 0x8 is set, additionally propagates the secondary navi-stats\
+  \ source at byte_203F5AC into the corresponding four slots (eBattleNaviStats0/203CB10/2034A60/203C9E4).\n- Snapshots\
+  \ a u32 RNG seed from byte_203F4A4 into ePrimaryRngSeed.\n- Copies four 0x28-byte auxiliary arrays from the working\
+  \ set (byte_203F510, byte_203F610, byte_203F538, byte_203F638) into the persistent battle-area mirrors (byte_203EB00,\
+  \ byte_203EB28, unk_2036790, unk_20367B8).\n- Copies one counter dword (dword_203F568 -> byte_203CA50).\n- Calls\
+  \ util_nandByteArray40_80AAB88 on three 40-byte arrays: byte_203F56C, byte_203F66C, unk_2036750, producing the\
+  \ complement into one of them (NAND semantics).\n- Writes three pairs of u32s into battle-result record slots:\n\
+  \    * dword_203CDF0 / +4  <- byte_203F594 / byte_203F694\n    * dword_203CFA0 / +4  <- dword_203F560 / dword_203F660\n\
+  \    * dword_203F7E0 / +4  <- dword_203F564 / byte_203F664\n- The body's comment notes the final LDR pool reads\
+  \ leave R2 at the address of dword_203F7E0 for the caller; this is the only register output of substance (r2 =\
+  \ &dword_203F7E0).\n- Preserves r4-r7 per the contract; clobbers r0-r3 and lr; condition flags modified.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c battle_copyStructsIncludingBattleStats_800b2d8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_copyStructsIncludingBattleStats_800b2d8
+
+    ./wf verify --function battle_copyStructsIncludingBattleStats_800b2d8 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_copyStructsIncludingBattleStats_800b2d8
+
+    ./wf verify --function battle_copyStructsIncludingBattleStats_800b2d8 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_copyStructsIncludingBattleStats_800b2d8
+
+    ./wf verify --function battle_copyStructsIncludingBattleStats_800b2d8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800b2d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which battle effect bit 3 of GetBattleEffects corresponds to (e.g., Double Soul / Shadow copy / a specific battle
+  mode)?
+- Identity of the four navi-stat slots — are these the MegaMan + 3 ally navi slots, or the player + enemy sides?
+- Layout/meaning of the three paired-dword result records at 0x203CDF0/0x203CFA0/0x203F7E0 (battle outcome? award?
+  damage totals?).
+- Purpose and field layout of the four 0x28-byte auxiliary arrays (chip-battle state? turn counters?).
+- Whether util_nandByteArray40 writes its third argument's contents (NAND of first into second, or into third) —
+  only the call site is shown.
+- Why R2 is intentionally left pointing at dword_203F7E0 for the caller; whether downstream code expects that pointer
+  as the next "result" record.
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55

@@ -1,0 +1,91 @@
+name: encryption_initAll_8006d00
+address: '0x08006D00'
+kind: function
+status: confirmed
+summary: initialize all encryption/anti-cheat subsystems at game start (key tables, Zenny/BugFrag obfuscation, mod-card
+  anti-cheat) from the toolkit pointer in r10
+interface: void encryption_initAll_8006d00(u32 toolkit /* r10 */);
+details: "Initializes the global encryption / anti-cheat machinery on game boot.\nWalks r10 = the toolkit pointer\
+  \ base.\n1. Zero-fills the 0x80-byte \"extra toolkit pointers\" block at\n   \"eUnusedExtraToolkitPtrsOffset\"\
+  :=8006E38, then stores a fresh GetRNG()\n   u32 at +0x4 as an RNG seed.\n2. For each of three named byte arrays\
+  \ it generates non-zero random\n   bytes (mask 0xFF) XORed with a per-table constant, rejected and\n   re-rolled\
+  \ when the result is 0, writing them from high index down to\n   0:\n     - \"byte_20004E0\" (0x200 bytes, XOR\
+  \ 0x6F)  - item names; mirror\n       copied (NOT form) into toolkit->Unk2004a8c_Ptr buffer.\n     - \"byte_20008A0\"\
+  \ (0x200 bytes, XOR 0x81)  - pet names; mirrored\n       (NOT) into toolkit->Unk2004c20_Ptr buffer.\n     - \"\
+  byte_2001600\" (4 bytes, XOR 0xFE)  - short strings; mirrored\n       (NOT) into toolkit->Unk2004e24_Ptr buffer.\n\
+  3. Builds a 12-bit-masked GetRNG() (lsl #12; lsr #12) and XORs with a\n   constant, rejecting 0:\n     - dword_2000060\
+  \ ^= 0x802412C (Zenny obfuscation key), then\n       chains encryption_zenny_8006f54.\n     - dword_20018B8 ^=\
+  \ 0x803ED90 (BugFrag obfuscation key), then\n       chains encryption_bugfrags_8006fac.\n4. Finally runs anticheat_modCardsInit_8007036\
+  \ to seed the\n   mod-card anti-cheat tables.\nAll GetRNG() results except the seed are discarded; the named byte\n\
+  arrays and the two dwords persist as run-time keys/state.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c encryption_initAll_8006d00
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function encryption_initAll_8006d00
+
+    ./wf verify --function encryption_initAll_8006d00 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function encryption_initAll_8006d00
+
+    ./wf verify --function encryption_initAll_8006d00 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function encryption_initAll_8006d00
+
+    ./wf verify --function encryption_initAll_8006d00 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08006d00 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+related:
+- initNewGameData_8004DF0
+open_questions:
+- Whether the encryption key constants "0x802412C" and "0x803ED90" carry semantic meaning or are arbitrary.
+- Whether the "eUnusedExtraToolkitPtrsOffset":=8006E38 block is truly "unused extra" or is a re-named buffer used
+  elsewhere.
+- The semantic meaning of the three byte arrays (item names, pet names, short strings) and which game systems read
+  them.
+- Why a NOT-mirror is stored in the toolkit buffer alongside the primary key array.
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55

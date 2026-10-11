@@ -1,0 +1,81 @@
+name: sub_8007628
+address: '0x08007628'
+kind: function
+status: confirmed
+summary: Initializes display/rendering hardware registers and palette/BG-character data from two static (offset,
+  value) tables.
+interface: void battle_initDisplayTables_8007628(void); /* r10 = toolkit base; returns r0=palette ptr, r1=table
+  cursor, r2=0xFF, r3=last written value, NZCV set from r2 vs 0xFF */
+details: 'Reads two destination pointers from the toolkit structure (oToolkit_RenderInfoPtr and oToolkit_Unk200f3a0_Ptr).
+  Iterates over two hardcoded halfword-pair tables (each entry: u16 byte-offset, u16 value) terminated by offset
+  0xFF, writing each value as a halfword at dst+offset. The first table configures BG/render-control registers (offsets
+  0x0–0xA and 0x60, values like 0x1C08, 0x7F60). The second table seeds a palette/BG-character region (offsets 0x0–0xA,
+  values 0xF000, 0xA000, 0x3F3F typical of 15-bit RGB colors and tile indices). On return r0–r3 hold the last-iteration
+  state of the second loop (r2=0xFF terminator, r3=last value written) and flags reflect the final CMP r2, #0xFF
+  (Z set). r10 is read-only; no other registers are preserved beyond what the contract lists.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c sub_8007628
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8007628
+
+    ./wf verify --function sub_8007628 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8007628
+
+    ./wf verify --function sub_8007628 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8007628
+
+    ./wf verify --function sub_8007628 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08007628 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly does oToolkit_Unk200f3a0_Ptr point to—palette RAM, OBJ tile data, or a shadow buffer?
+- Why is the second table's offset 0x60 entry (value 0x7F60) present in the first table; does render_info alias
+  GBA hardware registers at that stride?
+- Is this function called once at boot, at scene transitions, or per-frame? The caller contract only pins r10.
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55

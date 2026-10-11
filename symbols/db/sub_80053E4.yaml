@@ -1,0 +1,88 @@
+name: sub_80053E4
+address: '0x080053E4'
+kind: function
+status: confirmed
+summary: 'Per-frame GameState tick: runs all scene sub-updates (dispatch, NPC AI, sprites, events), and when a screen
+  fade is active performs a full scene-transition reset (free objects, clear buffers, set jump-table step 8, reinit
+  graphics/LCD).'
+interface: void scene_nextOrUpdate_80053E4(GameState *self /*r5*/, Toolkit *toolkit /*r10*/)
+details: 'Called as a dispatch-table entry for a specific GameState jump-table slot. Phase 1 (always executes):
+  sequential per-frame calls — dispatch_80339CC, NPC/AI helpers (sub_80039AA, sub_8003AFA, sub_80027B4, sub_800286C,
+  sub_8003BF4, sub_8003E98), npc_drawSprites_800467C, more scene helpers (sub_8004298, sub_8004590, sub_8004934),
+  and event_runArmedCallback_80024AE.
+
+  Phase 2 (only when IsScreenFadeActive clears the Z flag, i.e. fade is NOT active — the beq exits early when fade
+  IS active): full scene teardown and reinitialisation. chatbox_8040818 processes pending chat; FreeAllObjectsOfSpecifiedTypes(0x25)
+  frees type-0x25 (37) objects; clearWorkBuffer_2011A40 wipes the work buffer; toolkit->MainJumptableIndex is set
+  to 8 (the next-scene step); resetAllGraphicsState_8005F40 resets OAM/VBlank state; runSetupStepAndClearWorkArea_8005F6C
+  loads the next scene; scenario_initEffectState_8003962 zeroes effect structs; RandomizeExtraToolkitPointers reshuffles
+  pointer arrays; reloadCurNaviStatBoosts_813c3ac restores Navi stat-boost data. Finally SetRenderInfoLCDControl
+  is called with the 32-bit literal at word_8005460 — the pool entry is .hword 0x0040 but the LDR reads 4 bytes,
+  picking up the next instruction encoding (push {r7,lr}=0xB580), so the callee effectively receives 0xB580_0040;
+  it uses only the low 16 bits (0x0040 = bit 6, likely OBJ 16-colour mode enable).
+
+  r5 is overwritten at the end of the transition path with toolkit->GameStatePtr (0x34 offset); on the early-return
+  (fade active) path r5 keeps its original caller-supplied value. r4 and r6 are untouched (preserved per the register
+  contract).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c sub_80053E4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80053E4
+
+    ./wf verify --function sub_80053E4 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80053E4
+
+    ./wf verify --function sub_80053E4 --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 0 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80053E4
+
+    ./wf verify --function sub_80053E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, menus2, story1, story2, story4, story5, story7, story8, story9.'
+  reproduce: grep -l '^080053e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story7
+- story8
+- story9
+open_questions:
+- What scene/state does jump-table index 8 represent (the 'next scene' setup step)?
+- 'Object type 0x25 (37): what entity class is freed during transition (NPCs? events? tiles?)'
+- Is the LCD-control upper-16-bit corruption (0xB5800040 vs 0x0040) intentional or a literal-pool alignment bug
+  that is harmless because SetRenderInfoLCDControl masks to 16 bits?
+- Why is this function named 'Next' in the verified C form — is it literally the 'advance to next frame/state' entry
+  in a per-slot dispatch table?
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55

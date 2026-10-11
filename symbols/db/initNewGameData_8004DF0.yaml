@@ -1,0 +1,132 @@
+name: initNewGameData_8004DF0
+address: '0x08004DF0'
+kind: function
+status: confirmed
+summary: Resets all save-dependent game state (GameState, scenario state, event flags, overworld, mystery/shop,
+  chips/battle/tools, palettes, reqBBS) to a fresh-new-save baseline when starting a new game.
+interface: void initNewGameData_8004DF0(void); // r10 = toolkit pointer (callee-saved); r4-r12 preserved; r0-r3
+  + flags clobbered
+details: 'Pulls two pointers out of the toolkit: a GameState struct (oToolkit_GameStatePtr) and a scenario/state
+  struct
+
+  at oToolkit_S2001c04_Ptr. Initializes both to zero (GameState fields: Ptr_20=0, ProtectedZenny/Bugfrags/Unk_74=0,
+
+  CurBattleDataPtr=0, Unk_02=0, CurPETNavi=0, Unk_12=0xFF, LastMapGroup=0xFFFF, Unk_6c/Unk_70=0xFFFFFFFF,
+
+  Unk_13=0, +0x78=0; S2001c04 fields: +0/+0x18/+0x1C/+0x24/+0x28/+0x30=0, +5=1, +4=0x63, halfwords +8/+A/+C/+10/+12/+14/+16=0).
+
+  Fires subsystem init/reset calls in this order: toolkit_ClearAllEventFlags_802F0C4, encryption_initAll_8006d00,
+
+  keyItems_ResetInventoryAndGrantScenarioItems_803CD74, sub_802F2C8, sub_81284A4, owPlayer_setS2000aa0_param0x0to0x2_with0x40_0x40_0x0_respectively_809e2c2,
+
+  SetDefaultOWPlayerNaviColorShader, sub_809E304, ZeroOWPlayerNaviPaletteIndex, owPlayer_zeroS2000AA0Param0x4_809e312,
+
+  sub_809E3AA, resetStruct2000aa0State_809E3B2, Clear_eStruct2000780, battle_ClearEStruct2001010_8003A58,
+
+  zeroFill_e2004348, mysteryData_InitMapGroupTables_809FAF4, sub_809F9DC, sub_8049CF8, sub_804A17A,
+
+  clearS2001c04Byte6_811FB78, shop_resetStockTable_8048C68.
+
+  Then sets a large bank of scenario event flags via SetEventFlagFromImmediate / SetEventFlagRangeFromImmediate
+
+  (start-of-game defaults), runs clearSetFlags_80355a8, sets a few more flags (EVENT_38, EVENT_39, EVENT_11),
+
+  and initializes palette/mem work areas (sub_80AA004(0), palette_copyTableRow_80AA104(0),
+
+  memBlock_ClearWorkArea_802D638, clearWorkBuffer_2000DC0_80356EC).
+
+  Sets initial map/location: MapGroup=SavedRealWorldMapId=+0x58=0x100, GameProgress/Unk_07/Unk_08=0, all XYZ coords
+
+  (PlayerX/Y/Z, SavedRealWorldX/Y/Z, SavedInternetX, +0x4C, +0x50)=0, FacingDirectionAfterWarp/SavedRealWorldFacingDirection/+0x54=4.
+
+  Init flow continues: initGameProgressBuffer_803532c, sub_8021D36, ZeroFillByWord on S_Chip_2002178_Ptr for 0x3C*3
+  bytes,
+
+  zeroFill_e2002230, sChip_loadRecordIntoSlot_8021AB4(byte_80213AC, 0), clearToolkitUnk2002230RecordFields_81376E8,
+
+  timer_setNoTimeout_8137700, clearChipGiftRecordAndTakeChipsSlot0_8137808, battle_initSlotsOrderPhaseB_80133EC,
+
+  toolkit_resetToolState_813B768, zeroFill_813B934, eraseMem_ClearBuffer_813C324, clearWorkArea_200DCF0_8121144,
+
+  sub_800AAF2, clearWorkArea_2000FA0_800AB22, loadIndexedPaletteToBuffer_802E240(1), reqBBS_813E616,
+
+  reqBBS_initMemory_813F9DA; clears EVENT_173A, EVENT_IN_SLIPRUN_STATE, EVENT_173E, EVENT_173F; finally reqBBS_8140984.
+
+  Quirks: callee is invoked with r10=toolkit (not pushed to stack but read directly); the function does not take
+
+  arguments in r0-r3 and uses no stack frame beyond {r4-r7, lr}.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-235154);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 42' --file inbox_farm_42.c initNewGameData_8004DF0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function initNewGameData_8004DF0
+
+    ./wf verify --function initNewGameData_8004DF0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235154-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function initNewGameData_8004DF0
+
+    ./wf verify --function initNewGameData_8004DF0 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235154-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function initNewGameData_8004DF0
+
+    ./wf verify --function initNewGameData_8004DF0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235154-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08004df0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp f8b0e55
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+related:
+- encryption_initAll_8006d00
+open_questions:
+- Exact meaning of remaining GameState scratch fields (Unk_02, Unk_07, Unk_08, Unk_12, Unk_13, Unk_6c, Unk_70, Unk_74,
+  +0x78, +0x4C, +0x50, +0x54, +0x58) is unknown.
+- +5=1 and +4=0x63 on S2001c04 — semantics (e.g. default PET state, default scenario chapter) not yet decoded.
+- Whether this runs on "New Game" only or also on file-delete / chapter reset; the event-flag seed suggests a Falzar-specific
+  new-game baseline.
+- Many called helpers (sub_802F2C8, sub_81284A4, sub_809E304, sub_809E3AA, sub_809F9DC, sub_8049CF8, sub_804A17A,
+  sub_8021D36, sub_80AA004, sub_800AAF2, reqBBS_813E616, reqBBS_8140984) still have generic names and may belong
+  to overworld/scenario/chip subsystems.
+sources:
+- tools/wf run convert-20261010-235154
+- recomp f8b0e55
