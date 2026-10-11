@@ -987,6 +987,123 @@ Next t4_0x0_80E0548(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E0568 ── */
+/* Register-form helpers — used by the typed function below. Declared up-front so the
+ * C compiler sees them before they're called. Each one matches one external game
+ * function that has no typed C interface yet. */
+static void rf_sprite_load(int a1, int a2, int a3);
+static void rf_sprite_loadAnimationData(void);
+static void rf_sprite_noShadow(void);
+static void rf_sprite_setAnimation(u8 a1);
+static void rf_sprite_update(void);
+static void rf_sprite_setPalette(int palette);
+static void rf_sprite_setFlip(u8 a1);
+static void rf_sprite_setPriority_8002E14(int priority);
+static void rf_battle_MirrorRelatedObjectFlag1_80E0616(void);
+
+/* Battle object "init" state action.
+ *
+ * Called from a battle object's state machine once when it first spawns. Looks up
+ * a sprite descriptor by the per-object "Param1" index, loads its tile/anim/palette
+ * data, applies the object's own Param2/Param3/Param4 tweaks, marks the object's
+ * header flags, and finally advances the object's state phase to CUR_STATE_UPDATE.
+ *
+ * `obj` is the battle object's base address (the caller's r5). Returns the value
+ * placed in r0 (CUR_STATE_UPDATE), which the caller also stores to memory.
+ */
+static u32 battle_object_init_action(u32 obj) {
+    u32 desc_index = LD8(obj + oBattleObject_Param1);
+    u32 desc = A_byte_80E0398 + (desc_index << 2);
+
+    /* sprite_load(tile_data=0x80, sprite_id=desc[0], palette_id=desc[1]) */
+    rf_sprite_load(0x80, LD8(desc), LD8(desc + 1));
+    rf_sprite_loadAnimationData();
+    rf_sprite_noShadow();
+
+    /* Kick off the sprite animation described by desc[2]. */
+    u8 anim = LD8(desc + 2);
+    ST8(obj + oBattleObject_CurAnim, anim);
+    ST8(obj + oBattleObject_CurAnimCopy, anim);
+    rf_sprite_setAnimation(anim);
+    rf_sprite_loadAnimationData();
+    rf_sprite_update();
+
+    /* desc[3] is a base palette index; Param3 (a u8) is added on top. */
+    rf_sprite_setPalette(LD8(desc + 3) + LD8(obj + oBattleObject_Param3));
+
+    rf_sprite_setFlip(LD8(obj + oBattleObject_Param2));
+
+    /* Set the "active" header flag (bit 1). */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* If Param4 is non-zero, force the sprite to BG priority 0. */
+    if (LD8(obj + oBattleObject_Param4) != 0)
+        rf_sprite_setPriority_8002E14(0);
+
+    rf_battle_MirrorRelatedObjectFlag1_80E0616();
+
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+    return CUR_STATE_UPDATE;
+}
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void rf_sprite_load(int a1, int a2, int a3) {
+    R0 = a1;
+    R1 = a2;
+    R2 = a3;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void rf_sprite_loadAnimationData(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void rf_sprite_noShadow(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void rf_sprite_setAnimation(u8 a1) {
+    R0 = a1;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static void rf_sprite_update(void) {
+    GUEST_CALL(sprite_update);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void rf_sprite_setPalette(int palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setFlip outside this file, which has no typed C interface yet */
+static void rf_sprite_setFlip(u8 a1) {
+    R0 = a1;
+    GUEST_CALL(sprite_setFlip);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void rf_sprite_setPriority_8002E14(int priority) {
+    R0 = priority;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls battle_MirrorRelatedObjectFlag1_80E0616 outside this file, which has no typed C interface yet */
+static void rf_battle_MirrorRelatedObjectFlag1_80E0616(void) {
+    GUEST_CALL(battle_MirrorRelatedObjectFlag1_80E0616);
+}
+
+Next sub_80E0568(void) {
+    R0 = battle_object_init_action(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80E05C4 ── */
 /* sub_80E05C4: Battle-object timer tick – decrement timer, possibly destroy, update sprite. */
 

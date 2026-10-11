@@ -41,6 +41,78 @@ Next ai_DealQueuedAttackDamage_8112F34(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8112FBA ── */
+/* register form: calls sub_80C4038 outside this file, which has no typed C interface yet */
+static u32 call_sub_80C4038(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4) {
+    R0 = a0; R1 = a1; R2 = a2; R3 = a3; R4 = a4;
+    GUEST_CALL(sub_80C4038);
+    return R0;
+}
+
+/* register form: calls battle_SetObjectExtraFlag14_80C4086 outside this file, which has no typed C interface yet */
+static u32 battle_SetObjectExtraFlag14_helper(void) {
+    GUEST_CALL(battle_SetObjectExtraFlag14_80C4086);
+    return R0;
+}
+
+/* register form: calls object_getFrontDirection outside this file, which has no typed C interface yet */
+static s32 object_getFrontDirection_helper(void) {
+    GUEST_CALL(object_getFrontDirection);
+    return (s32)R0;
+}
+
+/* register form: calls object_setCounterTime outside this file, which has no typed C interface yet */
+static u32 object_setCounterTime_helper(u32 frames) {
+    R0 = frames;
+    GUEST_CALL(object_setCounterTime);
+    return R0;
+}
+
+/* "Special" attack setup on an AI attacker.
+ * Phase depends on attacker.oBattleObject_RelatedObject1Ptr:
+ *   1 -> set attacker anim=2, clear AI Unk_28, look up the victim object
+ *        (sub_80C4038 with payload 0x12810) and store as AI Unk_30, turn the
+ *        victim's extra flag 14 on, set its timer to AI Unk_0e * 10, save the
+ *        front direction as AI Unk_34, set the counter time to 30 frames,
+ *        and write AI Unk_00 = 8.
+ *   0 -> write AI Unk_00 = 0xC (a different phase).
+ *   anything else -> leave AI Unk_00 untouched.
+ * Returns the value the original leaves in r0. */
+static u32 do_ai_special_attack(u32 attacker, u32 ai_vars) {
+    u32 related = LD32(attacker + oBattleObject_RelatedObject1Ptr);
+    u32 final_r0 = related;
+
+    if (related == 1) {
+        ST8(attacker + oBattleObject_CurAnim, 2);
+        ST32(ai_vars + oAIAttackVars_Unk_28, 0);
+
+        u32 victim = call_sub_80C4038(0, 0, 0, 0, 0x12810);
+        ST32(ai_vars + oAIAttackVars_Unk_30, victim);
+
+        u32 flag_target = battle_SetObjectExtraFlag14_helper();
+        u32 scaled = (u32)LD8(ai_vars + oAIAttackVars_Unk_0e) * 0xA;
+        ST16(flag_target + oBattleObject_Timer, scaled);
+
+        ST32(ai_vars + oAIAttackVars_Unk_34, (u32)object_getFrontDirection_helper());
+
+        object_setCounterTime_helper(0x1E);
+        ST16(ai_vars + oAIAttackVars_Unk_00, 8);
+        final_r0 = 8;
+    } else if (related == 0) {
+        ST16(ai_vars + oAIAttackVars_Unk_00, 0xC);
+        final_r0 = 0xC;
+    }
+
+    return final_r0;
+}
+
+Next sub_8112FBA(void) {
+    u32 result = do_ai_special_attack(R5, R7);
+    R0 = result;
+    SET_FLAGS_CMP(result, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_packObjStateBitToAttrCode_8113154 ── */
 /* battle_packObjStateBitToAttrCode_8113154(r4 = battle object, r6 = destination byte):
  * Packs the object's state bit at offset 0x16 (bit 0 only) into a small

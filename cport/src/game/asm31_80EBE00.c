@@ -426,6 +426,23 @@ Next battle_EndRelatedObject2Anim_80F06CE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── nullsub_106 ── */
+/* Empty function: just returns to the caller. The typed helper exists only
+ * to give the thin adapter something to call without touching registers. */
+static void nullsub_106_impl(void) {
+    /* no-op */
+}
+
+/* nullsub_106: empty function that just returns to caller.
+ * inputs: lr
+ * outputs: -
+ * clobbers: -
+ * preserved: - */
+Next nullsub_106(void) {
+    nullsub_106_impl();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FDF4C ── */
 /* sub_80FDF4C: fetch the address of the dword_80FDF5C work area and pass it
  * to sub_800FE28, which does the real work. Its results (r0, r2) are ours. */
@@ -514,6 +531,119 @@ static void ai_attack_phase_dispatch(u32 r7) {
  * r7 = AIAttackVars pointer; index byte read from oAIAttackVars_Unk_00. */
 Next sub_80FE0D4(void) {
     ai_attack_phase_dispatch(R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FE1B4 ── */
+/* register form: calls object_setPanelsFromCoordinates outside this file, which has no typed C interface yet */
+static void call_object_setPanelsFromCoordinates(u32 r0_val, u32 r1_val) {
+    R0 = r0_val;
+    R1 = r1_val;
+    GUEST_CALL(object_setPanelsFromCoordinates);
+}
+
+/* register form: calls object_updateCollisionPanels outside this file, which has no typed C interface yet */
+static void call_object_updateCollisionPanels(void) {
+    GUEST_CALL(object_updateCollisionPanels);
+}
+
+/* register form: calls object_removePanelReserve outside this file, which has no typed C interface yet */
+static void call_object_removePanelReserve(u32 r0_val, u32 r1_val) {
+    R0 = r0_val;
+    R1 = r1_val;
+    GUEST_CALL(object_removePanelReserve);
+}
+
+/* register form: calls object_setCoordinatesFromPanels outside this file, which has no typed C interface yet */
+static void call_object_setCoordinatesFromPanels(void) {
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+/* register form: calls object_setCollisionPanelsToCurrent outside this file, which has no typed C interface yet */
+static void call_object_setCollisionPanelsToCurrent(void) {
+    GUEST_CALL(object_setCollisionPanelsToCurrent);
+}
+
+/* register form: calls object_clearFlag outside this file, which has no typed C interface yet */
+static void call_object_clearFlag(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(object_clearFlag);
+}
+
+/* register form: calls object_setFlag1 outside this file, which has no typed C interface yet */
+static void call_object_setFlag1(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(object_setFlag1);
+}
+
+typedef struct {
+    u32 r0;
+    u32 add_a;
+    u32 add_b;
+} MotionStepResult;
+
+/* Advance the battle object by its velocity, refresh its panels, and count
+ * down the in-flight move timer (Unk_10). While the timer stays non-negative
+ * the object is still gliding (early return). Once it underflows the move
+ * commits: the future panel becomes the current panel, reservations are
+ * released, coordinates and collision panels are recomputed, the post-move
+ * flag bits are updated, and the attack state machine advances to substate
+ * 0x0C.
+ *
+ * Returns r0 plus ADD operands that reproduce the terminal flag pattern:
+ *   - early return: `subs r0, #1` -> ADD(orig_timer, 0xFFFFFFFF) (same NZCV,
+ *     since ADD(a,-1) is arithmetically SUB(a,1) and the carry/overflow
+ *     agree for non-zero a);
+ *   - fall-through: terminal flags are N=Z=C=V=0 (LSL sets C=0, nothing else
+ *     touches flags before return) -> ADD(1, 0). */
+static MotionStepResult step_battle_object_motion(u32 object, u32 ai_vars) {
+    u32 x = LD32(object + oBattleObject_X);
+    u32 y = LD32(object + oBattleObject_Y);
+    u32 vx = LD32(object + oBattleObject_XVelocity);
+    u32 vy = LD32(object + oBattleObject_YVelocity);
+
+    ST32(object + oBattleObject_X, x + vx);
+    ST32(object + oBattleObject_Y, y + vy);
+
+    /* Original passes r0 = y+vy and r1 = vy into object_setPanelsFromCoordinates. */
+    call_object_setPanelsFromCoordinates(y + vy, vy);
+    call_object_updateCollisionPanels();
+
+    u32 orig_timer = (u32)LD16(ai_vars + oAIAttackVars_Unk_10);
+    u32 timer = orig_timer - 1u;
+    ST16(ai_vars + oAIAttackVars_Unk_10, (u16)timer);
+
+    if ((s32)timer >= 0) {
+        /* Still gliding. Emulate `subs r0, #1` via ADD(orig_timer, -1). */
+        return (MotionStepResult){ timer, orig_timer, 0xFFFFFFFFu };
+    }
+
+    /* Landing: future panel becomes the current panel. */
+    u8 fx = LD8(object + oBattleObject_FuturePanelX);
+    u8 fy = LD8(object + oBattleObject_FuturePanelY);
+    ST8(object + oBattleObject_PanelX, fx);
+    ST8(object + oBattleObject_PanelY, fy);
+
+    /* Original passes r0 = fx and r1 = fy into object_removePanelReserve. */
+    call_object_removePanelReserve(fx, fy);
+    call_object_setCoordinatesFromPanels();
+    call_object_setCollisionPanelsToCurrent();
+
+    /* End-of-move cleanup + transition to the next attack substate. */
+    call_object_clearFlag(0x40);
+    call_object_setFlag1(1u << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT);
+
+    u32 next_state = 0x0C;
+    ST16(ai_vars + oAIAttackVars_Unk_00, (u16)next_state);
+
+    /* Terminal flags on fall-through: N=Z=C=V=0. ADD(1,0) yields exactly that. */
+    return (MotionStepResult){ next_state, 1u, 0u };
+}
+
+Next sub_80FE1B4(void) {
+    MotionStepResult s = step_battle_object_motion(R5, R7);
+    R0 = s.r0;
+    SET_FLAGS_ADD(s.add_a, s.add_b);
     RETURN_TO_CALLER();
 }
 
@@ -633,6 +763,34 @@ Next battle_aiAttackWindupTick_80FE284(void) {
         ST16(R7 /* oAIAttackVars_Unk_00 */, R0);
         SET_FLAGS_NZ(R0);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FE30C ── */
+/* Countdown phase: when first entered, copy Unk_18 to Unk_10 and start the timer.
+ * Each subsequent tick decrements Unk_10; when it reaches zero, clear the attack
+ * animation and exit the attack state.
+ * r7 = AI attack vars pointer, r5 = battle object pointer. */
+static void ai_attack_countdown_tick(u32 battle_object, u32 ai_attack_vars) {
+    u8 phase = LD8(ai_attack_vars + oAIAttackVars_Unk_01);
+    if (phase == 0) {
+        ST8(ai_attack_vars + oAIAttackVars_Unk_01, 4);
+        ST16(ai_attack_vars + oAIAttackVars_Unk_10,
+             LD16(ai_attack_vars + oAIAttackVars_Unk_18));
+        return;
+    }
+    u32 timer = LD16(ai_attack_vars + oAIAttackVars_Unk_10) - 1;
+    ST16(ai_attack_vars + oAIAttackVars_Unk_10, (u16)timer);
+    if ((s32)timer > 0)
+        return;
+    ST8(battle_object + oBattleObject_CurAnim, 0);
+    /* register form: calls object_exitAttackState outside this file, which has no typed C interface yet */
+    GUEST_CALL(object_exitAttackState);
+}
+
+Next sub_80FE30C(void) {
+    ai_attack_countdown_tick(R5, R7);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -780,6 +938,57 @@ Next sub_80FE4D0(void) {
     R0 = r.x;
     R1 = r.y;
     SET_FLAGS_NZ(r.flag_val);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FE5C0 ── */
+/* register form: BIOS SVC 6: scale (R0) by fixed-point count (R1). Returns R0. */
+static u32 bios_svc6_scale(u32 scale, u32 count) {
+    R0 = scale;
+    R1 = count;
+    swi_call(6);
+    return R0;
+}
+
+/* Pick the X or Y delta, multiply by the input multiplier, scale, then invoke
+ * the BIOS scale helper. Returns the four output registers the original writes. */
+static void panel_to_pixel_offset(u32 in_r0, u32 in_r1, u32 in_r2, u32 obj_addr,
+                                  u32 *out_r0, u32 *out_r1, u32 *out_r2, u32 *out_r3) {
+    u32 r0_val, r1_val, scale;
+
+    if (in_r0 != LD8(obj_addr + oBattleObject_PanelX)) {
+        /* X mismatch path: X-delta scaled by in_r2, Y zero, scale 0x00280000. */
+        r0_val = (in_r0 - LD8(obj_addr + oBattleObject_PanelX)) * in_r2;
+        r1_val = 0;
+        scale  = 0x28u << 16;
+    } else {
+        /* X match path: load PanelY, Y-delta scaled by in_r2, X zero, scale 0x00180000. */
+        r1_val = (in_r1 - LD8(obj_addr + oBattleObject_PanelY)) * in_r2;
+        r0_val = 0;
+        scale  = 0x18u << 16;
+    }
+
+    /* The original sets up r0/r1, then overwrites them with the SVC inputs/clears,
+     * runs SVC 6, captures the result in r2, restores r0/r1 from the saved pair,
+     * and pops PC. r3 keeps the pre-SVC `mov r0,r3` value of the scale all the way
+     * out (it is never overwritten after the branch setup). */
+    *out_r0 = r0_val;
+    *out_r1 = r1_val;
+    *out_r3 = scale;
+    *out_r2 = bios_svc6_scale(scale, in_r2);
+}
+
+Next sub_80FE5C0(void) {
+    u32 in_r0 = R0, in_r1 = R1, in_r2 = R2, in_r5 = R5;
+    u32 out_r0, out_r1, out_r2, out_r3;
+
+    panel_to_pixel_offset(in_r0, in_r1, in_r2, in_r5,
+                          &out_r0, &out_r1, &out_r2, &out_r3);
+
+    R0 = out_r0;
+    R1 = out_r1;
+    R2 = out_r2;
+    R3 = out_r3;
     RETURN_TO_CALLER();
 }
 
