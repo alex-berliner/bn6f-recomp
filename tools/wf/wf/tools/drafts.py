@@ -6,6 +6,7 @@ the documentation of small functions."""
 import functools
 import re
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
 from typing import cast
@@ -115,8 +116,10 @@ def draft_entry(model: ModelSpec, candidate: Path, tag: str) -> Draft:
 
 
 def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, subsystem: str,
-                        file_name: str) -> FileReply:
-    """The model's accepted candidates of `functions` as one file, with their drafted entries."""
+                        file_name: str, taken: Mapping[FunctionName, frozenset[str]] | None = None) -> FileReply:
+    """The model's accepted candidates of `functions` as one file, with their drafted entries. TAKEN: per
+    function, the names the file it will live in already uses (a farm group's functions go to the laid-out
+    files, tools/layout.py); its own file-level definitions are renamed apart from them too."""
     tags = [source.replace("/", "_") for source in models_for(model)]
     bodies: list[tuple[FunctionName, str]] = []
     drafts: list[SymbolDraft] = []
@@ -137,7 +140,7 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
     renamed = _renamed_since()
     in_headers = _header_names()
     sections = [f"{SECTION.format(function=function)}\n{_with_current_names(_without_fallbacks(body, in_headers), renamed)}"
-                for function, body in _names_kept_apart(bodies)]
+                for function, body in _names_kept_apart(bodies, taken or {})]
     code = header + "\n" + "\n\n".join(sections) + "\n" if sections else None
     return FileReply(file=CandidateFile(code) if code else None, cfg_lines=(), drafts=tuple(drafts),
                      problems=tuple(problems), seconds=0.0)
@@ -170,17 +173,23 @@ _DEFINED = (
     re.compile(r"^}\s*(\w+)\s*;", re.M),
 )
 _ENUM_BODY = re.compile(r"\benum\b[^{;]*\{([^}]*)\}", re.S)
+_IDENT = re.compile(r"\b[A-Za-z_]\w*\b")
 
 
-def _names_kept_apart(bodies: list[tuple[FunctionName, str]]) -> list[tuple[FunctionName, str]]:
+def _names_kept_apart(bodies: list[tuple[FunctionName, str]],
+                      taken: Mapping[FunctionName, frozenset[str]]) -> list[tuple[FunctionName, str]]:
     """Each candidate compiled alone in the farm; in one file, two that define the same file-level
     name (a helper, a macro, an enum constant) would clash, so later ones get the name suffixed with
-    their function's name."""
+    their function's name. So does a name the file it goes to already uses (TAKEN: a helper defined
+    there too, or a macro of the shared headers that code there reads), or that another candidate of the
+    group uses (it may take that name from the headers and land after this one)."""
+    words: list[frozenset[str]] = [frozenset(match[0] for match in _IDENT.finditer(body)) for _, body in bodies]
     seen: set[str] = set()
     kept: list[tuple[FunctionName, str]] = []
-    for function, body in bodies:
+    for i, (function, body) in enumerate(bodies):
         names = _defined_names(body)
-        for name in sorted(names & seen):
+        others = {word for j, used in enumerate(words) if j != i for word in used & names}
+        for name in sorted(names & (seen | others | taken.get(function, frozenset()))):
             body = re.sub(rf"\b{re.escape(name)}\b", f"{name}_{function}", body)
         seen |= names
         kept.append((function, body))

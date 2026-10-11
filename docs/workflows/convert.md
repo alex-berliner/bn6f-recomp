@@ -8,7 +8,9 @@ against the lifted originals, install it and run the full verify,
 then stop for the orchestrator's review. Failures and review comments go back
 to the model (3 attempts per model, then the next model). A group of farm
 candidates goes the same way, except that failing functions are taken out of
-it (they stay in the farm's pool) instead of going to a model. Approved work is
+it (they stay in the farm's pool) instead of going to a model, and its file is an
+inbox: each function goes to the file of its bn6f source (tools/layout.py), where
+the verify builds and the commit puts it. Approved work is
 committed, its symbols/db entries are written from the model's drafts plus the
 run's own evidence, and a child record run renames and documents it.
 The orchestrator never writes the code: it chooses the work and reviews.
@@ -65,17 +67,19 @@ Guest registers only in thin `Next` adapters, or where a `register form` note sa
 
 ### `quick_test` (step)
 
-Each function of the file against its lifted original on the captured calls and random inputs.
+Each function of the file against its lifted original on the captured calls and random inputs; a
+farm group's functions must also fit the laid-out files they go to (tools/layout.py).
 
-- reads: `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `difftest: Path`, `attempts: tuple[Attempt, ...]`
+- reads: `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `difftest: Path`, `attempts: tuple[Attempt, ...]`, `file_name: str`, `farm_model: typing.Optional[ModelSpec]`, `tree: Path | None`
 - produces: `attempts: tuple[Attempt, ...]`
 - then: `install_and_verify` when `quick_test_passed`; `drop_failing_functions` when `farm_functions_to_drop`; `ask_model_for_file_step` when `quick_test_failed_with_attempts_left`; `give_up` when `quick_test_failed_with_no_attempts_left`
 
 ### `install_and_verify` (step)
 
-Put the file in the tree and run every check (a child verify run); take it out again if it fails.
+Put the file in the tree (a farm group's functions into the laid-out files) and run every check
+(a child verify run); take it out again if it fails.
 
-- reads: `run_dir: Path`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `routes: tuple[Route, ...]`, `battle_code: bool`, `attempts: tuple[Attempt, ...]`, `tree: Path | None`
+- reads: `run_dir: Path`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `routes: tuple[Route, ...]`, `battle_code: bool`, `attempts: tuple[Attempt, ...]`, `tree: Path | None`, `farm_model: typing.Optional[ModelSpec]`
 - produces: `attempts: tuple[Attempt, ...]`, `checks: tuple[FunctionChecks, ...]`
 - then: `review_conversion` when `verified`; `drop_failing_functions` when `farm_functions_to_drop`; `ask_model_for_file_step` when `not_verified_with_attempts_left`; `give_up` when `not_verified_with_no_attempts_left`
 
@@ -100,9 +104,10 @@ The orchestrator reviews: approve, request changes (they go back to the model) o
 ### `commit_conversion` (step)
 
 Put the file and its difftest.cfg lines into the main tree and commit them there (locally, never
-pushed), holding the main tree's lock: parallel runs share difftest.cfg.
+pushed), holding the main tree's lock: parallel runs share difftest.cfg. A farm group's functions go
+to the laid-out files, as in its verify.
 
-- reads: `subsystem: str`, `file_name: str`, `functions: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`
+- reads: `subsystem: str`, `file_name: str`, `functions: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`, `farm_model: typing.Optional[ModelSpec]`
 - produces: `commit: CommitHash`
 - then: `write_symbol_entries`
 

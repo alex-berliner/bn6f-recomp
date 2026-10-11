@@ -50,3 +50,34 @@ def test_a_route_difference_no_check_names_sets_the_later_half_aside() -> None:
     attempt = Attempt(number=1, model=ModelSpec("hyper/cheap"), given=True, reply=reply, verification=report)
 
     assert list(failing_functions(attempt)) == ["second", "third"]
+
+
+def test_a_part_that_does_not_fit_the_laid_out_files_is_dropped_with_why() -> None:
+    found = failing("layout: second: cport/src/game/object.c: second uses K, which the part of x defines")
+
+    assert found == {FunctionName("second"): "does not fit the laid-out files: cport/src/game/object.c: second "
+                                             "uses K, which the part of x defines"}
+
+
+def test_a_group_keeps_its_own_definitions_apart_from_the_file_it_goes_to() -> None:
+    from wf.tools.drafts import _names_kept_apart  # pyright: ignore[reportPrivateUsage]
+    first = "#define SPEED 4\nstatic void set_flag(void) {}\nNext first(void) { R0 = SPEED; set_flag(); }"
+    second = "#define SPEED 4\nNext second(void) { R0 = SPEED; }"
+
+    kept = dict(_names_kept_apart([(FunctionName("first"), first), (FunctionName("second"), second)],
+                                  {FunctionName("first"): frozenset({"set_flag", "count"})}))
+
+    assert "static void set_flag_first(void)" in kept[FunctionName("first")]       # its file has one
+    assert "#define SPEED_first 4" in kept[FunctionName("first")]       # the group's second part uses SPEED
+    assert "#define SPEED_second 4" in kept[FunctionName("second")]
+
+
+def test_a_group_member_reading_a_header_macro_another_redefines_keeps_the_headers() -> None:
+    from wf.tools.drafts import _names_kept_apart  # pyright: ignore[reportPrivateUsage]
+    defines = "#define oFlags 4\nNext first(void) { R0 = LD8(R5 + oFlags); }"
+    reads = "Next second(void) { R0 = LD8(R5 + oFlags); }"                  # oFlags from the headers
+
+    kept = dict(_names_kept_apart([(FunctionName("first"), defines), (FunctionName("second"), reads)], {}))
+
+    assert "#define oFlags_first 4" in kept[FunctionName("first")] and "R5 + oFlags_first" in kept[FunctionName("first")]
+    assert kept[FunctionName("second")] == reads

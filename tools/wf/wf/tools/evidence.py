@@ -42,6 +42,7 @@ class Provenance(Result):
     verify_run: str
     commit: CommitHash
     farm_group: bool = False     # the model farm's candidates for unrelated small functions, put together
+    placed: dict[FunctionName, Path] = {}   # a farm group: the laid-out file each function went to (tools/layout.py)
 
 
 def write_entries(drafts: tuple[SymbolDraft, ...], checks: tuple[FunctionChecks, ...],
@@ -96,13 +97,14 @@ def _entry(draft: SymbolDraft, check: FunctionChecks, provenance: Provenance,
     """README: a farm group's readable-c line converts its own function (the group is the run) and its
     related list names only the members it calls or that call it; a subsystem's names them all."""
     today = date.today().isoformat()
+    readable_c = str(provenance.placed.get(draft.function, provenance.file).relative_to(REPO))
     verify = (f"./wf capture --function {draft.function}\n"
               f"./wf verify --function {draft.function} --snapshots build-snapshots")
     evidence: list[dict[str, object]] = [
         {"method": "readable-c", "date": today,
          "detail": f"Written by {provenance.model} through the convert workflow ({provenance.attempts} attempt(s), "
                    f"run {provenance.convert_run}); reviewed by Claude before the commit.",
-         "refs": [str(provenance.file.relative_to(REPO))],
+         "refs": [readable_c],
          "reproduce": f"./wf convert --subsystem {shlex.quote(provenance.subsystem)} --file {provenance.file.name} "
                       + " ".join([draft.function] if provenance.farm_group else subsystem_functions)},
     ]
@@ -134,9 +136,9 @@ def _entry(draft: SymbolDraft, check: FunctionChecks, provenance: Provenance,
         "name": draft.function, "address": f"0x{check.address:08X}", "kind": "function",
         "status": status(draft, check).value, "summary": draft.summary, "interface": draft.interface,
         "details": details, "evidence": evidence,
-        "changes": [{"date": today, "what": f"readable C replacement in {provenance.file.relative_to(REPO)}",
+        "changes": [{"date": today, "what": f"readable C replacement in {readable_c}",
                      "where": f"recomp {provenance.commit[:7]}", "tool": f"tools/wf convert ({provenance.model})"}],
-        "readable_c": str(provenance.file.relative_to(REPO)), "coverage": routes,
+        "readable_c": readable_c, "coverage": routes,
         "related": list(related),
         "open_questions": open_questions,
         "sources": [f"tools/wf run {provenance.convert_run}", f"recomp {provenance.commit[:7]}"],

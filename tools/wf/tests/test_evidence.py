@@ -16,7 +16,8 @@ from wf.types import CommitHash, FunctionName, GuestAddress, ModelSpec
 FUNCTIONS = {"first": 0x08001000, "second": 0x08002000, "third": 0x08003000}
 
 
-def entries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, farm_group: bool) -> dict[str, dict[str, object]]:
+def entries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, farm_group: bool,
+            placed: dict[FunctionName, Path] | None = None) -> dict[str, dict[str, object]]:
     def no_routes(address: GuestAddress) -> list[str]:
         return []
 
@@ -34,7 +35,7 @@ def entries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, farm_group: bool) -
     provenance = Provenance(subsystem="small functions from the model farm, set 40", file=REPO / "cport/src/game/x.c",
                             model=ModelSpec("hyper/glm-5.3-flash"), attempts=1, convert_run="convert-20261010-000000",
                             verify_run="convert-20261010-000000-verify-1", commit=CommitHash("c0ffee0123"),
-                            farm_group=farm_group)
+                            farm_group=farm_group, placed=placed or {})
     paths = write_entries(drafts, checks, provenance)
     return {path.stem: cast(dict[str, object], yaml.safe_load(path.read_text())) for path in paths}
 
@@ -60,3 +61,14 @@ def test_a_subsystem_entry_names_the_whole_subsystem(monkeypatch: pytest.MonkeyP
 
     assert readable_c(found["third"]).endswith("--file x.c first second third")
     assert found["third"]["related"] == ["first", "second"]
+
+
+def test_a_farm_group_entry_names_the_laid_out_file_its_function_went_to(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    dest = REPO / "cport/src/game/object.c"
+    found = entries(monkeypatch, tmp_path, farm_group=True, placed={FunctionName("first"): dest})
+
+    assert found["first"]["readable_c"] == "cport/src/game/object.c"
+    assert cast(list[dict[str, object]], found["first"]["evidence"])[0]["refs"] == ["cport/src/game/object.c"]
+    assert readable_c(found["first"]).endswith("--file x.c first")          # the command that made it
+    assert found["second"]["readable_c"] == "cport/src/game/x.c"            # not placed: the file it was given

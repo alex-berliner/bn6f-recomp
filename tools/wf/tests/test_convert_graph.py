@@ -14,6 +14,7 @@ from wf.graphs.convert import (GIVEN_CANDIDATE, ConvertOutcome, ConvertState, Re
                                convert_graph, review_sheet)
 from wf.graphs.record import RecordReport, RecordState, RecordVerdict
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState
+from wf.repo import REPO
 from wf.tools import sources
 from wf.tools.evidence import FunctionChecks, Provenance
 from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Prompt
@@ -50,6 +51,10 @@ class World:
     assembled: list[tuple[FunctionName, ...]] = field(default_factory=list[tuple[FunctionName, ...]])
     name_failures: bool = True  # a failed quick test names its last function
     removed_trees: list[Path] = field(default_factory=list[Path])
+    misfits: dict[FunctionName, str] = field(default_factory=dict[FunctionName, str])   # layout conflicts
+    restored: list[Path] = field(default_factory=list[Path])        # worktrees reset to their commit
+    laid_out: list[Path] = field(default_factory=list[Path])        # trees a farm group was laid out in
+    committed_files: list[tuple[Path, ...]] = field(default_factory=list[tuple[Path, ...]])
 
 
 def test_a_good_first_attempt_stops_for_review_then_commits_and_records(
@@ -220,6 +225,43 @@ def test_no_model_is_asked_when_a_function_has_no_captured_calls(
     assert finished.state.without_calls == (FUNCTION,) and world.asked == []
 
 
+def test_a_farm_group_goes_to_the_laid_out_files_for_its_verify_and_its_commit(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[True], verdicts=[Verdict.PASSED])
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm-4", farm_model=FARM_MODEL,
+                   functions=(FUNCTION, OTHER))
+    assert isinstance(paused, Paused) and isinstance(paused.request, ReviewRequest)
+    assert world.laid_out == [tmp_path / "tree"] and paused.request.attempts[-1].laid_out
+
+    finished = convert_graph().resume("convert-farm-4", APPROVE)
+
+    assert isinstance(finished, Finished)
+    assert world.laid_out[-1] == REPO
+    assert world.committed_files[0][:1] == (REPO / "cport/src/game/asm03_0.c",)
+    assert "laid out into asm03_0.c (tools/layout.py)" in world.commits[0]
+
+
+def test_a_farm_function_that_does_not_fit_the_laid_out_files_is_dropped(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    why = "cport/src/game/asm03_0.c: sub_8030892 uses SPEED, which the part of x defines before it"
+    world = World(quick_tests=[True, True], verdicts=[Verdict.PASSED], misfits={OTHER: why})
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm-5", farm_model=FARM_MODEL,
+                   functions=(FUNCTION, OTHER))
+
+    assert isinstance(paused, Paused) and isinstance(paused.request, ReviewRequest)
+    assert [(each.function, each.reason) for each in paused.request.dropped] == \
+        [(OTHER, f"does not fit the laid-out files: {why}")]
+    assert world.verified == [(FUNCTION,)]
+
+
+def test_a_failed_farm_verify_resets_the_worktree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[True], verdicts=[Verdict.FAILED])
+    _ = start(world, monkeypatch, tmp_path, run_id="convert-farm-6", farm_model=FARM_MODEL, functions=(FUNCTION,))
+
+    assert world.laid_out == [tmp_path / "tree"]
+    assert world.restored.count(tmp_path / "tree") >= 3   # quick test, install, and after the failed verify
+
+
 # ── the fakes ──────────────────────────────────────────────────────────
 
 def start(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_id: str, rounds: int = 3,
@@ -280,7 +322,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
                          drafts=(DRAFT,), problems=(), seconds=1.0)
 
     def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, subsystem: str,
-                            file_name: str) -> FileReply:
+                            file_name: str, taken: dict[FunctionName, frozenset[str]] | None = None) -> FileReply:
         world.assembled.append(functions)
         return FileReply(file=CandidateFile("Next sub_8030808(void) { RETURN_TO_CALLER(); }"), cfg_lines=(),
                          drafts=(DRAFT,), problems=(), seconds=0.0)
@@ -320,7 +362,25 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
 
     def commit_files(files: tuple[Path, ...], message: str) -> CommitHash:
         world.commits.append(message)
+        world.committed_files.append(files)
         return CommitHash("c0ffee0")
+
+    def restore_game_files(tree: Path) -> None:
+        world.restored.append(tree)
+
+    def lay_out_group(file_name: str, tree: Path = REPO) -> tuple[Path, ...]:
+        world.laid_out.append(tree)
+        return (tree / "cport/src/game/asm03_0.c",)
+
+    def layout_conflicts(file_name: str, code: CandidateFile, functions: tuple[FunctionName, ...],
+                         tree: Path) -> dict[FunctionName, str]:
+        return {function: why for function, why in world.misfits.items() if function in functions}
+
+    def names_taken(functions: tuple[FunctionName, ...], tree: Path = REPO) -> dict[FunctionName, frozenset[str]]:
+        return {}
+
+    def placed(functions: tuple[FunctionName, ...], tree: Path = REPO) -> dict[FunctionName, Path]:
+        return {function: REPO / "cport/src/game/asm03_0.c" for function in functions}
 
     def write_entries(drafts: tuple[SymbolDraft, ...], checks: tuple[FunctionChecks, ...],
                       provenance: Provenance) -> tuple[Path, ...]:
@@ -348,7 +408,9 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         "held": lambda name, exclusive=True: nullcontext(),  # pyright: ignore[reportUnknownLambdaType]
         "test_candidate_file": test_candidate_file, "install_file": install_file, "uninstall_file": uninstall_file,
         "run_verify_in_full": run_verify_in_full, "commit_files": commit_files, "write_entries": write_entries,
-        "run_record": run_record, "tokens_for": tokens_for,
+        "run_record": run_record, "tokens_for": tokens_for, "restore_game_files": restore_game_files,
+        "lay_out_group": lay_out_group, "layout_conflicts": layout_conflicts, "placed": placed,
+        "names_taken": names_taken,
     }
     for name, fake in fakes.items():
         monkeypatch.setattr(convert, name, fake)

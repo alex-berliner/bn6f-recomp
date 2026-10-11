@@ -6,7 +6,9 @@ against the lifted originals, install it and run the full verify,
 then stop for the orchestrator's review. Failures and review comments go back
 to the model (3 attempts per model, then the next model). A group of farm
 candidates goes the same way, except that failing functions are taken out of
-it (they stay in the farm's pool) instead of going to a model. Approved work is
+it (they stay in the farm's pool) instead of going to a model, and its file is an
+inbox: each function goes to the file of its bn6f source (tools/layout.py), where
+the verify builds and the commit puts it. Approved work is
 committed, its symbols/db entries are written from the model's drafts plus the
 run's own evidence, and a child record run renames and documents it.
 The orchestrator never writes the code: it chooses the work and reviews."""
@@ -28,7 +30,8 @@ from wf.tools.drafts import candidate_from_farm, function_at_line
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
 from wf.tools.git import commit_files
 from wf.tools.locks import MAIN_TREE, held
-from wf.tools.install import DIFFTEST_CFG, game_file, install_file, uninstall_file
+from wf.tools.install import (DIFFTEST_CFG, game_file, install_file, lay_out_group, layout_conflicts, names_taken,
+                              placed, restore_game_files, uninstall_file)
 from wf.tools.models import ConversionContext, conversion_context, other_entries
 from wf.tools.registers import RegisterCheck, check_register_use
 from wf.tools.sources import TIERS, Tier, first_up, is_source_failure
@@ -101,6 +104,8 @@ class Attempt(Result):
     verification: VerifyReport | None = None
     verify_run: str | None = None
     review: Review | None = None
+    laid_out: bool = False                    # a farm group's functions went to the laid-out files for the verify
+    blamed: dict[FunctionName, str] = {}      # functions the install named: build errors in the laid-out files
 
 
 class ConvertOutcome(Enum):
@@ -254,7 +259,8 @@ def ask_model_for_file_step(given: AskInput) -> AskOutput:
         return AskOutput(attempts=(attempt,))
     if not given.attempts and given.farm_model is not None:
         functions = tuple(context.function for context in given.contexts)
-        reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name)
+        reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name,
+                                    names_taken(functions))
         return AskOutput(attempts=(Attempt(number=number, model=given.farm_model, given=True, reply=reply),))
     models = _with_rounds_left(given.models, given.attempts, given.rounds)
     prompt = subsystem_prompt(given.subsystem, given.file_name, given.contexts)
@@ -298,6 +304,9 @@ class QuickTestInput(Result):
     snapshots: SnapshotDir
     difftest: Path
     attempts: tuple[Attempt, ...]
+    file_name: str
+    farm_model: ModelSpec | None
+    tree: Path | None
 
 
 class QuickTestOutput(Result):
@@ -306,9 +315,17 @@ class QuickTestOutput(Result):
 
 @workflow.step
 def quick_test(given: QuickTestInput) -> QuickTestOutput:
-    """Each function of the file against its lifted original on the captured calls and random inputs."""
+    """Each function of the file against its lifted original on the captured calls and random inputs; a
+    farm group's functions must also fit the laid-out files they go to (tools/layout.py)."""
     latest = given.attempts[-1]
     test = test_candidate_file(given.contexts, latest.reply, given.snapshots, given.difftest)
+    if given.farm_model is not None and given.tree is not None and latest.reply.file is not None:
+        restore_game_files(given.tree)    # an earlier attempt's install, laid out there
+        functions = tuple(context.function for context in given.contexts)
+        conflicts = layout_conflicts(given.file_name, latest.reply.file, functions, given.tree)
+        if conflicts:
+            lines = "\n".join(f"layout: {function}: {why}" for function, why in conflicts.items())
+            test = test.model_copy(update={"passed": False, "report": ToolMessage(f"{test.report}\n{lines}")})
     return QuickTestOutput(attempts=(*given.attempts[:-1], latest.model_copy(update={"test": test})))
 
 
@@ -321,6 +338,7 @@ class VerifyInput(Result):
     battle_code: bool
     attempts: tuple[Attempt, ...]
     tree: Path | None
+    farm_model: ModelSpec | None = None
 
 
 class VerifyOutput(Result):
@@ -330,11 +348,16 @@ class VerifyOutput(Result):
 
 @workflow.step
 def install_and_verify(given: VerifyInput) -> VerifyOutput:
-    """Put the file in the tree and run every check (a child verify run); take it out again if it fails."""
+    """Put the file in the tree (a farm group's functions into the laid-out files) and run every check
+    (a child verify run); take it out again if it fails."""
     latest = given.attempts[-1]
     assert latest.reply.file is not None
     tree = given.tree or REPO
+    group = given.farm_model is not None and tree != REPO
+    if group:
+        restore_game_files(tree)
     install_file(given.file_name, latest.reply.file, latest.reply.cfg_lines, tree)
+    laid_out = lay_out_group(given.file_name, tree) if group else ()
     run_id = f"{current_run_id()}-verify-{latest.number}"
     run_dir = given.run_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -342,11 +365,28 @@ def install_and_verify(given: VerifyInput) -> VerifyOutput:
     state = run_verify_in_full(VerifyState(run_dir=run_dir, functions=functions, snapshots=given.snapshots,
                                            routes=given.routes, battle_code=given.battle_code, tree=tree), run_id)
     assert state.report is not None
+    blamed = _blamed_by_build(state.report, laid_out, functions) if group else {}
     if state.report.verdict not in ACCEPTED_VERDICTS:
         uninstall_file(given.file_name, tree)
+        if group:
+            restore_game_files(tree)
     checks = tuple(_checks(context, state) for context in given.contexts)
-    updated = latest.model_copy(update={"verification": state.report, "verify_run": run_id})
+    updated = latest.model_copy(update={"verification": state.report, "verify_run": run_id, "laid_out": group,
+                                        "blamed": blamed})
     return VerifyOutput(attempts=(*given.attempts[:-1], updated), checks=checks)
+
+
+def _blamed_by_build(report: VerifyReport, laid_out: tuple[Path, ...],
+                     functions: tuple[FunctionName, ...]) -> dict[FunctionName, str]:
+    """The group's functions whose parts of the laid-out files a build error points into."""
+    blamed: dict[FunctionName, str] = {}
+    texts = {path.name: path.read_text() for path in laid_out if path.exists()}
+    for line in report.build_failure.last_lines if report.build_failure is not None else ():
+        where = re.search(r"src/game/([\w.]+):(\d+):", line)
+        owner = function_at_line(texts[where[1]], int(where[2])) if where and where[1] in texts else None
+        if owner is not None and owner in functions:
+            _ = blamed.setdefault(owner, f"the full build failed in its code: {line.strip()}"[:300])
+    return blamed
 
 
 class ReviewRequest(Result):
@@ -373,6 +413,7 @@ class CommitInput(Result):
     file_name: str
     functions: tuple[FunctionName, ...]
     attempts: tuple[Attempt, ...]
+    farm_model: ModelSpec | None = None
 
 
 class CommitOutput(Result):
@@ -382,19 +423,30 @@ class CommitOutput(Result):
 @workflow.step
 def commit_conversion(given: CommitInput) -> CommitOutput:
     """Put the file and its difftest.cfg lines into the main tree and commit them there (locally, never
-    pushed), holding the main tree's lock: parallel runs share difftest.cfg."""
+    pushed), holding the main tree's lock: parallel runs share difftest.cfg. A farm group's functions go
+    to the laid-out files, as in its verify."""
     latest = given.attempts[-1]
     assert latest.review is not None and latest.verification is not None
-    message = (f"Readable {given.subsystem} ({len(given.functions)} functions, written by {latest.model})\n\n"
-               f"{', '.join(given.functions)}.\nWritten by {latest.model} through the convert workflow "
-               f"(run {current_run_id()}, attempt {latest.number}); quick test and full verify passed "
-               f"(verify run {latest.verify_run}: {latest.verification.verdict.value}); reviewed and approved"
-               + (f": {latest.review.comments}" if latest.review.comments else "") + ".\n\n"
-               + latest.review.attribution)
     assert latest.reply.file is not None
     with held(MAIN_TREE):
         install_file(given.file_name, latest.reply.file, latest.reply.cfg_lines)
-        return CommitOutput(commit=commit_files((game_file(given.file_name), DIFFTEST_CFG), message.strip() + "\n"))
+        if given.farm_model is None:
+            files: tuple[Path, ...] = (game_file(given.file_name),)
+        else:
+            try:
+                files = lay_out_group(given.file_name)
+            except Exception:
+                uninstall_file(given.file_name)
+                raise
+        where = (f"; laid out into {', '.join(path.name for path in files)} (tools/layout.py)"
+                 if given.farm_model is not None else "")
+        message = (f"Readable {given.subsystem} ({len(given.functions)} functions, written by {latest.model})\n\n"
+                   f"{', '.join(given.functions)}.\nWritten by {latest.model} through the convert workflow "
+                   f"(run {current_run_id()}, attempt {latest.number}){where}; quick test and full verify passed "
+                   f"(verify run {latest.verify_run}: {latest.verification.verdict.value}); reviewed and approved"
+                   + (f": {latest.review.comments}" if latest.review.comments else "") + ".\n\n"
+                   + latest.review.attribution)
+        return CommitOutput(commit=commit_files((*files, DIFFTEST_CFG), message.strip() + "\n"))
 
 
 class EntriesInput(Result):
@@ -416,9 +468,11 @@ def write_symbol_entries(given: EntriesInput) -> EntriesOutput:
     """symbols/db entries from the model's drafts plus this run's evidence; renames for confirmed/probable meanings."""
     latest = given.attempts[-1]
     assert latest.verify_run is not None
+    functions = tuple(check.function for check in given.checks)
     provenance = Provenance(subsystem=given.subsystem, file=game_file(given.file_name), model=latest.model,
                             attempts=latest.number, convert_run=current_run_id(), verify_run=latest.verify_run,
-                            commit=given.commit, farm_group=given.farm_model is not None)
+                            commit=given.commit, farm_group=given.farm_model is not None,
+                            placed=placed(functions) if given.farm_model is not None else {})
     return EntriesOutput(entries=write_entries(latest.reply.drafts, given.checks, provenance),
                          renames=renames(latest.reply.drafts, given.checks))
 
@@ -492,7 +546,7 @@ def drop_failing_functions(given: DropInput) -> DropOutput:
     failing = failing_functions(given.attempts[-1])
     kept = tuple(context for context in given.contexts if context.function not in failing)
     functions = tuple(context.function for context in kept)
-    reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name)
+    reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name, names_taken(functions))
     attempt = Attempt(number=len(given.attempts) + 1, model=given.farm_model, given=True, reply=reply)
     return DropOutput(contexts=kept, functions=functions, attempts=(*given.attempts, attempt),
                       dropped=(*given.dropped, *(DroppedFunction(function=function, reason=reason)
@@ -605,8 +659,9 @@ def failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
             failing[function] = "difftest found a difference in the full verify"
         for function in attempt.verification.oracle_differences:
             failing[function] = "the CPU oracle found a difference in the full verify"
+        failing.update(attempt.blamed)
         build = attempt.verification.build_failure
-        for line in build.last_lines if build is not None else ():
+        for line in build.last_lines if build is not None and not attempt.laid_out else ():
             where = re.search(r"src/game/[\w.]+:(\d+):", line)
             owner = function_at_line(code, int(where[1])) if where else None
             if owner is not None:
@@ -638,6 +693,9 @@ def failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
                 for owner in _parts_defining(code, defined):
                     if owner != defined:
                         failing[owner] = f"its part also defines `Next {defined}(void)`"
+            laid = re.match(r"layout: (\w+): (.*)", line)
+            if laid:
+                failing[FunctionName(laid[1])] = f"does not fit the laid-out files: {laid[2]}"[:300]
             undrafted = re.match(r"no ```yaml entry for: (.*)", line)
             for function in undrafted[1].split(", ") if undrafted else ():
                 failing[FunctionName(function)] = "no drafted symbols/db entry yet"
