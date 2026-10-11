@@ -1302,3 +1302,63 @@ Next ai_resetAIDataSlots_800ED00(void) {
 
     RETURN_TO_CALLER();
 }
+
+/* ── object_createAIData ── */
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word_object_createAIData(u32 addr, u32 num_bytes) {
+    R0 = addr;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+#define AI_DATA_SLOT_COUNT  8
+#define AI_DATA_SLOT_STRIDE 0x100 /* oAIData_Size: AIData + AIState + AIAttackVars */
+
+/* What the original leaves in the registers its callers look at. */
+struct AIDataAlloc {
+    u32 block;        /* r0: the newly claimed AIData block, or NULL if all slots are taken */
+    u32 usedBits;     /* r2: eUsedAIDataBitfield value at return */
+    u32 usedBitsAddr; /* r3: address of eUsedAIDataBitfield */
+    u32 r5;           /* r5: pass-through (the original pops it unchanged) */
+};
+
+/* Allocate the first free AI data slot for a battle object. The 8 slots are
+ * tracked in the top byte of eUsedAIDataBitfield, bit 31 = slot 0, and live
+ * back to back starting at eAIData. On success the slot's bit is set and its
+ * AIData/AIState/AIAttackVars fields are cleared. */
+static struct AIDataAlloc create_ai_data(u32 r5_in) {
+    u32 usedBitsAddr = A_eUsedAIDataBitfield;
+    u32 usedBits = LD32(usedBitsAddr);
+    u32 mask = 0x80000000;          /* slot 0 lives at bit 31 */
+    u32 block = A_eAIData0_ActorType;
+
+    for (u32 slot = 0; slot < AI_DATA_SLOT_COUNT; slot++) {
+        if ((usedBits & mask) == 0) {
+            usedBits |= mask;       /* mark the slot as used */
+            ST32(usedBitsAddr, usedBits);
+
+            zero_fill_by_word_object_createAIData(block, 0x7C);         /* AIData */
+            zero_fill_by_word_object_createAIData(block + 0x80, 0x20);  /* AIState */
+            zero_fill_by_word_object_createAIData(block + 0xA0, 0x50);  /* AIAttackVars */
+
+            struct AIDataAlloc ok = { block, usedBits, usedBitsAddr, r5_in };
+            return ok;
+        }
+        block += AI_DATA_SLOT_STRIDE;
+        mask >>= 1;
+    }
+
+    /* No free slot: return NULL, bitfield left untouched. */
+    struct AIDataAlloc full = { 0, usedBits, usedBitsAddr, r5_in };
+    return full;
+}
+
+/* object_createAIData: () -> Nullable<* AIData> */
+Next object_createAIData(void) {
+    struct AIDataAlloc res = create_ai_data(R5);
+    R0 = res.block;
+    R2 = res.usedBits;
+    R3 = res.usedBitsAddr;
+    R5 = res.r5;
+    RETURN_TO_CALLER();
+}

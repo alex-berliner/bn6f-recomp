@@ -1710,3 +1710,98 @@ Next matchHalfwordPatternEntry_802961A(void) {
     SET_FLAGS_NZ(R1);
     RETURN_TO_CALLER();
 }
+
+/* ── custMenu_80298F4 ── */
+/* First battle tutorial custMenu handler.
+ *
+ * The menu struct's state byte at +0x0C selects one of six tutorial checks.
+ * Each check returns the text script index to show, or 0 when there is
+ * nothing to show this frame. When a script is produced it is played through
+ * the chatbox (TextScriptFirstBattleTutorials is a table of text archives,
+ * one entry per tutorial state), then the menu is parked while the text
+ * plays: the old value of the timer byte at +0x01 is saved to +0x0D, the
+ * timer is restarted at 0x34 and the halfword counter at +0x02 is cleared.
+ *
+ * Returns 1 if a script was started, 0 otherwise (state 0xFF, states with no
+ * check, or a check that returned nothing).
+ *
+ * Only the menu pointer (r5) is actually used; r4/r6/r7/r10 pass through
+ * untouched, and r2/r3 are left exactly as the called game routines leave
+ * them, matching the original.
+ */
+
+/* register form: calls sub_802996E outside this file, which has no typed C interface yet */
+static u32 tutorial_script_0(u32 state) {
+    R0 = state;
+    GUEST_CALL(sub_802996E);
+    return R0;
+}
+
+/* register form: calls sub_80299B6 outside this file, which has no typed C interface yet */
+static u32 tutorial_script_1(u32 state) {
+    R0 = state;
+    GUEST_CALL(sub_80299B6);
+    return R0;
+}
+
+/* register form: calls sub_80299FA outside this file, which has no typed C interface yet */
+static u32 tutorial_script_3(u32 state) {
+    R0 = state;
+    GUEST_CALL(sub_80299FA);
+    return R0;
+}
+
+/* register form: calls sub_8029A1E outside this file, which has no typed C interface yet */
+static u32 tutorial_script_4(u32 state) { /* tutorial states 4 and 5 share this check */
+    R0 = state;
+    GUEST_CALL(sub_8029A1E);
+    return R0;
+}
+
+/* register form: calls sub_8029A36 outside this file, which has no typed C interface yet */
+static u32 tutorial_script_6(u32 state) {
+    R0 = state;
+    GUEST_CALL(sub_8029A36);
+    return R0;
+}
+
+/* register form: calls chatbox_runScript outside this file, which has no typed C interface yet */
+static void run_chatbox_script(u32 archive, u32 script_idx) {
+    R0 = archive;
+    R1 = script_idx;
+    GUEST_CALL(chatbox_runScript);
+}
+
+static u32 first_battle_tutorial_menu(u32 menu) {
+    u32 state = LD8(menu + 0xC);
+
+    u32 script;
+    switch (state) {
+    case 0:  script = tutorial_script_0(state); break;
+    case 1:  script = tutorial_script_1(state); break;
+    case 3:  script = tutorial_script_3(state); break;
+    case 4:
+    case 5:  script = tutorial_script_4(state); break;
+    case 6:  script = tutorial_script_6(state); break;
+    default: return 0; /* 0xFF: no tutorial active; state 2 and others have no check */
+    }
+
+    if (script == 0)
+        return 0; /* the check found nothing to say this frame */
+
+    /* Pick the text archive for this tutorial state and start the script. */
+    u32 archive = LD32(A_TextScriptFirstBattleTutorials + state * 4);
+    run_chatbox_script(archive, script);
+
+    /* Park the menu while the text is on screen. */
+    ST8(menu + 0xD, LD8(menu + 1)); /* remember the previous timer value */
+    ST8(menu + 1, 0x34);            /* restart the timer at 0x34 ticks */
+    ST16(menu + 2, 0);              /* clear the halfword counter */
+    return 1;
+}
+
+/* custMenu_80298F4(r5 = custMenu) -> r0; r2/r3 reflect the callees, r4-r7/r10 untouched */
+Next custMenu_80298F4(void) {
+    R0 = first_battle_tutorial_menu(R5);
+    RETURN_TO_CALLER();
+}

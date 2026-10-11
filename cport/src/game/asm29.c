@@ -206,6 +206,287 @@ Next battle_dispatchObjectBehaviorStep_80A9B70(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A9B9C ── */
+/* sub_80A9B9C — bring a freshly spawned overworld object live.
+ *
+ * r5 = object state block, r7 = spawn config table entry. The routine:
+ *   - marks the object "spawning" (state 3) and clears its timer (+0x24),
+ *   - resolves the spawn flags from the config (+0/+2/+4): on a repeat spawn
+ *     the object's event flag is (re)set and the companion flag cleared;
+ *     on a first spawn the object is parked in state 1 instead,
+ *   - loads the sprite described by the config (+6/+7) and applies the
+ *     animation (+8), unk0x2c (+0xA), palette (+0xB), priority (+0xC, with
+ *     0xFF meaning "derive from the object's layer/z") and flip (+0xD),
+ *   - marks the object active (state 4 at +8) and calls sub_80A9C26 to finish.
+ *
+ * Everything the original leaves behind in r0-r3, r6 and the flags on exit is
+ * produced by its last callee (sub_80A9C26), so it stays in the guest registers
+ * untouched; r4/r5/r7-r12 are never written.
+ */
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static u32 event_flag_set_sub_80A9B9C(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();          /* TestEventFlag: Z set when the flag is clear */
+}
+
+/* register form: calls SetEventFlag outside this file, which has no typed C interface yet */
+static void set_event_flag_sub_80A9B9C(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* register form: calls ClearEventFlag outside this file, which has no typed C interface yet */
+static void clear_event_flag_sub_80A9B9C(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(ClearEventFlag);
+}
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void load_object_sprite(u32 kind, u32 resourceId, u32 spriteIndex) {
+    R0 = kind;
+    R1 = resourceId;
+    R2 = spriteIndex;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls checkZCoordModifiers_8031612 outside this file, which has no typed C
+ * interface yet; the original keeps the object's current z in r6 across this call, so it is
+ * synced here to match the register state the callee was written against */
+static u32 z_coord_modifiers(u32 physics, u32 savedZ) {
+    R0 = physics;
+    R6 = savedZ;
+    GUEST_CALL(checkZCoordModifiers_8031612);
+    return R0;
+}
+
+/* register form: calls applyLayerEffectToOWObject_8035694 outside this file, which has no
+ * typed C interface yet; its r0 return is the derived sprite priority */
+static u32 apply_layer_effect(u32 physics) {
+    R0 = physics;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    return R0;
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C
+ * interface yet */
+static void set_sprite_priority(u32 priority) {
+    R0 = priority;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void set_sprite_animation(u32 animation) {
+    R0 = animation;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void load_sprite_animation_data(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_shadow_off(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setUnk0x2c outside this file, which has no typed C interface yet */
+static void set_sprite_unk0x2c(u32 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void set_sprite_palette(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setFlip outside this file, which has no typed C interface yet */
+static void set_sprite_flip(u32 flip) {
+    R0 = flip;
+    GUEST_CALL(sprite_setFlip);
+}
+
+/* register form: calls sub_80A9C26 outside this file, which has no typed C interface yet.
+ * It continues initialising the object still held in r5 (with r6/r7 alongside) and is the
+ * last call of the original, so its r0-r2 leftovers and flags are this function's outputs. */
+static void finish_object_init(void) {
+    GUEST_CALL(sub_80A9C26);
+}
+
+/* Initialise a just-spawned overworld object from its config entry. */
+static void spawn_ow_object(u32 obj, u32 cfg) {
+    u32 priority;
+
+    ST8(obj, 3);                      /* state 3: being initialised */
+    ST32(obj + 0x24, 0);              /* clear the object's timer/counter */
+
+    if (event_flag_set_sub_80A9B9C(LD16(cfg))) {
+        /* Spawn already ran before: (re)set this object's event flag and
+         * clear the companion flag at +4. */
+        set_event_flag_sub_80A9B9C(LD16(cfg + 2));
+        clear_event_flag_sub_80A9B9C(LD16(cfg + 4));
+    } else {
+        /* First spawn: put the object away in state 1 and clear its event flag. */
+        ST8(obj, 1);
+        clear_event_flag_sub_80A9B9C(LD16(cfg + 2));
+    }
+
+    load_object_sprite(0x80, LD8(cfg + 6), LD8(cfg + 7));
+
+    priority = LD8(cfg + 0xC);
+    if (priority == 0xFF) {
+        /* Priority 0xFF: derive it from the object's position. The computed z
+         * is parked in the object's z field while the layer effect runs, then
+         * the original value is put back. */
+        u32 savedZ = LD32(obj + 0x14);
+        ST32(obj + 0x14, z_coord_modifiers(obj + 0xC, savedZ) << 16);
+        priority = apply_layer_effect(obj + 0xC);
+        ST32(obj + 0x14, savedZ);
+    }
+    set_sprite_priority(priority);
+
+    set_sprite_animation(LD8(cfg + 8));
+    load_sprite_animation_data();
+    sprite_shadow_off();
+    set_sprite_unk0x2c(LD8(cfg + 0xA) << 24);
+    set_sprite_palette(LD8(cfg + 0xB));
+    set_sprite_flip(LD8(cfg + 0xD));
+
+    ST8(obj + 8, 4);                  /* state 4: active */
+    finish_object_init();
+}
+
+Next sub_80A9B9C(void) {
+    spawn_ow_object(R5, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A9C26 ── */
+/* ------------------------------------------------------------------ */
+/* Register-form helpers: thin wrappers for game functions that have  */
+/* no typed C interface yet.                                          */
+/* ------------------------------------------------------------------ */
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static u32 test_event_flag(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();          /* TestEventFlag: Z set if the flag is clear */
+}
+
+/* register form: calls SetEventFlag outside this file, which has no typed C interface yet */
+static void set_event_flag_sub_80A9C26(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* register form: calls ClearEventFlag outside this file, which has no typed C interface yet */
+static void clear_event_flag_sub_80A9C26(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(ClearEventFlag);
+}
+
+/* register form: calls sub_80A9CAE outside this file, which has no typed C interface yet */
+static u32 event_npc_check(void) {
+    /* r0 is deliberately NOT set here: the original passes along whatever
+     * r0 the preceding TestEventFlag call left behind. */
+    GUEST_CALL(sub_80A9CAE);
+    return R0;
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_set_animation_sub_80A9C26(u32 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_load_animation_data_sub_80A9C26(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_no_shadow_sub_80A9C26(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_effect(u32 id) {
+    R0 = id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static void run_sprite_update(void) {
+    GUEST_CALL(sprite_update);
+}
+
+/* ------------------------------------------------------------------ */
+/* Event-flag driven object update.                                   */
+/*                                                                    */
+/* `script` (r7 in the original) points at a three-word flag record:  */
+/*   +0: trigger flag that selects between the two states,            */
+/*   +2: flag kept in sync with the object's idle/active state,       */
+/*   +4: flag cleared once the object switches to its active state.   */
+/*                                                                    */
+/* `obj` (r5 in the original) is the object: +0 is its state byte,    */
+/* +0x24 a word tracking whether the active animation is showing.     */
+/* ------------------------------------------------------------------ */
+static void update_event_flag_object(u32 obj, u32 script) {
+    u32 trigger_flag = LD16(script);
+
+    if (test_event_flag(trigger_flag)) {
+        /* Trigger flag on: object enters state 3, raise the sync flag,
+         * retire the one-shot flag. */
+        ST8(obj, 3);
+        set_event_flag_sub_80A9C26(LD16(script + 2));
+        clear_event_flag_sub_80A9C26(LD16(script + 4));
+    } else {
+        /* Trigger flag off: object rests in state 1, sync flag cleared. */
+        ST8(obj, 1);
+        clear_event_flag_sub_80A9C26(LD16(script + 2));
+    }
+
+    if (test_event_flag(LD16(script))) {
+        if (event_npc_check() != 0) {
+            /* Condition met: play the "appear" animation (with sound)
+             * once, when not already showing it. */
+            if (LD32(obj + 0x24) == 0) {
+                ST32(obj + 0x24, 1);
+                sprite_set_animation_sub_80A9C26(3);
+                sprite_load_animation_data_sub_80A9C26();
+                sprite_no_shadow_sub_80A9C26();
+                play_sound_effect(0x1D8);   /* 0xD9 + 0xFF */
+            }
+        } else {
+            /* Condition gone: play the "disappear" animation once, when
+             * the active one is still up. */
+            if (LD32(obj + 0x24) != 0) {
+                sprite_set_animation_sub_80A9C26(5);
+                sprite_load_animation_data_sub_80A9C26();
+                sprite_no_shadow_sub_80A9C26();
+                ST32(obj + 0x24, 0);
+            }
+        }
+    }
+
+    run_sprite_update();
+}
+
+/* sub_80A9C26(r5 = object, r7 = flag script record)
+ *
+ * All register outputs (r0-r3 and nz/c/v) are whatever the final
+ * sprite_update call leaves behind, and r4/r6/r10/lr are untouched,
+ * so the adapter only forwards r5/r7 and returns. */
+Next sub_80A9C26(void) {
+    update_event_flag_object(R5, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── palette_copyTableRow_80AA104 ── */
 /* palette_copyTableRow_80AA104(r0 = row selector, 0..2):
  * Copies one 8-byte entry (a palette row: three colors plus terminator)
@@ -637,6 +918,68 @@ Next isEventFlag212Set_80AA764(void) {
 
     R0 = result;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AA88C ── */
+/* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */
+static u32 get_positive_rng(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return R0;
+}
+
+/* register form: calls sub_80AED50 outside this file, which has no typed C interface yet */
+static u32 item_table_for(u32 kind) {
+    R0 = kind;
+    GUEST_CALL(sub_80AED50);
+    return R0;
+}
+
+/*
+ * Pick a random item drop for one of the four battle-state slots at
+ * battle+0x90: for each non-empty slot, look up its item table, roll an
+ * entry with the RNG, and remember the last slot that yielded a real item
+ * (0xFFFF = none). The chosen slot then receives the item id and a
+ * "item waiting" flag. Returns the final loop counter (4), since the
+ * callers only see the flags of the loop's terminating comparison.
+ */
+static u32 roll_random_drop(u32 toolkit) {
+    u32 rng = get_positive_rng();
+    u32 chosen_state = 0;
+    u32 chosen_item = 0;
+
+    u32 slot = LD32(toolkit + oToolkit_BattleStatePtr) + 0x90;
+
+    u32 i;
+    for (i = 0; i < 4; i++) {
+        u32 state = LD32(slot);
+        if (state != 0) {
+            u32 table = item_table_for(LD16(state + oBattleState_Unk_28));
+
+            rng >>= 4;
+            u32 index = rng & 0x1E;   /* halfword-aligned table offset */
+            rng >>= 5;
+
+            u32 item = LD16(table + index);
+            if (item != 0xFFFF) {
+                chosen_state = state;
+                chosen_item = item;
+            }
+        }
+        slot += 4;
+    }
+
+    if (chosen_state != 0) {
+        ST16(chosen_state + 0x2A, chosen_item);   /* Unk_2A: rolled item id */
+        ST8(chosen_state + 0x1A, 1);              /* Unk_1A: drop pending */
+    }
+
+    return i;
+}
+
+/* sub_80AA88C(r10 = toolkit) -> flags c/v from the loop exit compare */
+Next sub_80AA88C(void) {
+    SET_FLAGS_CMP(roll_random_drop(R10), 4);
     RETURN_TO_CALLER();
 }
 

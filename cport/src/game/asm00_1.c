@@ -574,6 +574,70 @@ Next gameMode_switchToMode2_80046F8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8004702 ── */
+/* ---------------------------------------------------------------------------
+ * sub_8004702 — reset one state word of every overworld NPC object.
+ *
+ * The original walks the 16 fixed slots of the overworld NPC object table
+ * (0xD8 bytes per slot) and clears the u32 at slot + 0xC4 (reached in the
+ * assembly as base + 0xA0, then storing at +0x24). This looks like the
+ * "active object" / behavior pointer word being invalidated before the
+ * overworld map is (re)loaded.
+ *
+ * Register contract: the caller sees the loop's leftover registers:
+ *   r0 = 0x10 (loop counter after the final CMP r0, #0x10)
+ *   r1 = base + 15*0xD8 + 0xA0  (address used by the last store)
+ *   r2 = 0
+ *   r3 = base + 16*0xD8         (one past the last slot)
+ * and the flags from that final CMP (16 - 16 == 0: Z=1, C=1, V=0, N=0).
+ * ------------------------------------------------------------------------- */
+
+/* Result of the typed worker: the values the original leaves in r0..r3. */
+typedef struct {
+    u32 count;        /* r0: iterations performed (always 16) */
+    u32 lastWordAddr; /* r1: address of the last cleared word */
+    u32 zero;         /* r2: the constant stored (always 0) */
+    u32 tableEnd;     /* r3: pointer just past the last slot */
+} NpcResetResult;
+
+/* Clear the active/behavior word (offset 0xC4) of all 16 overworld NPC slots.
+ * A_eOverworldNPCObject0_Flags is the table base (== eOverworldNPCObjects in
+ * the disassembly's literal pool). */
+static NpcResetResult clear_overworld_npc_active_words(void)
+{
+    u32 base = A_eOverworldNPCObject0_Flags;
+    u32 lastWordAddr = 0;
+
+    for (u32 slot = 0; slot < 16; slot++) {
+        u32 entry = base + slot * 0xD8;
+
+        lastWordAddr = entry + 0xA0;
+        ST32(lastWordAddr + 0x24, 0);   /* entry + 0xC4: clear active word */
+    }
+
+    NpcResetResult result;
+    result.count        = 16;
+    result.lastWordAddr = lastWordAddr;
+    result.zero         = 0;
+    result.tableEnd     = base + 16 * 0xD8;
+    return result;
+}
+
+/* sub_8004702() -> r0..r3, nz c v (no inputs) */
+Next sub_8004702(void)
+{
+    NpcResetResult result = clear_overworld_npc_active_words();
+
+    R0 = result.count;
+    R1 = result.lastWordAddr;
+    R2 = result.zero;
+    R3 = result.tableEnd;
+
+    /* Final CMP r0, #0x10 of the loop: compares the finished count to 16. */
+    SET_FLAGS_CMP(R0, 0x10);
+    RETURN_TO_CALLER();
+}
+
 /* ── FreeOverworldMapObject ── */
 /* FreeOverworldMapObject(r5 = overworld map object):
  * Releases one overworld map object: clears its "active" bit in the global
@@ -738,6 +802,136 @@ Next startInMapWarpCutscene_80059D0(void) {
     R1 = 0;
     GUEST_CALL(StartCutscene);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── checkThenStartBattle_8005A8C ── */
+/* Event flags (bank 0x17) that suppress an automatic battle start.
+ * TestEventFlagFromImmediate takes the bank byte in r0 and the index byte in r1. */
+#define EVENT_FLAG_PLAYER_ADVANCE_FORWARD 0x1717
+#define EVENT_FLAG_1700                   0x1700
+#define EVENT_FLAG_173E                   0x173E
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static u32 event_flag_set_checkThenStartBattle_8005A8C(u16 flag) {
+    R0 = flag >> 8;          /* flag bank */
+    R1 = flag & 0xFF;        /* flag index within the bank */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();     /* NE = flag is set */
+}
+
+/* register form: calls sub_809E462 outside this file, which has no typed C interface yet */
+static u32 sub_809E462_blocks_battle(void) {
+    GUEST_CALL(sub_809E462);
+    return !ZERO_FLAG();     /* NE = the guard trips */
+}
+
+/* register form: calls warp_LoadCurrentAndReadUnk10_8005F28 outside this file, which has no typed C interface yet */
+static u32 warp_check_blocks_battle(void) {
+    GUEST_CALL(warp_LoadCurrentAndReadUnk10_8005F28);
+    return !ZERO_FLAG();     /* NE = a warp is in progress */
+}
+
+/* register form: calls TestPETMenuDataFlag outside this file, which has no typed C interface yet */
+static u32 pet_menu_data_flag_set(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestPETMenuDataFlag);
+    return !ZERO_FLAG();     /* NE = flag is set */
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static u32 screen_fade_active_checkThenStartBattle_8005A8C(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();     /* NE = a fade is running */
+}
+
+/* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
+static u32 cutscene_script_non_null(void) {
+    GUEST_CALL(IsCutsceneScriptNonNull);
+    return !ZERO_FLAG();     /* NE = a cutscene script is running */
+}
+
+/* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
+static u32 chatbox_flag_set(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return !ZERO_FLAG();     /* NE = any of the masked chatbox flags is set */
+}
+
+/* register form: calls sub_80AA4C0 outside this file, which has no typed C interface yet */
+static u32 get_battle_settings(void **settings_out) {
+    GUEST_CALL(sub_80AA4C0);
+    *settings_out = (void *)R0;
+    return !ZERO_FLAG();     /* NE = pending battle settings are available */
+}
+
+/* register form: calls StartBattle outside this file, which has no typed C interface yet */
+static void start_battle(void *settings, u32 flag) {
+    R0 = (u32)settings;
+    R1 = flag;
+    GUEST_CALL(StartBattle);
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void set_screen_fade(u32 kind, u32 param) {
+    R0 = kind;
+    R1 = param;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* Every guard for an automatic battle start must pass; the first failing one
+ * sends the original straight to its epilogue (the bne/beq to locret_8005AF2),
+ * which here is a plain early return. */
+static void check_then_start_battle_body(u32 gameState) {
+    if (LD8(gameState) != 4)     /* oGameState_SubsystemIndex is at offset 0 */
+        return;                  /* only while in the field subsystem */
+
+    if (event_flag_set_checkThenStartBattle_8005A8C(EVENT_FLAG_PLAYER_ADVANCE_FORWARD))
+        return;                  /* player is stepping forward */
+    if (sub_809E462_blocks_battle())
+        return;
+    if (event_flag_set_checkThenStartBattle_8005A8C(EVENT_FLAG_1700))
+        return;
+    if (event_flag_set_checkThenStartBattle_8005A8C(EVENT_FLAG_173E))
+        return;
+    if (warp_check_blocks_battle())
+        return;                  /* a warp is in progress */
+    if (pet_menu_data_flag_set(1))
+        return;                  /* a PET menu is open */
+    if (!screen_fade_active_checkThenStartBattle_8005A8C())
+        return;                  /* an active fade is required */
+    if (cutscene_script_non_null())
+        return;                  /* a cutscene is running */
+    if (chatbox_flag_set(0x80))
+        return;                  /* chatbox text is still on screen */
+
+    /* Everything is clear: take the pending battle settings and start the fight. */
+    void *settings;
+    if (!get_battle_settings(&settings))
+        return;                  /* no battle queued */
+
+    start_battle(settings, 1);
+    set_screen_fade(0x2C, 0x10); /* fade out into the battle */
+}
+
+static void check_then_start_battle(u32 toolkit) {
+    /* register form: the original keeps the game-state pointer in guest r5 across
+     * every call below (mov r5,r10; ldr r5,[r5,#oToolkit_GameStatePtr]) and only
+     * restores the caller's value with the final pop {r5}, so it has to live in R5
+     * while the callees run. */
+    u32 savedR5 = R5;
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    R5 = gameState;
+
+    check_then_start_battle_body(gameState);
+
+    R5 = savedR5;                /* the original's pop {r5} */
+}
+
+/* checkThenStartBattle_8005A8C: checks the field-state guards and, if all pass,
+ * starts the queued battle and fades the screen. r10 = toolkit. */
+Next checkThenStartBattle_8005A8C(void) {
+    check_then_start_battle(R10);
     RETURN_TO_CALLER();
 }
 

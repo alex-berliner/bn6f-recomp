@@ -1573,6 +1573,58 @@ Next bgmap_WriteTileIdAtBlock_800187C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80018E0 ── */
+/* Result of sub_80018E0: the values the original leaves in r0-r4.
+ * r6/r7 are pushed/popped by the original, so they need no handling here. */
+typedef struct {
+    u32 x;        /* r0: column just past the last tile written, wrapped to the row */
+    u32 mask;     /* r1: always 0x1F, the column mask used by the loop */
+    u32 blockOff; /* r2: original r2 << 11, byte offset of the selected tile-id block */
+    u32 src;      /* r3: source pointer advanced past the copied halfwords */
+    s32 count;    /* r4: loop counter after the run; the final CMP r4,#0 sets the flags */
+} BgRowWrite;
+
+/* Copy a horizontal run of tile ids into one of the game's 32x32 BG tile-id
+ * maps (r10 -> toolkit -> iBGTileIdBlocks array). `layer` picks the 0x800-byte
+ * block (32x32 u16 entries), `y` the row (64 bytes per row), `x` the starting
+ * column. Columns wrap at 32 (mask 0x1F), so a run longer than a row continues
+ * on the same row from its left edge. Always writes at least one tile, matching
+ * the original's do-while (a non-positive count decrements once and stops). */
+static BgRowWrite bg_write_tile_row(u32 x, u32 y, u32 layer, u32 src, s32 count, u32 toolkit)
+{
+    u32 block = LD32(toolkit + oToolkit_iBGTileIdBlocks_Ptr);
+    u32 dst = block + (layer << 11) + (y << 6);
+
+    x &= 0x1F;
+    do {
+        ST16(dst + (x << 1), LD16(src));
+        x = (x + 1) & 0x1F;
+        src += 2;
+        count--;
+    } while (count > 0);
+
+    BgRowWrite out;
+    out.x = x;
+    out.mask = 0x1F;
+    out.blockOff = layer << 11;
+    out.src = src;
+    out.count = count;
+    return out;
+}
+
+/* sub_80018E0(r0 = start column, r1 = row, r2 = tile-id block, r3 = source tile
+ * ids, r4 = count, r10 = toolkit) -> r0-r4, flags from the final CMP r4,#0 */
+Next sub_80018E0(void) {
+    BgRowWrite out = bg_write_tile_row(R0, R1, R2, R3, (s32)R4, R10);
+    R0 = out.x;
+    R1 = out.mask;
+    R2 = out.blockOff;
+    R3 = out.src;
+    R4 = out.count;
+    SET_FLAGS_CMP(out.count, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── SetBGScrollCallbacks ── */
 /* SetBGScrollCallbacks(r0 = scroll callback 0, r1 = scroll callback 1,
  *                      r2 = hblank callback):

@@ -61,6 +61,106 @@ Next megamanChargeShotAiAttack_80EBE00(void) {
 
 #undef CHARGE_ATTACK_TABLE
 
+/* ── sub_80EBE54 ── */
+/* register form: calls object_setAnimation outside this file, which has no typed C interface yet */
+static void set_object_animation(u32 animation) {
+    R0 = animation;
+    GUEST_CALL(object_setAnimation);
+}
+
+/* register form: calls sub_80EB562 outside this file, which has no typed C interface yet */
+static void run_charge_handler_80EB562(void) {
+    GUEST_CALL(sub_80EB562);
+}
+
+/* register form: calls object_setFlag1 outside this file, which has no typed C interface yet */
+static void set_object_flag1(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(object_setFlag1);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound(u32 id) {
+    R0 = id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls battle_SpawnObjectOnFrontPanel_800FAAC outside this file, which has no typed C interface yet */
+static u32 spawn_object_on_front_panel(u32 element, u32 damage, u32 unk_r3) {
+    R0 = element;
+    R1 = damage;
+    R3 = unk_r3;    /* r2 is deliberately left as the caller left it, as in the original */
+    GUEST_CALL(battle_SpawnObjectOnFrontPanel_800FAAC);
+    return R0;
+}
+
+/* register form: spawn_t1_0x5_tempAttackObject_80B8E30 takes the template id in r0,
+ * a template value in r4 and a pointer in r7; r4/r7 are restored afterwards,
+ * matching the original's push/pop of r7 and its saved r4 */
+static void spawn_temp_attack_object(u32 template_id, u32 template_r4, u32 target_r7,
+                                     u32 saved_r4, u32 saved_r7) {
+    R0 = template_id;
+    R4 = template_r4;
+    R7 = target_r7;
+    GUEST_CALL(spawn_t1_0x5_tempAttackObject_80B8E30);
+    R4 = saved_r4;
+    R7 = saved_r7;
+}
+
+/* Offsets within the AI attack-vars struct that game.h does not name:
+ *   +0x00 = state (u16, oAIAttackVars_Unk_00)
+ *   +0x01 = charge-phase byte (oAIAttackVars_Unk_01)
+ *   +0x08 = damage (u16, oAIAttackVars_Damage)       */
+#define AIATTACK_STATE_OFFSET      0u
+#define AIATTACK_PHASE_OFFSET      1u
+#define AIATTACK_DAMAGE_OFFSET     8u
+
+/* One tick of the AI buster attack state machine for the oAIAttackVars struct at `atk`.
+ * On the warm-up tick it starts the charge animation; on tick 1 it fires the buster
+ * shot on the panel in front plus the muzzle-flash temp object; each tick advances
+ * the fire timer, and once it passes 4 the attack state resets to 8 (idle).
+ * Returns the value the original leaves in r0. */
+static u32 ai_buster_attack_tick(u32 atk, u32 r4_in, u32 r5) {
+    if (LD8(atk + AIATTACK_PHASE_OFFSET) == 0) {
+        /* charge-up tick: animation, per-object hook, then mark the shot as charging */
+        set_object_animation(0xE);
+        run_charge_handler_80EB562();
+        ST8(atk + AIATTACK_PHASE_OFFSET, 4);
+        set_object_flag1(1u << 22 /* OBJECT_FLAGS_UNK_BIT_22_BIT */);
+        ST16(atk + oAIAttackVars_Unk_10, 0);
+    }
+
+    if (LD16(atk + oAIAttackVars_Unk_10) == 1) {
+        /* fire tick: buster sound, shot object on the front panel, muzzle flash */
+        play_sound(SOUND_BUSTER_6A);
+        u32 shot = spawn_object_on_front_panel(
+            LD8(atk + oAIAttackVars_Unk_0c),
+            LD16(atk + AIATTACK_DAMAGE_OFFSET),
+            0x180000u);
+        ST16(atk + oAIAttackVars_Unk_12, shot);
+        spawn_temp_attack_object(0, 5, r5 + 0x4C, r4_in, atk);
+    }
+
+    u32 ticks = LD16(atk + oAIAttackVars_Unk_10) + 1;
+    ST16(atk + oAIAttackVars_Unk_10, ticks);
+    if (ticks > 4) {
+        /* fired all shots: reset the AI attack state */
+        ST16(atk + AIATTACK_STATE_OFFSET, 8);
+        return 8;
+    }
+    return ticks;
+}
+
+/* sub_80EBE54(r7 = AI attack vars, r4/r5 = caller context used by the spawn helper) -> r0
+ * The final flags always come from "cmp <counter>, #4" (the mov r0,#8 on the reset path
+ * only overwrites n/z, which cmp already leaves as 0/non-zero for counter > 4), so a
+ * single CMP of the returned r0 reproduces n/c/v on every path. */
+Next sub_80EBE54(void) {
+    R0 = ai_buster_attack_tick(R7, R4, R5);
+    SET_FLAGS_CMP(R0, 4);
+    RETURN_TO_CALLER();
+}
+
 /* ── aiAttack_genericSpawnAndCountdown_80EBF30 ── */
 /* aiAttack_genericSpawnAndCountdown_80EBF30: per-tick update of an AI-driven attack (r4 = owning battle
  * object, r7 = oAIAttackVars state block). On the first tick (Unk_01 == 0)
@@ -491,6 +591,93 @@ static void battle_object_dispatch(u32 battle_obj) {
 /* battleObject_dispatch_8108F50(r5 = BattleObject ptr) -> all regs + flags */
 Next battleObject_dispatch_8108F50(void) {
     battle_object_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81095D0 ── */
+/* Offsets used here that the shared headers don't declare yet
+ * (values taken straight from the disassembly's ldrb/strb displacements). */
+#define oObjectHeader_Flags         0   /* byte in the spawned effect's header */
+#define oCollisionData_PrimaryElement 2 /* byte in the collision data */
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void sprite_setPalette_raw(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls spawn_t1_0x0_EffectObject outside this file, which has no typed C interface yet */
+static u32 spawn_t1_0x0_EffectObject_raw(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4) {
+    R0 = a0; R1 = a1; R2 = a2; R3 = a3; R4 = a4;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    return R0;
+}
+
+/* register form: calls enemy_getStruct2 outside this file, which has no typed C interface yet */
+static u32 enemy_getStruct2_raw(u32 index) {
+    R0 = index;
+    GUEST_CALL(enemy_getStruct2);
+    return R0;
+}
+
+/* Switch a battle object over to a new version (form): refresh its palette,
+ * spawn the version-change effect, shift its name ID by the version delta,
+ * and reload damage, HP and element from the enemy data table.
+ *
+ * obj is the battle object (r5). Returns what the original leaves in r2:
+ * the object's collision-data pointer, or the incoming r2 untouched on the
+ * early-exit path (version fields already equal, nothing happens). */
+static u32 battle_object_change_version(u32 obj, u32 r2_in) {
+    u32 ai = LD32(obj + oBattleObject_AIDataPtr);
+    u32 newVersion = LD8(ai + oAIData_Version_16);
+    u32 appliedVersion = LD8(ai + oAIData_Version_17);
+
+    if (newVersion == appliedVersion)
+        return r2_in;
+
+    /* Remember which version was applied, and switch the palette to it.
+     * Palette index = version * per-object stride. */
+    ST8(ai + oAIData_Version_17, newVersion);
+    sprite_setPalette_raw(newVersion * LD8(ai + 3));
+
+    /* Spawn the version-change effect (kind 0x26) from the three words at
+     * obj+0x34, and mark the new object with flag bit 2. The original's
+     * ldmia writeback leaves r0 pointing just past the three words. */
+    u32 effectArg0 = LD32(obj + 0x34);
+    u32 effectArg1 = LD32(obj + 0x38);
+    u32 effectArg2 = LD32(obj + 0x3C);
+    u32 effect = spawn_t1_0x0_EffectObject_raw(obj + 0x40, effectArg0, effectArg1, effectArg2, 0x26);
+    ST8(effect + oObjectHeader_Flags, LD8(effect + oObjectHeader_Flags) | 4);
+
+    /* Shift the name ID by (new version - applied version); wraps the same
+     * way the original's 32-bit SUB/ADD do if the version went down. */
+    u32 versionDelta = newVersion - appliedVersion;
+    u32 nameID = LD16(obj + oBattleObject_NameID) + versionDelta;
+    ST16(obj + oBattleObject_NameID, nameID);
+
+    /* Pull the new version's stats from the enemy data table. */
+    u32 stats = enemy_getStruct2_raw(nameID);
+    u32 damage = LD16(stats + 4);
+    ST16(obj + oBattleObject_Damage, damage);
+    u32 collision = LD32(obj + oBattleObject_CollisionDataPtr);
+    ST16(collision + oCollisionData_SelfDamage, damage);
+
+    /* Enemy data word 0: low 12 bits are HP, bits 12-15 the element. */
+    u32 hpWord = LD16(stats);
+    u32 hp = hpWord & 0xFFF;
+    ST16(obj + oBattleObject_HP, hp);
+    ST16(obj + oBattleObject_MaxHP, hp);
+    u32 element = hpWord >> 12;
+    ST8(obj + oBattleObject_Element, element);
+    ST8(collision + oCollisionData_PrimaryElement, element);
+
+    return collision;
+}
+
+/* sub_81095D0(r4/r6/r7 saved, r5 = battle object, r2 = pass-through on the
+ * early path) -> r2 = collision-data pointer; r4/r5/r6/r7 end unchanged. */
+Next sub_81095D0(void) {
+    R2 = battle_object_change_version(R5, R2);
     RETURN_TO_CALLER();
 }
 

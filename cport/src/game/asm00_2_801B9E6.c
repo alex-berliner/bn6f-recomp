@@ -1761,6 +1761,95 @@ Next sub_801E5EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801E5F8 ── */
+/* ------------------------------------------------------------------ *
+ * Battle scene start-up (sub_801E5F8)
+ *
+ * Resets the per-battle work area at eStruct2035280 and hands control
+ * to the scene dispatcher: the navi-status fields are cleared, the
+ * "special rule" flag byte_203529E is decided from the battle effects,
+ * the battle mode and a helper check, and then request bit 0x4000 is
+ * raised and dispatched.
+ * ------------------------------------------------------------------ */
+
+#define SCENE_REQUEST_BIT       (1u << 14) /* 0x4000: (re)start the battle scene */
+#define EFFECTS_NO_SPECIAL_RULE 0x200000   /* effects bit that forces the plain path */
+
+/* ---- register-form helpers for game functions with no typed C interface yet ---- */
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 read_battle_effects(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 read_battle_mode(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls sub_813BF1C outside this file, which has no typed C interface yet */
+static u32 sub_813BF1C_result_zero(void) {
+    GUEST_CALL(sub_813BF1C);
+    return ZERO_FLAG();               /* sub_813BF1C answers in the Z flag */
+}
+
+/* register form: calls eStruct2035280_SetRequestBits_801BECC outside this file, which has no typed C interface yet */
+static void set_request_bits(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(eStruct2035280_SetRequestBits_801BECC);
+}
+
+/* register form: calls dispatch_801DA48 outside this file, which has no typed C interface yet */
+static void dispatch_request(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(dispatch_801DA48);
+}
+
+/* Battle modes 1-5 and 8 (the multiplayer / special battle modes) skip the
+ * extra rule check and always take the plain path. */
+static u32 mode_forces_plain_path(u32 mode) {
+    return (mode >= 1 && mode <= 5) || mode == 8;
+}
+
+/* Reset the battle state block and start the battle scene. */
+static void init_battle_scene(void) {
+    u32 scene = A_eStruct2035280;
+
+    ST8(scene + 0x12, 0x00);          /* byte_2035292 */
+    ST8(scene + 0x13, 0xFF);          /* byte_2035293 */
+    ST8(scene + 0x17, 0xFF);          /* eStruct2035280_NaviStatusGfxIdx17 */
+    ST8(scene + 0x15, 0xFF);          /* byte_2035295 */
+    ST16(scene + 0x38, 0x78);         /* word_20352B8 */
+
+    /* byte_203529E becomes 1 only when none of the "plain battle" conditions
+     * hold: the effects bit being set, a special battle mode, or the
+     * sub_813BF1C check answering zero each force it to 0.  The checks must
+     * run in this order and stop as soon as one succeeds (they have side
+     * effects), so each is nested instead of merged into one condition. */
+    u32 special_rule = 0;
+    if ((read_battle_effects() & EFFECTS_NO_SPECIAL_RULE) == 0) {
+        u32 mode = read_battle_mode();
+        if (!mode_forces_plain_path(mode)) {
+            if (!sub_813BF1C_result_zero())
+                special_rule = 1;
+        }
+    }
+    ST8(scene + 0x1E, special_rule);  /* byte_203529E */
+
+    set_request_bits(SCENE_REQUEST_BIT);
+    dispatch_request(SCENE_REQUEST_BIT);
+}
+
+/* sub_801E5F8() -> r2..r12 all pass through unchanged (r4/r5 are saved and
+ * restored by the original's push/pop, the rest are never touched); the
+ * flags and r0/r1/lr are clobbers. */
+Next sub_801E5F8(void) {
+    init_battle_scene();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_801E71C ── */
 /* sub_801E71C(r0 = value):
  * Stores the byte in r0 into byte_2035292 (field 0x12 of eStruct2035280).

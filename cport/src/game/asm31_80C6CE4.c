@@ -73,6 +73,59 @@ Next battle_objectDispatchPanelChange_80C6CFC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C97E0 ── */
+/* register form: calls object_spawnType3 outside this file, which has no typed C interface yet */
+static u32 call_object_spawnType3(u32 type, u32 arg1, u32 arg2, u32 arg3) {
+    R0 = type;
+    R1 = arg1;
+    R2 = arg2;
+    R3 = arg3;
+    GUEST_CALL(object_spawnType3);
+    return R5;    /* object_spawnType3 answers in r5: the new object, or 0 if it failed */
+}
+
+/* Spawn a battle object of type 0x2B via object_spawnType3 and cross-link it with
+ * the object that requested the spawn. r1-r3 are spawn parameters that the caller
+ * of this function passes straight through to object_spawnType3 untouched.
+ * Returns the new object, or 0 if no object could be spawned.
+ * Flag note: the caller-visible c/v flags come from the `adds r0, r5, #0` null
+ * check below, i.e. c = v = 0 and nz = (spawned != 0). */
+static u32 spawn_linked_battle_object(u32 arg1, u32 arg2, u32 arg3, u32 owner, u32 extraVars) {
+    u32 spawned = call_object_spawnType3(0x2B, arg1, arg2, arg3);
+
+    if (spawned == 0)
+        return spawned;    /* spawn failed: skip all linking */
+
+    /* Two-way link: new object points back at its owner, and the owner's
+     * extra-vars slot points at the new object. */
+    ST32(spawned + oBattleObject_RelatedObject1Ptr, owner);
+    ST32(spawned + oBattleObject_ExtraVars, extraVars);
+    ST32(extraVars, spawned);
+
+    /* The new object inherits the owner's alliance/direction-flip setting. */
+    ST16(spawned + oBattleObject_AllianceAndDirectionFlip,
+         LD16(owner + oBattleObject_AllianceAndDirectionFlip));
+
+    /* Mark the new object with flag bits 0x04 and 0x10 (flags byte is at offset 0). */
+    ST8(spawned, LD8(spawned) | 0x14);
+
+    return spawned;
+}
+
+/* sub_80C97E0: spawn object type 0x2B and link it to the requesting object.
+ * r1-r3: pass-through arguments for object_spawnType3
+ * r5: the requesting (owner) object; r7: owner's link-slot pointer
+ * Outputs r3 (as left by object_spawnType3) and c/v from the null check;
+ * r4-r7 are preserved (r5 restored exactly as the original's pop does). */
+Next sub_80C97E0(void) {
+    u32 owner = R5;
+    u32 spawned = spawn_linked_battle_object(R1, R2, R3, owner, R7);
+    R5 = owner;          /* the original pop {r5} undoes the spawn call's r5 */
+    R0 = spawned;        /* the original leaves the new object in r0 (clobbered) */
+    SET_FLAGS_ADD(spawned, 0);   /* `mov r0, r5` == adds r0, r5, #0 */
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectCountdownFireAttackTick_80C9CA2 ── */
 /* battle_objectCountdownFireAttackTick_80C9CA2: per-tick countdown for a battle object (r5 = object).
  *

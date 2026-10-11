@@ -725,6 +725,76 @@ Next battle_objectUpdateWithFieldC_8116F8C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8116FDC ── */
+/* register form: calls getStructFrom2008450 outside this file, which has no typed C interface yet */
+static u32 lookupPoolEntry(u32 index) {
+    R0 = index;
+    GUEST_CALL(getStructFrom2008450);
+    if (ZERO_FLAG())
+        return 0;               /* Z set: no object registered at this index */
+    return R1;                  /* address of the object's struct */
+}
+
+/* register form: calls sprite_setCoordinates outside this file, which has no typed C interface yet */
+static u32 setSpriteCoordinates(u32 x, u32 y, u32 entry) {
+    R0 = x;
+    R1 = y;
+    R5 = entry;                 /* the callee keeps working on the entry through r5 */
+    GUEST_CALL(sprite_setCoordinates);
+    return R5;                  /* entry pointer as the callee left it */
+}
+
+/* Move the three sprites belonging to the submenu entries starting at pool
+ * index firstIndex, and set or clear each entry's "off screen" flag (bit 1
+ * of its status byte).
+ *
+ * The selected entry (firstIndex itself) is drawn at the anchor (baseX,
+ * baseY).  Its two neighbours sit 13 pixels left and right of the anchor
+ * (byte_8117060 holds one {dx, dy} word pair per slot), but while their
+ * halfword at +0xE is zero they crowd towards the anchor instead: 7 pixels
+ * over while their counter at +0xC is still below 10, 3 pixels over after
+ * that.  Bit 1 stays set unless the anchor is on screen (baseX < 0x38) and
+ * the submenu id in sSubmenu is 0x18 or 8.
+ *
+ * r5 is clobbered by the sprite call but the original restores it on exit,
+ * so it is passed in and handed back unchanged. */
+static u32 moveSubmenuEntrySprites(u32 baseX, u32 baseY, u32 firstIndex, u32 r5) {
+    u32 endIndex = firstIndex + 3;
+    u32 slot = 0;
+
+    for (u32 index = firstIndex; (s32)index < (s32)endIndex; index++, slot++) {
+        u32 entry = lookupPoolEntry(index);
+        if (entry == 0)
+            continue;           /* nothing registered at this index */
+
+        u32 xOffset;
+        if (index != firstIndex && LD16(entry + 0xE) == 0) {
+            /* Side entries huddle towards the selected one while it counts up. */
+            xOffset = ((s32)LD16(entry + 0xC) < 10) ? 0xFFFFFFF9u : 0xFFFFFFFDu;
+        } else {
+            xOffset = LD32(A_byte_8117060 + slot * 8);
+        }
+        u32 yOffset = LD32(A_byte_8117060 + slot * 8 + 4);
+
+        entry = setSpriteCoordinates(baseX + xOffset, baseY + yOffset, entry);
+
+        u32 submenuId = LD8(A_sSubmenu);
+        u32 status = LD8(entry);
+        if ((s32)baseX >= 0x38 || (submenuId != 0x18 && submenuId != 8))
+            ST8(entry, status | 2);     /* anchor off screen / wrong menu: hide */
+        else
+            ST8(entry, status & ~2u);   /* anchor on screen: show */
+    }
+    return r5;
+}
+
+/* sub_8116FDC(r0 = anchor x, r1 = anchor y, r2 = first pool index) -> r3 left
+ * by the sprite callee, r5 restored, r4/r6/r7 untouched. */
+Next sub_8116FDC(void) {
+    R5 = moveSubmenuEntrySprites(R0, R1, R2, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_setStructHalfwordPairOnThree_8117084 ── */
 /* sprite_setStructHalfwordPairOnThree_8117084(r0 = halfword A, r1 = halfword B, r2 = first struct index):
  * Walks the three struct indices r2..r2+2. For each index, looks up the
@@ -1016,6 +1086,138 @@ Next keyItemMenu_renderDescription_81179E4(void) {
     R5 = savedR5;
     R6 = savedR6;
     R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8117A14 ── */
+/* Folder screen, selected-entry redraw: render the four code letters of the
+ * chip shown at *entry (chip id halfword at +2) into the 0x200-byte tile
+ * buffer at unk_2016300, then draw the per-code "copies in folder" tallies
+ * by scanning the folder, and queue the finished tiles to VRAM at 0x6013B40.
+ *
+ * The drawing callees keep the tile-buffer write cursor in guest r6: each one
+ * advances it and hands it back, so the cursor is threaded from call to call.
+ * They also read guest r4 (the chip id whose own folder entry is skipped when
+ * counting) and r5 (the chip's database entry), so those registers are loaded
+ * around the calls exactly as the original does. r4-r7 themselves are
+ * preserved outputs of this function: the original saves/restores them, so
+ * the entry values are passed in and handed back untouched. */
+
+#define CODE_TILE_BUFFER      A_unk_2016300
+#define CODE_TILE_BUFFER_SIZE 0x200u      /* 0x20 << 4 in the original */
+#define CODE_TILE_VRAM_DEST   0x6013B40u
+
+/* r0-r3 exactly as the final callee left them; callers of the original see
+ * these verbatim (r4-r7 are preserved and returned separately). */
+struct GfxCalleeTail {
+    u32 r0, r1, r2, r3;
+};
+
+/* Everything the caller observes after the call: r0-r3 from the last callee,
+ * r4-r7 unchanged (the original push/pop {r4-r7}). */
+struct FolderCodeResult {
+    u32 r0, r1, r2, r3;
+    u32 r4, r5, r6, r7;
+};
+
+/* register form: calls ZeroFillByEightWords outside this file, which has no typed C interface yet */
+static void clear_code_tile_buffer(u32 dest, u32 size) {
+    R0 = dest;
+    R1 = size;
+    GUEST_CALL(ZeroFillByEightWords);
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_data_sub_8117A14(u32 which_chip) {
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: sub_8117A84 draws one code letter at the r6 tile cursor and
+ * hands back the advanced cursor in r6; it has no typed C interface yet */
+static u32 draw_code_letter(u32 code, u32 chip_data, u32 cursor) {
+    R0 = code;
+    R5 = chip_data;     /* callee sees the chip's database entry in r5 */
+    R6 = cursor;
+    GUEST_CALL(sub_8117A84);
+    return R6;
+}
+
+/* register form: calls folder_CountChipsOfCodeOrSkipEntry_8117AA0 outside this file,
+ * which has no typed C interface yet; it counts folder entries matching the
+ * code (skipping the r4 chip id's own entry) and draws the tally at the r6
+ * cursor, handing back the advanced cursor */
+static u32 count_folder_chips(u32 chip_id, u32 code, u32 chip_data, u32 cursor) {
+    R0 = chip_id;
+    R1 = code;
+    R4 = chip_id;       /* entry to skip when counting */
+    R5 = chip_data;
+    R6 = cursor;
+    R7 = code;
+    GUEST_CALL(folder_CountChipsOfCodeOrSkipEntry_8117AA0);
+    return R6;
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has
+ * no typed C interface yet; r0-r3 as the callee leaves them are returned */
+static struct GfxCalleeTail queue_code_tile_upload(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    struct GfxCalleeTail tail = { R0, R1, R2, R3 };
+    return tail;
+}
+
+static struct FolderCodeResult build_code_counter_tiles(u32 entry, u32 r5_in, u32 r6_in, u32 r7_in) {
+    struct FolderCodeResult out;
+
+    /* Clear the tile buffer the codes and tallies are rendered into. */
+    clear_code_tile_buffer(CODE_TILE_BUFFER, CODE_TILE_BUFFER_SIZE);
+
+    u32 chip_id = LD16(entry + 2);
+    u32 chip = get_chip_data_sub_8117A14(chip_id);
+
+    /* Bytes 0-3 of the chip's database entry are its four code letters. */
+    u32 codes[4];
+    codes[0] = LD8(chip);
+    codes[1] = LD8(chip + 1);
+    codes[2] = LD8(chip + 2);
+    codes[3] = LD8(chip + 3);
+
+    /* Draw the four code letters first, cursor advancing through the buffer. */
+    u32 cursor = CODE_TILE_BUFFER;
+    for (u32 i = 0; i < 4; i++)
+        cursor = draw_code_letter(codes[i], chip, cursor);
+
+    /* Then the per-code folder tallies; the original re-reads the id here. */
+    chip_id = LD16(entry + 2);
+    for (u32 i = 0; i < 4; i++)
+        cursor = count_folder_chips(chip_id, codes[i], chip, cursor);
+
+    /* Hand the finished tiles to the DMA queue; guest r4-r7 hold the values
+     * the drawing callees left (chip id / chip entry / cursor / last code),
+     * exactly as in the original's call. */
+    struct GfxCalleeTail tail = queue_code_tile_upload(CODE_TILE_BUFFER, CODE_TILE_VRAM_DEST, CODE_TILE_BUFFER_SIZE);
+
+    out.r0 = tail.r0;
+    out.r1 = tail.r1;
+    out.r2 = tail.r2;
+    out.r3 = tail.r3;
+    out.r4 = entry;     /* preserved: the original pops r4-r7 */
+    out.r5 = r5_in;
+    out.r6 = r6_in;
+    out.r7 = r7_in;
+    return out;
+}
+
+/* sub_8117A14(r4 -> folder cursor entry, chip id at +2; r5-r7 untouched inputs)
+ * -> r0-r3 as left by QueueEightWordAlignedGFXTransfer, nz/c/v likewise,
+ * r4-r7 preserved. */
+Next sub_8117A14(void) {
+    struct FolderCodeResult out = build_code_counter_tiles(R4, R5, R6, R7);
+    R0 = out.r0, R1 = out.r1, R2 = out.r2, R3 = out.r3, R4 = out.r4, R5 = out.r5, R6 = out.r6, R7 = out.r7;
     RETURN_TO_CALLER();
 }
 

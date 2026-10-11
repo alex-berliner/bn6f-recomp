@@ -496,6 +496,58 @@ Next text_decompressMessageAssets_80471F8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80472E8 ── */
+/* byte_8047318: halfword table indexed by column -- columns 0-5 hold
+ * 0xE002, columns 6-11 hold 0xE006, columns 12-17 hold 0xE00A. */
+#define COLUMN_COUNT 0x12
+
+/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+static void emit_column(u32 packed, u16 entry) {
+    R0 = packed;
+    R1 = entry;
+    R2 = 0;
+    R3 = 0;
+    GUEST_CALL(sub_802FE28);
+}
+
+/* What one step leaves behind: the column's table halfword (r1, which
+ * sub_802FE28 preserves), the advanced column counter (r2) and 0 (r3). */
+typedef struct {
+    u16 entry;
+    u32 next_column;
+    u32 zero;
+} ColumnStep;
+
+/* Feed the packed pair and the current column's table entry to sub_802FE28,
+ * then advance the 18-column counter, wrapping back to 0 once it passes the
+ * last column (the original compares signed, so negative counters are left
+ * to keep incrementing). */
+static ColumnStep advance_column(u32 upper, u32 lower, u32 column) {
+    u32 packed = 0x40000000 | (upper << 16) | lower;
+    u16 entry = LD16(A_byte_8047318 + column * 2);
+
+    emit_column(packed, entry);
+
+    u32 next = column + 1;
+    if ((s32)next >= (s32)COLUMN_COUNT)
+        next = 0;
+
+    ColumnStep result = { entry, next, 0 };
+    return result;
+}
+
+/* sub_80472E8(r0 = upper halfword, r1 = lower halfword, r2 = column counter)
+ * Passes the packed halves plus the column's table entry on to sub_802FE28,
+ * and leaves the incremented (wrapped) counter in r2. r4-r7 and lr are
+ * untouched, r0 is scratch. */
+Next sub_80472E8(void) {
+    ColumnStep result = advance_column(R0, R1, R2);
+    R1 = result.entry;
+    R2 = result.next_column;
+    R3 = result.zero;
+    RETURN_TO_CALLER();
+}
+
 /* ── storeObfuscatedRandomToken_804733C ── */
 /* storeObfuscatedRandomToken_804733C(r0 = base value, r5 = object):
  * Rolls a random byte (retrying until it is nonzero) and stores an obfuscated
@@ -698,6 +750,81 @@ Next background_LoadAreaTiles_8047800(void) {
     R5 = state;
     R6 = savedR6;
     R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80478D4 ── */
+/* Mail list entry object (arrives in r5) — field offsets as used by the disassembly. */
+#define ENTRY_CURSOR_INDEX  0x08  /* u8: which list row is currently highlighted */
+#define ENTRY_INFO_PTR      0x1C  /* -> entry info record */
+#define ENTRY_TEXT_PTR      0x24  /* reader text shown for this entry */
+#define ENTRY_ID            0x28  /* entry id recorded in the shared menu state */
+#define MENU_STATE_ID_SLOT  8     /* id slot inside the unk_200a220 struct */
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_background_tiles_sub_80478D4(u32 j, u32 i, u32 which_tile_block_32x32,
+                                  u32 tile_ids, u32 j_size, u32 i_size)
+{
+    R0 = j;
+    R1 = i;
+    R2 = which_tile_block_32x32;
+    R3 = tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* register form: calls renderTextGfx_8045F8C outside this file, which has no typed C interface yet */
+static void render_text_gfx(u32 text_ptr, u32 style, u32 source_gfx, u32 dest_vram,
+                            u32 param4, u32 param5, u32 lookup_table, u32 param7)
+{
+    R0 = text_ptr;
+    R1 = style;
+    R2 = source_gfx;
+    R3 = dest_vram;
+    R4 = param4;
+    R5 = param5;
+    R6 = lookup_table;
+    R7 = param7;
+    GUEST_CALL(renderTextGfx_8045F8C);
+}
+
+/* Redraw the currently highlighted entry of the mail list: its icon tiles,
+ * the name strip next to it, and the text the reader shows for it. */
+static void draw_highlighted_mail_entry(u32 entry, u32 toolkit)
+{
+    u32 cursor = LD8(entry + ENTRY_CURSOR_INDEX);
+    u32 info_value = LD32(LD32(entry + ENTRY_INFO_PTR));
+
+    /* Info value 1 selects the alternate icon tile table. */
+    u32 icon_tile_ids = (info_value == 1) ? A_unk_2019404 : A_unk_2019204;
+
+    /* Icon: 9x5 tiles out of background block 2, one row higher per entry. */
+    copy_background_tiles_sub_80478D4(0x1E - (cursor - 0xC), 0, 2, icon_tile_ids, 9, 5);
+
+    /* Name strip: 7x2 tiles out of background block 0, just below the icon. */
+    copy_background_tiles_sub_80478D4(0x1E - (cursor - 0xD), 2, 0, A_byte_8046B58, 7, 2);
+
+    /* Remember which entry is selected, then render its text into VRAM. */
+    ST32(LD32(toolkit + oToolkit_Unk200a220_Ptr) + MENU_STATE_ID_SLOT,
+         LD32(entry + ENTRY_ID));
+    render_text_gfx(LD32(entry + ENTRY_TEXT_PTR),
+                    (info_value == 1) ? 0xD : 0xE,
+                    A_unk_2015A00,
+                    0x600A400 /* reader text tiles in VRAM */,
+                    7, 1, A_dword_86A5D60, 0);
+}
+
+/* sub_80478D4: r5 = mail list entry, r10 = toolkit.
+ * The routine itself preserves r4-r9 (the original push/pop), and the callees
+ * leave r10-r12 alone, so only the callee-clobbered r4-r7 need restoring. */
+Next sub_80478D4(void) {
+    u32 keep_r4 = R4, keep_r5 = R5, keep_r6 = R6, keep_r7 = R7;
+    draw_highlighted_mail_entry(R5, R10);
+    R4 = keep_r4;
+    R5 = keep_r5;
+    R6 = keep_r6;
+    R7 = keep_r7;
     RETURN_TO_CALLER();
 }
 
@@ -1073,6 +1200,220 @@ Next shop_copyItemTableToShopData_8048C98(void) {
 
     R2 = bytesLeft;
     R3 = lastLoaded;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8048DF8 ── */
+/*
+ * sub_8048DF8 -- pack the chip entries of one shop list into two destination
+ * regions.  Each 8-byte source entry (chip id, two bytes, chip index, a byte,
+ * a halfword) is copied into region A or region B depending on three per-chip
+ * event flags; the slots are addressed through the chip's own data table.
+ * Afterwards both regions are compacted to close the gaps left by skipped
+ * slots.  The two output registers report the two region pointers back to the
+ * caller (r2 = region A, r3 = region B); if the list is not in the "pack me"
+ * state, nothing is touched and r2 keeps its incoming value.
+ */
+
+/* Offsets into the 16-byte per-list records of the table at dword_8046B98. */
+#define SHOP_RECORD_SIZE     0x10
+#define SHOP_RECORD_State    0x00   /* u32; 2 = list still needs packing */
+#define SHOP_RECORD_ListPtr  0x08   /* entry list, relative to the shop data */
+#define SHOP_RECORD_Capacity 0x0C   /* half the region size in 8-byte slots */
+
+#define CHIP_ENTRY_SIZE      8
+
+/* Per-chip event flag bases; the first one also selects the far slot area. */
+#define CHIPFLAG_KIND_A      0x1E20
+#define CHIPFLAG_KIND_B      0x2020
+#define CHIPFLAG_KIND_C      0x2220
+#define AREA_B_SLOT_OFFSET   0x140
+
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word_sub_8048DF8(u32 mem, u32 num_bytes) {
+    R0 = mem;
+    R1 = num_bytes;
+    R2 = mem + num_bytes;       /* the original also hands the end pointer in r2 */
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static u32 event_flag_set_sub_8048DF8(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();        /* TestEventFlag: Z set when the flag is clear */
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 chip_data_ptr(u32 which_chip) {
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* Pull every entry in [start, end) down over the empty (chip id 0) slots
+ * below it, clearing each entry after it has been moved. */
+static void compact_chip_entries(u32 start, u32 end) {
+    u32 dst = start;
+    while ((s32)dst < (s32)end) {
+        if (LD8(dst) != 0) {
+            dst += CHIP_ENTRY_SIZE;
+            continue;
+        }
+        u32 src;
+        for (src = dst + CHIP_ENTRY_SIZE; (s32)src < (s32)end; src += CHIP_ENTRY_SIZE) {
+            if (LD8(src) != 0)
+                break;
+        }
+        if ((s32)src >= (s32)end)
+            return;             /* nothing left below: the rest stays empty */
+
+        ST8(dst,      LD8(src));
+        ST8(dst + 1,  LD8(src + 1));
+        ST16(dst + 2, LD16(src + 2));
+        ST8(dst + 4,  LD8(src + 4));
+        ST8(dst + 5,  LD8(src + 5));
+        ST16(dst + 6, LD16(src + 6));
+
+        ST8(src, 0);
+        ST8(src + 1, 0);
+        ST16(src + 2, 0);
+        ST8(src + 4, 0);
+        ST8(src + 5, 0);
+        ST16(src + 6, 0);
+
+        dst += CHIP_ENTRY_SIZE;
+    }
+}
+
+typedef struct {
+    u32 r2;     /* region A pointer on the packed path, incoming r2 otherwise */
+    u32 r3;     /* region B pointer on the packed path, shop data ptr otherwise */
+} PackShopChipLists_Result;
+
+static PackShopChipLists_Result pack_shop_chip_lists(u32 list_index, u32 region_a,
+                                                     u32 region_b, u32 capacity,
+                                                     u32 toolkit) {
+    PackShopChipLists_Result result;
+
+    u32 shop_data = LD32(toolkit + oToolkit_ShopDataPtr);
+    u32 record = A_dword_8046B98 + list_index * SHOP_RECORD_SIZE;
+
+    if (LD32(record + SHOP_RECORD_State) != 2) {
+        result.r2 = region_b;   /* original leaves r2 untouched on this path */
+        result.r3 = shop_data;
+        return result;
+    }
+
+    u32 src = LD32(record + SHOP_RECORD_ListPtr) + shop_data;
+    u32 region_bytes = capacity * 2 * CHIP_ENTRY_SIZE;
+    u32 end_a = region_a + region_bytes;
+    u32 end_b = region_b + region_bytes;
+
+    zero_fill_by_word_sub_8048DF8(region_a, region_bytes);
+    zero_fill_by_word_sub_8048DF8(region_b, region_bytes);
+
+    /* Sort every chip of the source list into region A or B.  Flag A sends
+     * the chip to the far half of region B; flags B/C send it to the near
+     * half of region B; with no flag set it stays in region A. */
+    for (;;) {
+        u32 chip_id = LD8(src);
+        if (chip_id == 0)
+            break;
+
+        u16 chip_index = LD16(src + 2);
+        u32 dest = region_b;
+        u32 slot_offset = AREA_B_SLOT_OFFSET;
+
+        if (!event_flag_set_sub_8048DF8(chip_index + CHIPFLAG_KIND_A)) {
+            slot_offset = 0;
+            if (!event_flag_set_sub_8048DF8(chip_index + CHIPFLAG_KIND_B) &&
+                !event_flag_set_sub_8048DF8(chip_index + CHIPFLAG_KIND_C)) {
+                dest = region_a;
+            }
+        }
+
+        u32 entry = dest + (LD16(chip_data_ptr(chip_index) + 0x1C) + slot_offset) * CHIP_ENTRY_SIZE;
+        ST8(entry,      chip_id);
+        ST8(entry + 1,  LD8(src + 1));
+        ST16(entry + 2, chip_index);
+        ST8(entry + 4,  LD8(src + 4));
+        ST8(entry + 5,  slot_offset == 0 ? 1 : 0);
+        ST16(entry + 6, LD16(src + 6));
+
+        src += CHIP_ENTRY_SIZE;
+    }
+
+    compact_chip_entries(region_a, end_a);
+    compact_chip_entries(region_b, end_b);
+
+    result.r2 = region_a;
+    result.r3 = region_b;
+    return result;
+}
+
+/* sub_8048DF8(r0 = list index, r1 = region A, r2 = region B, r4 = capacity,
+ *              r10 = toolkit) -> r2 = region A ptr, r3 = region B ptr */
+Next sub_8048DF8(void) {
+    PackShopChipLists_Result result = pack_shop_chip_lists(R0, R1, R2, R4, R10);
+    R2 = result.r2;
+    R3 = result.r3;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049CF8 ── */
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_words(u32 dst, u32 byte_count) {
+    R0 = dst;
+    R1 = byte_count;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls HalfwordFill outside this file, which has no typed C interface yet */
+static void fill_halfwords(u32 dst, u32 count, u32 value) {
+    R0 = dst;
+    R1 = count;
+    R2 = value;
+    GUEST_CALL(HalfwordFill);
+}
+
+/* Register state the original leaves behind: r2/r3 still hold the fill value
+ * setup from the last HalfwordFill call (HalfwordFill preserves them), and
+ * r4-r7 are untouched. */
+typedef struct {
+    u32 r2, r3, r4, r5, r6, r7;
+} ExitRegs;
+
+/* Clear the 0x48-byte work buffer at word_2001800, then lay down blank
+ * background tiles (0xE5E5 halfwords) in its two 0x20-entry lines and set
+ * each line's trailing attribute byte to 0xE6. */
+static ExitRegs init_work_buffer(u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    u32 work = A_word_2001800;
+
+    zero_fill_words(work, 0x48);
+
+    fill_halfwords(work + 8, 0x20, 0xE5E5);
+    ST8(work + 0x18, 0xE6);   /* byte_2001818 */
+
+    fill_halfwords(work + 0x28, 0x20, 0xE5E5);
+    ST8(work + 0x3C, 0xE6);   /* byte_200183C */
+
+    /* The original still carries the last fill's argument values in r2/r3. */
+    {
+        ExitRegs out = { 0xE5E5, 0xE5 << 8, r4, r5, r6, r7 };
+        return out;
+    }
+}
+
+/* sub_8049CF8: r2/r3 exit as the last fill setup left them; r4-r7 preserved. */
+Next sub_8049CF8(void) {
+    ExitRegs out = init_work_buffer(R2, R3, R4, R5, R6, R7);
+    R2 = out.r2;
+    R3 = out.r3;
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    R7 = out.r7;
     RETURN_TO_CALLER();
 }
 

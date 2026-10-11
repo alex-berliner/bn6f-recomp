@@ -808,6 +808,101 @@ Next tickCountdownGate_803F530(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803F560 ── */
+/* Result of sub_803F560: the code left in r0, the value left in r1, and the
+ * saved r4/r6/r7 that the original pushes and pops (so they end unchanged). */
+struct sub_803F560_result {
+    u32 value;     /* r0: 0xFF / 0x80 / 0 */
+    u32 r1;
+    u32 saved_r4;
+    u32 saved_r6;
+    u32 saved_r7;
+};
+
+/* register form: calls sub_803DEB4 outside this file, which has no typed C interface yet */
+static u32 current_battle_mode(u32 *r1_out) {
+    R6 = 0xFF;                     /* the caller always passes 0xFF in r6 */
+    GUEST_CALL(sub_803DEB4);
+    *r1_out = R1;                  /* r1 leftover: becomes the final r1 unless overwritten later */
+    return R0;
+}
+
+/* register form: calls sub_813DB24 outside this file, which has no typed C interface yet */
+static u32 poll_link_partner(u32 *r2_out) {
+    R0 = 0;
+    R1 = 1;
+    R6 = 0xFF;                     /* r6 still holds 0xFF at this point */
+    GUEST_CALL(sub_813DB24);
+    *r2_out = R2;                  /* the answer also arrives in r2; the caller moves it into r1 */
+    return R0;
+}
+
+/* register form: calls sub_8144D04 outside this file, which has no typed C interface yet */
+static u32 link_player_state(u32 slot, u32 running_result, u32 entry_r4) {
+    R0 = slot;
+    R7 = slot;                     /* r7 is the loop counter here */
+    R4 = entry_r4 + slot;          /* the original bumps r4 once per earlier iteration */
+    R6 = running_result;           /* the running 0xFF/0 result is live in r6 */
+    GUEST_CALL(sub_8144D04);
+    return R0;
+}
+
+/* Work out a link-related state code.  Ask the battle mode first: mode 4 keeps
+ * 0xFF, any other mode but 2 gives 0x80, and mode 2 polls the link partner.
+ * If the poll returns 0xFF its r2 becomes r1 and the code stays 0xFF; otherwise
+ * scan the four link slots and drop the code to 0 when slot 1 or 3 is in
+ * state 2 (with r1 cleared). */
+static struct sub_803F560_result probe_link_state(u32 entry_r4, u32 entry_r6, u32 entry_r7) {
+    struct sub_803F560_result out;
+    u32 r1_leftover;
+
+    u32 mode = current_battle_mode(&r1_leftover);
+    if (mode == 2) {
+        u32 r2_leftover;
+        u32 poll = poll_link_partner(&r2_leftover);
+        if (poll == 0xFF) {
+            /* No data: the original moves r2 into r1; r0 falls through as 0xFF. */
+            out.value = 0xFF;
+            out.r1 = r2_leftover;
+        } else {
+            u32 result = 0xFF;
+            for (u32 slot = 0; slot < 4; slot++) {
+                if (link_player_state(slot, result, entry_r4) == 2 && (slot == 1 || slot == 3))
+                    result = 0;
+            }
+            out.value = result;
+            out.r1 = 0;
+        }
+    } else if (mode == 4) {
+        out.value = 0xFF;
+        out.r1 = r1_leftover;
+    } else {
+        out.value = 0x80;
+        out.r1 = r1_leftover;
+    }
+
+    out.saved_r4 = entry_r4;
+    out.saved_r6 = entry_r6;
+    out.saved_r7 = entry_r7;
+    return out;
+}
+
+/* sub_803F560: returns a link-state code in r0 (0xFF, 0x80 or 0).
+ * N/Z come from the code; C/V are clear, as the original's trailing
+ * "mov r0,r6" (a flag-setting ADDS with 0) plus TST leave them.
+ * r1 varies by path; r2, r3, r5 and r8-r12 keep whatever the callees left;
+ * r4/r6/r7 are restored to their entry values. */
+Next sub_803F560(void) {
+    struct sub_803F560_result out = probe_link_state(R4, R6, R7);
+    R0 = out.value;
+    R1 = out.r1;
+    R4 = out.saved_r4;
+    R6 = out.saved_r6;
+    R7 = out.saved_r7;
+    SET_FLAGS_ADD(out.value, 0);   /* ADDS value,#0 then TST: N/Z from value, C=V=0 */
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803F798 ── */
 /* sub_803F798: shared entry stub for a multi-entry routine.
  * It stores r1-r7 and lr on the stack exactly like `push {r1-r7,lr}`

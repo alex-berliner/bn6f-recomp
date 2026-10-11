@@ -1090,6 +1090,99 @@ Next callPossiblyGetBattleEmotion_8015B54(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── possiblyGetBattleEmotion_8015B64 ── */
+/* register form: calls GetBattleNaviStatsAddr outside this file, which has no typed C interface yet */
+static u32 get_battle_navi_stats_addr(u32 alliance) {
+    R0 = alliance;
+    GUEST_CALL(GetBattleNaviStatsAddr);
+    return R0;
+}
+
+/* register form: calls battle_findPlayer outside this file, which has no typed C interface yet */
+static u32 battle_find_player(u32 alliance) {
+    R0 = alliance;
+    GUEST_CALL(battle_findPlayer);
+    return R0;
+}
+
+/* Everything the caller consumes: the chosen emotion plus the NaviStats fields
+ * it reads alongside it. The carry-out pair lets the adapter reproduce the
+ * original's C flag without branching (see read_battle_emotion). */
+struct BattleEmotion {
+    u32 emotion;         /* r0: 0..5 picked from AI state and mood */
+    u32 transformation;  /* r1: NaviStats.Transformation */
+    u32 mood;            /* r2: NaviStats.Mood */
+    u32 beastOutCounter; /* r3: NaviStats.BeastOutCounter */
+    u32 carryOne;        /* SET_FLAGS_CMP(carryOne, carryZero) -> the original's C */
+    u32 carryZero;
+};
+
+/* Decide the player's battle emotion: Beast Out / anger / chip-related AI
+ * flags override the mood-based default, and mood 0 always reports "normal".
+ *
+ * The C flag out mirrors which of the original's comparisons was the last one
+ * executed. The only unconditional flag setter is the "adds r5, r0, #0" behind
+ * "mov r5, player", which clears C; the TSTs leave C alone; each CMP sets it
+ * to "no borrow". So C ends up 1 exactly when a CMP ran and the final
+ * CMP mood,#0xFF didn't see mood below 0xFF. */
+static struct BattleEmotion read_battle_emotion(u32 alliance) {
+    u32 stats = get_battle_navi_stats_addr(alliance);
+    u32 player = battle_find_player(alliance);
+    u32 ai = LD32(player + oBattleObject_AIDataPtr);
+
+    u32 transformation = LD8(stats + oNaviStats_Transformation);
+    u32 mood = LD8(stats + oNaviStats_Mood);
+
+    u32 emotion;
+    u32 carry;
+    u32 unk36 = LD16(ai + oAIData_Unk_36);
+    if (unk36 != 0) {
+        /* Branch taken right after the first TST: no CMP ever ran, so C is
+         * still the 0 left by "adds r5, r0, #0". */
+        emotion = 5;
+        carry = 0;
+    } else if (mood == 0) {
+        emotion = 5;
+        carry = 1;          /* last CMP: mood, #0 */
+    } else if (LD16(ai + oAIData_Anger) != 0) {
+        emotion = 3;
+        carry = 1;          /* last CMP: mood, #0 (mood != 0); TST leaves C */
+    } else if (LD16(ai + oAIData_Unk_32) != 0) {
+        emotion = 1;
+        carry = 1;
+    } else if (mood == 0xFF) {
+        emotion = 2;
+        carry = 1;          /* last CMP: mood, #0xFF — equal, no borrow */
+    } else {
+        emotion = 0;
+        carry = 0;          /* last CMP: mood, #0xFF — mood < 0xFF borrows */
+    }
+
+    struct BattleEmotion res;
+    res.emotion = emotion;
+    res.transformation = transformation;
+    res.mood = mood;
+    res.beastOutCounter = LD8(stats + oNaviStats_BeastOutCounter);
+    res.carryOne = carry;
+    res.carryZero = 1 - carry;   /* CMP x, 1-x yields C = x and V = 0 */
+    return res;
+}
+
+/* possiblyGetBattleEmotion_8015B64(r0 = alliance) ->
+ *   c: set unless the decision fell through to "emotion 0" or bailed out on
+ *      AIData.Unk_36 before any CMP, v: always clear,
+ *   r0 = emotion, r1 = transformation, r2 = mood, r3 = beast out counter
+ *   (r4-r6 preserved) */
+Next possiblyGetBattleEmotion_8015B64(void) {
+    struct BattleEmotion res = read_battle_emotion(R0);
+    R0 = res.emotion;
+    R1 = res.transformation;
+    R2 = res.mood;
+    R3 = res.beastOutCounter;
+    SET_FLAGS_CMP(res.carryOne, res.carryZero);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_setPlayerNaviStatsField0E_8015BEC ── */
 /* battle_setPlayerNaviStatsField0E_8015BEC(r0 = alliance flag, r1 = byte value):
  * Applies a one-byte update (offset 0x0E) to the NaviStats record of the

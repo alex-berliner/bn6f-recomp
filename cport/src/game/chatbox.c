@@ -212,6 +212,88 @@ Next chatbox_runTrainScript(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8040B3A ── */
+/* The chatbox object (r5 on entry) keeps the sprite it displays in a
+ * sub-structure this far into the object. */
+#define CHATBOX_SPRITE_OFFSET 0x1F8
+
+/* register form: calls spriteLoadMugshot_800275A outside this file, which has no typed C interface yet */
+static void loadMugshotGraphics(u32 mugshotId, u32 attr01, u32 spriteObj) {
+    R0 = mugshotId;
+    R1 = attr01;                /* r1 is still live across this call in the original */
+    R2 = CHATBOX_SPRITE_OFFSET; /* so is r2, still holding the sub-struct offset */
+    R5 = spriteObj;
+    GUEST_CALL(spriteLoadMugshot_800275A);
+}
+
+/* register form: calls sprite_loadAnimationData_spritePtrProvidedDirectly outside this file, which has no typed C interface yet */
+static u32 loadSpriteAnimationData(u32 spriteId, u32 spriteObj, u32 chatbox) {
+    R0 = spriteId;
+    R1 = 6;    /* r1 still holds the value the original stored at sprite+3 */
+    R2 = 0x90; /* r2 still holds the chatbox field offset 0x90 */
+    R5 = spriteObj;
+    R7 = chatbox;
+    GUEST_CALL(sprite_loadAnimationData_spritePtrProvidedDirectly);
+    return R2; /* callers of the original observe r2 as the loader left it */
+}
+
+/* Values callers of the original observe in r1/r2 on return
+ * (r3 is whatever the animation loader left in it, reproduced by the
+ * guest call itself; r4/r5 pass through unchanged). */
+typedef struct {
+    u32 r1; /* ends up holding chatbox field 0x88, the value stored at sprite+0xE */
+    u32 r2; /* whatever sprite_loadAnimationData left in r2 */
+} MugshotShowResult;
+
+/* Set up the chatbox's sprite to show a character mugshot: load the portrait
+ * graphics, reset the sprite's state fields and point it at the mugshot's
+ * animation data. */
+static MugshotShowResult showMugshotInChatbox(u32 mugshotId, u32 attr01, u32 chatbox) {
+    u32 sprite = chatbox + CHATBOX_SPRITE_OFFSET;
+
+    loadMugshotGraphics(mugshotId, attr01, sprite);
+
+    ST8(sprite + 0x4, attr01);
+    ST16(sprite + 0xA, 3);
+    ST8(sprite + 0x0, 0); /* sprite state: idle */
+    ST8(sprite + 0x3, 6);
+    ST16(sprite + 0x14, 0);
+
+    /* If the chatbox was already in state 3, carry that state over. */
+    u8 chatboxState = LD8(chatbox + oChatbox_Unk_0A);
+    if (chatboxState == 3)
+        ST8(sprite + 0x0, chatboxState);
+
+    /* Point the sprite at the mugshot's graphics: chatbox field 0x90 holds a
+     * resource number that is shifted into a byte offset. */
+    u32 spriteId = LD32(chatbox + 0x90) << 4;
+    ST8(sprite + 0x15, spriteId);
+    u32 r2AfterLoad = loadSpriteAnimationData(spriteId, sprite, chatbox);
+
+    ST16(sprite + 0x8, 0x3C0); /* fixed tile/attribute base */
+    ST16(sprite + 0xC, LD32(chatbox + 0x84));
+    u32 field88 = LD32(chatbox + 0x88);
+    ST8(sprite + 0xE, field88);
+
+    MugshotShowResult out;
+    out.r1 = field88;
+    out.r2 = r2AfterLoad;
+    return out;
+}
+
+/* sub_8040B3A(r0 = mugshotId, r1 = attr01, r4 = unused, r5 = chatbox)
+ * -> r1 r2 r3 r7 (r4/r5 preserved) */
+Next sub_8040B3A(void) {
+    u32 chatbox = R5;
+    /* r4 is never touched by the original, so it passes through unchanged. */
+    MugshotShowResult out = showMugshotInChatbox(R0, R1, chatbox);
+    R1 = out.r1;
+    R2 = out.r2;
+    R5 = chatbox; /* the original restores r5; r7 ends up pointing at the chatbox */
+    R7 = chatbox;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_advanceNextState_8040C9C ── */
 /* Chatbox state offsets within the chatbox work area (r5). */
 #define CHATBOX_NEXT_STATE  0x1F0  /* mode/state byte this function updates */
@@ -353,6 +435,68 @@ Next chatbox_cmdSetEventFlag_8041218(void) {
     SET_FLAGS_ADD(R4, 3);
     R4 = nextRecord;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_EB_option ── */
+/* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
+static void set_chatbox_flags_3e(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_setflags_3e);
+}
+
+/* Register state the original leaves behind for its caller. */
+typedef struct {
+    u32 r2; /* offset (relative to the chatbox) of the new entry's gfx-load-state byte */
+    u32 r3; /* word copied from oChatbox_Unk_70 */
+    u32 r4; /* optionDef + 4, the caller's next option definition */
+} ChatboxEbOptionResult;
+
+/* Add one entry to the chatbox's option list. The three parameter bytes of the
+ * definition at optionDef ([1], [2], [3]) plus the shared oChatbox_Unk_70 word
+ * are copied into the free 0x10-byte slot, the entry count is bumped, the
+ * choice cursor is reset, and the box's gfx-load-state byte is copied into the
+ * slot's trailer. Note the entry addressing uses an offset from the chatbox
+ * pointer (the original keeps r2 as a bare offset, not an absolute address). */
+static ChatboxEbOptionResult chatbox_eb_option_run(u32 optionDef, u32 chatbox) {
+    ChatboxEbOptionResult res;
+
+    set_chatbox_flags_3e(FLAGS_3E_UNK_0010);
+    ST16(chatbox + oChatbox_BoxYX, 0xA);
+
+    u32 count = LD32(chatbox + oChatbox_Unk_80);
+    u32 entryOff = 0xA0 + count * 0x10;
+
+    ST8(chatbox + entryOff,     LD8(optionDef + 1));
+    ST8(chatbox + entryOff + 4, LD8(optionDef + 2));
+    ST8(chatbox + entryOff + 5, LD8(optionDef + 3));
+
+    u32 unk70 = LD32(chatbox + oChatbox_Unk_70);
+    ST32(chatbox + entryOff + 8, unk70);
+
+    count++;
+    ST32(chatbox + oChatbox_Unk_80, count);
+    ST8(chatbox + oChatbox_Unk_12, (u8)count);
+    ST8(chatbox + oChatbox_ChoiceCursorPos, 0);
+    ST8(chatbox + entryOff + 0xC, LD8(chatbox + oChatbox_BoxGfxLoadState_0F));
+
+    res.r2 = entryOff + 0xC;
+    res.r3 = unk70;
+    res.r4 = optionDef + 4;
+    return res;
+}
+
+/* chatbox_EB_option(r1 = unused, r4 = option definition, r5 = chatbox)
+ * -> r0 = 1, r1 = oChatbox_Unk_80, r2 = entry offset + 0xC, r3 = oChatbox_Unk_70 word,
+ *    r4 = optionDef + 4, nz/c/v from ADDS r4, #4. */
+Next chatbox_EB_option(void) {
+    ChatboxEbOptionResult res = chatbox_eb_option_run(R4, R5);
+    R0 = 1;
+    R1 = oChatbox_Unk_80;
+    R2 = res.r2;
+    R3 = res.r3;
+    R4 = res.r4;
+    SET_FLAGS_ADD(res.r4, 0);
     RETURN_TO_CALLER();
 }
 
@@ -992,6 +1136,83 @@ Next chatbox_F7_move(void) {
     case 9: R0 = 0x080429D8; GUEST_CALL(sub_80429D8); break;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804293C ── */
+/* register form: calls chatbox_maskFlags_3e outside this file, which has no typed C interface yet */
+static u32 chatbox_layout_flag_set(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_maskFlags_3e);
+    return !ZERO_FLAG();          /* chatbox_maskFlags_3e: Z set when no masked flag is set */
+}
+
+/* Outputs of the chatbox "place next text run" script command. */
+typedef struct {
+    u32 result;         /* r0: always 1 (command consumed) */
+    u32 nextDrawPos;    /* r1: new oChatbox_Unk_7C */
+    u32 alignedOffset;  /* r2: start offset rounded down to a multiple of 8 pixels */
+    u32 nextCharX;      /* r3: byte stored to chatbox+0x94 */
+    u32 scriptPtr;      /* r4: command pointer before the caller steps over it */
+} ChatboxPlaceText;
+
+/* Text script command that horizontally places the next run of chatbox text.
+ * r4 points at the 3-byte command (byte 2 = run length in tiles), r5 at the
+ * chatbox object. Computes the centered start X, records it in the chatbox,
+ * and leaves the script pointer for the caller to step past the command. */
+static ChatboxPlaceText chatbox_place_text(u32 scriptPtr, u32 chatbox)
+{
+    ChatboxPlaceText out;
+
+    /* Pixel width of the run: 11 per tile except the last, plus 16 margin. */
+    u32 width = 11u * (LD8(scriptPtr + 2) - 1u) + 16u;
+
+    /* Right edge of the text area: 176 with the alternate layout flag, else 240. */
+    u32 altLayout = chatbox_layout_flag_set(2);
+    u32 rightEdge = altLayout ? 0xB0u : 0xF0u;
+
+    /* Centered start offset: half of the free space... */
+    u32 startX = (rightEdge - width) >> 1;
+
+    /* ...shifted back by the characters already printed on the current line
+     * when the layout flag is clear. */
+    if (!altLayout)
+        startX -= LD8(chatbox + oChatbox_TextScriptCharIdx);
+
+    u32 charIdx = LD8(chatbox + oChatbox_TextScriptCharIdx);
+    u32 nextCharX = startX + charIdx;
+    ST8(chatbox + 0x94, nextCharX);
+
+    /* Round the start offset down to a multiple of 8 pixels
+     * ((x >> 1) << 1 drops the low bit, << 2 scales to pixels/4)
+     * and record it as the position the text renderer draws from next. */
+    u32 alignedOffset = (startX >> 1) << 3;
+    u32 nextDrawPos = LD32(chatbox + oChatbox_Unk_7C) + alignedOffset;
+    ST32(chatbox + oChatbox_Unk_7C, nextDrawPos);
+
+    out.result = 1;
+    out.nextDrawPos = nextDrawPos;
+    out.alignedOffset = alignedOffset;
+    out.nextCharX = nextCharX;
+    out.scriptPtr = scriptPtr;
+    return out;
+}
+
+/* sub_804293C(r4 = text script command pointer, r5 = chatbox object)
+ * -> r0 = 1, r1 = new draw position, r2 = aligned offset, r3 = next char X,
+ *    r4 = command pointer + 3.
+ * Flags: the original ends with adds r4,#3 then movs r0,#1, leaving
+ * N=Z=0 (both results small and positive) and C=V=0 (a script pointer plus
+ * 3 cannot carry or overflow). SET_FLAGS_ADD on the same r4+3 yields exactly
+ * that N/Z/C/V combination. */
+Next sub_804293C(void) {
+    ChatboxPlaceText out = chatbox_place_text(R4, R5);
+    R0 = out.result;
+    R1 = out.nextDrawPos;
+    R2 = out.alignedOffset;
+    R3 = out.nextCharX;
+    R4 = out.scriptPtr + 3;
+    SET_FLAGS_ADD(out.scriptPtr, 3);
     RETURN_TO_CALLER();
 }
 

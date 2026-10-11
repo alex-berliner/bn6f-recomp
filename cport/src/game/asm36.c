@@ -288,6 +288,51 @@ Next saveMenu_8132D9C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── saveMenu_8132EF4 ── */
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_background_tiles_saveMenu_8132EF4(u32 j, u32 i, u32 tile_block_32x32, const u16 *tile_ids,
+                                  u32 j_size, u32 i_size) {
+    R0 = j;
+    R1 = i;
+    R2 = tile_block_32x32;
+    R3 = (u32)tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* Values the original passes through untouched (it pushes r4-r7 and pops them back). */
+typedef struct {
+    u32 r4;
+    u32 r5;
+    u32 r6;
+    u32 r7;
+} PreservedRegs;
+
+/* Draw the save menu's background: the header text tilemap and three window
+ * pieces, blitted into tile block 2 of the background at fixed positions. */
+static PreservedRegs draw_save_menu_background(u32 r4, u32 r5, u32 r6, u32 r7) {
+    copy_background_tiles_saveMenu_8132EF4(6, 3, 2, (const u16 *)A_unk_201C400, 8, 8);
+    copy_background_tiles_saveMenu_8132EF4(0x12, 3, 2, (const u16 *)A_unk_201C480, 7, 2);
+    copy_background_tiles_saveMenu_8132EF4(0x12, 7, 2, (const u16 *)A_unk_201C4A0, 7, 2);
+    copy_background_tiles_saveMenu_8132EF4(0x12, 9, 2, (const u16 *)A_unk_201C4C0, 7, 2);
+    {
+        PreservedRegs preserved = { r4, r5, r6, r7 };
+        return preserved;
+    }
+}
+
+/* saveMenu_8132EF4() -> r2 r3 r4 r5 r6 r7
+ * r4-r7 are preserved; r2/r3 are whatever CopyBackgroundTiles last leaves there. */
+Next saveMenu_8132EF4(void) {
+    PreservedRegs preserved = draw_save_menu_background(R4, R5, R6, R7);
+    R4 = preserved.r4;
+    R5 = preserved.r5;
+    R6 = preserved.r6;
+    R7 = preserved.r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── saveMenuTextGfx_8132F4C ── */
 /* saveMenuTextGfx_8132F4C: build and draw the text graphics used by the
  * save menu.  Runs sub_8132F78 first, then renders the text script
@@ -472,6 +517,46 @@ Next sub_8132FD0(void) {
     u32 save_r4 = R4, save_r5 = R5, save_r6 = R6, save_r7 = R7;
     decompose_tile_block(R5);
     R4 = save_r4; R5 = save_r5; R6 = save_r6; R7 = save_r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81330AC ── */
+/* register form: calls gfx_fillTilemapConsecutiveBanded_8120C94 outside this file,
+ * which has no typed C interface yet */
+static void fill_tilemap_banded(u32 dst, u32 rows, u32 bands, u32 src) {
+    R0 = dst;
+    R1 = rows;
+    R2 = bands;
+    R3 = src;
+    GUEST_CALL(gfx_fillTilemapConsecutiveBanded_8120C94);
+}
+
+/* Descriptor for one banded tilemap fill, as laid out at off_81330E8 and friends. */
+typedef struct {
+    u32 dst;    /* +00: destination tilemap buffer   */
+    u32 src;    /* +04: tile data in IWRAM           */
+    u8  rows;   /* +08: number of rows to fill       */
+    u8  bands;  /* +09: banding parameter            */
+} TilemapFillDesc;
+
+#define TILEMAP_FILL_COUNT 7   /* loop runs while index < 0x1C, stepping by 4 */
+
+/* Refill every background tilemap listed in the off_81330CC descriptor table. */
+static void fill_all_tilemaps(void) {
+    for (u32 i = 0; i < TILEMAP_FILL_COUNT; i++) {
+        u32 desc = LD32(A_off_81330CC + i * 4);
+        fill_tilemap_banded(
+            LD32(desc + 0),          /* -> dst   */
+            LD8(desc + 8),           /* -> rows  */
+            LD8(desc + 9),           /* -> bands */
+            LD32(desc + 4));         /* -> src   */
+    }
+}
+
+/* sub_81330AC() -> r4 r5 r6 r7 preserved; nz c from the loop's final CMP r6, #0x1C */
+Next sub_81330AC(void) {
+    fill_all_tilemaps();
+    SET_FLAGS_CMP(0x1C, 0x1C);       /* loop always exits with r6 == 0x1C: equal */
     RETURN_TO_CALLER();
 }
 

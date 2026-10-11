@@ -441,6 +441,89 @@ Next record_writeU16IfIdMatches_809FDCE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809FDE0 ── */
+/* Result of the mystery-data roll: the values the original leaves behind in r1 and r3.
+ * (r2 ends up holding whatever the hash callee leaves in the register, and r0 is a
+ * clobber, so neither is carried through here.) */
+struct MysteryDataRoll {
+    u32 r1;
+    u32 r3;
+};
+
+/* register form: fills a 16-byte scratch buffer on the guest stack with 0x20 through
+ * ByteFill and hashes it with sub_8000E3A; both are outside this file with no typed C
+ * interface yet, and the buffer's guest address has to live in SP. 0x24 bytes are
+ * reserved so the buffer sits at the same guest stack address the original uses (it
+ * pushes five registers before subtracting 0x10), which also keeps SP identical while
+ * the callees run. */
+static u32 hash_scratch_state(u32 stateAddr) {
+    SP -= 0x24;
+    R0 = SP;
+    R1 = 0x10;
+    R2 = 0x20;
+    GUEST_CALL(ByteFill);
+    R0 = SP;
+    R1 = LD16(stateAddr + 6);   /* re-read the state halfword, as the original does after the fill */
+    GUEST_CALL(sub_8000E3A);
+    SP += 0x24;
+    return R0;
+}
+
+/* Roll which mystery data the current internet map block spawns. The state halfword at
+ * byte_2000210+6 is hashed (via a 0x20-filled scratch buffer) into a 1-based slot
+ * number; the entry list of map byte+4 (biased by 0x80) / group byte+5 is then walked
+ * (12 bytes per entry: type, pad, halfword payload) and the payload of the slot-th
+ * type-5 entry is stored back into the state halfword, or 0 when the list ends first.
+ * When the state is still zero nothing happens and r1/r3 pass through unchanged. */
+static struct MysteryDataRoll roll_mystery_data(u32 inR1, u32 inR3) {
+    struct MysteryDataRoll out = { inR1, inR3 };
+
+    u32 state = LD16(A_byte_2000210 + 6);
+    if (state == 0)
+        return out;
+
+    u32 target = hash_scratch_state(A_byte_2000210) + 1;
+
+    u32 map = LD8(A_byte_2000210 + 4);
+    u32 group = LD8(A_byte_2000210 + 5);
+    u32 entryList = LD32(A_InternetMysteryDataMapGroupEntries + ((map - 0x80) * 8 + 4));
+    u32 entry = LD32(entryList + group * 4);
+
+    u32 hits = 0;
+    for (;;) {
+        u32 type = LD8(entry);
+        if (type == 0) {                      /* end of list: nothing to place */
+            ST16(A_byte_2000210 + 6, 0);
+            break;
+        }
+        if (type == 5) {                      /* a mystery-data slot: count it */
+            hits++;
+            if (hits == target) {             /* target-th slot reached: take it */
+                ST16(A_byte_2000210 + 6, LD16(entry + 2));
+                break;
+            }
+        }
+        entry += 0xC;
+    }
+
+    out.r1 = group << 2;                      /* r1 keeps the group table index shift */
+    out.r3 = hits;                            /* r3 keeps the slot counter */
+    return out;
+}
+
+/* sub_809FDE0() — roll the mystery data for the current internet map block.
+ * Inputs r4-r7/r10 and r6 are preserved (the original only borrows them and restores
+ * them with its pop); r2 is left exactly as sub_8000E3A leaves it, so the adapter
+ * never writes it. Both table-walk exits end on an equal compare, which leaves
+ * Z set, N clear, C set and V clear. */
+Next sub_809FDE0(void) {
+    struct MysteryDataRoll out = roll_mystery_data(R1, R3);
+    R1 = out.r1;
+    R3 = out.r3;
+    SET_FLAGS_CMP(0, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_809FE36 ── */
 /* sub_809FE36(r0 = counter, r4 = value to match):
  * If r4 matches the halfword at byte_2000210+6 (some selection/index field),

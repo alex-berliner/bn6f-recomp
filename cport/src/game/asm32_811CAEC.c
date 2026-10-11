@@ -822,6 +822,67 @@ Next clearS2001c04Byte6_811FB78(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811FB84 ── */
+/* sub_811FB84: look up an ID in one of five key tables and hand back the
+ * pointer stored for it. tableIndex selects a (key list, slot-list table)
+ * pair from two parallel tables of pointers; the key list is a series of
+ * word-sized IDs terminated by 0xFFFFFFFF. When the key is found, the
+ * pointer list at the same position is indexed by the slot number taken
+ * from byte 6 of the toolkit's S2001c04 struct (r10) and that word is the
+ * result. A key of 0xFFFFFFFF finds nothing and yields 0xFFFFFFFF.
+ * r2/r3 end on whatever the scan last left there; r4-r7 are only pushed
+ * and popped by the original, so they pass through unchanged. */
+typedef struct {
+    u32 value;      /* -> r0: slot pointer, or 0xFFFFFFFF if not found */
+    u32 lastKey;    /* -> r2: key word the scan ended on */
+    u32 slotList;   /* -> r3: slot-pointer list selected on a match */
+    u32 r4, r5, r6, r7; /* pass-through: the original pops these back */
+} KeyLookup;
+
+static KeyLookup find_key_entry(u32 key, u32 tableIndex, u32 inR4, u32 inR5, u32 inR6, u32 inR7, u32 toolkit) {
+    KeyLookup out;
+    out.r4 = inR4;
+    out.r5 = inR5;
+    out.r6 = inR6;
+    out.r7 = inR7;
+
+    u32 tableOffset = tableIndex << 2;
+    u32 keyList = LD32(A_off_811FBBC + tableOffset);
+    u32 slotListTable = LD32(A_off_811FBD4 + tableOffset);
+
+    u32 offset = 0;
+    u32 entry = LD32(keyList);
+
+    for (;;) {
+        if (entry == key) {
+            /* Matched: use the slot chosen by the S2001c04 byte. */
+            u32 slotList = LD32(slotListTable + offset);
+            u32 slot = (u32)LD8(LD32(toolkit + oToolkit_S2001c04_Ptr) + 6) << 2;
+            out.value = LD32(slotList + slot);
+            out.lastKey = entry;
+            out.slotList = slotList;
+            return out;
+        }
+        offset += 4;
+        if (key == 0xFFFFFFFF) {
+            /* The key is the terminator itself: no entry matches. */
+            out.value = 0xFFFFFFFF;
+            out.lastKey = 0xFFFFFFFF;
+            out.slotList = keyList;
+            return out;
+        }
+        entry = LD32(keyList + offset);
+    }
+}
+
+Next sub_811FB84(void) {
+    KeyLookup out = find_key_entry(R0, R1, R4, R5, R6, R7, R10);
+    R0 = out.value;
+    R2 = out.lastKey, R3 = out.slotList;
+    R4 = out.r4, R5 = out.r5, R6 = out.r6, R7 = out.r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_ClearBuffer_811FE34 ── */
 /* battle_ClearBuffer_811FE34(r0 = buffer address, r2/r3 = preserved by callee contract):
  * zero-fill 0x3C0 bytes at r0 via ZeroFillByEightWords.
@@ -1134,6 +1195,74 @@ Next sub_81202B4(void) {
     R0 = decoded;
     R2 = dstLo;
     R3 = dstHi;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8120390 ── */
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words(u32 src, u32 dest, u32 byte_size) {
+    R0 = src;
+    R1 = dest;
+    R2 = byte_size;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_data_sub_8120390(s32 chip_id) {
+    R0 = (u32)chip_id;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls QueueWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx_transfer_sub_8120390(u32 src, u32 dest, u32 byte_size) {
+    R0 = src;
+    R1 = dest;
+    R2 = byte_size;
+    GUEST_CALL(QueueWordAlignedGFXTransfer);
+}
+
+/* Load battle-chip graphics for a run of folder entries.
+ *
+ * First copies the 0x38-byte template record over `dest`. Then, for each of
+ * `count` folder entries starting at `entry_array + first_entry * 0x20`:
+ *   - if the entry names a chip (ID is the halfword at +0x1C shifted down
+ *     past its flag bits), queues that chip's 0x80-byte image into the next
+ *     GFX slot;
+ *   - otherwise clears the entry's two output words.
+ *
+ * `gfx_slots` advances by 0x80 per chip and the per-entry output words by
+ * 8 per entry. Returns nothing; the original leaves r4-r7 untouched. */
+static void load_folder_chip_gfx(u32 first_entry, u32 entry_array,
+                                 u32 dest, u32 template_src,
+                                 u32 gfx_slots, s32 count) {
+    copy_words(template_src, dest, 0x38);
+
+    u32 entry = entry_array + first_entry * 0x20;
+    u32 out   = dest;
+    u32 gfx   = gfx_slots;
+
+    for (s32 i = 0; i < count; i++) {
+        u32 chip_id = (u32)LD16(entry + 0x1C) >> 7;
+        if (chip_id != 0) {
+            u32 chip = get_chip_data_sub_8120390((s32)chip_id);
+            queue_gfx_transfer_sub_8120390(LD32(chip + 0x20), gfx, 0x80);
+        } else {
+            ST32(out, 0);
+            ST32(out + 4, 0);
+        }
+        entry += 0x20;
+        gfx   += 0x80;
+        out   += 8;
+    }
+}
+
+/* sub_8120390(r0 = first entry index, r1 = entry array, r2 = dest record,
+ *              r3 = template source, r4 = GFX slot base, r5 = entry count)
+ * The original pushes/pops r4-r7, so r6/r7 (listed as outputs) simply keep
+ * their entry values; the typed function never touches them. */
+Next sub_8120390(void) {
+    load_folder_chip_gfx(R0, R1, R2, R3, R4, (s32)R5);
     RETURN_TO_CALLER();
 }
 

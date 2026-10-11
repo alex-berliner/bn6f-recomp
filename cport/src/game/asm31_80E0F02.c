@@ -281,6 +281,20 @@ Next playerObject_main_80EA460(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── nullsub_105 ── */
+/* nullsub_105: an empty stub (part of the AI attack jumptable region; the real
+ * handlers are the routines whose addresses follow it in the table).
+ * It does nothing and returns immediately. */
+
+/* No-op stub — nothing to do in the typed function. */
+static void nullsub_105_body(void) {
+}
+
+Next nullsub_105(void) {
+    nullsub_105_body();
+    RETURN_TO_CALLER();
+}
+
 /* ── aiAttack_stepStateMachine_80EB04C ── */
 /* aiAttack_stepStateMachine_80EB04C: run one step of the AI attack-state machine for the object in R7.
  *

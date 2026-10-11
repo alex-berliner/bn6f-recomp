@@ -1598,6 +1598,132 @@ Next sub_8127B08(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8127C64 ── */
+/* register form: calls sub_81281E0 outside this file, which has no typed C interface yet */
+static void scene_step_81281E0(void) {
+    GUEST_CALL(sub_81281E0);
+}
+
+/* register form: calls sub_8127F54 outside this file, which has no typed C interface yet */
+static void scene_step_8127F54(void) {
+    GUEST_CALL(sub_8127F54);
+}
+
+/* register form: calls sub_8127FE4 outside this file, which has no typed C interface yet */
+static void scene_step_8127FE4(void) {
+    GUEST_CALL(sub_8127FE4);
+}
+
+/* register form: calls sub_8128280 outside this file, which has no typed C interface yet */
+static void scene_step_8128280(void) {
+    GUEST_CALL(sub_8128280);
+}
+
+/* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
+static void run_all_entity_update_handlers(void) {
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+}
+
+/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+static void scene_step_80465F8(void) {
+    GUEST_CALL(sub_80465F8);
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static u32 screen_fade_active_sub_8127C64(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();          /* IsScreenFadeActive: Z set when no fade is running */
+}
+
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+static void scene_step_8046664(void) {
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls sub_8127EF4 outside this file, which has no typed C interface yet */
+static u32 get_exit_value_8127EF4(void) {
+    GUEST_CALL(sub_8127EF4);
+    return R0;
+}
+
+/* register form: calls ClearPETMenuDataFlag outside this file, which has no typed C interface yet */
+static void clear_pet_menu_data_flag(u32 r0v, u32 r1v, u32 r2v, u32 r3v) {
+    R0 = r0v;
+    R1 = r1v;
+    R2 = r2v;
+    R3 = r3v;
+    GUEST_CALL(ClearPETMenuDataFlag);
+}
+
+/* register form: calls next_exitToMap_811F728 outside this file, which has no typed C interface yet */
+static void next_exit_to_map(void) {
+    GUEST_CALL(next_exitToMap_811F728);
+}
+
+/* register form: calls pet_menuExitToMap_811F708 outside this file, which has no typed C interface yet */
+static void pet_menu_exit_to_map(u32 r0v, u32 r1v, u32 r2v, u32 r3v) {
+    R0 = r0v;
+    R1 = r1v;
+    R2 = r2v;
+    R3 = r3v;
+    GUEST_CALL(pet_menuExitToMap_811F708);
+}
+
+/* Per-frame update of the scenario-end cutscene: run the scene's script steps
+ * and the entity update handlers. While no screen fade is running yet, stop
+ * here and let the scene run again next frame. Once the fade is underway,
+ * finalize: stop the scene, hand the exit value produced by sub_8127EF4 to
+ * the game state, and return to the map.
+ * work: scene object whose +0xD bit 0 selects where the exit value is stored
+ *       and which exit routine to use.
+ * toolkit: toolkit pointer (oToolkit_GameStatePtr -> game state). */
+static void run_closing_scene(u32 work, u32 toolkit) {
+    scene_step_81281E0();
+    scene_step_8127F54();
+    scene_step_8127FE4();
+    scene_step_8128280();
+    run_all_entity_update_handlers();
+    scene_step_80465F8();
+
+    if (!screen_fade_active_sub_8127C64())
+        return;                   /* keep the scene running; flags stay as IsScreenFadeActive left them */
+
+    scene_step_8046664();
+    u32 exit_value = get_exit_value_8127EF4();
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u8 mode = LD8(work + 0xD);
+
+    /* bit 0 of the mode byte picks a word store into the game state (+0x78)
+     * or a byte store into oGameState_Unk_13 */
+    if (mode & 1)
+        ST32(game_state + 0x78, exit_value);
+    else
+        ST8(game_state + oGameState_Unk_13, (u8)exit_value);
+
+    /* the original re-reads the mode byte here rather than reusing the value */
+    u8 mode_reread = LD8(work + 0xD);
+
+    if (mode_reread & 1) {
+        /* the original enters ClearPETMenuDataFlag with r0 = 1, r1 = 1,
+         * r2 = 1, r3 = mode byte; next_exitToMap then runs with whatever
+         * registers ClearPETMenuDataFlag left behind */
+        clear_pet_menu_data_flag(1, 1, 1, mode);
+        next_exit_to_map();
+    } else {
+        /* the original enters pet_menuExitToMap with r0 = mode byte
+         * (re-read), r1 = 1, r2 = 1, r3 = mode byte (first read) */
+        pet_menu_exit_to_map(mode_reread, 1, 1, mode);
+    }
+}
+
+/* sub_8127C64: run the closing scene; r0-r3 and the flags on exit are whatever
+ * the last callee left behind, r5/r10 are untouched. */
+Next sub_8127C64(void) {
+    run_closing_scene(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8127CB8 ── */
 /* register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
 static u32 compute_tile_descriptor(u32 source, u32 size) {

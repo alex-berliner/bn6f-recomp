@@ -1388,6 +1388,48 @@ Next ReadNPCScriptHalfword(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809F68C ── */
+/* Result registers the original leaves behind for its callers. */
+typedef struct {
+    u32 r1;   /* constant 1 mask used by the BIC */
+    u32 r2;   /* one-past-the-end pointer of the NPC object array */
+    u32 r3;   /* cursor value when the loop exited */
+} Sub809F68C_Result;
+
+/* Clear the "busy" bit (bit 0 of field Unk_50) of every overworld NPC object,
+ * so no NPC stays flagged as mid-interaction across a scene change.
+ * Mirrors the original's do/while: the body always runs at least once.
+ * (The array size constant is the literal 0xD80 from off_809F6A8; no named
+ * macro for it exists in this port's headers.) */
+static Sub809F68C_Result clear_npc_busy_flags(void) {
+    u32 cursor = A_eOverworldNPCObject0_Flags;
+    u32 end = cursor + 0xD80;
+
+    do {
+        u32 flags = LD32(cursor + oOverworldNPCObject_Unk_50);
+        ST32(cursor + oOverworldNPCObject_Unk_50, flags & ~1u);
+        cursor += oOverworldNPCObject_Size;
+    } while ((s32)cursor < (s32)end);
+
+    Sub809F68C_Result result;
+    result.r1 = 1;
+    result.r2 = end;
+    result.r3 = cursor;
+    return result;
+}
+
+/* sub_809F68C: clear bit 0 of Unk_50 for all overworld NPC objects.
+ * Outputs: r1 = 1, r2 = array end, r3 = loop exit cursor,
+ * c/v from the final CMP r3, r2 (r0, nz clobbered). */
+Next sub_809F68C(void) {
+    Sub809F68C_Result result = clear_npc_busy_flags();
+    R1 = result.r1;
+    R2 = result.r2;
+    R3 = result.r3;
+    SET_FLAGS_CMP(result.r3, result.r2);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_809F90C ── */
 /* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
 static bool event_1708_set(void) {

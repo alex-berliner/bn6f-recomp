@@ -683,6 +683,119 @@ Next owPlayer_80350a8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ghostNaviCheck_8035274 ── */
+/* ------------------------------------------------------------------ */
+/* Local constants (not defined in the shared headers of this build)  */
+/* ------------------------------------------------------------------ */
+
+/* One-shot gate flag: once set, ghost Navi encounters are disabled.
+ * movflag EVENT_1700 loads it as group 0x17 / index 0x00. */
+#define EVENT_1700 0x1700
+
+/* GameState field holding the current map group (ldrb r0,[r7,#4]). */
+#define oGameState_MapGroup_ghostNaviCheck_8035274 4
+
+/* ------------------------------------------------------------------ */
+/* Register-form call helpers                                         */
+/* ------------------------------------------------------------------ */
+
+/* register form: calls IsNotSlipRunningAndNotInCutscene outside this file, which has no typed C interface yet */
+static u32 no_slip_or_cutscene_running(void) {
+    GUEST_CALL(IsNotSlipRunningAndNotInCutscene);
+    return !ZERO_FLAG();          /* Z set while a slip or cutscene is running */
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static u32 immediate_flag_set(u16 flag) {
+    R0 = flag >> 8;               /* flag number is split across r0 (group) / r1 (index) */
+    R1 = flag & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static u32 event_flag_set_ghostNaviCheck_8035274(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls checkCoordinateTrigger_8031a7a outside this file, which has no typed C interface yet */
+static s32 check_coordinate_trigger(u32 coords) {
+    R0 = coords;
+    GUEST_CALL(checkCoordinateTrigger_8031a7a);
+    return (s32)R0;               /* coordinate trigger id the player stands on */
+}
+
+/* register form: calls StartCutscene outside this file, which has no typed C interface yet */
+static void start_cutscene(u32 script, u32 param) {
+    R0 = script;
+    R1 = param;
+    GUEST_CALL(StartCutscene);
+}
+
+/* ------------------------------------------------------------------ */
+/* Ghost Navi encounter check                                         */
+/* ------------------------------------------------------------------ */
+
+/* Table over the ghost Navi coordinate triggers (map groups 0xD0..0xD6),
+ * one 6-byte entry per map: { trigger id, required flag, cleared flag },
+ * terminated by a trigger id of 0. */
+#define GHOST_NAVI_TABLE        A_word_80352DC
+#define GHOST_NAVI_ENTRY_SIZE   6
+
+/* Cutscene parameter words, 4 bytes per table entry above. */
+#define GHOST_NAVI_PARAMS       A_byte_803530C
+#define GHOST_NAVI_PARAM_SIZE   4
+
+/* Shared cutscene script run for every ghost Navi encounter. */
+#define GHOST_NAVI_SCRIPT       A_byte_80990B8
+
+/* If the player stands on a ghost Navi coordinate trigger in a high map
+ * group (>= 0x80), that ghost's encounter flag is set and its "already
+ * beaten" flag is clear, start the ghost Navi cutscene for that map. */
+static void ghost_navi_check(u32 toolkit) {
+    /* Only act while the player has normal overworld control. */
+    if (!no_slip_or_cutscene_running())
+        return;
+    /* One-shot gate: once this event flag is set, the check is disabled. */
+    if (immediate_flag_set(EVENT_1700))
+        return;
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    if ((s32)LD8(game_state + oGameState_MapGroup_ghostNaviCheck_8035274) < 0x80)
+        return;
+
+    u32 player = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+    s32 trigger = check_coordinate_trigger(player + 0x1C);
+    if (trigger < 0xD0 || trigger > 0xEF)
+        return;                   /* not on a ghost Navi trigger */
+
+    for (u32 i = 0; ; i++) {
+        u32 entry = GHOST_NAVI_TABLE + i * GHOST_NAVI_ENTRY_SIZE;
+        u16 id = LD16(entry);
+        if (id == 0)
+            return;               /* end of table */
+        if (id != (u16)trigger)
+            continue;             /* different map's ghost */
+        if (!event_flag_set_ghostNaviCheck_8035274(LD16(entry + 2)))
+            continue;             /* this ghost hasn't appeared yet */
+        if (event_flag_set_ghostNaviCheck_8035274(LD16(entry + 4)))
+            continue;             /* this ghost was already deleted */
+
+        start_cutscene(GHOST_NAVI_SCRIPT,
+                       LD32(GHOST_NAVI_PARAMS + i * GHOST_NAVI_PARAM_SIZE));
+        return;
+    }
+}
+
+/* ghostNaviCheck_8035274: no results in registers; r2/r4-r12 are left as
+ * they arrived, and callers do not branch on the flags. */
+Next ghostNaviCheck_8035274(void) {
+    ghost_navi_check(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── initGameProgressBuffer_803532c ── */
 /* initGameProgressBuffer_803532c:
  * Reset the player's game-progress flags. Copies the default values from the

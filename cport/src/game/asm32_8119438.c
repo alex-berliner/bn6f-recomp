@@ -615,6 +615,114 @@ Next battle_runObjectStateHandler_811B1EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811B20C ── */
+/* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
+static void init_gui_sprite_sub_811B20C(u32 gfxId, u32 resourceAddr) {
+    R0 = gfxId;
+    R1 = resourceAddr;
+    GUEST_CALL(initGuiSprite_8002770);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_set_animation_sub_811B20C(u32 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_load_animation_data_sub_811B20C(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_no_shadow_sub_811B20C(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void sprite_set_palette_sub_811B20C(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void sprite_set_priority_sub_811B20C(u32 priority) {
+    R0 = priority;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void slot_list_store_halfword_and_clear_field_sub_811B20C(u32 value) {
+    R0 = value;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void sprite_set_sub_entry_palette_bank_sub_811B20C(u32 bank) {
+    R0 = bank;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+}
+
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void sprite_set_sub_record_field_a_sub_811B20C(u32 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: calls sub_811B298 outside this file, which has no typed C interface yet */
+static void call_sub_811B298(void) {
+    GUEST_CALL(sub_811B298);
+}
+
+/* register form: calls sprite_objectUpdateAnimation_811B284 outside this file, which has no typed C interface yet */
+static void sprite_object_update_animation(void) {
+    GUEST_CALL(sprite_objectUpdateAnimation_811B284);
+}
+
+/* Initialise the sprite of a GUI object: mark it state 0x23, bind the GUI
+ * sprite resource selected by the object's kind byte, pick the animation,
+ * apply the standard palette/priority/slot settings, then run the first
+ * animation update. Leaves r0-r3 holding whatever the last callee left. */
+static void setup_object_sprite(u32 obj) {
+    ST8(obj, 0x23);                                  /* obj->state = 0x23 */
+
+    u32 kind = LD8(obj + 4);
+    init_gui_sprite_sub_811B20C(9, LD32(A_off_811B278 + kind * 4)); /* unk_2020484 / unk_202458C */
+
+    /* Animation: 0 when the kind byte is clear; otherwise 2 once byte_203778C
+     * is set, else 1. The kind byte is re-read after the sprite init call,
+     * exactly as the original does. */
+    kind = LD8(obj + 4);
+    u32 anim;
+    if (kind == 0) {
+        anim = 0;
+    } else if (LD8(A_unk_2037780 + 0xC) != 0) {      /* byte_203778C */
+        anim = 2;
+    } else {
+        anim = 1;
+    }
+
+    sprite_set_animation_sub_811B20C(anim);
+    sprite_load_animation_data_sub_811B20C();
+    sprite_no_shadow_sub_811B20C();
+    sprite_set_palette_sub_811B20C(0);
+    sprite_set_priority_sub_811B20C(2);
+    slot_list_store_halfword_and_clear_field_sub_811B20C(0x130);
+    sprite_set_sub_entry_palette_bank_sub_811B20C(2);
+    sprite_set_sub_record_field_a_sub_811B20C(5);
+    call_sub_811B298();
+    ST8(obj + 8, 4);                                 /* obj->field08 = 4 */
+    ST8(obj + 0xC, 0);                               /* obj->field0C = 0 */
+    sprite_object_update_animation();
+}
+
+/* sub_811B20C(r4, r5 = object, r6, r7, lr): no result of its own; flags and
+ * r0-r3 are left exactly as the final callee leaves them. */
+Next sub_811B20C(void) {
+    setup_object_sprite(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_objectUpdateAnimation_811B284 ── */
 /* sprite_objectUpdateAnimation_811B284: update step for an animated object — first runs the
  * object's own per-frame handler (sub_811B298), then advances its
@@ -926,6 +1034,119 @@ Next object_checkStatusFlag_811BE90(void) {
     R2 = A_byte_811BF94;
     R0 = LD8(R2 + flag_index);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811C1CC ── */
+/* ------------------------------------------------------------------ *
+ * Register-form helpers for the sprite/GUI routines this function
+ * drives. None of them has a typed C interface yet, so each one just
+ * loads the guest argument registers and calls through.
+ * ------------------------------------------------------------------ */
+
+/* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
+static void init_gui_sprite_sub_811C1CC(u32 spriteId, u32 template) {
+    R0 = spriteId;
+    R1 = template;
+    GUEST_CALL(initGuiSprite_8002770);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_set_animation_sub_811C1CC(u32 animation) {
+    R0 = animation;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_load_animation_data_sub_811C1CC(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_no_shadow_sub_811C1CC(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void sprite_set_palette_sub_811C1CC(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void sprite_set_priority_sub_811C1CC(u32 priority) {
+    R0 = priority;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void slot_list_store_halfword_and_clear_field_sub_811C1CC(u32 value) {
+    R0 = value;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void sprite_set_sub_entry_palette_bank_sub_811C1CC(u32 bank) {
+    R0 = bank;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+}
+
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void sprite_set_sub_record_field_a_sub_811C1CC(u32 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: calls sprite_setPositionById_811C23C outside this file, which has no typed C interface yet */
+static void sprite_set_position_by_id(u32 x, u32 y, u32 id) {
+    R0 = x;
+    R1 = y;
+    R2 = id;
+    GUEST_CALL(sprite_setPositionById_811C23C);
+}
+
+/* register form: calls sprite_updateAnimPassthrough_811C22C outside this file, which has no typed C interface yet */
+static void sprite_update_anim_passthrough(void) {
+    /* Called last with nothing after it: like the original, this call is
+     * what decides the final r0-r3 and the nz/c/v flags the caller sees. */
+    GUEST_CALL(sprite_updateAnimPassthrough_811C22C);
+}
+
+/* ------------------------------------------------------------------ *
+ * Create and configure the on-screen GUI sprite (resource 0x69) for
+ * the object at `work`:
+ *   - tag the object and remember its position slot (offset 3),
+ *   - give it animation 0, no shadow, palette 0, priority 2,
+ *   - store 0xF0 (240) through the slot list,
+ *   - set sub-entry/sub-record attributes and field at offset 8 to 4,
+ *   - place it at (120, 40) using the id from offset 3,
+ *   - run one animation passthrough update.
+ * r4/r6/r7 are preserved; r0-r3 and the flags end up exactly as
+ * sprite_updateAnimPassthrough_811C22C leaves them.
+ * ------------------------------------------------------------------ */
+static void setup_gui_sprite_object(u32 work) {
+    ST8(work, 0x23);                       /* object type / handler id */
+
+    init_gui_sprite_sub_811C1CC(0x69, A_unk_20222A0);  /* spawn the GUI sprite resource */
+    sprite_set_animation_sub_811C1CC(0);
+    sprite_load_animation_data_sub_811C1CC();
+    sprite_no_shadow_sub_811C1CC();
+    sprite_set_palette_sub_811C1CC(0);
+    sprite_set_priority_sub_811C1CC(2);
+    slot_list_store_halfword_and_clear_field_sub_811C1CC(0xF0);
+    sprite_set_sub_entry_palette_bank_sub_811C1CC(5);
+    sprite_set_sub_record_field_a_sub_811C1CC(3);
+
+    ST8(work + 8, 4);                      /* sub-state for later updates */
+
+    sprite_set_position_by_id(0x78, 0x28, LD8(work + 3));
+    sprite_update_anim_passthrough();
+}
+
+/* sub_811C1CC(r4, r5 = object work area, r6, r7) -> r0-r3, nz, c, v from
+ * the final sprite_updateAnimPassthrough call; r4-r7 preserved. */
+Next sub_811C1CC(void) {
+    setup_gui_sprite_object(R5);
     RETURN_TO_CALLER();
 }
 

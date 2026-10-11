@@ -8,6 +8,87 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_8029B1C ── */
+/*
+ * First-battle tutorial chatbox trigger (r5 = tutorial work struct):
+ *   +0x01  state/timer byte
+ *   +0x02  u16 timer
+ *   +0x0C  current tutorial step
+ *   +0x0D  saved copy of the state byte, written when text starts
+ *
+ * Depending on the current step, a step checker decides whether a text
+ * script should play now and returns its index (0 = nothing to show).
+ * When a script plays, the task is handed over to its post-text wait
+ * state and 1 is returned; otherwise 0.
+ */
+
+/* register form: calls sub_8029B86 outside this file, which has no typed C interface yet */
+static u32 step0_script_index(void) {
+    GUEST_CALL(sub_8029B86);
+    return R0;
+}
+
+/* register form: calls sub_8029BAC outside this file, which has no typed C interface yet */
+static u32 step1_script_index(void) {
+    GUEST_CALL(sub_8029BAC);
+    return R0;
+}
+
+/* register form: calls sub_8029BD6 outside this file, which has no typed C interface yet */
+static u32 step3_4_script_index(void) {
+    GUEST_CALL(sub_8029BD6);
+    return R0;
+}
+
+/* register form: calls sub_8029BE6 outside this file, which has no typed C interface yet */
+static u32 step6_script_index(void) {
+    GUEST_CALL(sub_8029BE6);
+    return R0;
+}
+
+/* register form: calls chatbox_runScript outside this file, which has no typed C interface yet */
+static void chatbox_show_script(u32 archive, u32 script_idx) {
+    R0 = archive;
+    R1 = script_idx;
+    GUEST_CALL(chatbox_runScript);
+}
+
+static u32 tutorial_text_update(u32 work)
+{
+    u32 step = LD8(work + 0xC);
+    u32 script;
+
+    switch (step) {
+    case 0: script = step0_script_index();   break;
+    case 1: script = step1_script_index();   break;
+    case 3:
+    case 4: script = step3_4_script_index(); break;
+    case 6: script = step6_script_index();   break;
+    default:
+        /* Step 0xFF (tutorial finished) and unknown steps have no text;
+         * the original branches to a shared return-0 epilogue here. */
+        return 0;
+    }
+
+    if (script == 0)
+        return 0;
+
+    /* The table at TextScriptFirstBattleTutorials holds one text archive
+     * per step; the checker picked the script inside that archive. */
+    chatbox_show_script(LD32(A_TextScriptFirstBattleTutorials + step * 4), script);
+
+    /* Save the old state byte and put the task into its post-text wait. */
+    ST8(work + 0xD, LD8(work + 1));
+    ST8(work + 1, 0x34);
+    ST16(work + 2, 0);
+    return 1;
+}
+
+Next sub_8029B1C(void) {
+    R0 = tutorial_text_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8029D80 ── */
 /* sub_8029D80 (asm03_0.s:7860): fixed-argument wrapper around call_sub_3005EBA.
  * It loads the constant argument set (0xF, 4, 3, 0, 7, 2) into r0-r5, makes the

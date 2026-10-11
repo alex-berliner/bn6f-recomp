@@ -8,6 +8,95 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_812345C ── */
+/*
+ * sub_812345C — one-time setup of the chip folder screen.
+ *
+ * Everything here is calls into other modules (screen state, graphics,
+ * text engine, sprite/window registration), so the whole body is a
+ * register-form call chain. The final state of r0-r7, lr and the flags
+ * is whatever the last callee (sub_8123D24) leaves behind; r5/r6 and
+ * everything else not set up here is preserved by the callees.
+ */
+
+/* register form: calls sub_81237E0 outside this file, which has no typed C interface yet */
+static void call_sub_81237E0(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_81237E0);
+}
+
+/* register form: calls chipFolder_initGfx_812386C outside this file, which has no typed C interface yet */
+static void call_chipFolder_initGfx_812386C(void) {
+    GUEST_CALL(chipFolder_initGfx_812386C);
+}
+
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+static void call_sub_8046664(void) {
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+static void call_sub_80465A0_sub_812345C(u32 table) {   /* table: guest address of byte_8123400 */
+    R0 = table;
+    GUEST_CALL(sub_80465A0);
+}
+
+/* register form: calls sub_8123A80 outside this file, which has no typed C interface yet */
+static void call_sub_8123A80(void) {
+    GUEST_CALL(sub_8123A80);
+}
+
+/* register form: calls sub_8123AB8 outside this file, which has no typed C interface yet */
+static void call_sub_8123AB8(void) {
+    GUEST_CALL(sub_8123AB8);
+}
+
+/* register form: calls sub_81352A0 outside this file, which has no typed C interface yet */
+static void call_sub_81352A0(u32 dst, u32 src, u32 x, u32 y, u32 param) {
+    R0 = dst;
+    R1 = src;
+    R2 = x;
+    R3 = y;
+    R4 = param;
+    GUEST_CALL(sub_81352A0);
+}
+
+/* register form: calls sub_8135314 outside this file, which has no typed C interface yet */
+static void call_sub_8135314(u32 dst, u32 src, u32 x, u32 y, u32 table) {
+    R0 = dst;
+    R1 = src;
+    R2 = x;
+    R3 = y;
+    R4 = table;
+    GUEST_CALL(sub_8135314);
+}
+
+/* register form: calls sub_8123D24 outside this file, which has no typed C interface yet */
+static void call_sub_8123D24(void) {
+    GUEST_CALL(sub_8123D24);
+}
+
+/* Bring up the chip folder screen: reset the screen state, load the folder
+ * graphics and text engine, register the two on-screen windows at (0x9D, 0x48),
+ * then run the screen's own setup routine. */
+static void chip_folder_screen_init(void) {
+    call_sub_81237E0(1);                                    /* enter screen state */
+    call_chipFolder_initGfx_812386C();                      /* load folder graphics */
+    call_sub_8046664();                                     /* reset text engine */
+    call_sub_80465A0_sub_812345C(A_byte_8123400);                       /* install text/font table */
+    call_sub_8123A80();
+    call_sub_8123AB8();
+    call_sub_81352A0(A_unk_201D220, A_byte_81233D8, 0x9D, 0x48, 4);
+    call_sub_8135314(A_unk_201D220, A_off_81234FC, 0x9D, 0x48, A_byte_8123508);
+    call_sub_8123D24();                                     /* screen-specific setup */
+}
+
+/* sub_812345C() -> r0-r7, lr, nz/c/v all as left by sub_8123D24 */
+Next sub_812345C(void) {
+    chip_folder_screen_init();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8123558 ── */
 /* register form: calls sub_8123BC0 outside this file, which has no typed C interface yet */
 static void call_8123bc0(void) {
@@ -763,6 +852,90 @@ Next sub_8124384(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── subchip_initGfx_81243B0 ── */
+/* ------------------------------------------------------------------
+ * Subchip graphics initialisation.
+ *
+ * Builds a table of "init refs" at unk_20096E0 from a static template
+ * table: each template entry is { source ptr, size, word, word } and
+ * becomes { sub_811FB84(ptr, size), word, word } in the output table,
+ * terminated by a 0 word. The ref tables are then decompressed and
+ * the subchip background tiles are copied into the text layer.
+ * ------------------------------------------------------------------ */
+
+/* register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+static u32 make_gfx_ref(u32 source, u32 size) {
+    R0 = source;
+    R1 = size;
+    GUEST_CALL(sub_811FB84);
+    return R0;
+}
+
+/* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
+static void decomp_and_copy(u32 table) {
+    R0 = table;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+static void setup_text_script(u32 comp_texts, u32 text_script, u32 decomp_buffer) {
+    R0 = comp_texts;
+    R1 = text_script;
+    R2 = decomp_buffer;
+    GUEST_CALL(sub_8123300);
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet.
+ * The game's ABI passes the 5th/6th arguments in r4/r5. */
+static void copy_background_tiles_subchip_initGfx_81243B0(u32 j, u32 i, u32 which_tile_block_32x32,
+                                  u32 tile_ids, u32 j_size, u32 i_size) {
+    R0 = j;
+    R1 = i;
+    R2 = which_tile_block_32x32;
+    R3 = tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+static void subchip_initGfx_init(void) {
+    u32 refs = A_unk_20096E0;   /* output table, fed to decompAndCopyData below */
+    u32 template = A_off_8124450; /* 3 entries of { ptr, size, word, word } */
+
+    u32 out = 0;
+    for (u32 in = 0; in < 0x30; in += 16) {
+        u32 source = LD32(template + in);
+        u32 size = LD32(template + in + 4);
+        ST32(refs + out, make_gfx_ref(source, size));
+        out += 4;
+        /* the two trailing words of each entry are copied unchanged */
+        for (u32 k = 0; k < 2; k++) {
+            ST32(refs + out, LD32(template + in + 8 + k * 4));
+            out += 4;
+        }
+    }
+    ST32(refs + out, 0); /* terminate the ref table */
+
+    decomp_and_copy(refs);
+    decomp_and_copy(A_byte_8124488);
+
+    setup_text_script(A_off_8124410, A_eTextScript201C100, A_eDecompBuffer2013A00);
+
+    copy_background_tiles_subchip_initGfx_81243B0(0, 0, 1, A_eTextScript201BA00, 0x1E, 0x14);
+}
+
+/* subchip_initGfx_81243B0() -> r4 r5 r6 r7 (all preserved; the original
+ * pushes r4-r7, works in them, and pops the saved values back) */
+Next subchip_initGfx_81243B0(void) {
+    u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
+    subchip_initGfx_init();
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── bg_CopyTileBlock2At2_6_8x12_81245BC ── */
 /* bg_CopyTileBlock2At2_6_8x12_81245BC: copy a 6x8 block of background tiles.
  *
@@ -805,6 +978,86 @@ Next chatbox_runScript201C100_812474C(void) {
     R0 = A_eTextScript201C100;
     GUEST_CALL(chatbox_runScript_803FD9C);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812475C ── */
+/* ---------------------------------------------------------------------------
+ * Background strip refresh for the current scene (sub_812475C).
+ *
+ * Three 8x2-tile strips at column j=0x15 (rows i=8, i=5 and i=2) are either
+ * filled from a tile-id table or cleared, depending on the scene state:
+ *   - strip i=8 follows the word at state+0x24,
+ *   - strip i=5 follows event flag 0x1709,
+ *   - strip i=2 follows the word at state+0x28.
+ * --------------------------------------------------------------------------- */
+
+/* Event flag tested for the middle strip ("movflag EVENT_1709" = r0:0x17, r1:0x09). */
+#define EVENT_1709 0x1709
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_background_tiles_sub_812475C(u32 j, u32 i, u32 tile_block_32x32, const u16 *tile_ids, u32 j_size, u32 i_size) {
+    R0 = j;
+    R1 = i;
+    R2 = tile_block_32x32;
+    R3 = (u32)tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* register form: calls call_sub_3005EBA outside this file, which has no typed C interface yet */
+static void clear_background_tiles(u32 j, u32 i, u32 tile_block_32x32, u32 tile_ids, u32 j_size, u32 i_size) {
+    R0 = j;
+    R1 = i;
+    R2 = tile_block_32x32;
+    R3 = tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(call_sub_3005EBA);
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static u32 test_event_flag_from_immediate(u16 flag) {
+    R0 = flag >> 8;          /* the flag id is split over r0 (bank) and r1 (index) */
+    R1 = flag & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();     /* Z set when the flag is clear */
+}
+
+/* Redraw the three background strips for the scene described by *state. */
+static void update_background_strips(u32 toolkit_r10) {
+    u32 state = LD32(toolkit_r10 + oToolkit_S2001c04_Ptr);
+
+    /* Strip at i=8: real tiles when state+0x24 is set, cleared otherwise. */
+    if (LD32(state + 0x24) != 0)
+        copy_background_tiles_sub_812475C(0x15, 8, 2, (const u16 *)A_unk_201EC8C, 8, 2);
+    else
+        clear_background_tiles(0x15, 8, 2, 0, 8, 2);
+
+    /* Strip at i=5: real tiles while event flag 0x1709 is set. */
+    if (test_event_flag_from_immediate(EVENT_1709))
+        copy_background_tiles_sub_812475C(0x15, 5, 2, (const u16 *)A_unk_201ECAC, 8, 2);
+    else
+        clear_background_tiles(0x15, 5, 2, 0, 8, 2);
+
+    /* Strip at i=2: real tiles when state+0x28 is set, cleared otherwise. */
+    if (LD32(state + 0x28) != 0)
+        copy_background_tiles_sub_812475C(0x15, 2, 2, (const u16 *)A_unk_201ECCC, 8, 2);
+    else
+        clear_background_tiles(0x15, 2, 2, 0, 8, 2);
+}
+
+/* sub_812475C(r4, r5, r6, r7, r10) -> nz c v r0 r1 r2 r3 r4 r5 r6 r7 lr
+ * r4-r7 are saved and restored around the calls, exactly like the original's
+ * push/pop; r0-r3 and the flags are left as the last callee left them. */
+Next sub_812475C(void) {
+    u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
+    update_background_strips(R10);
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
     RETURN_TO_CALLER();
 }
 
@@ -1017,6 +1270,82 @@ static u32 init_battle_data(u32 battle_data, u32 toolkit) {
 Next sub_8124B5C(void) {
     R0 = init_battle_data(R5, R10);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8124D30 ── */
+/* sub_8124D30 — per-object update step.
+ *
+ * The object/work pointer arrives in r5; the function body itself only ever
+ * reads r5, so every other register is pure pass-through: its exit value is
+ * whatever the final guest callee leaves behind, which the guest calls below
+ * reproduce exactly. The same holds for the condition flags, whose exit state
+ * comes from inside the callees, not from this function's own code.
+ */
+
+/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+static void call_sub_8126818_with_zero(void) {
+    R0 = 0;
+    GUEST_CALL(sub_8126818);
+}
+
+/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+static void call_sub_8125444_sub_8124D30(void) {
+    GUEST_CALL(sub_8125444);
+}
+
+/* register form: calls sub_8125D10 outside this file, which has no typed C interface yet */
+static void call_sub_8125D10(void) {
+    GUEST_CALL(sub_8125D10);
+}
+
+/* register form: calls sub_8125D94 outside this file, which has no typed C interface yet */
+static void call_sub_8125D94(void) {
+    GUEST_CALL(sub_8125D94);
+}
+
+/* register form: calls sprite_setStructHalfwordPairOnThree_8117084 outside this file, which has no typed C interface yet */
+static void set_sprite_halfword_pair(u32 ptr, u32 value, u32 slot) {
+    R0 = ptr;
+    R1 = value;
+    R2 = slot;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+}
+
+/* Tick the object's timer at +0x74 by two; once it reaches 160, clamp it there
+ * and clear the state byte at +2. Then store 0xFF into the counter at +0x70,
+ * run the three per-object update routines, and rewrite sprite halfword pairs
+ * 4 and 7. Pair 7 carries the halfword at +0x1C when the value at +0x5C is
+ * 0x27, and 0 otherwise. */
+static void update_object_timer_and_sprite_pairs(u32 obj) {
+    call_sub_8126818_with_zero();
+
+    u32 timer = LD32(obj + 0x74) + 2;
+    ST32(obj + 0x74, timer);
+    if ((s32)timer >= 0xA0) {
+        ST32(obj + 0x74, 0xA0);
+        ST8(obj + 2, 0);
+    }
+
+    ST32(obj + 0x70, 0xFF);
+
+    call_sub_8125444_sub_8124D30();
+    call_sub_8125D10();
+    call_sub_8125D94();
+
+    set_sprite_halfword_pair(LD32(obj + 0x58), LD16(obj + 0x12), 4);
+
+    u32 second = LD32(obj + 0x5C);
+    u32 pair7_value = 0;
+    if (second == 0x27)
+        pair7_value = LD16(obj + 0x1C);
+    set_sprite_halfword_pair(second, pair7_value, 7);
+}
+
+/* sub_8124D30: object pointer in r5; r0-r3, the flags and every other
+ * register are left exactly as the last guest callee leaves them. */
+Next sub_8124D30(void) {
+    update_object_timer_and_sprite_pairs(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1631,6 +1960,133 @@ static u32 build_pack_data(void) {
 Next sub_8125A6C(void) {
     R0 = build_pack_data();
     R2 = 0;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8125B3C ── */
+/* Chip collection list at dword_201F420: one u32 entry per library slot,
+ * halfword chip id at +0, "how obtained" byte at +2, 0x578 bytes total
+ * (list end = unk_201F998). Standard chip ids run 1..0x13F. */
+#define CHIP_LIST         A_dword_201F420
+#define CHIP_LIST_END     A_unk_201F998
+#define CHIP_LIST_BYTES   0x578
+#define STANDARD_CHIP_MAX 0x13F
+
+/* "Which libara page registered this chip" flag, passed to the immediate
+ * form of the event-flag test as page 0x17 / bit 0x11. */
+#define EVENT_1711 0x1711
+
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word_sub_8125B3C(u32 dest, u32 num_bytes) {
+    R0 = dest;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 chip_data_sub_8125B3C(u32 which_chip) {
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static u8 event_flag_set_sub_8125B3C(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static u8 immediate_event_flag_set(u16 flag) {
+    R0 = flag >> 8;             /* immediate form takes the flag as page/high byte in r0, bit/low byte in r1 */
+    R1 = flag & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+typedef struct {
+    u32 count;        /* -> r0: number of entries collected */
+    u32 scratch_r2;   /* -> r2: value the original leaves behind in r2 */
+} ChipListResult;
+
+/* Rebuild the player's collected-chip list: clear it, then for every standard
+ * chip that is owned (chip data +9 bit 0x40) and registered (+0x16 bit 1),
+ * record chip id and source byte at the slot named by the chip's library
+ * index (+0x15, 1-based); the source byte says which "obtained" event flag
+ * answered (0x1E20+id, 0x2220+id, or 0x2020+id, the last split by EVENT_1711).
+ * Afterwards slide entries down so the list is left without gaps.
+ * r3 is left exactly as the last event-flag probe left it: the typed code
+ * never touches R3, so the GUEST_CALL leftover stands in for the original's. */
+static ChipListResult rebuild_chip_collection_list(void) {
+    u32 list = CHIP_LIST;
+    zero_fill_by_word_sub_8125B3C(list, CHIP_LIST_BYTES);
+
+    u32 count = 0;
+    u32 scratch = 0x40;  /* r2 in the original; its final value is visible to callers */
+    for (u32 chip = 1; chip <= STANDARD_CHIP_MAX; chip++) {
+        u32 data = chip_data_sub_8125B3C(chip);
+        u32 lib_slot = LD8(data + 0x15);          /* library index, 1-based */
+        u32 entry = list + (lib_slot - 1) * 4;
+        scratch = 0x40;                           /* value the original's bit-test immediate leaves in r2 */
+        if ((LD8(data + 9) & 0x40) == 0)
+            continue;                             /* chip not owned */
+        scratch = 1;
+        if ((LD8(data + 0x16) & 1) == 0)
+            continue;                             /* chip not registered */
+        scratch = entry;
+        if (event_flag_set_sub_8125B3C(0x1E20 + chip)) {
+            count++;
+            ST16(entry, chip);
+            ST8(entry + 2, 0);
+        } else if (event_flag_set_sub_8125B3C(0x2220 + chip)) {
+            count++;
+            ST16(entry, chip);
+            ST8(entry + 2, 1);
+        } else if (event_flag_set_sub_8125B3C(0x2020 + chip)) {
+            count++;
+            ST16(entry, chip);
+            u8 source;
+            if (immediate_event_flag_set(EVENT_1711))
+                source = 2;
+            else
+                source = 1;
+            ST8(entry + 2, source);
+        }
+    }
+
+    /* Compact: over every empty slot, pull the following entries down. */
+    u32 slot = list;
+    for (u32 i = 0; i < STANDARD_CHIP_MAX; i++) {
+        if (LD32(slot) == 0) {
+            u32 dst = slot;
+            for (u32 src = slot + 4; src < CHIP_LIST_END; src += 4) {
+                u32 word = LD32(src);
+                scratch = word;
+                if (word != 0) {
+                    ST32(dst, word);
+                    ST32(src, 0);
+                    dst += 4;
+                    scratch = 0;
+                }
+            }
+        }
+        slot += 4;
+    }
+
+    ChipListResult result;
+    result.count = count;
+    result.scratch_r2 = scratch;
+    return result;
+}
+
+/* sub_8125B3C() -> r0 = number of collected chips, r2 = leftover scratch.
+ * r3 keeps whatever the last event-flag probe left in it; r4-r7 (including
+ * the entry count in r5) are popped unchanged, no flags are returned. */
+Next sub_8125B3C(void) {
+    ChipListResult result = rebuild_chip_collection_list();
+    R0 = result.count;
+    R2 = result.scratch_r2;
     RETURN_TO_CALLER();
 }
 
