@@ -1,0 +1,86 @@
+name: sub_81270D0
+address: '0x081270D0'
+kind: function
+status: confirmed
+summary: Initialize the unk_20096E0 dispatch table and the text-script/decompression tables used by the title-screen
+  flow.
+interface: 'void initTitleScreens_81270D0(void); // inputs: r10, lr; outputs: r5, r7; clobbers: nzcv, r0-r3, lr;
+  preserved: r4-r7'
+details: 'Walks the 0x20-byte `off_8127160` array (four entries of three u32 words:
+
+  a compressed-source pointer, a deferred size 0x2, a target pointer, a deferred
+
+  size 0x20). For each entry it calls sub_811FB84(src, size) and stores the returned
+
+  pointer into `unk_20096E0` (the dispatch table), then copies the two trailing
+
+  words verbatim into the next two slots. A trailing zero is written after the
+
+  four entries (slot 12). Finally it dispatches decompAndCopyData twice — once
+
+  with the freshly built `unk_20096E0` table, once with the `byte_8127188`
+
+  initializer list — and calls sub_8123300 with the `off_8127120` script list,
+
+  `eTextScript201BF20` and `eDecompBuffer2013A00`. The script list contains
+
+  CompTextScript86D7578 etc., naming convention indicates navi-custom / folder
+
+  menu text scripts for the title/folder-edit UI, consistent with the
+
+  `eTextScript201BF20` / `eDecompBuffer2013A00` text-script engine.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-003727);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c sub_81270D0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81270D0
+
+    ./wf verify --function sub_81270D0 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003727-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81270D0
+
+    ./wf verify --function sub_81270D0 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003727-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81270D0
+
+    ./wf verify --function sub_81270D0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003727-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^081270d0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp bdefe69
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story2
+open_questions:
+- What does the returned u32 from sub_811FB84 represent (likely a VRAM/buffer pointer after lazy decompression)?
+- Why are the two trailing slots of each entry (target pointer + size 0x20) copied verbatim rather than inflated
+  like the first slot?
+- Is the trailing zero sentinel read back later by decompAndCopyData to know the table length?
+- What r10 holds on entry — does initTitleScreens_81270D0 read it, or is it an unused callee-saved input the contract
+  captured from a thunk?
+sources:
+- tools/wf run convert-20261011-003727
+- recomp bdefe69

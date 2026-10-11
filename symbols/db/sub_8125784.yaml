@@ -1,0 +1,76 @@
+name: sub_8125784
+address: '0x08125784'
+kind: function
+status: confirmed
+summary: Per-frame battle input dispatcher that polls joypad press/held bits to drive the cursor/sound menu (Start+B
+  = confirm-exit, bit 0 = hand-off, Select = toggle friend/enemy target with SFX, otherwise cursor-word branch routes
+  D-pad/A/B to sub_8125820).
+interface: 'u32 battle_input_tick(u32 held /*r0->r8, returned*/, u32 battle_obj /*r5*/, u32 code_param /*r2, unused*/,
+  u32 joypad_ptr /*r10*/); clobbers r0,r1,r2,r3,r5,r8,r9,r10,r12,lr; preserves r4,r6,r7,r10; flags: caller-set after
+  WRITE r5,r8,r9,r10,r12 (NZCV conditional on dispatcher exit).'
+details: "Reads the joypad pointer from the r10 toolkit struct at oToolkit_JoypadPtr, then inspects `pressed` ([joy+2])\
+  \ and `held` ([joy+4]).\n- Pressed Start|B (mask 0x0A): calls menu_confirmExitAndFade_812580C with code 0x44 (confirm-exit\
+  \ + fade).\n- Pressed bit 0: calls sub_81266E0 (unidentified handler; same flow as battle_input variants elsewhere).\n\
+  - Held Select (mask 0x20): writes state 0x4C (friend selected) when [r5+#0x64] is zero, else 0x2C (enemy selected)\
+  \ into [r5+2], then playSoundEffect_7A_81258E8.\n- Otherwise reads the cursor word at [r5+0x68]; bails if zero.\
+  \ Saves [r5+0x3A], overwrites it with the cursor word, re-reads held/pressed and dispatches:\n    * if held &\
+  \ 0x300: clean off AB bits (mask 0xC0) and call sub_8125820(r0,7,0); also stores joy pointer into [r5+0x70].\n\
+  \    * else if pressed & 0x300 == 0 and held & 0xC0 != 0: same sub_8125820 call and joy-pointer store.\n  Then\
+  \ restores the original [r5+0x3A] and returns.\nr8 is set from r0 at entry and left unchanged (it is the only\
+  \ designated output for r8; r10 is preserved by stashing r7), making the function effectively a tick handler whose\
+  \ caller tracks r8.\nSubordinates (sub_8125820, sub_81266E0, menu_confirmExitAndFade_812580C, playSoundEffect_7A_81258E8)\
+  \ are external and untyped here.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-003727);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c sub_8125784
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8125784
+
+    ./wf verify --function sub_8125784 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-003727-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8125784
+
+    ./wf verify --function sub_8125784 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261011-003727-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8125784
+
+    ./wf verify --function sub_8125784 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003727-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^08125784 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp bdefe69
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm33.c
+coverage:
+- story2
+related:
+- sub_812509C
+open_questions:
+- 'Identity of the battle object: meaning of [r5+0x64] (friend/enemy availability flag) and [r5+0x68] (cursor word)
+  and [r5+0x3A] (saved/restored field, likely a flash/animation palette or auto-action word).'
+- What sub_8125820 actually does (cursor-move / target-switch dispatch given cleaned held value).
+- What sub_81266E0 does (handler for `pressed & 1`, exact button unknown).
+- What menu_confirmExitAndFade_812580C and playSoundEffect_7A_81258E8 expect (sound id, exit-flag byte).
+- Whether the 0x300/0xC0 masks really are D-pad+A/B combined vs. something menu-specific.
+sources:
+- tools/wf run convert-20261011-003727
+- recomp bdefe69

@@ -1,0 +1,76 @@
+name: sub_811FE48
+address: '0x0811FE48'
+kind: function
+status: confirmed
+summary: Records or increments a hit tally for a 30-slot id->count array, sourcing the new id from word "unk_20343E0"
+  +0x1C.
+interface: "u16 Next(sub_811FE48)(void *counterArray /*r0*/, void *unk_20343E0 /*r5*/, ? /*lr*/);\n  /* clobbers\
+  \ r0,r1,r3 + NZCV; preserves r4-r7; r3 returns the byte offset\n     of the count slot that was written (offset+2),\
+  \ or 0x78 if no empty/matching\n     slot was found within 30 entries. */\n"
+details: "Scans a 30-entry table (entries are 4 bytes: u16 id at +0, u16 count at +2;\nscan limit 0x78 = 30 * 4).\
+  \ For each entry:\n  * if id == 0 (empty slot) -> store the incoming id and set count = 1;\n  * if id matches\
+  \ the incoming id -> increment its count;\n  * else advance to the next entry.\nThe id to register is read from\
+  \ \"unk_20343E0\" +0x1C (the .word unk_20343E0\nin the pool points at this source buffer, dereferenced as r5+0x1C).\n\
+  Returns r3 = byte offset of the count field that was last touched (always\noffset+2 for the hit case), or 0x78\
+  \ when the table is exhausted with no match\nand no empty slot. Likely backs a battle damage/element tally or\
+  \ contact/\ncombo-hit counter on a battle entity, indexed by some attack id (e.g.\nelement or hit source id stored\
+  \ at unk_20343E0 +0x1C).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-003727);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c sub_811FE48
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811FE48
+
+    ./wf verify --function sub_811FE48 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 258 out
+    of domain (verify run convert-20261011-003727-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811FE48
+
+    ./wf verify --function sub_811FE48 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261011-003727-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811FE48
+
+    ./wf verify --function sub_811FE48 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003727-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^0811fe48 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp bdefe69
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What is unk_20343E0 and which field at +0x1C carries the id (element? attacker? move?)?
+- Who consumes the count values once written (damage formula? bonus calc?)?
+- Is r5 truly the same buffer as unk_20343E0 in every caller, or only in the path that emitted the .word in this
+  function's pool?
+sources:
+- tools/wf run convert-20261011-003727
+- recomp bdefe69

@@ -1,0 +1,79 @@
+name: sub_81265DC
+address: '0x081265DC'
+kind: function
+status: confirmed
+summary: Draws the player's and enemy's battle row sprites during a battle field transition.
+interface: void sub_81265DC(u32 battle, lr); /* r5 = battle state ptr; returns nothing meaningful */
+details: 'Called as part of the battle background/row rendering, with R5 pointing at the current battle
+
+  struct (it reads an offset at +0x74, a battle x-coord-like field). Iterates R7 = 1 then 0 (i.e.
+
+  draws the back/front row, or enemy/player row), using a per-row base x from off_812661C
+
+  (entries 0x458 for R7=1 and 0x3C8 for R7=0, suggesting R7=1 is the back row / Enemy and R7=0 is
+
+  the front row / player side). The per-row screen x is computed as
+
+  base + ((battle[+0x74] - 0x100) << 3), and wrapped forward by up to two 0x120-pixel steps so the
+
+  value is >= -40 (0xFFFFFFD8), giving a screen-left clamp/wrap rather than a true clamp (it can
+
+  wrap past the edge). It then calls sub_8116FDC(0x1B, tile_offset, x) — anim/sprite id 0x1B with
+
+  advancing tile offsets R4 = 4, 7 — which is the row sprite blit helper.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-003727);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c sub_81265DC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81265DC
+
+    ./wf verify --function sub_81265DC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261011-003727-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81265DC
+
+    ./wf verify --function sub_81265DC --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-003727-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81265DC
+
+    ./wf verify --function sub_81265DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003727-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^081265dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp bdefe69
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- story2
+open_questions:
+- 'Exact identity of off_812661C entries: which row corresponds to R7=0 vs R7=1 (player vs enemy)?'
+- 'What field lives at battle[+0x74]: battle column index, scroll x, or row x?'
+- Why the 0x120 wrap-up-to-twice instead of a hard clamp — does the engine let rows peek off the left edge of the
+  BG layer during transitions?
+- Confirm that sub_8116FDC's three args here are (x, anim/sprite_id, tile_offset) — the assembly order is x=0x1B?,
+  anim=0x1B?, tile_offset=R4 — readable C above states sub_8116FDC(x, anim, tile_offset) but R1 is 0x1B (anim) and
+  R2 is R4 (tile_offset), while R0 is the clamped x.
+sources:
+- tools/wf run convert-20261011-003727
+- recomp bdefe69

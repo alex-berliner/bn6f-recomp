@@ -1,0 +1,77 @@
+name: sub_8126430
+address: '0x08126430'
+kind: function
+status: hypothesis
+summary: Loads one row of 7 chip slots from a chip-id table into a chip-data block, copying the chip's data record
+  (0x80 bytes from offset 0x20) per slot and zeroing 8-byte output pairs for empty or flagged slots; this is part
+  of a chip-select / folder rendering pipeline.
+interface: void sub_8126430(u32 r0_slot_scale, u32 r1_chip_id_table, u32 r2_out8, u32 r3_src_for_initial_copy, u32
+  r4_chip_data_dest); returns r4 preserved; clobbers r0,r1,r2,r7,lr,NZCV; preserves r3,r4,r5,r6,r7.
+details: 'Stage 1: CopyWords from r3 into r2 for 0x38 bytes (an initial 14-word record header prepended to the per-slot
+  data).
+
+  Stage 2: Iterate 7 times. Each iteration walks a 4-byte chip-id entry at r1 + (r0<<2) + 4*idx:
+
+  - low u16 chip_id, high u8 unused, low u8 flag at offset+2
+
+  - If chip_id == 0 or flag != 0: write {0,0} to the 8-byte slot at r2 + 8*idx (zero the result pair).
+
+  - Else: getChip8021DA8(chip_id)->field_0x20, then CopyWords 0x80 bytes into r4 + 0x80*idx.
+
+  r5/r6/r7 are loop-local in the assembly (r5=table walker, r6=chip-data dest walker, r7=idx 0..6).
+
+  r0 is used as a left-shift-2 base offset into the chip-id table (likely row/column scale).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (4 attempt(s), run convert-20261011-003727);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c sub_8126430
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8126430
+
+    ./wf verify --function sub_8126430 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 279 out
+    of domain (verify run convert-20261011-003727-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8126430
+
+    ./wf verify --function sub_8126430 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-003727-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8126430
+
+    ./wf verify --function sub_8126430 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-003727-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08126430 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp bdefe69
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- story2
+open_questions:
+- Meaning of the 8-byte output pair at r2+8*idx (chip descriptor vs. two u32s?
+- Meaning of the 0x80-byte chip data record at chip+0x20 (full chip stat block vs. just the icon/gfx payload)?
+- Meaning of the flag byte at table offset+2 (locked, hidden, invalid)?
+- Is the function only ever called with 7 slots, or is 7 a fixed constant of one row in a 2D table?
+- What is the initial 0x38-byte header copied from r3 to r2 (folder header, palette setup, or sprite prelude)?
+sources:
+- tools/wf run convert-20261011-003727
+- recomp bdefe69
