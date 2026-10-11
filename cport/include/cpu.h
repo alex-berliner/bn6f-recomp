@@ -63,12 +63,18 @@ extern Cpu cpu;
  * aligned word rotated by the misalignment, a halfword load from an odd
  * address the aligned halfword rotated by 8 (a signed one the byte,
  * sign-extended), and stores ignore the low address bits (GBATEK). */
+/* How many such misaligned halfword and word loads a run made: the difftest counts a random input
+ * on which the original made one and the port differs as out of the port's domain, as the CPU
+ * oracle does (typed C reads the type it declares; the game makes no such load on a real path). */
+__attribute__((weak)) volatile u32 g_flat_misaligned;
 static inline u32 flat_ld32(u32 a) {
     u32 v = *(volatile u32 *)(uintptr_t)(a & ~3u), s = (a & 3) * 8;
+    if (s) g_flat_misaligned++;
     return s ? (v >> s) | (v << (32 - s)) : v;
 }
 static inline u32 flat_ld16(u32 a) {
     u32 v = *(volatile u16 *)(uintptr_t)(a & ~1u);
+    if (a & 1) g_flat_misaligned++;
     return (a & 1) ? (v >> 8) | (v << 24) : v;
 }
 #define LD32(a)  flat_ld32((u32)(a))

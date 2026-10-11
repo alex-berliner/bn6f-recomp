@@ -190,6 +190,7 @@ static u32 random_value(void) {
 typedef struct {
     Cpu cpu;
     int status;          /* 0 ok, 1 crashed/timeout */
+    u32 misaligned;      /* misaligned halfword/word loads the run made (cpu.h g_flat_misaligned) */
 } Result;
 
 static size_t snapshot_size(void) {
@@ -257,13 +258,16 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
     if (getenv("DIFFTEST_NOFORK")) {          /* debugging: run in-process */
         load_mem(mem_in);
         cpu = *in;
+        g_flat_misaligned = 0;
         run(f);
         res->cpu = cpu;
         res->status = 0;
+        res->misaligned = g_flat_misaligned;
         save_mem(mem_out);
         return;
     }
     pid_t pid = fork();
+    res->misaligned = 0;
     if (pid == 0) {
         if (!getenv("DIFFTEST_VERBOSE"))       /* out-of-domain inputs abort noisily */
             freopen("/dev/null", "w", stderr);
@@ -286,9 +290,11 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
             pthread_create(&th, NULL, hw_ticker, NULL);
         }
         cpu = *in;
+        g_flat_misaligned = 0;
         run(f);
         res->cpu = cpu;
         res->status = 0;
+        res->misaligned = g_flat_misaligned;
         save_mem(mem_out);
         _exit(0);
     }
@@ -471,6 +477,11 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
             if (!why && (c->compare_flags & 2) && (ra->cpu.c & 1) != (rb->cpu.c & 1)) why = "C flag differs";
             if (!why && (c->compare_flags & 4) && (ra->cpu.v & 1) != (rb->cpu.v & 1)) why = "V flag differs";
         }
+        /* A random input on which the original made a misaligned halfword or word load (the ARM7
+         * rotates the value; typed C reads the type it declares) is out of the port's domain when the
+         * two differ, as on the CPU oracle (tools/oracle_triage.md). Captured calls are real game
+         * states, so they stay compared. */
+        if (why && !label && ra->misaligned) { (*pcrashes)++; return; }
         if (why) {
             if (fails++ < 5) {
                 fprintf(stderr, "  %s %s %d: %s\n    inputs:", p->name, label ? label : "trial", t, why);

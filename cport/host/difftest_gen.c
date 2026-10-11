@@ -168,6 +168,29 @@ static void gen_state_handler_81179AE(Cpu *in, u32 (*rnd)(void)) {
     U8(work) = (u8)(rnd() % 4);
 }
 
+/* submenu_runModeHandler_811BD64 jumps through the three-entry table off_811BD7C on the mode byte at
+ * [r5+8], a byte offset (0, 4 or 8); a random byte indexes past the table into the literal pools that
+ * follow it (0x6C lands on sub_811BDEC). Give it a work area in EWRAM and a mode the game has. */
+static void gen_submenu_mode_811BD64(Cpu *in, u32 (*rnd)(void)) {
+    in->r[5] = 0x02010000u + (rnd() % 0x1000) * 4;
+    U8(in->r[5] + 8) = (u8)((rnd() % 3) * 4);
+}
+
+/* scriptListRun_8001158 walks {command, argument} pairs to a zero command, queueing each through
+ * sub_802FE28 (sprite_queueOamEntry). Random memory has no zero for kilobytes: the walk runs into the
+ * guest stack, where the original stops on a zero it pushed itself and the port, which pushes no
+ * frame, runs off the end of IWRAM. Give it a short list, as the game's are. */
+static void gen_script_list_8001158(Cpu *in, u32 (*rnd)(void)) {
+    u32 list = 0x02030000u + (rnd() % 0x1000) * 4;
+    int n = (int)(rnd() % 5);
+    for (int k = 0; k < n; k++) {
+        U32(list + 8 * k) = rnd() | 1;               /* a command (never 0) */
+        U32(list + 8 * k + 4) = rnd();
+    }
+    U32(list + 8 * n) = 0;
+    in->r[0] = list;
+}
+
 GenFn difftest_snap_mutator(const char *name) {
     if (!strcmp(name, "npc_runSecondaryScriptMaybe_809ebf8")) return mut_npc_secondary;
     if (!strcmp(name, "sprite_queueFramePieces")) return mut_sprite_pieces;
@@ -181,5 +204,7 @@ GenFn difftest_generator(const char *name) {
     if (!strcmp(name, "SoundMainRAM_iwram_03005700")) return gen_mixer;
     if (!strcmp(name, "menu_moveCursor_811FA36")) return gen_cursor_body;
     if (!strcmp(name, "dispatchStateHandler_81179AE")) return gen_state_handler_81179AE;
+    if (!strcmp(name, "submenu_runModeHandler_811BD64")) return gen_submenu_mode_811BD64;
+    if (!strcmp(name, "scriptListRun_8001158")) return gen_script_list_8001158;
     return 0;
 }
