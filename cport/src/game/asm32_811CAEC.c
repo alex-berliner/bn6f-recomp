@@ -306,6 +306,80 @@ Next sub_811EC50(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811EC68 ── */
+/* Build a list of GFX resource records into the staging buffer at unk_20096E0 and queue
+ * them for DMA. The source is a table of triples whose first word is run through
+ * sub_811FB84 to produce the "packed" header; then the trailing table at off_811ECB4 is
+ * copied verbatim until a NULL terminator. Finally QueueGFXTransfersInList is called. */
+
+/* register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+static u32 derive_packed_size(u32 src, u32 size) {
+    R0 = src;
+    R1 = size;
+    GUEST_CALL(sub_811FB84);
+    return R0;
+}
+
+/* register form: calls QueueGFXTransfersInList outside this file, which has no typed C interface yet */
+static void queue_gfx_transfers_in_list(u32 *dataRefs) {
+    R0 = (u32)dataRefs;
+    GUEST_CALL(QueueGFXTransfersInList);
+}
+
+static void build_and_queue_gfx_list(void) {
+    /* Source records live at the table whose pointer is stored at A_off_811ECFC.
+     * Each record is 4 words: { src, size, dest, size }. We produce a 4-word staging
+     * entry per record: { derive(src,size), dest, size, src }. The loop runs while
+     * srcOff < 0x20 (i.e. exactly two records). */
+    u32 srcBase = A_off_811ECFC;   /* r5 in the first loop */
+    u32 staging = A_unk_20096E0;   /* r4 (output buffer) */
+    u32 srcOff = 0;                /* r7 in the first loop */
+    u32 dstOff = 0;                /* r6 */
+
+    while (srcOff < 0x20) {
+        u32 src = LD32(srcBase + srcOff);
+        srcOff += 4;
+        u32 size = LD32(srcBase + srcOff);
+        srcOff += 4;
+
+        ST32(staging + dstOff, derive_packed_size(src, size));
+        dstOff += 4;
+
+        /* Copy the remaining two words (dest, src) verbatim. */
+        for (u32 i = 0; i < 2; i++) {
+            ST32(staging + dstOff, LD32(srcBase + srcOff));
+            dstOff += 4;
+            srcOff += 4;
+        }
+    }
+
+    /* Append the trailing table at A_off_811ECB4 until a NULL word is seen. */
+    {
+        u32 tailBase = A_off_811ECB4;
+        u32 tailOff = 0;
+        u32 word;
+        do {
+            word = LD32(tailBase + tailOff);
+            ST32(staging + dstOff, word);
+            tailOff += 4;
+            dstOff += 4;
+        } while (word != 0);
+    }
+
+    /* Kick off the DMA transfers described by the staging buffer. */
+    queue_gfx_transfers_in_list((u32 *)staging);
+}
+
+Next sub_811EC68(void) {
+    build_and_queue_gfx_list();
+    /* The last flag-setting instruction in the original is `tst r0, r0` with r0 == 0
+     * (the NULL terminator), so Z is set. The lifter lists nz as clobbered and the
+     * required outputs are c/v, which the body never modifies; we still set nz to
+     * match the original tail's TST behaviour. */
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
 /* ── naviSelect_SetupBackgrounds_811EF0C ── */
 /* naviSelect_SetupBackgrounds_811EF0C: rebuild the PET/cyberworld background for the navi select screen.
  * Runs the individual background setup passes, then copies the tile graphics
@@ -318,6 +392,79 @@ Next naviSelect_SetupBackgrounds_811EF0C(void) {
     GUEST_CALL(sub_811F11C);
     GUEST_CALL(CopyBackgroundTiles_PET_811EF70);
     GUEST_CALL(CopyBackgroundTiles_onNaviSelect_811F54C);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811EF28 ── */
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+static void call_sub_8046664_sub_811EF28(void) {
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+static void call_sub_80465A0_sub_811EF28(void *a1) {
+    R0 = (u32)a1;
+    GUEST_CALL(sub_80465A0);
+}
+
+/* register form: calls LoadGFXAnim outside this file, which has no typed C interface yet */
+static void call_LoadGFXAnim(void *script) {
+    R0 = (u32)script;
+    GUEST_CALL(LoadGFXAnim);
+}
+
+/* register form: calls sub_811F1B8 outside this file, which has no typed C interface yet */
+static void call_sub_811F1B8(void) {
+    GUEST_CALL(sub_811F1B8);
+}
+
+/* register form: calls sub_811F214 outside this file, which has no typed C interface yet */
+static void call_sub_811F214(void) {
+    GUEST_CALL(sub_811F214);
+}
+
+/* register form: calls sub_811F0C8 outside this file, which has no typed C interface yet */
+static void call_sub_811F0C8(void) {
+    GUEST_CALL(sub_811F0C8);
+}
+
+/* register form: calls sub_811F11C outside this file, which has no typed C interface yet */
+static void call_sub_811F11C(void) {
+    GUEST_CALL(sub_811F11C);
+}
+
+/* register form: calls CopyBackgroundTiles_PET_811EF70 outside this file, which has no typed C interface yet */
+static void call_CopyBackgroundTiles_PET_811EF70(void) {
+    GUEST_CALL(CopyBackgroundTiles_PET_811EF70);
+}
+
+/* register form: calls CopyBackgroundTiles_onNaviSelect_811F54C outside this file, which has no typed C interface yet */
+static void call_CopyBackgroundTiles_onNaviSelect_811F54C(void) {
+    GUEST_CALL(CopyBackgroundTiles_onNaviSelect_811F54C);
+}
+
+/* Initialize the PET/Navi-select screen background. */
+static void init_pet_select_screen(void *state) {
+    u8 *state8 = (u8 *)state;
+    u16 *state16 = (u16 *)state;
+
+    state16[0x10 / 2] = 0;
+    call_sub_8046664_sub_811EF28();
+    call_sub_80465A0_sub_811EF28((void *)A_byte_811EBA4);
+    state8[0] = 4;
+    call_LoadGFXAnim((void *)A_byte_811EAD4);
+    call_LoadGFXAnim((void *)A_byte_811EAEC);
+    call_sub_811F1B8();
+    call_sub_811F214();
+    call_sub_811F0C8();
+    call_sub_811F11C();
+    call_CopyBackgroundTiles_PET_811EF70();
+    call_CopyBackgroundTiles_onNaviSelect_811F54C();
+}
+
+/* sub_811EF28(r5 = screen state) -> void */
+Next sub_811EF28(void) {
+    init_pet_select_screen((void *)R5);
     RETURN_TO_CALLER();
 }
 
@@ -456,6 +603,122 @@ Next drawCurrentMapName_811F08C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811F0C8 ── */
+/* register form: calls sub_811F184 outside this file, which has no typed C interface yet.
+ * sub_811F184(r0 = addr_of_word_3001B2C, r1 = ptr off_811F0F8,
+ *             r2 = byte from r5+6, r3 = byte from r5+7) -> r0, r1 */
+static void call_sub_811F184(u8 out[2], u8 in6, u8 in7) {
+    R0 = A_word_3001B2C;
+    R1 = A_off_811F0F8;
+    R2 = in6;
+    R3 = in7;
+    GUEST_CALL(sub_811F184);
+    out[0] = (u8)R0;   /* r5+7 (was r0 in the original strb order) */
+    out[1] = (u8)R1;   /* r5+6 */
+}
+
+/* sub_811F0C8: dispatch on the entity sub-state at r5+4.
+ * If sub-state == 8, call sub_811F184 with the bytes at r5+6 / r5+7 and store the
+ * results back. Otherwise read the halfword at offset +4 from the constant pool
+ * entry pointed to by off_811F0F8[0] and store it into word_3001B2C. */
+static void sub_811F0C8_impl(u32 r5, u8 *out_bytes) {
+    u8 sub_state = LD8(r5 + 4);
+    if (sub_state == 8) {
+        u8 in6 = LD8(r5 + 6);
+        u8 in7 = LD8(r5 + 7);
+        call_sub_811F184(out_bytes, in6, in7);
+        ST8(r5 + 7, out_bytes[0]);
+        ST8(r5 + 6, out_bytes[1]);
+    } else {
+        u32 table = LD32(A_off_811F0F8);
+        u16 value = LD16(table + 4);
+        ST16(A_word_3001B2C, value);
+    }
+}
+
+Next sub_811F0C8(void) {
+    u8 out_bytes[2];
+    sub_811F0C8_impl((u32)R5, out_bytes);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811F11C ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set(u16 flag) {
+    R0 = flag;
+    R1 = 6;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* Z set if the flag is clear */
+}
+
+/* Pet-network save handler. Walks the 8-slot pointer table, writes a default
+ * halfword to each slot, stamps a per-state override (unless state byte == 8),
+ * and applies the EVENT_PET_COMM_SAVE_DISABLED patch when set. */
+static void pet_comm_save_init(u32 state_addr) {
+    /* Default: write 0x537F to the slot pointed to by each table entry. */
+    for (u32 i = 0; i < 0x20; i += 4) {
+        ST16(LD32(A_byte_811F158 + i), 0x537F);
+    }
+    u32 state_byte = LD8(state_addr + 4);
+    if (state_byte != 8) {
+        ST16(LD32(A_byte_811F158 + (state_byte << 2)), 0x7BFE);
+    }
+    if (event_flag_set(0x17)) {
+        ST16(LD32(A_byte_811F158 + 0x1C), 0x5A7A);
+        ST16(LD32(A_byte_811F158 + 0x18), 0x5A7A);
+    }
+}
+
+Next sub_811F11C(void) {
+    /* Preserve the original's r4 (saved on stack) and call the typed helper.
+     * After the call, R0..R3/R4 hold the same values as on entry, matching the
+     * original which had r4 = ptr_tbl on entry, used it locally, and then
+     * restored the saved r4 on pop. The last flag-setting instruction is
+     * `cmp r0, #0x20` from the loop; we mirror that with SET_FLAGS_CMP
+     * against a representative value. */
+    pet_comm_save_init(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811F1B8 ── */
+struct ParamPair {
+    u32 a;
+    u16 b;
+};
+
+/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+static void call_sub_802FE28(u32 a, u16 b) {
+    R0 = a;
+    R1 = b;
+    R2 = 0;
+    R3 = 1;
+    GUEST_CALL(sub_802FE28);
+}
+
+/* Walk a block of (u32, u16) pairs laid out consecutively. The original increments
+ * a counter from 0, calls sub_802FE28 for the current pair, advances the cursor by
+ * 8 bytes, increments the counter, and loops while the counter is less than 2
+ * (so it iterates twice, processing pairs at offsets 0 and 8). */
+static void load_pairs(u32 base) {
+    u32 cursor = base;
+    u32 count = 0;
+    while (count < 2) {
+        u32 a = LD32(cursor);
+        u16 b = (u16)LD32(cursor + 4);
+        call_sub_802FE28(a, b);
+        cursor += 8;
+        count += 1;
+    }
+}
+
+/* Initialize two sets of (u32, u16) parameter pairs by passing each through sub_802FE28. */
+Next sub_811F1B8(void) {
+    load_pairs(A_dword_811F1F0);
+    load_pairs(A_dword_811F204);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811F214 ── */
 /* sub_811F214: walk the three-entry table at dword_811F234 and hand each
  * (word0, word1) pair to sub_802FE28 as (a1, a2, 0, 1).
@@ -481,6 +744,34 @@ Next sub_811F214(void) {
     R5 = savedR5;
     R6 = savedR6;
     R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811F290 ── */
+#define off_811F2B0 0x0811F2B0u
+
+/* Return the BGM id for the current map (0xFF = no BGM assigned). */
+static u32 current_map_bgm(u32 game_state_ptr) {
+    u32 map_group  = LD8(game_state_ptr + oGameState_MapGroup);
+    u32 map_number = LD8(game_state_ptr + oGameState_MapNumber);
+
+    if (map_group >= 0x80) {
+        map_group = map_group - 0x80 + 7;
+    }
+
+    u32 table_addr = LD32(off_811F2B0 + (map_group << 2));
+    return LD8(table_addr + map_number);
+}
+
+/* register form: reads game state pointer from r10 via the toolkit */
+static u32 game_state_from_toolkit(void) {
+    u32 toolkit = R10;
+    return LD32(toolkit + oToolkit_GameStatePtr);
+}
+
+Next sub_811F290(void) {
+    R0 = current_map_bgm(game_state_from_toolkit());
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -890,6 +1181,44 @@ Next sub_811FB84(void) {
 Next battle_ClearBuffer_811FE34(void) {
     R1 = 0x3C0;                 /* size consumed by ZeroFillByEightWords */
     GUEST_CALL(ZeroFillByEightWords);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811FE48 ── */
+/* Register a hit on a 30-slot, 4-bytes-per-entry counter array.
+ *
+ *   entry[i] : u16 id at offset +0, u16 count at offset +2, for i in [0, 30).
+ *
+ * The id to record arrives in source[0x1C]; the counter array base is given
+ * as a guest pointer. We scan the entries:
+ *   - empty slot (id == 0)  -> claim it: store the id, set count = 1.
+ *   - matching id           -> increment its count.
+ *   - otherwise             -> skip to the next 4-byte entry.
+ *
+ * Returns the final r3: the byte offset of the count field that was touched,
+ * or 0x78 if the array was scanned without finding either a match or an empty slot. */
+static u32 register_counter_hit(u32 counter_array, u32 source) {
+    u16 new_id = LD16(source + 0x1C);
+    u32 offset = 0;
+    while (offset < 0x78) {
+        u16 slot_id = LD16(counter_array + offset);
+        if (slot_id == 0) {
+            ST16(counter_array + offset, new_id);
+            ST16(counter_array + offset + 2, 1);
+            return offset + 2;
+        }
+        if (slot_id == new_id) {
+            u16 count = LD16(counter_array + offset + 2);
+            ST16(counter_array + offset + 2, count + 1);
+            return offset + 2;
+        }
+        offset += 4;
+    }
+    return offset;  /* 0x78: array full, nothing matched */
+}
+
+Next sub_811FE48(void) {
+    R3 = register_counter_hit(R0, R5);
     RETURN_TO_CALLER();
 }
 

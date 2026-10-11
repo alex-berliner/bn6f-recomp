@@ -97,6 +97,90 @@ Next bg_drawTileStripTileBlock2_8126404(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8126430 ── */
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words(const u32 *src, u32 *dst, u32 count_u32) {
+    R0 = (u32)src;
+    R1 = (u32)dst;
+    R2 = count_u32;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static const void *get_chip_raw(s32 which_chip) {
+    R0 = (u32)which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return (const void *)R0;
+}
+
+/* sub_8126430:
+ *   Inputs:  r0 (slot index scale), r1 (chip-id table base), r2 (destination),
+ *            r3 (source for first copy), r4 (chip-data dest base),
+ *            r5/r6/r7 are loop-local in the original but our caller contract gives them in.
+ *   Behaviour: copies 0x38 bytes from r3 to r2, then walks 7 entries: each entry is a 4-byte
+ *   {u16 chip_id, u8 unused, u8 flag} at r1 + (r0<<2) + 4*idx; if chip_id==0 or flag!=0,
+ *   write 0 to {r2+8*idx, r2+8*idx+4}; else load chip and CopyWords(0x80) from
+ *   chip->field_0x20 into r4 + 0x80*idx.
+ *   The original preserves r4 across the call; r5/r6/r7 are loop-local in the assembly but
+ *   the contract says outputs are r4/r5/r6/r7, so we just pass them through unchanged.
+ */
+static void run_chip_row(u32 r0_in, u32 r1_in, u32 r2_in, u32 r3_in, u32 r4_in,
+                         u32 r5_in, u32 r6_in, u32 r7_in) {
+    (void)r5_in; (void)r6_in; (void)r7_in;
+
+    /* Stage 1: 0x38-byte copy from r3 to r2 (matches "mov r0,r3 / mov r1,r2 / mov r2,#0x38"). */
+    copy_words((const u32 *)r3_in, (u32 *)r2_in, 0x38u);
+
+    /* Stage 2: 7-iteration loop.
+     *   r5 = r1 + (r0 << 2)          (table walker)
+     *   r6 = r4                      (chip-data dest, += 0x80 each iteration)
+     *   r7 = 0..6                    (loop index)
+     *   r2 = output walker, += 8 each iteration
+     */
+    u32 r5 = r1_in + (r0_in << 2);
+    u32 r6 = r4_in;
+    u32 r7 = 0;
+    u32 r2 = r2_in;
+
+    for (; (s32)r7 < 7; r7 = r7 + 1) {
+        u16 slot_id = LD16(r5);
+        if (slot_id == 0) {
+            /* Chip slot empty: zero out the 8-byte output pair. */
+            ST32(r2, 0);
+            ST32(r2 + 4, 0);
+        } else if (LD8(r5 + 2) != 0) {
+            /* Slot's high byte set: also zero out the output pair. */
+            ST32(r2, 0);
+            ST32(r2 + 4, 0);
+        } else {
+            /* Slot has a chip: pull its data block (field 0x20) and copy 0x80 bytes into r6. */
+            const void *chip = get_chip_raw((s32)slot_id);
+            u32 chip_data_src = LD32((u32)chip + 0x20);
+            copy_words((const u32 *)chip_data_src, (u32 *)r6, 0x80u);
+        }
+
+        r5 = r5 + 4;
+        r6 = r6 + 0x80u;
+        r2 = r2 + 8;
+    }
+}
+
+Next sub_8126430(void) {
+    /* Thin adapter: read the inputs, do the work, write the outputs (r4/r5/r6/r7).
+     * The original preserves r4 and the loop uses r5/r6/r7 only internally; the caller
+     * contract lists r4..r7 as outputs, so we hand back the incoming values for them
+     * (r5/r6/r7 are loop-local and have no defined meaning to callers). */
+    u32 r0 = R0, r1 = R1, r2 = R2, r3 = R3, r4 = R4, r5 = R5, r6 = R6, r7 = R7;
+
+    run_chip_row(r0, r1, r2, r3, r4, r5, r6, r7);
+
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── bg_drawTileRegion2x14_8126484 ── */
 /* bg_drawTileRegion2x14_8126484(r0 = j, r1 = i, r2 = tileIds, r4 = ?, r5 = ?, r6, r7):
  * Draws a 2x14-tile region of a background at (j, i), using tile IDs taken
@@ -128,6 +212,54 @@ Next bg_drawTileRegion2x14_8126484(void) {
     R6 = savedR6;
     R7 = savedR7;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8126494 ── */
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_ptr(u32 which_chip) {
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* Fill 7 chip-info slots (each 0xC bytes) from 7 chips at baseAddr + chipIndex*4.
+ * For each chip index at cursor: if zero, clear the first three u32 fields (12 bytes)
+ * and the trailing u16 at offset 0xA.
+ * Otherwise load chip data, take byte 5, compute base + byte5*3 into the last three u16
+ * fields at offsets 6/8/0xA. The first three u16 fields (offsets 0, 2, 4) are zeroed. */
+static void fill_chip_slots(u32 chipIndex, u32 baseAddr, u32 slotAddr) {
+    const u32 tableBase = 0x8340;
+    u32 cursor = baseAddr + chipIndex * 4;
+    u32 out = slotAddr;
+    for (u32 i = 0; i < 7; i++) {
+        u16 idx = LD16(cursor);
+        if (idx == 0) {
+            ST32(out, 0);
+            ST32(out + 4, 0);
+            ST32(out + 8, 0);
+            ST16(out + 0xA, 0);
+        } else {
+            u32 chip = get_chip_ptr(idx);
+            u32 field5 = LD8(chip + 5);
+            u32 r4 = tableBase + field5 * 3;
+            ST16(out + 0, 0);
+            ST16(out + 2, 0);
+            ST16(out + 4, 0);
+            ST16(out + 6, (u16)r4);
+            r4 += 1;
+            ST16(out + 8, (u16)r4);
+            r4 += 1;
+            ST16(out + 0xA, (u16)r4);
+        }
+        cursor += 4;
+        out += 0xC;
+    }
+}
+
+/* sub_8126494(r0 = chipIndex, r1 = baseAddr, r2 = slotAddr) */
+Next sub_8126494(void) {
+    fill_chip_slots(R0, R1, R2);
     RETURN_TO_CALLER();
 }
 
@@ -274,6 +406,42 @@ Next sub_8126554(void) {
     R6 = saved_r6;
     R7 = saved_r7;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81265DC ── */
+/* register form: calls sub_8116FDC outside this file, which has no typed C interface yet */
+static void draw_row_cell(u32 x, u32 anim, u32 tile_offset) {
+    R0 = x;
+    R1 = anim;
+    R2 = tile_offset;
+    GUEST_CALL(sub_8116FDC);
+}
+
+/* Battle-row sprite setup: iterates r7 = 1, then 0. For each, the screen x is
+ * base[(r7<<2)] + ((battle_x - 0x100) << 3), clamped to >= -40 via up to two
+ * 0x120 wrap-arounds. Then blits the row sprite via sub_8116FDC at tile
+ * offset r4 (advancing 3 each iteration). */
+static void draw_battle_rows(u32 battle) {
+    u32 r4 = 4;
+    for (u32 r7 = 1; (s32)r7 >= 0; r7--) {
+        u32 base = LD32(A_off_812661C + (r7 << 2));
+        u32 coord = LD32(battle + 0x74);
+        u32 x_val = base + ((coord - 0x100u) << 3);
+        s32 threshold = (s32)0xFFFFFFD8u;  /* -40 */
+        if ((s32)x_val < threshold) {
+            x_val += 0x120u;
+            if ((s32)x_val < threshold)
+                x_val += 0x120u;
+        }
+        draw_row_cell(x_val, 0x1Bu, r4);
+        r4 += 3;
+    }
+}
+
+/* sub_81265DC(r4, r5, r6, r7, lr) -> r3 r4 r5 r6 r7 */
+Next sub_81265DC(void) {
+    draw_battle_rows(R5);
     RETURN_TO_CALLER();
 }
 
@@ -869,6 +1037,71 @@ static void pet_menu_screen_tick(u32 battle_state, u32 toolkit) {
 /* sub_8126FF0(r5 = battle_state ptr, r10 = toolkit ptr) -> (flags, r0-r4 from callees) */
 Next sub_8126FF0(void) {
     pet_menu_screen_tick(R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81270D0 ── */
+/* register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
+static u32 sub_811FB84_call(u32 src_addr, u32 size) {
+    R0 = src_addr;
+    R1 = size;
+    GUEST_CALL(sub_811FB84);
+    return R0;
+}
+
+/* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
+static void decompAndCopyData_call(u32 initRefs) {
+    R0 = initRefs;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+static void sub_8123300_call(u32 script_table, u32 dst, u32 decomp_buf) {
+    R0 = script_table;
+    R1 = dst;
+    R2 = decomp_buf;
+    GUEST_CALL(sub_8123300);
+}
+
+/* Build the unknown_20096E0 dispatch table by reading the per-entry header
+ * (a source/size pair from off_8127160), inflating it through sub_811FB84, and
+ * copying the 12 bytes that follow into the table. Then run the two
+ * decompAndCopyData initializers and finally sub_8123300 with the script list. */
+static void build_dispatch_table_and_init(void) {
+    u32 dst = A_unk_20096E0;
+    u32 src = A_off_8127160;
+    u32 dst_off = 0;
+    u32 src_off = 0;
+
+    while (src_off < 0x20) {
+        u32 src_addr = LD32(src + src_off);
+        src_off += 4;
+        u32 src_size = LD32(src + src_off);
+        src_off += 4;
+
+        u32 inflated = sub_811FB84_call(src_addr, src_size);
+        ST32(dst + dst_off, inflated);
+        dst_off += 4;
+
+        for (u32 i = 0; i < 2; i++) {
+            u32 v = LD32(src + src_off);
+            ST32(dst + dst_off, v);
+            dst_off += 4;
+            src_off += 4;
+        }
+    }
+    ST32(dst + dst_off, 0);
+
+    decompAndCopyData_call(A_unk_20096E0);
+    decompAndCopyData_call(A_byte_8127188);
+
+    sub_8123300_call(A_off_8127120, A_eTextScript201BF20, A_eDecompBuffer2013A00);
+}
+
+/* sub_81270D0: initialize the unknown_20096E0 dispatch table and the
+ * text-script/decompression tables used by the title screens. */
+Next sub_81270D0(void) {
+    build_dispatch_table_and_init();
     RETURN_TO_CALLER();
 }
 

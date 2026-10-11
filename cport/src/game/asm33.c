@@ -97,6 +97,76 @@ Next sub_812345C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_812349C ── */
+/* register form: calls sub_81237E0 outside this file, which has no typed C interface yet */
+static void call_sub_81237E0_sub_812349C(void) {
+    R0 = 0;
+    GUEST_CALL(sub_81237E0);
+}
+
+/* register form: calls chipFolder_initGfx_812386C outside this file, which has no typed C interface yet */
+static void call_chipFolder_initGfx_812386C_sub_812349C(void) {
+    GUEST_CALL(chipFolder_initGfx_812386C);
+}
+
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+static void call_sub_8046664_sub_812349C(void) {
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+static void call_sub_80465A0_sub_812349C(u32 a1) {
+    R0 = a1;
+    GUEST_CALL(sub_80465A0);
+}
+
+/* register form: calls sub_8123A80 outside this file, which has no typed C interface yet */
+static void call_sub_8123A80_sub_812349C(void) {
+    GUEST_CALL(sub_8123A80);
+}
+
+/* register form: calls sub_8123AB8 outside this file, which has no typed C interface yet */
+static void call_sub_8123AB8_sub_812349C(void) {
+    GUEST_CALL(sub_8123AB8);
+}
+
+/* register form: calls sub_81352A0 outside this file, which has no typed C interface yet */
+static void call_sub_81352A0_sub_812349C(u32 a1, u32 a2, u32 a3, u32 a4, u32 a5) {
+    R0 = a1; R1 = a2; R2 = a3; R3 = a4; R4 = a5;
+    GUEST_CALL(sub_81352A0);
+}
+
+/* register form: calls sub_8135314 outside this file, which has no typed C interface yet */
+static void call_sub_8135314_sub_812349C(u32 a1, u32 a2, u32 a3, u32 a4, u32 a5) {
+    R0 = a1; R1 = a2; R2 = a3; R3 = a4; R4 = a5;
+    GUEST_CALL(sub_8135314);
+}
+
+/* register form: calls sub_8123D24 outside this file, which has no typed C interface yet */
+static void call_sub_8123D24_sub_812349C(void) {
+    GUEST_CALL(sub_8123D24);
+}
+
+/* Initialize the chip folder graphics: zero a flag, build the GFX, the chip
+ * handler, the panel layout (two sub_8135xxx calls using the window-pane data
+ * at unk_201D220), and finalize the screen setup. */
+static void chip_folder_init_gfx(void) {
+    call_sub_81237E0_sub_812349C();
+    call_chipFolder_initGfx_812386C_sub_812349C();
+    call_sub_8046664_sub_812349C();
+    call_sub_80465A0_sub_812349C(A_byte_8123400);
+    call_sub_8123A80_sub_812349C();
+    call_sub_8123AB8_sub_812349C();
+    call_sub_81352A0_sub_812349C(A_unk_201D220, A_byte_81233D8, 0x9D, 0x48, 4);
+    call_sub_8135314_sub_812349C(A_unk_201D220, A_off_81234FC, 0x9D, 0x48, A_byte_8123508);
+    call_sub_8123D24_sub_812349C();
+}
+
+Next sub_812349C(void) {
+    chip_folder_init_gfx();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8123558 ── */
 /* register form: calls sub_8123BC0 outside this file, which has no typed C interface yet */
 static void call_8123bc0(void) {
@@ -444,6 +514,42 @@ Next sub_812368C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81237BC ── */
+/* register form: stack-saved lr is needed across the frame's helper calls (original `push {lr}` / `pop {pc}`); no typed C equivalent. */
+static u32 pet_menu_frame(void) {
+    SP -= 4;
+    ST32(SP, LR);
+
+    /* register form: calls sub_8123A50 outside this file, which has no typed C interface yet */
+    GUEST_CALL(sub_8123A50);
+    /* register form: calls sub_8123C98 outside this file, which has no typed C interface yet */
+    GUEST_CALL(sub_8123C98);
+    /* register form: calls sub_8123E58 outside this file, which has no typed C interface yet */
+    GUEST_CALL(sub_8123E58);
+    /* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+    /* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+    GUEST_CALL(sub_80465F8);
+    /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        /* register form: calls pet_menuExitToMap_811F708 outside this file, which has no typed C interface yet */
+        GUEST_CALL(pet_menuExitToMap_811F708);
+    }
+
+    u32 ret = LD32(SP);
+    SP += 4;
+    return ret;
+}
+
+/* Pet menu's per-frame main loop: tick the menu's own update helpers, run the
+ * entity update pass, then either keep going or exit back to the field map once
+ * any screen fade has finished. */
+Next sub_81237BC(void) {
+    LR = pet_menu_frame();
+    RETURN_TO_CALLER();
+}
+
 /* ── chipFolder_initGfx_812386C ── */
 /* Register form: calls sub_811FB84 outside this file, which has no typed C interface yet */
 static u32 resolve_decomp_pointer(u32 source, u32 size) {
@@ -521,6 +627,95 @@ static void chipFolder_initGfx(void) {
 /* chipFolder_initGfx_812386C -> r2/r3 from last CopyBackgroundTiles, r4-r7 preserved */
 Next chipFolder_initGfx_812386C(void) {
     chipFolder_initGfx();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8123A50 ── */
+/* Values that the original loaded from the literal pool at 0x08123A6C..0x08123A7C. */
+#define SUB_811FA98_ARG0 0x00DA003Du
+#define SUB_811FA98_ARG1 0x00020002u
+#define SUB_811FA98_ARG2 0x1Eu
+#define SUB_811FA98_ARG4 5u
+#define SUB_811FA98_ARG6 0x0C24Cu
+#define SUB_811FA98_ARG7 0x46u
+/* Lookup table at 0x08123A7C: word 0x382E24, used as a base for one byte. */
+#define SUB_8123A50_TABLE 0x08123A7Cu
+
+/* Play the "battle chip use" entry sound for the chip identified by the
+ * object at oBattleObject_Alliance. Reads one byte of state, indexes a small
+ * ROM table with it to get a halfword offset, pulls a 16-bit sample id from
+ * the chip record at that offset, and hands it (with the rest of the args
+ * loaded from the literal pool) to the sound driver sub_811FA98. */
+static void play_chip_use_sound(u32 r5)
+{
+    u8 state_byte = LD8(r5 + 0xC);
+    u8 offset_byte = LD8(SUB_8123A50_TABLE + state_byte);
+    u16 sample_id = LD16(r5 + offset_byte);
+
+    /* register form: calls sub_811FA98 outside this file, which has no typed C interface yet */
+    R0 = SUB_811FA98_ARG0;
+    R1 = SUB_811FA98_ARG1;
+    R2 = SUB_811FA98_ARG2;
+    R3 = sample_id;
+    R4 = SUB_811FA98_ARG4;
+    R5 = r5;
+    R6 = SUB_811FA98_ARG6;
+    R7 = SUB_811FA98_ARG7;
+    GUEST_CALL(sub_811FA98);
+}
+
+Next sub_8123A50(void) {
+    /* The contract requires r4..r7 to be preserved across the call.
+     * Restore them from the input values after sub_811FA98 has run. */
+    u32 r4_in = R4, r5_in = R5, r6_in = R6, r7_in = R7;
+
+    play_chip_use_sound(R5);
+
+    R4 = r4_in;
+    R5 = r5_in;
+    R6 = r6_in;
+    R7 = r7_in;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8123A80 ── */
+/* Game state pointers used by sub_8123A80. */
+#define gBattleFieldState A_unk_201D220
+#define gBattleOrderList   A_unk_20343E0
+
+/* register form: calls sub_811FCB8 outside this file, which has no typed C interface yet */
+static void call_sub_811FCB8(u32 slot, u32 field_state, u32 one, u32 order_list) {
+    R0 = slot;
+    R1 = field_state;
+    R2 = one;
+    R3 = order_list;
+    GUEST_CALL(sub_811FCB8);
+}
+
+/* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static u8 navi_stats_byte(u32 navi_id, u32 stat_index) {
+    R0 = navi_id;
+    R1 = stat_index;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (u8)R0;
+}
+
+/* Refresh a chip-use record: stamp the battle field/order list with the current
+ * PET navi's slot id, then store the sum of the Atk-byte and Next-byte stats
+ * for that navi into the +0x64 field of the chip-use struct passed in r5. */
+static void refresh_chip_stats(u32 me_addr) {
+    u8 slot = LD8(me_addr + 0xC);
+    call_sub_811FCB8(slot, gBattleFieldState, 1, gBattleOrderList);
+
+    u32 stat_index = (u32)slot * 2u + 0x56u;
+    u8 navi_id = LD8(me_addr + 0x14);
+    u8 atk  = navi_stats_byte(navi_id, stat_index);
+    u8 next = navi_stats_byte(navi_id, stat_index + 1u);
+    ST32(me_addr + 0x64, (u32)atk + (u32)next);
+}
+
+Next sub_8123A80(void) {
+    refresh_chip_stats(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1349,6 +1544,299 @@ Next sub_8124D30(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8124DCC ── */
+/* sub_8124DCC: shield/sprite update for a boss or boss component.
+ * Reads/writes fields on the struct whose address is passed in R5, refreshes
+ * a few sprite halfword slots, and calls the related update routines. */
+
+#define kShotSprite_HP          0x74
+#define kShotSprite_State       0x02
+#define kShotSprite_DrawFlag    0x70
+#define kShotSprite_PtrA        0x58
+#define kShotSprite_Halfword_12 0x12
+#define kShotSprite_Ptr60       0x60
+#define kShotSprite_Halfword_26 0x26
+#define kShotSprite_Ptr5C       0x5C
+#define kShotSprite_Halfword_1C 0x1C
+
+#define SHIELD_MIN_HP     0x7C
+#define SHIELD_LOCK_HP    0x86
+#define SHIELD_LOCK_STATE 0x18
+#define SHIELD_DRAW_ON    0xFF
+
+#define SPECIAL_HP        5
+#define SPECIAL_PTR       0x27
+
+#define SLOT_HP_FRAME     4
+#define SLOT_STATE_FRAME  7
+
+/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+static void call_sub_8126818_sub_8124DCC(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8126818);
+}
+
+/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+static void call_sub_8125444_sub_8124DCC(void) {
+    GUEST_CALL(sub_8125444);
+}
+
+/* register form: calls sub_8125D94 outside this file, which has no typed C interface yet */
+static void call_sub_8125D94_sub_8124DCC(void) {
+    GUEST_CALL(sub_8125D94);
+}
+
+/* register form: calls sub_8125E78 outside this file, which has no typed C interface yet */
+static void call_sub_8125E78(void) {
+    GUEST_CALL(sub_8125E78);
+}
+
+/* register form: calls sprite_setStructHalfwordPairOnThree_8117084 outside this file,
+ * which has no typed C interface yet */
+static void set_sprite_halfword_pair_sub_8124DCC(u32 ptr, u16 hw, u32 slot) {
+    R0 = ptr;
+    R1 = hw;
+    R2 = slot;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+}
+
+/* Shield sprite update. Operates on the struct whose guest address is in R5.
+ * Logic mirrors the original: take 2 from the HP field, clamp it to the minimum
+ * (with the lock-state side effect), force the draw flag on, run the three
+ * update routines, then refresh the halfword slots on the sprite.
+ *
+ * Note: the original treats R5 as a register form across the whole function,
+ * but the field offsets and the call setup make it cleaner to pass the struct
+ * pointer as a typed parameter and read it back into R5 around the outside
+ * calls -- the only place that *needs* R5 is the GUEST_CALL helpers below. */
+static void run_shield_sprite_update(u32 struct_ptr) {
+    /* register form: stack buffer whose guest address is held in R5 across
+     * the outside calls below; we keep R5 in sync with our typed pointer. */
+    R5 = struct_ptr;
+
+    call_sub_8126818_sub_8124DCC(0);
+
+    R5 = struct_ptr;
+    u32 hp = LD32(R5 + kShotSprite_HP) - 2;
+    ST32(R5 + kShotSprite_HP, hp);
+    if ((s32)hp <= (s32)SHIELD_MIN_HP) {
+        ST32(R5 + kShotSprite_HP, SHIELD_MIN_HP);
+        ST8(R5 + kShotSprite_State, SHIELD_LOCK_STATE);
+    }
+
+    R5 = struct_ptr;
+    ST32(R5 + kShotSprite_DrawFlag, SHIELD_DRAW_ON);
+
+    R5 = struct_ptr;
+    call_sub_8125444_sub_8124DCC();
+    R5 = struct_ptr;
+    call_sub_8125D94_sub_8124DCC();
+    R5 = struct_ptr;
+    call_sub_8125E78();
+
+    /* Slot 4: pointer + halfword. If HP is at or below the lock threshold the
+     * defaults kick in (pointer from +0x60, halfword cleared to 0); only when
+     * the pointer is the expected sentinel does the alternate halfword get
+     * substituted in. */
+    R5 = struct_ptr;
+    u32 ptr_a  = LD32(R5 + kShotSprite_PtrA);
+    u16 hw_a   = LD16(R5 + kShotSprite_Halfword_12);
+    u32 hp_now = LD32(R5 + kShotSprite_HP);
+    if ((s32)hp_now <= (s32)SHIELD_LOCK_HP) {
+        hw_a  = 0;
+        ptr_a = LD32(R5 + kShotSprite_Ptr60);
+        if (ptr_a == SPECIAL_HP) {
+            hw_a = LD16(R5 + kShotSprite_Halfword_26);
+        }
+    }
+    set_sprite_halfword_pair_sub_8124DCC(ptr_a, hw_a, SLOT_HP_FRAME);
+
+    /* Slot 7: same pattern with the state pointer. */
+    R5 = struct_ptr;
+    u32 ptr_b = LD32(R5 + kShotSprite_Ptr5C);
+    u16 hw_b  = 0;
+    if (ptr_b == SPECIAL_PTR) {
+        hw_b = LD16(R5 + kShotSprite_Halfword_1C);
+    }
+    set_sprite_halfword_pair_sub_8124DCC(ptr_b, hw_b, SLOT_STATE_FRAME);
+}
+
+Next sub_8124DCC(void) {
+    run_shield_sprite_update(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8124E7C ── */
+/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+static void sub_8126818_helper(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8126818);
+}
+
+/* register form: calls sub_811983C outside this file, which has no typed C interface yet */
+static void sub_811983C_helper(u32 arg0, u32 arg1) {
+    R0 = arg0;
+    R1 = arg1;
+    GUEST_CALL(sub_811983C);
+}
+
+/* register form: calls sub_8125678 outside this file, which has no typed C interface yet */
+static void sub_8125678_helper(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8125678);
+}
+
+/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+static void sub_8125444_helper(void) {
+    GUEST_CALL(sub_8125444);
+}
+
+/* register form: calls sub_8125E78 outside this file, which has no typed C interface yet */
+static void sub_8125E78_helper(void) {
+    GUEST_CALL(sub_8125E78);
+}
+
+/* register form: calls sub_8126524 outside this file, which has no typed C interface yet */
+static void sub_8126524_helper(void) {
+    GUEST_CALL(sub_8126524);
+}
+
+/* register form: calls sprite_setStructHalfwordPairOnThree_8117084 outside this file, which has no typed C interface yet */
+static void sprite_setStructHalfwordPairOnThree_8117084_helper(u32 arg0, u32 arg1, u32 arg2) {
+    R0 = arg0;
+    R1 = arg1;
+    R2 = arg2;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+}
+
+/* register form: calls sub_812674C outside this file, which has no typed C interface yet */
+static void sub_812674C_helper(void) {
+    GUEST_CALL(sub_812674C);
+}
+
+/* register form: calls sub_81267A8 outside this file, which has no typed C interface yet */
+static void sub_81267A8_helper(void) {
+    GUEST_CALL(sub_81267A8);
+}
+
+/* Stage-2 initialization for the sprite struct at `obj` (R5 in the original). */
+static void stage2_init_battle_state(void *obj) {
+    u32 addr = (u32)obj;
+    u32 state = LD32(addr + 0x60);
+    u32 anim  = LD32(addr + 0x5C);
+
+    /* reset / register hook-ups */
+    sub_8126818_helper(0);
+    sub_811983C_helper(2, 1);
+
+    /* initialize the per-instance copy fields from their source fields */
+    ST8(addr + 0x0D, 2);
+    ST16(addr + 0x2A, LD16(addr + 0x28));
+    ST16(addr + 0x2E, LD16(addr + 0x2C));
+
+    /* rest of the stage-2 bring-up sequence */
+    sub_8125678_helper(0x14);
+    sub_8125444_helper();
+    sub_8125E78_helper();
+    sub_8126524_helper();
+
+    /* pair (state, src) on slot 4 -- fall back to field_0x26 only when state == 5 */
+    sprite_setStructHalfwordPairOnThree_8117084_helper(
+        state, state == 5 ? LD16(addr + 0x26) : 0, 4);
+
+    /* pair (anim, src) on slot 7 -- fall back to field_0x1c only when anim == 0x27 */
+    sprite_setStructHalfwordPairOnThree_8117084_helper(
+        anim, anim == 0x27 ? LD16(addr + 0x1C) : 0, 7);
+
+    sub_812674C_helper();
+    sub_81267A8_helper();
+}
+
+/* sub_8124E7C: THUMB 0x08124E7C. Operates on the sprite struct addressed by R5. */
+Next sub_8124E7C(void) {
+    stage2_init_battle_state((void *)R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812509C ── */
+/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+static void sub_8126818_reg(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8126818);
+}
+
+/* register form: calls sub_8125784 outside this file, which has no typed C interface yet */
+static void sub_8125784_reg(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8125784);
+}
+
+/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+static void sub_8125444_reg(void) {
+    GUEST_CALL(sub_8125444);
+}
+
+/* register form: calls sub_8126184 outside this file, which has no typed C interface yet */
+static void sub_8126184_reg(void) {
+    GUEST_CALL(sub_8126184);
+}
+
+/* register form: calls sub_8126114 outside this file, which has no typed C interface yet */
+static void sub_8126114_reg(void) {
+    GUEST_CALL(sub_8126114);
+}
+
+/* register form: calls sub_8126554 outside this file, which has no typed C interface yet */
+static void sub_8126554_reg(void) {
+    GUEST_CALL(sub_8126554);
+}
+
+/* register form: calls sub_812674C outside this file, which has no typed C interface yet */
+static void sub_812674C_reg(void) {
+    GUEST_CALL(sub_812674C);
+}
+
+/* register form: calls sub_81267A8 outside this file, which has no typed C interface yet */
+static void sub_81267A8_reg(void) {
+    GUEST_CALL(sub_81267A8);
+}
+
+/* register form: calls sub_81267F0 outside this file, which has no typed C interface yet */
+static void sub_81267F0_reg(void) {
+    GUEST_CALL(sub_81267F0);
+}
+
+/* Initialize battle-state fields on the object pointed to by R5, then run the
+ * appropriate intro branch (sub_8126184 vs sub_8126114) based on a flag word,
+ * finishing with the standard post-intro calls. */
+static void do_battle_intro(u32 obj_ptr) {
+    u32 obj = obj_ptr;
+    sub_8126818_reg(1);
+
+    ST8(obj + 0x0D, 4);
+    ST16(obj + 0x3E, LD16(obj + 0x3C));
+    ST16(obj + 0x42, LD16(obj + 0x40));
+
+    sub_8125784_reg(0x28);
+    sub_8125444_reg();
+
+    if (LD32(obj + 0x64) != 0) {
+        sub_8126114_reg();
+    } else {
+        sub_8126184_reg();
+    }
+
+    sub_8126554_reg();
+    sub_812674C_reg();
+    sub_81267A8_reg();
+    sub_81267F0_reg();
+}
+
+Next sub_812509C(void) {
+    do_battle_intro(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81250E0 ── */
 /* Run five battle sub-updates, then check if a screen fade is active.
  * If active: write 8 to [ptr+1] and output r0=8 (flags N=0,Z=0 from MOV).
@@ -1573,6 +2061,245 @@ Next initRefs_buildAndDecompressTable_8125280(void) {
     R0 = A_byte_8125368;
     GUEST_CALL(decompAndCopyData);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8125594 ── */
+/* Joypad struct layout. */
+#define oToolkit_JoypadPtr_sub_8125594      4
+#define oJoypad_Pressed         2
+#define oJoypad_Held            4
+#define JOYPAD_START            0x08
+#define JOYPAD_B_sub_8125594                0x02
+#define DIRS_LR                 0x0300
+#define DIRS_MASK               0x00C0
+
+/* State object offsets (pointed to by r5). */
+#define oState_Flags2           2
+#define oState_Something12      0x12
+#define oState_LastJoypadPtr    0x70
+
+#define SOUND_MENU_EXIT         0x34
+
+/* register form: calls menu_confirmExitAndFade_812580C outside this file,
+ * which has no typed C interface yet */
+static void menu_confirm_exit_and_fade(u32 arg0) {
+    R0 = arg0;
+    GUEST_CALL(menu_confirmExitAndFade_812580C);
+}
+
+/* register form: calls playSoundEffect_7A_81258E8 outside this file,
+ * which has no typed C interface yet */
+static void play_sound_effect_7a(void) {
+    GUEST_CALL(playSoundEffect_7A_81258E8);
+}
+
+/* register form: calls sub_8125820 outside this file, which has no typed C interface yet */
+static void sub_8125820_call(u32 r0_arg, u32 r1_arg, u32 r2_arg) {
+    R0 = r0_arg;
+    R1 = r1_arg;
+    R2 = r2_arg;
+    GUEST_CALL(sub_8125820);
+}
+
+/* Start/D-pad handler for this screen.
+ *  state_obj   r5  -- state struct
+ *  r0_scratch  r0  -- preserved into r8 by the original
+ *  toolkit     r10 -- read only for the JoypadPtr field
+ *
+ * Behaviour tree:
+ *   - Pressed Start or B               -> confirm-exit menu, then fade
+ *   - Held has bit 0x10 (up)           -> write 4 to state+2, play sound 0x7A
+ *   - Else, only if state+0x12 != 0:
+ *       * Held has side dirs (0x300)   -> clear those bits from Held (and bits 0xC0
+ *                                         are not part of the cleared mask here),
+ *                                         call sub_8125820(layer 7, arg 0);
+ *                                         remember joypad snapshot
+ *       * Pressed has side dirs        -> ignore
+ *       * Held has bits 0xC0           -> call sub_8125820(Held, 7, 0);
+ *                                         remember joypad snapshot
+ */
+static void handle_start_and_dpad(u8 *state_obj, u32 r0_scratch, u32 toolkit) {
+    u32 *joypad_ptr = (u32 *)LD32(toolkit + oToolkit_JoypadPtr_sub_8125594);
+    u32 joypad_snapshot = (u32)joypad_ptr;
+    u16 pressed = LD16(joypad_snapshot + oJoypad_Pressed);
+    u16 held    = LD16(joypad_snapshot + oJoypad_Held);
+
+    (void)r0_scratch;
+
+    /* Start or B. */
+    if (pressed & (JOYPAD_START | JOYPAD_B_sub_8125594)) {
+        menu_confirm_exit_and_fade(SOUND_MENU_EXIT);
+        return;
+    }
+
+    /* Held-up. */
+    if (held & 0x10) {
+        ST8(state_obj + oState_Flags2, 4);
+        play_sound_effect_7a();
+        return;
+    }
+
+    if (LD16(state_obj + oState_Something12) == 0)
+        return;
+
+    /* Re-read Held/Held for the dpad branch (matches the two ldrh loads). */
+    held    = LD16(joypad_snapshot + oJoypad_Held);
+    pressed = LD16(joypad_snapshot + oJoypad_Pressed);
+
+    if (held & DIRS_LR) {
+        u32 r0_arg = held & ~0xC0;
+        sub_8125820_call(r0_arg, 7, 0);
+        ST32(state_obj + oState_LastJoypadPtr, joypad_snapshot);
+        return;
+    }
+
+    if (pressed & DIRS_LR)
+        return;
+
+    if (held & DIRS_MASK) {
+        sub_8125820_call(held, 7, 0);
+        ST32(state_obj + oState_LastJoypadPtr, joypad_snapshot);
+    }
+}
+
+Next sub_8125594(void) {
+    /* The original does "mov r8, r0" first thing; preserve the caller's r0 in r8. */
+    R8 = R0;
+    handle_start_and_dpad((u8 *)R5, R0, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8125784 ── */
+/* Joypad bit masks used by the battle input handler. */
+enum {
+    JOYPAD_START_BIT = 0x08,
+    JOYPAD_B_BIT     = 0x02,
+    JOYPAD_SB_BITS   = 0x0A,
+};
+
+/* Codes passed to menu_confirmExitAndFade_812580C. */
+enum { CODE_CONFIRM_EXIT_FADE_B = 0x44 };
+
+/* State bytes written to the battle object's field at oBattleObj+2. */
+enum {
+    BOBJ_STATE_FRIEND_SELECTED_B = 0x4C,
+    BOBJ_STATE_ENEMY_SELECTED_B  = 0x2C,
+};
+
+/* Offsets within the joypad structure (matches the asm's [r7,#2], [r7], [r7,#4]). */
+enum {
+    JOY_PRESSED_OFF = 0x02,
+    JOY_HELD2_OFF   = 0x04,
+};
+
+/* Offsets within the battle object. */
+enum {
+    BOBJ_U32_AT_64 = 0x64,
+    BOBJ_U8_STATE  = 0x02,
+    BOBJ_U32_AT_68 = 0x68,
+    BOBJ_U16_AT_3A = 0x3A,
+    BOBJ_PTR_AT_70 = 0x70,
+};
+
+/* Bit masks for held/pressed checks against the joypad word. */
+enum {
+    DPAD_OR_AB_MASK = 0x300,
+    AB_BITS_MASK    = 0x0C0,
+    SELECT_BIT      = 0x20,
+};
+
+/* register form: calls menu_confirmExitAndFade_812580C outside this file, which has no typed C interface yet */
+static void menu_confirm_exit_and_fade_b(u32 code) {
+    R0 = code;
+    GUEST_CALL(menu_confirmExitAndFade_812580C);
+}
+
+/* register form: calls sub_81266E0 outside this file, which has no typed C interface yet */
+static void call_sub_81266E0_b(void) {
+    GUEST_CALL(sub_81266E0);
+}
+
+/* register form: calls playSoundEffect_7A_81258E8 outside this file, which has no typed C interface yet */
+static void play_sound_effect_7A_b(void) {
+    GUEST_CALL(playSoundEffect_7A_81258E8);
+}
+
+/* register form: calls sub_8125820 outside this file, which has no typed C interface yet */
+static void call_sub_8125820_b(u32 r0_in, u32 r1_in, u32 r2_in) {
+    R0 = r0_in;
+    R1 = r1_in;
+    R2 = r2_in;
+    GUEST_CALL(sub_8125820);
+}
+
+/* Per-frame battle-style input dispatcher. Behaviour-identical to sub_8125784.
+ *   held        -> r0/r8 (r8 in the original is just a stashed copy, returned).
+ *   battle_obj  -> r5 (must end unchanged; we never write to the live R5).
+ *   code_param  -> r2 (not consulted on the paths that reach a return).
+ *   joypad_ptr  -> r10 / r7-after-load (must end unchanged).
+ * Returns the r8 value (= r0), which the adapter writes into R8. */
+static u32 battle_input_tick_b(u32 held, u32 battle_obj, u32 code_param, u32 joypad_ptr) {
+    (void)code_param;
+
+    u32  joy        = LD32(joypad_ptr + oToolkit_JoypadPtr);
+    u32  pressed    = LD16(joy + JOY_PRESSED_OFF);
+    u32  r8_out     = held; /* r8 is set from r0 at entry and left unchanged thereafter. */
+
+    /* Start+B on the pressed word: confirm-exit dialog. */
+    if ((pressed & JOYPAD_SB_BITS) != 0) {
+        menu_confirm_exit_and_fade_b(CODE_CONFIRM_EXIT_FADE_B);
+        return r8_out;
+    }
+
+    /* Bit 0 of pressed: hand off to sub_81266E0. */
+    if ((pressed & 1u) != 0) {
+        call_sub_81266E0_b();
+        return r8_out;
+    }
+
+    u32 held_now = LD16(joy + JOY_HELD2_OFF);
+
+    /* Select held: pick one of two state bytes, then play a SFX. */
+    if ((held_now & SELECT_BIT) != 0) {
+        u32 unknown64 = LD32(battle_obj + BOBJ_U32_AT_64);
+        u8  next_state = (unknown64 == 0) ? (u8)BOBJ_STATE_FRIEND_SELECTED_B
+                                          : (u8)BOBJ_STATE_ENEMY_SELECTED_B;
+        ST8(battle_obj + BOBJ_U8_STATE, next_state);
+        play_sound_effect_7A_b();
+        return r8_out;
+    }
+
+    /* The cursor-block branch runs only when the cursor word is non-zero. */
+    u32 cursor_word = LD32(battle_obj + BOBJ_U32_AT_68);
+    if (cursor_word == 0) {
+        return r8_out;
+    }
+
+    /* Save the previous field at +0x3A, install the cursor word there, then
+     * re-read held/pressed and dispatch if either D-pad-on or held-AB-without-
+     * recent-D-pad holds. Finally restore the original +0x3A word. */
+    u16 prev_word3a   = LD16(battle_obj + BOBJ_U16_AT_3A);
+    ST16(battle_obj + BOBJ_U16_AT_3A, (u16)cursor_word);
+
+    u32 held_fresh  = LD16(joy + JOY_HELD2_OFF);
+    u32 pressed_now = LD16(joy + 0x0); /* held-base (the asm uses ldrh r1, [r7]) */
+
+    if ((held_fresh & DPAD_OR_AB_MASK) != 0) {
+        u32 cleaned = held_fresh & ~AB_BITS_MASK;
+        call_sub_8125820_b(cleaned, 7, 0);
+        ST32(battle_obj + BOBJ_PTR_AT_70, joy);
+    } else if (((pressed_now & DPAD_OR_AB_MASK) == 0) && ((held_fresh & AB_BITS_MASK) != 0)) {
+        call_sub_8125820_b(held_fresh, 7, 0);
+        ST32(battle_obj + BOBJ_PTR_AT_70, joy);
+    }
+
+    ST16(battle_obj + BOBJ_U16_AT_3A, prev_word3a);
+    return r8_out;
+}
+
+Next sub_8125784(void) {
+    R8 = battle_input_tick_b(R0, R5, R2, R10);
     RETURN_TO_CALLER();
 }
 
