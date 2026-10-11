@@ -46,6 +46,7 @@ The difftest is built once per run from the last commit (build-wf-worktrees/benc
 import argparse
 import json
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -526,6 +527,32 @@ def summary(names: list[str], tsv: Path | None) -> str:
         count = Counter((won[(run, f, arms[0])], won[(run, f, other)]) for run, f in keys)
         lines.append(f"| {arms[0]} / {other} | {count[(True, True)]} | {count[(True, False)]} | {count[(False, True)]} "
                      f"| {count[(False, False)]} |")
+    listed = [p for p in pairs if p.won is None and "failing" in p.rounds[-1] and ARMS.get(p.arm, ARMS["typed"]).live]
+    if listed:
+        lines += ["", "Every failing check of those last rounds (a typed-2 report lists them all):", "",
+                  "| arm | rounds | " + " | ".join(kind for kind, _ in farm.SECTIONS) + " | only the register check |",
+                  "|---|---|" + "---|" * (len(farm.SECTIONS) + 1)]
+        for arm in arms:
+            mine = [p.rounds[-1]["failing"] for p in listed if p.arm == arm]
+            if mine:
+                lines.append(f"| {arm} | {len(mine)} | " + " | ".join(str(sum(kind in f for f in mine)) for kind, _ in farm.SECTIONS)
+                             + f" | {sum(f == ['registers'] for f in mine)} |")
+    handed = [p for p in pairs if ARMS.get(p.arm, ARMS["typed"]).live and p.rounds]
+    if handed:
+        def start(p: Pair) -> str:
+            given = p.rounds[0].get("handed")
+            if not given:
+                return "nothing (the first prompt)"
+            return re.sub(r"[0-9]+ of [0-9]+", "N of M", str(given["verdict"]).split(";")[0].split(" (")[0])
+        lines += ["", "What round 0 started from (the hand-over: another model's best earlier attempt, as today's test "
+                  "sees it) and how those attempts ended:", "",
+                  "| arm | round 0 started from | attempts | passed in round 0 | passed after the repair |", "|---|---|---|---|---|"]
+        for arm in arms:
+            kinds = Counter(start(p) for p in handed if p.arm == arm)
+            for kind, n in kinds.most_common():
+                ps = [p for p in handed if p.arm == arm and start(p) == kind]
+                lines.append(f"| {arm} | {kind} | {n} | {sum(p.won == 0 for p in ps)} | "
+                             f"{sum(p.won is not None for p in ps)} |")
     lines += ["", "By how the function was chosen (passed after the repair / attempts):", "",
               "| arm | " + " | ".join(kinds := sorted({p.chosen_as for p in pairs})) + " |", "|---|" + "---|" * len(kinds)]
     for arm in arms:

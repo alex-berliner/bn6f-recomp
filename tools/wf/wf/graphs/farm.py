@@ -183,7 +183,8 @@ def test_reply(given: TestInput) -> TestOutput:
     prompt), and log the round as farm.py does."""
     latest = given.attempts[-1]
     test = (test_candidate(given.context, latest.reply.candidate, given.snapshots, given.difftest,
-                           check_registers=given.prompt.checks_registers)
+                           check_registers=given.prompt.checks_registers,
+                           first_failure_only=given.prompt.first_failure_only)
             if latest.reply.candidate is not None else None)
     log_round(given.context.function, latest.reply.model or given.model, latest.round_number, latest.reply, test,
               given.difftest, given.prompt)

@@ -645,8 +645,11 @@ def write_accepted(outcome: Outcome, started: float, from_retests: set[Path]) ->
     function, chosen = outcome.function, outcome.best
     if chosen is None or chosen.verdict is not Verdict.PASSED:
         return outcome
+    # as the farm keeps a passing candidate: with the generated wrappers it calls and the tool's register-form
+    # notes (a typed-2 candidate calls call_NAME wrappers its own code does not define)
+    code = cast(str, FARM.finished(function.name, chosen.candidate.code)).strip()  # pyright: ignore[reportAny]
     existing = sorted(ACCEPTED_DIR.glob(f"{function.name}.*.c"))
-    earlier = [p for p in existing if p in from_retests and p.read_text().strip() == chosen.candidate.code.strip()]
+    earlier = [p for p in existing if p in from_retests and p.read_text().strip() in (code, chosen.candidate.code.strip())]
     if earlier:
         return outcome.model_copy(update={"written": earlier[0]})
     if existing:
@@ -659,7 +662,7 @@ def write_accepted(outcome: Outcome, started: float, from_retests: set[Path]) ->
     path = ACCEPTED_DIR / f"{function.name}.{chosen.candidate.model}.c"
     try:
         with open(path, "x") as out:
-            _ = out.write(chosen.candidate.code.strip() + "\n")
+            _ = out.write(code + "\n")
     except FileExistsError:
         return outcome
     return outcome.model_copy(update={"written": path, "written_now": True})

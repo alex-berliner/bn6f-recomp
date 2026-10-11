@@ -46,6 +46,12 @@ class PromptKind(Enum):
     def checks_registers(self) -> bool:
         return self is PromptKind.TYPED
 
+    @property
+    def first_failure_only(self) -> bool:
+        """The old prompt keeps the test the benchmark's old arm ran: typed-1's, which reports only the first
+        failing check (farm.test(..., legacy=True)); the typed prompt's reports every problem."""
+        return self is PromptKind.OLD
+
 
 # A model's candidates under another prompt than the typed one carry the prompt in their model tag, so every
 # consumer of tools/convert/log and tools/convert/accepted tells them apart: FUNC.minimax_MiniMax-M3+old.c.
@@ -235,7 +241,7 @@ def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool 
 
 
 def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots: SnapshotDir,
-                   difftest: Path, check_registers: bool = True) -> CandidateTest:
+                   difftest: Path, check_registers: bool = True, first_failure_only: bool = False) -> CandidateTest:
     """farm.py's acceptance test: compiles, not lifted style, matches the lifted original
     on the captured calls (some compared) and on random inputs; and (CHECK_REGISTERS) uses guest
     registers only in thin adapters and noted helpers."""
@@ -244,7 +250,8 @@ def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots:
     with tempfile.TemporaryDirectory() as workdir:
         try:
             passed, report = cast(tuple[bool, str], _farm.test(context.function, candidate, str(snapshots),  # pyright: ignore[reportAny]
-                                                               contract, workdir, check_registers=check_registers))
+                                                               contract, workdir, check_registers=check_registers,
+                                                               legacy=first_failure_only))
         except subprocess.TimeoutExpired:
             return CandidateTest(passed=False, report=ToolMessage("difftest timed out (900 s)"))
     return CandidateTest(passed=passed, report=ToolMessage(report))

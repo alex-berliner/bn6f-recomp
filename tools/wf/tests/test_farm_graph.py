@@ -70,6 +70,7 @@ def test_a_typed_candidate_is_kept_finished(monkeypatch: pytest.MonkeyPatch, tmp
     _ = farm_run(tmp_path)
 
     assert calls.kept == ["finished: Next leafFunction(void) { RETURN_TO_CALLER(); }"]
+    assert calls.first_failure_only == [False]                                     # every problem reported
 
 
 def test_out_of_rounds_gives_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -173,6 +174,7 @@ def test_the_old_prompt_is_its_own_pair_without_the_register_check(monkeypatch: 
     assert calls == ["first old", "first old"]
     assert calls.register_checks == [False, False] and calls.filed == ["cheap/model+old"] * 2
     assert calls.earlier_asked == 0 and not calls.kept[0].startswith("finished")   # no hand-over, kept as written
+    assert calls.first_failure_only == [True, True]                                # its test as benchmarked
 
 
 def test_prompt_tags_round_trip() -> None:
@@ -191,6 +193,7 @@ RANDOM_DIFFERS = ("captured calls: f  ok  (4 snapshots, 4 runs, 0 failures, 0 ou
 class Calls(list[Prompt]):
     """The prompts the fake model was given, and what the fake tools were asked."""
     register_checks: list[bool]
+    first_failure_only: list[bool]
     filed: list[ModelSpec]
     kept: list[str]
     earlier_asked: int
@@ -214,6 +217,7 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
     differs"), and EARLIER attempts of other models; returns the prompts the model was given."""
     prompts = Calls()
     prompts.register_checks, prompts.filed, prompts.kept, prompts.earlier_asked = [], [], [], 0
+    prompts.first_failure_only = []
     results = iter(test_results)
     texts = iter(reports or [])
 
@@ -239,8 +243,9 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
         return Prompt(f"repair from {whose}: {candidate}\nreport: {failure}\nhistory: {history}")
 
     def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots: SnapshotDir,
-                       difftest: Path, check_registers: bool = True) -> CandidateTest:
+                       difftest: Path, check_registers: bool = True, first_failure_only: bool = False) -> CandidateTest:
         prompts.register_checks.append(check_registers)
+        prompts.first_failure_only.append(first_failure_only)
         passed = next(results)
         report = next(texts, "ok" if passed else "memory differs")
         return CandidateTest(passed=passed, report=ToolMessage(report))
