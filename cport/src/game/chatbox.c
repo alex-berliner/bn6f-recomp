@@ -1755,6 +1755,33 @@ Next chatbox_F7_move(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80428C0 ── */
+/* sub_80428C0: Initialize chatbox state from a script entry.
+ *  inputs:  r4 = script entry pointer, r5 = chatbox struct pointer, lr
+ *  outputs: r0 = 1, r2 = 0xC * entry[4], r3 = entry[4], r4 = original r4 + 5
+ *  clobbers: r1, nz, c, v */
+Next sub_80428C0(void) {
+    u8 charIdx = LD8(R4 + 2);
+    ST8(R5 + oChatbox_TextScriptCharIdx, charIdx);
+    ST8(R5 + oChatbox_CursorIdx, (u8)(charIdx + 0xAF));
+
+    u8 row = LD8(R4 + 3);
+    ST8(R5 + oChatbox_Unk_19, row);
+
+    u8 stride = LD8(R4 + 4);
+    ST8(R5 + oChatbox_Unk_1B, (u8)(row + 0xC * stride));
+
+    ST8(R5 + 0x94, charIdx);
+
+    R4 += 5;
+    R2 = 0xC * stride;
+    R3 = stride;
+
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_804293C ── */
 /* register form: calls chatbox_maskFlags_3e outside this file, which has no typed C interface yet */
 static u32 chatbox_layout_flag_set(u32 mask) {
@@ -1829,6 +1856,54 @@ Next sub_804293C(void) {
     R3 = out.nextCharX;
     R4 = out.scriptPtr + 3;
     SET_FLAGS_ADD(out.scriptPtr, 3);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80429D8 ── */
+/* sub_80429D8(r4 = ?, r5 = chatbox struct):
+ *   Internal chatbox helper. Computes a half-width offset (r2/r8), writes
+ *   the next script slot index at chatbox + 0x94, bumps an internal
+ *   pointer by an 8-byte-aligned slot, and advances r4 by 3. Returns 1.
+ *
+ *   inputs:  r4 r5 lr
+ *   outputs: r0 r2 r3 r4 r6 r7 r8
+ *   clobbers: nz c v r1
+ *   preserved: r6 r7
+ */
+Next sub_80429D8(void) {
+    /* Total vertical region (0xAC): the baseline the per-row offset is taken against. */
+    u32 region = 0x79 + 0x33;
+
+    /* 0-based row index from r4, used to scale row size. */
+    u32 row = LD8(R4 + 2) - 1;
+
+    /* Combined row advance: row * 0xB + (8 * 2). */
+    u32 base = row * 0xB + (8 * 2);
+
+    /* Half of (region - base); reused as the script cursor offset. */
+    u32 half = (region - base) >> 1;
+    R8 = half;
+
+    /* Current script cursor (character index). */
+    u32 cursor = LD8(R5 + oChatbox_TextScriptCharIdx);
+
+    /* Write the new cursor at chatbox + 0x94. */
+    ST8(R5 + 0x94, (u8)(half + cursor));
+
+    /* Bump the chatbox's working pointer by one 8-byte-aligned slot. */
+    u32 step = ((half >> 1) << 1) << 2;     /* (half / 2, rounded down) * 8 */
+    ST32(R5 + oChatbox_Unk_7C, LD32(R5 + oChatbox_Unk_7C) + step);
+
+    /* Output registers that callers branch on. R2 is the final scaled step. */
+    R2 = step;
+    R3 = half + cursor;
+
+    /* Step the caller's iterator forward by 3 entries. */
+    R4 += 3;
+
+    /* Result = 1. */
+    SET_FLAGS_NZ(1);
+    R0 = 1;
     RETURN_TO_CALLER();
 }
 

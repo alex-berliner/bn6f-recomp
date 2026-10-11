@@ -8,6 +8,391 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_803A7B8 ── */
+/* sub_803A7B8: scene/audio/display init dispatcher.
+ * Calls a sequence of subsystems to set up battle/screen state:
+ *   - sub_803BA64 / sub_803BA74 (unspecified subsystems)
+ *   - sub_803BAE2(0)              (reset/clear some channel)
+ *   - sub_803B522(0x0A); sub_803B674(0x26)  (load+play sound group 0x26)
+ *   - sub_803B522(0x0B); sub_803B674(0x27)  (load+play sound group 0x27)
+ *   - sub_803A8B4(0)              (some display/object setup)
+ *   - sub_803A8E2()               (some display/object setup)
+ * Inputs:  r5, r10, lr
+ * Outputs: r5, r8, r9, r10, r11, r12 (other clobbers per contract) */
+Next sub_803A7B8(void) {
+    GUEST_CALL(sub_803BA64);
+    GUEST_CALL(sub_803BA74);
+
+    R0 = 0;
+    GUEST_CALL(sub_803BAE2);
+
+    R0 = 0x0A;
+    GUEST_CALL(sub_803B522);
+
+    R0 = 0x26;
+    GUEST_CALL(sub_803B674);
+
+    R0 = 0x0B;
+    GUEST_CALL(sub_803B522);
+
+    R0 = 0x27;
+    GUEST_CALL(sub_803B674);
+
+    R0 = 0;
+    GUEST_CALL(sub_803A8B4);
+
+    GUEST_CALL(sub_803A8E2);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A7EC ── */
+Next sub_803A7EC(void) {
+    GUEST_CALL(sub_803BA64);
+    GUEST_CALL(sub_803BA74);
+
+    R0 = 1;
+    GUEST_CALL(sub_803BAE2);
+
+    R0 = 0xA;
+    GUEST_CALL(sub_803B522);
+
+    R0 = 0x26;
+    GUEST_CALL(sub_803B674);
+
+    R0 = 0xB;
+    GUEST_CALL(sub_803B522);
+
+    R0 = 0x27;
+    GUEST_CALL(sub_803B674);
+
+    R0 = 0;
+    GUEST_CALL(sub_803A8B4);
+
+    GUEST_CALL(sub_803A8E2);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A820 ── */
+/* sub_803A820: scene/sequence init for a battle-related module.
+ * Calls a pair of setup helpers, registers two entries (IDs 10/0x26 and 11/0x27),
+ * then runs the main init pair with a 0 argument. */
+Next sub_803A820(void) {
+    GUEST_CALL(sub_803BA64);
+    GUEST_CALL(sub_803BA74);
+
+    R0 = 0x0A;
+    GUEST_CALL(sub_803B522);
+    R0 = 0x26;
+    GUEST_CALL(sub_803B674);
+
+    R0 = 0x0B;
+    GUEST_CALL(sub_803B522);
+    R0 = 0x27;
+    GUEST_CALL(sub_803B674);
+
+    R0 = 0;
+    GUEST_CALL(sub_803A8B4);
+    GUEST_CALL(sub_803A8E2);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A886 ── */
+/* sub_803A886(r0 = step-index field, r1 = countdown field, r5 = object base):
+ *   Advance a multi-step table-driven action. If the step index is non-zero,
+ *   tick the countdown and step through the {word, byte} pairs at off_803A910
+ *   (8 bytes per entry). When the countdown expires, advance the index and
+ *   either reload the next countdown from the table or clear both fields if
+ *   the table entry's first word is zero (end of sequence). */
+Next sub_803A886(void) {
+    u8 index = LD8(R5 + R0);
+    SET_FLAGS_NZ(index);
+
+    if (index != 0) {
+        u8 counter = LD8(R5 + R1);
+        counter -= 1;
+        SET_FLAGS_CMP((u32)counter, 1);
+        ST8(R5 + R1, counter);
+
+        /* Original `bgt` after `sub r2, #1` skips when the 32-bit signed
+         * result > 0. For a zero-extended byte minus 1, only the original
+         * values 0 (result 0xFFFFFFFF) and 1 (result 0) are non-positive;
+         * everything in [2..0xFF] takes the branch. After storing, the
+         * post-decrement counter is therefore 0xFF (was 0) or 0 (was 1)
+         * exactly when the step should advance. */
+        if (counter == 0 || counter == 0xFF) {
+            u8 newIndex = index + 1;
+            ST8(R5 + R0, newIndex);
+
+            u32 slotAddr = A_off_803A910 + ((u32)newIndex << 3);
+            u32 firstWord = LD32(slotAddr);
+            SET_FLAGS_NZ(firstWord);
+
+            if (firstWord == 0) {
+                ST8(R5 + R0, 0);
+                ST8(R5 + R1, 0);
+            } else {
+                ST8(R5 + R1, (u8)LD32(slotAddr + 4));
+            }
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803AA40 ── */
+/* sub_803AA40: dispatch on a battle-object substate byte ([r5+8]).
+ * Inputs:  r2 r4 r5 r10 lr
+ * Outputs: r5 r8 r9 r10 r11 r12
+ * Clobbers: nz c v r0 r1 r2 r3 lr
+ * Preserved: r4 r5 r6 r7
+ *
+ * Reads the substate byte and selects one of eight handlers via a Thumb-target
+ * jump table (entries are stored as address|1 so BX switches to Thumb). */
+Next sub_803AA40(void) {
+    u8 state = LD8(R5 + 8);
+    u32 slot;
+    if      (state == 0x3F) slot = 0;
+    else if (state == 0x40) slot = 1;
+    else if (state == 0x3C) slot = 2;
+    else if (state == 0x3A) slot = 3;
+    else if (state == 0x3B) slot = 4;
+    else if (state == 0x3D) slot = 5;
+    else if (state == 0x3E) slot = 6;
+    else                    slot = 7;
+
+    /* Handlers are stored as (address | 1) so BX enters Thumb mode. */
+    u32 handler = LD32(A_off_803AA80 + slot * 4);
+    GUEST_CALL_ADDR(handler);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803AAA0 ── */
+Next sub_803AAA0(void) {
+    /* Try to perform the menu select action (0x30). If it succeeds, play the
+     * menu select sound, set state 0x16, and queue the success animation
+     * parameters (0x30, 0x70, 0x20) before writing 0x18 to r5+1.
+     * Otherwise, play the "can't jack in" sound, set state 0x14, and write
+     * 0x1C to r5+1. */
+
+    R0 = 0x30;
+    GUEST_CALL(sub_803C248);
+    if (ZERO_FLAG()) {
+        R0 = SOUND_MENU_SELECT;
+        GUEST_CALL(PlaySoundEffect);
+
+        R0 = 0x16;
+        GUEST_CALL(sub_803BB2C);
+
+        R0 = 0x30;
+        R1 = 0x70;
+        R2 = 0x20;
+        GUEST_CALL(sub_803C0F6);
+
+        ST8(R5 + 1, 0x18);
+    } else {
+        R0 = SOUND_CANT_JACK_IN;
+        GUEST_CALL(PlaySoundEffect);
+
+        R0 = 0x14;
+        GUEST_CALL(sub_803BB2C);
+
+        ST8(R5 + 1, 0x1C);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803ABB4 ── */
+/* sub_803ABB4(r2, r5 = some object pointer, lr):
+ * Shop/buy-menu confirm handler. If the object's current cursor index
+ * (offset 0x10) is below its stored count (offset 0x24), play the menu
+ * select sound, clear offset 0x13, then run the menu-flow callbacks
+ * sub_803BF70(0x10, 0x30) and sub_803A85C. Otherwise delegate to
+ * sub_803ABDC. Returns nothing on the guest stack; output register r10
+ * is preserved by the caller contract. */
+Next sub_803ABB4(void) {
+    u8  cursor     = LD8(R5 + 0x10);
+    u16 totalSlots = LD16(R5 + 0x24);
+
+    if (cursor < totalSlots) {
+        R0 = SOUND_MENU_SELECT;
+        GUEST_CALL(PlaySoundEffect);
+
+        ST8(R5 + 0x13, 0);
+
+        R0 = 0x10;
+        R1 = 0x30;
+        GUEST_CALL(sub_803BF70);
+
+        GUEST_CALL(sub_803A85C);
+    } else {
+        GUEST_CALL(sub_803ABDC);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803AD20 ── */
+/* sub_803AD20: dispatcher for "battle chip select" sub-states.
+ *
+ *   The chip-slot state byte at r5+8 selects one of seven handlers via
+ *   the table at off_803AD60; any unrecognised value falls through to
+ *   the last entry (sub_803AE98). The original tail-calls the chosen
+ *   handler, so we save the real caller's LR (which GUEST_CALL will
+ *   clobber) and restore it before returning. r4-r7 are preserved by the
+ *   handlers themselves (AAPCS callee-saved).
+ */
+Next sub_803AD20(void) {
+    u32 caller_lr = LR;
+    u8  state = LD8(R5 + 8);
+
+    /* Tail-dispatch to the handler chosen by the state byte. */
+    switch (state) {
+    case 0x3F: GUEST_CALL(sub_803AD80); break;
+    case 0x40: GUEST_CALL(sub_803ADB8); break;
+    case 0x3C: GUEST_CALL(sub_803ADDA); break;
+    case 0x3A: GUEST_CALL(sub_803AE04); break;
+    case 0x3B: GUEST_CALL(sub_803AE2A); break;
+    case 0x3D: GUEST_CALL(sub_803AE50); break;
+    case 0x3E: GUEST_CALL(sub_803AE78); break;
+    default:   GUEST_CALL(sub_803AE98); break;
+    }
+
+    /* Restore the real caller's return address before returning. */
+    LR = caller_lr;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803AD80 ── */
+/* sub_803AD80: menu-input handler.
+ * Tries to perform action 0x90 (sub_803C248). On success, plays the menu-select cue,
+ * triggers a related menu command (0x17), writes sub-menu coords (0x90, 0xD0, 0x20),
+ * and sets r5[1] = 0x34. On failure, plays the can't-jack-in cue, triggers 0x15,
+ * and sets r5[1] = 0x38.
+ *
+ *   inputs:  r2 r4 r5 r10 lr
+ *   outputs: r10
+ *   clobbers (unused by callers): nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r5 r6 r7 r10
+ */
+Next sub_803AD80(void) {
+    R0 = 0x90;
+    GUEST_CALL(sub_803C248);
+    if (ZERO_FLAG()) {
+        /* Action 0x90 succeeded: confirm and advance the menu. */
+        R0 = SOUND_MENU_SELECT;
+        GUEST_CALL(PlaySoundEffect);
+
+        R0 = 0x17;
+        GUEST_CALL(sub_803BB2C);
+
+        R0 = 0x90;
+        R1 = 0xD0;
+        R2 = 0x20;
+        GUEST_CALL(sub_803C0F6);
+
+        ST8(R5 + 1, 0x34);
+    } else {
+        /* Action 0x90 failed: deny. */
+        R0 = SOUND_CANT_JACK_IN;
+        GUEST_CALL(PlaySoundEffect);
+
+        R0 = 0x15;
+        GUEST_CALL(sub_803BB2C);
+
+        ST8(R5 + 1, 0x38);
+    }
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803AE98 ── */
+/* sub_803AE98: Menu "select" handler for some list element (R5 = element).
+ * If element->field_0x11 < element->field_0x26, play a select sound, clear
+ * field_0x13, then call sub_803BF70(0x11, 0x90) and sub_803A878().
+ * Otherwise, fall through to sub_803AEC0().
+ * Outputs r10 (preserved by this function's preserved set). */
+Next sub_803AE98(void) {
+    u8  current = LD8(R5 + 0x11);
+    u16 target  = LD16(R5 + 0x26);
+
+    if (current < target) {
+        R0 = SOUND_MENU_SELECT;
+        GUEST_CALL(PlaySoundEffect);
+        ST8(R5 + 0x13, 0);
+        R0 = 0x11;
+        R1 = 0x90;
+        GUEST_CALL(sub_803BF70);
+        GUEST_CALL(sub_803A878);
+    } else {
+        GUEST_CALL(sub_803AEC0);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803BF70 ── */
+/* sub_803BF70(r0 = offset, r1 = ?, r5 = obj, lr)
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1
+ *   preserved: r4 r6 r7
+ *
+ * Appends one 16-bit entry to an animation/frame script for the object at r5.
+ * r0 selects which field of r5 holds the write index (low byte), and r1 is an
+ * additional base offset added to r5 when writing the halfword.
+ */
+Next sub_803BF70(void) {
+    u32 offset = R0;
+    u32 base = R1;
+    u32 obj = R5;
+
+    /* Pointer table at off_803C208: indexed by [r5+0x12] * 0x10, then a row
+     * picked by [r5+8] * 8; the value we want is at +2 in that row. */
+    u32 row = LD8(obj + 0x12);
+    u32 tbl = LD32(A_off_803C208 + row * 0x10);
+    u32 col = LD8(obj + 8);
+    u16 entry = LD16(tbl + col * 8 + 2);
+
+    /* Write the entry as a halfword at (r5 + r1) + ([r5+r0] << 1). */
+    u8 idx = LD8(obj + offset);
+    ST16((u32)idx * 2 + obj + base, entry);
+
+    /* Bump the index. */
+    u8 newIdx = idx + 1;
+    ST8(obj + offset, newIdx);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803C248 ── */
+/* sub_803C248(r0 = table base, r5 = index):
+ * Walk a two-byte-stride table starting at r0+r5, examining the first byte
+ * of each entry until a 0xE6 terminator is reached.
+ *  - 0x00 and 0xE5 entries are treated as empty and skipped.
+ *  - Any other byte marks the slot as occupied and stops the scan.
+ *  - On exit, R0 is 1 if all visited entries were empty, 0 otherwise.
+ * R4 and R5 must end with their original values (caller contract). */
+Next sub_803C248(void) {
+    u32 cursor = (u32)R0 + (u32)R5;
+    u32 result = 1;
+
+    for (;;) {
+        u8 b = LD8(cursor);
+        cursor += 2;
+        if (b == 0xE6) break;
+        if (b == 0xE5) continue;
+        if (b == 0x00) continue;
+        result = 0;
+        break;
+    }
+
+    SET_FLAGS_NZ(result);
+    R0 = result;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803C352 ── */
 /* Clear the 0x48-byte state block at A_word_2006770, fill two 0x20-byte regions with
  * 0xE5E5 halfwords, write the terminator byte 0xE6 after each region, then call
@@ -1054,6 +1439,47 @@ Next sub_803EF7C(void) {
  * the same address as A_eCameraEnd, hence the alias in the original literal). */
 Next sub_803EF84(void) {
     ST32(A_eCameraEnd + 0x34, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803EFCC ── */
+/* sub_803EFCC:
+ *   Clear four small scratch/working buffers used by the battle state
+ *   machinery (a 0x20-byte struct at 0x0200AC20, a 0x40-byte one at
+ *   0x02009AC0, and two 0x200-byte ones at 0x0200BC70 and 0x0200A010)
+ *   by ZeroFillByWord.
+ *   No register inputs; clobbers r0, r1, nz. Preserves r2, r3 and the
+ *   carry/overflow flags. */
+Next sub_803EFCC(void) {
+    /* The original does push {lr} / pop {pc}; no stack reservation is
+     * used (the buffer is only stored below SP after the call returns),
+     * so we just leave the stack alone and return via LR. */
+
+    /* Clear 0x20-byte buffer at byte_200AC20. */
+    R0 = (u32)A_byte_200AC20;
+    R1 = 0x20;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* Clear 0x40-byte buffer at unk_2009AC0. */
+    R0 = (u32)A_unk_2009AC0;
+    R1 = 0x40;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* Clear 0x200-byte buffer at byte_200BC70. */
+    R0 = (u32)A_byte_200BC70;
+    R1 = 0x200;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* Clear 0x200-byte buffer at word_200A010. */
+    R0 = (u32)A_word_200A010;
+    R1 = 0x200;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* ZeroFillByWord is a leaf that leaves r2, r3 and the C/V flags
+     * untouched (it only writes memory). The last call is the last
+     * flag-affecting operation, so c/v and r2/r3 are preserved as the
+     * callers expect. */
+
     RETURN_TO_CALLER();
 }
 

@@ -1703,6 +1703,94 @@ Next sub_8048DF8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8048F9C ── */
+/* sub_8048F9C(r0 = save_arg, r10 = toolkit):
+ *   Zero-fill the save state block at eS200A290 (0x1B0 bytes),
+ *   then write a small header and set *toolkit->main_jumptable_index_ptr
+ *   to 0x30. Preserves r2..r7; leaves r0=0xA, r1=*main_jumptable_index_ptr. */
+Next sub_8048F9C(void) {
+    u32 save_arg = R0;
+    u32 state = A_eS200A290;
+
+    /* ZeroFillByWord(state, 0x1B0) */
+    R0 = state;
+    R1 = 0x1B0;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* *toolkit->main_jumptable_index_ptr = 0x30 */
+    R1 = LD32(R10 + oToolkit_MainJumptableIndexPtr);
+    R0 = 0x30;
+    ST8(R1, R0);
+
+    /* header fields */
+    ST16(state + 0x22, save_arg);
+    ST16(state + 0x24, 8);
+    R0 = 0xA;
+    SET_FLAGS_NZ(R0);
+    ST16(state + 0x26, R0);
+
+    /* r4 and r5 are preserved across this function (push/pop) */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049888 ── */
+/* sub_8049888: chatbox input handler dispatcher.
+ * Inputs:  r5 = chatbox state struct, r10, lr
+ * Outputs: r3, r8, r9, r10, r11, r12 + flags c, v
+ * Writes one byte into chatbox state based on a flag check and the current
+ * chatbox sub-state, then ticks the chatbox state machine. */
+Next sub_8049888(void) {
+    u32 r0;
+
+    /* Probe flag 0x80; if it isn't set, the state byte stays untouched. */
+    r0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    if (ZERO_FLAG()) {
+        /* Flag 0x80 unset: pick the next state from the chatbox sub-state. */
+        GUEST_CALL(chatbox_GetState_8045F4C);
+        if (R0 != 0) {
+            ST8(R5 + 1, 0x0C);
+        } else {
+            ST8(R5 + 1, 0x20);
+        }
+    }
+
+    /* Run the chatbox state machine tick. */
+    GUEST_CALL(sub_803A820);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049984 ── */
+/* sub_8049984:
+ *   inputs:  r5 r10 lr
+ *   outputs: c v r3 r8 r9 r10 r11 r12
+ *   clobbers (unused by callers): nz r0 r1 r2 lr
+ *   preserved: r4 r5 r6 r7 r8 r9 r12
+ *
+ * One step of the chatbox state machine. If the chatbox's eFlags2009F38
+ * already has bit 0x80 set, fall through to the epilogue call. Otherwise
+ * query the chatbox state: state != 0 advances to phase 0x28, while state == 0
+ * kicks off a screen fade (0xc / 0x10) and advances to phase 0x3c. R5 points
+ * to a control byte whose byte [1] is the next-phase slot. */
+Next sub_8049984(void) {
+    R0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    if (ZERO_FLAG()) {
+        GUEST_CALL(chatbox_GetState_8045F4C);
+        if (R0 != 0) {
+            ST8(R5 + 1, 0x28);
+        } else {
+            R0 = 0xC;
+            R1 = 0x10;
+            GUEST_CALL(SetScreenFade);
+            ST8(R5 + 1, 0x3C);
+        }
+    }
+    GUEST_CALL(sub_803A820);
+    RETURN_TO_CALLER();
+}
+
 /* ── copyData_8049A18 ── */
 /* copyData_8049A18: clear VRAM, decompress init data, shrink the screen viewport,
  * and trigger a screen transition. r10 holds a Toolkit pointer whose render info

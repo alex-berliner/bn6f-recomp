@@ -1143,6 +1143,36 @@ Next GetMaxAndCurHPForCurPETNavi_80010D4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8001158 ── */
+/* sub_8001158(r0 = list ptr):
+ * Walk an array of {cmd_id, arg} pairs (terminated by cmd_id == 0) and dispatch
+ * each entry to sub_802FE28(cmd_id, arg, 0, 0). */
+Next sub_8001158(void) {
+    u32 entry = R0;
+    u32 cmd = LD32(entry);
+    /* tst r0, r0 — sets NZ from cmd, leaves CV untouched. */
+    SET_FLAGS_NZ(cmd);
+
+    while (cmd != 0) {
+        /* Dispatch one {cmd, arg} pair. */
+        R0 = cmd;
+        R1 = LD32(entry + 4);
+        R2 = 0;
+        R3 = 0;
+        GUEST_CALL(sub_802FE28);
+
+        /* add r7, #8 (ADDS) — flags reflect the pointer advance. */
+        entry += 8;
+        SET_FLAGS_ADD(entry - 8, 8);
+
+        /* Next iteration: load cmd, tst it. */
+        cmd = LD32(entry);
+        SET_FLAGS_NZ(cmd);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8001172 ── */
 /* sub_8001172(r0 = value, r10 = toolkit):
  * Store the byte value into the game state at offset 9 (field after
@@ -1774,6 +1804,51 @@ Next sub_80018E0(void) {
     R3 = out.src;
     R4 = out.count;
     SET_FLAGS_CMP(out.count, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8001930 ── */
+/* sub_8001930(r0 = tile_id_base, r1 = high_bits, r2 = stride_entries, r3 = strip_count, r4 = dst):
+ *
+ * Fill OAM attribute pairs. The inner loop writes two OAM entries per step
+ * (4 bytes each): one at the running row cursor, one at cursor + stride (the
+ * partner row in OAM). Four consecutive tile IDs are consumed per step.
+ * After the inner loop fills `stride` bytes of the row, r3 is decremented;
+ * if it was non-zero we return. */
+Next sub_8001930(void) {
+    u32 stride      = R2 << 2;
+    u32 tile_id     = R0 | (R1 << 12);
+    u32 row_cursor  = R4;
+    s32 strips_left = (s32)R3;
+
+    for (;;) {
+        /* First OAM entry of the pair. */
+        ST16(row_cursor, (u16)tile_id);
+        tile_id += 1;
+        ST16(row_cursor + 2, (u16)tile_id);
+        tile_id += 1;
+
+        /* Second OAM entry: at row_cursor + stride (matches asm's
+         * `add r1, r4, r2` using the pre-increment r4). */
+        u32 second = row_cursor + stride;
+        ST16(second, (u16)tile_id);
+        tile_id += 1;
+        ST16(second + 2, (u16)tile_id);
+        tile_id += 1;
+
+        row_cursor += 4;
+        if (row_cursor < R4 + stride) {
+            continue;                 /* inner loop: r5 < r2 */
+        }
+
+        strips_left -= 1;
+        if (strips_left < 0) {
+            continue;                 /* r3 was 0: loop again (asm `blt`) */
+        }
+        break;                        /* r3 >= 1: pop */
+    }
+
+    /* R4..R7 are preserved by the original push/pop; we never write them. */
     RETURN_TO_CALLER();
 }
 

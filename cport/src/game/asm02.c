@@ -414,3 +414,38 @@ Next incrementRecordCounterByte_8021D14(void) {
     R2 = count;
     RETURN_TO_CALLER();
 }
+
+/* ── sub_8021D36 ── */
+/* sub_8021D36: clear a small WRAM struct and copy four 8-word tables into it.
+ * inputs:  lr
+ * outputs: -
+ * clobbers: nz c v r0 r1 r2 lr
+ * preserved: r3
+ */
+Next sub_8021D36(void) {
+    R0 = A_unk_2000AF0;
+    R1 = 0x40;
+    GUEST_CALL(ZeroFillByHalfword);
+
+    R0 = A_TextScriptJap8021D88;
+    R1 = A_unk_2001184;
+    R2 = 8;
+    GUEST_CALL(CopyWords);
+
+    R0 = A_TextScriptJap8021D88;
+    R1 = A_unk_200119C;
+    R2 = 8;
+    GUEST_CALL(CopyWords);
+
+    R0 = A_byte_8021D8A;
+    R1 = A_byte_20007D6;
+    R2 = 8;
+    GUEST_CALL(CopyWords);
+
+    R0 = A_byte_8021D8A;
+    R1 = A_byte_200083A;
+    R2 = 8;
+    GUEST_CALL(CopyWords);
+
+    RETURN_TO_CALLER();
+}
