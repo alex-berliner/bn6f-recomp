@@ -1,0 +1,86 @@
+name: decompAndCopyData
+address: '0x08000B30'
+kind: function
+status: confirmed
+summary: Table-driven ROM data loader that iterates 12-byte entries, LZ77-decompressing or plain-copying game asset
+  data into RAM until a null terminator.
+interface: void decompAndCopyData(u32 r0_table_ptr); // reads r2-r7 from caller; returns r1,r2,r3 clobbered by callees,
+  r4-r7 preserved, flags from final test
+details: 'Walks a caller-supplied table of 12-byte entries (r0, advanced by 12 each loop) until field[0]==0. Each
+  entry is a triplet [src/compressed-flag, dest-or-null, size-or-decomp-buf]. Bit 31 of field[0] marks an LZ77-compressed
+  source; the remaining 31 bits are the real pointer. For compressed entries, SWI 0 (LZ77UnCompReadNormalWrite8bit)
+  decompresses into the buffer at field[2]; the 4-byte LZ77 header is parsed (size = header>>8 minus 4) and the
+  post-header body is copied to field[1] if non-null, otherwise the copy is skipped. For plain entries, field[1]
+  is the destination and field[2] is the byte count. Both paths dispatch through an alignment-aware copy: odd size→CopyBytes,
+  bit-1→CopyHalfwords, bits 2-4→CopyWords, else→CopyByEightWords. r2-r7 are read from the caller''s register state
+  and forwarded into the copy helpers; they are part of the input contract. Quirk: after the LZ77 SWI, field[1]
+  is reloaded (overwriting whatever the SWI left in r1) before the null-dest skip check, so the caller-visible r1
+  on the skip path equals the dest field.'
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (9 attempt(s), run convert-20261010-210643);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 34' --file inbox_farm_34.c decompAndCopyData
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function decompAndCopyData
+
+    ./wf verify --function decompAndCopyData --snapshots build-snapshots'
+  result: 'captured calls: 27 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-210643-verify-9)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function decompAndCopyData
+
+    ./wf verify --function decompAndCopyData --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 1 out of domain (verify run convert-20261010-210643-verify-9)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function decompAndCopyData
+
+    ./wf verify --function decompAndCopyData --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210643-verify-9)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08000b30 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 4e46892
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What callers supply r2-r7 and what do the copy helpers expect in those registers beyond r0/r1/r2?
+- Is the table always in ROM or can it reside in RAM (e.g., a dynamic asset queue)?
+- Which game assets (tiles, sprites, palettes, scripts) are loaded through this routine?
+sources:
+- tools/wf run convert-20261010-210643
+- recomp 4e46892

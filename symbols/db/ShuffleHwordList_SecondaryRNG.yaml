@@ -1,0 +1,100 @@
+name: ShuffleHwordList_SecondaryRNG
+address: '0x08000D12'
+kind: function
+status: hypothesis
+summary: In-place Fisher–Yates-style shuffle of a u16 array using the secondary RNG and BIOS Sqrt as the index source.
+interface: 'void shuffleHwordList_SecondaryRNG_08000D12(const u16 *r0_array, u32 r1_rngState, u32 r2_count);
+
+  // returns r0 = r0_array, r1 = r1_rngState, r2 = 0, r3 = last computed halfword byte-offset;
+
+  // clobbers nz,c,v; preserves r0/r1/r4/r5/r6/r7.
+
+  '
+details: 'Performs `r2` iterations. Per iteration it pushes r0/r1/r2/r3, calls
+
+  `GetPositiveSignedRNGSecondary` once, pipes its result through the GBA BIOS `Sqrt` SWI
+
+  (svc 6) — whose R1 quotient is the actual usable index — and repeats the pair
+
+  (GetPositiveSignedRNGSecondary then Sqrt) to obtain a second index. The two indices are
+
+  doubled (`add r3, r3, r3` / `add r4, r4, r4`) to turn them into byte offsets for `ldrh`/`strh`,
+
+  then the halfwords at those offsets in the array pointer passed in r0 are swapped. r2 is
+
+  decremented and the loop repeats until r2 == 0. Final outputs restore r0/r1 to their incoming
+
+  values, set r2 = 0 (the consumed count), and leave r3 = the last generated index*2. Note
+
+  GetPositiveSignedRNGSecondary is called twice per swap but the Sqrt result from the first
+
+  pair is what is consumed (it uses R1 from the SWI as the index) — i.e. the RNG seed in r1 is
+
+  threaded through both the C helper and the BIOS SWI as if the SWI were part of the RNG mix.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (9 attempt(s), run convert-20261010-210643);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 34' --file inbox_farm_34.c ShuffleHwordList_SecondaryRNG
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ShuffleHwordList_SecondaryRNG
+
+    ./wf verify --function ShuffleHwordList_SecondaryRNG --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 288 out of
+    domain (verify run convert-20261010-210643-verify-9)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ShuffleHwordList_SecondaryRNG
+
+    ./wf verify --function ShuffleHwordList_SecondaryRNG --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 9 out of domain (verify run convert-20261010-210643-verify-9)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ShuffleHwordList_SecondaryRNG
+
+    ./wf verify --function ShuffleHwordList_SecondaryRNG --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210643-verify-9)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08000d12 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 4e46892
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Why is the BIOS Sqrt interposed between the two RNG calls instead of just using the RNG value directly as an index
+  — is the Sqrt normalizing a uniform-square distribution?
+- Does the function rely on GetPositiveSignedRNGSecondary mutating r1 as its state seed for the next iteration?
+- Where is the shuffled array used (battle-order randomization, chip-deck shuffle, encounter table)?
+sources:
+- tools/wf run convert-20261010-210643
+- recomp 4e46892

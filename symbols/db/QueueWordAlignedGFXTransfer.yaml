@@ -1,0 +1,107 @@
+name: QueueWordAlignedGFXTransfer
+address: '0x08000AC4'
+kind: function
+status: confirmed
+summary: Queues a word-aligned GFX DMA copy into the global GFX transfer ring buffer (handler slot 3, copy_type
+  3).
+interface: void queueWordAlignedGfxTransfer_8000AC4(u32 src /* r0 */, u32 dest /* r1 */, u32 size /* r2 */, lr /*
+  lr */) -> (r3, nz/c/v)
+details: 'Pushes a 0x14-byte entry into a GFX DMA queue stored in IWRAM. The queue count lives at 0x200AC1C and
+  is
+
+  a monotonically increasing u32 compared *signed* against 0x60 (CMP r4,#0x60 / BGE) — once the count is >= 0x60
+
+  the entry is dropped (queue full). Each entry is laid out as: [src@+0, dest@+4, size@+8, handler@+0xC,
+
+  copy_type@+0x10] and is stored at 0x200B4B0 + count*0x14. The handler word is looked up from a 4-entry table
+
+  at 0x08000AFC indexed by copy_type*4; only slot 3 (the default) is used here and contains 0x84000000
+
+  (the other three entries are 0xFFFFFFFF, presumably dispatched by sibling QueueHwordAlignedGFXTransfer
+
+  copy_type 0/1/2 — see QueueHwordAlignedGFXTransfer at 0x08000AC8, QueueByteAlignedGFXTransfer at
+
+  0x08000ACE, QueueUnk00GFXTransfer at 0x08000AD0, QueueEightWordAlignedGFXTransfer at 0x08000AC8 with
+
+  copy_type 4). Preserves r0–r2; returns r3 (on the full path r3 keeps the 0x200AC1C address; on success
+
+  r3 holds the handler word 0x84000000) and the last flag-setting op is LSL copy_type,#2, which for
+
+  copy_type=3 yields NZCV=0,0,0,0. The thunk at 0x08000AC0 (B loc_8000ACA with r3=#3) and
+
+  0x08000AC8 (mov r3,#4 / QueueEightWordAlignedGFXTransfer) share the same body, just selecting a different
+
+  copy_type; the C version''s adapter-style flag restoration is a decompiler artifact and does not represent
+
+  real GBA semantics.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (9 attempt(s), run convert-20261010-210643);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 34' --file inbox_farm_34.c QueueWordAlignedGFXTransfer
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function QueueWordAlignedGFXTransfer
+
+    ./wf verify --function QueueWordAlignedGFXTransfer --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 143 out
+    of domain (verify run convert-20261010-210643-verify-9)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function QueueWordAlignedGFXTransfer
+
+    ./wf verify --function QueueWordAlignedGFXTransfer --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-210643-verify-9)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function QueueWordAlignedGFXTransfer
+
+    ./wf verify --function QueueWordAlignedGFXTransfer --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210643-verify-9)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08000ac4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 4e46892
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Who drains the queue and what does handler 0x84000000 correspond to (channel control word, source of 0x84)?
+- Are the table entries 0xFFFFFFFF placeholders for unused copy_type slots 0/1/2, or do they encode different DMA
+  control words (e.g. halfword/byte) used by QueueHwordAlignedGFXTransfer / QueueByteAlignedGFXTransfer?
+- Is the queue count truly intended to saturate (drop on full) or is the missing wrap/uninit path a bug?
+sources:
+- tools/wf run convert-20261010-210643
+- recomp 4e46892
