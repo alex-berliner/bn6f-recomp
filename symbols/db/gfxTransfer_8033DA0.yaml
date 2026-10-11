@@ -1,0 +1,89 @@
+name: gfxTransfer_8033DA0
+address: '0x08033DA0'
+kind: function
+status: confirmed
+summary: Queues a 0x20-byte aligned GFX transfer (to VRAM/OAM at 0x030016D0) for the current PET/Navi sprite, picking
+  the source from a 13-entry table indexed by PET/Navi id with an override driven by event flag 0x163 and eByte200AD04.
+interface: 'void gfxTransfer_8033DA0(u32 tileOffset /* r0 */);  /* preserves r4-r7, clobbers r0-r3, n,z flags; c,v,r2-r7
+  out */ flags clobbered: nz preserved: r4 r5 r6 r7'
+details: "Calls GetCurPETNavi to obtain the current PET/Navi index (0..12, used as a byte index).\nIf event flag\
+  \ 0x163 (EVENT_163) is set AND eByte200AD04 is non-zero, the index is\nforced to 0xC (the last entry of the table),\
+  \ giving an alternate sprite GFX source.\nThe chosen index is multiplied by 4 (lsl #2) and added to a base pointer\
+  \ (off_8033DD4\n-> 0x086C18A0-..) to fetch a u32 ROM source pointer. The caller's r0 (a per-frame or\nper-state\
+  \ tile offset) is then added to this source.\nFinally QueueEightWordAlignedGFXTransfer is invoked with:\n  src\
+  \     = table_src[index] + r0_offset\n  dest    = 0x030016D0 (byte_30016D0, OAM tile buffer)\n  size    = 0x20\
+  \ bytes\nThe 13-entry source table GFX_SRC_TABLE contains entries for navi indices 0..12;\nentries 6..11 duplicate\
+  \ entries 1..6, suggesting palette/style variants for certain\nnavis. The last two entries (index 0xB, 0xC) appear\
+  \ to be special/alt sources used\nwhen event 0x163 is set or for the override index 0xC.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004614);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 58' --file inbox_farm_58.c gfxTransfer_8033DA0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function gfxTransfer_8033DA0
+
+    ./wf verify --function gfxTransfer_8033DA0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-004614-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function gfxTransfer_8033DA0
+
+    ./wf verify --function gfxTransfer_8033DA0 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-004614-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function gfxTransfer_8033DA0
+
+    ./wf verify --function gfxTransfer_8033DA0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004614-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08033da0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 8734ebe
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+related:
+- sub_8033C68
+open_questions:
+- Which PET/Navi indices correspond to which entry; the relationship between duplicated entries 1-5 and 6-10 is
+  unclear.
+- Exact meaning of eByte200AD04 (likely a transformation/state flag such as "shiny"/"Soul Unity" variant given its
+  pairing with event 0x163).
+- Whether r0 is a tile index offset or a frame/animation offset (it is added raw to the source pointer so it must
+  be byte-aligned within the 0x20-byte block).
+- GetCurPETNavi, TestEventFlagFromImmediate, notZero_eByte200AD04, and QueueEightWordAlignedGFXTransfer all live
+  outside this file and lack typed interfaces; verify their semantics elsewhere.
+sources:
+- tools/wf run convert-20261011-004614
+- recomp 8734ebe

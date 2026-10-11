@@ -1,0 +1,80 @@
+name: sub_8033C68
+address: '0x08033C68'
+kind: function
+status: confirmed
+summary: Per-frame chip-slot GFX animator that cycles a tile pointer through VRAM 0x06017400, runs paired window/HBlank
+  DMA setups, and plays spin SFX 0x9A on a cooldown.
+interface: (u8 *state) -> (void)  // r5 = state pointer; r0/r1/r2/r3/r4/r6/r7/lr preserved aside from sound-effect
+  path
+details: "Operates on a small state struct pointed to by r5, using two byte slots:\n  state[6]  - current chip-slot\
+  \ index, cycles 0..0x11 and wraps to 0\n  state[7]  - spin SFX cooldown timer (reload value 0x60)\nEach call:\n\
+  \  1. Reads state[6] as a slot index, looks up a tile source pointer in the\n     per-frame pointer table at off_8033D2C\
+  \ (indexed <<2), and queues a\n     0x100-byte word-aligned GFX transfer of that tile into VRAM\n     0x06017400\
+  \ via QueueWordAlignedGFXTransfer.\n  2. Reads dispatch = byte_8033CC4[state[6]] and calls gfxTransfer_8033DA0\n\
+  \     with it. The dispatch table byte_8033CC4 is 20 bytes holding values\n     0x00 or 0x20, suggesting a secondary\
+  \ 32-byte-tile transfer keyed by\n     the current animation frame.\n  3. Advances state[6] by 1, wrapping back\
+  \ to 0 when it would reach 0x12.\n  4. Fires sub_802FE28 twice with (0x801740FD, 0xC7A0, 1, 0) and then\n    \
+  \ (0xA017400D, 0xC7A0, 1, 0); the shared second argument and the two\n     closely related VRAM addresses (0x06017400\
+  \ plus a 0x801740xx / 0xA0174xxx\n     pairing) point at a window/HBlank register/DMA setup done in two\n    \
+  \ stages (likely BG2 X-scroll / window-effect enable, then a related\n     control write) that bookends the chip-slot\
+  \ animation.\n  5. Decrements state[7]. If it would still be >0, stores the decremented\n     value back; otherwise\
+  \ plays PlaySoundEffect(0x9A) and reloads\n     state[7] with 0x60.\nFinal flags are reproduced from a SUBS r0,\
+  \ #1 followed by a MOV r0, #0x60\non the sound path (so CV from the SUBS, NZ from the MOV). Caller reads\nstate\
+  \ through r5; the function preserves r4/r5/r6/r7/r10/lr and trashes\nNZCV plus r0..r3.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004614);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 58' --file inbox_farm_58.c sub_8033C68
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8033C68
+
+    ./wf verify --function sub_8033C68 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-004614-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8033C68
+
+    ./wf verify --function sub_8033C68 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-004614-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8033C68
+
+    ./wf verify --function sub_8033C68 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004614-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story1, story8.'
+  reproduce: grep -l '^08033c68 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 8734ebe
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- story1
+- story8
+related:
+- gfxTransfer_8033DA0
+open_questions:
+- What exactly gfxTransfer_8033DA0 does with the 0/0x20 dispatch values and which VRAM region it targets (the 0x20
+  values look like 32-byte tile loads rather than 0x100-byte ones).
+- Which chip-slot animation set owns the pointer table at off_8033D2C and whether it is one large global or per-bank.
+- Whether the two sub_802FE28 calls are BG2 X-scroll writes, window registers, or HBlank DMA buffers tied to the
+  chip-slot shake/spin.
+- Whether state[7] is a frame counter or a real SFX cooldown (0x60 frames at 60 fps is ~1s, suggesting a "spin every
+  second" cadence).
+- The role of dword_30016D0 referenced right after the 0x100 size word.
+sources:
+- tools/wf run convert-20261011-004614
+- recomp 8734ebe

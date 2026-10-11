@@ -1,0 +1,87 @@
+name: startScreen_initGfx_802FCC0
+address: '0x0802FCC0'
+kind: function
+status: confirmed
+summary: Initializes the title-screen graphics by clearing VRAM, decompressing the start-screen asset tables, and
+  zeroing the 0x30025c0 GFX region.
+interface: void startScreen_initGfx_802FCC0(void)
+details: "Performs three sequential steps using a table of init records stored adjacent to\nthe function at initRefs_802FCD8\
+  \ (referenced via off_802FCD4). Each record is a\ntriple of (src_compressed_or_raw_data, dst_ptr, size_or_flag)\
+  \ and is consumed by\ndecompAndCopyData:\n  1. comp_87F36A0 (compressed, 0x8000000 flag set) -> VRAM 0x6013000,\
+  \ decompresses into eDecompBuffer2013A00.\n  2. byte_87F40F4 (raw, 0xA0 bytes)              -> byte_3001610.\n\
+  \  3. comp_87F3370 (compressed, 0x8000000 flag set) -> VRAM 0x6010020, decompresses into eDecompBuffer2013A00.\n\
+  \  4. dword_87F3620 (raw, 0x80 bytes)              -> byte_3001590.\n  5. comp_87F4394 (compressed, 0x8000000\
+  \ flag set) -> VRAM 0x6000000, decompresses into eDecompBuffer2013A00.\n  6. dword_87F4194 (raw, 0x1C0 bytes)\
+  \             -> palette_3001960 (palette data).\n  7. byte_86A48C0 (raw, 0x180 bytes)              -> VRAM 0x6012800\
+  \ (tile data).\n  8. dword_86A5500 (raw, 0x20 bytes)              -> byte_3001570.\n  Terminated by a NULL sentinel\
+  \ entry.\nAfter copying, ZeroFillGFX30025c0 clears the WRAM GFX region at 0x30025c0 used\nlater by the title screen.\n\
+  Register contract: takes no arguments (r10/lr unused as inputs), clobbers r0-r3\nand flags, preserves r4-r7. Output\
+  \ registers r2/r5/r7 are simply left over from\nthe helpers and are not meaningful. The initRefs table itself\
+  \ lives in the\nROM-side .rodata embedded right after the function.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004614);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 58' --file inbox_farm_58.c startScreen_initGfx_802FCC0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function startScreen_initGfx_802FCC0
+
+    ./wf verify --function startScreen_initGfx_802FCC0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-004614-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function startScreen_initGfx_802FCC0
+
+    ./wf verify --function startScreen_initGfx_802FCC0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-004614-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function startScreen_initGfx_802FCC0
+
+    ./wf verify --function startScreen_initGfx_802FCC0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004614-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802fcc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp 8734ebe
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact contents/semantics of the regions written (which is tile map vs tiles vs palette vs OAM).
+- Whether VRAM clear zeroes the entire 0x6000000-0x6018000 region or only a subset.
+- Why 0x30025c0 is cleared separately from the table-driven copies.
+sources:
+- tools/wf run convert-20261011-004614
+- recomp 8734ebe

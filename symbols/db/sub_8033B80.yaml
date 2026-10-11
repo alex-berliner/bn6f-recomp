@@ -1,0 +1,89 @@
+name: sub_8033B80
+address: '0x08033B80'
+kind: function
+status: hypothesis
+summary: Tick a state's per-frame animation index and dispatch the matching guest routine via sub_802FE28.
+interface: 'void sub_8033B80(u32 index, void *state /* r5 */);
+
+  clobbers r0-r3, lr; flags NZCV; preserves r4-r7.
+
+  '
+details: 'Reads the state''s frame counter byte at r5+5, uses r0 (a 0..3-ish index, scaled by 0x18) to
+
+  pick an offset from the per-state table at byte_8033BB8. Shifts that offset left 16 and adds
+
+  the fixed base 0x80028003 to form a guest routine address, then calls sub_802FE28 with
+
+  (routine_addr, 0xC790, 1, 0). Increments the r5+5 frame counter and wraps it at 0x18 (24),
+
+  writing the result back. The 24-byte stride and wrap-24 strongly suggest this drives a 24-frame
+
+  animation/state table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004614);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 58' --file inbox_farm_58.c sub_8033B80
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8033B80
+
+    ./wf verify --function sub_8033B80 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 262 out
+    of domain (verify run convert-20261011-004614-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8033B80
+
+    ./wf verify --function sub_8033B80 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261011-004614-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8033B80
+
+    ./wf verify --function sub_8033B80 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004614-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08033b80 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 8734ebe
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What structure is at r5? The +5 byte is a frame counter; other fields are unknown.
+- Why is r0 multiplied by 0x18? It may be selecting one of 3 sub-objects (the table has non-zero entries only in
+  the latter 24 bytes, possibly slots 24..47).
+- What does sub_802FE28 do with routine_addr 0x80028003+xxx and param 0xC790?
+sources:
+- tools/wf run convert-20261011-004614
+- recomp 8734ebe

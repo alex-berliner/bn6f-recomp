@@ -1,0 +1,91 @@
+name: sub_80311F4
+address: '0x080311F4'
+kind: function
+status: hypothesis
+summary: Likely a small per-frame effect routine that, when sub_8031570 reports a hit/non-zero event, re-runs sub_8031122/sub_80311B6
+  setup, queries sub_8030E14 for a position delta, neg-halves it via neg;lsr
+interface: "void sub_80311F4(u32* io /* r0 */, u32 arg1 /* r1 */, u32 arg2 /* r2 */, u32 arg5 /* r5 */, u32* ioFlags\
+  \ /* r12, gets |=3 */)\n  -> sets r0/r1/r2/r5/r12; clobbers r4/r6/r7/r8/r9 and NZCV; preserves caller r0/r1/r2/r5\n"
+details: '- Saves {r0,r1,r2,r5,lr} on the stack and uses that frame as the implicit "context" pointer that callees
+  (sub_8031122, sub_80311B6) write through via r0. r12 is deliberately NOT saved: the function reads it, ORs in
+  3, and returns it.
+
+  - First calls sub_8031122 with the saved context (r0 points at the stack frame).
+
+  - Calls sub_8031570(r2=0, r3=0x20, r4=0x20, r5=0) which returns a status in r0; the caller''s branch treats 0
+  as "no event" (beq loc_8031234) and non-zero as "fire the shake". r3 is left at 0 from the surrounding code, then
+  reused as a scratch before the call.
+
+  - On hit: pops {r0,r1,r2,r5} back out of the same stack slot (net SP unchanged — the slot is reused), calls sub_80311B6
+  (also writes through r0), then sub_8030E14(r2=0, r3=0x20, r4=0x20, r5=0, r6=1) which returns a (dx,dy) pair in
+  r0/r1.
+
+  - The classic neg;lsr #1;neg sequence is applied to both r0 and r1 to remap a magnitude to a sign-preserving offset
+  around zero (this is the standard "absolute value, divide by 2, then re-apply a biased sign" trick used for camera
+  shake deltas; identical bit pattern to abs(v)/2 with sign bias).
+
+  - The resulting (dx,dy) is handed to camera_moveByDelta_80310B0, strongly suggesting the camera-shake interpretation.
+
+  - Epilogue does `r0 = r12; r0 |= 3; r12 = r0` — sets the low two bits of a flags/state word in r12 — then `pop
+  {r0-r2,r5,pc}` to return.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004614);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 58' --file inbox_farm_58.c sub_80311F4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80311F4
+
+    ./wf verify --function sub_80311F4 --snapshots build-snapshots'
+  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-004614-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80311F4
+
+    ./wf verify --function sub_80311F4 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 15 out of domain (verify run convert-20261011-004614-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80311F4
+
+    ./wf verify --function sub_80311F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004614-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: fuzz, maps, story3, story4, story5.'
+  reproduce: grep -l '^080311f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp 8734ebe
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- fuzz
+- maps
+- story3
+- story4
+- story5
+open_questions:
+- What do sub_8031122, sub_8031570, sub_80311B6, sub_8030E14 actually do? sub_8031570 looks like a probe/raycast
+  or "is this subevent active?" test; sub_8030E14 looks like a position/screen-to-world query given its (0x20, 0x20)
+  tile-ish args and r6=1.
+- What struct is being passed via r0 and mutated by sub_8031122/sub_80311B6? The lifted body treats the saved {r0,r1,r2,r5}
+  as a 16-byte context blob written through the r0 pointer; the field layout is unknown.
+- Is r12 really a "flags" word, or is it something like an event mask / visibility cap that gets bits 0..1 forced
+  on after the shake?
+- Is the "hit" actually a sub-event trigger (e.g. enemy contact, Navi hit, screen transition), and the camera shake
+  is the visible consequence? This matches the camera_moveByDelta call but isn't proven.
+sources:
+- tools/wf run convert-20261011-004614
+- recomp 8734ebe

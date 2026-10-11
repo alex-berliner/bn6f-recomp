@@ -1,0 +1,90 @@
+name: CutsceneCameraCmd_simple_scroll
+address: '0x0803705A'
+kind: function
+status: confirmed
+summary: Cutscene camera command that scrolls the camera along X/Y/Z by signed 8.8 deltas from the script for a
+  scripted number of ticks.
+interface: 'void CutsceneCameraCmd_simple_scroll(u16* scriptCursor /*r1*/, u32 unused /*r2*/, u32 unused /*r3*/,
+  struct CutsceneCameraInfo* info /*r5*/, struct Toolkit* toolkit /*r10*/) -> u8 keepRunning /*r0*/, u16* nextCursor
+  /*r1*/; flags NZCV set (timer<=0 path: ADDS r1,r1,#9; timer>0 path: CMP #0)'
+details: 'Implements the "simple scroll" opcode of the cutscene camera script. The 9-byte command layout is:
+
+  [0] opcode, [1..2] tick count (u16), [3..4] X delta (s16), [5..6] Y delta (s16), [7..8] Z delta (s16), each delta
+  being signed 8.8 fixed point.
+
+  On the first tick (oCutsceneCameraInfo_CommandInitialized==0), the function latches TRUE into that byte and stores
+  the tick count into oCutsceneCameraInfo_Timer. Every tick it resolves the camera pointer via oToolkit_CameraPtr
+  (r10 is the toolkit) and adds it into the u32 fields oCamera_X / oCamera_Y / oCamera_Z in place. The deltas are
+  sign-extended through lsl #8, so a fixed point step of 1.0 corresponds to 0x100 in the camera field.
+
+  The timer is decremented as a 32-bit subtract against the zero-extended u16; when it reaches zero or below the
+  command clears the CommandInitialized latch and bumps r1 (the script cursor) by 9 to skip past this command. Otherwise
+  the cursor is left where it was.
+
+  Return value (r0) is always 1 to tell the camera driver to keep running this command next tick.
+
+  Quirks: the s16 deltas are added into u32 camera fields (no saturation); the r1 increment uses ADDS so the final
+  CPSR on the done-path is that of 2 + 9; on the keep-path it is the CPSR of the CMP r0,#0 with r0>0 (N=0 Z=0 C=1
+  V=0).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004614);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 58' --file inbox_farm_58.c CutsceneCameraCmd_simple_scroll
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCameraCmd_simple_scroll
+
+    ./wf verify --function CutsceneCameraCmd_simple_scroll --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-004614-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCameraCmd_simple_scroll
+
+    ./wf verify --function CutsceneCameraCmd_simple_scroll --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-004614-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCameraCmd_simple_scroll
+
+    ./wf verify --function CutsceneCameraCmd_simple_scroll --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-004614-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, fuzz, menus2, story3, story4, story5, story6, story7, story9, wander.'
+  reproduce: grep -l '^0803705a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 8734ebe
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battlesweep
+- fuzz
+- menus2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story9
+- wander
+open_questions:
+- What is the exact signedness/scaling of oCamera_X/Y/Z (u32 fields; values can go negative via the s16 delta shift)?
+- Is the tick count in script[1..2] really a u16 tick count, or a signed duration?
+- Does ReadCutsceneCameraScriptSignedHalfword advance an internal cursor, or is the offset passed in each call always
+  relative to the command start?
+sources:
+- tools/wf run convert-20261011-004614
+- recomp 8734ebe
