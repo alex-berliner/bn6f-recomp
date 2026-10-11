@@ -1,0 +1,85 @@
+name: chatbox_config_80408D0
+address: '0x080408D0'
+kind: function
+status: confirmed
+summary: Configures the chatbox to begin playback of a given text script entry, resetting its cursor/state and clearing
+  two chatbox-related flags.
+interface: "void chatbox_startScript(u32 chatbox /* r5 */, u32 script_idx /* r1 */)\n  -> r1, r2, r3, r4, lr (r4\
+  \ = resolved script pointer);\n  clobbers nz, r0; preserves r2, r3; C/V preserved (ORR has no effect on them).\n"
+details: "Stores the requested text-script index into oChatbox_TextScriptIdx on the chatbox struct pointed to by\
+  \ r5.\nLooks up the script via the u16 offset table at oChatbox_TextScriptPtr:\n  ptr = *(u16*)(TextScriptPtr\
+  \ + script_idx*2) + TextScriptPtr\nWrites that pointer into both oChatbox_TextScriptCursorPtr and oChatbox_CurrTextScriptPtr\
+  \ (kept in sync).\nZeroes a batch of small script-state fields: oChatbox_TextScriptState_04, oChatbox_Unk_64,\
+  \ oChatbox_Unk_12,\noChatbox_CurrLine, oChatbox_Unk_17, +0x3D, +0x80.\nSets oChatbox_JumpTableOffset_11 and oChatbox_Unk_74\
+  \ to 1.\nMirrors oChatbox_TextScriptCharIdx into +0x94 (a stored typing/text-coordinate snapshot).\nTail-calls\
+  \ chatbox_resetAndClearBuffers_8045F60 to reset internal buffers.\nORs \"FLAGS_3E_UNK_0400 | FLAGS_3E_UNK_0800\"\
+  \ and passes the mask to chatbox_clearFlags_3e to clear those\ntwo unrelated bits. Returns to caller via pop {pc}.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-011542);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 65' --file inbox_farm_65.c chatbox_config_80408D0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_config_80408D0
+
+    ./wf verify --function chatbox_config_80408D0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-011542-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_config_80408D0
+
+    ./wf verify --function chatbox_config_80408D0 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261011-011542-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_config_80408D0
+
+    ./wf verify --function chatbox_config_80408D0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011542-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080408d0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 8ff3af8
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What exactly each cleared flag (FLAGS_3E_UNK_0400 / FLAGS_3E_UNK_0800) gates.
+- The meaning of oChatbox_JumpTableOffset_11 and why it is initialised to 1 here.
+- Why +0x94 takes a snapshot of oChatbox_TextScriptCharIdx at start-of-script.
+- Whether the two oChatbox_TextScriptCursorPtr / oChatbox_CurrTextScriptPtr slots are ever allowed to diverge.
+sources:
+- tools/wf run convert-20261011-011542
+- recomp 8ff3af8

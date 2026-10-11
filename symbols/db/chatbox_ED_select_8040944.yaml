@@ -1,0 +1,89 @@
+name: chatbox_ED_select_8040944
+address: '0x08040944'
+kind: function
+status: confirmed
+summary: 'Advances one frame of the chatbox''s ED-select animation: DMA-loads the next tile row into VRAM, wraps
+  the frame index at the end of the table, and queues the OAM sprite for that frame.'
+interface: void chatbox_ED_select_8040944(u32 /*chatbox*/ r5); // r5 in/out (preserved), no flags on return
+details: "Reads from the chatbox object (r5):\n  - oChatbox_Unk_16 (u8): source row index into the frame table at\
+  \ \"dword_80409B2\".\n  - oChatbox_Unk_70 (u32): base X origin for the sprite.\n  - chatbox+0x94 (u8): per-instance\
+  \ X offset added to the base origin.\n  - oChatbox_BoxGfxLoadState_0F (u8): multiplied by 0xE to form part of\
+  \ the Y origin.\n  - oChatbox_Unk_19 (u8): added (with -1) into the Y origin.\nBehavior:\n  - Picks a row from\
+  \ the 18-byte frame table at dword_80409B2 (six rows of 0x00, 0x01, 0x02, then a 0xFF terminator).\n  - Scales\
+  \ the picked value by <<7 and adds the tile-base byte_86A48C0, then calls QueueEightWordAlignedGFXTransfer with\
+  \ src that pointer, dest 0x6017F80, size 0x80 (one 32x16-tile row of 4bpp graphics into VRAM).\n  - Advances the\
+  \ frame counter; if the next entry is 0xFF it rolls back to slot 1 and uses the slot-0 tile id.\n  - Builds a\
+  \ 32-bit OAM attr01 packed as (x_origin<<16) | y_origin with bit 0x40000000 ORed in (affine sprite flag), and\
+  \ attr2 = 0xE3FC (with a shifted-in zero high half), then calls sub_802FE28(attr01, attr2, 0, 4) to submit the\
+  \ OAM entry.\n  - Tile id is computed into a local but never actually written to attr2 here; the 0xE3FC constant\
+  \ is hard-coded, suggesting the tile id path is reserved/overridden elsewhere or the readable C is slightly conservative.\n\
+  Quirks:\n  - Reads via byte table at dword_80409B2 but its terminator 0xFF is treated as a sentinel; the slot-0\
+  \ read uses ldrh (16-bit), pulling both bytes 0x00,0x00.\n  - The 0x40000000 OR into the OAM attr01 is the affine-OBJ\
+  \ bit in GBA OAM attr0.\n  - r5 (chatbox pointer) is preserved across the call (push {lr} / pop {pc}, no r5 in\
+  \ the push list).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-011542);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 65' --file inbox_farm_65.c chatbox_ED_select_8040944
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_ED_select_8040944
+
+    ./wf verify --function chatbox_ED_select_8040944 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 254 out
+    of domain (verify run convert-20261011-011542-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_ED_select_8040944
+
+    ./wf verify --function chatbox_ED_select_8040944 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-011542-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_ED_select_8040944
+
+    ./wf verify --function chatbox_ED_select_8040944 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011542-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08040944 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 8ff3af8
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Why is `tile_id` computed but not actually ORed into attr2 (0xE3FC is hard-coded)? Is attr2 supposed to embed
+  the tile id from the table?
+- What is the affine partner sprite / rotation group implied by sub_802FE28's a4=4?
+- Are the six row values in dword_80409B2 actually three frames (each 6 bytes long) or six separate animation rows?
+sources:
+- tools/wf run convert-20261011-011542
+- recomp 8ff3af8

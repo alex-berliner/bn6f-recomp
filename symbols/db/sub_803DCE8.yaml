@@ -1,0 +1,87 @@
+name: sub_803DCE8
+address: '0x0803DCE8'
+kind: function
+status: hypothesis
+summary: Initialise the camera/screen state block (linked from eLinkState) with a layout record and zero-fill the
+  two destination buffers.
+interface: void camera_init_803DCE8(void *ptr /*r0*/, u32 layout_ix /*r1*/, u8 unk_53 /*r2*/, u8 unk_52 /*r3*/)
+  -> (preserves r2,r4-r7; clobbers r0,r1,lr,nzcv)
+details: "Operates on a camera state struct anchored at eLinkState (loaded via off_803DD5C = eLinkState); comment\n\
+  in disassembly labels the surrounding offsets \"eCamera.unk_*\".\n- Stores r0 to eCamera.unk_70 and eCamera.unk_74\
+  \ (the destination pointer / zero-fill byte count).\n- Stores low bytes of r2 and r3 to eCamera.unk_53 and eCamera.unk_52\
+  \ respectively.\n- Uses layout_ix << 4 as an index into a 16-byte config table at off_803DC78:\n    cfg[0x0] ->\
+  \ eCamera.unk_84\n    cfg[0x4] -> eCamera.unk_88  (zero-fill target #1)\n    cfg[0x8] -> eCamera.unk_8C  (zero-fill\
+  \ target #2)\n    cfg[0xC] -> eCamera.unk_50 / .unk_51 (single byte written to both)\n- Then clears a small set\
+  \ of fields to 0: eCamera.unk_55, .unk_58, .unk_68.\n- Sets four halfword fields (eCamera.unk_60, .unk_62, .unk_64,\
+  \ .unk_66) to 0xFFFF via MVN of #0.\n- Finally calls ZeroFillByByte twice with (eCamera.unk_88, eCamera.unk_74)\
+  \ and (eCamera.unk_8C, eCamera.unk_74),\n  i.e. clears the two destination buffers in ptr-sized chunks.\nBehaviour\
+  \ is consistent with a \"set up the screen/camera buffer state and clear the visible layer buffers\"\nhelper used\
+  \ during scene / link-state initialisation.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-011542);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 65' --file inbox_farm_65.c sub_803DCE8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803DCE8
+
+    ./wf verify --function sub_803DCE8 --snapshots build-snapshots'
+  result: 'captured calls: 26 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261011-011542-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803DCE8
+
+    ./wf verify --function sub_803DCE8 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 12 out of domain (verify run convert-20261011-011542-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803DCE8
+
+    ./wf verify --function sub_803DCE8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011542-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0803dce8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 8ff3af8
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- True meaning of the layout table at off_803DC78 (per-mode/per-area screen layout descriptor).
+- Whether eCamera.unk_70 and .unk_74 are really the same pointer reused, or a pointer + size pair.
+- Semantic role of eCamera.unk_50..unk_66 fields (tile/page counts? scroll?).
+sources:
+- tools/wf run convert-20261011-011542
+- recomp 8ff3af8

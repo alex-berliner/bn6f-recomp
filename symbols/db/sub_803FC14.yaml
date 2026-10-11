@@ -1,0 +1,78 @@
+name: sub_803FC14
+address: '0x0803FC14'
+kind: function
+status: confirmed
+summary: Scans the OAM decomp buffer and offsets each row's Y by a scroll delta sourced from the toolkit's render-info
+  field, decrementing that field by 4 first.
+interface: "void sub_803FC14(void);\n  // inputs:  r10 = oToolkit* (RenderInfoPtr read via r10), r1 passed in but\
+  \ not consumed\n  // outputs: r0 = final computed row offset, r1 = last byte_803FC50 entry read\n  //        \
+  \  r2 = 0x140 (loop end), r3 = eDecompBuffer2013A00 base\n  // clobbers: N Z C V (set by final cmp pos,end or\
+  \ cmp cell,0x14)\n  // preserved: r4 r6 r7\n"
+details: "- Reads oToolkit->RenderInfoPtr (an \"oToolkit_RenderInfoPtr\" field on the\n  toolkit struct held through\
+  \ r10), then decrements the u16 at\n  RenderInfoPtr+0x10 by 4 and writes it back: this is the per-frame\n  vertical\
+  \ scroll accumulator (likely a Y-shake / screen-shake counter).\n- Walks eDecompBuffer2013A00, a 0x140-byte (20*4\
+  \ = 80-halfword?) region\n  used as a packed OAM attribute source for the decompressor. For each\n  cell it writes\
+  \ the current offset into 4 halfwords, then reads the\n  next halfword and subtracts byte_803FC50[cell] (a per-cell\
+  \ delta\n  table: 8, 0x10, 0xC repeating) to produce the next row offset, then\n  writes that into the following\
+  \ 8 halfwords.\n- Termination is whichever fires first: the bge on `pos >= 0x140`\n  (buffer fully written) or\
+  \ the ble on `cell <= 0x14` (20 cells done).\n- byte_803FC50 is a 20-entry delta table (8, 0x10, 0xC) that drives\
+  \ a\n  staggered vertical scroll across 20 rows of the decomp buffer.\n- The outer loop's \"write 8, read 1, advance\
+  \ cell\" pattern is the\n  classic GBA OAM decomp-buffer staggered-shape trick; the render-\n  info offset being\
+  \ decremented each call suggests this is invoked\n  once per frame while a screen-shake / scroll animation is\
+  \ active.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-011542);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 65' --file inbox_farm_65.c sub_803FC14
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803FC14
+
+    ./wf verify --function sub_803FC14 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-011542-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803FC14
+
+    ./wf verify --function sub_803FC14 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-011542-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803FC14
+
+    ./wf verify --function sub_803FC14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-011542-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz.'
+  reproduce: grep -l '^0803fc14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 8ff3af8
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- Is RenderInfoPtr+0x10 really a Y-scroll/shake counter, or a generic "draw offset" reused by this caller? Other
+  callers of the same field would tell us.
+- Is the buffer layout 20 rows of 8 halfwords (matching the 4-then-8 write pattern and the 0x14=20-cell count),
+  or something else? The "first 4, then 8" asymmetry is unusual and may correspond to OAM affine/regular attribute
+  grouping.
+- Does r1 actually carry meaningful input here, or is it a vestigial caller-saved value from a now-removed fast
+  path?
+sources:
+- tools/wf run convert-20261011-011542
+- recomp 8ff3af8
