@@ -8,6 +8,22 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── start_800023C ── */
+/* register form: calls sub_3005DA0 outside this file, which has no typed C interface yet.
+ * The original pops the saved caller-LR into r0 and bx's to it, so the return value
+ * that matters is the caller's LR, not whatever sub_3005DA0 left in r0. */
+static u32 call_rom_init(u32 caller_lr) {
+    GUEST_CALL(sub_3005DA0);
+    return caller_lr;  /* original: pop {r0} gets the saved LR, then bx r0 returns to caller */
+}
+
+/* GBA ROM entry stub: invoke the main initialization routine sub_3005DA0,
+ * then return to the BIOS/caller. r0 on exit carries the caller's LR. */
+Next start_800023C(void) {
+    R0 = call_rom_init(LR);
+    RETURN_TO_CALLER();
+}
+
 /* ── SetInterruptCallback ── */
 /* SetInterruptCallback(r0 = interrupt index, r1 = handler):
  * Installs `handler` as the callback for interrupt number `interrupt index`.

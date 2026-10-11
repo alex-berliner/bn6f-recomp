@@ -565,6 +565,177 @@ Next clearWord_e200AC1C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── QueueWordAlignedGFXTransfer ── */
+/* GFX queue: count is at 0x200AC1C, entries at 0x200B4B0, each 0x14 bytes. */
+#define GFX_QUEUE_COUNT_ADDR     0x200AC1Cu
+#define GFX_QUEUE_BASE_ADDR      0x200B4B0u
+#define GFX_QUEUE_HANDLER_TABLE  0x08000AFCu
+#define GFX_QUEUE_MAX            0x60u
+#define GFX_QUEUE_ENTRY_STRIDE   0x14u
+
+/* Word-aligned handler is at table index 3. */
+#define GFX_WORD_HANDLER_IDX     3u
+
+typedef struct {
+    u32 r3_val;      /* value to leave in r3 */
+    u32 flag_a;      /* CMP operand a */
+    u32 flag_b;      /* CMP operand b */
+} GfxQueueFlags;
+
+/* Insert a DMA transfer request into the GFX queue.
+ * copy_type is always 3 for word-aligned transfers.
+ * Returns the r3 output value and the flag operands so the
+ * adapter can reproduce the last flag-setting instruction. */
+static GfxQueueFlags queue_gfx_transfer(u32 src, u32 dest, u32 size, u32 copy_type) {
+    u32 count = LD32(GFX_QUEUE_COUNT_ADDR);
+    GfxQueueFlags res;
+
+    /* Original uses CMP + BGE (signed >=), so queue-full test is signed. */
+    if ((s32)count >= (s32)GFX_QUEUE_MAX) {
+        /* Queue full: r3 still holds the count address; flags from CMP count, #0x60. */
+        res.r3_val = GFX_QUEUE_COUNT_ADDR;
+        res.flag_a = count;
+        res.flag_b = GFX_QUEUE_MAX;
+        return res;
+    }
+
+    /* Increment the count. */
+    ST32(GFX_QUEUE_COUNT_ADDR, count + 1);
+
+    /* Write the entry: [src, dest, size, handler, copy_type]. */
+    u32 entry = GFX_QUEUE_BASE_ADDR + count * GFX_QUEUE_ENTRY_STRIDE;
+    u32 handler = LD32(GFX_QUEUE_HANDLER_TABLE + copy_type * 4);
+
+    ST32(entry + 0x00, src);
+    ST32(entry + 0x04, dest);
+    ST32(entry + 0x08, size);
+    ST32(entry + 0x0C, handler);
+    ST32(entry + 0x10, copy_type);
+
+    /* r3 = handler; last flag op is LSL copy_type, #2 which for
+     * copy_type=3 gives 12 → N=0, Z=0, C=0, V=0.
+     * CMP 0, 0x80000001 reproduces those exact flags. */
+    res.r3_val = handler;
+    res.flag_a = 0;
+    res.flag_b = 0x80000001u;
+    return res;
+}
+
+/* QueueWordAlignedGFXTransfer(r0=src, r1=dest, r2=size) -> r3, nzcv */
+Next QueueWordAlignedGFXTransfer(void) {
+    GfxQueueFlags res = queue_gfx_transfer(R0, R1, R2, GFX_WORD_HANDLER_IDX);
+    R3 = res.r3_val;
+    SET_FLAGS_CMP(res.flag_a, res.flag_b);
+    RETURN_TO_CALLER();
+}
+
+/* ── decompAndCopyData ── */
+/* register form: calls SWI_LZ77UnCompReadNormalWrite8bit outside this file, which has no typed C interface yet */
+static void decompress_lz77(u32 src, u32 dest) {
+    R0 = src;
+    R1 = dest;
+    GUEST_CALL(SWI_LZ77UnCompReadNormalWrite8bit);
+}
+
+/* register form: calls CopyBytes outside this file, which has no typed C interface yet */
+static void copy_bytes(u32 src, u32 dest, u32 count) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    GUEST_CALL(CopyBytes);
+    /* callee clobbers r2/r3; GUEST_CALL leaves them in the register file */
+}
+
+/* register form: calls CopyHalfwords outside this file, which has no typed C interface yet */
+static void copy_halfwords(u32 src, u32 dest, u32 count, u32 mask) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    R3 = mask;
+    GUEST_CALL(CopyHalfwords);
+}
+
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words(u32 src, u32 dest, u32 count, u32 mask) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    R3 = mask;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: calls CopyByEightWords outside this file, which has no typed C interface yet */
+static void copy_by_eight_words(u32 src, u32 dest, u32 count, u32 mask) {
+    R0 = src;
+    R1 = dest;
+    R2 = count;
+    R3 = mask;
+    GUEST_CALL(CopyByEightWords);
+}
+
+/* Dispatch a copy of body_size bytes from src to dest, selecting the
+ * copy routine by the size's bit pattern (1-byte, 2-byte aligned, etc). */
+static void copy_with_alignment(u32 src, u32 dest, u32 body_size) {
+    if (body_size & 1)
+        copy_bytes(src, dest, body_size);
+    else if (body_size & 2)
+        copy_halfwords(src, dest, body_size, 3);
+    else if (body_size & 0x1F)
+        copy_words(src, dest, body_size, 0x1F);
+    else
+        copy_by_eight_words(src, dest, body_size, 0x1F);
+}
+
+/* Process the decompress-and-copy table at entry_ptr.
+ * Each 12-byte entry: [0] source ptr (bit31 = compressed), [1] dest or null,
+ * [2] size (plain) or decompression destination (compressed).
+ * Returns the last byte-count (for flags), or 0 on immediate terminator. */
+static u32 process_decomp_table(u32 entry_ptr) {
+    u32 byte_count = 0;
+    for (;;) {
+        u32 word = LD32(entry_ptr);
+        if (word == 0)
+            return byte_count;
+
+        if (word & 0x80000000) {
+            /* LZ77-compressed entry: decompress into entry[2], then
+             * optionally copy the body to entry[1]. */
+            u32 src = word & 0x7FFFFFFF;       /* strip compression bit */
+            u32 decomp_dest = LD32(entry_ptr + 8);
+            decompress_lz77(src, decomp_dest);
+
+            u32 copy_dest = LD32(entry_ptr + 4);
+            /* register form: the original explicitly loads r1 from [r7,#4]
+             * after the decompress call, overwriting whatever the callee
+             * left; this value is caller-visible in r1 on the skip path. */
+            R1 = copy_dest;
+            if (copy_dest == 0) {
+                entry_ptr += 12;
+                continue;
+            }
+
+            /* Body starts at decomp_dest+4; size from LZ77 header word */
+            u32 header = LD32(decomp_dest);
+            byte_count = (header >> 8) - 4;
+            copy_with_alignment(decomp_dest + 4, copy_dest, byte_count);
+        } else {
+            /* Plain copy: src = word, dest = entry[1], size = entry[2] */
+            u32 dest = LD32(entry_ptr + 4);
+            byte_count = LD32(entry_ptr + 8);
+            copy_with_alignment(word, dest, byte_count);
+        }
+        entry_ptr += 12;
+    }
+}
+
+/* decompAndCopyData(r0 = table) -> r1,r2,r3 from callees; nz,c,v from final test */
+Next decompAndCopyData(void) {
+    u32 byte_count = process_decomp_table(R0);
+    SET_FLAGS_ADD(byte_count, 4);
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
 /* ── memory_bcdConvert ── */
 /* memory_bcdConvert: convert the value in r0 to packed BCD (8 decimal digits,
  * 4 bits each, most significant digit in the top nibble).
@@ -696,6 +867,67 @@ Next ShuffleByteList_PrimaryRNG(void) {
     R0 = array;
     R1 = count;
     R2 = 0;                         /* the final decrement left r2 at zero */
+    RETURN_TO_CALLER();
+}
+
+/* ── ShuffleHwordList_SecondaryRNG ── */
+/* register form: calls GetPositiveSignedRNGSecondary outside this file, which has no typed C interface yet */
+static u32 rng_secondary(u32 r0_in, u32 r1_in) {
+    R0 = r0_in;
+    R1 = r1_in;
+    GUEST_CALL(GetPositiveSignedRNGSecondary);
+    return R0;
+}
+
+/* register form: calls BIOS SWI 6 (Sqrt) outside this file */
+static u32 swi_sqrt(u32 r0_in, u32 r1_in, u32 *out_r1) {
+    R0 = r0_in;
+    R1 = r1_in;
+    swi_call(6);
+    *out_r1 = R1;
+    return R0;
+}
+
+/* Shuffle a halfword array by swapping random pairs for each iteration.
+ * Returns the final count (0 on normal exit); writes the last byte offset to *out_offset. */
+static u32 shuffle_hword_list(u32 array, u32 rng_state, u32 count, u32 *out_offset) {
+    u32 offset1 = 0;
+
+    while (count != 0) {
+        /* Generate two random indices: RNG call then SWI Sqrt per index */
+        u32 rng1 = rng_secondary(array, rng_state);
+        u32 idx1;
+        u32 svc_r0 = swi_sqrt(rng1, rng_state, &idx1);
+
+        u32 rng2 = rng_secondary(svc_r0, rng_state);
+        u32 idx2;
+        swi_sqrt(rng2, rng_state, &idx2);
+
+        /* Convert to byte offsets (halfword elements) and swap */
+        offset1 = idx1 + idx1;
+        u32 offset2 = idx2 + idx2;
+
+        u32 val1 = LD16(array + offset1);
+        u32 val2 = LD16(array + offset2);
+        ST16(array + offset1, val2);
+        ST16(array + offset2, val1);
+
+        count = count - 1;
+    }
+
+    *out_offset = offset1;
+    return count;
+}
+
+/* ShuffleHwordList_SecondaryRNG(r0 = array, r1 = rng_state, r2 = count) */
+Next ShuffleHwordList_SecondaryRNG(void) {
+    u32 in_r0 = R0, in_r1 = R1, r3_val;
+    u32 cnt = shuffle_hword_list(in_r0, in_r1, R2, &r3_val);
+    R0 = in_r0;
+    R1 = in_r1;
+    R2 = cnt;
+    R3 = r3_val;
+    SET_FLAGS_CMP(1, 1);
     RETURN_TO_CALLER();
 }
 
