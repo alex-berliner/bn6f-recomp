@@ -8,7 +8,10 @@ Checks, each only when the commit touches what it checks:
   lint     tools/abi/lint.py --check: no new register-level code in cport/src/game beyond the
            baseline, and the baseline (tools/abi/lint_baseline.json) may only go down: its total
            hits and its number of functions (a fix may move hits between categories; a deliberate
-           increase needs GATE_ALLOW_LINT_UP='why')
+           increase needs GATE_ALLOW_LINT_UP='why'). One exemption: the lint keys of functions the
+           commit adds to the retype queue (tools/abi/retype_queue.tsv: installs of the farm's
+           old-prompt candidates, model tagged +old, defined in cport/src/game) are left out of
+           the comparison; removing a function from the queue is always allowed
   symdb    tools/symdb.py check (about a second): entries valid against bn6f.elf, and the paths
            their reproduce lines name exist in the entries the commit touches; the stamp report
            (tools/stamps.py: what changed since each function was stamped, and the action) is
@@ -31,6 +34,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -44,6 +48,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 GAME = "cport/src/game/"
 BASELINE = "tools/abi/lint_baseline.json"
+RETYPE_QUEUE = "tools/abi/retype_queue.tsv"   # tools/wf/wf/tools/retype.py writes it
 LINT = "tools/abi/lint.py"
 LEFTOVERS = "tools/abi/leftovers.py"
 LIFTER = "tools/lifter/"
@@ -92,6 +97,35 @@ def baseline_totals(text: str) -> tuple[dict[str, int], int]:
     return totals, len(funcs)
 
 
+def queue_rows(text: str) -> dict[str, dict[str, str]]:
+    """tools/abi/retype_queue.tsv: function -> its row (the header line names the columns)."""
+    lines = [line for line in text.splitlines() if line and not line.startswith("#")]
+    if not lines:
+        return {}
+    columns = lines[0].split("\t")
+    return {cells[0]: dict(zip(columns, cells)) for cells in (line.split("\t") for line in lines[1:])}
+
+
+def newly_queued(old_queue: str, new_queue: str, defined: Callable[[str], bool]) -> tuple[set[str], list[str]]:
+    """The lint keys of the functions the commit adds to the retype queue, and what is wrong with any added
+    row (it must name an old-prompt model, a prompt hash and keys, and its function must be in cport/src/game)."""
+    before, after = queue_rows(old_queue), queue_rows(new_queue)
+    keys: set[str] = set()
+    problems: list[str] = []
+    for function, row in after.items():
+        if function in before:
+            continue
+        own = [key for key in row.get("lint_keys", "").split(",") if key]
+        if not row.get("model", "").endswith("+old") or not row.get("prompt_hash") or not own:
+            problems.append(f"{RETYPE_QUEUE}: {function}: a new row needs an old-prompt model (MODEL+old), a prompt "
+                            "hash and its lint keys")
+        elif not defined(function):
+            problems.append(f"{RETYPE_QUEUE}: {function} is queued but cport/src/game does not define it")
+        else:
+            keys.update(own)
+    return keys, problems
+
+
 def check_lint(hook: bool, changed: list[str]) -> Result:
     res = Result("lint")
     work = tempfile.mkdtemp(prefix="gate-lint-")
@@ -126,11 +160,25 @@ def check_lint(hook: bool, changed: list[str]) -> Result:
             old = git("show", f"HEAD:{BASELINE}", check=False)
             new = git("show", f":{BASELINE}", check=False)
             if old and new:
-                (ot, on), (nt, nn) = baseline_totals(old), baseline_totals(new)
+                # the retype queue's exemption: keys of functions this commit queues are not compared
+                game_text = "".join(open(os.path.join(work, p)).read() for p in game) if hook else ""
+                exempt, problems = newly_queued(git("show", f"HEAD:{RETYPE_QUEUE}", check=False),
+                                                git("show", f":{RETYPE_QUEUE}", check=False),
+                                                lambda f: re.search(rf"\bNext\s+{re.escape(f)}\s*\(\s*void\s*\)\s*\{{",
+                                                                    game_text) is not None)
+                res.failures.extend(problems)
+                kept = json.loads(new)
+                kept["functions"] = {k: v for k, v in kept["functions"].items() if k not in exempt}
+                (ot, on), (nt, nn) = baseline_totals(old), baseline_totals(json.dumps(kept))
+                if exempt:
+                    grown = sum(sum(v.values()) for k, v in json.loads(new)["functions"].items() if k in exempt)
+                    res.notes.append(f"lint baseline: {grown} hits in {len(exempt)} keys of newly queued functions "
+                                     f"({RETYPE_QUEUE}) left out of the comparison")
                 before, after = sum(ot.values()), sum(nt.values())
                 moved = ", ".join(f"{k} {ot.get(k, 0)} -> {n}" for k, n in sorted(nt.items()) if n != ot.get(k, 0))
                 if after > before or nn > on:
                     text = (f"the lint baseline may only go down: {before} -> {after} hits in {on} -> {nn} functions"
+                            + (f" (besides newly queued functions)" if exempt else "")
                             + (f" ({moved})" if moved else ""))
                     if os.environ.get("GATE_ALLOW_LINT_UP"):
                         res.warnings.append(f"{text}; allowed by GATE_ALLOW_LINT_UP: {os.environ['GATE_ALLOW_LINT_UP']}")
@@ -330,7 +378,7 @@ def main() -> int:
     changed = staged_paths() if hook else []
     touches = (lambda *prefixes: not hook or any(p.startswith(prefixes) or p in prefixes for p in changed))
     jobs: list[tuple[str, Callable[[], Result]]] = []
-    if touches(GAME, BASELINE, LINT):
+    if touches(GAME, BASELINE, LINT, RETYPE_QUEUE):
         jobs.append(("lint", lambda: check_lint(hook, changed)))
     if touches(GAME, LEFTOVERS, "tools/abi/lint.py"):
         jobs.append(("leftovers", lambda: check_leftovers(hook, changed)))

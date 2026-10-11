@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.tools.drafts import Draft, draft_entry, undrafted
+from wf.tools.models import base_model
 from wf.types import FunctionName, ModelSpec, Result
 
 PROJECT = "recomp-drafts"
@@ -87,7 +88,8 @@ def draft_each_candidate(given: DraftInput) -> DraftOutput:
     """Ask the model for each candidate's entry, several at a time."""
     tag = current_run_id()
     with ThreadPoolExecutor(max_workers=given.jobs) as pool:
-        runs = [pool.submit(contextvars.copy_context().run, draft_entry, given.drafter or given.model, candidate, tag)
+        runs = [pool.submit(contextvars.copy_context().run, draft_entry, base_model(given.drafter or given.model),
+                            candidate, tag)
                 for candidate in given.candidates]
         return DraftOutput(drafts=tuple(run.result() for run in runs))
 

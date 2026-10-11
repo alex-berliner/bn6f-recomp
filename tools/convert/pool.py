@@ -6,7 +6,9 @@ docs/reviews/2026-10-10-4-joint-plan.md; review 1 Area 1, review 3 Area 2 A8).
   tools/wf/.venv/bin/python tools/convert/pool.py [--jobs 16] [--snaps DIR] [--no-retest]
 
 Candidates: tools/convert/accepted/FUNC.MODEL.c (each passed when it was written) and every
-distinct code a failed round logged in tools/convert/log/FUNC.MODEL.jsonl.
+distinct code a failed round logged in tools/convert/log/FUNC.MODEL.jsonl. MODEL carries the prompt when
+it is not the typed one (`wf farm --prompt old`: minimax_MiniMax-M3+old); the models column shows it, and
+a chosen old-prompt candidate gets a note.
 
 Names: functions were renamed after the farm saw them. The rename record used is symbols/db:
 tools/rename_symbol.py, which makes every rename, moves the entry to NEW.yaml and adds OLD to its
@@ -67,7 +69,8 @@ import lint  # noqa: E402  # pyright: ignore[reportMissingImports]  # tools/abi/
 from wf.burr_typed import burr_dir  # noqa: E402
 from wf.repo import RUNS  # noqa: E402
 from wf.tools.build import build_host_difftest, committed_tree  # noqa: E402
-from wf.tools.models import ACCEPTED_DIR, FARM, LOG_DIR, CandidateC, ConversionContext, conversion_context  # noqa: E402
+from wf.tools.models import (ACCEPTED_DIR, FARM, LOG_DIR, CandidateC, ConversionContext, PromptKind,  # noqa: E402
+                             conversion_context, prompt_of)
 from wf.types import BuildFailure, FunctionName, Result  # noqa: E402
 import scorecard  # noqa: E402  # pyright: ignore[reportMissingImports]  # tools/convert/scorecard.py: size and writer
 
@@ -693,6 +696,9 @@ def row(outcome: Outcome, beside: Beside) -> list[str]:
                    else chosen.candidate.source if chosen else "-")
     models = sorted({c.model.replace("_", "/", 1) for c in function.candidates})
     notes = list(outcome.notes)
+    if chosen is not None and prompt_of(chosen.candidate.model) is not PromptKind.TYPED:
+        notes.append(f"chosen candidate: {prompt_of(chosen.candidate.model).value} prompt, register form allowed "
+                     "(an install queues it for retype: tools/abi/retype_queue.tsv)")
     if function.installed_in is not None and outcome.installed_share is not None:
         notes.insert(0, f"installed in {function.installed_in.name}; {outcome.installed_share:.0%} of the "
                         "closest candidate's lines are there")

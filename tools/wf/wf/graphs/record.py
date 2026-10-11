@@ -34,7 +34,8 @@ ACCEPTED_VERDICTS = (Verdict.PASSED, Verdict.PASSED_WITH_UNCHECKED_FUNCTIONS)
 # (nothing else is ever committed)
 RECORDED_PATHS = (REPO / "symbols", REPO / "bn6f", REPO / "cport/src/game", REPO / "cport/host/difftest.cfg",
                   REPO / "cport/host/difftest_gen.c", REPO / "tools/lifter/iwram.txt",
-                  REPO / "tools/lifter/not_entries.txt", REPO / "tools/abi/lint_baseline.json")
+                  REPO / "tools/lifter/not_entries.txt", REPO / "tools/abi/lint_baseline.json",
+                  REPO / "tools/abi/retype_queue.tsv")
 
 
 def record_graph() -> Graph["RecordState"]:

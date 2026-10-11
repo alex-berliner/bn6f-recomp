@@ -43,6 +43,8 @@ class Provenance(Result):
     commit: CommitHash
     farm_group: bool = False     # the model farm's candidates for unrelated small functions, put together
     placed: dict[FunctionName, Path] = {}   # a farm group: the laid-out file each function went to (tools/layout.py)
+    retype_queued: tuple[FunctionName, ...] = ()   # old-prompt register form, queued in tools/abi/retype_queue.tsv
+    prompt_hash: str = ""                          # of the prompt they were written with
 
 
 def write_entries(drafts: tuple[SymbolDraft, ...], checks: tuple[FunctionChecks, ...],
@@ -129,7 +131,12 @@ def _entry(draft: SymbolDraft, check: FunctionChecks, provenance: Provenance,
                          "reproduce": f"grep -l '^{check.address:08x} ' tools/traces/coverage/*.prof"})
     open_questions = list(draft.open_questions)
     details = draft.details
-    if draft.register_form:
+    if draft.function in provenance.retype_queued:
+        details += (f"\nRegister form, old prompt; queued for retype (the farm's prompt {provenance.prompt_hash}, "
+                    "register-form C allowed; tools/abi/retype_queue.tsv).")
+        open_questions.append("Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), "
+                              "to be converted again as typed C (stages S3/S4)")
+    elif draft.register_form:
         details += f"\nRegister form kept (C call semantics could not work): {draft.register_form}"
         open_questions.append(f"Calling-convention work: register form kept because {draft.register_form}")
     entry: dict[str, object] = {

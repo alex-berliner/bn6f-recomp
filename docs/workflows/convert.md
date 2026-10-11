@@ -10,7 +10,11 @@ to the model (3 attempts per model, then the next model). A group of farm
 candidates goes the same way, except that failing functions are taken out of
 it (they stay in the farm's pool) instead of going to a model, and its file is an
 inbox: each function goes to the file of its bn6f source (tools/layout.py), where
-the verify builds and the commit puts it. Approved work is
+the verify builds and the commit puts it. A group of the farm's old-prompt candidates
+(`--farm-model MODEL+old`) may keep register-form code: the register check is shown at
+review but does not stop it, and its commit queues each function with register-level
+code for retype (tools/abi/retype_queue.tsv) and raises the lint baseline by exactly
+their hits (tools/wf/wf/tools/retype.py). Approved work is
 committed, its symbols/db entries are written from the model's drafts plus the
 run's own evidence, and a child record run renames and documents it.
 The orchestrator never writes the code: it chooses the work and reviews.
@@ -105,25 +109,27 @@ The orchestrator reviews: approve, request changes (they go back to the model) o
 
 Put the file and its difftest.cfg lines into the main tree and commit them there (locally, never
 pushed), holding the main tree's lock: parallel runs share difftest.cfg. A farm group's functions go
-to the laid-out files, as in its verify.
+to the laid-out files, as in its verify; an old-prompt group's register-level code is queued for retype
+and added to the lint baseline in the same commit (the gate allows that growth and no other).
 
 - reads: `subsystem: str`, `file_name: str`, `functions: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`, `farm_model: typing.Optional[ModelSpec]`
-- produces: `commit: CommitHash`
+- produces: `commit: CommitHash`, `retype_queued: tuple[FunctionName, ...]`
 - then: `write_symbol_entries`
 
 ### `write_symbol_entries` (step)
 
 symbols/db entries from the model's drafts plus this run's evidence; renames for confirmed/probable meanings.
 
-- reads: `subsystem: str`, `file_name: str`, `attempts: tuple[Attempt, ...]`, `checks: tuple[FunctionChecks, ...]`, `commit: CommitHash`, `farm_model: typing.Optional[ModelSpec]`
+- reads: `subsystem: str`, `file_name: str`, `attempts: tuple[Attempt, ...]`, `checks: tuple[FunctionChecks, ...]`, `commit: CommitHash`, `farm_model: typing.Optional[ModelSpec]`, `retype_queued: tuple[FunctionName, ...]`
 - produces: `entries: tuple[Path, ...]`, `renames: tuple[Rename, ...]`
 - then: `record_symbols`
 
 ### `record_symbols` (step)
 
 Check the entries, rename in bn6f, write the comments, re-verify, commit (a child record run); or, when
-runs go in parallel, commit the entries and leave the renames to one batch record (PENDING_RENAMES).
+runs go in parallel, commit the entries and leave the renames to one batch record (PENDING_RENAMES). The
+retype queue's rows of this install get its commit (a commit cannot name itself).
 
-- reads: `run_dir: Path`, `subsystem: str`, `functions: tuple[FunctionName, ...]`, `renames: tuple[Rename, ...]`, `entries: tuple[Path, ...]`, `attempts: tuple[Attempt, ...]`, `defer_record: bool`, `tree: Path | None`
+- reads: `run_dir: Path`, `subsystem: str`, `functions: tuple[FunctionName, ...]`, `renames: tuple[Rename, ...]`, `entries: tuple[Path, ...]`, `attempts: tuple[Attempt, ...]`, `defer_record: bool`, `tree: Path | None`, `commit: typing.Optional[CommitHash]`, `retype_queued: tuple[FunctionName, ...]`
 - produces: `record: RecordReport | None`, `outcome: ConvertOutcome`
 - then: the run ends

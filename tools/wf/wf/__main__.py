@@ -6,10 +6,12 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
                        [--trials N]   # it says first what it will compare: no functions, no difftest or oracle
   python -m wf capture --function NAME... [--route NAME]... [--calls N]   # into build-snapshots/NAME
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] [--prompt typed|old] FUNCTION...
-  python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--jobs N] [FUNCTION...]   # entries for accepted candidates
+  python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--prompt old] [--jobs N] [FUNCTION...]   # entries for accepted candidates
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
-                       [--candidate FILE | --farm-model P/M] [--defer-record] [--battle-code] FUNCTION...
+                       [--candidate FILE | --farm-model P/M [--prompt old]] [--defer-record] [--battle-code] FUNCTION...
+  (--prompt old: the farm's old-prompt candidates, filed as P/M+old; a convert run installing them queues
+   them for retype, tools/abi/retype_queue.tsv)
   python -m wf record  [--symbol NAME]... [--rename OLD NEW]... [--pending] --message-file FILE
   python -m wf waiting RUN_ID              # what a paused run needs
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
@@ -44,7 +46,7 @@ from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify
 from wf.repo import REPO, RUNS, SNAPSHOTS
 from wf.tools.archive import ARCHIVE, archive_cited_runs
 from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
-from wf.tools.models import PromptKind
+from wf.tools.models import PromptKind, with_prompt
 from wf.tools.sources import models_for
 from wf.routes import ALL_ROUTES, route_named
 from wf.status import all_runs, workflow_of_run
@@ -84,6 +86,7 @@ class DraftsCommand(BaseModel):
     drafter: ModelSpec | None = None
     functions: tuple[FunctionName, ...]
     jobs: int
+    prompt: PromptKind
 
 
 class ConvertCommand(BaseModel):
@@ -98,6 +101,7 @@ class ConvertCommand(BaseModel):
     farm_model: ModelSpec | None
     defer_record: bool
     battle_code: bool
+    prompt: PromptKind
 
 
 class RecordCommand(BaseModel):
@@ -218,7 +222,8 @@ def start_farm(command: FarmCommand) -> None:
 
 def start_drafts(command: DraftsCommand) -> None:
     run_id, _ = new_run("drafts")
-    start = DraftsState(model=command.model, drafter=command.drafter, functions=command.functions or None,
+    start = DraftsState(model=with_prompt(command.model, command.prompt), drafter=command.drafter,
+                        functions=command.functions or None,
                         jobs=command.jobs)
     print_json(run_drafts(start, run_id))
 
@@ -230,7 +235,8 @@ def start_convert(command: ConvertCommand) -> None:
                          models=tuple(dict.fromkeys(model for spec in command.models for model in models_for(spec)))
                          or DEFAULT_MODELS,
                          rounds=command.rounds,
-                         snapshots=command.snapshots, candidate=command.candidate, farm_model=command.farm_model,
+                         snapshots=command.snapshots, candidate=command.candidate,
+                         farm_model=with_prompt(command.farm_model, command.prompt) if command.farm_model else None,
                          defer_record=command.defer_record, battle_code=command.battle_code)
     print_outcome(convert_graph().start(start, run_id))
 
@@ -385,6 +391,8 @@ def parse_command() -> Command:
     drafts.add_argument("--model", required=True, help="whose accepted candidates")
     drafts.add_argument("--drafter", help="who writes the entries (default: --model; e.g. minimax/MiniMax-M3)")
     drafts.add_argument("--jobs", type=int, default=16)
+    drafts.add_argument("--prompt", choices=[kind.value for kind in PromptKind], default=PromptKind.TYPED.value,
+                        help="whose candidates: the model's under this prompt (old: filed as MODEL+old)")
 
     convert = commands.add_parser("convert", help="a strong model converts a subsystem; stops for review")
     convert.add_argument("functions", nargs="+")
@@ -400,6 +408,9 @@ def parse_command() -> Command:
     convert.add_argument("--defer-record", action="store_true",
                          help="commit the entries, leave renames and bn6f comments to one batch record (parallel runs)")
     convert.add_argument("--battle-code", action="store_true", help="the subsystem is battle code (battle sweep)")
+    convert.add_argument("--prompt", choices=[kind.value for kind in PromptKind], default=PromptKind.TYPED.value,
+                         help="with --farm-model: its candidates under this prompt (old: register form allowed, the "
+                              "install queues them for retype in tools/abi/retype_queue.tsv)")
 
     record = commands.add_parser("record", help="symbols/db, renames and comments into bn6f, commit")
     record.add_argument("--symbol", action="append", default=[])

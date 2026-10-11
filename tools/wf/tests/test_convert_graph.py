@@ -18,7 +18,8 @@ from wf.repo import REPO
 from wf.tools import sources
 from wf.tools.evidence import FunctionChecks, Provenance
 from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Prompt
-from wf.tools.registers import RegisterCheck
+from wf.tools.registers import LintedFunction, RegisterCheck
+from wf.tools.retype import BASELINE, QUEUE, QueueRow
 from wf.tools.subsystem import CandidateFile, FileReply, FileTest, FunctionTest, SymbolDraft, TokenUse
 from wf.types import (BuildFailure, CommitHash, FunctionName, GuestAddress, ModelSpec, SnapshotDir,
                       SourceVersion, SymbolName, SymbolStatus, ToolMessage)
@@ -262,13 +263,68 @@ def test_a_failed_farm_verify_resets_the_worktree(monkeypatch: pytest.MonkeyPatc
     assert world.restored.count(tmp_path / "tree") >= 3   # quick test, install, and after the failed verify
 
 
+def test_an_old_prompt_farm_group_keeps_register_form_and_queues_it_for_retype(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[True], verdicts=[Verdict.PASSED])
+    queued: list[tuple[FunctionName, ...]] = []
+    filled: list[tuple[tuple[FunctionName, ...], CommitHash]] = []
+
+    def queue_install(functions: tuple[FunctionName, ...], assembled: str, laid_out: tuple[Path, ...],
+                      model: ModelSpec, prompt_hash: str, run: str) -> tuple[QueueRow, ...]:
+        queued.append(functions)
+        assert model == ModelSpec("hyper/cheap+old") and run == "convert-farm-old"
+        return tuple(QueueRow(function=function, lint_keys=(function,), prompt_hash=prompt_hash, model=model,
+                              install_run=run, install_commit="-", why="register form, old prompt; queued for retype")
+                     for function in functions)
+
+    def fill_install_commit(functions: tuple[FunctionName, ...], commit: CommitHash) -> bool:
+        filled.append((functions, commit))
+        return True
+
+    def register_form(code: str, file_name: str) -> RegisterCheck:
+        bad = LintedFunction(name=FUNCTION, kind="next", line=1, counts={"regs": 3}, lines={"regs": [1]},
+                             exception=None, violation=True)
+        return RegisterCheck(violations=(bad,), exceptions=(), report="registers")
+
+    monkeypatch.setattr(convert, "queue_install", queue_install)
+    monkeypatch.setattr(convert, "fill_install_commit", fill_install_commit)
+    monkeypatch.setattr(convert, "check_register_use", register_form)
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm-old", farm_model=ModelSpec("hyper/cheap+old"),
+                   functions=(FUNCTION,), register_check_faked=True)
+    assert isinstance(paused, Paused) and isinstance(paused.request, ReviewRequest)
+
+    finished = convert_graph().resume("convert-farm-old", APPROVE)
+
+    assert isinstance(finished, Finished) and finished.state.retype_queued == (FUNCTION,)
+    assert queued == [(FUNCTION,)] and filled == [((FUNCTION,), CommitHash("c0ffee0"))]
+    assert world.committed_files[0][-3:] == (BASELINE, QUEUE, REPO / "cport/host/difftest.cfg")
+    assert "written by hyper/cheap+old" in world.commits[0] and "queued for retype" in world.commits[0]
+    assert world.committed_files[1] == (QUEUE,)   # the install commit, filled in after the record
+
+
+def test_a_typed_farm_group_in_register_form_is_still_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    world = World(quick_tests=[True], verdicts=[Verdict.PASSED])
+
+    def register_form(code: str, file_name: str) -> RegisterCheck:
+        bad = LintedFunction(name=FUNCTION, kind="next", line=1, counts={"regs": 3}, lines={"regs": [1]},
+                             exception=None, violation=True)
+        return RegisterCheck(violations=(bad,), exceptions=(), report="registers")
+
+    monkeypatch.setattr(convert, "check_register_use", register_form)
+    finished = start(world, monkeypatch, tmp_path, run_id="convert-farm-typed", farm_model=FARM_MODEL,
+                     functions=(FUNCTION,), register_check_faked=True)
+
+    assert isinstance(finished, Finished) and finished.state.outcome is ConvertOutcome.REGISTER_FORM
+
+
 # ── the fakes ──────────────────────────────────────────────────────────
 
 def start(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_id: str, rounds: int = 3,
           candidate: Path | None = None, with_calls: bool = True,
           farm_model: ModelSpec | None = None,
-          functions: tuple[FunctionName, ...] = (FUNCTION,)) -> Finished[ConvertState] | Paused:
-    install(world, monkeypatch, tmp_path)
+          functions: tuple[FunctionName, ...] = (FUNCTION,),
+          register_check_faked: bool = False) -> Finished[ConvertState] | Paused:
+    install(world, monkeypatch, tmp_path, register_check_faked)
     if with_calls:
         for function in functions:
             (tmp_path / "snaps" / function).mkdir(parents=True, exist_ok=True)
@@ -284,7 +340,7 @@ DRAFT = SymbolDraft(function=FUNCTION, proposed_name=SymbolName("redrawBGTileMap
                     interface="void redraw(MapTiles *tiles)", details="")
 
 
-def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, register_check_faked: bool = False) -> None:
     def run_capture(start: CaptureState, run_id: str, tracked: bool = True) -> CaptureReport:
         return CaptureReport(snapshots=start.snapshots, routes=(), captured=(),
                              never_called=())
@@ -419,5 +475,5 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     def registers_clean(code: str, file_name: str) -> RegisterCheck:   # the fixtures are in register form
         return RegisterCheck(violations=(), exceptions=(), report="")
 
-    if "check_register_use" not in fakes:   # tests of the register check itself set their own
+    if not register_check_faked:   # tests of the register check itself set their own
         monkeypatch.setattr(convert, "check_register_use", registers_clean)

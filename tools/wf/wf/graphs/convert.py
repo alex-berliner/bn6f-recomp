@@ -8,11 +8,16 @@ to the model (3 attempts per model, then the next model). A group of farm
 candidates goes the same way, except that failing functions are taken out of
 it (they stay in the farm's pool) instead of going to a model, and its file is an
 inbox: each function goes to the file of its bn6f source (tools/layout.py), where
-the verify builds and the commit puts it. Approved work is
+the verify builds and the commit puts it. A group of the farm's old-prompt candidates
+(`--farm-model MODEL+old`) may keep register-form code: the register check is shown at
+review but does not stop it, and its commit queues each function with register-level
+code for retype (tools/abi/retype_queue.tsv) and raises the lint baseline by exactly
+their hits (tools/wf/wf/tools/retype.py). Approved work is
 committed, its symbols/db entries are written from the model's drafts plus the
 run's own evidence, and a child record run renames and documents it.
 The orchestrator never writes the code: it chooses the work and reviews."""
 import re
+import subprocess
 from collections import Counter
 from enum import Enum
 from pathlib import Path
@@ -32,7 +37,8 @@ from wf.tools.git import commit_files
 from wf.tools.locks import MAIN_TREE, held
 from wf.tools.install import (DIFFTEST_CFG, game_file, install_file, lay_out_group, layout_conflicts, names_taken,
                               placed, restore_game_files, uninstall_file)
-from wf.tools.models import ConversionContext, conversion_context, other_entries
+from wf.tools.models import ConversionContext, PromptKind, conversion_context, other_entries, prompt_hash, prompt_of
+from wf.tools.retype import BASELINE, QUEUE, fill_install_commit, queue_install
 from wf.tools.registers import RegisterCheck, check_register_use
 from wf.tools.sources import TIERS, Tier, first_up, is_source_failure
 from wf.tools.subsystem import (FileReply, FileTest, TokenUse, ask_model_for_file, candidate_from_file, repair_prompt,
@@ -147,6 +153,7 @@ class ConvertState(BaseModel):
     attempts: tuple[Attempt, ...] = ()
     checks: tuple[FunctionChecks, ...] = ()
     commit: CommitHash | None = None
+    retype_queued: tuple[FunctionName, ...] = ()     # old-prompt functions the commit queued for retype
     entries: tuple[Path, ...] = ()
     renames: tuple[Rename, ...] = ()
     record: RecordReport | None = None
@@ -418,16 +425,19 @@ class CommitInput(Result):
 
 class CommitOutput(Result):
     commit: CommitHash
+    retype_queued: tuple[FunctionName, ...] = ()
 
 
 @workflow.step
 def commit_conversion(given: CommitInput) -> CommitOutput:
     """Put the file and its difftest.cfg lines into the main tree and commit them there (locally, never
     pushed), holding the main tree's lock: parallel runs share difftest.cfg. A farm group's functions go
-    to the laid-out files, as in its verify."""
+    to the laid-out files, as in its verify; an old-prompt group's register-level code is queued for retype
+    and added to the lint baseline in the same commit (the gate allows that growth and no other)."""
     latest = given.attempts[-1]
     assert latest.review is not None and latest.verification is not None
     assert latest.reply.file is not None
+    queued: tuple[FunctionName, ...] = ()
     with held(MAIN_TREE):
         install_file(given.file_name, latest.reply.file, latest.reply.cfg_lines)
         if given.farm_model is None:
@@ -438,6 +448,16 @@ def commit_conversion(given: CommitInput) -> CommitOutput:
             except Exception:
                 uninstall_file(given.file_name)
                 raise
+            if prompt_of(given.farm_model) is PromptKind.OLD:
+                try:
+                    rows = queue_install(given.functions, latest.reply.file, files, given.farm_model,
+                                         prompt_hash(PromptKind.OLD), current_run_id())
+                except Exception:
+                    _restore_main_tree((*files, BASELINE, QUEUE))
+                    uninstall_file(given.file_name)
+                    raise
+                queued = tuple(row.function for row in rows)
+                files = (*files, BASELINE, QUEUE) if rows else files
         where = (f"; laid out into {', '.join(path.name for path in files)} (tools/layout.py)"
                  if given.farm_model is not None else "")
         message = (f"Readable {given.subsystem} ({len(given.functions)} functions, written by {latest.model})\n\n"
@@ -445,8 +465,17 @@ def commit_conversion(given: CommitInput) -> CommitOutput:
                    f"(run {current_run_id()}, attempt {latest.number}){where}; quick test and full verify passed "
                    f"(verify run {latest.verify_run}: {latest.verification.verdict.value}); reviewed and approved"
                    + (f": {latest.review.comments}" if latest.review.comments else "") + ".\n\n"
+                   + (f"Register form from the farm's old prompt ({prompt_hash(PromptKind.OLD)}): {len(queued)} of them "
+                      f"queued for retype in tools/abi/retype_queue.tsv ({', '.join(queued)}); the lint baseline grows "
+                      "by their hits only.\n\n" if queued else "")
                    + latest.review.attribution)
-        return CommitOutput(commit=commit_files((*files, DIFFTEST_CFG), message.strip() + "\n"))
+        return CommitOutput(commit=commit_files((*files, DIFFTEST_CFG), message.strip() + "\n"), retype_queued=queued)
+
+
+def _restore_main_tree(paths: tuple[Path, ...]) -> None:
+    """The main checkout's files back to the last commit (a failed old-prompt queueing left them half-written)."""
+    _ = subprocess.run(["git", "-C", str(REPO), "checkout", "HEAD", "--", *map(str, paths)], check=False,
+                       capture_output=True)
 
 
 class EntriesInput(Result):
@@ -456,6 +485,7 @@ class EntriesInput(Result):
     checks: tuple[FunctionChecks, ...]
     commit: CommitHash
     farm_model: ModelSpec | None = None      # a farm group: its entries cite the run, not the group
+    retype_queued: tuple[FunctionName, ...] = ()
 
 
 class EntriesOutput(Result):
@@ -472,7 +502,8 @@ def write_symbol_entries(given: EntriesInput) -> EntriesOutput:
     provenance = Provenance(subsystem=given.subsystem, file=game_file(given.file_name), model=latest.model,
                             attempts=latest.number, convert_run=current_run_id(), verify_run=latest.verify_run,
                             commit=given.commit, farm_group=given.farm_model is not None,
-                            placed=placed(functions) if given.farm_model is not None else {})
+                            placed=placed(functions) if given.farm_model is not None else {},
+                            retype_queued=given.retype_queued, prompt_hash=prompt_hash(PromptKind.OLD))
     return EntriesOutput(entries=write_entries(latest.reply.drafts, given.checks, provenance),
                          renames=renames(latest.reply.drafts, given.checks))
 
@@ -486,6 +517,8 @@ class RecordInput(Result):
     attempts: tuple[Attempt, ...]
     defer_record: bool
     tree: Path | None
+    commit: CommitHash | None = None
+    retype_queued: tuple[FunctionName, ...] = ()
 
 
 class RecordOutput(Result):
@@ -496,7 +529,8 @@ class RecordOutput(Result):
 @workflow.step
 def record_symbols(given: RecordInput) -> RecordOutput:
     """Check the entries, rename in bn6f, write the comments, re-verify, commit (a child record run); or, when
-    runs go in parallel, commit the entries and leave the renames to one batch record (PENDING_RENAMES)."""
+    runs go in parallel, commit the entries and leave the renames to one batch record (PENDING_RENAMES). The
+    retype queue's rows of this install get its commit (a commit cannot name itself)."""
     if given.tree is not None:
         remove_tree(given.tree)
     review = given.attempts[-1].review
@@ -507,8 +541,15 @@ def record_symbols(given: RecordInput) -> RecordOutput:
         with held(MAIN_TREE):
             with open(PENDING_RENAMES, "a") as pending:
                 _ = pending.write("".join(f"{rename.old} {rename.new}\n" for rename in given.renames))
-            _ = commit_files((*given.entries, PENDING_RENAMES), message.strip() + "\n")
+            filled = given.commit is not None and fill_install_commit(given.retype_queued, given.commit)
+            _ = commit_files((*given.entries, PENDING_RENAMES, *((QUEUE,) if filled else ())), message.strip() + "\n")
         return RecordOutput(record=None, outcome=ConvertOutcome.COMMITTED_RECORD_PENDING)
+    if given.commit is not None and given.retype_queued:
+        with held(MAIN_TREE):
+            if fill_install_commit(given.retype_queued, given.commit):
+                _ = commit_files((QUEUE,), f"Retype queue: install commit {given.commit[:10]} of "
+                                           f"{len(given.retype_queued)} functions\n\n"
+                                           + (review.attribution if review else ""))
     message = (f"Document {given.subsystem}: symbols/db entries"
                + (f"; rename {len(given.renames)} symbols in bn6f" if given.renames else "")
                + f"\n\nEntries drafted by {given.attempts[-1].model}, evidence from convert run {current_run_id()}.\n\n"
@@ -731,8 +772,15 @@ def cannot_convert(state: ConvertState) -> bool:
 
 
 def registers_clean(state: ConvertState) -> bool:
+    """No register-level code outside adapters, or a group of the farm's old-prompt candidates (register form
+    allowed: its install queues them for retype)."""
     check = _latest(state).registers
-    return check is None or check.clean
+    return check is None or check.clean or _register_form_allowed(state)
+
+
+def _register_form_allowed(state: ConvertState) -> bool:
+    return (state.farm_model is not None and prompt_of(state.farm_model) is PromptKind.OLD
+            and _latest(state).given)
 
 
 def registers_used_with_attempts_left(state: ConvertState) -> bool:

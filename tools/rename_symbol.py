@@ -11,8 +11,8 @@ For each pair:
     .h, .c, .ld; like bn6f's replace.sh) becomes NEW;
   - this repo: hand-written C (cport/src/game), cport/host/difftest.cfg,
     tools/lifter/iwram.txt and not_entries.txt, and the lint baseline
-    (tools/abi/lint_baseline.json, keyed by function name), including the
-    A_OLD / L_OLD forms.
+    (tools/abi/lint_baseline.json, keyed by function name) and the retype
+    queue (tools/abi/retype_queue.tsv), including the A_OLD / L_OLD forms.
 Then bn6f is rebuilt (its Makefile checks bn6f.sha1: the ROM must be
 identical; on any failure every change is undone), committed on its current
 branch, and the lifted C is regenerated (tools/build_lifted.sh) unless
@@ -33,7 +33,7 @@ DB = os.path.join(ROOT, "symbols", "db")
 BN6F_EXT = (".s", ".inc", ".h", ".c", ".ld")
 SKIP_DIRS = {".git", "build", "tools", "temp"}
 RECOMP_FILES = ["cport/host/difftest.cfg", "cport/host/difftest_gen.c", "tools/lifter/iwram.txt",
-                "tools/lifter/not_entries.txt", "tools/abi/lint_baseline.json"]
+                "tools/lifter/not_entries.txt", "tools/abi/lint_baseline.json", "tools/abi/retype_queue.tsv"]
 
 
 def word(name, prefixes=("",)):
