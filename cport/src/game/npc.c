@@ -391,6 +391,29 @@ Next npc_inChatbox_curAction_waitClose_809EBBC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── npc_runPrimaryScript_809ebdc ── */
+/* npc_runPrimaryScript_809ebdc
+ * Runs an overworld NPC's primary command script. Each iteration checks the
+ * NPC's TerminateScript flag; if clear, fetches the opcode at the NPC's
+ * current script pointer, dispatches to the handler from NPCCommandsJumptable,
+ * and stores the (possibly advanced) pointer back into the NPC.
+ */
+Next npc_runPrimaryScript_809ebdc(void) {
+    for (;;) {
+        if (LD8(R5 + oOverworldNPCObject_TerminateScript_19))
+            break;
+
+        R6 = LD32(R5 + oOverworldNPCObject_AnimationScriptPtr);
+        u8 opcode = LD8(R6);
+        u32 handlerAddr = LD32(A_NPCCommandsJumptable + ((u32)opcode << 2));
+        GUEST_CALL_ADDR(handlerAddr);
+
+        ST32(R5 + oOverworldNPCObject_AnimationScriptPtr, R6);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── NPCCommand_jump_if_flag_clear ── */
 /* register form: calls ReadNPCScriptHalfword outside this file, which has no typed C interface yet */
 static u16 read_npc_script_halfword(u32 addr) {

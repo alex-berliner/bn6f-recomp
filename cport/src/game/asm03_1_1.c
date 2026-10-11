@@ -441,6 +441,52 @@ Next logoScreen_finish_803D2A6(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── logoScreen_loadLogoTiles_803D2B8 ── */
+Next logoScreen_loadLogoTiles_803D2B8(void) {
+    /* The original pushes {r4-r7, lr} and pops them at the end, so r4-r7
+     * must be preserved across this routine even though we use them as
+     * scratch to pass arguments to CopyBackgroundTiles. */
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+    u32 saved_r6 = R6;
+    u32 saved_r7 = R7;
+
+    /* Clear VRAM and the GFX scratch buffer so the logo screen starts clean. */
+    GUEST_CALL(zeroFillVRAM);
+    GUEST_CALL(ZeroFillGFX30025c0);
+
+    /* Decompress the Capcom logo tileset/tilemap (and load both palettes
+     * plus the license-message tileset) via the initRefs table. */
+    R0 = A_initRefs803D2F0;
+    GUEST_CALL(decompAndCopyData);
+
+    /* Copy the Capcom logo tilemap into tile block 1.
+     * Args: j, i, which_tile_block_32x32, tile_ids, j_size, i_size. */
+    R0 = 0;
+    R1 = 0;
+    R2 = 1;
+    R3 = A_eDecompBuffer2013A00 + 4;
+    R4 = 0x20;
+    R5 = 0x14;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    /* Copy the license-message tilemap into tile block 2. */
+    R0 = 8;
+    R1 = 0x11;
+    R2 = 2;
+    R3 = A_CapcomLogoLicenseTilemap_86C41B4;
+    R4 = 0xE;
+    R5 = 1;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    /* Restore the callee-saved registers the prologue preserved. */
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── link_getModeSelector_803DD30 ── */
 /* link_getModeSelector_803DD30: derive a small "link state" selector and return it in R0
  * (zero flag set iff the result is 0).

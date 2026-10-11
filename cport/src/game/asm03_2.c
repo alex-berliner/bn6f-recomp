@@ -1361,6 +1361,50 @@ Next sub_8048DF8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── copyData_8049A18 ── */
+/* copyData_8049A18: clear VRAM, decompress init data, shrink the screen viewport,
+ * and trigger a screen transition. r10 holds a Toolkit pointer whose render info
+ * struct (offsets 0x14, 0x16, 0x18, 0x1A) holds the current viewport bounds.
+ *
+ *   inputs:  r10 lr
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r6 r7 */
+#define A_initRefs_8049A54 0x08049A54u
+
+Next copyData_8049A18(void) {
+    /* Clear video RAM and the secondary GFX buffer, then stream any packed
+     * intro graphics still pending in the copy queue. */
+    GUEST_CALL(zeroFillVRAM);
+    GUEST_CALL(ZeroFillGFX30025c0);
+    GUEST_CALL(copyMemory_8001850);
+
+    /* Walk the initRefs table: each entry is (srcPtr, dstPtr, size) and either
+     * decompresses from ROM into RAM/VRAM or copies a raw block. */
+    {
+        u32 *initRefs = (u32 *)A_initRefs_8049A54;
+        R0 = (u32)initRefs;
+        GUEST_CALL(decompAndCopyData);
+    }
+
+    /* Shrink the current render viewport inward by a tile on each side so the
+     * next scene can draw a border. The offsets hold: 0x14 = top, 0x16 = bottom,
+     * 0x18 = left, 0x1A = right (all in pixels). */
+    {
+        u32 renderInfoPtr = LD32(R10 + oToolkit_RenderInfoPtr);
+        ST16(renderInfoPtr + 0x16, (u16)(LD16(renderInfoPtr + 0x16) - 4)); /* bottom */
+        ST16(renderInfoPtr + 0x14, (u16)(LD16(renderInfoPtr + 0x14) - 2)); /* top    */
+        ST16(renderInfoPtr + 0x1A, (u16)(LD16(renderInfoPtr + 0x1A) - 2)); /* right  */
+        ST16(renderInfoPtr + 0x18, (u16)(LD16(renderInfoPtr + 0x18) - 4)); /* left   */
+    }
+
+    /* Kick off transition effect #3 with the new viewport in place. */
+    R0 = 3;
+    GUEST_CALL(sub_803B91C);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8049CF8 ── */
 /* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
 static void zero_fill_words(u32 dst, u32 byte_count) {
