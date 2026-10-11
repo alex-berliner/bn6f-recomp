@@ -913,6 +913,32 @@ Next battle_spawnArmHitEffect_801A4A6(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801A506 ── */
+/* register form: calls SetAIData_Unk_44_Flag outside this file, which has no typed C interface yet */
+static void set_ai_data_unk44_flag(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(SetAIData_Unk_44_Flag);
+}
+
+/* If the battle object's collision data has both a non-zero byte at 0x75 and a non-zero
+ * halfword at 0x80, set the AI data's unk_44 flag to 0x80000000. Returns the collision
+ * data pointer (R3) — the original always loads it before any branch, so callers see the
+ * same value either way. */
+static u32 maybe_set_ai_unk44_flag(u32 battle_object_ptr) {
+    u32 collision_data = LD32(battle_object_ptr + oBattleObject_CollisionDataPtr);
+    u8  byte_75 = LD8(collision_data + 0x75);
+    if (byte_75 == 0) return collision_data;
+    u16 half_80 = LD16(collision_data + 0x80);
+    if (half_80 == 0) return collision_data;
+    set_ai_data_unk44_flag(0x80000000);
+    return collision_data;
+}
+
+Next sub_801A506(void) {
+    R3 = maybe_set_ai_unk44_flag(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_applyStatusEffect_801A554 ── */
 /* battleObject_applyStatusEffect_801A554: apply the battle object's current status effect (r5 = object).
  *
