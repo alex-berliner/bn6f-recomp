@@ -1414,6 +1414,327 @@ Next cbGameState_80050EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── EnterMap ── */
+/* EnterMap — map-entry gamestate routine (0x08005148).
+ *
+ * Prepares everything needed to walk around on the overworld: resets graphics
+ * state, rebuilds the map object structs, clears scenario/event/cutscene state,
+ * loads the destination map's graphics, then hands control to the on-map update
+ * subsystem. While a screen fade is still running it does nothing and returns
+ * to its caller immediately.
+ */
+
+/* IsScreenFadeActive answers in Z (set = a fade is running). When it does,
+ * EnterMap returns straight to its caller, so the callee's leftover r0/r1 are
+ * part of EnterMap's observable result and must be handed back untouched. */
+struct FadeCheck_EnterMap {
+    bool fade_active;
+    u32 leftover_r0;
+    u32 leftover_r1;
+};
+
+/* What the adapter has to write back. nz_value is the value whose N/Z the
+ * adapter reproduces: on the normal path the original's last flag write is
+ * `movs r0, #4` (N clear, Z clear); on the fade-active early return the
+ * callee's boolean answer (Z set, N clear) is reproduced by 0. */
+struct EnterMapExit {
+    u32 r0;
+    u32 r1;
+    u32 nz_value;
+};
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static struct FadeCheck_EnterMap check_screen_fade_EnterMap(void) {
+    struct FadeCheck_EnterMap fade;
+    GUEST_CALL(IsScreenFadeActive);
+    fade.fade_active = ZERO_FLAG();   /* Z set: a fade is still running */
+    fade.leftover_r0 = R0;
+    fade.leftover_r1 = R1;
+    return fade;
+}
+
+/* register form: calls resetAllGraphicsState_8005F40 outside this file, which has no typed C interface yet */
+static void reset_all_graphics_state(void) {
+    GUEST_CALL(resetAllGraphicsState_8005F40);
+}
+
+/* register form: calls runSetupStepAndClearWorkArea_8005F6C outside this file, which has no typed C interface yet */
+static void run_setup_step_and_clear_work_area(void) {
+    GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
+}
+
+/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+static void call_sub_80027C4_EnterMap(void) {
+    GUEST_CALL(sub_80027C4);
+}
+
+/* register form: calls InitializeOverworldMapObjectStructs outside this file, which has no typed C interface yet */
+static void initialize_overworld_map_object_structs(void) {
+    GUEST_CALL(InitializeOverworldMapObjectStructs);
+}
+
+/* register form: calls copy_8002668 outside this file, which has no typed C interface yet */
+static void call_copy_8002668(void) {
+    GUEST_CALL(copy_8002668);
+}
+
+/* register form: calls zeroFill_80024A2 outside this file, which has no typed C interface yet */
+static void zero_fill_80024A2(void) {
+    GUEST_CALL(zeroFill_80024A2);
+}
+
+/* register form: calls scenario_initEffectState_8003962 outside this file, which has no typed C interface yet */
+static void scenario_init_effect_state(void) {
+    GUEST_CALL(scenario_initEffectState_8003962);
+}
+
+/* register form: calls zeroFill_8003AB2 outside this file, which has no typed C interface yet */
+static void zero_fill_8003AB2(void) {
+    GUEST_CALL(zeroFill_8003AB2);
+}
+
+/* register form: calls eventflags_ClearTwoHalfwordsAt2DE_802F0D8 outside this file, which has no typed C interface yet */
+static void eventflags_clear_two_halfwords_at_2DE(void) {
+    GUEST_CALL(eventflags_ClearTwoHalfwordsAt2DE_802F0D8);
+}
+
+/* register form: calls eventFlags_ClearRangeAt2C8_802F0F4 outside this file, which has no typed C interface yet */
+static void eventflags_clear_range_at_2C8(void) {
+    GUEST_CALL(eventFlags_ClearRangeAt2C8_802F0F4);
+}
+
+/* register form: calls cutscene_forceEndCurrent_8036EFE outside this file, which has no typed C interface yet */
+static void cutscene_force_end_current(void) {
+    GUEST_CALL(cutscene_forceEndCurrent_8036EFE);
+}
+
+/* register form: calls clearCutsceneScriptPosIfMagicValue0x1_8036F24 outside this file, which has no typed C interface yet */
+static void clear_cutscene_script_pos_if_magic_value_1(void) {
+    GUEST_CALL(clearCutsceneScriptPosIfMagicValue0x1_8036F24);
+}
+
+/* register form: calls sub_809F90C outside this file, which has no typed C interface yet */
+static void call_sub_809F90C(void) {
+    GUEST_CALL(sub_809F90C);
+}
+
+/* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void clear_event_flag_EnterMap(u16 flag) {
+    R0 = flag >> 8;
+    R1 = flag & 0xFF;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_test(u16 flag) {
+    R0 = flag >> 8;
+    R1 = flag & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* Z clear: the flag is set */
+}
+
+/* register form: calls sub_803F6B0 outside this file, which has no typed C interface yet */
+static void call_sub_803F6B0(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_803F6B0);
+}
+
+/* register form: calls sub_803F500 outside this file, which has no typed C interface yet */
+static void call_sub_803F500(void) {
+    GUEST_CALL(sub_803F500);
+}
+
+/* register form: calls RandomizeExtraToolkitPointers outside this file, which has no typed C interface yet */
+static void randomize_extra_toolkit_pointers(void) {
+    GUEST_CALL(RandomizeExtraToolkitPointers);
+}
+
+/* register form: calls reloadCurNaviStatBoosts_813c3ac outside this file, which has no typed C interface yet */
+static void reload_cur_navi_stat_boosts_EnterMap(void) {
+    GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
+}
+
+/* register form: calls sub_8000FAC outside this file, which has no typed C interface yet;
+ * it takes the game state in r5 */
+static void init_map_state_8000FAC(u32 game_state) {
+    R5 = game_state;
+    GUEST_CALL(sub_8000FAC);
+}
+
+/* register form: calls sub_80355EC outside this file, which has no typed C interface yet */
+static void call_sub_80355EC(void) {
+    GUEST_CALL(sub_80355EC);
+}
+
+/* register form: calls sub_8001172 outside this file, which has no typed C interface yet */
+static void call_sub_8001172(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8001172);
+}
+
+/* register form: calls triggerSomeUpdateForInternetOrRealWorld_8033948 outside this file, which has no typed C interface yet */
+static void trigger_update_for_internet_or_real_world(void) {
+    GUEST_CALL(triggerSomeUpdateForInternetOrRealWorld_8033948);
+}
+
+/* register form: calls SetRenderInfoLCDControl outside this file, which has no typed C interface yet */
+static void set_render_info_lcd_control(u16 value) {
+    R0 = value;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* register form: calls LoadGFXAnimsForMapGroup outside this file, which has no typed C interface yet */
+static void load_gfx_anims_for_map_group(u8 map_group, u8 map_number) {
+    R0 = map_group;
+    R1 = map_number;
+    GUEST_CALL(LoadGFXAnimsForMapGroup);
+}
+
+/* register form: calls map_lookupMapIdByGroupAndNumber_8001708 outside this file, which has no typed C interface yet */
+static void map_lookup_map_id_by_group_and_number(u8 map_group, u8 map_number) {
+    R0 = map_group;
+    R1 = map_number;
+    GUEST_CALL(map_lookupMapIdByGroupAndNumber_8001708);
+}
+
+/* register form: calls map_8034B4C outside this file, which has no typed C interface yet */
+static void call_map_8034B4C(u8 map_group, u8 map_number) {
+    R0 = map_group;
+    R1 = map_number;
+    GUEST_CALL(map_8034B4C);
+}
+
+/* register form: calls EnterMap_RunMapGroupAsmFunction_8030A00 outside this file, which has no typed C interface yet */
+static void enter_map_run_map_group(u8 map_group) {
+    R0 = map_group;
+    GUEST_CALL(EnterMap_RunMapGroupAsmFunction_8030A00);
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void set_screen_fade_EnterMap(u32 param1, u32 param2) {
+    R0 = param1;
+    R1 = param2;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* Body of EnterMap. `toolkit` is the r10 toolkit base the caller provides;
+ * the game state pointer is read from it. */
+static struct EnterMapExit enter_map(u32 toolkit) {
+    struct EnterMapExit out;
+
+    /* While a screen fade is running, leave everything alone: the caller sees
+     * the callee's registers and flags unchanged. */
+    struct FadeCheck_EnterMap fade = check_screen_fade_EnterMap();
+    if (fade.fade_active) {
+        out.r0 = fade.leftover_r0;
+        out.r1 = fade.leftover_r1;
+        out.nz_value = 0;         /* boolean answer: N clear, Z set */
+        return out;
+    }
+
+    reset_all_graphics_state();
+    run_setup_step_and_clear_work_area();
+    call_sub_80027C4_EnterMap();
+    initialize_overworld_map_object_structs();
+    call_copy_8002668();
+    zero_fill_80024A2();
+    scenario_init_effect_state();
+    zero_fill_8003AB2();
+    eventflags_clear_two_halfwords_at_2DE();
+    eventflags_clear_range_at_2C8();
+    cutscene_force_end_current();
+    clear_cutscene_script_pos_if_magic_value_1();
+    call_sub_809F90C();
+
+    clear_event_flag_EnterMap(0x1731);     /* EVENT_1731 */
+
+    call_sub_803F6B0(0);
+    call_sub_803F500();
+    randomize_extra_toolkit_pointers();
+
+    /* Re-read the current navi's stat boosts unless EVENT_1741 suppresses it. */
+    if (!event_flag_test(0x1741))
+        reload_cur_navi_stat_boosts_EnterMap();
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+
+    init_map_state_8000FAC(game_state);
+    call_sub_80355EC();
+    call_sub_8001172(0);
+
+    /* Clear leftover interaction/coordination state from the previous map. */
+    ST8(game_state + oGameState_Unk_15, 0);
+    ST8(game_state + oGameState_CoordInteractionValue, 0);
+    ST8(game_state + 3 /* oGameState_Unk_03 */, 0);
+    ST32(game_state + oGameState_Unk_68, 0);
+
+    /* Drop all the temporary mode flags a cutscene/battle may have left set. */
+    clear_event_flag_EnterMap(0x1719);     /* EVENT_1719 */
+    clear_event_flag_EnterMap(0x1701);     /* EVENT_NPC_OBJECTS_DISABLED */
+    clear_event_flag_EnterMap(0x1702);     /* EVENT_NON_NPC_ANIMATION_LOCKED */
+    clear_event_flag_EnterMap(0x1700);     /* EVENT_1700 */
+    clear_event_flag_EnterMap(0x1707);     /* EVENT_PET_DISABLED */
+    clear_event_flag_EnterMap(0x1739);     /* EVENT_1739 */
+    clear_event_flag_EnterMap(0x1732);     /* EVENT_1732 */
+    clear_event_flag_EnterMap(0x01BB);     /* EVENT_1BB */
+
+    trigger_update_for_internet_or_real_world();
+    set_render_info_lcd_control(0x1740);
+
+    /* Load the destination map's graphics and per-map tables. The group/number
+     * bytes are re-read before each call, as the original does. */
+    u8 map_group  = LD8(game_state + 4 /* oGameState_MapGroup */);
+    u8 map_number = LD8(game_state + 5 /* oGameState_MapNumber */);
+    load_gfx_anims_for_map_group(map_group, map_number);
+
+    map_group  = LD8(game_state + 4 /* oGameState_MapGroup */);
+    map_number = LD8(game_state + 5 /* oGameState_MapNumber */);
+    map_lookup_map_id_by_group_and_number(map_group, map_number);
+
+    map_group  = LD8(game_state + 4 /* oGameState_MapGroup */);
+    map_number = LD8(game_state + 5 /* oGameState_MapNumber */);
+    call_map_8034B4C(map_group, map_number);
+
+    map_group = LD8(game_state + 4 /* oGameState_MapGroup */);
+    enter_map_run_map_group(map_group);
+
+    /* Leaving a map ends SlipRun mode and its follow-up flags. */
+    clear_event_flag_EnterMap(0x173D);     /* EVENT_IN_SLIPRUN_STATE */
+    clear_event_flag_EnterMap(0x173E);     /* EVENT_173E */
+    clear_event_flag_EnterMap(0x173F);     /* EVENT_173F */
+
+    /* Start the fade-in from the parameters the caller stored, then reset them
+     * for the next transition. */
+    set_screen_fade_EnterMap(LD8(game_state + oGameState_EnterMapFadeParam1),
+                    LD8(game_state + oGameState_EnterMapFadeParam2));
+
+    ST8(game_state + oGameState_EnterMapFadeParam1, 8);
+    ST8(game_state + oGameState_EnterMapFadeParam2, 0x10);
+
+    /* Clear the warp-state byte. */
+    u32 warp = LD32(toolkit + oToolkit_Warp2011bb0_Ptr);
+    ST8(warp + oWarp2011bb0_Unk_10, 0);
+
+    /* Hand control to the on-map update subsystem (gamestate_OnMapUpdate). */
+    ST8(game_state + 0 /* oGameState_SubsystemIndex */, 4);
+
+    out.r0 = 4;
+    out.r1 = 0;
+    out.nz_value = 4;
+    return out;
+}
+
+/* EnterMap(r10 = toolkit) -> r0 = 4, r1 = 0, r5 = game state, flags from `movs r0, #4`.
+ * r2/r3 and r4–r12 are whatever the last callee left behind, which the guest
+ * calls already placed in the registers, so the adapter leaves them alone. */
+Next EnterMap(void) {
+    struct EnterMapExit out = enter_map(R10);
+    R0 = out.r0;
+    R1 = out.r1;
+    SET_FLAGS_NZ(out.nz_value);
+    RETURN_TO_CALLER();
+}
+
 /* ── gamestate_OnMapUpdate_8005268 ── */
 /* register form: calls clearCutsceneScriptPosIfMagicValue0x1_8036F24 outside this file, which has no typed C interface yet */
 static void call_clearCutsceneScriptPos(void) {
@@ -1727,6 +2048,91 @@ Next battle_init_80052D8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800531C ── */
+/* Register-form helpers: every callee in this sequence is a game function that
+ * has no typed C interface yet, so each is invoked through the guest registers. */
+
+/* register form: calls chatbox_8040818 outside this file, which has no typed C interface yet */
+static void call_chatbox_8040818_sub_800531C(void) {
+    GUEST_CALL(chatbox_8040818);
+}
+
+/* register form: calls FreeAllObjectsOfSpecifiedTypes outside this file, which has no typed C interface yet */
+static void free_objects_of_type(u32 typeBits) {
+    R0 = typeBits;
+    GUEST_CALL(FreeAllObjectsOfSpecifiedTypes);
+}
+
+/* register form: calls sub_8004702 outside this file, which has no typed C interface yet */
+static void call_sub_8004702_sub_800531C(void) {
+    GUEST_CALL(sub_8004702);
+}
+
+/* register form: calls zeroFill_80024A2 outside this file, which has no typed C interface yet */
+static void call_zero_fill_80024A2_sub_800531C(void) {
+    GUEST_CALL(zeroFill_80024A2);
+}
+
+/* register form: calls scenario_initEffectState_8003962 outside this file, which has no typed C interface yet */
+static void call_scenario_initEffectState(void) {
+    GUEST_CALL(scenario_initEffectState_8003962);
+}
+
+/* register form: calls zeroFill_8003AB2 outside this file, which has no typed C interface yet */
+static void call_zero_fill_8003AB2_sub_800531C(void) {
+    GUEST_CALL(zeroFill_8003AB2);
+}
+
+/* register form: calls RandomizeExtraToolkitPointers outside this file, which has no typed C interface yet */
+static void call_randomize_extra_toolkit_pointers(void) {
+    GUEST_CALL(RandomizeExtraToolkitPointers);
+}
+
+/* register form: calls initBattleStructsAndVram_80071D4 outside this file, which has no typed C interface yet */
+static void init_battle_structs_and_vram(u32 battleData, u32 gameState) {
+    R0 = battleData;
+    R5 = gameState;
+    GUEST_CALL(initBattleStructsAndVram_80071D4);
+}
+
+/* register form: calls WordFill outside this file, which has no typed C interface yet */
+static void word_fill(u32 dst, u32 word, u32 count) {
+    R0 = dst;
+    R1 = word;
+    R2 = count;
+    GUEST_CALL(WordFill);
+}
+
+/* End-of-battle teardown: free the chatbox and all battle objects, reset the
+ * misc state blocks, then switch the game state to subsystem 0xC (the handler
+ * cbGameState_80050EC waits for battle main to end and then triggers the map
+ * entry), rebuild the battle structures/VRAM one last time, and fill the logo
+ * screen state buffer with 0x2180. Leaves r0-r3 and the flags exactly as the
+ * final WordFill call leaves them, matching the original. */
+static void finish_battle_and_enter_map(u32 toolkit) {
+    call_chatbox_8040818_sub_800531C();
+    free_objects_of_type(0x21);
+    call_sub_8004702_sub_800531C();
+    call_zero_fill_80024A2_sub_800531C();
+    call_scenario_initEffectState();
+    call_zero_fill_8003AB2_sub_800531C();
+    call_randomize_extra_toolkit_pointers();
+
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+
+    /* queue the enter-map transition (subsystem index 0xC) */
+    ST8(gameState + oGameState_SubsystemIndex, 0xC);
+
+    init_battle_structs_and_vram(LD32(gameState + oGameState_CurBattleDataPtr), gameState);
+
+    word_fill(A_eLogoScreenState_Index_00, 0x2180, ~0u);
+}
+
+Next sub_800531C(void) {
+    finish_battle_and_enter_map(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80053E4 ── */
 /* register form: calls dispatch_80339CC outside this file, which has no typed C interface yet */
 static void call_dispatch(void) { GUEST_CALL(dispatch_80339CC); }
@@ -1910,6 +2316,234 @@ Next mainState_resetGameAndGoto28_8005524(void) {
     SET_FLAGS_NZ(R1); /* movs r1, #0x28 is the last flag-setting instruction */
     ST8(R0, R1);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8005642 ── */
+/* Main-jumptable state that sub_8005642 switches into once the scenario restart
+ * sequence has run. */
+#define MAIN_STATE_SCENARIO_RESTART 0x2C
+
+/* Object-type selection passed to FreeAllObjectsOfSpecifiedTypes. The value is
+ * still sitting in r0 when reloadCurNaviStatBoosts is called at the end of the
+ * reset sequence, so it is passed on there as well. */
+#define RESET_OBJECT_TYPES 0x21
+
+/* IsScreenFadeActive answers in the Z flag, but on the early-exit path its r0/r1
+ * leftovers are also caller-visible state, so the helper reports all three. */
+struct FadeCheck_sub_8005642 {
+    u32 r0;
+    u32 r1;
+    bool zero;
+};
+
+/* Final register values the adapter has to publish. Registers the original only
+ * leaves behind from a callee (r2/r3, r8-r12, lr) and the C/V flags are already
+ * correct in the guest register file and are left untouched by the adapter. */
+struct ScenarioRestartResult {
+    u32 r0;
+    u32 r1;
+    u32 r5;
+    u32 r7;
+    u32 nz_operand; /* value whose N/Z the adapter publishes, like the original's last flag write */
+};
+
+/* register form: calls dispatch_80339CC outside this file, which has no typed C interface yet */
+static void call_dispatch_80339CC_sub_8005642(void) {
+    GUEST_CALL(dispatch_80339CC);
+}
+
+/* register form: calls sub_80039AA outside this file, which has no typed C interface yet */
+static void call_sub_80039AA_sub_8005642(void) {
+    GUEST_CALL(sub_80039AA);
+}
+
+/* register form: calls sub_8003AFA outside this file, which has no typed C interface yet */
+static void call_sub_8003AFA_sub_8005642(void) {
+    GUEST_CALL(sub_8003AFA);
+}
+
+/* register form: calls sub_80027B4 outside this file, which has no typed C interface yet */
+static void call_sub_80027B4_sub_8005642(void) {
+    GUEST_CALL(sub_80027B4);
+}
+
+/* register form: calls sub_800286C outside this file, which has no typed C interface yet */
+static void call_sub_800286C_sub_8005642(void) {
+    GUEST_CALL(sub_800286C);
+}
+
+/* register form: calls sub_8003BF4 outside this file, which has no typed C interface yet */
+static void call_sub_8003BF4_sub_8005642(void) {
+    GUEST_CALL(sub_8003BF4);
+}
+
+/* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
+static void call_sub_8003E98_sub_8005642(void) {
+    GUEST_CALL(sub_8003E98);
+}
+
+/* register form: calls npc_drawSprites_800467C outside this file, which has no typed C interface yet */
+static void call_npc_drawSprites_800467C_sub_8005642(void) {
+    GUEST_CALL(npc_drawSprites_800467C);
+}
+
+/* register form: calls sub_8004298 outside this file, which has no typed C interface yet */
+static void call_sub_8004298_sub_8005642(void) {
+    GUEST_CALL(sub_8004298);
+}
+
+/* register form: calls sub_8004590 outside this file, which has no typed C interface yet */
+static void call_sub_8004590_sub_8005642(void) {
+    GUEST_CALL(sub_8004590);
+}
+
+/* register form: calls sub_8004934 outside this file, which has no typed C interface yet */
+static void call_sub_8004934_sub_8005642(void) {
+    GUEST_CALL(sub_8004934);
+}
+
+/* register form: calls event_runArmedCallback_80024AE outside this file, which has no typed C interface yet */
+static void call_event_runArmedCallback_80024AE_sub_8005642(void) {
+    GUEST_CALL(event_runArmedCallback_80024AE);
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet;
+ * r0/r1 are read here because on the early-exit path they are the last caller-visible
+ * register state and nothing later in the sequence runs to leave them behind */
+static struct FadeCheck_sub_8005642 check_screen_fade_sub_8005642(void) {
+    struct FadeCheck_sub_8005642 result;
+    GUEST_CALL(IsScreenFadeActive);
+    result.r0 = R0;
+    result.r1 = R1;
+    result.zero = ZERO_FLAG();
+    return result;
+}
+
+/* register form: calls chatbox_8040818 outside this file, which has no typed C interface yet */
+static void call_chatbox_8040818_sub_8005642(void) {
+    GUEST_CALL(chatbox_8040818);
+}
+
+/* register form: calls FreeAllObjectsOfSpecifiedTypes outside this file, which has no typed C interface yet */
+static void free_all_objects_of_specified_types(u32 types) {
+    R0 = types;
+    GUEST_CALL(FreeAllObjectsOfSpecifiedTypes);
+}
+
+/* register form: calls sub_8004702 outside this file, which has no typed C interface yet */
+static void call_sub_8004702_sub_8005642(void) {
+    GUEST_CALL(sub_8004702);
+}
+
+/* register form: calls resetAllGraphicsState_8005F40 outside this file, which has no typed C interface yet */
+static void call_resetAllGraphicsState_8005F40(void) {
+    GUEST_CALL(resetAllGraphicsState_8005F40);
+}
+
+/* register form: calls runSetupStepAndClearWorkArea_8005F6C outside this file, which has no typed C interface yet */
+static void call_runSetupStepAndClearWorkArea_8005F6C(void) {
+    GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
+}
+
+/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+static void call_sub_80027C4_sub_8005642(void) {
+    GUEST_CALL(sub_80027C4);
+}
+
+/* register form: calls zeroFill_80024A2 outside this file, which has no typed C interface yet */
+static void call_zeroFill_80024A2(void) {
+    GUEST_CALL(zeroFill_80024A2);
+}
+
+/* register form: calls scenario_initEffectState_8003962 outside this file, which has no typed C interface yet */
+static void call_scenario_initEffectState_8003962(void) {
+    GUEST_CALL(scenario_initEffectState_8003962);
+}
+
+/* register form: calls zeroFill_8003AB2 outside this file, which has no typed C interface yet */
+static void call_zeroFill_8003AB2(void) {
+    GUEST_CALL(zeroFill_8003AB2);
+}
+
+/* register form: calls RandomizeExtraToolkitPointers outside this file, which has no typed C interface yet */
+static void call_RandomizeExtraToolkitPointers(void) {
+    GUEST_CALL(RandomizeExtraToolkitPointers);
+}
+
+/* register form: calls reloadCurNaviStatBoosts_813c3ac outside this file, which has no typed C interface yet */
+static void reload_cur_navi_stat_boosts_sub_8005642(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
+}
+
+/* Finish the current frame's scenario bookkeeping, then, unless the screen fade
+ * check says to hold off, tear the scenario down and step the main jumptable to
+ * state 0x2C. r5_in/r7_in are returned unchanged on the early-exit path, where
+ * the original never writes them. */
+static struct ScenarioRestartResult restart_scenario(u32 toolkit, u32 r5_in, u32 r7_in) {
+    struct ScenarioRestartResult res;
+
+    /* end pending effects and draw the scene one final time */
+    call_dispatch_80339CC_sub_8005642();
+    call_sub_80039AA_sub_8005642();
+    call_sub_8003AFA_sub_8005642();
+    call_sub_80027B4_sub_8005642();
+    call_sub_800286C_sub_8005642();
+    call_sub_8003BF4_sub_8005642();
+    call_sub_8003E98_sub_8005642();
+    call_npc_drawSprites_800467C_sub_8005642();
+    call_sub_8004298_sub_8005642();
+    call_sub_8004590_sub_8005642();
+    call_sub_8004934_sub_8005642();
+    call_event_runArmedCallback_80024AE_sub_8005642();
+
+    /* branch taken on the fade check: nothing to reset, leave the scene as-is */
+    struct FadeCheck_sub_8005642 fade = check_screen_fade_sub_8005642();
+    if (fade.zero) {
+        res.r0 = fade.r0;
+        res.r1 = fade.r1;
+        res.r5 = r5_in;
+        res.r7 = r7_in;
+        res.nz_operand = 0; /* Z set and N clear, as the zero result of the check */
+        return res;
+    }
+
+    /* full scenario reset: drop the chatbox, free objects, clear graphics and
+     * work areas, reinitialize scenario state and the current navi's boosts */
+    call_chatbox_8040818_sub_8005642();
+    free_all_objects_of_specified_types(RESET_OBJECT_TYPES);
+    call_sub_8004702_sub_8005642();
+    call_resetAllGraphicsState_8005F40();
+    call_runSetupStepAndClearWorkArea_8005F6C();
+    call_sub_80027C4_sub_8005642();
+    call_zeroFill_80024A2();
+    call_scenario_initEffectState_8003962();
+    call_zeroFill_8003AB2();
+    call_RandomizeExtraToolkitPointers();
+    reload_cur_navi_stat_boosts_sub_8005642(RESET_OBJECT_TYPES);
+
+    /* park the game state pointer and step the main jumptable */
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 main_jumptable_index = LD32(toolkit + oToolkit_MainJumptableIndexPtr);
+    ST8(main_jumptable_index, MAIN_STATE_SCENARIO_RESTART);
+
+    res.r0 = main_jumptable_index;
+    res.r1 = MAIN_STATE_SCENARIO_RESTART;
+    res.r5 = game_state;
+    res.r7 = toolkit;
+    res.nz_operand = MAIN_STATE_SCENARIO_RESTART; /* mov r1,#0x2C leaves N clear, Z clear */
+    return res;
+}
+
+/* sub_8005642: (r10 = toolkit, r5/r7 = live across the call) -> r0 r1 r5 r7, nz */
+Next sub_8005642(void) {
+    struct ScenarioRestartResult res = restart_scenario(R10, R5, R7);
+    R0 = res.r0;
+    R1 = res.r1;
+    R5 = res.r5;
+    R7 = res.r7;
+    SET_FLAGS_NZ(res.nz_operand);
     RETURN_TO_CALLER();
 }
 
