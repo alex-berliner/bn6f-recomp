@@ -732,6 +732,73 @@ Next sub_80C4368(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C4484 ── */
+/* sub_80C4484: update a battle object's sprite each frame.
+ *
+ * Reads the "related object" pointer from the battle object (r5) and runs the
+ * standard mosaic-scaling + alpha setup on that sprite. Then dispatches by
+ * the Param3 byte of the battle object:
+ *   - Param3 != 0   -> call sub_801BCD0 (alternate update path).
+ *   - Param3 == 0   -> if the battle isn't currently time-stopped, run the
+ *                      generic object_updateSprite.
+ *
+ * Inputs  (registers): r4 r5 r7 r10 lr
+ * Outputs (registers): nz c v r0 r1 r2 r3 r4 r5 r7 lr
+ * Preserved: r4 r5 r7 (the original never modifies them, so the adapter
+ * leaves them as-is).
+ */
+
+/* register form: calls sprite_getMosaicScalingParameters outside this file, which has no typed C interface yet */
+static void get_mosaic_scaling(u32 related_obj_ptr) {
+    R0 = related_obj_ptr;
+    GUEST_CALL(sprite_getMosaicScalingParameters);
+}
+
+/* register form: calls sprite_setAlpha outside this file, which has no typed C interface yet */
+static void set_sprite_alpha(void) {
+    GUEST_CALL(sprite_setAlpha);
+}
+
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
+static bool battle_is_time_stopped(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return !ZERO_FLAG();          /* Z set -> not time-stopped; Z clear -> time-stopped */
+}
+
+/* register form: calls object_updateSprite outside this file, which has no typed C interface yet */
+static void update_sprite(void) {
+    GUEST_CALL(object_updateSprite);
+}
+
+/* register form: calls sub_801BCD0 outside this file, which has no typed C interface yet */
+static void alt_object_update(void) {
+    GUEST_CALL(sub_801BCD0);
+}
+
+/* Typed implementation. Performs the same work the original does, with the
+ * same memory writes and the same control flow. */
+static void sub_80C4484_impl(u32 battle_obj_ptr) {
+    /* Pull the related-object pointer out of the battle object and run the
+     * standard sprite setup (mosaic scaling parameters, then alpha). */
+    get_mosaic_scaling(LD32(battle_obj_ptr + oBattleObject_RelatedObject1Ptr));
+    set_sprite_alpha();
+
+    /* Param3 selects which update path to take. */
+    if (LD8(battle_obj_ptr + oBattleObject_Param3) != 0) {
+        alt_object_update();
+    } else if (!battle_is_time_stopped()) {
+        update_sprite();
+    }
+}
+
+/* Thin adapter: pulls the one argument (r5) from the guest register file,
+ * calls the typed function, and returns. r4/r7/r10/lr are not touched, so
+ * they round-trip unchanged, as does r5 (the original never modifies it). */
+Next sub_80C4484(void) {
+    sub_80C4484_impl(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_spawnObject56LinkedToOwner_80C44A8 ── */
 /* battle_spawnObject56LinkedToOwner_80C44A8(r1..r3 = spawn x/y/z, r5 = owner BattleObject):
  * Spawns battle object type 0x56 via object_spawnType1. The original pushes

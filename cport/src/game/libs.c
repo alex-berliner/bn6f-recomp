@@ -321,6 +321,53 @@ Next STWI_set_Callback_ID(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── Sio32IDInit ── */
+/* Typed implementation of Sio32IDInit. The GBA serial I/O has to be put into a known state
+ * before the link cable handshake, which is what this routine does. */
+static void sio32_id_init(void) {
+    /* Disable IRQs at the master enable while we reconfigure IE. */
+    ST16(A_InterruptMasterEnableRegister, 0);
+
+    /* Clear the multiplayer-SIO IRQ bit (bit 8 << multiplayer_id, with the id read from
+     * the save data at dword_2010CCC + 0xA) and the generic SIO IRQ bit 0x80 in IE. */
+    {
+        u32 save_ptr = LD32(A_dword_2010CCC);
+        u32 mask = (8u << LD8(save_ptr + 0xA)) | 0x80u;
+        ST16(A_InterruptEnableRegister,
+             LD16(A_InterruptEnableRegister) & (u16)~mask);
+    }
+
+    /* Re-enable IRQs at the master enable. */
+    ST16(A_InterruptMasterEnableRegister, 1);
+
+    /* Put the SIO mode select register into "general-purpose data" mode. */
+    ST16(A_SIOModeSelect_GeneralPurposeData, 0);
+
+    /* Program RCNT (InterruptEnableRegister - 0xD8) for multiplayer:
+     * write 0x1000 (parent-to-child transfer enable), then OR in 0x4080 (multiplayer
+     * mode flag), mirroring the original's read-modify-write sequence. */
+    {
+        u32 rcnt = (u32)A_InterruptEnableRegister - 0xD8;
+        ST16(rcnt, 0x1000);
+        ST16(rcnt, LD16(rcnt) | 0x4080);
+    }
+
+    /* Zero the 12-byte link ID buffer at byte_2010CD0. The original clears it with
+     * SWI_CpuSet using a stack-zero source (count = 3 u32 words); the resulting
+     * memory state is identical to writing the zeros directly. */
+    ST32((u32)A_byte_2010CD0 + 0, 0);
+    ST32((u32)A_byte_2010CD0 + 4, 0);
+    ST32((u32)A_byte_2010CD0 + 8, 0);
+
+    /* Acknowledge the SIO interrupt. */
+    ST16(A_InterruptRequestFlags_IRQAcknowledge, 0x80);
+}
+
+Next Sio32IDInit(void) {
+    sio32_id_init();
+    RETURN_TO_CALLER();
+}
+
 /* ── SWI_CpuFastSet ── */
 /* SWI_CpuFastSet(r0 = src, r1 = dest, r2 = length | mode):
  * BIOS call 0xC. Copies or fills words in 8-word bursts.
@@ -1392,6 +1439,84 @@ Next sub_814F44C(void) {
     R0 = LR;                    /* pop {r0} restores the caller's return address */
     R1 = res.r1;
     SET_FLAGS_ADD(res.add_a, res.add_b);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814F4A0 ── */
+/* sub_814F4A0: per-tick update of one sound channel's pan / volume / mute bytes.
+ *
+ * inputs:  r0 = channel struct pointer
+ * outputs: r2 r3 r4 (preserved; the typed function never touches them)
+ * clobbers: r0 r1
+ *
+ * Reads pan bytes at [+2] and [+3], picks a "mute" byte (0xF0 / 0x0F / 0xFF),
+ * stores it at +0x1B, computes avg = (a+b)>>4 and stores at +0xA (clamped to
+ * 0xF only on the 0xF0/0x0F path), then writes (vol*avg + 0xF)>>4 at +0x19 and
+ * updates +0x1B with (LD8(+0x1B) & LD8(+0x1C)) — the channel mute mask. */
+static void sub_814F4A0_impl(u32 channel) {
+    u8 a = LD8(channel + 2);
+    u8 b = LD8(channel + 3);
+
+    u8 mute;
+    u32 avg;
+
+    if (b > a) {
+        /* av < bv branch (loc_814F4C0): compare (b>>1) against a */
+        if ((b >> 1) >= a) {
+            mute = 0xF0;
+            ST8(channel + 0x1B, mute);
+            /* loc_814F4DA: recompute, store, possibly clamp */
+            avg = ((u32)LD8(channel + 2) + (u32)LD8(channel + 3)) >> 4;
+            ST8(channel + 0xA, (u8)avg);
+            if (avg > 0xF) {
+                avg = 0xF;
+                ST8(channel + 0xA, (u8)avg);
+            }
+        } else {
+            /* loc_814F4CC (0xFF): store mute, store unclamped avg, no clamp */
+            mute = 0xFF;
+            ST8(channel + 0x1B, mute);
+            avg = ((u32)a + (u32)b) >> 4;
+            ST8(channel + 0xA, (u8)avg);
+        }
+    } else {
+        /* av >= bv branch: compare (a>>1) against b */
+        if ((a >> 1) >= b) {
+            mute = 0x0F;
+            ST8(channel + 0x1B, mute);
+            /* loc_814F4DA: recompute, store, possibly clamp */
+            avg = ((u32)LD8(channel + 2) + (u32)LD8(channel + 3)) >> 4;
+            ST8(channel + 0xA, (u8)avg);
+            if (avg > 0xF) {
+                avg = 0xF;
+                ST8(channel + 0xA, (u8)avg);
+            }
+        } else {
+            /* loc_814F4CC (0xFF) */
+            mute = 0xFF;
+            ST8(channel + 0x1B, mute);
+            avg = ((u32)a + (u32)b) >> 4;
+            ST8(channel + 0xA, (u8)avg);
+        }
+    }
+
+    /* Scale volume by the stored average: store ((vol*avg)+0xF)>>4 at +0x19,
+     * then AND-mask the mute byte with the channel mute flag at +0x1C. */
+    u32 ab = LD8(channel + 0xA);
+    u32 vol = LD8(channel + 6);
+    u32 scaled = ((vol * ab) + 0xF) >> 4;
+    ST8(channel + 0x19, (u8)scaled);
+
+    u32 cur_mute = LD8(channel + 0x1B);
+    u32 mask = LD8(channel + 0x1C);
+    ST8(channel + 0x1B, (u8)(mask & cur_mute));
+}
+
+/* Thin adapter. r2/r3/r4 are listed as outputs (preserved); the typed function
+ * never touches them, so its presence automatically keeps them unchanged.
+ * The original returns no flags or scalar value — just falls off the tail. */
+Next sub_814F4A0(void) {
+    sub_814F4A0_impl(R0);
     RETURN_TO_CALLER();
 }
 

@@ -53,6 +53,23 @@ Next reqBBS_initMemory_813F9DA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── reqBBS_8140984 ── */
+/* Clear three single-byte flags at offsets 0xD, 0xE, 0xF in the eReqBBSGui state struct. */
+static void clear_reqbbs_flags(void) {
+    u8 zero = 0;
+    u32 gui = A_eReqBBSGui_SubsystemJumpTableOffset;
+    ST8(gui + 0xD, zero);
+    ST8(gui + 0xE, zero);
+    ST8(gui + 0xF, zero);
+}
+
+Next reqBBS_8140984(void) {
+    clear_reqbbs_flags();
+    /* The original's last instructions load r2 = 0xF, leaving 0xF in r2. */
+    R2 = 0xF;
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_setFlags_8140A24 ── */
 /* reqBBS_setFlags_8140A24: mark the request-board (BBS) event flags as set.
  * Sets the 0x40 flags of EVENT_1640 and the 0x10 flags of EVENT_16C0 via

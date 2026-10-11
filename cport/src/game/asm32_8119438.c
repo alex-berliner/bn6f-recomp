@@ -573,6 +573,28 @@ Next sub_81198B0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81198E8 ── */
+/* register form: calls sprite_setUnk0x2c outside this file, which has no typed C interface yet */
+static void sprite_set_unk0x2c(u32 base, u8 loader_byte) {
+    R0 = base;
+    R1 = loader_byte;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* Set the sprite's unk0x2c field from the byte at oSprite+0xC.
+ * If that byte is 0xFF, the base argument is 0x40000000; otherwise it is 0.
+ * The original reads a byte from the game struct via the pointer in r5 (oSprite). */
+static void set_sprite_unk0x2c_from_loader(u32 sprite_ptr) {
+    u8 loader_byte = LD8(sprite_ptr + 0xC);
+    u32 base = (loader_byte == 0xFF) ? 0x40000000u : 0u;
+    sprite_set_unk0x2c(base, loader_byte);
+}
+
+Next sub_81198E8(void) {
+    set_sprite_unk0x2c_from_loader(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8119ACC ── */
 /* sub_8119ACC: indirect call through the three-entry jump table at
  * off_8119AE0. The byte at [r5+8] is used as a *byte offset* into the
@@ -599,6 +621,172 @@ Next sub_8119ACC(void) {
     /* any other selector would branch to garbage past the table; the
      * game never produces one, so there is nothing to do here */
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8119AEC ── */
+/* sub_8119AEC: build the PET-status icon sprite.
+ *
+ * The original takes the object pointer in R5 and runs through a small state
+ * machine: pick which sprite form to display, initialise the sprite, load its
+ * animation, hide the shadow, lay out companion sprites, then apply palette /
+ * priority / sub-record settings. */
+
+/* Register-form helpers for game functions that have no typed C interface yet.
+ * Each sets the input registers, performs GUEST_CALL, and returns whatever the
+ * original leaves behind (R0, or a condition flag read with ZERO_FLAG()). */
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u8 get_cur_pet_navi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (u8)R0;
+}
+
+/* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static u8 get_cur_pet_navi_stats_byte(u32 a1, u32 a2) {
+    R0 = a1;
+    R1 = a2;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (u8)R0;
+}
+
+/* register form: calls notZero_eByte200AD04 outside this file, which has no typed C interface yet */
+static bool byte_200ad04_nonzero(void) {
+    GUEST_CALL(notZero_eByte200AD04);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool test_event_flag_163(void) {
+    R0 = 1;
+    R1 = 0x63;                          /* EVENT_163 */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_8119C08 outside this file, which has no typed C interface yet.
+ * Returns the R0 the callee leaves behind (passed straight to sprite_setPalette). */
+static u32 setup_companion_sprites(void) {
+    GUEST_CALL(sub_8119C08);
+    return R0;
+}
+
+/* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
+static void init_gui_sprite_sub_8119AEC(s32 a1, s32 a2) {
+    R0 = (u32)a1;
+    R1 = (u32)a2;
+    GUEST_CALL(initGuiSprite_8002770);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_set_anim_sub_8119AEC(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_load_anim_data_sub_8119AEC(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_no_shadow_sub_8119AEC(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void sprite_set_palette_sub_8119AEC(s32 palette) {
+    R0 = (u32)palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void sprite_set_priority_sub_8119AEC(s32 priority) {
+    R0 = (u32)priority;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void slot_store_halfword(u32 value) {
+    R0 = value;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void sprite_set_sub_palette_bank(s32 bank) {
+    R0 = (u32)bank;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+}
+
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void sprite_set_sub_record_field_a_sub_8119AEC(s32 value) {
+    R0 = (u32)value;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: calls sprite_applyComputedPaletteAndUpdate_8119BD0 outside this file, which has no typed C interface yet */
+static void sprite_apply_palette(void) {
+    GUEST_CALL(sprite_applyComputedPaletteAndUpdate_8119BD0);
+}
+
+/* Static table mirroring the 32-bit words at byte_8119B74 in the original ROM.
+ * Each entry is a sprite-form ID; index by the chosen form index. */
+static const u32 kSpriteFormTable[] = {
+    0x1B, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45,
+    0x46, 0x47, 0x48, 0x62, 0x5F, 0x54, 0x55, 0x56,
+    0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D
+};
+
+/* Pick the sprite-form ID the icon should display.
+ *
+ *  - If a real PET Navi is currently out, use its ID directly as the table index.
+ *  - Otherwise read stats byte 0x17. When the "style" flag at 0x200AD04 is set
+ *    AND event 163 is clear, offset the index by 0x0C; in every other case the
+ *    base index is 0. */
+static u32 pick_sprite_form_id(void) {
+    u8 navi = get_cur_pet_navi();
+    if (navi != 0) {
+        return kSpriteFormTable[navi];
+    }
+
+    u8 stats = get_cur_pet_navi_stats_byte(0, 0x17);
+    u32 index;
+    if (byte_200ad04_nonzero() && !test_event_flag_163()) {
+        index = 0x0Cu + stats;
+    } else {
+        index = 0;
+    }
+    return kSpriteFormTable[index];
+}
+
+/* Build the PET-status icon sprite at the object pointed to by `obj` (R5 in
+ * the original). Sets up the chosen sprite form, animation, palette and
+ * priority, then applies the computed palette. */
+static void build_pet_status_icon(u32 obj) {
+    u32 form_id = pick_sprite_form_id();
+
+    /* The original stores 0x23 to [R5] before any sprite work, tagging the
+     * object so the sprite system knows what it is dealing with. */
+    ST8(obj, 0x23);
+
+    init_gui_sprite_sub_8119AEC((s32)form_id, 0);
+    sprite_set_anim_sub_8119AEC(0);
+    sprite_load_anim_data_sub_8119AEC();
+    sprite_no_shadow_sub_8119AEC();
+    /* sub_8119C08 returns an R0 that the original passes unchanged to
+     * sprite_setPalette. */
+    u32 palette = setup_companion_sprites();
+    sprite_set_palette_sub_8119AEC((s32)palette);
+    sprite_set_priority_sub_8119AEC(2);
+    slot_store_halfword(0);              /* dword_8119B6C == 0 */
+    sprite_set_sub_palette_bank(0);
+    sprite_set_sub_record_field_a_sub_8119AEC(3);
+    ST8(obj + 8, 4);
+    sprite_apply_palette();
+}
+
+Next sub_8119AEC(void) {
+    build_pet_status_icon(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1120,6 +1308,59 @@ Next menu_getTableEntryForStateIndex_811A268(void) {
     R2 = LD8(entry + 3);
     R3 = entry;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A29C ── */
+/* register form: calls sprite_getUnk0x2c outside this file, which has no typed C interface yet */
+static u32 sprite_get_unk2c(void) {
+    GUEST_CALL(sprite_getUnk0x2c);
+    return R0;
+}
+
+/* register form: calls sprite_setUnk0x2c outside this file, which has no typed C interface yet */
+static void sprite_set_unk2c(u32 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* register form: calls menu_getTableEntryForStateIndex_811A268 outside this file,
+ * which has no typed C interface yet (returns three values in r0/r1/r2) */
+static void menu_get_table_entry(u32 *out_r0, u32 *out_r1, u32 *out_r2) {
+    GUEST_CALL(menu_getTableEntryForStateIndex_811A268);
+    *out_r0 = R0;
+    *out_r1 = R1;
+    *out_r2 = R2;
+}
+
+/* Tweaks a sprite's unk0x2c based on a menu-state table entry.
+ *
+ * Active path (taken when r0 != 0 AND (r2 != 0 OR r1 == 0)):
+ *   OR in 0x7E, then clear the bit at position (6 - state_byte) of that low byte.
+ * Inactive path: clear the 0x7E bits and OR in 0x3E.
+ *
+ * Inputs/Outputs from the original register contract are r4-r7/lr, preserved across. */
+static u32 apply_sprite_tweak(void) {
+    u32 r0, r1, r2;
+
+    menu_get_table_entry(&r0, &r1, &r2);
+
+    /* Original: tst r0,r0 (beq CA); tst r2,r2 (bne AE); tst r1,r1 (bne CA); -> AE
+     * Active (AE) iff r0 != 0 AND (r2 != 0 OR r1 == 0). */
+    if (r0 != 0 && (r2 != 0 || r1 == 0)) {
+        u32 state_byte = LD8(A_byte_8124B1C + (r0 - 0x140));
+        /* ARM `lsr r2, r4` with r4 as a 32-bit register: shift by >= 32 yields 0. */
+        u32 mask = (state_byte < 32) ? (0x40u >> state_byte) : 0;
+        u32 unk2c = sprite_get_unk2c() | 0x7E;
+        sprite_set_unk2c(unk2c & ~mask);
+    } else {
+        sprite_set_unk2c((sprite_get_unk2c() & ~0x7E) | 0x3E);
+    }
+    return 0;
+}
+
+Next sub_811A29C(void) {
+    apply_sprite_tweak();
     RETURN_TO_CALLER();
 }
 
@@ -2033,5 +2274,145 @@ Next sprite_setPositionById_811C23C(void) {
         GUEST_CALL(sprite_setCoordinates);
         R5 = savedR5;   /* restore the caller's r5 after the helper call */
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811CA1C ── */
+/* install_object_state_handler: object base passed via guest register r5; the assembly
+ * uses r5 to address fields 0/4/8 of the object record (state byte, palette index,
+ * next state). r5 is preserved unchanged across the call. */
+
+/* register form: calls loc_8002774 outside this file, which has no typed C interface yet */
+static void loc_8002774_call(u32 a1, u32 a2) {
+    R0 = a1;
+    R1 = a2;
+    GUEST_CALL(loc_8002774);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_setAnimation_call(u32 a1) {
+    R0 = a1;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_loadAnimationData_call(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_noShadow_call(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_makeScalable outside this file, which has no typed C interface yet */
+static void sprite_makeScalable_call(void) {
+    GUEST_CALL(sprite_makeScalable);
+}
+
+/* register form: calls sprite_setScaleParameters outside this file, which has no typed C interface yet */
+static void sprite_setScaleParameters_call(u32 a1, u32 a2, u32 a3) {
+    R0 = a1;
+    R1 = a2;
+    R2 = a3;
+    GUEST_CALL(sprite_setScaleParameters);
+}
+
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void sprite_setSubEntryPaletteBank_800304A_call(u32 a1) {
+    R0 = a1;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+}
+
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void slotList_storeHalfwordAndClearField_800306C_call(u32 a1) {
+    R0 = a1;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void sprite_setPriority_8002E14_call(u32 a1) {
+    R0 = a1;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void sprite_setSubRecordFieldA_8003060_call(u32 a1) {
+    R0 = a1;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: calls sprite_setCoordinates outside this file, which has no typed C interface yet */
+static void sprite_setCoordinates_call(u32 a1, u32 a2) {
+    R0 = a1;
+    R1 = a2;
+    GUEST_CALL(sprite_setCoordinates);
+}
+
+/* register form: calls object_SetStateHandler_811CC4E outside this file, which has no typed C interface yet */
+static u32 object_SetStateHandler_811CC4E_call(void) {
+    GUEST_CALL(object_SetStateHandler_811CC4E);
+    return R0;
+}
+
+/* register form: calls sub_811CA94 outside this file, which has no typed C interface yet */
+static void sub_811CA94_call(void) {
+    GUEST_CALL(sub_811CA94);
+}
+
+/* register form: calls sprite_clearScaleCounterAndMakeUnscalable_804668A outside this file, which has no typed C interface yet */
+static void sprite_clearScaleCounterAndMakeUnscalable_804668A_call(void) {
+    GUEST_CALL(sprite_clearScaleCounterAndMakeUnscalable_804668A);
+}
+
+/* State-handler installation helper. Object base passed via guest register r5;
+ * the assembly reads/writes fields at r5+0 (state byte), r5+4 (palette-bank
+ * index) and r5+8 (next-state byte). r5 is preserved across the call.
+ * Marks the object as state 0x23 ("setting up sprite"), runs the sprite
+ * initialisation sequence, then moves the object to state 4 and installs a
+ * new state handler. If the handler installs, sub_811CA94 is invoked;
+ * otherwise the just-set-up scalable state is torn down. */
+static void install_object_state_handler(u32 obj_ptr) {
+    u8 palette_index = LD8(obj_ptr + 4);
+    u32 slot_addr;
+
+    /* Mark the object as in state 0x23 ("initialising sprite"). */
+    ST8(obj_ptr, 0x23);
+
+    /* Load object graphics/animation tables into VRAM (0x89, &unk_201BA04). */
+    loc_8002774_call(0x89, A_unk_201BA04);
+
+    /* Configure the sprite. */
+    sprite_setAnimation_call(0);
+    sprite_loadAnimationData_call();
+    sprite_noShadow_call();
+    sprite_makeScalable_call();
+    sprite_setScaleParameters_call(0, 0x80, 0x80);
+
+    /* Palette bank = palette_index (r0 = 0 + palette_index). */
+    sprite_setSubEntryPaletteBank_800304A_call(palette_index);
+
+    /* Slot-list entry: halfword at (palette_index * 0x30 + 0x80). */
+    slot_addr = (u32)palette_index * 0x30 + 0x80;
+    slotList_storeHalfwordAndClearField_800306C_call(slot_addr);
+
+    sprite_setPriority_8002E14_call(0);
+    sprite_setSubRecordFieldA_8003060_call(0);
+    sprite_setCoordinates_call(0, 0);
+
+    /* Move into state 4 (handled by the handler we're about to install). */
+    ST8(obj_ptr + 8, 4);
+
+    /* Try to install the new state handler; on failure, undo the scalable
+     * setup we just performed. */
+    if (object_SetStateHandler_811CC4E_call()) {
+        sub_811CA94_call();
+    } else {
+        sprite_clearScaleCounterAndMakeUnscalable_804668A_call();
+    }
+}
+
+Next sub_811CA1C(void) {
+    install_object_state_handler(R5);
     RETURN_TO_CALLER();
 }

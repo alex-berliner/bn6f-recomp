@@ -2443,6 +2443,86 @@ Next TestBattleFlag_0x40(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802E112 ── */
+/* Flag bit (from battle_setFlags) set on the battle state when the run qualifies. */
+#define BATTLE_FLAG_0x40  0x40
+
+/* Effect bit in GetBattleEffects() checked at offset 0x21 (0x200000). */
+#define BATTLE_EFFECT_0x200000  0x200000
+
+/* Network-battle effect bit in GetBattleEffects(). */
+#define BATTLE_EFFECT_NETWORK  0x08
+
+/* Event flag queried by TestEventFlagFromImmediate when not network-flagged. */
+#define EVENT_1722_BEAST_LINK_GATE_RELATED  0x1722
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 call_GetBattleMode(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 call_GetBattleEffects(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls notZero_eByte200AD04 outside this file, which has no typed C interface yet.
+ * Returns true if the gate-related counter/byte at 0x200AD04 is non-zero. */
+static bool call_notZero_eByte200AD04(void) {
+    GUEST_CALL(notZero_eByte200AD04);
+    return R0 != 0;
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet.
+ * TestEventFlagFromImmediate answers in flags: ZF set if the flag is clear. */
+static bool call_TestEventFlagFromImmediate(u32 hi, u16 lo) {
+    R0 = hi;
+    R1 = lo;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls battle_setFlags outside this file, which has no typed C interface yet */
+static void call_battle_setFlags(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(battle_setFlags);
+}
+
+static void maybe_set_battle_flag_0x40(void) {
+    /* Skip when the current mode disallows it. */
+    u32 mode = call_GetBattleMode();
+    if (mode == 1 || mode == 7 || mode == 9 || mode == 6)
+        return;
+
+    /* Skip while the 0x200000 effect is active. */
+    if (call_GetBattleEffects() & BATTLE_EFFECT_0x200000)
+        return;
+
+    /* Set the flag if the gate byte is non-zero, or this is a network battle with the gate event set. */
+    bool qualify = call_notZero_eByte200AD04();
+    if (!qualify) {
+        if ((call_GetBattleEffects() & BATTLE_EFFECT_NETWORK) == 0)
+            return;
+        if (!call_TestEventFlagFromImmediate(EVENT_1722_BEAST_LINK_GATE_RELATED >> 16,
+                                             (u16)EVENT_1722_BEAST_LINK_GATE_RELATED))
+            return;
+    }
+
+    call_battle_setFlags(BATTLE_FLAG_0x40);
+}
+
+/* sub_802E112: gate control for setting battle flag 0x40.
+ *   Skips in crossover, tomahawk, dustman, or virus-battler modes, and while the
+ *   0x200000 battle effect is active. Otherwise sets flag 0x40 via battle_setFlags,
+ *   either immediately (if the gate byte is non-zero) or after confirming this is a
+ *   network battle with event flag 0x1722 set. */
+Next sub_802E112(void) {
+    maybe_set_battle_flag_0x40();
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_DecrementAllianceTimer_802E1D8 ── */
 /* battle_DecrementAllianceTimer_802E1D8: tick down the timer field (+0x30) of the record that
  * getEntryPtr_2036120_1D0_802E070 returns for the alliance of the battle object in r5.

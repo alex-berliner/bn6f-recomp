@@ -423,6 +423,32 @@ Next sub_802F994(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802F9EC ── */
+/* register form: calls sub_8001158 outside this file, which has no typed C interface yet */
+static void load_via_sub_8001158(u32 addr) {
+    R0 = addr;
+    GUEST_CALL(sub_8001158);
+}
+
+/* Look up a pointer in a small jump-table by index, then hand it to sub_8001158.
+ * The table lives at A_off_802FA00 and holds guest pointers to constant OAM-shaped blobs. */
+static void play_oam_seq(u32 index) {
+    u32 addr = LD32((index << 2) + (u32)A_off_802FA00);
+    load_via_sub_8001158(addr);
+}
+
+Next sub_802F9EC(void) {
+    play_oam_seq((u32)R0);
+    RETURN_TO_CALLER();
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool event_flag_set(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();
+}
+
 /* ── sub_802FB10 ── */
 /* register form: calls sub_8001158 outside this file, which has no typed C interface yet */
 static void call_sub_8001158_sub_802FB10(u32 data) {

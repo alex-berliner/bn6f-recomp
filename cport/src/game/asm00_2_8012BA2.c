@@ -2356,6 +2356,84 @@ Next battle_applyStateSpriteColorShader_801690A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8016BFC ── */
+/* register form: calls AddRandomVarianceToTwoCoords outside this file, which has no typed C interface yet */
+static void apply_random_variance(u32 amplitude, u32 x16, u32 y, u32 z16,
+                                  u32 *out_x, u32 *out_y, u32 *out_z) {
+    R0 = amplitude;
+    R1 = x16;
+    R2 = y;
+    R3 = z16;
+    GUEST_CALL(AddRandomVarianceToTwoCoords);
+    *out_x = R1;
+    *out_y = R2;
+    *out_z = R3;
+}
+
+/* Battle-object wobble tick.
+ * - If no animation is already in flight, snapshot X16/Z16 into Unk_30/Unk_32 and
+ *   arm a 4-frame guard (PreventAnim := 4, Unk_19 := 0).
+ * - Read the halfword at collision-data+0x80; if non-zero, force the wobble
+ *   counter (Unk_19) to 30.
+ * - While the wobble counter is non-zero, decrement it and store a perturbed
+ *   (X, Y, Z) triple into the block at offset 0x34.
+ * - When the counter has expired, copy Unk_30/Unk_32 back into X16/Z16 (rest pose).
+ * Returns the wobble counter value seen (used as the NZ flag source at exit).
+ *
+ * Register output mapping:
+ *   wobble path: r1/r2/r3 = call results, r4 = preserved from entry.
+ *   no-wobble:   r1 = LD16(collision-data+0x80), r2/r3/r4 = preserved from entry. */
+static u32 step_battle_object_wobble(u32 obj, u32 r1_in, u32 r2_in, u32 r3_in, u32 r4_in,
+                                     u32 *out_r1, u32 *out_r2, u32 *out_r3, u32 *out_r4) {
+    if (!LD8(obj + oBattleObject_PreventAnim)) {
+        ST16(obj + oBattleObject_Unk_30, LD16(obj + oBattleObject_X16));
+        ST16(obj + oBattleObject_Unk_32, LD16(obj + oBattleObject_Z16));
+        ST8(obj + oBattleObject_Unk_19, 0);
+        ST8(obj + oBattleObject_PreventAnim, 4);
+    }
+
+    u32 coll_word = LD16(LD32(obj + oBattleObject_CollisionDataPtr) + 0x80);
+    if (coll_word)
+        ST8(obj + oBattleObject_Unk_19, 0x1E);
+
+    u32 wobble = LD8(obj + oBattleObject_Unk_19);
+    if (wobble) {
+        ST8(obj + oBattleObject_Unk_19, (u8)(wobble - 1));
+        u32 x16 = (u32)LD16(obj + oBattleObject_Unk_30) << 16;
+        u32 y   = LD32(obj + oBattleObject_Y);
+        u32 z16 = (u32)LD16(obj + oBattleObject_Unk_32) << 16;
+        u32 vx = 0, vy = 0, vz = 0;
+        apply_random_variance(3, x16, y, z16, &vx, &vy, &vz);
+        u32 dst = obj + 0x34;
+        ST32(dst,     vx);
+        ST32(dst + 4, vy);
+        ST32(dst + 8, vz);
+        *out_r1 = vx;
+        *out_r2 = vy;
+        *out_r3 = vz;
+    } else {
+        ST16(obj + oBattleObject_X16, LD16(obj + oBattleObject_Unk_30));
+        ST16(obj + oBattleObject_Z16, LD16(obj + oBattleObject_Unk_32));
+        *out_r1 = coll_word;
+        *out_r2 = r2_in;
+        *out_r3 = r3_in;
+    }
+    *out_r4 = r4_in;
+    return wobble;
+}
+
+Next sub_8016BFC(void) {
+    u32 out_r1, out_r2, out_r3, out_r4;
+    u32 nz_src = step_battle_object_wobble(R5, R1, R2, R3, R4,
+                                           &out_r1, &out_r2, &out_r3, &out_r4);
+    SET_FLAGS_NZ(nz_src);
+    R1 = out_r1;
+    R2 = out_r2;
+    R3 = out_r3;
+    R4 = out_r4;
+    RETURN_TO_CALLER();
+}
+
 /* ── object_genericDestroy ── */
 /* object_genericDestroy(r5 = object):
  * Generic battle-object destructor: release the object's reserved panel

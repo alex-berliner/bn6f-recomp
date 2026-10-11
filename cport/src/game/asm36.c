@@ -769,6 +769,94 @@ Next sub_8133400(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813388C ── */
+/* register form: calls sub_8133BB4 outside this file, which has no typed C interface yet */
+static bool guard_8133BB4_passed(void) {
+    GUEST_CALL(sub_8133BB4);
+    return ZERO_FLAG();          /* Z set: returned 0, continue past guard */
+}
+
+/* register form: calls sub_8133C0C outside this file, which has no typed C interface yet */
+static bool guard_8133C0C_passed(void) {
+    GUEST_CALL(sub_8133C0C);
+    return ZERO_FLAG();
+}
+
+/* register form: calls sub_8134A3C outside this file, which has no typed C interface yet */
+static bool guard_8134A3C_passed(void) {
+    GUEST_CALL(sub_8134A3C);
+    return ZERO_FLAG();
+}
+
+/* register form: calls sub_811F7F8 outside this file, which has no typed C interface yet */
+static bool folder_edit_gesture_matched(u32 joypad_low) {
+    R0 = joypad_low;
+    R1 = 7;
+    R2 = 0;
+    R3 = 0xA;
+    GUEST_CALL(sub_811F7F8);
+    return R0 != 0;              /* original: tst r0,r0; bne post -> matched when R0!=0 */
+}
+
+/* register form: calls checkLeftRightInputForFolderEdit_8133E3C outside this file, which has no typed C interface yet */
+static bool left_right_for_folder_edit_handled(int arg) {
+    R0 = (u32)arg;
+    GUEST_CALL(checkLeftRightInputForFolderEdit_8133E3C);
+    return !ZERO_FLAG();         /* original: bne post -> handled (skip save) when returned nonzero */
+}
+
+/* register form: calls object_saveStateAndSetState8_8133E7C outside this file, which has no typed C interface yet */
+static void save_state_and_set_state_8(void) {
+    GUEST_CALL(object_saveStateAndSetState8_8133E7C);
+}
+
+/* register form: calls sub_8134310 outside this file, which has no typed C interface yet */
+static void post_step_8134310(void) { GUEST_CALL(sub_8134310); }
+
+/* register form: calls sub_81345B0 outside this file, which has no typed C interface yet */
+static void post_step_81345B0(void) { GUEST_CALL(sub_81345B0); }
+
+/* register form: calls sub_8134548 outside this file, which has no typed C interface yet */
+static void post_step_8134548(void) { GUEST_CALL(sub_8134548); }
+
+/* One frame of the folder-edit object step.
+ *
+ * folder_obj's +0x28 word is the input-locked flag; toolkit's joypad pointer
+ * gives the held buttons. All three outer guards must return 0 to proceed;
+ * if any returns nonzero we skip straight to the post-step helpers. With the
+ * guards passed: when the object is input-locked, the low-sensitivity held
+ * buttons are checked for the folder-edit gesture (sub_811F7F8 with id 7,
+ * arg2=0, arg3=0xA); a match skips the rest of the body. Otherwise the L/R
+ * folder-edit handler runs with argument 3; if it returns nonzero we skip
+ * saving, else we save state and switch into state 8. The post-step helpers
+ * run unconditionally on every path. */
+static void folder_edit_step(u32 folder_obj, u32 toolkit) {
+    if (guard_8133BB4_passed()
+        && guard_8133C0C_passed()
+        && guard_8134A3C_passed()) {
+        u16 locked = LD16(folder_obj + 0x28);
+        if (locked) {
+            u32 joypad_ptr = LD32(toolkit + oToolkit_JoypadPtr);
+            u16 joypad_low = LD16(joypad_ptr + oJoypad_LowSensitivityHeld);
+            if (folder_edit_gesture_matched(joypad_low))
+                goto post;
+        }
+        if (left_right_for_folder_edit_handled(3))
+            goto post;
+        save_state_and_set_state_8();
+    }
+post:
+    post_step_8134310();
+    post_step_81345B0();
+    post_step_8134548();
+}
+
+/* sub_813388C(r2 r3 r4 r5 r6 r7 r8 r10 lr) -> nz c v r0..r10 r12 lr */
+Next sub_813388C(void) {
+    folder_edit_step(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_813399C ── */
 /* sub_813399C: virtual-method dispatch on the object at r5, followed by a
  * fixed tail call.
@@ -788,6 +876,158 @@ Next sub_813399C(void) {
     GUEST_CALL(sub_81339BC);
 
     GUEST_CALL(sub_8134490);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81339BC ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_81340FC outside this file, which has no typed C interface yet */
+static void sub_81340FC_call(void) {
+    GUEST_CALL(sub_81340FC);
+}
+
+/* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
+static void entity_runAllUpdateHandlers_80465BC_call(void) {
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+}
+
+/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+static void sub_80465F8_call(void) {
+    GUEST_CALL(sub_80465F8);
+}
+
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+static void sub_8046664_call(void) {
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls zeroFill_e2002230 outside this file, which has no typed C interface yet */
+static void zeroFill_e2002230_call(void) {
+    GUEST_CALL(zeroFill_e2002230);
+}
+
+/* register form: calls timer_setNoTimeout_8137700 outside this file, which has no typed C interface yet */
+static void timer_setNoTimeout_8137700_call(void) {
+    GUEST_CALL(timer_setNoTimeout_8137700);
+}
+
+/* register form: calls sub_81206C4 outside this file, which has no typed C interface yet */
+static void sub_81206C4_call(u32 addr) {
+    R0 = addr;
+    GUEST_CALL(sub_81206C4);
+}
+
+/* register form: calls sub_8120740 outside this file, which has no typed C interface yet */
+static void sub_8120740_call(u32 value) {
+    R0 = value;
+    GUEST_CALL(sub_8120740);
+}
+
+/* register form: calls sub_81206F8 outside this file, which has no typed C interface yet */
+static void sub_81206F8_call(u32 addr, u32 value) {
+    R0 = addr;
+    R1 = value;
+    GUEST_CALL(sub_81206F8);
+}
+
+/* register form: calls SetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static void SetCurPETNaviStatsByte_call(u32 a1, u32 a2, u32 a3) {
+    R0 = a1;
+    R1 = a2;
+    R2 = a3;
+    GUEST_CALL(SetCurPETNaviStatsByte);
+}
+
+/* register form: calls sub_8134594 outside this file, which has no typed C interface yet */
+static void sub_8134594_call(void) {
+    GUEST_CALL(sub_8134594);
+}
+
+/* register form: calls sub_8134538 outside this file, which has no typed C interface yet */
+static void sub_8134538_call(void) {
+    GUEST_CALL(sub_8134538);
+}
+
+/* register form: calls sub_81345B0 outside this file, which has no typed C interface yet */
+static void sub_81345B0_call(void) {
+    GUEST_CALL(sub_81345B0);
+}
+
+/* register form: calls sub_8134548 outside this file, which has no typed C interface yet */
+static void sub_8134548_call(void) {
+    GUEST_CALL(sub_8134548);
+}
+
+/* Per-frame PET/Navi update: drive the update pipeline, and while a screen fade
+ * is active, refresh the current PET/Navi stats from `state` and reset its
+ * small header fields. */
+static void refresh_pet_navi_stats(u32 state) {
+    sub_81340FC_call();
+    entity_runAllUpdateHandlers_80465BC_call();
+    sub_80465F8_call();
+
+    if (!screen_fade_active()) {
+        /* Stable screen: just run the trailing update pipeline. */
+        sub_8134594_call();
+        sub_8134538_call();
+        sub_81345B0_call();
+        sub_8134548_call();
+        return;
+    }
+
+    /* Screen is fading: clear scratch buffers, disable timeouts, then sync
+     * the current PET/Navi's stats from `state` before resetting its header. */
+    sub_8046664_call();
+    zeroFill_e2002230_call();
+    timer_setNoTimeout_8137700_call();
+
+    sub_81206C4_call(A_unk_202A3E0);
+    sub_8120740_call(LD8(state + 0xC));
+    sub_81206F8_call(A_word_202A020, LD8(state + 0xC));
+
+    if (LD8(state + 2) == 0) {
+        u32 navi_idx = LD8(state + 0xC);
+
+        /* Sync the half-word at state+0x1C into stats byte 0x2E+navi. */
+        SetCurPETNaviStatsByte_call(
+            LD8(state + 0x14),
+            navi_idx + 0x2E,
+            LD16(state + 0x1C)
+        );
+
+        /* Copy the two words at state+0x5C..0x60 into stats bytes
+         * 0x56..0x57 (one stats byte per word, indexed by navi). */
+        u32 off = 0x5C;
+        u32 stats_byte = 0x56;
+        while ((s32)off <= (s32)0x60) {
+            SetCurPETNaviStatsByte_call(
+                LD8(state + 0x14),
+                (LD8(state + 0xC) << 1) + stats_byte,
+                LD32(state + off)
+            );
+            stats_byte += 1;
+            off += 4;
+        }
+    }
+
+    /* Reset the small header fields of the state struct. */
+    ST8(state + 0, 0);
+    ST8(state + 1, 0xC);
+    ST8(state + 2, 0);
+
+    sub_8134594_call();
+    sub_8134538_call();
+    sub_81345B0_call();
+    sub_8134548_call();
+}
+
+Next sub_81339BC(void) {
+    refresh_pet_navi_stats(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1627,6 +1867,33 @@ Next submenu_isOpen_81355D8(void) {
     else
         R1 = 1;
     SET_FLAGS_NZ(R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81355EC ── */
+/* sub_8135314 is the underlying "register a script block" routine; it lives outside this file
+ * and currently has no typed C interface, so the simplest helper is a register-form passthrough. */
+/* register form: calls sub_8135314 outside this file, which has no typed C interface yet */
+static void call_sub_8135314(u32 arg0, u32 arg1, u32 arg2, u32 arg3, u32 arg4) {
+    R0 = arg0;
+    R1 = arg1;
+    R2 = arg2;
+    R3 = arg3;
+    R4 = arg4;
+    GUEST_CALL(sub_8135314);
+}
+
+/* Register the Battle Start script: source data table, script byte-pool base, total script length,
+ * step count, and the init-record pointer. Clobbers r0..r3 (sub_8135314 may use them); r4..r7
+ * are preserved exactly as before the call (they are inputs and outputs). */
+Next sub_81355EC(void) {
+    /* Save the incoming r4..r7 across the call. The original only pushes {r4, lr} since r4 is
+     * the only callee-clobbered among the preserved set, but we keep the contract clean. */
+    u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
+
+    call_sub_8135314(A_word_202A020, A_off_8135604, 0xA5, 0x28, A_byte_8135610);
+
+    R4 = r4; R5 = r5; R6 = r6; R7 = r7;
     RETURN_TO_CALLER();
 }
 

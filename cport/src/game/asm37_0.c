@@ -74,6 +74,69 @@ Next toolkit_getUnk2004190EntryPtr_813B9FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813BBD4 ── */
+/* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
+static void zero_fill(u32 addr, u32 num_bytes) {
+    R0 = addr;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByByte);
+}
+
+/* register form: calls sub_813BC1C outside this file, which has no typed C interface yet */
+static void call_sub_813BC1C(u32 p) {
+    R0 = p;
+    GUEST_CALL(sub_813BC1C);
+}
+
+/* register form: calls sub_813BC98 outside this file, which has no typed C interface yet */
+static void call_sub_813BC98(u32 p) {
+    R0 = p;
+    GUEST_CALL(sub_813BC98);
+}
+
+/* register form: calls sub_813BD24 outside this file, which has no typed C interface yet */
+static void call_sub_813BD24(void) {
+    GUEST_CALL(sub_813BD24);
+}
+
+/* register form: calls sub_813BE8C outside this file, which has no typed C interface yet */
+static void call_sub_813BE8C(void) {
+    GUEST_CALL(sub_813BE8C);
+}
+
+/* register form: calls sub_813BEA8 outside this file, which has no typed C interface yet */
+static void call_sub_813BEA8(void) {
+    GUEST_CALL(sub_813BEA8);
+}
+
+/* register form: calls sub_813C584 outside this file, which has no typed C interface yet */
+static void call_sub_813C584(u32 p) {
+    R0 = p;
+    GUEST_CALL(sub_813C584);
+}
+
+/* Initialize the toolkit's battle-related state: zero several buffers, then run the
+ * sub-init routines in sequence on the pointer pulled from the toolkit struct. */
+static void init_battle_state(u32 toolkit_ptr) {
+    u32 state_ptr = LD32(toolkit_ptr + oToolkit_Unk200431c_Ptr);
+    zero_fill(state_ptr, 0x10);
+    zero_fill(A_unk_2006CF8, 0x31);
+    zero_fill(A_unk_2006C88, 0x31);
+    zero_fill(A_unk_2006CC0, 0x31);
+    call_sub_813BC1C(state_ptr);
+    call_sub_813BC98(state_ptr);
+    call_sub_813BD24();
+    call_sub_813BE8C();
+    call_sub_813BEA8();
+    call_sub_813C584(state_ptr);
+}
+
+/* sub_813BBD4(r10 -> toolkit_ptr) -> r0..r12 unchanged */
+Next sub_813BBD4(void) {
+    init_battle_state(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_813BC1C ── */
 #define ID_SLOTS     7
 #define ID_SENTINEL  0xFF
@@ -195,6 +258,38 @@ Next getUnk200431cTableByteCapped3_813BF0C(void) {
 
     R0 = value;
     R1 = table;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813BF1C ── */
+/* event_1720 is the 16-bit flag 0x1720; TestEventFlagFromImmediate takes it split as
+ * hi byte in R0 and low byte in R1. */
+#define EVENT_1720_HI 0x17
+#define EVENT_1720_LO 0x20
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_1720_is_set(void) {
+    R0 = EVENT_1720_HI;
+    R1 = EVENT_1720_LO;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();          /* Z set => flag clear */
+}
+
+/* Returns 1 when event flag 0x1720 is set, 0 when it is clear.
+ * Inputs r4 r5 r6 r7 are preserved across this call (typed function leaves them alone).
+ * Outputs: nz v r3 r4 r5 r6 r7 — the caller branches on NZ and consumes r3 as the result,
+ * but r3 is left by a callee in the original ("output by callee"), so the adapter simply
+ * re-runs that callee path and lets R3 fall out untouched from the helper. The function
+ * itself returns the 0/1 value that becomes R0 (and thus sets NZ). */
+static u32 check_gate_flag(void) {
+    if (event_flag_1720_is_set())
+        return 1;
+    return 0;
+}
+
+Next sub_813BF1C(void) {
+    R0 = check_gate_flag();
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 

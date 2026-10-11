@@ -401,6 +401,74 @@ found:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C9774 ── */
+/* Apply the related object's position plus this object's velocity components
+ * to this object's X/Y/Z, copy bit 1 of the related object's header flags
+ * into this one's header flags (clearing bit 1 here first), and end the
+ * current action if the first dword of ExtraVars is zero.
+ *
+ * Returns the values the original leaves in r0..r3 at the pop:
+ *   r0 = extra_first (branch taken) or 0 (branch not taken, after STRH)
+ *   r1 = related_flags & 2          (from `and r1, #2` before the TST)
+ *   r2 = 2
+ *   r3 = related object ptr
+ *
+ * The original's last flag-setting instruction is a logical op on each path
+ * (`tst r0, r0` when extra_first != 0, `mov r0, #0` otherwise), so the
+ * adapter sets N/Z from r0 via SET_FLAGS_NZ; C/V were last cleared by the
+ * logical AND r1, r2 and stay cleared. */
+typedef struct {
+    u32 r0, r1, r2, r3;
+} AdvanceResult;
+
+static AdvanceResult do_advance(u32 self) {
+    u32 related = LD32(self + oBattleObject_RelatedObject1Ptr);
+
+    /* Position += velocity. */
+    ST32(self + oBattleObject_X,
+         LD32(related + oBattleObject_X) + LD32(self + oBattleObject_XVelocity));
+    ST32(self + oBattleObject_Y,
+         LD32(related + oBattleObject_Y) + LD32(self + oBattleObject_YVelocity));
+    ST32(self + oBattleObject_Z,
+         LD32(related + oBattleObject_Z) + LD32(self + oBattleObject_ZVelocity));
+
+    /* Sync bit 1 of header flags from the related object: clear self bit 1,
+     * take bit 1 from related, OR them together and store back. */
+    u32 self_after   = LD8(self    + oObjectHeader_Flags) & ~(u32)2;
+    u32 other_masked = LD8(related + oObjectHeader_Flags) & (u32)2;
+    ST8(self + oObjectHeader_Flags, self_after | other_masked);
+
+    /* If the first dword of ExtraVars is zero, end the action now. */
+    u32 extra_first = LD32(LD32(self + oBattleObject_ExtraVars));
+
+    AdvanceResult a;
+    a.r1 = other_masked;
+    a.r2 = 2;
+    a.r3 = related;
+
+    if (extra_first != 0) {
+        /* Branch taken (bne): pop with r0 = extra_first (TST didn't modify it). */
+        a.r0 = extra_first;
+    } else {
+        /* Branch not taken: set CurAction = 4 and clear the phase word. */
+        ST8 (self + oBattleObject_CurAction, 4);
+        ST16(self + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+        a.r0 = 0;
+    }
+    return a;
+}
+
+/* sub_80C9774(r5 = self) -> r0..r3, nz/c/v (nz/c/v from a logical op on r0) */
+Next sub_80C9774(void) {
+    AdvanceResult a = do_advance(R5);
+    R0 = a.r0;
+    R1 = a.r1;
+    R2 = a.r2;
+    R3 = a.r3;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C97E0 ── */
 /* register form: calls object_spawnType3 outside this file, which has no typed C interface yet */
 static u32 call_object_spawnType3(u32 type, u32 arg1, u32 arg2, u32 arg3) {
@@ -617,6 +685,96 @@ Next battle_objectDestroyWithRelated2Unlink_80CAC44(void) {
         ST32(related, 0);
 
     GUEST_CALL(object_genericDestroy);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CAC82 ── */
+typedef struct { u32 column; u32 row; } PanelPos;
+typedef struct { u32 r0, r1, r2, r3, r7; } Out5;
+
+/* register form: stack buffer (28 bytes: extra-byte spill at sp+0, panel buffer at sp+4)
+ * plus calls GetPositiveSignedRNG, svc 6, and object_getPanelsInRowFiltered outside this file.
+ * Picks one random panel from the row-filtered candidate set; returns (0,0) if empty. */
+static PanelPos pick_row_filtered_panel(u8 extra, u32 f0, u32 f1) {
+    PanelPos out = {0, 0};
+    u32 frame = SP - 28;
+    SP = frame;
+    u32 buf_addr = frame + 4;
+    ST32(frame, (u32)extra);
+    R0 = (u32)extra; R2 = f0; R3 = f1; R7 = buf_addr;
+    GUEST_CALL(object_getPanelsInRowFiltered);
+    s32 count = (s32)R0;
+    if (count != 0) {
+        R0 = (u32)count;
+        GUEST_CALL(GetPositiveSignedRNG);
+        R1 = (u32)count;
+        swi_call(6);
+        u32 packed = LD8(buf_addr + R1);
+        out.column = ((u32)packed << 29) >> 29;
+        out.row = (u32)packed >> 4;
+    }
+    SP += 28;
+    return out;
+}
+
+/* register form: stack buffer + calls GetPositiveSignedRNG, svc 6, and
+ * object_getPanelsIgnoreColumnFiltered outside this file. */
+static PanelPos pick_ignore_col_panel(u8 extra, u32 f0, u32 f1) {
+    PanelPos out = {0, 0};
+    u32 frame = SP - 28;
+    SP = frame;
+    u32 buf_addr = frame + 4;
+    ST32(frame, (u32)extra);
+    R0 = (u32)extra; R2 = f0; R3 = f1; R7 = buf_addr;
+    GUEST_CALL(object_getPanelsIgnoreColumnFiltered);
+    s32 count = (s32)R0;
+    if (count != 0) {
+        R0 = (u32)count;
+        GUEST_CALL(GetPositiveSignedRNG);
+        R1 = (u32)count;
+        swi_call(6);
+        u32 packed = LD8(buf_addr + R1);
+        out.column = ((u32)packed << 29) >> 29;
+        out.row = (u32)packed >> 4;
+    }
+    SP += 28;
+    return out;
+}
+
+/* Look up the (f0, f1) filter pair for an alliance in the table at A_byte_80CAD04. */
+static void get_filter(u32 alliance, u32 *f0, u32 *f1) {
+    u32 addr = A_byte_80CAD04 + (alliance << 3);
+    *f0 = LD32(addr);
+    *f1 = LD32(addr + 4);
+}
+
+/* Pick two destination panels for an AI object's movement:
+ *   r0/r1 = (column, row) from the row-filtered set (0,0 if none),
+ *   r2/r3 = (column, row) from the row+column filtered set (0,0 if none).
+ * r4-r7 are preserved. */
+static Out5 sub_80CAC82_impl(u32 r4, u32 r5, u32 r6, u32 r7) {
+    (void)r4; (void)r6;
+    Out5 res;
+    u32 alliance = LD8(r5 + oBattleObject_Alliance);
+    u32 extra = LD8(LD32(r5 + oBattleObject_ExtraVars) + 0x13);
+    u32 f0, f1;
+
+    get_filter(alliance, &f0, &f1);
+    PanelPos p1 = pick_row_filtered_panel((u8)extra, f0, f1);
+    res.r0 = p1.column;
+    res.r1 = p1.row;
+
+    get_filter(alliance, &f0, &f1);
+    PanelPos p2 = pick_ignore_col_panel((u8)extra, f0, f1);
+    res.r2 = p2.column;
+    res.r3 = p2.row;
+    res.r7 = r7;
+    return res;
+}
+
+Next sub_80CAC82(void) {
+    Out5 o = sub_80CAC82_impl(R4, R5, R6, R7);
+    R0 = o.r0; R1 = o.r1; R2 = o.r2; R3 = o.r3; R7 = o.r7;
     RETURN_TO_CALLER();
 }
 

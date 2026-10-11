@@ -385,6 +385,38 @@ Next nullsub_10(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801BE70 ── */
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word_sub_801BE70(u32 addr, u32 num_bytes) {
+    R0 = addr;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* Zero a battery of battle-related RAM blocks and initialise their first fields. */
+static void reset_battle_buffers(void) {
+    /* Zero the main 0x60-byte battle state struct. */
+    zero_fill_by_word_sub_801BE70(A_eStruct2035280, 0x60);
+
+    /* Initialise its count/total fields. */
+    ST16(A_eStruct2035280 + 0x22, 0x20);
+    ST16(A_eStruct2035280 + 0x26, (u16)0 - 1);   /* 0xFFFF */
+
+    /* Zero the 0x30-byte and 0x50-byte sibling buffers. */
+    zero_fill_by_word_sub_801BE70(A_eStruct2035280_Size, 0x30);
+    zero_fill_by_word_sub_801BE70(A_byte_203EB50, 0x50);
+
+    /* Clear the two dword slots. */
+    ST32(A_dword_203CA48,     0);
+    ST32(A_dword_203CA48 + 4, 0);
+    ST32(A_dword_20367E0,     0);
+}
+
+Next sub_801BE70(void) {
+    reset_battle_buffers();
+    RETURN_TO_CALLER();
+}
+
 /* ── flagSetBits_eStruct2035280_801BEB8 ── */
 /* flagSetBits_eStruct2035280_801BEB8(r0 = flag bits to set):
  * Sets the given bits in the event/flag word at eStruct2035280+0x44.
@@ -510,6 +542,132 @@ Next easeValueTowardTarget_801C1EA(void) {
         R0 = R1;
         SET_FLAGS_ADD(R1, 0);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801C296 ── */
+/* register form: calls memory_bcdConvert outside this file, which has no typed C interface yet */
+static u32 bcd_convert(u32 value) {
+    R0 = value;
+    GUEST_CALL(memory_bcdConvert);
+    return R0;
+}
+
+/* register form: calls countHexDigits_8000C5C outside this file, which has no typed C interface yet */
+static u32 count_hex_digits(u32 value) {
+    R0 = value;
+    GUEST_CALL(countHexDigits_8000C5C);
+    return R0;
+}
+
+/* Render an HP-style 4-nibble readout derived from the object at src_obj
+ * into the struct at dst_readout.
+ *
+ * The function preserves r3 (it is both an input and an output of the
+ * original), so the typed wrapper takes it and returns it unchanged. r4,
+ * r6 and r7 are also preserved by the original; they are passed in for the
+ * memory operands but not modified by the typed code.
+ *
+ * Source object (r4):
+ *   +0    u8  flags; bit 4 set => use "max - current" mode
+ *   +2    u16 current HP (always read)
+ *   +0xC  ptr whose +0x26 (u16) is the max-HP reference
+ *   +0x10 u32 previously-rendered nibbles (snapshot for diff)
+ *
+ * Destination readout (r7):
+ *   +0..+3  four nibble bytes (one 4-bit glyph each)
+ *   +4      s32 pre-blit x-pixel offset from the digit count */
+static u32 render_hp_digits(u32 r3_in, u32 r4, u32 r6, u32 r7) {
+    (void)r6;
+    u32 flags = LD8(r4);
+    u32 hp    = LD16(r4 + 2);
+
+    u32 bcd_in = hp;
+    if (flags & 0x10) {
+        u32 ref = LD32(r4 + 0xC);
+        u32 max_hp = LD16(ref + 0x26);
+        bcd_in = max_hp - hp;
+    }
+
+    u32 bcd = bcd_convert(bcd_in);
+
+    ST8(r7 + 0, bcd & 0xF);
+    ST8(r7 + 1, (bcd >> 4)  & 0xF);
+    ST8(r7 + 2, (bcd >> 8)  & 0xF);
+    ST8(r7 + 3, (bcd >> 12) & 0xF);
+
+    u32 digits = count_hex_digits(bcd);
+    s32 x_offset = -(s32)(0x20 - (digits << 2));
+    ST32(r7 + 4, (u32)x_offset);
+
+    /* Right-justify: blank the high (leftmost) nibble positions with 0xA. */
+    for (u32 i = digits; i < 4; i++) {
+        ST8(r7 + i, 0xA);
+    }
+
+    /* Snapshot the previous value first, store the new value, then diff. */
+    u32 prev = LD32(r4 + 0x10);
+    u32 cur  = LD32(r7);
+    ST32(r4 + 0x10, cur);
+
+    for (u32 i = 0; i < 4; i++) {
+        u32 cur_nib = cur  & 0xF;
+        u32 old_nib = prev & 0xF;
+        u32 out = (cur_nib == old_nib) ? 0xB : cur_nib;
+        ST8(r7 + i, out);
+        cur  >>= 8;
+        prev >>= 8;
+    }
+
+    return r3_in;
+}
+
+/* sub_801C296(r3, r4=source object, r6, r7=destination readout) -> r3 r4 r6 r7 */
+Next sub_801C296(void) {
+    R3 = render_hp_digits(R3, R4, R6, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801C304 ── */
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_two_tiles(u32 src, u32 dst) {
+    R0 = src;
+    R1 = dst;
+    R2 = 0x20;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    R0 = R0 + R2;
+    R1 = R1 + 0x80;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* Decompress tiles for a battle portrait-style effect into VRAM.
+ * The effect index comes from the byte at r4+8 and selects one of three
+ * source-pointer tables. r7 points to four tile-index bytes; we walk them
+ * from offset 3 down to 0. For each tile index != 0xB we look up its base
+ * source pointer and queue two 0x20-byte DMA copies (the first to the
+ * current dst, the next to dst + 0x80). After each iteration (skip or not),
+ * dst advances by 0x20. */
+static void decompress_portrait_tiles(u32 r4, u32 r5, u32 r7) {
+    u8 effect = LD8(r4 + 8);
+    u32 src_table = LD32(A_off_801C34C + ((u32)effect << 2));
+    u32 dst = r5;
+    for (s32 i = 3; i >= 0; i--) {
+        u8 tile_index = LD8(r7 + (u32)i);
+        if (tile_index != 0xB) {
+            u32 base_src = LD32(src_table + ((u32)tile_index << 2));
+            queue_two_tiles(base_src, dst);
+        }
+        dst += 0x20;
+    }
+}
+
+Next sub_801C304(void) {
+    /* R3-R7 are inputs that the original preserves across the call (push/pop
+     * restores them). R4, R5, R6, R7 are written by the function body, so we
+     * write them back explicitly; R3 is never modified and must be preserved. */
+    u32 r3 = R3;
+    decompress_portrait_tiles(R4, R5, R7);
+    R3 = r3;
     RETURN_TO_CALLER();
 }
 
@@ -1732,6 +1890,72 @@ Next battle_redrawCommandMenuWindow_801E1A4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801E228 ── */
+/* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
+static void call_dispatch_801DACC(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(dispatch_801DACC);
+}
+
+/* register form: calls renderTextGfx_8045F8C outside this file, which has no typed C interface yet */
+static void call_renderTextGfx_8045F8C(u32 text, u32 a1, u32 dest, u32 attr) {
+    R0 = text;
+    R1 = a1;
+    R2 = dest;
+    R3 = attr;
+    R4 = 0x11;
+    R5 = 1;
+    R6 = A_dword_86B7AE0;
+    R7 = 0;
+    GUEST_CALL(renderTextGfx_8045F8C);
+}
+
+/* register form: calls eStruct2035280_SetRequestBits_801BECC outside this file, which has no typed C interface yet */
+static void call_eStruct2035280_SetRequestBits_801BECC(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(eStruct2035280_SetRequestBits_801BECC);
+}
+
+/* register form: calls dispatch_801DA48 outside this file, which has no typed C interface yet */
+static void call_dispatch_801DA48(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(dispatch_801DA48);
+}
+
+/* preserved are passed in and returned so the adapter can restore guest R4-R7 on exit. */
+static u32 sub_801E228_logic(u32 mode, u32 r4_in, u32 r5_in, u32 r6_in, u32 r7_in) {
+    if (mode == 2)
+        mode = 0x13;
+
+    u32 eStruct = A_eStruct2035280;
+    u32 const bit8 = 1u << 8;
+
+    if (LD32(eStruct + 0x40) & bit8)
+        call_dispatch_801DACC(bit8);
+
+    ST8(eStruct + 0xB, 0x3C);
+    ST8(eStruct + 0xC, 0);
+
+    call_renderTextGfx_8045F8C(A_TextScript86F0374, mode, A_byte_203C4E0, 0x6009560);
+
+    call_eStruct2035280_SetRequestBits_801BECC(bit8);
+    call_dispatch_801DA48(bit8);
+
+    /* Mark which preserved reg to restore: pack into a single u32 via a struct out-param? */
+    (void)r4_in; (void)r5_in; (void)r6_in; (void)r7_in;
+    return 0;
+}
+
+Next sub_801E228(void) {
+    u32 r4_save = R4, r5_save = R5, r6_save = R6, r7_save = R7;
+    sub_801E228_logic(R0, r4_save, r5_save, r6_save, r7_save);
+    R4 = r4_save;
+    R5 = r5_save;
+    R6 = r6_save;
+    R7 = r7_save;
+    RETURN_TO_CALLER();
+}
+
 /* ── RetrieveAndRenderEnemyVirusNamesInBattle_801E574 ── */
 /* One rendered name, as returned by selectVirusOrNaviNamesAndWhich_800EC56 in
  * r0/r1: the text script holding the name, and which variant of the name to draw. */
@@ -2245,5 +2469,36 @@ Next sub_801E8CC(void) {
     }
 
     R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801EA5A ── */
+/* register form: reads the side-select word the caller stashed at sp+8.
+ * No typed interface exists for the raw sp access, so we keep it in a
+ * tiny register-form helper. */
+static u32 side_select_word(void) {
+    return LD32(SP + 8);
+}
+
+/* Pick which side (player 1 or player 2) to use based on a parameter stashed
+ * by the caller at sp+8. When that word is 1 we hand back the second side's
+ * VRAM/palette base pair; otherwise the first side's. The "base" is a guest
+ * address provided by the disassembly's A_ label, so it must stay as a u32. */
+static void select_player_side(u32 *out_base, u32 *out_pal_base) {
+    u32 side = side_select_word();
+    if (side == 1) {
+        *out_base = (u32)A_byte_203EFA0;
+        *out_pal_base = 0x6017280;
+    } else {
+        *out_base = (u32)A_byte_203EDA0;
+        *out_pal_base = 0x6016E00;
+    }
+}
+
+Next sub_801EA5A(void) {
+    u32 r2, r3;
+    select_player_side(&r2, &r3);
+    R2 = r2;
+    R3 = r3;
     RETURN_TO_CALLER();
 }

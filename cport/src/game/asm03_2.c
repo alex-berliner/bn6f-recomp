@@ -423,6 +423,76 @@ Next sub_8046DF8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8046E06 ── */
+/* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
+static bool chatbox_should_skip(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return ZERO_FLAG();            /* original: beq loc_8046E40 — skip when return == 0 */
+}
+
+/* register form: calls checkScrambledCounter_8047366 outside this file, which has no typed C interface yet */
+static bool scrambled_counter_active(u32 counter) {
+    R0 = counter;
+    GUEST_CALL(checkScrambledCounter_8047366);
+    return !ZERO_FLAG();           /* original: bne loc_8046E40 — skip when return != 0 */
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void set_screen_fade(u32 a, u32 b) {
+    R0 = a;
+    R1 = b;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
+static void call_sub_8047134(void) {
+    GUEST_CALL(sub_8047134);
+}
+
+/* Drives the scramble-counter UI panel stored at `state_ptr`.
+ *   ticker (byte at +8):   subtract 2 each call; once it reaches 0,
+ *                          reset it and bump the frame counter.
+ *   frames (byte at +0xA): increment; once it hits 0x10, reset both,
+ *                          store 0x10 at +0 and trigger the screen fade.
+ * Suppressed while the chatbox flag 8 is clear, or a scramble counter
+ * is currently being resolved. */
+static void animate_scramble_panel(u32 state_ptr) {
+    if (chatbox_should_skip(8))
+        goto end;
+    if (scrambled_counter_active(LD32(state_ptr + 0x28)))
+        goto end;
+
+    {
+        u32 ticker = LD8(state_ptr + 8) - 2;      /* ldrb / sub r0,#2 — 32-bit arithmetic */
+        ST8(state_ptr + 8, ticker);               /* strb stores low byte */
+        if ((s32)ticker > 0)                      /* original: cmp r0,#0 ; bgt (signed) */
+            goto end;
+        ST8(state_ptr + 8, 0);
+
+        {
+            u32 frames = LD8(state_ptr + 0xA) + 1;
+            ST8(state_ptr + 0xA, frames);
+            if ((s32)frames < 0x10)               /* original: cmp r0,#0x10 ; blt (signed) */
+                goto end;
+
+            ST8(state_ptr + 0xA, 0);
+            ST8(state_ptr, 0x10);
+            set_screen_fade(0xC, 0xC);
+        }
+    }
+
+end:
+    call_sub_8047134();
+}
+
+Next sub_8046E06(void) {
+    animate_scramble_panel(R5);
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8046E48 ── */
 /* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
 static void sub_8047134_call(void) {
@@ -1884,6 +1954,61 @@ Next sub_804A14C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_804A17A ── */
+/* sub_804A17A: build the two text-script folder name buffers at unk_2001850.
+ *
+ * Each buffer is 0x30 bytes (0x20 halfwords of 0xE5E5, then the folder name in
+ * wide chars, then a 0xE6 terminator at offset 0x10). The first half of the
+ * 0x60-byte block is folder index 0, the second half (at +0x20) is index 1.
+ *
+ * Inputs/outputs: r4..r7 are preserved by the caller; r2/r3 likewise. Only r0,
+ * r1 and flags are touched (all internally to set up the four calls).
+ */
+
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word_sub_804A17A(void *dst, u32 num_bytes) {
+    R0 = (u32)dst;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls HalfwordFill outside this file, which has no typed C interface yet */
+static void halfword_fill(void *dst, u32 count, u32 halfword_value) {
+    R0 = (u32)dst;
+    R1 = count;
+    R2 = halfword_value;
+    GUEST_CALL(HalfwordFill);
+}
+
+/* register form: calls textScript_copyFolderNameToWide_804A1FC outside this file, which has no typed C interface yet */
+static void copy_folder_name_to_wide(u32 folder_index, void *dst) {
+    R0 = folder_index;
+    R1 = (u32)dst;
+    GUEST_CALL(textScript_copyFolderNameToWide_804A1FC);
+}
+
+static void build_folder_name_buffers_typed(void) {
+    u32 memBlock = A_unk_2001850;
+
+    /* Clear both buffers. */
+    zero_fill_by_word_sub_804A17A((void *)memBlock, 0x60);
+
+    /* Buffer 0: fill 0x20 halfwords with 0xE5E5, then copy folder name, then 0xE6. */
+    halfword_fill((void *)memBlock, 0x20, 0xE5E5);
+    copy_folder_name_to_wide(0, (void *)memBlock);
+    ST8(memBlock + 0x10, 0xE6);
+
+    /* Buffer 1: same layout, 0x20 bytes further on. */
+    halfword_fill((void *)(memBlock + 0x20), 0x20, 0xE5E5);
+    copy_folder_name_to_wide(1, (void *)(memBlock + 0x20));
+    ST8(memBlock + 0x20 + 0x10, 0xE6);
+}
+
+Next sub_804A17A(void) {
+    build_folder_name_buffers_typed();
+    RETURN_TO_CALLER();
+}
+
 /* ── textScript_copyFolderNameToWide_804A1FC ── */
 /* textScript_copyFolderNameToWide_804A1FC(r0 = folder index, r1 = destination buffer):
  * Copy a folder name from the text script folder-name table into the destination
@@ -1910,6 +2035,21 @@ Next textScript_copyFolderNameToWide_804A1FC(void) {
         }
         dst += 2;
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804A24C ── */
+/* sub_804A24C: looks up a byte at the dword_804A25C table using r0 as the index,
+ * then returns unk_2001850 + that byte. r4-r7 and flags are preserved per the
+ * register contract. */
+static u32 lookup_table_entry(u32 index) {
+    u8 entry = LD8(A_dword_804A25C + index);
+    return A_unk_2001850 + entry;
+}
+
+/* register form: thin adapter - typed body lives in lookup_table_entry. */
+Next sub_804A24C(void) {
+    R0 = lookup_table_entry(R0);
     RETURN_TO_CALLER();
 }
 

@@ -168,6 +168,111 @@ Next battle_initAttackFromPreset_8113162(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8116944 ── */
+/* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
+static void init_gui_sprite_sub_8116944(int type) {
+    R0 = 1;
+    R1 = type;
+    GUEST_CALL(initGuiSprite_8002770);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_set_anim_sub_8116944(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_load_anim_data_sub_8116944(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_no_shadow_sub_8116944(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void sprite_set_sub_entry_palette_bank(u32 bank) {
+    R0 = bank;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void sprite_set_palette_sub_8116944(int pal) {
+    R0 = pal;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void sprite_set_priority_sub_8116944(void) {
+    R0 = 0;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void slot_list_store_halfword_and_clear(u32 v) {
+    R0 = v;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void sprite_set_sub_record_field_a_sub_8116944(void) {
+    R0 = 0;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: calls sprite_setCoordinates outside this file, which has no typed C interface yet */
+static void sprite_set_xy(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(sprite_setCoordinates);
+}
+
+/* register form: calls petMenu_updateObject_81169B0 outside this file, which has no typed C interface yet.
+ * The original passes R0 (=6) as an argument; the function clobbers R0 on return. */
+static void pet_menu_update_object(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(petMenu_updateObject_81169B0);
+}
+
+/* Initialize a pet-menu sprite record. `obj` points to the record (R5 in the original).
+ * Leaves R0 and the flags as petMenu_updateObject_81169B0 does, matching the original. */
+static void pet_menu_init_sprite(u32 obj, int gui_type) {
+    init_gui_sprite_sub_8116944(gui_type);
+    sprite_set_anim_sub_8116944(LD8(obj + 4));
+    sprite_load_anim_data_sub_8116944();
+    sprite_no_shadow_sub_8116944();
+    sprite_set_sub_entry_palette_bank(0xC);
+    sprite_set_palette_sub_8116944(0);
+    sprite_set_priority_sub_8116944();
+    slot_list_store_halfword_and_clear(0x2D4);
+    sprite_set_sub_record_field_a_sub_8116944();
+
+    ST8(obj + 8, 4);
+
+    u8 a = 0, b = 1;
+    if (LD8(obj + 5) != 0) {
+        a = 8;
+        b = 0x23;
+    }
+    ST8(obj + 9, a);
+    ST8(obj, b);
+
+    sprite_set_xy(0xB0, 0x40);
+    ST8(obj + 4, 0xFF);
+    ST8(obj + 0xC, 6);
+    pet_menu_update_object(6);
+}
+
+/* sub_8116944(r1 = gui type, r5 = pet-menu object) -> r0 = petMenu_updateObject's return; flags from it */
+Next sub_8116944(void) {
+    u32 obj = R5;
+    int gui_type = (int)R1;
+    pet_menu_init_sprite(obj, gui_type);
+    RETURN_TO_CALLER();
+}
+
 /* ── petMenu_updateObject_81169B0 ── */
 /* petMenu_updateObject_81169B0: per-frame update of one PET menu object (object pointer in r5).
  *
@@ -292,6 +397,38 @@ Next sub_8116A28(void) {
         ST8(R5 + 8, 8);
 
     GUEST_CALL(sub_8116A44);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8116A44 ── */
+/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+static void call_sub_802FE28(u32 a1, u32 a2, u32 notUsed, u32 a4) {
+    R0 = a1;
+    R1 = a2;
+    R2 = notUsed;
+    R3 = a4;
+    GUEST_CALL(sub_802FE28);
+}
+
+/* Drive sub_802FE28 over a packed table of (a1, a2) pairs. Each entry is 8 bytes:
+ * a1 at offset 0, a2 at offset 4. notUsed is fixed at 0 and a4 at 1. */
+static void run_table(u32 base, u32 count) {
+    for (u32 i = 0; i < count; i++) {
+        u32 entry = base + i * 8;
+        call_sub_802FE28(LD32(entry), LD32(entry + 4), 0, 1);
+    }
+}
+
+/* Initialize three small table-driven groups of sub_802FE28 calls (3 + 3 + 2 entries). */
+static void init_three_tables(void) {
+    run_table(A_dword_8116A94, 3);
+    run_table(A_dword_8116AB0, 3);
+    run_table(A_dword_8116ACC, 2);
+}
+
+Next sub_8116A44(void) {
+    init_three_tables();
+    SET_FLAGS_CMP(2, 2);
     RETURN_TO_CALLER();
 }
 
@@ -733,6 +870,163 @@ Next stateDispatcher_3states_8116E10(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8116E30 ── */
+/* Struct/object layout offsets for battle objects (from disassembly) */
+#define oBattleObject_kind       0   /* kind byte stored here */
+#define oBattleObject_flag       4   /* flag byte at offset 4 */
+#define oBattleObject_team       5   /* team index at offset 5 */
+#define oBattleObject_state      8   /* state byte at offset 8 */
+
+/* Sprite kind values chosen by [obj+4] */
+#define SPRITE_KIND_BASE         0x23
+#define SPRITE_KIND_ALT          0xa3
+
+/* initGuiSprite_8002770 sub-kind */
+#define INITGUI_SUBKIND          6
+
+/* Ready state stored at [obj+8] before per-kind update */
+#define BATTLE_OBJ_STATE_READY   4
+
+/* Guest addresses of the data tables referenced by the original code.
+ * The original loads these addresses from off_* tables in guest memory, then
+ * dereferences them; we mirror that exactly via LD8/LD32. */
+#define A_off_8116F0C            0x08116F0Cu
+#define A_off_8116EB8            0x08116EB8u
+#define A_off_8116EC8            0x08116EC8u
+#define A_off_8116EEC            0x08116EECu
+#define A_off_8116EFC            0x08116EFCu
+#define A_byte_8116F18           0x08116F18u
+#define A_byte_8116F1D           0x08116F1Du
+#define A_byte_8116F23           0x08116F23u
+#define A_off_8116ED4            0x08116ED4u
+#define A_byte_8116F28           0x08116F28u
+#define A_byte_8116F2D           0x08116F2Du
+
+/* ---- Register-form helpers (call game functions outside this file) ---- */
+
+/* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
+static void call_initGuiSprite(u32 kind, u32 workspace) {
+    R0 = kind;
+    R1 = workspace;
+    GUEST_CALL(initGuiSprite_8002770);
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void call_sprite_setAnimation(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void call_sprite_loadAnimationData(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void call_sprite_noShadow(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls sprite_setPalette outside this file, which has no typed C interface yet */
+static void call_sprite_setPalette(u32 palette) {
+    R0 = palette;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void call_sprite_setPriority(u32 priority) {
+    R0 = priority;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void call_slotList_storeHalfwordAndClearField_sub_8116E30(u32 value) {
+    R0 = value;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void call_sprite_setSubEntryPaletteBank(u32 bank) {
+    R0 = bank;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+}
+
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void call_sprite_setSubRecordFieldA(u32 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: calls battle_objectUpdateByKind_8116F34 outside this file, which has no typed C interface yet */
+static void call_battle_objectUpdateByKind(void) {
+    GUEST_CALL(battle_objectUpdateByKind_8116F34);
+}
+
+/* ---- Typed implementation ---- */
+
+/* Load a u32 from the team-indexed pointer table at `table_addr` in guest memory. */
+static u32 load_team_ptr(u32 table_addr, u32 team) {
+    return LD32(table_addr + (team << 2));
+}
+
+/* Initialize a battle object: pick sprite kind from [obj+4], set up the GUI sprite using the
+ * team-indexed workspace at [obj+5], apply per-team/per-object sprite parameters, mark the
+ * object ready (state = 4), then run the per-kind update. */
+static void battle_object_setup_and_update(u32 obj) {
+    u8 flag   = LD8(obj + oBattleObject_flag);
+    u8 team   = LD8(obj + oBattleObject_team);
+
+    /* Choose sprite kind: 0x23 normally, 0xa3 when the flag byte is non-zero. */
+    u8 kind = (flag != 0) ? SPRITE_KIND_ALT : SPRITE_KIND_BASE;
+    ST8(obj + oBattleObject_kind, kind);
+
+    /* Initialize the GUI sprite in the workspace selected by the team. */
+    u32 workspace = load_team_ptr(A_off_8116F0C, team);
+    call_initGuiSprite(INITGUI_SUBKIND, workspace);
+
+    /* Animation, animation data load, no shadow, palette - all indexed by flag. */
+    call_sprite_setAnimation(LD8(A_byte_8116F18 + flag));
+    call_sprite_loadAnimationData();
+    call_sprite_noShadow();
+    call_sprite_setPalette(LD8(A_byte_8116F1D + flag));
+
+    /* Sprite priority: priority table chosen by team, byte by flag. */
+    {
+        u32 prio_table = load_team_ptr(A_off_8116EB8, team);
+        call_sprite_setPriority(LD8(prio_table + flag));
+    }
+
+    /* Slot-list store: u32 table chosen by team, entry by flag (each entry is a u32). */
+    {
+        u32 slot_table = load_team_ptr(A_off_8116EC8, team);
+        call_slotList_storeHalfwordAndClearField_sub_8116E30(LD32(slot_table + (flag << 2)));
+    }
+
+    /* Sub-entry palette bank: byte table chosen by team, entry by flag. */
+    {
+        u32 pal_table = load_team_ptr(A_off_8116EEC, team);
+        call_sprite_setSubEntryPaletteBank(LD8(pal_table + flag));
+    }
+
+    /* Sub-record field A: byte table chosen by team, entry by flag. */
+    {
+        u32 subf_table = load_team_ptr(A_off_8116EFC, team);
+        call_sprite_setSubRecordFieldA(LD8(subf_table + flag));
+    }
+
+    /* Mark the object ready and dispatch to its per-kind update. */
+    ST8(obj + oBattleObject_state, BATTLE_OBJ_STATE_READY);
+    call_battle_objectUpdateByKind();
+}
+
+/* ---- Thin adapter ---- */
+
+/* sub_8116E30(r5 = battle object) -> r0..r12, lr clobbered by callees (per disasm contract) */
+Next sub_8116E30(void) {
+    battle_object_setup_and_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectUpdateByKind_8116F34 ── */
 /* Jump table jt_8116F4C: Thumb entry points of the per-object update handlers,
  * exactly as they appear in the table the original indexes through. */
@@ -1063,6 +1357,62 @@ Next object_dispatchModeHandler_81178D8(void) {
      * (mode >= 12, which real game states never produce). In that case the
      * loaded pointer simply remains in R0 and nothing else is disturbed. */
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81178FC ── */
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void set_animation_sub_81178FC(u8 anim)               { R0 = anim;             GUEST_CALL(sprite_setAnimation); }
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void load_animation_data_sub_81178FC(void)            {                         GUEST_CALL(sprite_loadAnimationData); }
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void sprite_no_shadow_helper(void)        {                         GUEST_CALL(sprite_noShadow); }
+/* register form: calls sprite_setSubEntryPaletteBank_800304A outside this file, which has no typed C interface yet */
+static void set_palette_bank(u8 bank)            { R0 = bank;              GUEST_CALL(sprite_setSubEntryPaletteBank_800304A); }
+/* register form: calls slotList_storeHalfwordAndClearField_800306C outside this file, which has no typed C interface yet */
+static void store_slot_halfword_sub_81178FC(u32 val)         { R0 = val;               GUEST_CALL(slotList_storeHalfwordAndClearField_800306C); }
+/* register form: calls sprite_setSubRecordFieldA_8003060 outside this file, which has no typed C interface yet */
+static void set_sub_record_field_a_sub_81178FC(u32 val)      { R0 = val;               GUEST_CALL(sprite_setSubRecordFieldA_8003060); }
+/* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
+static void set_sprite_priority(u32 prio)        { R0 = prio;              GUEST_CALL(sprite_setPriority_8002E14); }
+/* register form: calls sub_811794C outside this file, which has no typed C interface yet */
+static u32 call_sub_811794C(void)                {                         GUEST_CALL(sub_811794C); return R0; }
+/* register form: calls sub_8117998 outside this file, which has no typed C interface yet */
+static u8   call_sub_8117998(void)               {                         GUEST_CALL(sub_8117998); return (u8)R0; }
+/* register form: calls loc_8002774 outside this file, which has no typed C interface yet */
+static void run_byte_script(u32 a1, u32 a2)      { R0 = a1; R1 = a2;       GUEST_CALL(loc_8002774); }
+
+/* Initialize the sprite state slot pointed to by slot_ptr.
+ * Reads sub_kind from [slot_ptr+4], stamps kind 0x23, runs the byte script,
+ * picks and loads an animation, configures palette/slot/priority,
+ * sets [slot_ptr+8] = 4, and calls sub_811794C. Returns the r0 it left behind. */
+static u32 init_sprite_slot(u32 slot_ptr) {
+    u8 sub_kind = LD8(slot_ptr + 4);
+    u8 anim;
+
+    ST8(slot_ptr, 0x23);
+    run_byte_script(0x10, A_byte_2030204);
+
+    anim = call_sub_8117998();
+    ST8(slot_ptr + 5, anim);
+    set_animation_sub_81178FC(anim);
+    load_animation_data_sub_81178FC();
+    sprite_no_shadow_helper();
+
+    set_palette_bank((u8)(9 + sub_kind));
+
+    store_slot_halfword_sub_81178FC(0x180);
+    set_sub_record_field_a_sub_81178FC(1);
+    set_sprite_priority(0);
+
+    ST8(slot_ptr + 8, 4);
+    return call_sub_811794C();
+}
+
+/* sub_81178FC(r5 = slot ptr) -> flags from sub_811794C */
+Next sub_81178FC(void) {
+    R0 = init_sprite_slot(R5);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
