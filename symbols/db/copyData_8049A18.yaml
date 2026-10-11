@@ -1,0 +1,79 @@
+name: copyData_8049A18
+address: '0x08049A18'
+kind: function
+status: confirmed
+summary: Boot/init helper that clears VRAM and a secondary GFX buffer, decompresses/copies the scene's tiles/palette/tilemap
+  init refs, shrinks the Toolkit render viewport inward by a few pixels on each side, and triggers transition effect
+interface: void sceneBootCopyAndShrinkViewport_8049A18(u32 *r10 /* Toolkit */, u32 lr)
+details: "Calls in order:\n  1) zeroFillVRAM() — clear video RAM.\n  2) ZeroFillGFX30025c0() — clear a secondary\
+  \ GFX buffer at 0x030025C0.\n  3) copyMemory_8001850() — flush/stream any pending packed graphics still in the\
+  \ copy queue.\n  4) decompAndCopyData(initRefs_8049A54) — walk the embedded initRefs table whose entries are\n\
+  \     (src, dst, size) triples. Entries whose src has the COMPRESSED_PTR_FLAG bit set are\n     LZ-decompressed\
+  \ into dst; plain entries are raw-copied. Sources and sizes observed:\n       - comp_87E50D4 -> 0x06004000 (tiles/screen\
+  \ base)\n       - comp_87E5550 -> unk_2028200 (RAM, NULL dst implies skip?)\n       - comp_87E56A0 -> 0x0600D600\
+  \ (more tiles)\n       - dword_87F25B4 -> palette_3001980, 0xA0 bytes (palette)\n       - byte_86A4D40 -> 0x06010020,\
+  \ 0x240 bytes (tilemap block A)\n       - dword_86A4A40 -> 0x06010300, 0x100 bytes (tilemap block B)\n       -\
+  \ dword_86A5500 -> byte_3001550, 0x20 bytes (small RAM block)\n       - terminating NULL.\nThen loads the Toolkit\
+  \ render-info struct via r10->oToolkit_RenderInfoPtr and mutates its\n16-bit viewport fields (offsets inside the\
+  \ render-info struct):\n  0x16 (bottom) -= 4, 0x14 (top) -= 2, 0x1A (right) -= 2, 0x18 (left) -= 4.\nResult: a\
+  \ 2-pixel inset on top/right and a 4-pixel inset on bottom/left (units appear to be\npixels). Finally calls sub_803B91C(3)\
+  \ — transition effect index 3, presumably a fade/wipe that\nreveals the freshly loaded scene plus its newly inset\
+  \ border.\nClobbers r0/r2/r3 (r1 is the implicit work reg of the callees); preserved r4, r6, r7.\n\nRegister form,\
+  \ old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261010-235315);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 1' --file inbox_farm_old_1.c
+    copyData_8049A18
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function copyData_8049A18
+
+    ./wf verify --function copyData_8049A18 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235315-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function copyData_8049A18
+
+    ./wf verify --function copyData_8049A18 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235315-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function copyData_8049A18
+
+    ./wf verify --function copyData_8049A18 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235315-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08049a18 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 5b12c86
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- Which scene/boot path actually invokes this? The combination of "clear VRAM + reload tiles + shrink viewport +
+  start transition 3" suggests a title-screen or major scene-swap boot, but there is no caller symbol attached to
+  confirm.
+- The entry at comp_87E5550 -> NULL looks malformed for a (src,dst,size) triple — is the terminating NULL drawn
+  from the middle, or does decompAndCopyData interpret NULL dst as "decompress-only, keep result in a scratch buffer"?
+- Units of the viewport fields (pixels vs. tiles) are inferred from the small integer adjustments; the render-info
+  struct field semantics at 0x14/0x16/0x18/0x1A are not labeled.
+- sub_803B91C's argument 3 — is 3 a transition ID or a flag bitmask? Should be checked against its own callers.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261010-235315
+- recomp 5b12c86

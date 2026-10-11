@@ -1,0 +1,91 @@
+name: logoScreen_loadLogoTiles_803D2B8
+address: '0x0803D2B8'
+kind: function
+status: confirmed
+summary: Loads and arranges the tiles, tilemaps, and palettes for the Capcom logo and license-message intro screen.
+interface: void logoScreen_loadLogoTiles_803D2B8(void) // preserves r4-r7
+details: "Initializes the title/intro \"Capcom logo\" screen by clearing VRAM and the\nGFX scratch buffer (zeroFillVRAM,\
+  \ ZeroFillGFX30025c0), then walking the\ninitRefs803D2F0 table via decompAndCopyData. That table drives the LZ77\n\
+  decompression/transfer of the Capcom logo tileset, tilemap, both palettes\n(Capcom logo + license message), and\
+  \ the license-message tileset into\ntheir respective VRAM/palette destinations:\n\n  0x00 CompCapcomLogoTileset\
+  \   -> 0x06000020 (decomp to eDecompBuffer2014A00)\n  0x01 CompCapcomLogoTilemap   -> NULL     (no secondary dest)\n\
+  \  0x02 CapcomLogoPalette       -> palette_3001960       (0x20 bytes; 0x10 -> glitchy blue palette)\n  0x03 CapcomLogoLicenseTileset->\
+  \ 0x06001000 (0x1C0 bytes; 0xC0 -> only \"LICENSE\" portion loads)\n  0x04 CapcomLogoLicensePalette-> palette_3001980\
+  \       (0x20 bytes; 0x05 -> red shadow on license text)\n  0x05 NULL terminator\n\nAfter the table is processed,\
+  \ the Capcom logo tilemap is blitted into BG\ntile block 1 at (j=0, i=0, 0x20x0x14 tiles) using the decompressed\
+  \ tile-id\ntable at eDecompBuffer2013A00+4, then the license-message tilemap\n(CapcomLogoLicenseTilemap_86C41B4)\
+  \ is blitted into tile block 2 at\n(j=8, i=0x11, 0xEx1 tiles). Comments in the source note that disabling\neither\
+  \ CopyBackgroundTiles call removes the corresponding on-screen\nelement (\"Capcom\" wordmark or license text).\n\
+  \nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261010-235315);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 1' --file inbox_farm_old_1.c
+    logoScreen_loadLogoTiles_803D2B8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function logoScreen_loadLogoTiles_803D2B8
+
+    ./wf verify --function logoScreen_loadLogoTiles_803D2B8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235315-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function logoScreen_loadLogoTiles_803D2B8
+
+    ./wf verify --function logoScreen_loadLogoTiles_803D2B8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235315-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function logoScreen_loadLogoTiles_803D2B8
+
+    ./wf verify --function logoScreen_loadLogoTiles_803D2B8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235315-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, chips, fuzz, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0803d2b8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 5b12c86
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Is the trailing off_803DC78 block (eStruct2036780 plus 0xB0/0xB1-style blobs) actually referenced by this routine,
+  or is it stale data the disassembler lumped in here? Nothing in the visible code reads from that address.
+- Why is r10 listed as an input by the lifter when the function never reads or writes it? Likely caller-preservation
+  artifact.
+- The decompAndCopyData target is eDecompBuffer2013A00 for the logo tilemap, while the Capcom tileset uses eDecompBuffer2014A00
+  - confirm whether these are aliases for the same scratch region or distinct buffers.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261010-235315
+- recomp 5b12c86
