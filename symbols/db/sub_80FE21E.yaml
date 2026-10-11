@@ -1,0 +1,74 @@
+name: sub_80FE21E
+address: '0x080FE21E'
+kind: function
+status: confirmed
+summary: Battle AI attack dispatcher — reads the AI attack phase byte from an opponent's battle vars and tail-calls
+  the matching phase handler through the off_80FE230 jump table.
+interface: "void battle_aiAttackPhaseDispatch_80FE21E(u32 aiVars /* r7 */, u32 state /* r2 */, u32 entryA /* r5\
+  \ */, u32 entryB /* r6 */, u32 arg /* r10 */);\n  // uses: r7 preserved; reads aiVars + \"oAIAttackVars_Unk_00\"\
+  \n  // returns via phase handler (r1, r5, r8, r9, r10, r11, r12 observable to caller)\n  // clobbers nzcv, r0,\
+  \ r2, r3, r4, r6, lr\n"
+details: 'Loads r7 as the AI battle-vars struct pointer (preserved across the call by saving/restoring around the
+  bx). Reads an 8-bit "AIAttackVars_Unk_00" field (the per-NPC AI attack state byte), uses it as a byte offset into
+  the small jump table at off_80FE230, and does an interworking `bx` into the chosen Thumb handler with r0 = state
+  byte and r1 = (r2 already set to the state''s inline data). The four handlers in the table are: phase 0 -> sub_80FE240
+  (subroutine form, plain ret), phase 1 -> battle_aiAttackWindupTick_80FE284 (the windup tick), phase 2 -> sub_80FE2A8,
+  phase 3 -> sub_80FE30C. Effectively a state machine that advances an NPC''s AI attack animation/logic through
+  4 phases; the byte at oAIAttackVars_Unk_00 doubles as both the phase selector and (via the loaded r2) the per-phase
+  scratch. r7 is restored on exit via `pop {r7, pc}` so callers can chain another dispatch in the same frame.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-235200);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 44' --file inbox_farm_44.c sub_80FE21E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FE21E
+
+    ./wf verify --function sub_80FE21E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261010-235200-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FE21E
+
+    ./wf verify --function sub_80FE21E --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 11 out of domain (verify run convert-20261010-235200-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FE21E
+
+    ./wf verify --function sub_80FE21E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235200-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080fe21e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp cc9aaf1
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- What does the Unk_00 field really encode? It is used both as a jump-table index and (via r2) as a per-phase argument,
+  suggesting overlapping meaning (phase id vs. inline arg) that the disassembly's rename-only form doesn't reveal.
+- Which of sub_80FE240, sub_80FE2A8, and sub_80FE30C are still framework stubs vs. real phase logic, and which exact
+  role each plays in the attack sequence (start/windup/recover/end)?
+- Is the return convention truly "phase handler returns to original caller" via `pop {r7,pc}`, or does it sometimes
+  return through this function's lr?
+sources:
+- tools/wf run convert-20261010-235200
+- recomp cc9aaf1

@@ -1,0 +1,86 @@
+name: sub_8119438
+address: '0x08119438'
+kind: function
+status: confirmed
+summary: Draws the currently-selected chip's icon, palettes, and description text into the chip selection panel's
+  VRAM region.
+interface: void sub_8119438(struct ChipPanelObj *r5 /* preserved */); // clobbers r0-r3, r12, lr, flags; r4, r6-r9
+  preserved
+details: "Operates on a chip panel object in r5. Reads chip id at +0xE and visual-set\nindex at +5. If chip id is\
+  \ 0, or the resolved ChipData has no custom-gfx\npointer at +0x24, falls back to sub_81195E4 (placeholder) and\
+  \ returns.\n\nResolves a VRAM destination by indexing off_8119128 with the visual-set, then\nshifting the first\
+  \ dword of the table entry by 5 and adding 0x6010000 (object\ntile VRAM). Zero-fills 0x800 bytes of the tileset,\
+  \ then issues 6 aligned\n0xE0-byte row DMAs (stride 0x100) from the chip's custom-gfx pointer into\nVRAM (QueueEightWordAlignedGFXTransfer).\n\
+  \nThree palette-handling blocks then run, each using a per-visual-set\ndestination in 0x3001550 + (entry_byte\
+  \ << 5):\n  - off_8119170 → CopyWords of ChipData+0x28 (0x20 bytes), then DMA from\n    0x86E2E98 + (panel+0xC\
+  \ * 0x40) for 0x40 bytes to vram_dest+0x800.\n  - off_8119304 → CopyWords of 0x86E587C (0x20 bytes), then DMA\
+  \ from\n    0x86E3B9C + (ChipData+6 * 0x80) for 0x80 bytes to vram_dest+0x840.\n  - off_8119330 → CopyWords of\
+  \ 0x86E43DC (0x20 bytes).\n\nThen fills the special-effect region (offset 0x8C0, 0x100 bytes) at vram_dest\naccording\
+  \ to ChipData+9 (gfx flags) and ChipData+0x1A (attack power):\n  - flag 0x10 set: pattern = 0xAAAAAAAA via sub_8119594.\n\
+  \  - flag 0x02 set: if attack_power <= 1000 (0x3E8), call sub_8119594 with\n    (power, vram_dest); else if panel+0xA\
+  \ is non-zero and sSubmenu\n    state == 0x18:0x1C, call sub_8010CE0, otherwise sub_8010C76, with\n    chip_id\
+  \ in r0.\n  - neither flag: zero-fill (0xC0 + 0x40 = 0x100) bytes at vram_dest+0x8C0.\n\nFinally renders description\
+  \ text. Picks TextScriptChipDescriptions0 when\n(s32)chip_id <= 0xFF, otherwise TextScriptChipDesc1. Resolves\
+  \ a text BG\naddress from off_8119128[vis_set] (third dword, shifted by 5) + 0x6010000.\nPulls a \"desc data\"\
+  \ pointer from dword_811919C[vis_set]. Calls\nrenderTextGfx_8045F8C(text_script, chip_id & 0xFF, desc_ptr, text_bg,\n\
+  line_len=0xA, mode=3, color=dword_86A5D60, 0).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-235200);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 44' --file inbox_farm_44.c sub_8119438
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8119438
+
+    ./wf verify --function sub_8119438 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235200-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8119438
+
+    ./wf verify --function sub_8119438 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261010-235200-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8119438
+
+    ./wf verify --function sub_8119438 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235200-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story2, story4, story6, story8, story9.'
+  reproduce: grep -l '^08119438 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp cc9aaf1
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Exact visual-set tables (off_8119128, off_8119170, off_8119304, off_8119330, dword_811919C) — purpose of each
+  slot is inferred from how the values are used.
+- Meaning of the per-chip gfx flag bits 0x02 vs 0x10 and the differing filler functions (sub_8010C76 vs sub_8010CE0);
+  only one is selected by sSubmenu context.
+- Whether the "placeholder" path (chip_id == 0 or no custom gfx) actually means "no chip" or is reused for an animated/uninitialized
+  chip slot.
+sources:
+- tools/wf run convert-20261010-235200
+- recomp cc9aaf1

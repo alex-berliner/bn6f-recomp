@@ -1,0 +1,77 @@
+name: sub_80EBF10
+address: '0x080EBF10'
+kind: function
+status: confirmed
+summary: Dispatches an AI attack step to a per-type handler via a 3-entry jump table indexed by oAIAttackVars_Unk_00.
+interface: 'void battle_aiAttackHandlerDispatch_80EBF10(void);
+
+  // r7 = AI attack vars pointer (in)
+
+  // r3, r5, r6, r10, lr (caller''s lr) used by callee (in)
+
+  // r1, r5, r8, r9, r10, r11, r12 returned/used (out)
+
+  // NZCV + r0, r2, r3, r4, r6, r7, lr clobbered
+
+  '
+details: "Reads an 8-bit attack-type selector at offset oAIAttackVars_Unk_00 (0) of the\nAI attack vars block pointed\
+  \ to by r7. Uses it to index a 3-entry jump\ntable at off_80EBF24:\n  - type 0: aiAttack_genericSpawnAndCountdown_80EBF30\
+  \ (generic spawn-and-countdown step)\n  - type 4: sub_80EBF6E\n  - type 8: battle_aiWindRackAttackStep_80EBFF4\n\
+  Loads the handler address into r1 and the type byte into r0, sets lr to\nthe pop-pc return, then bx r1 to call\
+  \ the handler. Effectively a tail\ncall through a small table of battle AI attack step implementations.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-235200);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 44' --file inbox_farm_44.c sub_80EBF10
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80EBF10
+
+    ./wf verify --function sub_80EBF10 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261010-235200-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80EBF10
+
+    ./wf verify --function sub_80EBF10 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 7 out of domain (verify run convert-20261010-235200-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80EBF10
+
+    ./wf verify --function sub_80EBF10 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235200-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, story2, story6, story7.'
+  reproduce: grep -l '^080ebf10 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp cc9aaf1
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- story2
+- story6
+- story7
+open_questions:
+- Why are only indices 0, 4, and 8 listed, and what attack types are they meant to cover?
+- Is the table size actually 3 or are the missing entries a defensive gap?
+- Does oAIAttackVars_Unk_00 hold a direct index or a flag-masked selector that happens to produce these three values
+  in practice?
+sources:
+- tools/wf run convert-20261010-235200
+- recomp cc9aaf1

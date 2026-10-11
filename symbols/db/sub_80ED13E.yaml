@@ -1,0 +1,79 @@
+name: sub_80ED13E
+address: '0x080ED13E'
+kind: function
+status: confirmed
+summary: 'Battle AI: dispatches to the per-attack-type handler selected by an index byte in the AI''s attack-variables
+  block.'
+interface: "void sub_80ED13E(u32 r2, u32 r3, u32 r4, u32 r5, u32 r6,\n                 u32 ai_vars /* r7 */, u32\
+  \ r8, u32 r9, u32 r10, u32 r11, u32 r12,\n                 u32 lr /* return */);\n// returns via [sp]; all caller-saved\
+  \ regs/flags clobbered\n"
+details: 'Reads the 8-bit attack-type index at oAIAttackVars_Unk_00 from the AI attack-variables
+
+  object whose pointer callers pass in r7, scales it as a word index into the single-entry
+
+  (one handler) jump table pointed to by off_80ED150, and tail-calls that handler
+
+  (sub_80ED154) with the original register context preserved (r7 object pointer, plus
+
+  r0=idx, r1=table entry, and r2..r6, r8..r12 forwarded unchanged). The "thumb_func_end" +
+
+  "+1" form on the table entry indicates the target is invoked in Thumb mode. Because the
+
+  table currently only has one entry it acts as a placeholder for the per-attack-type
+
+  handler set; the handler lives outside this file and has no typed interface yet.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-235200);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 44' --file inbox_farm_44.c sub_80ED13E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80ED13E
+
+    ./wf verify --function sub_80ED13E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235200-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80ED13E
+
+    ./wf verify --function sub_80ED13E --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 8 out of domain (verify run convert-20261010-235200-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80ED13E
+
+    ./wf verify --function sub_80ED13E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235200-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story8, story9.'
+  reproduce: grep -l '^080ed13e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp cc9aaf1
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battles1
+- battles2
+- story8
+- story9
+open_questions:
+- What is the full set of attack-type indices sub_80ED154 (and any siblings) handles?
+- How is oAIAttackVars_Unk_00 laid out (sizes of remaining fields, owning struct) and where do callers get the r7
+  pointer?
+- Are callers meant to clobber r1 after this returns, or is r1's preserved value meaningful?
+sources:
+- tools/wf run convert-20261010-235200
+- recomp cc9aaf1

@@ -1,0 +1,80 @@
+name: sub_8119384
+address: '0x08119384'
+kind: function
+status: confirmed
+summary: Initialize a battle sprite object from its character/team indices, setting graphic, animation, palette,
+  priority, slot halfword, sub-entry palette bank, sub-record field A, and final state fields.
+interface: void sub_8119384(u32* obj /* r5 */)
+details: "Reads char_idx from [obj+4] and team_idx from [obj+5].\nClears the \"forced\" bit (0x10) from char_idx\
+  \ if set, and writes 1 to [obj+0xA].\nWrites a sprite-type byte to [obj]: 0x23 if char_idx==1 (Net.EXE), 0x83\
+  \ otherwise.\nIf char_idx==0, calls sub_81195E4 with the sprite type (special-case handler).\nThen performs a\
+  \ series of per-team/per-character table lookups (base tables indexed by\ndword_8119624 / dword_811963C; team\
+  \ tables off_81191B4, off_8119208, off_8119128,\noff_8119170, off_8119228, off_811924C) and drives the GUI sprite\
+  \ setup:\n  - initGuiSprite_8002770(base_graphic=tab8119624[char_idx], sprite_ptr=tab81191B4[team][char])\n  -\
+  \ sprite_setAnimation(anim_id=tab811963C[char_idx])\n  - sprite_loadAnimationData\n  - sprite_noShadow\n  - sprite_setPalette(0)\n\
+  \  - sprite_setPriority_8002E14(tab8119208[team][char])\n  - slotList_storeHalfwordAndClearField_800306C(tab8119128[team][char])\n\
+  \  - sprite_setSubEntryPaletteBank_800304A(tab8119170[team][char])\n  - sprite_setSubRecordFieldA_8003060(tab8119228[team][char])\n\
+  If char_idx==0, also calls object_writeSubstructField30_8002FEC(tab811924C[team]).\nFinally writes the post-init\
+  \ state fields:\n  [obj+0x08] = 4, [obj+0x10] = 0x00FF (low half of 0xFF strh), [obj+0x0D] = 0xFF,\n  [obj+0x1A]\
+  \ = 0x00FF, [obj+0x13] = 0, then calls sub_81196A0 to finalize.\nQuirk: the `mov r0,#0xFF` followed by strh stores\
+  \ only 0x00FF (low 16 bits), not 0xFFFF.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-235200);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 44' --file inbox_farm_44.c sub_8119384
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8119384
+
+    ./wf verify --function sub_8119384 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235200-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8119384
+
+    ./wf verify --function sub_8119384 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 3 out of domain (verify run convert-20261010-235200-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8119384
+
+    ./wf verify --function sub_8119384 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235200-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story2, story4, story6, story8, story9.'
+  reproduce: grep -l '^08119384 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp cc9aaf1
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Meaning of bit 0x10 on char_idx ("forced" flag) and [obj+0xA]=1 marker.
+- Exact role of the sub_81195E4 / object_writeSubstructField30 calls when char_idx==0.
+- Identity of the per-team table rows (team-indexed sprite/graph/anim/priority/slot/palette data; team granularity
+  unclear — could be 2 sides or larger team count).
+- The halfword value 0x00FF stored at [obj+0x10] and [obj+0x1A] (likely sentinel/invalid id) — confirm this is intended
+  and not a disassembler quirk.
+sources:
+- tools/wf run convert-20261010-235200
+- recomp cc9aaf1
