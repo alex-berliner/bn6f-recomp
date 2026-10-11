@@ -198,3 +198,11 @@ def test_a_job_counts_the_models_other_farms_asked_under_its_prompt_version(tmp_
     later = order[0].model_copy(update={"tried": ()})
     order, changed = plan({later.function: later}, [found], routes)
     assert order[0].tried == (M3,) and changed == [order[0]]
+
+
+def test_a_second_stop_request_ends_the_run_at_once() -> None:
+    queue._stop.clear()  # pyright: ignore[reportPrivateUsage]
+    queue.request_stop()
+    with pytest.raises(SystemExit):
+        queue.request_stop()
+    queue._stop.clear()  # pyright: ignore[reportPrivateUsage]

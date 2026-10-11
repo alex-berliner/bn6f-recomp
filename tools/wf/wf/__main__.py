@@ -7,7 +7,8 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   python -m wf capture --function NAME... [--route NAME]... [--calls N]   # into build-snapshots/NAME
   python -m wf farm    --model PROVIDER/MODEL... --snapshots DIR [--rounds N] [--jobs N] [--prompt typed|old] FUNCTION...
   python -m wf queue   [--hours H] [--lane PROVIDER=WORKERS]... [--cap TOKENS] [--rounds N] [--leave-alone FILE]...
-  python -m wf queue   --stop | --status    # ask the running queue to finish its farm runs and end; its ledger
+  python -m wf queue   --stop | --status    # ask the running queue to finish its farm runs and end (SIGTERM
+                                            # or Ctrl-C too; twice: at once, jobs under way stay open); its ledger
   python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--prompt old] [--jobs N] [FUNCTION...]   # entries for accepted candidates
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
@@ -250,7 +251,8 @@ def start_queue(command: QueueCommand) -> None:
         return
     with only_one_queue():
         STOP.unlink(missing_ok=True)
-        _ = signal.signal(signal.SIGTERM, lambda number, frame: request_stop())
+        for number in (signal.SIGTERM, signal.SIGINT):   # once: finish the farm runs under way; twice: at once
+            _ = signal.signal(number, lambda number, frame: request_stop())
         lanes = tuple(Lane(provider=name, workers=int(workers)) for name, _, workers in
                       (spec.partition("=") for spec in command.lanes)) or LANES
         run_id, run_dir = new_run("queue")

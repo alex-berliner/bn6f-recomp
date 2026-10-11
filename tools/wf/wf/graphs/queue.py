@@ -31,6 +31,8 @@ from wf.types import BuildFailure, FunctionName, ModelSpec, Result, SnapshotDir
 PROJECT = "recomp-queue"
 REPLAN_SECONDS = 600     # the work is planned again this often within a shift (new captures, other farms)
 IDLE_SECONDS = 60        # a worker with nothing to take looks again after this
+DRAIN_SECONDS = 300      # at a shift's end, how long to wait for the farm runs under way before the next shift
+                         # begins (slower ones finish in the background; their functions stay taken)
 
 
 def queue_graph() -> Graph["QueueState"]:
@@ -94,10 +96,17 @@ class QueueState(BaseModel):
 
 queue = Workflow[QueueState](QueueState, project=PROJECT)
 _stop = threading.Event()
+# the functions this process's farm runs are on, over every shift (a run left to finish after its shift ended
+# keeps its function from the next shift)
+_in_flight: set[FunctionName] = set()
 
 
 def request_stop() -> None:
-    """Take no new jobs; the run ends once the farm runs under way have finished (SIGTERM, `wf queue --stop`)."""
+    """Take no new jobs; the run ends once the farm runs under way have finished (SIGTERM, `wf queue --stop`).
+    Asked a second time, the run ends at once: the jobs under way stay open in the ledger and are taken again
+    by the next queue."""
+    if _stop.is_set():
+        raise SystemExit("stopped at once: the jobs under way stay open")
     _stop.set()
 
 
@@ -122,7 +131,8 @@ def build_difftest(given: BuildDifftestInput) -> BuildDifftestOutput:
     way: a shift starts with none)."""
     log_dir = given.run_dir / f"shift-{len(given.shifts)}"
     log_dir.mkdir(parents=True, exist_ok=True)
-    return BuildDifftestOutput(difftest=build_host_difftest(log_dir, build_dir="build-wf-queue-host",
+    # two build folders, shift by shift: a farm run still finishing from the last shift keeps its difftest
+    return BuildDifftestOutput(difftest=build_host_difftest(log_dir, build_dir=f"build-wf-queue-host-{len(given.shifts) % 2}",
                                                             tree=committed_tree("queue")))
 
 
@@ -189,8 +199,11 @@ def keep_every_provider_busy(given: WorkInput) -> WorkOutput:
                for lane in given.lanes for number in range(lane.workers)]
     for worker in workers:
         worker.start()
-    for worker in workers:
-        worker.join()
+    while True:   # every worker has finished; or the shift is over and the slow ones finish in the background
+        alive = [worker for worker in workers if worker.is_alive()]
+        if not alive or (board.shift_over() and board.drained_long_enough()):
+            break
+        alive[0].join(timeout=2)
     report = ShiftReport(began=began, ended=time.strftime("%Y-%m-%d %H:%M:%S"),
                          lanes=tuple(board.tallies[lane.provider].made() for lane in given.lanes),
                          accepted=tuple(board.accepted), why_it_ended=board.why_it_ended())
@@ -271,7 +284,8 @@ class _Board:
         self.order: list[Job] = []
         self.busy: set[FunctionName] = set()
         self.planned = 0.0
-        self.in_flight: set[FunctionName] = set()
+        self.in_flight = _in_flight
+        self.over_since: float | None = None   # when the shift's end was first seen
         self.ours: dict[FunctionName, float] = {}   # our functions and when their last run ended
         self.tallies = {lane.provider: _Tally(lane.provider) for lane in given.lanes}
         self.accepted: list[FunctionName] = []
@@ -285,6 +299,16 @@ class _Board:
 
     def finishing(self) -> bool:
         return stop_requested() or time.time() > self.ends or self.past_until() or self.out_of_work
+
+    def shift_over(self) -> bool:
+        """The shift's hours are up (not a stop: a stop waits for every farm run under way)."""
+        over = time.time() > self.ends and not self.done()
+        if over and self.over_since is None:
+            self.over_since = time.time()
+        return over
+
+    def drained_long_enough(self) -> bool:
+        return self.over_since is not None and time.time() - self.over_since > DRAIN_SECONDS
 
     def done(self) -> bool:
         return stop_requested() or self.past_until() or self.out_of_work
