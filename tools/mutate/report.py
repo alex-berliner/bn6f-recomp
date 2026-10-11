@@ -252,9 +252,15 @@ def extras(out: str, tested: list[dict], baseline: dict) -> None:
             print(table(["check", "mutants", "killed in the survey", "killed in the recheck"], rows), "\n")
 
 
-def export(out: str, path: str, review: str | None = None) -> None:
-    """One row per tested mutant: what it changed and what every check said (tools/mutate/survey-*.tsv)."""
+def export(out: str, path: str, review: str | None = None, later: str | None = None) -> None:
+    """One row per tested mutant: what it changed and what every check said (tools/mutate/survey-*.tsv).
+    LATER: a survey of the same mutants on a later tree (`mutate.py reanchor`): its cheap-check verdict."""
     plan, baseline, results, lockstep = load(out)
+    again = {}
+    if later:
+        _, b2, r2, _ = load(later)
+        again = {r["id"]: ("killed" if any(verdicts(r, b2, {})[c] == "killed" for c in CHEAP) else "survived")
+                 for r in r2 if r["status"] == "tested"}
 
     def jl(name):
         p = os.path.join(out, name)
@@ -282,7 +288,7 @@ def export(out: str, path: str, review: str | None = None) -> None:
                 verdict_of[f[0]] = f[1]
     cols = ["id", "entry", "stratum", "file", "line", "class", "operator", "change", "entries", *CHECKS,
             "oracle_run1", "leftovers_deep", "reached_random", "reached_captured", "reached_oracle",
-            "lockstep_probe", *(f"recheck_{t}" for t in rechecks), "review"]
+            "lockstep_probe", *(f"recheck_{t}" for t in rechecks), "cheap_on_later_tree", "review"]
     with open(path, "w") as fh:
         fh.write("\t".join(cols) + "\n")
         for r in results:
@@ -299,5 +305,5 @@ def export(out: str, path: str, review: str | None = None) -> None:
                    *(("yes" if rp[k] else "no") if k in rp else "" for k in ENTRY_CHECKS),
                    ("ran" if lp["status"] == "failed" else "not run" if lp["status"] == "passed" else lp["status"]) if lp else "",
                    *(",".join(f"{k}:{x}" for k, x in rechecks[t].get(r["id"], {}).items()) for t in rechecks),
-                   verdict_of.get(r["id"], "")]
+                   again.get(r["id"], ""), verdict_of.get(r["id"], "")]
             fh.write("\t".join(str(x) for x in row) + "\n")

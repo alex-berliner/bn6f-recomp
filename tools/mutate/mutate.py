@@ -462,7 +462,11 @@ def check_oracle(w: Worker, entries: list[str]) -> dict:
         if d is None:
             per[e] = {"outcome": "not run"}
             continue
-        r = oracle.compare(d, [_units[e]], None, os.path.join(d, "contract.txt"), w.difftest)[e]
+        contract = os.path.join(OUT, "contracts", f"{e}.txt")
+        if not os.path.exists(contract):
+            os.makedirs(os.path.dirname(contract), exist_ok=True)
+            oracle.write_contract(contract, [_units[e]])
+        r = oracle.compare(d, [_units[e]], None, contract, w.difftest)[e]
         compared = r["ok"] + r["fail"]
         per[e] = {"outcome": "failed" if r["fail"] else "nothing" if not compared else "passed",
                   "failures": r["fail"], "ood": r["ood"], "tries": compared + r["ood"]}
@@ -749,6 +753,50 @@ def cmd_lint_deep(_args) -> None:
             append_jsonl(out_path, record)
 
 
+# ── reanchor: an earlier survey's mutants on today's sources ─────────────
+
+def cmd_reanchor(args) -> None:
+    """Carry the tested mutants of an earlier survey (OLD_OUT, its sources in OLD_GAME) onto the
+    current cport/src/game under the same ids, where the mutated function's text is unchanged
+    (wherever layout has put it) and its touched entries are still readable. Writes OUT/plan.json."""
+    old_plan = read_json(os.path.join(args.old_out, "plan.json"))
+    tested = {r["id"] for r in read_jsonl(os.path.join(args.old_out, "results.jsonl")) if r["status"] == "tested"}
+    old_files: dict[str, csrc.CFile] = {}
+    new_files = {os.path.basename(path): csrc.parse(path) for path in sorted(glob.glob(os.path.join(GAME, "*.c")))}
+    readable = {n for cf in new_files.values() for n, f in cf.functions.items() if f.is_next}
+    kept, why = [], collections.Counter()
+    for c in old_plan["candidates"]:
+        if c["id"] not in tested:
+            continue
+        ocf = old_files.setdefault(c["file"], csrc.parse(os.path.join(args.old_game, c["file"])))
+        ofn = ocf.functions[c["function"]]
+        # helpers of the same name in several parts: find the one whose text matches
+        text = ocf.text[ofn.start:ofn.body_close + 1]
+        found = None
+        for name, cf in new_files.items():
+            fn = cf.functions.get(c["function"])
+            if fn is not None and cf.text[fn.start:fn.body_close + 1] == text:
+                found = (name, cf, fn)
+                break
+        if found is None:
+            why["function text changed or gone"] += 1
+            continue
+        if not all(e in readable for e in c["touched"]):
+            why["a touched entry is no longer readable"] += 1
+            continue
+        name, cf, fn = found
+        shift = fn.start - ofn.start
+        touched = sorted(cf.touched_entries(fn.name))
+        kept.append({**c, "file": name, "start": c["start"] + shift, "end": c["end"] + shift,
+                     "line": cf.line_of(c["start"] + shift), "touched": touched, "file_sha1": sha1(cf.text),
+                     "rank": 0})
+        why["kept"] += 1
+    plan = {**old_plan, "made": now(), "tree": git_head(), "reanchored_from": args.old_out,
+            "per_function": 10 ** 6, "candidates": kept}
+    write_json(os.path.join(OUT, "plan.json"), plan)
+    print(dict(why))
+
+
 # ── reach probes ────────────────────────────────────────────────────────
 
 def cmd_probe(args) -> None:
@@ -1003,6 +1051,9 @@ def main() -> None:
     p.add_argument("--jobs", type=int, default=2)
     p.add_argument("--worker-base", type=int, default=20, help="worker numbers from here (others may be busy)")
     sub.add_parser("lint-deep", help="the leftover lint with --deep on every tested mutant (static)")
+    p = sub.add_parser("reanchor", help="an earlier survey's tested mutants on today's sources (same ids)")
+    p.add_argument("old_out", help="the earlier survey's build-mutate directory")
+    p.add_argument("old_game", help="a copy of cport/src/game as that survey saw it")
     p = sub.add_parser("probe", help="reach probes: which checks run each mutated statement")
     p.add_argument("--jobs", type=int, default=4)
     p.add_argument("--ids", help="file of mutant ids (default: every tested mutant)")
@@ -1013,16 +1064,18 @@ def main() -> None:
     p = sub.add_parser("tsv", help="one row per tested mutant with every verdict (for git: tools/mutate/survey-*.tsv)")
     p.add_argument("path")
     p.add_argument("--review", default=os.path.join(HERE, "review-20261011.tsv"))
+    p.add_argument("--later", help="a reanchored survey of the same mutants on a later tree (its OUT)")
     args = ap.parse_args()
     if args.cmd in ("report", "tsv"):
         import report
         if args.cmd == "report":
             report.main(OUT)
         else:
-            report.export(OUT, args.path, args.review)
+            report.export(OUT, args.path, args.review, args.later)
         return
     {"catalog": cmd_catalog, "plan": cmd_plan, "run": cmd_run, "lockstep": cmd_lockstep, "show": cmd_show,
-     "probe": cmd_probe, "recheck": cmd_recheck, "lint-deep": cmd_lint_deep}[args.cmd](args)
+     "probe": cmd_probe, "recheck": cmd_recheck, "lint-deep": cmd_lint_deep,
+     "reanchor": cmd_reanchor}[args.cmd](args)
 
 
 if __name__ == "__main__":
