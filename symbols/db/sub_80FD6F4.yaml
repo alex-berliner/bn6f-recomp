@@ -1,0 +1,74 @@
+name: sub_80FD6F4
+address: '0x080FD6F4'
+kind: function
+status: confirmed
+summary: AI attack behaviour that snapshots a duration on first call and exits the attack state once it elapses.
+interface: 'void aiAttackTimerState_80FD6F4(void);  // in: r5=battle object, r7=AI attack vars; preserves R1, clobbers
+  R0/R2/R3/R6/R7/lr, NZCV'
+details: 'Reads an "already-fired" flag at oAIAttackVars_Unk_01 (r7). On first call (flag==0),
+
+  sets it to 4 and copies oAIAttackVars_Unk_18 into the countdown field
+
+  oAIAttackVars_Unk_10. On later calls, decrements oAIAttackVars_Unk_10 once per
+
+  invocation; when it goes non-positive, clears oBattleObject_CurAnim on the battle
+
+  object (r5) and calls object_exitAttackState. R1 is not touched, so it flows through
+
+  as the contract''s documented output.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-095723);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 6' --file inbox_farm_old_6.c
+    sub_80FD6F4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD6F4
+
+    ./wf verify --function sub_80FD6F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261011-095723-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD6F4
+
+    ./wf verify --function sub_80FD6F4 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261011-095723-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD6F4
+
+    ./wf verify --function sub_80FD6F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-095723-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd6f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp e6190af
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Why set the guard byte to 4 rather than 1 (semantic of the non-zero sentinel)?
+- What units oAIAttackVars_Unk_18/10 are measured in (frames? ticks? sub-steps)?
+- Does the timer get re-snapshot if some external code clears Unk_01 back to 0?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-095723
+- recomp e6190af

@@ -1,0 +1,71 @@
+name: sub_80EC81E
+address: '0x080EC81E'
+kind: function
+status: confirmed
+summary: AI attack-state wind-up timer tick that initialises a 30-frame countdown on first entry and exits the attack
+  state once it elapses.
+interface: 'void sub_80EC81E(struct BattleObject* r5, struct AIAttackVars* r7); outputs: r1 (clobbered)'
+details: 'On first entry when AIAttackVars+Unk_01 is zero, seeds the 16-bit countdown at AIAttackVars+Unk_10 with
+  0x1E (30 frames) and marks Unk_01 as 4 (i.e. "wind-up phase active"). Each call decrements that timer; if it was
+  >=1 before the decrement (BGE on the pre-decrement value), the routine simply returns. Once the timer underflows,
+  it zeroes the BattleObject''s RelatedObject1Ptr (offset oBattleObject_RelatedObject1Ptr), zeroes the AI data''s
+  Unk_68 field (offset oAIData_Unk_68) via the AIDataPtr, then calls object_exitAttackState to leave the attack
+  state.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-095723);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 6' --file inbox_farm_old_6.c
+    sub_80EC81E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80EC81E
+
+    ./wf verify --function sub_80EC81E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261011-095723-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80EC81E
+
+    ./wf verify --function sub_80EC81E --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-095723-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80EC81E
+
+    ./wf verify --function sub_80EC81E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-095723-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story8.'
+  reproduce: grep -l '^080ec81e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp e6190af
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battles2
+- story8
+open_questions:
+- What does the value 4 stored into AIAttackVars+Unk_01 actually represent (phase index, flag bit, or counter of
+  something else)?
+- What is AIAttackVars+Unk_10 counting down from in game terms (a generic attack wind-up, a specific move, or an
+  animation frame limit)?
+- Why are both RelatedObject1Ptr and oAIData_Unk_68 cleared together before exiting the attack state — what relationship
+  links the two?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-095723
+- recomp e6190af

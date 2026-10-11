@@ -1,0 +1,81 @@
+name: sub_811F6E0
+address: '0x0811F6E0'
+kind: function
+status: confirmed
+summary: Opens the PET submenu by zeroing its 0x80-byte buffer, writing default entries, and stashing the current
+  map group for later restoration.
+interface: 'void sub_811F6E0(void);  // inputs: r10 (toolkit pointer), lr (return); outputs: r4, r5 (preserved);
+  clobbers: nz,c,v, r0, r1, lr; preserved: r2, r3'
+details: 'Reads the PET submenu buffer pointer from the toolkit struct at oToolkit_SubmenuPtr,
+
+  then ZeroFillByWord()s 0x80 (128) bytes of it. Loads the PET menu data asset from
+
+  off_811F704 (ePETMenuData) into r5 (callers use this through R5 as the data ptr).
+
+  Seeds the freshly-zeroed buffer with two default fields: byte[0] = 0x10 (entry id
+
+  0x10, option index 1), byte[0xD] = 1. Then snapshots the live
+
+  oGameState_MapGroup into oGameState_LastMapGroup so the submenu (or its close
+
+  code) can return the player to the same map group when dismissed. Pure initializer
+
+  of the PET submenu state struct; no rendering or input handling here.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-095723);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 6' --file inbox_farm_old_6.c
+    sub_811F6E0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811F6E0
+
+    ./wf verify --function sub_811F6E0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-095723-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811F6E0
+
+    ./wf verify --function sub_811F6E0 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-095723-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811F6E0
+
+    ./wf verify --function sub_811F6E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-095723-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story8.'
+  reproduce: grep -l '^0811f6e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp e6190af
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- story8
+open_questions:
+- What is the precise struct layout of the PET submenu buffer that these byte offsets (0x00 and 0x0D) populate?
+  The C comment notes "entry id 0x10, option index 1" but the field types are not yet identified.
+- Which caller constructs ePETMenuData and passes r10 — likely the PET menu open handler in the toolkit, but the
+  symbol name for that caller is not yet known.
+- Is oGameState_LastMapGroup consumed by a paired close-PET-submenu function elsewhere, or does only this function
+  write it?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-095723
+- recomp e6190af

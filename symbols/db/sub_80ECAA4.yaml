@@ -1,0 +1,87 @@
+name: sub_80ECAA4
+address: '0x080ECAA4'
+kind: function
+status: confirmed
+summary: AI attack-state step that waits a fixed 10-tick countdown, then clears the battle object's related-object
+  pointer and an AIData slot before exiting the current attack state.
+interface: void (struct BattleObject* r5, ? r6, struct AIAttackVars* r7); returns r1 (= AIDataPtr unchanged on the
+  early-return path, = AIDataPtr after expiry path)
+details: 'Operates on a battle object (r5), an AI attack-state scratch struct (r7), and the object''s AIData (via
+  [r5,#oBattleObject_AIDataPtr]).
+
+
+  - If [r7,#oAIAttackVars_Unk_01] (state byte) is zero, performs a one-shot init: writes 0xA to [r7,#oAIAttackVars_Unk_10]
+  (a 16-bit countdown) and sets the state byte to 4 ("in progress").
+
+  - Decrements the countdown each call.
+
+  - If the countdown is still >= 0 after decrement, returns with r1 unchanged (callers branch on r1).
+
+  - When the countdown goes negative, zeros [r5,#oBattleObject_RelatedObject1Ptr] and zeros [(u32)[r5,#oBattleObject_AIDataPtr]
+  + #oAIData_Unk_68], then tail-calls object_exitAttackState.
+
+
+  Note: the countdown comparison uses `sub r0,#1` then `bge` against zero on a 32-bit subtraction that was previously
+  stored as u16; the high bits of r0 from the ldrh load are zero, so the bge tests the 16-bit counter signed vs
+  zero. Effectively the routine waits exactly 10 ticks (init sets 0xA, decrements to 9, 8, ..., 0 still passes bge
+  since 0 is >=0; next tick decrements to -1 (0xFFFFFFFF) which fails bge). So the actual wait is 11 calls before
+  exiting -- callers should not assume "10 ticks" literally.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-095723);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, old prompt, set 6' --file inbox_farm_old_6.c
+    sub_80ECAA4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80ECAA4
+
+    ./wf verify --function sub_80ECAA4 --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261011-095723-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80ECAA4
+
+    ./wf verify --function sub_80ECAA4 --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261011-095723-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80ECAA4
+
+    ./wf verify --function sub_80ECAA4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-095723-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story5, story6, story9.'
+  reproduce: grep -l '^080ecaa4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp e6190af
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battles2
+- story5
+- story6
+- story9
+open_questions:
+- Meaning of r6 input (unused here).
+- Semantics of oAIAttackVars_Unk_01 value 4 ("attack state in progress" flag).
+- What object_exitAttackState does to r1 / AIData state.
+- Whether r1 output is intentionally meaningful or just a leftover from the ldr.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-095723
+- recomp e6190af
