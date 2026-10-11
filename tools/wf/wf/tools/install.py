@@ -2,6 +2,7 @@
 take it out again: the file under cport/src/game, and its difftest.cfg lines
 between markers. A farm group's file is an inbox (tools/layout.py): its
 functions go to the files of their bn6f sources, and the file goes."""
+import re
 import subprocess
 from pathlib import Path
 
@@ -53,15 +54,41 @@ def _write_cfg_section(file_name: str, cfg_lines: tuple[CfgLine, ...], tree: Pat
 
 def lay_out_group(file_name: str, tree: Path = REPO) -> tuple[Path, ...]:
     """Empty an installed farm group's file into the laid-out files of the tree (tools/layout.py); the
-    game files written, which are the ones to commit. Nothing else may move: the tree is laid out."""
+    game files written, which are the ones to commit. Nothing else may move: the tree is laid out. A name
+    one of the group's parts defines that a part laid out since the group was assembled also defines or
+    reads (a parallel run committed it) is renamed apart in the group's part first, as the assembly does."""
     game = _game_dir(tree)
-    plan = layout.plan(layout.read_game(game_dir=str(game)), inbox=(file_name,))
+    files = layout.read_game(game_dir=str(game))
+    plan = layout.plan(files, inbox=(file_name,))
+    renamed = renamed_apart(files[file_name], plan.conflicts)
+    if renamed != files[file_name]:
+        _ = (game / file_name).write_text(renamed)
+        plan = layout.plan({**files, file_name: renamed}, inbox=(file_name,))
     others = sorted({move.old for move in plan.moves if move.old != file_name})
     if plan.problems or others:
         raise ToolOutputError(f"cannot lay out {file_name}: "
                               + "; ".join(plan.problems or [f"{', '.join(others)} would move too (not laid out)"]))
     layout.write_game(plan, str(game))
     return tuple(game / name for name, text in sorted(plan.files.items()) if text is not None)
+
+
+def renamed_apart(code: str, conflicts: list[layout.Conflict]) -> str:
+    """CODE (an assembled farm group) with each name a conflict is about renamed, in the group's own part
+    that defines it, to NAME_FUNCTION: the part then neither clashes with a neighbour's definition nor lends
+    its own to a neighbour. A conflict where the group's part only reads a neighbour's name stays."""
+    marks = {match[1]: match for match in re.finditer(r"^/\* ── (\w+) ── \*/$", code, re.M)}
+    for conflict in conflicts:
+        owner = next((owner for owner in conflict.definers if owner in marks), None)
+        if owner is None or not conflict.name:
+            continue
+        start = marks[owner].start()
+        later = [match.start() for match in marks.values() if match.start() > start]
+        end = min(later, default=len(code))
+        part = re.sub(rf"\b{re.escape(conflict.name)}\b", f"{conflict.name}_{owner}", code[start:end])
+        part = part.replace(f"/* ── {owner}_{owner} ── */", f"/* ── {owner} ── */")   # (a part named like its name)
+        code = code[:start] + part + code[end:]
+        marks = {match[1]: match for match in re.finditer(r"^/\* ── (\w+) ── \*/$", code, re.M)}
+    return code
 
 
 def layout_conflicts(file_name: str, code: CandidateFile, functions: tuple[FunctionName, ...],

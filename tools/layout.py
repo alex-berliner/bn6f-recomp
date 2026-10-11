@@ -272,9 +272,12 @@ class Move(NamedTuple):
 
 class Conflict(NamedTuple):
     """A part that cannot land where the rule puts it: BLAME names the parts involved, the one to take
-    out first (the part that would see a neighbour's definition, the later of two definitions)."""
+    out first (the part that would see a neighbour's definition, the later of two definitions); NAME is the
+    C name concerned, and DEFINERS the parts that define it (renaming it in one of them settles it)."""
     text: str
     blame: tuple[str, ...]
+    name: str = ""
+    definers: tuple[str, ...] = ()
 
 
 @dataclass
@@ -345,14 +348,15 @@ def part_problems(dest: str, parts: list[Part]) -> list[Conflict]:
     for n, which in sorted(definers.items()):
         if len(which) > 1 and not all(n in parts[i].macros for i in which):
             out.append(Conflict(f"{GAME}/{dest}: {n} is defined by the parts of {', '.join(parts[i].owner for i in which)} "
-                                "(a C name defined twice in one file)", tuple(parts[i].owner for i in reversed(which))))
+                                "(a C name defined twice in one file)", tuple(parts[i].owner for i in reversed(which)),
+                                n, tuple(parts[i].owner for i in which)))
     for i, part in enumerate(parts):
         for n in sorted((part.uses - part.defines) & definers.keys()):
             seen = [parts[j].owner for j in definers[n] if j != i and (j < i or n not in parts[j].macros)]
             if seen:
                 out.append(Conflict(f"{GAME}/{dest}: {part.owner} uses {n}, which the part of {', '.join(seen)} defines"
                                     f"{' before it' if n in parts[definers[n][0]].macros else ''} (it would see a "
-                                    "neighbour's definition)", (part.owner, *seen)))
+                                    "neighbour's definition)", (part.owner, *seen), n, tuple(seen)))
     return out
 
 

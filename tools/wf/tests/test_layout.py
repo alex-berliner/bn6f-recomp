@@ -107,3 +107,27 @@ def test_moved_functions_get_their_new_file_in_symbols_db(tmp_path: Path) -> Non
     change = cast(list[dict[str, str]], data["changes"])[0]
     assert change["what"].startswith("moved from cport/src/game/leaves_farm_1.c to cport/src/game/object.c")
     assert list(data) == ["name", "evidence", "changes", "readable_c", "stamp"]
+
+
+def test_a_group_part_clashing_with_a_part_laid_out_since_is_renamed_apart() -> None:
+    from wf.tools.install import renamed_apart
+    laid = plan({"inbox_1.c": "x\n\n/* ── objA ── */\nstatic u32 helper(void) { return 1; }\n"
+                              "Next objA(void) {\n    R0 = helper();\n}\n"}).files["object.c"]
+    assert laid is not None
+    group = ("x\n\n/* ── objB ── */\nstatic u32 helper(void) { return 2; }\nNext objB(void) {\n    R0 = helper();\n}\n")
+    conflicts = plan({"object.c": laid, "inbox_2.c": group}).conflicts
+
+    renamed = renamed_apart(group, conflicts)
+
+    assert "static u32 helper_objB(void)" in renamed and "R0 = helper_objB();" in renamed
+    assert not plan({"object.c": laid, "inbox_2.c": renamed}).conflicts
+
+
+def test_a_group_part_reading_a_neighbours_macro_cannot_be_renamed_apart() -> None:
+    from wf.tools.install import renamed_apart
+    laid = plan({"inbox_1.c": "x\n\n/* ── objA ── */\n#define SPEED 4\nNext objA(void) {\n    R0 = SPEED;\n}\n"}).files["object.c"]
+    assert laid is not None
+    group = "x\n\n/* ── objB ── */\nNext objB(void) {\n    R0 = SPEED;\n}\n"
+    conflicts = plan({"object.c": laid, "inbox_2.c": group}).conflicts
+
+    assert renamed_apart(group, conflicts) == group and conflicts
