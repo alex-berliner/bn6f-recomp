@@ -1,0 +1,94 @@
+name: someChipHandValidationHappensHere_800B090
+address: '0x0800B090'
+kind: function
+status: confirmed
+summary: Battle-start sanity check that blanks unusable chip entries in the player's Custom Gauge hand using the
+  placeholder chip 0x185.
+interface: "/* inputs: r0-r9 from caller (preserved), r10 = toolkit pointer, lr */\n/* outputs: r0-r9 returned unchanged\
+  \ (rounded through push/pop); lr = return */\n/* clobbers flags NZCV */\nvoid validateBattleHandChip_800B090(u32\
+  \ /*r0*/, u32 /*r1*/, u32 /*r2*/,\n                                    u32 /*r3*/, u32 /*r4*/, u32 /*r5*/,\n \
+  \                                   u32 /*r6*/, u32 /*r7*/, u32 savedR8,\n                                   \
+  \ u32 savedR9, void* toolkit);\n"
+details: 'Reads toolkit->BattleStatePtr->Unk_0d (oBattleState_Unk_0d) as naviId to locate the per-Navi battle hand
+  via getBattleHandAddr_8010018.; Hand layout: one leading byte (slot index) followed by 2-byte chip code entries
+  from offset 2; the function targets the entry at hand + slotIndex*2 + 2.; Bails out (leaves the hand untouched)
+  if battle flag 0x40 (TestBattleFlag_0x40) is set, or if the targeted entry already reads 0xFFFF (empty).; Calls
+  validateChipCode_8006EE8 on the candidate chip code (with second arg 0xFF); on rejection, overwrites the entry
+  with placeholder chip id 0x185 (dword_800B10C).; Otherwise looks up the chip via getChip8021DA8 and reads ChipData.elemIdx
+  at offset 0x7. Only elements 1 and 2 (Fire/Wood by MegaMan Battle Network element ordering) trigger the second
+  check.; Quirky step: for elemIdx 1/2 it calls GetBattleNaviStatsByte(naviId, 0xA + elemIdx), then immediately
+  does "mov r0, r9" so the byte just returned is discarded and the comparison is really LD8(dword_20367E0 + elemIdx)
+  vs the hand pointer. Despite the bug-shaped control flow the path ultimately writes 0x185 into the entry when
+  tableByte >= hand (signed compare via blt).; The original push {r0-r7, lr} / push {r8, r9} prologue and matching
+  epilogue mean all ten argument registers reach the caller untouched; only NZCV are clobbered.; Calls into: TestBattleFlag_0x40,
+  getBattleHandAddr_8010018, validateChipCode_8006EE8, getChip8021DA8, GetBattleNaviStatsByte (all outside this
+  file).; Touches globals: dword_20367E0 (elemIdx-keyed stat byte table referenced via off_800B108).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c someChipHandValidationHappensHere_800B090
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function someChipHandValidationHappensHere_800B090
+
+    ./wf verify --function someChipHandValidationHappensHere_800B090 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function someChipHandValidationHappensHere_800B090
+
+    ./wf verify --function someChipHandValidationHappensHere_800B090 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function someChipHandValidationHappensHere_800B090
+
+    ./wf verify --function someChipHandValidationHappensHere_800B090 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0800b090 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Is the "mov r0, r9" before the table-byte compare an intentional feature (using the hand address as a threshold)
+  or a bug that survived into the final build? The readable C reflects the literal behavior but the comparison against
+  the hand pointer is highly suspicious.
+- Which elements correspond to elemIdx 1 and 2 here (Fire/Wood or Water/Elec) — depends on ChipData.elemIdx ordering
+  that isn't visible in this function.
+- What does battle flag 0x40 represent (tutorial/auto-battle/lockout state)? Not determined here.
+- Is 0x185 (dword_800B10C) the canonical "blank/invalid" sentinel used elsewhere when invalidating a Custom Gauge
+  entry?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

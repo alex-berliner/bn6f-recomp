@@ -1,0 +1,95 @@
+name: SetPrimaryToolkitPointers
+address: '0x08006BC0'
+kind: function
+status: confirmed
+summary: Boot-time initializer that copies the 15-entry toolkit globals pointer table from ROM into eToolkit (the
+  toolkit's working RAM) and sets r10 to eToolkit as the frame pointer base for subsequent toolkit code.
+interface: 'sig: SetPrimaryToolkitPointers(void) -> (void); in: lr: return address (also handed back to caller in
+  r0 via the unusual pop-into-r0 + bx r0 epilogue); out: r10: address of eToolkit; r0: function''s own return address
+  (epilogue quirk); r1 r2: left as CopyWords left them; r3: preserved; nz c: left as CopyWords left them'
+details: 'Calls CopyWords with src = ToolkitPointers (ROM), dest = eToolkit (the toolkit''s RAM region),
+
+  size = 0x3C (15 * 4 bytes). The 15 pointers rebase every toolkit global: i_joGameSubsysSel,
+
+  eJoypad, eRenderInfo, eCamera, eCutsceneState, eWarp2011bb0, eBattleState, unk_200F3A0,
+
+  unk_2009740, iCurrFrame, iBGTileIdBlocks, eChatbox, eCollisionData, sSubmenu, byte_200A220.
+
+  After the copy, r10 is initialized to eToolkit, which the rest of the toolkit uses as a
+
+  frame pointer base (eToolkit-relative globals). The epilogue pops saved LR straight into
+
+  r0 and bx''s through it, so r0 ends up holding the return address — the C wrapper surfaces
+
+  this as the return value even though it is semantically meaningless.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c SetPrimaryToolkitPointers
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function SetPrimaryToolkitPointers
+
+    ./wf verify --function SetPrimaryToolkitPointers --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function SetPrimaryToolkitPointers
+
+    ./wf verify --function SetPrimaryToolkitPointers --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function SetPrimaryToolkitPointers
+
+    ./wf verify --function SetPrimaryToolkitPointers --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08006bc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Why does the original pop LR into r0 and bx r0 instead of the usual pop {pc}? Likely a compiler/macro artifact
+  rather than intentional; callers may simply not depend on r0.
+- Two entries in the table (unk_200F3A0, unk_2009740, byte_200A220) are unnamed in the disassembly — their purposes
+  remain unknown and would clarify what subsystems the toolkit actually owns.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

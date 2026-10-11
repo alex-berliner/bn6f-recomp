@@ -1,0 +1,90 @@
+name: playerObjectMovingToPanelValidityRelated_800E618
+address: '0x0800E618'
+kind: function
+status: confirmed
+summary: Picks a panel-parameter pair from a small table (selected by the object's alliance and whether it carries
+  flag 0x10 / stands on a solid panel) and passes it, together with the target panel, to object_checkPanelParameters;
+  returns immediately if the target panel is invalid.
+interface: void playerObject_movingToPanel_check_800E618(u32 panelX /* r0 */, u32 panelY /* r1 */, u32 obj /* r5
+  */); returns whatever object_checkPanelParameters left in r0-r3 plus nz/c/v (or Z set, r0==0 if the panel is invalid);
+  clobbers r0; preserves r4-r7.
+details: "Reads object_isValidPanel(panelX, panelY) first; if invalid (Z set), returns r0=0 with all other observable\
+  \ registers untouched by this function.\n\nOtherwise picks a base offset of 0x10 by default. The base is set to\
+  \ 0 when BOTH:\n  - object_getFlag() & 0x10 == 0, AND\n  - object_isPanelSolid(obj->PanelX, obj->PanelY) is true\
+  \ (Z clear).\n\nFinal table index = (obj->Alliance << 3) + base; entries are 8 bytes each (two u32 words). Four\
+  \ entries are defined at byte_800E660:\n  alliance 0: base 0x00 -> {0x0, 0x000000A0 0x0, 0xB880008};  base 0x10\
+  \ -> {0x10 0x0, 0x0, 0x0 0x0, 0xA0 0x0, 0x88 0xB}\n  alliance 1: same pairs as alliance 0 (table only has 4 rows,\
+  \ so alliances >=2 re-use)\n  alliance 2..3 each get the two lower pairs.\nConcretely the byte_800E660 rows read\
+  \ (little-endian u32,u32): 0x10000000, 0x0B8800A0 / 0x30000000, 0x07880080 / 0x00000000, 0x0B8800A0 / 0x20000000,\
+  \ 0x07880080.\n\nThese two u32s are passed as the (r2, r3) args to object_checkPanelParameters(panelX, panelY,\
+  \ paramA, paramB); that callee's r0-r3 and flags are returned verbatim.\n\nTouched object fields (offsets in oBattleObject):\
+  \ PanelX (byte), PanelY (byte), Alliance (byte).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c playerObjectMovingToPanelValidityRelated_800E618
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function playerObjectMovingToPanelValidityRelated_800E618
+
+    ./wf verify --function playerObjectMovingToPanelValidityRelated_800E618 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function playerObjectMovingToPanelValidityRelated_800E618
+
+    ./wf verify --function playerObjectMovingToPanelValidityRelated_800E618 --snapshots build-snapshots'
+  result: 23 compared, 0 differed, 1 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function playerObjectMovingToPanelValidityRelated_800E618
+
+    ./wf verify --function playerObjectMovingToPanelValidityRelated_800E618 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0800e618 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/object.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which flag at object_getFlag bit 0x10 it really is (likely "floating/in-air" or "enemy-type" — needs cross-checking
+  with callers).
+- Meaning of the four {word0, word1} pairs at byte_800E660 (probably two distinct hit/move-parameter sets per panel-solidity
+  case).
+- Why the alliance << 3 stride and the fixed 0x10 base were chosen — only the low two bits of Alliance are sampled
+  by this table.
+- Whether the early-out invalid-panel path is intentional (the caller may rely on stale r1-r3) or a bug that callers
+  must guard against.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

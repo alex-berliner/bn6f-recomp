@@ -1,0 +1,100 @@
+name: calledWhenUsingSlipRun_809D6BC
+address: '0x0809D6BC'
+kind: function
+status: confirmed
+summary: Applies the overworld player's directional walking/anim table for the current facing, swapping to the SlipRun
+  table while EVENT_1716 (and not EVENT_173F) is set.
+interface: 'void owPlayerApplyFacingAnim_809D6BC(u32 r3, u32 r4, OWPlayerObject* r5, void* r10 /*toolkit*/); out:
+  r0=4, r1=group byte, r3=r3_in, r6=GameState*, r7=selected anim entry addr; flags NZ from final add'
+details: 'Reads MapGroup from GameState (toolkit + oToolkit_GameStatePtr -> oGameState_MapGroup).
+
+  If MapGroup >= INTERNET_MAP_GROUP_START, picks groupByte = eStruct2000aa0[oS2000aa0_Unk_03],
+
+  else groupByte = 0; the byte indexes between two animation array pointers at off_809D71C
+
+  (default) or off_809D728 (SlipRun). Picks off_809D728 when EVENT_1716 is set AND
+
+  (EVENT_IN_SLIPRUN_STATE is set OR EVENT_173F is clear). Loads
+
+  OWPlayerObject + oOWPlayerObject_FacingDirection, multiplies by 12 to index the chosen
+
+  12-byte entry, and writes: AnimationSelect = entry[0], Unk_38 = entry[4], Unk_3c = entry[8],
+
+  Unk_0a = 4. Touches OWPlayerObject (r5), GameState via toolkit (r10), and eStruct2000aa0
+
+  only on internet maps. Calls TestEventFlagFromImmediate three times via movflag; preserves
+
+  r3/r4/r5/r10 across those calls. The "calledWhenUsingSlipRun" name is misleading: it runs
+
+  on every facing-driven anim update, not only during SlipRun; the SlipRun table is just a
+
+  branch chosen by event flags.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c calledWhenUsingSlipRun_809D6BC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function calledWhenUsingSlipRun_809D6BC
+
+    ./wf verify --function calledWhenUsingSlipRun_809D6BC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function calledWhenUsingSlipRun_809D6BC
+
+    ./wf verify --function calledWhenUsingSlipRun_809D6BC --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function calledWhenUsingSlipRun_809D6BC
+
+    ./wf verify --function calledWhenUsingSlipRun_809D6BC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0809d6bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/ow_player.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Why does the internet-map variant use a different table byte (eStruct2000aa0[3]) instead of the player's facing?
+  Likely a secondary row axis for parallel-NPC vs player splits.
+- What are oOWPlayerObject_Unk_38/Unk_3c/Unk_0a? Probably a sprite asset pointer pair and a sub-state/frame id;
+  4 may be a "set anim playing" sentinel.
+- Why does EVENT_IN_SLIPRUN_STATE OR !EVENT_173F both flip to the SlipRun table? Suggests EVENT_173F toggles a different
+  slip state (cancel/finish) where the normal table is restored.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

@@ -1,0 +1,96 @@
+name: CopyBackgroundTiles_onNaviSelect_811F54C
+address: '0x0811F54C'
+kind: function
+status: confirmed
+summary: 'Steps the navi-select screen''s background upward: ticks a 2-frame timer, advances the 32x32 block row
+  index, then redraws the visible rows from the tiled-scroll table, swapping in the PET-navi overlay row when a
+  Navi is selected.'
+interface: "void naviSelectBg_stepScroll_811F54C(u32 preserved_r4,\n                                     NaviSelectBgWork\
+  \ *work_r5,\n                                     u32 preserved_r6,\n                                     u32\
+  \ preserved_r7)\n"
+details: "Operates on a caller-supplied work struct passed in r5 (off_811F5B8-related, not the\nsprite). Field layout\
+  \ used:\n  +0x0D (u8) scrollTimer  — frames until the background scrolls one more row\n  +0x0E (u8) rowCounter\
+  \   — current 32x32 block row index (0..7)\n  +0x10 (s16) baseJ       — base tile-column coordinate of the scroll\
+  \ window\n\n1. Calls GetCurPETNavi(); a non-zero return sets a local \"navi-selected\" flag in\n   [sp,#4] used\
+  \ only to override the row 3 tile-id table below.\n2. Decrements work->scrollTimer; when it hits zero, reloads\
+  \ it with 2 and\n   increments work->rowCounter, clamped so it never reaches 8 (i.e. stops at 7).\n3. Loops rowCounter\
+  \ from its current value down to 0 (inclusive), each iteration\n   calling CopyBackgroundTiles with:\n     j =\
+  \ baseJ + 4\n     i = 3 + 2 * row\n     which_tile_block_32x32 = 0 (BG tile block 0)\n     j_size = 9, i_size\
+  \ = 2  (in r4/r5 — these clobbers are saved/restored via\n                              the helper's keepR4/keepR5/keepR6/keepR7\
+  \ args so\n                              the original r4-r7 survive the call)\n     tile_ids = pointer pulled\
+  \ from ROM table off_811F5B8 at index row,\n               or index 8 if row == 3 and a Navi is selected\n   \
+  \           (overrides the 8x2 default row 3 with the \"navi overlay\" tiles).\n4. The row counter value just\
+  \ after the final decrement (always 0) is returned\n   in r3 as value-1 with the carry/zero flags left from `cmp\
+  \ 0, #1`, matching\n   the asm's literal `sub r3, #1` / `bge` tail. Real return values are discarded\n   by the\
+  \ caller.\n\nROM table off_811F5B8 holds nine u16-array pointers:\n  TileIds_86CB21C, TileIds_86CB240, TileIds_86CB264,\
+  \ TileIds_86CB288,\n  TileIds_86CB2AC, TileIds_86CB2D0, TileIds_86CB2F4, TileIds_86CB318,\n  TileIds_86CB33C \
+  \ (index 8 = navi-overlay variant of index 3).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c CopyBackgroundTiles_onNaviSelect_811F54C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CopyBackgroundTiles_onNaviSelect_811F54C
+
+    ./wf verify --function CopyBackgroundTiles_onNaviSelect_811F54C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CopyBackgroundTiles_onNaviSelect_811F54C
+
+    ./wf verify --function CopyBackgroundTiles_onNaviSelect_811F54C --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CopyBackgroundTiles_onNaviSelect_811F54C
+
+    ./wf verify --function CopyBackgroundTiles_onNaviSelect_811F54C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0811f54c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which subsystem owns the work struct and when this is invoked (likely once per frame from the navi-select screen
+  main loop).
+- Whether index 8 is a true per-Navi table or a single navi-overlay strip; the `extraRowTable` flag here uses just
+  one extra index, so either it's a generic overlay reused for any Navi or the per-Navi variations live elsewhere
+  and the asm only flips the "show overlay" toggle here.
+- r0-r2 / r3 outputs are best understood as caller-scratch; no caller contract is documented yet so any return value
+  should be treated as ignored.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

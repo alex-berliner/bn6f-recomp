@@ -1,0 +1,88 @@
+name: saveMenu_config_textscript_8132CB8
+address: '0x08132CB8'
+kind: function
+status: confirmed
+summary: Sets up the save menu's text-script assets (init-ref list, decompressed background blobs, network script,
+  and background tile grid) before the menu is shown.
+interface: void saveMenu_initTextScript_8132CB8(void);  /* r10/lr in; r4-r7 preserved */
+details: "Builds a 5-entry (0x20 bytes / 16 bytes each) init-ref list at unk_20096E0 by walking\noff_8132D58; for\
+  \ each entry it calls sub_811FB84 on the data/size pair (the comment\n\"register form: calls sub_811FB84 outside\
+  \ this file\" suggests this is an asset\nreference resolver) and writes the result, then copies the remaining\
+  \ two words\nof the entry verbatim, terminating the list with a zero word. It then:\n  1. decompresses the assembled\
+  \ init-ref list via decompAndCopyData (required for\n     the menu's partial background),\n  2. decompresses the\
+  \ comp_86C8054 blob listed at off_8132D80 into the\n     eDecompBuffer2013A00 region (also required for the background),\n\
+  \  3. loads the network text script via sub_8123300 using TextScriptNetworkPtrs8132D18\n     (the table of 13\
+  \ entries, mostly TextScriptNetworkSave86CF730 bracketed by two\n     CompTextScriptNetworkPlyTmSave86CF618 entries)\
+  \ into eTextScript201BF00 (omitting\n     this crashes the save menu on entry),\n  4. copies a 30x20 (0x1e x 0x14)\
+  \ background tile grid starting at (0,0) from\n     tile-block-1 source tiles at eTextScript201BA00.\nRegisters\
+  \ r4-r7 are pushed and popped around the body; the assembly \"outputs r4 r5\"\nnoted in the contract are simply\
+  \ the incoming values being restored (the same\nhelper-call adapter pattern used for CopyBackgroundTiles which\
+  \ takes its 5th/6th\narguments in r4/r5).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c saveMenu_config_textscript_8132CB8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function saveMenu_config_textscript_8132CB8
+
+    ./wf verify --function saveMenu_config_textscript_8132CB8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function saveMenu_config_textscript_8132CB8
+
+    ./wf verify --function saveMenu_config_textscript_8132CB8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function saveMenu_config_textscript_8132CB8
+
+    ./wf verify --function saveMenu_config_textscript_8132CB8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08132cb8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the exact semantics of sub_811FB84 (the "convert_init_ref" stub)?
+- Are the "extra" two words per off_8132D58 entry a tile range / palette / flags consumed later by whatever reads
+  unk_20096E0, or pure padding?
+- Why are 11 of the 13 TextScriptNetworkPtrs8132D18 entries the same pointer (TextScriptNetworkSave86CF730) bracketed
+  by two CompTextScriptNetworkPlyTmSave86CF618 entries -- is one a header/tail and the others repeated payload slots?
+- Does this routine run once per menu open or once at boot (the "save menu" name suggests per-open, but unk_20096E0
+  looks like a persistent EWRAM slot)?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

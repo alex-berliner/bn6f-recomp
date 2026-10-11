@@ -1,0 +1,111 @@
+name: chatbox_selectCompTextByMap_8040730
+address: '0x08040730'
+kind: function
+status: confirmed
+summary: Looks up a per-map compressed chatbox / L-button text script for the player's current map group/number
+  and slot.
+interface: 'u8 chatbox_selectCompTextByMap_8040730(u8 idx, struct Toolkit* r10) -> r0 = LZ77-compressed text script
+  pointer; r2 = 4 * oGameState_Unk_08; r3 = &table[oGameState_Unk_08]; NZCV set from ADD r3, r2 (i.e. LD32(slotTable)
+  + 4 * Unk_08). Clobbers: r1, r2, r3, NZCV. Preserves r4-r7. Uses r10.'
+details: 'Selects one of two rows in off_8040770 using idx (0 = normal per-map text,
+
+  1 = L-button text), further split into a real-world half (offset 0) and an
+
+  internet half (offset 4) depending on whether the current
+
+  oGameState_MapGroup is at least INTERNET_MAP_GROUP_START (in which case it
+
+  is also reduced by that constant). The chosen root points at a table
+
+  indexed by [mapGroup] (real or internet); for idx == 0 it indexes one more
+
+  level by oGameState_MapNumber to land at the per-map table, while for
+
+  idx == 1 (the L-button tables) the pointer goes straight to the per-slot
+
+  table. The final pointer in the slot table is selected by
+
+  oGameState_Unk_08, which is the chatbox text-slot index. The comment in
+
+  the source explicitly tags the second row as L-button textscripts.
+
+  Both off_realWorld_8044470 and off_realWorld_80444A8 are tables of
+
+  LZ77Compressed<TextScriptArchive> entries per map group/number; the
+
+  internet halves off_internet_80444C4 / off_internet_804457C mirror the
+
+  same shape and may contain NULL entries for unavailable areas.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c chatbox_selectCompTextByMap_8040730
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_selectCompTextByMap_8040730
+
+    ./wf verify --function chatbox_selectCompTextByMap_8040730 --snapshots build-snapshots'
+  result: 'captured calls: 28 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_selectCompTextByMap_8040730
+
+    ./wf verify --function chatbox_selectCompTextByMap_8040730 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_selectCompTextByMap_8040730
+
+    ./wf verify --function chatbox_selectCompTextByMap_8040730 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08040730 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What exactly oGameState_Unk_08 represents (likely a sub-area / location id inside the current map that picks which
+  text variant is shown).
+- The byte table byte_8040784 ("0x60, 0x3, 0x50, 0x2, 0x40, 0x2, 0x30, 0x1, 0x20, 0x1, 0x10, ...") appears to sit
+  next to the chatbox lookup table but is not consumed by this function; likely related slot/zone metadata used
+  elsewhere.
+- Whether idx ever takes values other than 0 and 1 in practice (the table only defines two rows).
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

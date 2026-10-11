@@ -1,0 +1,70 @@
+name: copyTileData_803FC64
+address: '0x0803FC64'
+kind: function
+status: confirmed
+summary: 'One-time graphics/tilemap setup: reset graphics state, decompress the shared init-refs table, clear the
+  tile GFX area, and blit 32x20 and 30x20 background tile maps into VRAM tile blocks 1 and 2.'
+interface: void copyTileData_803FC64(void); /* inputs ignored; clobbers r0-r4, r10, lr, nzcv; preserves r5, r6,
+  r7 */
+details: 'Calls resetAllGraphicsState_8005F40, runSetupStepAndClearWorkArea_8005F6C, and sub_80027C4 to restore
+  default hardware state. Then drives decompAndCopyData with the initRefs803FCA4 table (four entries: compressed
+  font/tilemap/palette blobs at comp_86C41D0, comp_86C4490, comp_86C45A8 plus palette_3001960, mapped to VRAM 0x06000000,
+  decompressed via eDecompBuffer2013A00, with destination buffers byte_2017A00 / unk_2018A00 / "0x0" for the third).
+  After ZeroFillGFX30025c0 clears the tile GFX area, it issues two CopyBackgroundTiles calls blitting tile-id arrays
+  eTileIds2018A04 (32x20 into tile block 1) and eTileIds2017A04 (30x20 into tile block 2), both starting at (j=0,
+  i=0). The trailing byte_803FCE4 =0x0, 0x2A, 0x0, 0x0, 0x0, 0x54, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 looks like leftover
+  padding (not referenced by this function). The shape of the initRefs table plus the two 32x20 / 30x20 tilemaps
+  are consistent with title-screen/boot graphics, but no caller context is in view.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c copyTileData_803FC64
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function copyTileData_803FC64
+
+    ./wf verify --function copyTileData_803FC64 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function copyTileData_803FC64
+
+    ./wf verify --function copyTileData_803FC64 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function copyTileData_803FC64
+
+    ./wf verify --function copyTileData_803FC64 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz.'
+  reproduce: grep -l '^0803fc64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- Which caller invokes this on boot, and is this the title-screen or some other initial scene's tile-data loader?
+- What do comp_86C41D0 / comp_86C4490 / comp_86C45A8 actually contain (font glyphs, BG tilemap, BG tiles)?
+- What is the role of sub_80027C4 in this setup chain?
+- Is byte_803FCE4 used by anyone (it is not referenced inside copyTileData_803FC64)?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

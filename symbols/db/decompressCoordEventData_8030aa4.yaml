@@ -1,0 +1,94 @@
+name: decompressCoordEventData_8030aa4
+address: '0x08030AA4'
+kind: function
+status: confirmed
+summary: Decompresses a map's LZ77-compressed coordinate-event record into the shared scratch buffer and dispatches
+  its four sections (object table, map-script data, chatbox script, object-55 stream) to their respective loaders
+  when the player enters a real-world or internet map.
+interface: void decompressCoordEventData_8030aa4(s32 map_group /* r0 */, u32 map_number /* r1 */, u32 in_r4, u32
+  in_r5, u32 in_r6, u32 in_r7, u32 in_r8, u32 in_r9, u32 in_r12) -> (r5, r6, r7, r8, r9, r12 restored to entry values);
+  clobbers NZCV r0-r3, lr
+details: "Picks the per-group record-pointer table based on whether the map is real-world (pt_8033530, indexed by\
+  \ map_group) or internet (pt_803354C, indexed by map_group - INTERNET_MAP_GROUP_START), then walks table[group][map_number]\
+  \ to obtain a compressed \"coordinate-event record\". The record layout is four u32 section offsets followed by\
+  \ an LZ77 payload at +0x10; SWI_LZ77UnCompReadNormalWrite8bit expands the payload into the shared scratch buffer\
+  \ DecompBuf_2027A00. The four offsets are then resolved against this buffer and each section handed to its consumer:\n\
+  \  - offset +0x00 -> sub_8030B0C (likely object/coord-table loader)\n  - offset +0x04 -> sub_8031600 (map-script\
+  \ or warp data)\n  - offset +0x08 -> chatbox_loadScriptWordAndResetScroll_803189C (map chatbox script)\n  - offset\
+  \ +0x0C -> overworldObject55_ReadStreamEntry_8031A68 (object 0x55 stream)\nCallee-saved registers r4-r9 and r12\
+  \ are pushed before the guest calls (which clobber them) and popped/restored into r8/r9/r12 and r4-r7 on return,\
+  \ so callers observe their original values. lr is also pushed; the pop restores pc. The \"in_rN\" parameters in\
+  \ the typed C form exist solely to model that round-trip.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c decompressCoordEventData_8030aa4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function decompressCoordEventData_8030aa4
+
+    ./wf verify --function decompressCoordEventData_8030aa4 --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 293 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function decompressCoordEventData_8030aa4
+
+    ./wf verify --function decompressCoordEventData_8030aa4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 20 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function decompressCoordEventData_8030aa4
+
+    ./wf verify --function decompressCoordEventData_8030aa4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08030aa4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact meaning of the four sections beyond the chatbox and object-55 stream (the names of sub_8030B0C and sub_8031600
+  are still generic).
+- Whether "INTERNET_MAP_GROUP_START" is a runtime constant or a build-time guard; the assembly comparison uses a
+  literal.
+- Whether pt_8033530 / pt_803354C also gate map existence (a null deref would indicate "no coordinate-event data
+  for this map").
+- Why this routine is called out separately rather than folded into map load — likely runs whenever the local event-data
+  block needs refreshing, not only on map change.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

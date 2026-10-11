@@ -1,0 +1,67 @@
+name: playGameOver_803FB9C
+address: '0x0803FB9C'
+kind: function
+status: confirmed
+summary: 'Per-frame tick of the game-over sequence state: decrements DownCounter, plays the game-over jingle when
+  the counter reaches 0xAF, and on expiry starts a screen fade and advances Index to 8.'
+interface: void playGameOver_803FB9C(struct S200F348 *self /* r5 */); /* passes r2/r5/r10/lr in, leaves r0/r1/r10
+  out (r2/r3/lr/flags clobbered; r4/r5/r6/r7/r10 preserved) */
+details: "Operates on a state struct pointed to by r5 with the documented offsets\noS200F348_DownCounter and oS200F348_Index_00.\
+  \ Each call decrements the 16-bit\nDownCounter (LD16/ST16). Two specific countdown milestones trigger work:\n\
+  \  - counter == 0xAF: PlayMusic(SONG_GAME_OVER) is queued.\n  - counter == 0 (after decrement): SetScreenFade(0xC,\
+  \ 8) is called and\n    Index_00 is set to 8, which routes the next frame through the\n    sub_803FBC2 / cb_803FB3C\
+  \ cutscene handler.\nOutside those two milestones the function simply decrements and returns.\nThe function is\
+  \ on the per-frame dispatcher chain for the game-over\nstate object (S200F348).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c playGameOver_803FB9C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function playGameOver_803FB9C
+
+    ./wf verify --function playGameOver_803FB9C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function playGameOver_803FB9C
+
+    ./wf verify --function playGameOver_803FB9C --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function playGameOver_803FB9C
+
+    ./wf verify --function playGameOver_803FB9C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz.'
+  reproduce: grep -l '^0803fb9c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- What does SetScreenFade(0xC, 8) actually do (the "register form" wrapper calls into an untyped external)?
+- What does PlayMusic(SONG_GAME_OVER) point at (jingle vs. full track)?
+- Which state (cb_803FB3C / sub_803FBC2) Index_00=8 transitions into, and what does it render?
+- Why is the jingle triggered at 0xAF rather than at the start of the sequence (delay/pre-roll)?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

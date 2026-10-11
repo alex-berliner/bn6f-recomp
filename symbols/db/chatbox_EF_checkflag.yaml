@@ -1,0 +1,87 @@
+name: chatbox_EF_checkflag
+address: '0x0804156C'
+kind: function
+status: confirmed
+summary: Dispatches the chatbox script opcode at work-area offset 1 to its handler via the jt_ctrl_8041580 jump
+  table.
+interface: 'void chatbox_runScriptCmd_804156C(struct chatbox_ctx *r4);  // tail call: returns whatever regs/flags
+  the handler leaves'
+details: 'Reads `*(u8*)(r4 + 1)` as the opcode, multiplies by 4, fetches `jt_ctrl_8041580[opcode]` into r0,
+
+  then `mov lr, pc; bx r0` so the chosen handler returns directly to this function''s caller.
+
+  r1 holds `opcode*4` for the handler. All other regs/flags are entirely the handler''s output.
+
+  The name `chatbox_EF_checkflag` is misleading; this is a generic chatbox script-command
+
+  dispatcher (case 1''s handler is `chatbox_cmdRunScriptByGameProgress_8041748`, etc.), not a flag check.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c chatbox_EF_checkflag
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_EF_checkflag
+
+    ./wf verify --function chatbox_EF_checkflag --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_EF_checkflag
+
+    ./wf verify --function chatbox_EF_checkflag --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 18 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_EF_checkflag
+
+    ./wf verify --function chatbox_EF_checkflag --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0804156c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Why is the function named `chatbox_EF_checkflag` when op 0xE0 (224) is not in this table?
+- Several opcodes share a handler (e.g. 0x08/0x09/0x2A -> chatbox_8041818; 0x0A-0x0D -> chatbox_8042A9C); the grouping
+  hints at chatbox-script opcode families not yet labelled.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

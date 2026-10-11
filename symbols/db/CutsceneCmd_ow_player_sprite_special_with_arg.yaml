@@ -1,0 +1,114 @@
+name: CutsceneCmd_ow_player_sprite_special_with_arg
+address: '0x08037B6C'
+kind: function
+status: confirmed
+summary: Overworld map-script command that sets a single player-sprite property (layer index, facing direction,
+  palette, alpha, Navi palette or S2000AA0 +0x4 param) using a literal byte or a script-variable byte as the value.
+interface: '/* Inputs from caller (via r5/r7/r10/lr and r3 implicit): */
+
+  /*   r5 = script variable table base */
+
+  /*   r7 = current map-script byte pointer (advanced past this command) */
+
+  /*   r10, lr = preserved by convention */
+
+  /*   r3 = untouched on entry (ReadMapScriptByte receives no typed arg there) */
+
+  /* Outputs to caller: */
+
+  /*   r0 = 1 (always: command succeeded) */
+
+  /*   r1, r2, r4, r5, r7, r8, r9, r10, r11, r12 = unchanged from each handler */
+
+  /*   r7 += 4 (the whole 4-byte command is consumed) */
+
+  /* Flags: */
+
+  /*   N/Z from the final "movs r0, #1" (so N=0, Z=0) */
+
+  /*   C/V from the "adds r7, #4" before that (depends on prior r7 low byte) */
+
+  /* Clobbered by this function internally: r0, r3, r4, r6, lr */
+
+  '
+details: "Command layout at the script byte the caller pointed r7 at (4 bytes total):\n  +0  byte 1 read by ReadMapScriptByte\
+  \ (r6=1): used as an *unscaled* word\n      offset into the handler table off_8037B9C. The original does\n   \
+  \   `ldr r3, [r3, r4]` (no LSL #2), so scripts store 0, 4, 8, 0xC, 0x10,\n      0x14 here, not a plain 0..5 index.\n\
+  \  +1  byte 2 read by ReadMapScriptByte (r6=2): value-source code.\n      0xFF -> byte 3 is a literal; anything\
+  \ else -> byte 3 is an index\n      into the variable table at r5.\n  +2  byte 3 read by ReadMapScriptByte (r6=3,\
+  \ only when byte 2 == 0xFF):\n      the literal value.\n\nHandler table off_8037B9C (each entry is a Thumb +1,\
+  \ so each callable is\nentered with `mov lr, pc; bx r3` and gets +1 dropped for Thumb):\n  offset 0x00  WriteOWPlayerLayerIndexOverride\n\
+  \  offset 0x04  SetOWPlayerFacingDirection\n  offset 0x08  owPlayer_setPalette_809e2a0\n  offset 0x0C  owPlayer_setAlpha_8002c7a_809e4a0\n\
+  \  offset 0x10  SetOWPlayerNaviPaletteIndex\n  offset 0x14  owPlayer_setS2000AA0Param0x4_809e314\n\nThe resolved\
+  \ value is passed in r0 *and* r4 into the handler. The script\npointer r7 is given to the handler to advance,\
+  \ then the function itself\nunconditionally adds 4 with `adds r7, #4` (this 4-byte skip is *not* done\nby the\
+  \ handlers). r0 is then forced to 1 regardless of the handler's\nreturn, so the cutscene machinery always sees\
+  \ the command as successful.\n\nQuirks:\n- Lookup is unscaled; a malformed selector byte would load a misaligned\n\
+  \  word and `bx r3` into it, treating script data as code.\n- The \"+1\" Thumb trick in the table means the handler\
+  \ entries are Thumb\n  function pointers offset by 1, which the `bx r3` consumes.\n- When byte 2 != 0xFF, byte\
+  \ 3 is *not* read from the script stream; the\n  variable lookup uses the raw byte as an index into r5.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c CutsceneCmd_ow_player_sprite_special_with_arg
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_ow_player_sprite_special_with_arg
+
+    ./wf verify --function CutsceneCmd_ow_player_sprite_special_with_arg --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_ow_player_sprite_special_with_arg
+
+    ./wf verify --function CutsceneCmd_ow_player_sprite_special_with_arg --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 5 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_ow_player_sprite_special_with_arg
+
+    ./wf verify --function CutsceneCmd_ow_player_sprite_special_with_arg --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles2, chips, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6,
+    story7, story8, story9, wander.'
+  reproduce: grep -l '^08037b6c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battles2
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- ReadMapScriptByte has no typed interface yet — how it consumes r3 (and whether its return in r4 is signed/unsigned)
+  is inferred only.
+- The exact semantics of "S2000AA0 +0x4" in owPlayer_setS2000AA0Param0x4_809e314 are not decoded here.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

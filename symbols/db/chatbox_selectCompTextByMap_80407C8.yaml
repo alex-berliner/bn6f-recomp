@@ -1,0 +1,108 @@
+name: chatbox_selectCompTextByMap_80407C8
+address: '0x080407C8'
+kind: function
+status: confirmed
+summary: Resolves the LZ77-compressed chat/dialogue script for the current (mapGroup, mapNumber) at story progress
+  stage 4, branching on real-world vs. internet maps.
+interface: "/* chatbox_selectCompTextByMap (r10 = toolkit ptr) -> *const LZ77Compressed<TextScriptArchive> */\n\
+  void chatbox_selectCompTextByMap(uint32_t toolkit);   /* in: r10=toolkit, out: r0=text, r2=16, r3=slotAddress\
+  \ */\n                                                    /* clobbers: r1, N/Z/C/V (from final ldr addr calc)\
+  \ */\n                                                    /* preserved: r4-r7, lr */\n"
+details: 'Reads the current map group/number from the GameState block reached via oToolkit_GameStatePtr
+
+  (fields oGameState_MapGroup, oGameState_MapNumber). Uses the group to pick a world table:
+
+  real-world for group < 0x80 (index 0 -> off_realWorld_8044470) and internet for group >= 0x80
+
+  (index 1 -> off_internet_80444C4), subtracting 0x80 (INTERNET_MAP_GROUP_START) so the internet
+
+  table is indexed from 0.
+
+
+  The selected world table is a pointer to a per-map-group array; each group entry is a pointer
+
+  to a per-map-number array; each of those maps to 5 (LZ77Compressed<TextScriptArchive> *) slots
+
+  indexed by story progress. The function always reads index 4 (the last/script slot), so it
+
+  effectively returns the "stage-4" compressed text archive for the current map.
+
+
+  The returned r3 is the address of that slot within the table (kept so callers can branch on
+
+  the flags from the final ldr address-add to detect presence/completion), and r2 holds 0x10
+
+  (4*sizeof(u32), the stage-4 offset added). The "byte_8040808" blob after the pointer tables
+
+  is unreferenced dead data.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c chatbox_selectCompTextByMap_80407C8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_selectCompTextByMap_80407C8
+
+    ./wf verify --function chatbox_selectCompTextByMap_80407C8 --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_selectCompTextByMap_80407C8
+
+    ./wf verify --function chatbox_selectCompTextByMap_80407C8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_selectCompTextByMap_80407C8
+
+    ./wf verify --function chatbox_selectCompTextByMap_80407C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080407c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which exact story-progress index the 5 slots correspond to (mapping of stage 0..4 to game states).
+- Which callers consume the r2/r3 slot-address/flags return (e.g. presence checks vs. direct use).
+- Whether groupTable/mapEntry nullability is handled by callers (a null deref would crash for undefined map group/number
+  combinations at stage 4).
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

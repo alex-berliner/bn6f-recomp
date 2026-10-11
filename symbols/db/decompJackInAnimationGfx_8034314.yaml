@@ -1,0 +1,77 @@
+name: decompJackInAnimationGfx_8034314
+address: '0x08034314'
+kind: function
+status: confirmed
+summary: Decompresses the jack-in animation GFX and primes the chip-select screen's animation state object (r5)
+  for playback.
+interface: void decompJackInAnimationGfx_8034314(u32 *animStateObj /* r5 */) -> /* r5 returned; r2/r3 + nz/c/v left
+  by tail callee sub_80465A0 */ r4 r6 r7
+details: "Called once (per game/cabinet init path) to set up the jack-in animation used on the\nchip-select screen.\n\
+  Steps:\n  1. decompAndCopyData(initRefs_8034338): four slot entries:\n     - chip-use BG map (compFile_86C23A0)\
+  \ -> 0x6000020\n     - tile gfx buffer A (comp_86C2E2C)       -> eDecompBuffer2013A00\n     - tile gfx buffer\
+  \ B (comp_86C33B4)       -> eTextScript201BA00\n     - palette (byte_86C22C0)                 -> palette_3001960\
+  \ (0x20 bytes)\n     Terminator slot = NULL.\n  2. Clears animStateObj->byte3 (= r5+3) to 0 and writes animStateObj->word6\n\
+  \     (= r5+6) from dword_8034408 (the frame count read out of the animation\n     table header pointed at by\
+  \ off_8034400).\n  3. sub_8046664(off_8034400): registers/initialises the animator using the\n     animation header\
+  \ table.\n  4. sub_80465A0(byte_8034370): loads the per-tile frame list, which is a\n     repeating 0x39,dest,src\
+  \ triple for tile slots 0..0xE terminated by\n     0xFFFFFFFF (0xFF,0xFF,0xFF,0xFF little-endian) — a typical\
+  \ BG tile\n     copy-in list rather than a sprite frame list.\nThe function takes the animation state struct pointer\
+  \ in r5 and returns it in\nr5; flags are not produced here, they are whatever call_sub_80465A0 leaves.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c decompJackInAnimationGfx_8034314
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function decompJackInAnimationGfx_8034314
+
+    ./wf verify --function decompJackInAnimationGfx_8034314 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function decompJackInAnimationGfx_8034314
+
+    ./wf verify --function decompJackInAnimationGfx_8034314 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function decompJackInAnimationGfx_8034314
+
+    ./wf verify --function decompJackInAnimationGfx_8034314 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, menus2, story1, story2, story4, story5, story8.'
+  reproduce: grep -l '^08034314 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story8
+open_questions:
+- Whether r5 points at the chip-select screen's animation controller or at the OAM/sprite slot — the 0x39 tile-copy
+  list suggests BG tile animation, not OAM, so r5 is likely a BG-anim state struct.
+- The "0x39" prefix in each frame-list entry is unusual; need to see what sub_80465A0 does with it before claiming
+  the exact wire format.
+- Whether dword_8034408 is a frame count, a tile count, or a flag word — off_8034400 + 8 suggests it is read straight
+  out of the on-disk animation table referenced via off_8034400, but the table itself hasn't been decoded.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

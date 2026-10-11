@@ -1,0 +1,72 @@
+name: MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_npc
+address: '0x08037EFA'
+kind: function
+status: confirmed
+summary: Map-script sub-command that spawns an overworld map object at an existing NPC's position plus three fixed-point
+  offsets and stores its pointer in a cutscene-state slot.
+interface: void (r4=ptrSlotSel, r5=cutsceneState, r7=scriptCursor) -> r0=1, r1=spawnX, r2=spawnY, r3=spawnZ, r4=scriptWord,
+  r6=slotAddr, r7+=0xE; flags nz,c/v from the cursor add
+details: 'Low nibble of r4 (0..15) selects one of sixteen ow-map-object pointer slots at oCutsceneState_owMapObjectPtrs_44
+  in the cutscene state passed in r5; the slot address (r6) is reused as the working pointer for the four script
+  reads. Reads 14 bytes from the map script via ReadMapScriptByte/Halfword/Word: byte 3 NPC index, byte 4 object
+  kind, halfwords 5..10 x/y/z deltas (read as u16 then shifted left by 16 to form fixed-point offsets), word 11
+  extra spawn argument. Computes the spawn position as the chosen NPC''s X/Y/Z (from eOverworldNPCObjects + index
+  * oOverworldNPCObject_Size, fields oOverworldNPCObject_X/_Y/_Z) plus the three offsets; pushes the NPC position
+  on the stack as scratch. Calls SpawnOverworldMapObject(r0=kind, r1=x, r2=y, r3=z, r4=argWord, r5=slotAddr, r6=slotAddr,
+  r7=cursor); the returned object pointer is written back through the slot (str r5, [r6]). Preserves r5, advances
+  the cursor by 0xE (14), and returns 1 in r0 to advance the main script position as usual.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_npc
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_npc
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_npc --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 253 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_npc
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_npc --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_npc
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object_relative_to_ow_npc --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus2, story5.'
+  reproduce: grep -l '^08037efa ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- menus2
+- story5
+open_questions:
+- Why is the slot address passed to SpawnOverworldMapObject in both r5 and r6 - is one a per-call scratch slot and
+  the other the persistent pointer slot?
+- Which map-script command opcode dispatches here (the current name suggests one opcode but the byte layout described
+  in the C is sized for 14 bytes)?
+- Does SpawnOverworldMapObject itself populate or replace the persistent slot, or only return the pointer that this
+  routine then stores?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

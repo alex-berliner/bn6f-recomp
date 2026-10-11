@@ -1,0 +1,68 @@
+name: CutsceneCmd_start_fixed_battle
+address: '0x080381A0'
+kind: function
+status: confirmed
+summary: Map script opcode that starts a fixed preset battle (preset index in next script halfword), after resetting
+  Beast Out / navi mood outside the Internet maps, then fades the screen out and advances the script.
+interface: "void CutsceneCmd_start_fixed_battle(u32 r7_scriptPos, u10 *r10_toolkit)\n    -> r0 = 1, r7 += 3, N/Z\
+  \ from r0=1, C/V from r7+=3\n"
+details: "- Reads the current GameState via r10 (toolkit) and the MapGroup byte.\n- If MapGroup < INTERNET_MAP_GROUP_START,\
+  \ calls SetBeastOutCounterTo3 and\n  ZeroAllNaviStatsMood so the player's navi state doesn't leak into the fight.\n\
+  - Reads one script halfword as the preset index into battle list 0, looks it up\n  via getBattleSettingsFromList0,\
+  \ and starts the battle with r1=1 (script-driven).\n- Reads the same halfword again and passes it to sub_803522E\
+  \ (battle-setup helper\n  consuming the second halfword slot of the command).\n- Calls SetScreenFade(0x2C, 0x10)\
+  \ to fade into the battle.\n- Returns 1 to the script runner and advances r7 by 3 (1 opcode byte + 2-byte halfword).\n\
+  - Touches oToolkit_GameStatePtr and oGameState_MapGroup.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c CutsceneCmd_start_fixed_battle
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_start_fixed_battle
+
+    ./wf verify --function CutsceneCmd_start_fixed_battle --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_start_fixed_battle
+
+    ./wf verify --function CutsceneCmd_start_fixed_battle --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_start_fixed_battle
+
+    ./wf verify --function CutsceneCmd_start_fixed_battle --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus2, story4, story7.'
+  reproduce: grep -l '^080381a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- menus2
+- story4
+- story7
+open_questions:
+- What does the r1=1 flag passed to StartBattle actually mean? (Force/script-driven battle?)
+- Why is the same halfword read twice — is sub_803522E doing per-preset setup that needs the raw operand rather
+  than the resolved BattleSettings*?
+- Does the second halfword slot share the first by design, or is this command really a 3-byte (1 + 1 halfword) opcode
+  with the helper's operand piggybacked on it?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

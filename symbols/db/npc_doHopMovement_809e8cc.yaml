@@ -1,0 +1,89 @@
+name: npc_doHopMovement_809e8cc
+address: '0x0809E8CC'
+kind: function
+status: confirmed
+summary: Dispatches an overworld NPC's hop/leap movement handler (init/update × hop/leap/diagonal leap) selected
+  by oOverworldNPCObject_MovementFlag_0a, then runs its secondary script.
+interface: void npc_runHopMovement_809e8cc(struct OverworldNPCObject *npcObj /* r5 */); /* returns r0, leaves nz/c/v
+  from npc_runSecondaryScriptMaybe_809ebf8 */
+details: 'Reads the NPC object''s oOverworldNPCObject_MovementFlag_0a byte (offset 0x0A) and uses
+
+  its raw value as a word index into the 6-entry jump table at jt_809E8E0 (entries at
+
+  offsets 0, 4, 8, 12, 16, 20 corresponding to flag bytes 0/4/8/12/16/20). The table
+
+  holds Thumb entry+1 targets (BX) for: npc_initHopMovement_809e8fc,
+
+  npc_updateHopMovement_809e916, npc_initLeapMovement_809e944,
+
+  npc_updateLeapMovement_809e95e, npc_initDiagonalLeapMovement_809e9c0,
+
+  npc_updateDiagonalLeapMovement_809e9da. After the dispatched handler returns,
+
+  npc_runSecondaryScriptMaybe_809ebf8 is unconditionally invoked. The function is
+
+  a leaf (push {lr} / pop {pc}) and relies on the dispatched handler to honour
+
+  the r0/r7 ABI described in the readable C.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c npc_doHopMovement_809e8cc
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function npc_doHopMovement_809e8cc
+
+    ./wf verify --function npc_doHopMovement_809e8cc --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function npc_doHopMovement_809e8cc
+
+    ./wf verify --function npc_doHopMovement_809e8cc --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 3 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function npc_doHopMovement_809e8cc
+
+    ./wf verify --function npc_doHopMovement_809e8cc --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, maps, menus2, story3, story4, story5, story6, story9, wander.'
+  reproduce: grep -l '^0809e8cc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/npc.c
+coverage:
+- battle
+- maps
+- menus2
+- story3
+- story4
+- story5
+- story6
+- story9
+- wander
+open_questions:
+- What is the layout/meaning of oOverworldNPCObject_MovementFlag_0a beyond being a selector byte?
+- How is the paired init/update split decided each frame (does the caller toggle, or does the dispatched handler
+  self-advance)?
+- What does npc_runSecondaryScriptMaybe_809ebf8 actually run, and where does its r0 go?
+- Why is the index a raw byte (values 0,4,8,12,16,20) rather than a contiguous 0..5 enum — is the field shared with
+  non-hop movement states whose values just happen to land outside the table in normal play?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

@@ -1,0 +1,89 @@
+name: sub_800EC80
+address: '0x0800EC80'
+kind: function
+status: hypothesis
+summary: Bumps an enemy chip-drop index up by the navi's current stat tier (floored with a stubbed contribution),
+  capped by the enemy's version for actor type 0 (boss-style enemies); other actor types pass through unchanged.
+interface: u32 sub_800EC80(u32 enemy_idx /* r0 */) -> u32 /* r0 */ ; clobbers r1,r3; preserves r4-r7; flags clobbered
+  (n/z/c/v)
+details: 'Calls stub_returnZero_8000E30 (currently always returns 0) and getCurNaviStatTier_8014150 (player''s
+
+  navi stat tier). Takes the max of the two into r7 as ''bonus''. Calls
+
+  GetVerActorTyAndAIIdx_80182B4(enemy_idx) to fetch the enemy record (byte 0 = version, byte 1 =
+
+  actor_type). For actor_type == 2 or non-zero non-1, returns enemy_idx unchanged. For
+
+  actor_type == 0, computes cap = 5 - version (dead branch when cap <= 0 falls through to
+
+  ''no adjustment''); caps doubled bonus at cap; returns enemy_idx + bonus. The actor_type == 1
+
+  branch (cap = 2 - version) exists in the binary but is unreachable (the actor_type == 1 path is
+
+  never taken because the prior compare branches to the bail-out first).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c sub_800EC80
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800EC80
+
+    ./wf verify --function sub_800EC80 --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800EC80
+
+    ./wf verify --function sub_800EC80 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800EC80
+
+    ./wf verify --function sub_800EC80 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story2, story4, story5, story6, story8,
+    story9.'
+  reproduce: grep -l '^0800ec80 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/object.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What is stub_returnZero_8000E30 supposed to return in retail? It is currently zero; if it represents a difficulty/stage
+  bonus, the effective cap would shift accordingly.
+- Why does the actor_type == 1 branch exist if it is unreachable? Possibly a copy-paste leftover from a sibling
+  version of this routine.
+- Is the index passed in an enemy chip-drop selector (positive buffs via navi tier), or a generic enemy list index?
+  The double-then-add suggests it is used as an array stride.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

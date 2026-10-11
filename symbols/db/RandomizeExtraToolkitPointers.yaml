@@ -1,0 +1,98 @@
+name: RandomizeExtraToolkitPointers
+address: '0x08006C22'
+kind: function
+status: hypothesis
+summary: After a game-state reload, rebuilds the trailing extra-toolkit pointer slots inside the ToolkitPointers
+  block of eGameState from a base pointer stored at eUnusedExtraToolkitPtrsOffset, leaving the counters and table
+  pointers in r1-r3 for the caller.
+interface: 'void RandomizeExtraToolkitPointers(void); /* in: r10 = &eGameState.ToolkitPointers, lr = return address;
+  out: r0 = lr, r1 = final loop counter (0x58), r2 = eGameState + stored offset, r3 = &ToolkitExtraPtrsOffsets,
+  plus flags from the final cmp r1,0x58 */'
+details: 'Calls GetRNG and stores the result as the "new" eUnusedExtraToolkitPtrsOffset, but two `mov r1, #0 / and
+  r0, r1` and `mov r0, #0 / and r3, r0` pairs mask both the new RNG-derived offset and the previously-stored offset
+  to zero, so this is effectively a no-op "randomization" (likely an anti-cheat artifact or a stub left in the Falzar
+  build). GetRNG is still invoked, so the RNG index advances as in the original. The body then calls copyWords_80014EC
+  to copy 0x35BC bytes from eGameState+old_offset to eGameState+new_offset - with both offsets zero this is a self-copy
+  of eGameState. After the copy, r10 (start of ToolkitPointers) is advanced by 0x3C to point at the extra-pointer
+  slots; the loop walks ToolkitExtraPtrsOffsets (88 bytes, loop bound 0x58 by the original cmp/branch form) and,
+  for each entry, writes `(eGameState + new_offset) + offset` into the corresponding slot of ToolkitPointers so
+  the toolkit pointers resolve to the relocated toolkit block. Leaves r0 = saved lr (because of the `pop {r0}; bx
+  r0` epilogue), r1 = loop counter at 0x58, r2 = eGameState + stored offset, r3 = &ToolkitExtraPtrsOffsets, and
+  is called in a context where the caller is expected to read those r1-r3 outputs (the call site immediately reuses
+  the new pointer table).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c RandomizeExtraToolkitPointers
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function RandomizeExtraToolkitPointers
+
+    ./wf verify --function RandomizeExtraToolkitPointers --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function RandomizeExtraToolkitPointers
+
+    ./wf verify --function RandomizeExtraToolkitPointers --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function RandomizeExtraToolkitPointers
+
+    ./wf verify --function RandomizeExtraToolkitPointers --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08006c22 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Where is RandomizeExtraToolkitPointers called from, and does the caller actually consume the r1-r3 outputs as
+  a relocated ToolkitPointers base + remaining offsets, or only the rewritten table?
+- Why is the randomization masked to zero (anti-cheat / debug toggle / Falzar-vs-Gregar build difference)? Is eUnusedExtraToolkitPtrsOffset
+  actually used elsewhere, or always zero in retail?
+- What is eUnusedExtraToolkitPtrsOffset and which structure in the eGameState layout owns it?
+- Why does GetRNG run when its result is immediately ANDed to zero - is the RNG index advance (e.g. the visible
+  random number / mystery-data sequence) load-bearing?
+- Is copyWords_80014EC safe to call with src == dest (the masked-zero case), or does it assume non-overlapping halves
+  of eGameState when this hook is enabled in other builds?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

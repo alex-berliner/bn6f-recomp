@@ -1,0 +1,91 @@
+name: startScreen_initGfx_802F574
+address: '0x0802F574'
+kind: function
+status: confirmed
+summary: 'Initialise the title/start screen: set up video, load its GFX anims, fade in from black, and build the
+  main-menu cursor (1–3 choices depending on save data and a "test zero" flag).'
+interface: void startScreen_init_802F574(struct StartScreen *self /* r5 */);
+details: "Called once when entering the start/title screen. The struct is pointed to by r5.\nSequence:\n  1) Display\
+  \ mode 0xB, LCDControl 0x1140, two renderInfo_* setup calls, then\n     startScreen_initGfx_802FCC0 (disabling\
+  \ it yields a black-but-responsive start\n     screen with minor graphics noise, per in-source comment).\n  2)\
+  \ SetScreenFade(0xC, 0xFF) and musicGameState_8000784 to kick off the fade-in and\n     swap to the title-screen\
+  \ music state.\n  3) LoadGFXAnims(pointer to pt_802F5F0) — a 7-entry GFXAnimScript table terminated\n     by 0xFFFFFFFF\
+  \ (six off_802F350/3A0/3F0/440/490/4E0 entries).\n  4) Sets self->oStartScreen_JumpTableOff_00 = 4, which makes\
+  \ the engine dispatch\n     through startscreen_render_802F544 and from there to startscreen_802F60C.\n  5) Calls\
+  \ sub_803FA42 and sub_803F838. If sub_803F838 returns Z set (no existing\n     save/player data), self->oStartScreen_Unk_02\
+  \ stays 0; otherwise it is set to 1\n     and the title-screen icon count (u8, oStartScreen_Unk_0C) and achievement\n\
+  \     flags (u16, oStartScreen_AchievmentFlags) are filled in via GetTitleScreenIconCount.\n  6) Builds the menu:\n\
+  \       - Unk_02 == 0 (fresh/no save): cursor_pos 0, base 1 choice\n       - Unk_02 != 0 (existing save): cursor_pos\
+  \ 1, base 2 choices\n       - startScreen_TstZero (r7 == 0?) bumps count by one either way (max 3).\n     Writes\
+  \ self->oStartScreen_CurrCursorPos, oStartScreen_NumChoices, and\n     oStartScreen_Unk_03 = 0.\nLeaves r0 = 0\
+  \ (NZ cleared for Z) so callers can rely on Z = 1.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c startScreen_initGfx_802F574
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function startScreen_initGfx_802F574
+
+    ./wf verify --function startScreen_initGfx_802F574 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function startScreen_initGfx_802F574
+
+    ./wf verify --function startScreen_initGfx_802F574 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function startScreen_initGfx_802F574
+
+    ./wf verify --function startScreen_initGfx_802F574 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802f574 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does sub_803F838 actually check (existing save presence? — implied but unconfirmed)?
+- What is startScreen_TstZero gating (language-region toggle? demo mode? online toggle?), and which of the third
+  menu choices does it expose?
+- Meaning of oStartScreen_AchievmentFlags (achievement / event flag bits) and how they are subsequently consumed
+  by the title screen UI.
+- Exact role of oStartScreen_JumpTableOff_00 = 4 — does that index the start-screen state handler at startscreen_802F60C?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

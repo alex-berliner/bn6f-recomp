@@ -1,0 +1,73 @@
+name: CutsceneCameraCmd_wait
+address: '0x080370B8'
+kind: function
+status: confirmed
+summary: 'cutscene-camera command "wait": on first run, loads a halfword duration from the camera script into the
+  timer; every run decrements it and, when it underflows, clears the command slot and advances the script cursor
+  past the 3-byte wait instruction'
+interface: void CutsceneCameraCmd_wait(u32 cmdLen /*r0=1 in*/, const u8 *scriptCursor /*in/out r1*/, struct CutsceneCameraInfo
+  *camera /*r5*/, r3 preserved) -> r0=1, r1=new cursor, r2=timer; flags from cmp r2,#0 (still waiting) or adds r1,#3
+  (done); clobbers r2, lr
+details: "Operates on the per-camera CutsceneCameraInfo struct passed in r5.\n  - oCutsceneCameraInfo_CommandInitialized\
+  \ (u8): set TRUE on first run after a fresh command dispatch, cleared FALSE when the wait expires.\n  - oCutsceneCameraInfo_Timer\
+  \ (u16): countdown; first-run path writes the halfword fetched via ReadCutsceneCameraScriptHalfword(r0=1), then\
+  \ every run does `timer - 1` and stores back.\nUses r1 as both input (current script position) and output (advanced\
+  \ by +3, i.e. opcode + 2-byte operand, when the wait completes).\nThe \"still waiting\" branch leaves r1 untouched;\
+  \ the \"done\" branch resets CommandInitialized and advances the cursor.\nAlways returns r0 = 1 (signals one cutscene-camera\
+  \ command slot consumed this update).\nQuirks: \"the lifter's flag reconstruction is encoded via SET_FLAGS_CMP(a,b)\
+  \ on the way out because the original leaves the flags of `mov r0,#1` (CMP 1,0: N=0 Z=0 C=1 V=0) or of `adds r1,#3`\
+  \ (treated as CMP 0, -new_cursor).\"\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c CutsceneCameraCmd_wait
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCameraCmd_wait
+
+    ./wf verify --function CutsceneCameraCmd_wait --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCameraCmd_wait
+
+    ./wf verify --function CutsceneCameraCmd_wait --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCameraCmd_wait
+
+    ./wf verify --function CutsceneCameraCmd_wait --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, story3, story9, wander.'
+  reproduce: grep -l '^080370b8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battlesweep
+- story3
+- story9
+- wander
+open_questions:
+- Exact semantics of ReadCutsceneCameraScriptHalfword (channel=1 selects the camera script stream) and the layout
+  of CutsceneCameraInfo beyond the two offsets touched here.
+- Whether CommandInitialized is consulted by the dispatcher to know the wait command is still running vs. newly
+  entered.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

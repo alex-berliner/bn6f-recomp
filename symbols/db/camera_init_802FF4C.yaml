@@ -1,0 +1,117 @@
+name: camera_init_802FF4C
+address: '0x0802FF4C'
+kind: function
+status: confirmed
+summary: 'Initialize the field camera for a newly entered map: clear its block, set movement limits from the map
+  size, snap it to the player''s position, pick the shake setting for the map group, and run the camera update chain.'
+interface: '(r0: u32 player_x, r1: u32 player_y, r2: u32 player_z, r3: u32 map_group, r4: u32 map_number, r10: *const
+  Toolkit) -> (); preserves r5-r9/r12, leaves nz/c/v clobbered'
+details: 'Reads the camera pointer from the Toolkit and zeroes its 0x4C-byte block
+
+  via ZeroFillByWord, after first saving and restoring oCamera_Unk_03 (a
+
+  mode byte) and oCamera_Unk_14 across the fill so live camera state is not
+
+  lost. Derives axis movement limits in 1/4-tile fixed point (<<18) from
+
+  eMapTilesState200be70''s map width/height: x limit = (MapWidth - 0x1E) <<18,
+
+  y limit = (MapHeight - 0x14) <<18, with negated copies stored as
+
+  Unk_18/Unk_24 (minima) and Unk_1c/Unk_20 (maxima). Writes the player''s
+
+  coordinates into oCamera_X/Y/Z and zeroes the Unk_04/Unk_06 scroll
+
+  fields. Picks the shake strength byte stored at oCamera_Unk_02 by map
+
+  group: groups 0xD0/0xE0/0xF0+ get fixed values 0x10/0xC/8; groups 0x80..0xCF
+
+  index off_803378C, lower groups index off_8033770, both arrays of byte
+
+  tables sized REAL_WORLD_NUM_GROUPS and read as u32 then indexed by map_number
+
+  (the disassembly notes the read is byte-sized but every entry yields the
+
+  same value either way). Calls camera_doShakeEffect_80301e8 with the camera
+
+  pointer and the saved r9/r12, then camera_dispatchUpdate_8030054, the
+
+  post-update sub_80302D0, and finally camera_SavePosition_803011A. The
+
+  original ABI manually pushes/pops high registers (r5-r9, r12) on entry
+
+  and pops them back before returning, so callers see them unchanged.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c camera_init_802FF4C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function camera_init_802FF4C
+
+    ./wf verify --function camera_init_802FF4C --snapshots build-snapshots'
+  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function camera_init_802FF4C
+
+    ./wf verify --function camera_init_802FF4C --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 2 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function camera_init_802FF4C
+
+    ./wf verify --function camera_init_802FF4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802ff4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What oCamera_Unk_02 actually controls (the "shake strength" label is inferred from the camera_doShakeEffect_80301e8
+  name).
+- What oCamera_Unk_03 (the mode byte preserved across the zero fill) encodes; the comment hints at a "mode" but
+  its semantics are unclear.
+- Why oCamera_Unk_14 alone is preserved through the fill rather than the full state.
+- Whether the table-read of `LD32(LD32(table + index * 4) + map_number)` is really u32 or byte (the disassembly
+  suggests byte-sized pointers but uniform contents make it observable either way).
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

@@ -1,57 +1,120 @@
 name: m4aSoundVSync
 address: '0x0814F00C'
 kind: function
-previous_names:
-- m4a_2_814F00C
 status: confirmed
-summary: 'm4aSoundVSync: per-frame restart of the sound FIFO DMAs.'
-interface: '() -> if SoundInfo is valid: count down pcmDmaCounter; at 0 reload it and restart DMA1/DMA2 (control
-  0x84400004)'
-details: Reads SOUND_INFO_PTR (0x03007FF0); checks ident - ID_NUMBER <= 1 by adding 0x978C92AD (= -0x68736D53, the
-  library's 'Smsh' ID).
+summary: VSync hook of the M4A sound driver; on a VSync tick, decrements a frame gate and, when it expires, restores
+  its period and re-kicks the two Direct Sound DMA channels.
+interface: void m4aSoundVSync(void) // clobbers r0,r1,r2,r3 and N/Z/C/V; lr saved+restored via push/pop
+details: 'Reads the M4A driver state pointer stored at `byte_3007FF0`. The first word of that block
+
+  (offset 0) is the driver''s stamp; the body computes `stamp + 0x978C92AD` and bails out (no
+
+  sound work) unless that sum is 0 or 1, matching how the driver "claims" the block on init.
+
+
+  Inside the guard, byte at offset 4 of the state block is a per-VSync countdown. It is
+
+  decremented each call and the signed result is tested against 0; while it is still positive
+
+  the function returns without touching hardware. When the countdown reaches zero it is
+
+  reloaded from the byte at offset 0xB (the "period" / sub-frame rate for Direct Sound
+
+  streaming) and the two DMA channels used for sample streaming are re-armed.
+
+
+  The DMA work uses GBA register symbols already named in the disassembly:
+
+  `DMA1WordCount` (0x40000D8) and `DMA2WordCount` (0x40000E8) are first conditionally
+
+  force-reloaded with `0x84400004` (full-word-count reload) only if the channel is still
+
+  armed (bit `0x80<<18` set). Then `DMA1Control` / `DMA2Control` are written twice: first
+
+  with `0x0400` (32-bit, channel disabled) to halt them, then with `0xB600`
+
+  (repeat + 32-bit + start + IRQ) to re-launch streaming in lockstep. Both channels are
+
+  driven together so the paired Direct Sound streams stay in sync.
+
+
+  Quirks: the original epilogue is `pop {r0}; bx r0`, which both returns control to the
+
+  VBlank caller and sets r0 to the saved LR; r1..r3 are whatever the chosen exit path
+
+  last left in them, and N/Z/C/V reflect the CMP/MOVS on that path (the readable C
+
+  reconstructs all of this through a `SoundVSyncExit` struct and a single
+
+  `SET_FLAGS_ADD`).
+
+  '
 evidence:
-- method: library-match
-  date: '2026-10-08'
-  detail: 'Instruction-level match with the m4a library''s m4aSoundVSync: SOUND_INFO_PTR, the ID check via 0x978C92AD
-    = -ID_NUMBER, pcmDmaCounter at +4, DMA1/DMA2 control writes 0x84400004.'
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/libs.s:23612
-  reproduce: awk '/^m4aSoundVSync:/,/thumb_func_end/' bn6f/asm/libs.s
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c m4aSoundVSync
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function m4aSoundVSync
+
+    ./wf verify --function m4aSoundVSync --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-013438-verify-4)'
 - method: cpu-oracle
-  date: '2026-10-08'
-  detail: Original vs lifted, 16 states.
-  reproduce: '# base states: any calls captured from the original, e.g.
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function m4aSoundVSync
 
-    tools/convert/capture.sh build/repro/snaps tools/traces/wander.trace 1000 7900 40 TestEventFlag setBGTileIdsBlocks1And2_8030628
+    ./wf verify --function m4aSoundVSync --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function m4aSoundVSync
 
-    python3 tools/oracle.py --base build/repro/snaps --states 16 --out build/repro/oracle call_m4aSoundVSync
-
-    cat build/repro/oracle/report.txt   # ok / fail / ood per function'
-  result: ok=4 fail=0 ood=0 (oracle_all, 2026-10-08)
+    ./wf verify --function m4aSoundVSync --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814f00c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/libs.c
 coverage:
 - battle
 - battles1
+- battles2
 - battlesweep
 - chips
 - fuzz
 - maps
 - menus2
+- menus3
 - story1
 - story2
 - story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
 - wander
-related:
-- call_m4a_2_814F00C
-- sub_3005D78
-open_questions: []
+open_questions:
+- Exact placement of `byte_3007FF0`/the M4A state block in WRAM relative to other driver globals is not confirmed
+  from this call site.
+- Confirm the IRQs enabled in `DMA_CTRL_RESTART` (`0xB600`) aren't overridden elsewhere when Direct Sound streaming
+  is idle.
 sources:
-- Claude Code sessions 2026-10-07/08 (recomp repo history)
-changes:
-- date: '2026-10-08'
-  what: rename m4a_2_814F00C -> m4aSoundVSync
-  where: bn6f 4adb4612
-  tool: tools/rename_symbol.py
-- date: '2026-10-08'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 13c00f01
-  tool: tools/symdoc.py
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

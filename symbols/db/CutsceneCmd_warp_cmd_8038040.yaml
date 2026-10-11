@@ -1,0 +1,84 @@
+name: CutsceneCmd_warp_cmd_8038040
+address: '0x08038040'
+kind: function
+status: confirmed
+summary: 'Handles the cutscene script "warp" command: dispatches to immediate warp, pending-warp storage, or re-warp
+  based on the parameter byte''s bits 0x20/0x40 and bit 0 picking between subsystem-index 0x10 and 0x14 flavors.'
+interface: void cutsceneCmd_warp_8038040(u32 r5=cutscene state, u32 r7=script cursor) -> nz cv r0 (1=keep running),
+  r1, r2, r4, r5, r7 advanced; clobbers r0, r3, r6, lr
+details: "Reads a 1-byte parameter via ReadMapScriptByte (preserved in r3 for the duration). Branches on param bits:\n\
+  \  bit 0x40: calls warp_getCurrentWarpEntry_8005f32 then warp_setSubsystemIndexTo0x10AndOthers_8005f00 and advances\
+  \ the cursor by 2.\n  bit 0x20: reads a halfword via ReadMapScriptWord and stores it into cutscene state at offset\
+  \ oCutsceneState_Unk_34 (pending warp argument); advances cursor by 6.\n  otherwise: reads a halfword warp argument\
+  \ via ReadMapScriptWord (or pulls the pending one from oCutsceneState_Unk_34 when bit 0x80 is set), then reads\
+  \ one more byte, then calls either warp_setSubsystemIndexTo0x10AndOthers_8005f00 (bit 0 clear) or warp_setSubsystemIndexTo0x14AndOthers_8005f14\
+  \ (bit 0 set) with r0=warp_arg, r1=0, r2=screen byte; advances cursor by 7.\nAlways returns r0=1 (\"keep running\
+  \ the script\"). The n/z flags come from the final `mov r0,#1`, c/v from the cursor `adds`. r3 flows through unchanged\
+  \ from the caller's first read only because ReadMapScriptByte/Word preserve it; the warp_setSubsystemIndex* callees\
+  \ do NOT preserve r3, so the command's exit r3 is whatever the last warp callee left there.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c CutsceneCmd_warp_cmd_8038040
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_warp_cmd_8038040
+
+    ./wf verify --function CutsceneCmd_warp_cmd_8038040 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 286 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_warp_cmd_8038040
+
+    ./wf verify --function CutsceneCmd_warp_cmd_8038040 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 15 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_warp_cmd_8038040
+
+    ./wf verify --function CutsceneCmd_warp_cmd_8038040 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, maps, menus2, story1, story2, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08038040 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does oCutsceneState_Unk_34 semantically represent (pending warp ID? map ID? area index?) - only 0x34 offset
+  is documented.
+- Where/how is r5 (cutscene state pointer) initialized by the script dispatcher; is it the same struct across all
+  cutscene commands?
+- What subsystem does setSubsystemIndexTo0x14 configure vs. 0x10 (different map engine mode? overworld vs. battle?
+  net area?).
+- What does r4 ("keep running") vs. r0=0 (halt) mean to the cutscene runner; is 1 the only success return, and what
+  failure cases exist?
+- Are the warp_setSubsystemIndex* callers ever expected to fail and how would that be reported (through r3? flags?).
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

@@ -1,0 +1,86 @@
+name: initMapTilesState_803037c
+address: '0x0803037C'
+kind: function
+status: confirmed
+summary: Initialize the global map-tiles state (eMapTilesState200be70) with the BG descriptor, palette/tileset pointers,
+  map dimensions, and three per-map callbacks for the current map.
+interface: void initMapTilesState_803037c(u8 map_group /* r0 */, u8 map_number /* r1 */); preserves r4-r9, r12;
+  clobbers r0-r3, NZCV
+details: 'Picks one of two world-specific tables (real-world off_80329A8/off_8032F6C, or internet off_80329C4/off_8032F88
+  with map_group rebased by subtracting INTERNET_MAP_GROUP_START), then indexes [map_group][map_number] to get a
+  MapBGDescriptor and a 3-entry (12-byte) callback triple. Stores: the BG descriptor pointer at oMapTilesState200be70_MapBGDescriptorPtr;
+  the three callbacks at UnkCallback_18/_1c/_20; the tilemap''s width/height (read from oMapBGTilemapHeader at descriptor->TilemapPtr);
+  descriptor->PalettePtr; descriptor->TilesetPtr; and a pointer to eDecompBuffer2013A00 at Unk_0c. The C version''s
+  "state = oMapTilesState200be70_MapWidth" is just shorthand for the base address; offsets used here are relative
+  to the 0x200be70 base.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c initMapTilesState_803037c
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function initMapTilesState_803037c
+
+    ./wf verify --function initMapTilesState_803037c --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 292 out
+    of domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function initMapTilesState_803037c
+
+    ./wf verify --function initMapTilesState_803037c --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function initMapTilesState_803037c
+
+    ./wf verify --function initMapTilesState_803037c --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0803037c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What the three callback slots (offsets 0x18, 0x1c, 0x20) actually do — they may be load/init/teardown functions
+  called around map entry/exit.
+- 'Identity of eDecompBuffer2013A00: a general-purpose decompression scratch buffer the map''s tilemap will be inflated
+  into.'
+- Whether Unk_0c (offset 0x0c) is intended to be both width and height base or is a mis-read; the assembly only
+  writes the two width/height bytes plus the four pointer fields, so 0x0c holding the decomp buffer is correct.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

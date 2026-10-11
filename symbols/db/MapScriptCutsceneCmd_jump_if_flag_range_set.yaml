@@ -1,0 +1,70 @@
+name: MapScriptCutsceneCmd_jump_if_flag_range_set
+address: '0x08035992'
+kind: function
+status: confirmed
+summary: In a map cutscene script, if every bit in an event-flag range is set, jump to an inline offset; otherwise
+  skip past the 8-byte command.
+interface: u32 MapScriptCutsceneCmd_jump_if_flag_range_set(void /* r7=script_pos in/out, r10=script base, lr=return
+  */); // clobbers r0=1, r1,r3,r4=last read, r5,r6,r7=new pos; C/V from final adds, NZ from mov r0,#1
+details: "Interpreter opcode stub for the \"jump if event-flag range set\" cutscene command. Reads three inline\
+  \ operands from the script stream (currently pointed to by r7 with base in r10):\n  * byte at +0 (size/count of\
+  \ the flag range) -- via ReadMapScriptByte with r6=1\n  * halfword at +1 (start event flag index) -- via ReadMapScriptHalfword\
+  \ with r6=2; the previously read byte is kept live in r1 across this call\n  * word at +4 (relative jump target,\
+  \ only consumed when the range is set) -- via ReadMapScriptWord with r6=4\nThen calls TestEventFlagRange(r0=halfword,\
+  \ r1=byte, r2=byte) -- (a3, a2) in the disassembly's typedef, all three passed; the duplicated byte is exactly\
+  \ how the original lays out the operands. The callee answers in flags (Z set => range NOT fully set).\nWhen the\
+  \ range is fully set: r7 := inline word (r4 mirrors it as \"last value read\"); continue = r0=1.\nWhen the range\
+  \ is not fully set: r7 += 8 (skips the byte + halfword + word + 1 byte of padding), r4 stays as the halfword just\
+  \ read; continue = r0=1.\nr5 (flag range width) is preserved across the call. The routine always signals \"continue\"\
+  \ (r0=1) to the script interpreter.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c MapScriptCutsceneCmd_jump_if_flag_range_set
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_flag_range_set
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_flag_range_set --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_flag_range_set
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_flag_range_set --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_flag_range_set
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_flag_range_set --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, menus2.'
+  reproduce: grep -l '^08035992 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- maps
+- menus2
+open_questions:
+- Exact semantics of TestEventFlagRange(a3, a2) -- which arg is bit-count vs start index and whether r2 is genuinely
+  a third operand or just a stack slot that happened to carry the byte.
+- Does r7 hold an absolute script position or an offset added to the r10 script base on re-entry? The stub only
+  updates r7 and never touches r10, suggesting the offset interpretation, but that depends on the interpreter loop.
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349

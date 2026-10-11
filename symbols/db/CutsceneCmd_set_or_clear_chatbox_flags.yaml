@@ -1,0 +1,79 @@
+name: CutsceneCmd_set_or_clear_chatbox_flags
+address: '0x08037A7C'
+kind: function
+status: confirmed
+summary: Cutscene/map-script opcode that sets or clears a chatbox flag bit in eFlags2009F38 from a 3-byte argument
+  (2-byte flag id + 1-byte mode).
+interface: 'u32 chatbox_setClearFlag_cutsceneCommand_8037A7C(u32 scriptPtr /*r7*/); /* returns 1 in r0, advances
+  r7 by 3, leaves flag id in r0, set/clear mode in r4; clobbers r0 r6 lr; flags: nz=cv preserved */ // internal:
+  reads two script bytes (r6=2 then r6=1 via ReadMapScriptByte -> r4), and if mode==1 calls chatbox_clear_eFlags2009F38(flag_id)
+  else chatbox_set_eFlags2009F38(flag_id).'
+details: 'Invoked as a map/cutscene script command. The script cursor in r7 points at a 3-byte payload: a 2-byte
+  little-endian chatbox flag id followed by a 1-byte mode. ReadMapScriptByte is called twice with r6=2 then r6=1
+  (the width in bytes); each call leaves the read byte in r4 and preserves r0-r2 and r7. The assembly then copies
+  r4 into r0 before the second read so the flag id survives into the chatbox call.
+
+  The mode byte selects the operation: value 1 clears the flag via chatbox_clear_eFlags2009F38, anything else (typically
+  0) sets it via chatbox_set_eFlags2009F38. Both helpers take the flag id in r0 and operate on the chatbox state
+  struct at 0x02009F38.
+
+  Afterwards r7 is advanced by 3 bytes (so the caller''s script loop moves to the next opcode) and r0 is forced
+  to 1, which the cutscene dispatcher uses to indicate "command consumed / keep going". The summary in the readable
+  C describing outputs as "nz r1 r2 r4 r7" reflects the fact that r1, r2 and r7 are preserved across the function
+  while r4 holds the mode and the nz flags reflect r0=1.
+
+  Quirks: the compare-and-branch is `cmp r4, #1; beq .clearChatboxFlags`, so only an exact 1 clears; all other values
+  fall through to set. The "add r7, #3; mov r0, #1" tail sets the documented flag pattern (c/v from the add, n/z
+  from r0=1).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261011-013438);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 70' --file inbox_farm_70.c CutsceneCmd_set_or_clear_chatbox_flags
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_set_or_clear_chatbox_flags
+
+    ./wf verify --function CutsceneCmd_set_or_clear_chatbox_flags --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out of
+    domain (verify run convert-20261011-013438-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_set_or_clear_chatbox_flags
+
+    ./wf verify --function CutsceneCmd_set_or_clear_chatbox_flags --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-013438-verify-4)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_set_or_clear_chatbox_flags
+
+    ./wf verify --function CutsceneCmd_set_or_clear_chatbox_flags --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013438-verify-4)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus2.'
+  reproduce: grep -l '^08037a7c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d8c9349
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- menus2
+open_questions:
+- What is the complete flag id space used by chatbox flags in 0x02009F38 (is it a u8 bitmask or a bit index)? chatbox_set_eFlags2009F38
+  / chatbox_clear_eFlags2009F38 would tell us.
+- Is this opcode's id value (i.e. the byte that preceded r7 before the call) documented in the script command table?
+- Why is r6 left at 1 on exit rather than restored - is the dispatcher assuming r6==1 means 'consumed'?
+sources:
+- tools/wf run convert-20261011-013438
+- recomp d8c9349
