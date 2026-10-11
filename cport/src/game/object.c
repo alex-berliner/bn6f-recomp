@@ -358,6 +358,306 @@ Next sub_800BF88(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800C380 ── */
+#define PANEL_SETTLE_TIME  0x708
+#define PANEL_FLAGS_MASK   0xF800000
+#define PANEL_LOCKED_BIT   0x100000
+#define PANEL_SPECIAL_MASK 0xF880080
+#define TILE_DELAY_HIGH    0x8C
+#define TILE_DELAY_LOW     0x46
+#define SOUND_PANEL_ACT    0x97
+#define SPEED_THRESHOLD    0x3C
+#define TRIGGER_X          0x28
+#define TRIGGER_SPEED      0x32
+
+/* Field offsets within the panel tile object */
+#define oState       2
+#define oMoveSpeed   6
+#define oTileX       10
+#define oTileY       11
+#define oTimerActive 14
+#define oTimerSettle 18
+#define oFlags       24
+
+/* register form: calls sub_800C488 outside this file, which has no typed C interface yet */
+static u16 calc_panel_delay(u32 r0_in) {
+    R0 = r0_in;
+    GUEST_CALL(sub_800C488);
+    return (u16)R1;
+}
+
+/* register form: calls object_updatePanelParameters outside this file, which has no typed C interface yet */
+static u32 update_panel_params(u32 battle_obj, u32 tile_data) {
+    R0 = battle_obj;
+    R1 = tile_data;
+    GUEST_CALL(object_updatePanelParameters);
+    return R0;
+}
+
+/* register form: calls object_getPanelParameters outside this file, which has no typed C interface yet */
+static u32 get_panel_flags(u32 battle_obj, u32 tile_data) {
+    R0 = battle_obj;
+    R1 = tile_data;
+    GUEST_CALL(object_getPanelParameters);
+    return R0;
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_panel_sound(void) {
+    R0 = SOUND_PANEL_ACT;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls sub_80C5B76 outside this file, which has no typed C interface yet */
+static void spawn_tile_effect(u32 tile_x, u32 tile_y, u32 tile_data) {
+    R0 = tile_x;
+    R1 = tile_y;
+    R2 = 0;
+    R3 = 0;
+    R4 = TRIGGER_X;
+    R5 = tile_data;
+    R6 = TRIGGER_SPEED;
+    GUEST_CALL(sub_80C5B76);
+}
+
+/* Compute blink speed: returns 2 if timer <= 60 and bit 1 is set, else 1. */
+static u32 compute_blink_speed(s32 remaining) {
+    if (remaining > (s32)SPEED_THRESHOLD)
+        return 1;
+    if ((u32)remaining >> 1 & 1)
+        return 2;
+    return 1;
+}
+
+/* Update a panel tile's state machine each battle tick. */
+static void panel_object_update(u32 battle_obj, u32 tile_data, u32 obj) {
+    u32 state = LD8(obj + oState);
+
+    if (state == 0)
+        return;
+
+    if (state == 1) {
+        /* Animating toward target: reset settle timer, tick active timer */
+        ST16(obj + oTimerSettle, PANEL_SETTLE_TIME);
+
+        s32 remaining = (s32)(u16)LD16(obj + oTimerActive) - 1;
+        ST16(obj + oTimerActive, remaining);
+
+        if (remaining == 0) {
+            /* Animation finished: switch to settled state */
+            ST8(obj + oState, 2);
+            u32 r0 = update_panel_params(battle_obj, tile_data);
+            ST16(obj + oTimerActive, calc_panel_delay(r0));
+        } else {
+            /* Still animating: adjust blink speed */
+            u32 speed = compute_blink_speed(remaining);
+            ST8(obj + oMoveSpeed, speed);
+            /* register form: R2 is an output the caller reads; on other paths callees
+               set it via GUEST_CALL, so the typed function writes it directly here */
+            R2 = speed;
+        }
+
+    } else if (state == 3) {
+        /* Panel just landed: set timers, then check flags for activation */
+        ST16(obj + oTimerActive, calc_panel_delay(state));
+        ST16(obj + oTimerSettle, PANEL_SETTLE_TIME);
+
+        u32 flags = LD32(obj + oFlags);
+        if ((flags & PANEL_FLAGS_MASK) != 0 && (flags & PANEL_LOCKED_BIT) == 0) {
+            u32 panel_result = get_panel_flags(battle_obj, tile_data);
+            if ((panel_result & PANEL_SPECIAL_MASK) == 0) {
+                /* Ready to activate: switch to state 1, update, play sound */
+                ST8(obj + oState, 1);
+                u32 r0 = update_panel_params(battle_obj, tile_data);
+                ST16(obj + oTimerActive, calc_panel_delay(r0));
+                play_panel_sound();
+            }
+        }
+
+    } else if (state == 8) {
+        /* Timed trigger: fire tile effect when global counter matches */
+        ST16(obj + oTimerActive, calc_panel_delay(state));
+        ST16(obj + oTimerSettle, PANEL_SETTLE_TIME);
+
+        u32 expected = LD8(obj + oTileX) <= 3 ? TILE_DELAY_HIGH : TILE_DELAY_LOW;
+        if (LD32(A_byte_203CB04) == expected) {
+            spawn_tile_effect(LD8(obj + oTileX), LD8(obj + oTileY), tile_data);
+        } else {
+            /* register form: R2 is an output; callee paths set it via GUEST_CALL,
+               so the typed function writes it directly for the explicit-value path */
+            R2 = expected;
+        }
+
+    } else if (state >= 9 && state <= 0xC) {
+        /* Settling after action: tick settle timer */
+        ST16(obj + oTimerActive, calc_panel_delay(state));
+
+        s32 remaining = (s32)(u16)LD16(obj + oTimerSettle) - 1;
+        ST16(obj + oTimerSettle, remaining);
+
+        if (remaining == 0) {
+            /* Settle finished: switch to settled state, reset timer */
+            ST8(obj + oState, 2);
+            update_panel_params(battle_obj, tile_data);
+            ST16(obj + oTimerSettle, PANEL_SETTLE_TIME);
+        } else {
+            /* Still settling: speed = state or 2 depending on timer */
+            u32 speed;
+            if (remaining > (s32)SPEED_THRESHOLD)
+                speed = state;
+            else if ((u32)remaining >> 1 & 1)
+                speed = 2;
+            else
+                speed = state;
+            ST8(obj + oMoveSpeed, speed);
+            /* register form: R2 is an output; callee paths set it via GUEST_CALL */
+            R2 = speed;
+        }
+
+    } else {
+        /* Unhandled state: refresh both timers */
+        ST16(obj + oTimerActive, calc_panel_delay(state));
+        ST16(obj + oTimerSettle, PANEL_SETTLE_TIME);
+    }
+}
+
+/* sub_800C380(r0 = battle_obj, r1 = tile_data, r7 = panel_object) -> r2, r3 outputs */
+Next sub_800C380(void) {
+    panel_object_update(R0, R1, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800C4BC ── */
+/* register form: calls getTable12Record outside this file, which has no typed C interface yet */
+static u32 get_table12_record(u32 arg0, u32 arg1) {
+    R0 = arg0; R1 = arg1;
+    GUEST_CALL(getTable12Record_800D730_800C6D6);
+    return R0;
+}
+
+/* register form: calls battle_getPanelEntry outside this file, which has no typed C interface yet */
+static u32 get_panel_entry(u32 index) {
+    R0 = index;
+    GUEST_CALL(battle_getPanelEntry_800C8C2);
+    return R0;
+}
+
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill(u32 ptr, u32 bytes) {
+    R0 = ptr; R1 = bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: calls battle_getPanelDataPtr outside this file, which has no typed C interface yet */
+static u32 get_panel_data_ptr(u32 col, u32 row) {
+    R0 = col; R1 = row;
+    GUEST_CALL(battle_getPanelDataPtr_800C6E0);
+    return R0;
+}
+
+/* register form: calls object_isValidPanel outside this file, which has no typed C interface yet */
+static u32 is_valid_panel(u32 col, u32 row) {
+    R0 = col; R1 = row;
+    GUEST_CALL(object_isValidPanel);
+    return R0;
+}
+
+/* register form: calls sub_800C488 outside this file, which has no typed C interface yet */
+static u32 compute_panel_attr(u32 tile_type) {
+    R0 = tile_type;
+    GUEST_CALL(sub_800C488);
+    return R1;
+}
+
+/* register form: calls sub_800C67C outside this file, which has no typed C interface yet */
+static void finalize_panels(u32 r2_in, u32 r3_in) {
+    R2 = r2_in; R3 = r3_in;
+    GUEST_CALL(sub_800C67C);
+    /* leaves c, v, r2, r3 in the guest state */
+}
+
+/*
+ * Build the 5×8 battle-panel grid and per-column entry flags for the
+ * player's side.
+ *
+ *   col_mask – one bit per interior column (1..6) indicating an active panel.
+ *   record   – table12 record holding 4-bit HP nibbles per grid cell.
+ *
+ * After populating ePanelData, calls sub_800C67C which finalises the
+ * grid state and answers in r2/r3/c/v.
+ */
+static void build_battle_panels(u32 arg0, u32 col_mask, u32 r2_in, u32 r3_in) {
+    /* Retrieve the table12 record that stores per-panel HP nibbles */
+    u32 record = get_table12_record(arg0, col_mask);
+
+    /* Zero the 8 × 8-byte player panel-entry array (0x40 bytes total) */
+    u32 entry_base = get_panel_entry(0);
+    zero_fill(entry_base, 0x40);
+
+    /* Set byte 0 of each column entry: interior columns get their mask bit,
+       edge columns (0 and 7) are marked 0xFF (not player-occupied). */
+    entry_base = get_panel_entry(0);
+    for (int col = 0; col < 8; col++) {
+        u32 val = 0xFF;
+        if ((u32)(col - 1) <= 5) {
+            val = (col_mask >> (col - 1)) & 1;
+        }
+        ST8(entry_base + col * 8, (u8)val);
+    }
+
+    /* Zero the entire 8 × 5 panel-data grid (0x500 bytes) */
+    zero_fill(A_ePanelData, 0x500);
+
+    /* Populate each panel-data entry (stride 0x14 within ePanelData) */
+    for (int row = 0; row < 5; row++) {
+        for (int col = 0; col < 8; col++) {
+            u32 dp = get_panel_data_ptr(col, row);
+            u32 idx = row * 8 + col;
+
+            /* Offset 0x00 – walkability / obstacle flag */
+            ST8(dp, LD8(A_byte_800C590 + idx));
+
+            /* Offset 0x02 / 0x06 – 4-bit HP value from the table record */
+            u32 hp = 0;
+            if (is_valid_panel(col, row)) {
+                u32 word = LD32(record + (row - 1) * 4);
+                hp = (word >> ((col - 1) * 4)) & 0xF;
+            }
+            ST8(dp + 2, (u8)hp);
+            ST8(dp + 6, (u8)hp);
+
+            /* Offsets 0x03 / 0x04 / 0x07 – column entry's active byte */
+            u8 flag = (u8)LD8(get_panel_entry(col));
+            ST8(dp + 3, flag);
+            ST8(dp + 4, flag);
+            ST8(dp + 7, flag);
+
+            /* Offset 0x0C – secondary tile property */
+            ST8(dp + 0xC, LD8(A_byte_800C5B8 + idx));
+
+            /* Offsets 0x0A / 0x0B – grid coordinates */
+            ST8(dp + 0xA, (u8)col);
+            ST8(dp + 0xB, (u8)row);
+
+            /* Offset 0x0E – computed tile attribute from sub_800C488 */
+            ST16(dp + 0xE, (u16)compute_panel_attr(LD8(A_byte_800C5B8 + idx)));
+
+            /* Offset 0x12 – constant word 0x708 */
+            ST16(dp + 0x12, 0x708);
+        }
+    }
+
+    /* Finalise the grid; sub_800C67C sets r2, r3, c, v as outputs */
+    finalize_panels(r2_in, r3_in);
+}
+
+/* sub_800C4BC(r0 = table arg, r1 = column bitmask, r2/r3 = passthrough to sub_800C67C)
+ * -> r2, r3, c, v (from sub_800C67C) */
+Next sub_800C4BC(void) {
+    build_battle_panels(R0, R1, R2, R3);
+    RETURN_TO_CALLER();
+}
+
 /* ── getTable12Record_800D730_800C6D6 ── */
 /* getTable12Record_800D730_800C6D6(r0 = table index):
  * Returns the address of entry r0 in a table of 12-byte records at byte_800D730.
@@ -383,6 +683,149 @@ Next battle_getPanelDataPtr_800C6E0(void) {
     R0 = panelIndex * PANEL_SIZE + A_ePanelData;
     R2 = PANELS_PER_ROW;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800C746 ── */
+#define PANEL_TEAMS     6
+#define PANEL_COLS      6
+#define PANEL_ROWS      3
+#define PAIR_BUF_SLOTS  8   /* 16-byte stack scratch → up to 4 (panel, flag) pairs */
+
+/* register form: calls sub_800C6F0 outside this file, which has no typed C interface yet */
+static void call_update_team_counter(u32 team, u8 *out0, u8 *out1, u8 *out2, u8 *out3) {
+    R0 = team;
+    GUEST_CALL(sub_800C6F0);
+    *out0 = (u8)R0; *out1 = (u8)R1; *out2 = (u8)R2; *out3 = (u8)R3;
+}
+
+/* register form: calls battle_getPanelEntry_800C8C2 outside this file, which has no typed C interface yet */
+static u32 call_get_panel_entry(u32 panel_id) {
+    R0 = panel_id;
+    GUEST_CALL(battle_getPanelEntry_800C8C2);
+    return R0;
+}
+
+/* register form: calls sub_800C81E outside this file, which has no typed C interface yet */
+static void call_clear_panel_pair(u32 panel_id, u32 flag, u32 aux) {
+    R0 = panel_id; R1 = flag; R2 = aux;
+    GUEST_CALL(sub_800C81E);
+}
+
+/* register form: calls object_getPanelDataOffset outside this file, which has no typed C interface yet */
+static u32 call_get_panel_data(u32 col, u32 row) {
+    R0 = col; R1 = row;
+    GUEST_CALL(object_getPanelDataOffset);
+    return R0;
+}
+
+/*
+ * Process team counters, resolve panel-encounter pair events, and tick the
+ * 6×3 panel grid's cell timers while toggling alliance-visibility bits.
+ * Returns the value that must remain in R3 at function exit (from the last
+ * grid cell processed in Section 3).
+ */
+static u32 process_battle_panels(void) {
+    u32 final_r3 = 0;
+
+    /* ── Section 1: advance each team's 8-byte battle-state record ── */
+    u32 team_base = A_unk_2034018;
+    for (u32 team = 1; team <= PANEL_TEAMS; team++) {
+        u8 v0, v1, v2, v3;
+        call_update_team_counter(team, &v0, &v1, &v2, &v3);
+
+        ST8(team_base + 2, v0);
+        ST8(team_base + 3, v1);
+        ST8(team_base + 4, v2);
+        ST8(team_base + 5, v3);
+
+        if (v0 == 0)
+            ST16(team_base + 6, 0);
+
+        u16 timer = LD16(team_base + 6);
+        if (timer != 0) {
+            timer--;
+            ST16(team_base + 6, timer);
+            if (timer == 0)
+                ST8(team_base + 1, 1);
+        }
+        team_base += 8;
+    }
+
+    /* ── Section 2: walk byte_203F6B0 event table, collect consecutive
+     *             matching panel-encounter pairs, then clear them ── */
+    u32 ev = A_byte_203F6B0;
+    while (LD8(ev) != 0xFF) {
+        u32 panel_id = LD8(ev);
+        s32 steps    = LD8(ev + 2);
+        s32 pairs    = 0;
+        u8  pair_buf[PAIR_BUF_SLOTS * 2];
+
+        for (s32 i = steps; i > 0; i--) {
+            u32 entry = call_get_panel_entry(panel_id);
+            u8  flag  = LD8(entry + 4);
+
+            if (flag != 0) {
+                if (LD8(entry + 1) != 0 && flag == LD8(entry + 5)) {
+                    pair_buf[pairs * 2]     = (u8)panel_id;
+                    pair_buf[pairs * 2 + 1] = LD8(entry + 5);
+                    pairs++;
+                } else {
+                    pairs = 0;
+                }
+            }
+            panel_id += (s8)LD8(ev + 1);
+        }
+
+        for (s32 j = 0; j < pairs; j++) {
+            u32 entry = call_get_panel_entry(pair_buf[j * 2]);
+            ST8(entry + 1, 0);
+            call_clear_panel_pair(pair_buf[j * 2],
+                                  pair_buf[j * 2 + 1],
+                                  LD8(ev + 3));
+        }
+
+        ev += 4;
+    }
+
+    /* ── Section 3: tick the 6×3 panel grid; toggle alliance-visibility
+     *             on even timer decrements.  The last cell determines
+     *             the final R3 the callers read. ── */
+    for (u32 row = 1; row <= PANEL_ROWS; row++) {
+        for (u32 col = 1; col <= PANEL_COLS; col++) {
+            u32 pd       = call_get_panel_data(col, row);
+            u8  alliance = LD8(pd + oPanelData_Alliance);
+            ST8(pd + oPanelData_Unk_07, alliance);
+
+            u16 cell_timer = LD16(pd + oPanelData_Unk_10);
+            if (cell_timer != 0) {
+                cell_timer--;
+                ST16(pd + oPanelData_Unk_10, cell_timer);
+
+                /* extract bit 2 of the decremented timer */
+                u8 toggle = (cell_timer & 4) >> 2;
+                final_r3  = toggle;
+
+                u8 vis = LD8(pd + oPanelData_Unk_07);
+                ST8(pd + oPanelData_Unk_07, vis ^ toggle);
+            } else {
+                final_r3 = alliance;
+            }
+        }
+    }
+
+    return final_r3;
+}
+
+/*
+ * sub_800C746()
+ * inputs:  r4 r5 r6 r7 r10 lr
+ * outputs: r2 (from last callee), r3 (grid logic), r6 (preserved by pop)
+ * clobbers: nz c v r0 r1 lr
+ * preserved: r4 r5 r6 r7
+ */
+Next sub_800C746(void) {
+    R3 = process_battle_panels();
     RETURN_TO_CALLER();
 }
 
@@ -715,6 +1158,43 @@ Next object_isPanelSolid(void) {
     R1 = 0x10;
     R0 = solidFlag;
     SET_FLAGS_NZ(solidFlag);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_getPanelsIgnoreColumnFiltered ── */
+/* register form: calls object_checkPanelParameters outside this file, which has no typed C interface yet */
+static bool panel_param_check(s32 col, s32 row, u32 param_a, u32 param_b) {
+    R0 = col; R1 = row; R2 = param_a; R3 = param_b;
+    GUEST_CALL(object_checkPanelParameters);
+    bool result = (R0 != 0);   /* tst r0,r0; beq pattern: skip panel when callee returns 0 */
+    /* original does pop {r0-r3} after the call to keep r2/r3 alive across iterations */
+    R2 = param_a; R3 = param_b;
+    return result;
+}
+
+/* Scan rows 1-3 and columns 1-6, skipping the row matching ignore_row.
+ * For each panel that passes object_checkPanelParameters, write a byte
+ * (col | row<<4) into the output buffer at `buf`, packed sequentially.
+ * Returns the number of panels written; r1 is always 4 on exit. */
+static s32 scan_panels_filtered(u32 ignore_row, u32 param_a, u32 param_b, u32 buf) {
+    s32 count = 0;
+    for (s32 row = 1; row <= 3; row++) {
+        if ((u32)row == ignore_row)
+            continue;
+        for (s32 col = 1; col <= 6; col++) {
+            if (panel_param_check(col, row, param_a, param_b)) {
+                ST8(buf + count, (u8)(col | (row << 4)));
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+/* object_getPanelsIgnoreColumnFiltered(r0 = ignore_row, r2 = param_a, r3 = param_b, r7 = output buf) -> r0 = count, r1 = 4 */
+Next object_getPanelsIgnoreColumnFiltered(void) {
+    R0 = scan_panels_filtered(R0, R2, R3, R7);
+    R1 = 4;
     RETURN_TO_CALLER();
 }
 
@@ -1114,6 +1594,52 @@ Next sub_800E45E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800E468 ── */
+typedef struct { u32 x, y, extra; } ContactOffset;
+
+/* register form: calls battle_dispatchObjectContactHandler_800E498 outside this file, which has no typed C interface yet */
+static ContactOffset dispatch_contact_handler(u8 contact_type) {
+    R0 = contact_type;
+    GUEST_CALL(battle_dispatchObjectContactHandler_800E498);
+    return (ContactOffset){R0, R1, R2};
+}
+
+/* register form: calls battle_objectCheckPanelByAlliance_800E5AC outside this file, which has no typed C interface yet */
+static bool panel_check_alliance(u32 x, u32 y, u32 panel_y) {
+    R0 = x;
+    R1 = y;
+    R3 = panel_y;
+    GUEST_CALL(battle_objectCheckPanelByAlliance_800E5AC);
+    return !ZERO_FLAG();  /* non-zero → panel is valid for this alliance */
+}
+
+/* Compute the contact offset for a battle object.
+ * The raw offset from the contact handler is kept only when the target
+ * panel (object position + offset) belongs to the object's alliance;
+ * otherwise the result is (0, 0, 0). */
+static ContactOffset get_contact_offset(u32 obj) {
+    u8 type = LD8(obj + oBattleObject_Unk_0f);
+    ContactOffset raw = dispatch_contact_handler(type);
+
+    u32 panel_y = LD8(obj + oBattleObject_PanelY);
+    u32 check_x = raw.x + LD8(obj + oBattleObject_PanelX);
+    u32 check_y = raw.y + panel_y;
+
+    if (!panel_check_alliance(check_x, check_y, panel_y))
+        return (ContactOffset){0, 0, 0};
+
+    return raw;
+}
+
+/* sub_800E468(r5 = battle object ptr) -> r0,r1,r2 = contact offset; c,v,r3 from panel check callee */
+Next sub_800E468(void) {
+    ContactOffset result = get_contact_offset(R5);
+    R0 = result.x;
+    R1 = result.y;
+    R2 = result.extra;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchObjectContactHandler_800E498 ── */
 /* battle_dispatchObjectContactHandler_800E498(r0 = handler index, r5 = battle object, r2/r3 = passed through):
  * Dispatches to one of the battle object's contact handlers selected by r0,
@@ -1134,6 +1660,77 @@ Next battle_dispatchObjectContactHandler_800E498(void) {
     case 3: GUEST_CALL(sub_800E500); break;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800E548 ── */
+/* register form: calls object_getEnemyDirection outside this file, which has no typed C interface yet */
+static u32 get_enemy_direction(u32 object_ptr, u32 r4_in, u32 r6_in) {
+    R4 = r4_in;
+    R5 = object_ptr;
+    R6 = r6_in;
+    GUEST_CALL(object_getEnemyDirection);
+    return R0;
+}
+
+/* Table at 0x0800E58C: 3-byte entries indexed by hit-modifier class.
+ * Entry[0] = direction multiplier (s8), Entry[1] = X offset (s8), Entry[2] = Y offset (u8). */
+#define HIT_MODIFIER_TABLE 0x0800E58Cu
+
+typedef struct {
+    u32 result;        /* r0 = direction * multiplier (s32 product) */
+    u32 offset_x;      /* r1 = entry[1] sign-extended */
+    u32 offset_y;      /* r2 = entry[2] zero-extended */
+    u32 collision_ptr; /* r3 = collision data pointer (unchanged by later code) */
+} HitModifierResult;
+
+/* sub_800E548: compute knockback from enemy direction and hit modifier. */
+static HitModifierResult compute_hit_offsets(u32 object_ptr, u32 r4_in, u32 r6_in) {
+    u32 direction = get_enemy_direction(object_ptr, r4_in, r6_in);
+
+    u32 collision_ptr = LD32(object_ptr + oBattleObject_CollisionDataPtr);
+    u8 modifier = LD8(collision_ptr + oCollisionData_HitModifierFinal);
+
+    /* Bit 7 marks a "final" hit variant; index shifts by 5. */
+    u32 index_base = 0;
+    if (modifier & 0x80) {
+        modifier &= (u8)~0x80;
+        index_base = 5;
+    }
+
+    /* Count trailing zeros of (modifier >> 2), capped at 4. */
+    u32 value = (u32)modifier >> 2;
+    u32 shift_count = 0;
+    while (true) {
+        bool carry_out = (value & 1) != 0;
+        value >>= 1;
+        if (carry_out) break;
+        shift_count++;
+        if (shift_count >= 4) break;
+    }
+
+    u32 entry_addr = HIT_MODIFIER_TABLE + (shift_count + index_base) * 3;
+
+    s8 multiplier = (s8)LD8(entry_addr);
+    s8 offset_x   = (s8)LD8(entry_addr + 1);
+    u8 offset_y   = LD8(entry_addr + 2);
+
+    HitModifierResult res;
+    res.result        = (u32)((s32)direction * (s32)multiplier);
+    res.offset_x      = (u32)(s32)offset_x;
+    res.offset_y      = (u32)offset_y;
+    res.collision_ptr = collision_ptr;
+    return res;
+}
+
+/* sub_800E548(r5 = battle object) -> r0..r3, flags */
+Next sub_800E548(void) {
+    HitModifierResult e = compute_hit_offsets(R5, R4, R6);
+    R0 = e.result;
+    R1 = e.offset_x;
+    R2 = e.offset_y;
+    R3 = e.collision_ptr;
+    SET_FLAGS_ADD(1, 0); /* MOV r1,#1 after MUL: N=0 Z=0 C=0 V=0 */
     RETURN_TO_CALLER();
 }
 

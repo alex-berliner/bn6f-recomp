@@ -1066,6 +1066,52 @@ Next battle_resetCollisionState_80101C4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80101F8 ── */
+/* sub_80101F8: Determines the PET Navi battle status code.
+ * Returns the PET Navi index (0xD if the fallback byte at 200AD04 is non-zero,
+ * 0 if event flag 0x163 is set or the byte is zero, or the raw Navi ID otherwise). */
+
+#define PET_NAVI_EVENT_BANK   1
+#define PET_NAVI_EVENT_OFFSET 0x63
+#define PET_NAVI_FALLBACK     0xD
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u32 get_cur_pet_navi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return R0;
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool pet_navi_event_set(void) {
+    R0 = PET_NAVI_EVENT_BANK;
+    R1 = PET_NAVI_EVENT_OFFSET;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls notZero_eByte200AD04 outside this file, which has no typed C interface yet */
+static bool pet_navi_byte_nonzero(void) {
+    GUEST_CALL(notZero_eByte200AD04);
+    return !ZERO_FLAG();
+}
+
+static u32 resolve_pet_navi_status(void) {
+    u32 navi = get_cur_pet_navi();
+    if (navi != 0)
+        return navi;
+    if (pet_navi_event_set())
+        return 0;
+    if (pet_navi_byte_nonzero())
+        return PET_NAVI_FALLBACK;
+    return 0;
+}
+
+Next sub_80101F8(void) {
+    R0 = resolve_pet_navi_status();
+    SET_FLAGS_ADD(R0, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_tickAiSelfDrain_8010230 ── */
 /* battle_tickAiSelfDrain_8010230 — periodic self-damage tick for an AI battle object (r5 = object).
  *
@@ -1208,6 +1254,144 @@ Next battle_aiAddTotalDamageTaken_8010548(void) {
 
     ST16(ai + oAIData_TotalDamageTaken, total);
     R2 = 0xFFFF;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8010660 ── */
+#define EFFECT_BIT       8u
+#define LOW_HP_BIT       4u
+#define NAVI_ALLIANCE   0xDu
+#define PANEL_ACTION_CODE 0x17Bu
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 guest_get_battle_effects(bool *c_out, bool *v_out) {
+    GUEST_CALL(GetBattleEffects);
+    *c_out = CARRY_FLAG();
+    *v_out = OVERFLOW_FLAG();
+    return R0;
+}
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file */
+static u32 guest_get_navi_stats(u32 alliance, u32 *r1_out) {
+    R1 = alliance;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    *r1_out = R1;
+    return R0;
+}
+
+/* register form: calls SetBattleNaviStatsByte_AllianceFromBattleObject outside this file */
+static void guest_set_navi_stats(u32 alliance, u32 value) {
+    R1 = alliance;
+    R2 = value;
+    GUEST_CALL(SetBattleNaviStatsByte_AllianceFromBattleObject);
+}
+
+/* register form: calls sub_80E90FE outside this file (panel tile action) */
+static u32 guest_panel_action(u32 px, u32 py) {
+    R0 = px; R1 = py; R2 = 0; R3 = 0; R4 = 2; R6 = 0; R7 = PANEL_ACTION_CODE;
+    GUEST_CALL(sub_80E90FE);
+    return R0;
+}
+
+/* register form: calls sub_800BF16 outside this file (alliance notification) */
+static void guest_alliance_notify(u32 alliance, u32 panel_result,
+                                  u32 *r1_out, u32 *r3_out, bool *c_out, bool *v_out) {
+    R0 = alliance;
+    R1 = 1;
+    R2 = panel_result;
+    GUEST_CALL(sub_800BF16);
+    *r1_out = R1;
+    *r3_out = R3;
+    *c_out  = CARRY_FLAG();
+    *v_out  = OVERFLOW_FLAG();
+}
+
+/* Encode (c, v) into (a, b) so that CMP(a, b) reproduces those flags. */
+static void encode_cv(bool c, bool v, u32 *a, u32 *b) {
+    if (c) {
+        if (v) { *a = 0x80000000u; *b = 1; }
+        else   { *a = 0;           *b = 0; }
+    } else {
+        if (v) { *a = 0;           *b = 0x80000000u; }
+        else   { *a = 0;           *b = 1; }
+    }
+}
+
+typedef struct {
+    u32 r0, r1, r2, r3;
+    u32 cmp_a, cmp_b;
+} LowHPResult;
+
+/* Gate on battle-effect bit 3, navi low-HP flag, and HP <= 25% of max.
+ * If all pass: clear the flag, fire a panel action, notify the alliance.
+ * Returns the register values the original leaves on exit (r4–r7 are preserved
+ * by the original's push/pop, so they aren't included here). */
+static LowHPResult check_low_hp(u32 obj, u32 r2_in, u32 r3_in) {
+    LowHPResult res;
+    bool c, v;
+
+    /* Effect bit 3 (value 8) must be set in the battle-effects word. */
+    u32 effects = guest_get_battle_effects(&c, &v);
+    if (!(effects & EFFECT_BIT)) {
+        res.r0 = 0; res.r1 = EFFECT_BIT;
+        res.r2 = r2_in; res.r3 = r3_in;
+        encode_cv(c, v, &res.cmp_a, &res.cmp_b);
+        return res;
+    }
+
+    /* Navi stats byte for this alliance must exist and carry the low-HP bit. */
+    u32 r1_after_stats;
+    u32 stats = guest_get_navi_stats(NAVI_ALLIANCE, &r1_after_stats);
+    if (stats == 0xFF) {
+        res.r0 = 0; res.r1 = r1_after_stats;
+        res.r2 = r2_in; res.r3 = r3_in;
+        res.cmp_a = stats; res.cmp_b = 0xFF;
+        return res;
+    }
+    if (!(stats & LOW_HP_BIT)) {
+        res.r0 = 0; res.r1 = r1_after_stats;
+        res.r2 = LOW_HP_BIT; res.r3 = r3_in;
+        res.cmp_a = stats; res.cmp_b = 0xFF;
+        return res;
+    }
+
+    /* Current HP must be <= 25% of max HP (threshold = maxHP >> 2). */
+    u32 threshold = (u32)LD16(obj + oBattleObject_MaxHP) >> 2;
+    u32 hp = LD16(obj + oBattleObject_HP);
+    if (threshold < hp) {
+        res.r0 = 0; res.r1 = hp;
+        res.r2 = LOW_HP_BIT; res.r3 = r3_in;
+        res.cmp_a = threshold; res.cmp_b = hp;
+        return res;
+    }
+
+    /* Clear the low-HP bit in the navi stats. */
+    guest_set_navi_stats(NAVI_ALLIANCE, stats & ~LOW_HP_BIT);
+
+    /* Activate the panel-action tile at this object's position. */
+    u32 panel_result = guest_panel_action(
+        LD8(obj + oBattleObject_PanelX),
+        LD8(obj + oBattleObject_PanelY));
+
+    /* Notify the battle of the alliance event. */
+    u32 r1_notify, r3_notify;
+    guest_alliance_notify(LD8(obj + oBattleObject_Alliance),
+                          panel_result, &r1_notify, &r3_notify, &c, &v);
+
+    res.r0 = 1; res.r1 = r1_notify;
+    res.r2 = panel_result; res.r3 = r3_notify;
+    encode_cv(c, v, &res.cmp_a, &res.cmp_b);
+    return res;
+}
+
+/* sub_8010660(r5 = battle-object ptr, r2/r3 = passthrough on early exit) -> r0..r3, c, v */
+Next sub_8010660(void) {
+    LowHPResult r = check_low_hp(R5, R2, R3);
+    R0 = r.r0;
+    R1 = r.r1;
+    R2 = r.r2;
+    R3 = r.r3;
+    SET_FLAGS_CMP(r.cmp_a, r.cmp_b);
     RETURN_TO_CALLER();
 }
 
