@@ -236,7 +236,20 @@ class Graph(Generic[StateT]):
         saved_runs = LocalTrackingClient(self.workflow.project, storage_dir=str(burr_dir()))
         builder = self._builder(run_id, tracked=True, resuming=True).initialize_from(  # pyright: ignore[reportUnknownMemberType]
             saved_runs, resume_at_next_action=True, default_state={}, default_entrypoint=_name(self.first))
-        return builder.build()
+        application = builder.build()
+        added = self._added_since(application.state)
+        if added:
+            application.update_state(application.state.update(**added))
+        return application
+
+    def _added_since(self, state: State[StateT]) -> dict[str, object]:
+        """The defaults of state fields the workflow gained after this run was saved (a run started before
+        a field was added still carries on: its conditions and steps can read the field)."""
+        if not state.get_all():     # nothing saved: initialize_from starts afresh
+            return {}
+        return {name: cast(object, field.get_default(call_default_factory=True))
+                for name, field in self.workflow.state_type.model_fields.items()
+                if name not in state and not field.is_required()}
 
     def final_state(self, run_id: str) -> StateT:
         """The state a finished run ended with, read back from its tracking log."""

@@ -78,3 +78,46 @@ def test_resume_refuses_the_wrong_kind_of_answer() -> None:
 
     with pytest.raises(TypeError, match="needs a Reply"):
         _ = ask_graph().resume("ask-3", WrongAnswer(number=6))
+
+
+
+class AskStateLater(BaseModel):
+    """AskState after a field was added: runs saved before it must still carry on."""
+    question: str
+    reply: str = ""
+    shouted: str = ""
+    loud: bool = False
+
+
+class LoudReply(Result):
+    reply: str
+    loud: bool
+
+
+def later_graph() -> Graph[AskStateLater]:
+    """The same steps, as newer code has them: the last one reads the new field."""
+    later = Workflow[AskStateLater](AskStateLater, project="test-pause")
+
+    @later.step
+    def pose(given: Question) -> Question:
+        return given
+
+    @later.pause_point
+    def wait_for_reply(given: Question, answer: Reply) -> Reply:
+        return answer
+
+    @later.step
+    def shout(given: LoudReply) -> Shouted:
+        return Shouted(shouted=given.reply.upper() + ("!" if given.loud else ""))
+
+    return later.graph(first=pose, ends=[shout], transitions=[
+        Transition(after=pose, go_to=wait_for_reply), Transition(after=wait_for_reply, go_to=shout)])
+
+
+def test_a_run_saved_before_a_state_field_was_added_carries_on_with_its_default() -> None:
+    assert isinstance(ask_graph().start(AskState(question="name?"), run_id="ask-old"), Paused)
+
+    assert later_graph().waiting("ask-old") is not None
+    finished = later_graph().resume("ask-old", Reply(reply="ada"))
+
+    assert isinstance(finished, Finished) and finished.state.shouted == "ADA" and not finished.state.loud
