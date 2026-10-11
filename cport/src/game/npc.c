@@ -575,21 +575,6 @@ Next NPCCommand_jump_if_flag_clear(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── NPCCommand_set_active_and_visible ── */
-/* NPCCommand_set_active_and_visible(r5 = object header, r6 = NPC script pointer):
- * Script command: mark the object as both active and visible by writing the
- * flags byte, then advance the script pointer by one. The r6 increment is the
- * original's last flag-setting instruction, so nz/c/v come from it. */
-Next NPCCommand_set_active_and_visible(void) {
-    R0 = OBJECT_FLAG_ACTIVE | OBJECT_FLAG_VISIBLE;
-    ST8(R5, R0);
-
-    R6 = R6 + 1;
-    SET_FLAGS_ADD(R6, 1);
-
-    RETURN_TO_CALLER();
-}
-
 /* ── NPCCommand_set_active_and_invisible ── */
 /* NPCCommand_set_active_and_invisible(r5 = object header, r6 = script pointer):
  * Marks the object active (flags byte = 1, the OBJECT_FLAG_ACTIVE bit) and
