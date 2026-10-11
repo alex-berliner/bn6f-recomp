@@ -1,0 +1,80 @@
+name: npc_waitMysteryDataTaken_809eaa0
+address: '0x0809EAA0'
+kind: function
+status: confirmed
+summary: Overworld NPC handler that, once its linked MysteryData event flag has been taken, swaps the NPC's sprite,
+  frees it and toggles its script, then always falls through to the secondary script pass.
+interface: void npc_waitMysteryDataTaken_809eaa0(struct OverworldNPCObject* r5) -> r0 r1 r2 r5 r11 lr; nz c v
+details: "Polls a MysteryData event flag (MysteryDataId offset on the NPC object) via TestEventFlag; Z set means\
+  \ the data has not yet been taken.\nOn \"data taken\" branch:\n  - Enables secondary script 0x19 (npc_enableScript0x19_809f516)\
+  \ and sets OW_NPC_UNK_FLAGS_60_DISABLE_INTERACTION in UnkFlags_60, marking the NPC as non-interactive.\n  - Sets\
+  \ oObjectHeader_Flags to OBJECT_FLAG_ACTIVE so the object participates in the swap/free sequence.\n  - Loads a\
+  \ replacement overworld sprite (tileset 0x80, attr 0x1C, anim 0xA0) via sprite_load + sprite_loadAnimationData.\n\
+  \  - Frees the NPC via FreeOverworldNPCObject and disables script 0x19 (npc_disableScript0x19_809f51e).\nBoth\
+  \ paths end with npc_runSecondaryScriptMaybe_809ebf8, whose outputs (r0/r1/r2/r5/lr) are returned to the caller;\
+  \ r11 in the contract is set by that tail call.\nTouches fields oOverworldNPCObject_MysteryDataId, oOverworldNPCObject_UnkFlags_60,\
+  \ oObjectHeader_Flags on the NPC object (r5). r7 is used as a base+offset constant via \"#oOverworldNPCObject_MysteryDataId\"\
+  .\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (6 attempt(s), run convert-20261010-210645);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 35' --file inbox_farm_35.c npc_waitMysteryDataTaken_809eaa0
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function npc_waitMysteryDataTaken_809eaa0
+
+    ./wf verify --function npc_waitMysteryDataTaken_809eaa0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-210645-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function npc_waitMysteryDataTaken_809eaa0
+
+    ./wf verify --function npc_waitMysteryDataTaken_809eaa0 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261010-210645-verify-6)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function npc_waitMysteryDataTaken_809eaa0
+
+    ./wf verify --function npc_waitMysteryDataTaken_809eaa0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210645-verify-6)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story1, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0809eaa0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp d2baa24
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/npc.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story1
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What tileset/animation 0x80/0xA0 represent (post-collection visual for the now-retired NPC).
+- What OW_NPC_UNK_FLAGS_60_DISABLE_INTERACTION actually gates besides interaction (also toggled during the script-enable/disable
+  dance).
+- Whether script 0x19 is the "MysteryData given/taken" overlay that drives the dialogue/quest step in this region.
+- The exact semantics of npc_runSecondaryScriptMaybe_809ebf8 and why its register outputs need to be propagated
+  (r0/r1/r2/r5/lr, plus r11 in contract).
+sources:
+- tools/wf run convert-20261010-210645
+- recomp d2baa24

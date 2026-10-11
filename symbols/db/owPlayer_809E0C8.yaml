@@ -1,0 +1,102 @@
+name: owPlayer_809E0C8
+address: '0x0809E0C8'
+kind: function
+status: confirmed
+summary: Syncs the overworld player's X/Y/Z position (always) and facing direction (only before event flag 0x1719
+  is set) into the shared state struct at 0x200ACE0.
+interface: 'void owPlayer_809E0C8(struct oToolkit *toolkit /* r10 */);
+
+  clobbers: r0, r1, r2, r3, lr; flags N Z C V
+
+  '
+details: 'Walks toolkit → gameState → overworld player object and mirrors its X/Y/Z
+
+  coordinates into the eStruct200ace0 shared struct fields oS200ace0_PlayerX/Y/Z.
+
+  Then, when event flag 0x1719 ("EVENT_1719") is still clear (first-pass
+
+  guard), it also stores the player''s facing direction (low 3 bits of
+
+  oOWPlayerObject_FacingDirection) into
+
+  oS200ace0_owPlayerFixedAnimationSelect_02 — i.e. it pins the "fixed"
+
+  overworld-player animation slot to the player''s current facing. Once
+
+  event 0x1719 is set, the facing-direction write is skipped, so the
+
+  previously chosen animation selection stays in place. Calls
+
+  TestEventFlagFromImmediate via a flag-page helper.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (6 attempt(s), run convert-20261010-210645);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 35' --file inbox_farm_35.c owPlayer_809E0C8
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owPlayer_809E0C8
+
+    ./wf verify --function owPlayer_809E0C8 --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-210645-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owPlayer_809E0C8
+
+    ./wf verify --function owPlayer_809E0C8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-210645-verify-6)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owPlayer_809E0C8
+
+    ./wf verify --function owPlayer_809E0C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210645-verify-6)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0809e0c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp d2baa24
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/ow_player.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What event is 0x1719 (e.g. an intro/tutorial completions flag) that should freeze the overworld animation once
+  tripped?
+- Who else reads oS200ace0_owPlayerFixedAnimationSelect_02 — likely the overworld sprite/animation system picking
+  a fixed pose.
+- How often this is called from the caller tail-chain; with no return value and r10 as the implicit toolkit argument,
+  looks like a thin per-frame or per-event update.
+sources:
+- tools/wf run convert-20261010-210645
+- recomp d2baa24

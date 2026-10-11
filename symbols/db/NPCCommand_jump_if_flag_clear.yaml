@@ -1,0 +1,83 @@
+name: NPCCommand_jump_if_flag_clear
+address: '0x0809EDD0'
+kind: function
+status: confirmed
+summary: 'NPC script command: reads a u16 event flag; if the flag is set, advances the script pointer by 7 bytes;
+  if the flag is clear, reads a u32 jump target from the script and returns it as the new script pointer.'
+interface: void NPCCommand_jump_if_flag_clear(u32 /*inout*/ r6, u32 /*?*/ r10) -> u32 r6
+details: "Handler for a single NPC-script opcode. The 7-byte instruction layout it expects is:\n  [opcode u8] [eventFlag\
+  \ u16] [jumpTarget u32]\nUses `r6` as the running NPC script pointer (same convention as the other NPCCommand_*\
+  \ handlers):\n  - `ReadNPCScriptHalfword(script_ptr + 1)` -> the u16 event flag.\n  - `TestEventFlag(flag)` ->\
+  \ tested via Z flag (Z set => flag is clear, matching the\n    helper comment `!Z`; bne .flagNotClear falls through\
+  \ to \"flag clear\" only if Z==0).\n  - Branch inversion vs. the function name: the literal arm named \".flagNotClear\"\
+  \ is the\n    fall-through that returns `script_ptr + 7` (skip instruction), and the taken `bne` is\n    actually\
+  \ \"flag is clear -> jump to target\". The C helper inlines this correctly\n    (`if (test_event_flag(flag)) return\
+  \ script_ptr + 7; else return target;`).\n  - `ReadNPCScriptWord(script_ptr + 3)` -> u32 jump target (only consumed\
+  \ when jumping).\nNo global state is touched directly besides the event-flag array via `TestEventFlag`\nand the\
+  \ script byte stream via `ReadNPCScriptHalfword`/`ReadNPCScriptWord`.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (6 attempt(s), run convert-20261010-210645);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 35' --file inbox_farm_35.c NPCCommand_jump_if_flag_clear
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function NPCCommand_jump_if_flag_clear
+
+    ./wf verify --function NPCCommand_jump_if_flag_clear --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-210645-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function NPCCommand_jump_if_flag_clear
+
+    ./wf verify --function NPCCommand_jump_if_flag_clear --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261010-210645-verify-6)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function NPCCommand_jump_if_flag_clear
+
+    ./wf verify --function NPCCommand_jump_if_flag_clear --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210645-verify-6)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, battles2, maps, menus2, menus3, story1, story2, story3, story4, story5, story8,
+    story9, wander.'
+  reproduce: grep -l '^0809edd0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp d2baa24
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/npc.c
+coverage:
+- battle
+- battles2
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story8
+- story9
+- wander
+open_questions:
+- Is r10 an NPC index / script context register shared by every NPCCommand_* handler, and if so which subsystem
+  owns it? (Used but not consumed here.)
+- Confirm whether `TestEventFlag` returns ZF=1 when the flag is set or clear; the helper comment says Z set => clear,
+  but the opcode name says the opposite of what the assembly branch does. Either the opcode's semantics are inverted
+  relative to its name, or the comment direction is wrong.
+- Is the opcode index (the byte at script_ptr+0, equal to opcode 0x??) documented anywhere so the new symbol name
+  can include it (e.g. `npcScript_opXX_jumpIfFlagClear`)?
+sources:
+- tools/wf run convert-20261010-210645
+- recomp d2baa24

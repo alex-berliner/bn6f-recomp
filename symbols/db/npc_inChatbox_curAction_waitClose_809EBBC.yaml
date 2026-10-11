@@ -1,0 +1,92 @@
+name: npc_inChatbox_curAction_waitClose_809EBBC
+address: '0x0809EBBC'
+kind: function
+status: confirmed
+summary: 'Overworld NPC chat-box close-wait action: returns early if the player direction-lock event is set or the
+  game-state close-animation gate is non-zero, otherwise clears the NPC''s sub-state byte and resets the NPC to
+  its standard state.'
+interface: "void npc_inChatbox_curAction_waitClose_809EBBC(u32 /*r5*/ npc_ptr,\n                               \
+  \               u32 /*r10*/ toolkit_ptr,\n                                              u32 /*r7*/ game_state_ptr_in)\
+  \ -> u32 /*r7*/ game_state_ptr_out;\n// clobbers r0, r1, r2, r3, r7, lr; NZCV per path; preserves r4, r5.\n"
+details: '- Reads the player direction-lock event via TestEventFlagFromImmediate(flag "0x17:0x15" = EVENT_CUR_DIR_LOCKED_PRIMARY/SUB).
+  If the flag is set (bne taken on !ZF) it bails out without touching the NPC, leaving the prior game-state pointer
+  in r7.
+
+  - On the miss path, loads the game-state pointer from toolkit + oToolkit_GameStatePtr into r7 and reads byte oGameState_Unk_10
+  from it. If that byte is non-zero (tst r0,r0 → bne) it returns the game-state pointer and emits the same NZ result
+  through r0.
+
+  - On the close-animation-complete path, writes 0 to NPC + oOverworldNPCObject_Unk_07 and calls npc_resetToStandardState_809F612
+  (passing r0 = 0 and the game-state pointer in r7) before returning r7.
+
+  - Quirks: r7 is both an input (caller''s game-state pointer) and the function''s output; r5 (npc_ptr) and r5 are
+  preserved. The "return" value in r7 is the toolkit''s cached game-state pointer, not anything derived.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (6 attempt(s), run convert-20261010-210645);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 35' --file inbox_farm_35.c npc_inChatbox_curAction_waitClose_809EBBC
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function npc_inChatbox_curAction_waitClose_809EBBC
+
+    ./wf verify --function npc_inChatbox_curAction_waitClose_809EBBC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-210645-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function npc_inChatbox_curAction_waitClose_809EBBC
+
+    ./wf verify --function npc_inChatbox_curAction_waitClose_809EBBC --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261010-210645-verify-6)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function npc_inChatbox_curAction_waitClose_809EBBC
+
+    ./wf verify --function npc_inChatbox_curAction_waitClose_809EBBC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210645-verify-6)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story8, story9.'
+  reproduce: grep -l '^0809ebbc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp d2baa24
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/npc.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+- story9
+related:
+- npc_inChatbox_curAction_init_809EB20
+open_questions:
+- Exact meaning of oOverworldNPCObject_Unk_07 (likely the in-chatbox sub-action/cursor index).
+- What oGameState_Unk_10 actually gates (presumably a close-chat animation or fade counter in the chat-box subsystem).
+- Whether npc_resetToStandardState_809F612 ever clobbers r5 (the NPC pointer) – not visible from this function.
+- 'Why r7 is part of the interface: callers seem to thread the game-state pointer through this action rather than
+  re-reading it from the toolkit.'
+sources:
+- tools/wf run convert-20261010-210645
+- recomp d2baa24

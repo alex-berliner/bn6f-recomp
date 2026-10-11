@@ -1,0 +1,95 @@
+name: npc_inChatbox_curAction_init_809EB20
+address: '0x0809EB20'
+kind: function
+status: confirmed
+summary: 'Initializes the NPC''s "in chatbox" interaction state: optionally turns the NPC sprite to face the player,
+  picks and runs the appropriate text script (NPC-owned / in-memory "mystery" / map-loaded, with an HP-memory navi
+  check), locks movement, and hands off to the wait-close state.'
+interface: "void npc_inChatbox_curAction_init_809EB20(\n    u32 npc_ptr /* r5 */,\n    u32 toolkit_ptr /* r10 */,\n\
+  \    u32 r3 /* script type from previous state, fed into HP-mem check */);\n// outputs: r5, NZCV (all from tail\
+  \ call to npc_inChatbox_curAction_waitClose_809EBBC)\n"
+details: "- Reads the NPC's UnkFlags_60 (oOverworldNPCObject_UnkFlags_60) to decide behavior.\n- If OW_NPC_UNK_FLAGS_60_FACE_PLAYER_WHEN_INTERACTED\
+  \ is clear, computes dy/dx between the overworld player object (read via oToolkit_GameStatePtr -> oGameState_OverworldPlayerObjectPtr)\
+  \ and the NPC, calls calcAngle_800117C, then sets a 4-direction sprite animation index = (((angle+0x20) & 0xC0)>>6)*2\
+  \ + 1 (values 1/3/5/7) via sprite_setAnimation, followed by sprite_loadAnimationData. The face-player block also\
+  \ resets r3 (presumably for the HP-mem check below).\n- Chatbox script dispatch on UnkFlags_60:\n  * If CHATBOX_FLAG_0x400\
+  \ is clear -> run map-loaded script: chatbox_runScript_202da04 with NPC's TextScriptIndex byte.\n  * If 0x400\
+  \ set and 0x800 clear -> run normal NPC script: chatbox_runScript with NPC's TextScriptPtr archive and TextScriptIndex\
+  \ byte.\n  * If 0x400 and 0x800 set (\"mystery data\" path): copies oOverworldNPCObject_Chatbox_90 into oChatbox_Unk_4C,\
+  \ calls sub_809FC96 (passing chatbox_ptr in r7 and the data in r0), stores the returned r0/r1 into chatbox+0x54/+0x58,\
+  \ and the returned r2 (low byte) into NPC's TextScriptIndex. The returned r3 then participates in the HP-memory\
+  \ check. Comment notes the fall-through into the HP-memory test from the 0x800-clear branch is suspect because\
+  \ sprite_loadAnimationData's r3 clobber is the only writer visible.\n- HP-memory special case (looks like an HP\
+  \ chip pickup): if r3==8 and r0==0x70 and GetCurPETNavi() returns non-zero, runs the \"navi can't use this\" script\
+  \ via chatbox_runScript with script index 0x78 instead of the normal index.\n- Writes 4 to oOverworldNPCObject_MovementFlag_0a\
+  \ (movement locked while talking).\n- Tail-calls npc_inChatbox_curAction_waitClose_809EBBC; its r0/r1/r2/r3/r7\
+  \ and flag outputs are the function's outputs.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (6 attempt(s), run convert-20261010-210645);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 35' --file inbox_farm_35.c npc_inChatbox_curAction_init_809EB20
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function npc_inChatbox_curAction_init_809EB20
+
+    ./wf verify --function npc_inChatbox_curAction_init_809EB20 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-210645-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function npc_inChatbox_curAction_init_809EB20
+
+    ./wf verify --function npc_inChatbox_curAction_init_809EB20 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261010-210645-verify-6)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function npc_inChatbox_curAction_init_809EB20
+
+    ./wf verify --function npc_inChatbox_curAction_init_809EB20 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210645-verify-6)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story8, story9.'
+  reproduce: grep -l '^0809eb20 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp d2baa24
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/npc.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+- story9
+related:
+- npc_inChatbox_curAction_waitClose_809EBBC
+open_questions:
+- Whether the fall-through from the 0x400-set/0x800-clear branch into the r3==8/r0==0x70 HP-mem check is intentional
+  or a label/reach bug (the r3 value is only meaningfully set inside the 0x800 "mystery" branch or after sprite_loadAnimationData).
+- Exact meaning of OW_NPC_UNK_FLAGS_60_CHATBOX_FLAG_0x800 "mystery data" chatbox payload and what sub_809FC96 produces
+  (interpreted in C as r0,r1 -> chatbox+0x54/+0x58, r2 -> TextScriptIndex).
+- Whether the comment that GetCurPETNavi also checks a ToolPrgm is meaningful here or copy-pasted from another site.
+- Semantic of oChatbox_Unk_4C and chatbox+0x54/+0x58 fields touched by the mystery path.
+- Why script index 0x78 specifically is used as the "navi has no use for this item" line.
+sources:
+- tools/wf run convert-20261010-210645
+- recomp d2baa24

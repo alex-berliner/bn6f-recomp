@@ -1,0 +1,84 @@
+name: npc_updateHopMovement_809e916
+address: '0x0809E916'
+kind: function
+status: confirmed
+summary: Advances an NPC's hop (jump) arc one frame, landing on the ground if the arc completes.
+interface: void npc_updateHopMovement_809e916(u32 *npc_obj /* r5 */) -> r0 (new Z when in-flight; undefined when
+  landing), r1 (previous Z), r2 (ground Z, <<16), nzcv from `cmp new_z, ground_scaled`
+details: 'Operates on the Overworld NPC object pointed to by r5. Reads ground Z via
+
+  checkZCoordModifiers_8031612 from the NPC''s Coords field. Adds oOverworldNPCObject_HopDelta
+
+  into the running oOverworldNPCObject_HopDeltaCompounded, then adds the compounded total to
+
+  oOverworldNPCObject_Z. If the resulting Z is still above ground (signed < ground_z),
+
+  the new Z is stored back and the function returns the in-flight Z in r0. When the hop
+
+  bottoms out (Z has reached or passed ground), oOverworldNPCObject_Z is snapped to ground,
+
+  oOverworldNPCObject_InteractionLocked is cleared (unlocking interaction), and
+
+  npc_enableScript0x19_809f516 is fired to start the completion script. r5 (the NPC pointer)
+
+  is preserved across the call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-10'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (6 attempt(s), run convert-20261010-210645);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 35' --file inbox_farm_35.c npc_updateHopMovement_809e916
+- method: difftest
+  date: '2026-10-10'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function npc_updateHopMovement_809e916
+
+    ./wf verify --function npc_updateHopMovement_809e916 --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-210645-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-10'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function npc_updateHopMovement_809e916
+
+    ./wf verify --function npc_updateHopMovement_809e916 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 20 out of domain (verify run convert-20261010-210645-verify-6)
+- method: lockstep
+  date: '2026-10-10'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function npc_updateHopMovement_809e916
+
+    ./wf verify --function npc_updateHopMovement_809e916 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-210645-verify-6)
+- method: coverage
+  date: '2026-10-10'
+  detail: 'Executed by: battle, maps, menus2, story3, story4, story5, story6, story9, wander.'
+  reproduce: grep -l '^0809e916 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-10'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp d2baa24
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/npc.c
+coverage:
+- battle
+- maps
+- menus2
+- story3
+- story4
+- story5
+- story6
+- story9
+- wander
+open_questions:
+- Whether oOverworldNPCObject_HopDeltaCompounded is ever reset between hops (not done here).
+- The exact contract/return value of npc_enableScript0x19_809f516 (used here only for its side effect).
+- Exact fixed-point scale of the Z comparison (ground Z is shifted left by 16 prior to the signed compare against
+  the compounded Z).
+sources:
+- tools/wf run convert-20261010-210645
+- recomp d2baa24
