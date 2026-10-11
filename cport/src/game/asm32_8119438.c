@@ -1440,6 +1440,44 @@ Next sprite_updateWrapper_811B45C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811B46C ── */
+/* register form: calls getStructFrom2008450 outside this file, which has no typed C interface yet.
+ * Returns the struct pointer (R1) if found (Z clear), or 0 if not found. */
+static u32 lookup_struct(u32 sprite_id) {
+    R0 = sprite_id;
+    GUEST_CALL(getStructFrom2008450);
+    if (ZERO_FLAG())
+        return 0;
+    return R1;
+}
+
+/* register form: calls sprite_setCoordinates outside this file, which has no typed C interface yet.
+ * Coordinates (x, y) go in R0, R1; the struct pointer goes in R5. */
+static void sprite_set_coords(u32 x, u32 y, u32 struct_ptr) {
+    R0 = x;
+    R1 = y;
+    R5 = struct_ptr;
+    GUEST_CALL(sprite_setCoordinates);
+}
+
+/* Look up the sprite by id; if found, set its screen coordinates. */
+static void set_sprite_coords_if_found(u32 x, u32 y, u32 sprite_id) {
+    u32 struct_ptr = lookup_struct(sprite_id);
+    if (struct_ptr == 0)
+        return;
+    sprite_set_coords(x, y, struct_ptr);
+}
+
+/* sub_811B46C(r0 = x, r1 = y, r2 = sprite_id, r4-r7 preserved):
+ * conditionally update a sprite's position. Outputs r1, r2 from callees;
+ * r4, r5, r6 restored to input (pop in original); flags c, v from last callee. */
+Next sub_811B46C(void) {
+    u32 saved_r5 = R5;
+    set_sprite_coords_if_found(R0, R1, R2);
+    R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811B48C ── */
 /* sub_811B48C(r0 = flag, r1 = table id):
  * Look up the entry for id r1 in the table at 0x2008450. If the lookup
@@ -1570,6 +1608,71 @@ Next object_checkStatusFlag_811BE90(void) {
     R2 = A_byte_811BF94;
     R0 = LD8(R2 + flag_index);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811BE9C ── */
+/* Sprite position offset table (signed 16-bit dx,dy pairs indexed by sprite ID). */
+#define SPRITE_OFFSET_TABLE A_byte_811BF0C
+
+/* Sprite attribute flag table (one byte per sprite ID). */
+#define SPRITE_FLAG_TABLE   A_byte_811BF94
+
+/* Values written to the sprite object's first byte after repositioning. */
+#define SPRITE_ATTR_NORMAL  0x01
+#define SPRITE_ATTR_SPECIAL 0x23
+
+typedef struct { u32 x, y; } Coords2D;
+
+/* register form: calls sprite_getCoordinates outside this file, which has no typed C interface yet */
+static Coords2D get_sprite_coords(void) {
+    GUEST_CALL(sprite_getCoordinates);
+    Coords2D c = { R0, R1 };
+    return c;
+}
+
+/* register form: calls sprite_setCoordinates outside this file, which has no typed C interface yet.
+ * Leaves R3 and flags C,V in the guest state (callers rely on this). */
+static void set_sprite_coords(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(sprite_setCoordinates);
+}
+
+typedef struct { u32 flag_val, attr, flag_table; } AdjustResult;
+
+/* Reposition a sprite by its per-type offset, then tag it normal or special.
+ * The sprite ID is re-read after setCoordinates because the callee may update obj+0xC. */
+static AdjustResult adjust_sprite_offset(u32 obj) {
+    Coords2D pos = get_sprite_coords();
+
+    u32 id    = LD8(obj + 0xC);
+    u32 table = SPRITE_OFFSET_TABLE;
+    u32 idx   = id << 2;
+
+    u32 new_x = pos.x + LDS16(table + idx);
+    u32 new_y = pos.y + LDS16(table + idx + 2);
+    set_sprite_coords(new_x, new_y);
+
+    /* Re-read sprite ID after setCoordinates (callee may have updated [obj+0xC]). */
+    u32 flag_table = SPRITE_FLAG_TABLE;
+    u32 id_after   = LD8(obj + 0xC);
+    u32 flag_val   = LD8(flag_table + id_after);
+    u32 attr       = (flag_val != 0) ? SPRITE_ATTR_SPECIAL : SPRITE_ATTR_NORMAL;
+    ST8(obj, attr);
+
+    AdjustResult res = { flag_val, attr, flag_table };
+    return res;
+}
+
+/* sub_811BE9C(r5 = sprite object ptr) -> r0 r1 r2 r3 lr, flags nz c v */
+Next sub_811BE9C(void) {
+    AdjustResult res = adjust_sprite_offset(R5);
+    R0 = res.flag_val;
+    R1 = res.attr;
+    R2 = res.flag_table;
+    /* R3 and C,V left by sprite_setCoordinates GUEST_CALL; only NZ come from TST. */
+    SET_FLAGS_NZ(res.flag_val);
     RETURN_TO_CALLER();
 }
 
