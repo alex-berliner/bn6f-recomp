@@ -1,0 +1,84 @@
+name: sub_81330AC
+address: '0x081330AC'
+kind: function
+status: confirmed
+summary: Refills all seven background tilemap buffers from a static descriptor table, each via a banded consecutive-row
+  tilemap fill.
+interface: 'void sub_81330AC(void); /* in: none (lr only); out: none; r4-r7 preserved, flags clobbered, Z set on
+  exit from final CMP r6,#0x1C */'
+details: 'Loops over a table of 7 pointers at off_81330CC (indexed r6 = 0,4,...,0x18; loop runs while r6 < 0x1C).
+  Each pointer targets a small descriptor laid out inline after the pointer table: { u32 dst; u32 src; u8 rows;
+  u8 bands; } — the destination tilemap buffer in IWRAM (0x201C400, 0x201C480, 0x201C4A0, 0x201C4C0, 0x201C4E0,
+  0x201C4F0, 0x201C500) and a source tile-data blob in ROM (0x30B200, 0x30B240, 0x30B280, 0x30B290, 0x30B2A0, 0x30B2A2,
+  0x30B2A6). For each entry it loads dst (r0), src (r3), rows (r1) and bands (r2) and calls gfx_fillTilemapConsecutiveBanded_8120C94,
+  which presumably writes rows of tiles into the destination buffer, split into ''bands'' (the second byte of each
+  descriptor is 4 for the first entry and 1 for the rest — the first buffer gets a different banding, likely a multi-layer
+  or partially differing background). No arguments are taken and none are returned; the function is a parameterless
+  "set up all BG tilemaps" initializer. The adjacent byte_813313C/band tables and dword_81331FC belong to the same
+  background-setup data block and are not referenced by this routine itself.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_81330AC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81330AC
+
+    ./wf verify --function sub_81330AC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81330AC
+
+    ./wf verify --function sub_81330AC --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81330AC
+
+    ./wf verify --function sub_81330AC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^081330ac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of the 'bands' parameter (byte +09) in gfx_fillTilemapConsecutiveBanded_8120C94; only that entry
+  0 uses 4 and entries 1-6 use 1 is observable here.
+- Which scene/state calls this (no callers analyzed here), i.e. which background these seven buffers render.
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

@@ -1,0 +1,83 @@
+name: nullsub_105
+address: '0x080EAC5C'
+kind: function
+status: confirmed
+summary: Empty no-op stub sitting at the start of the AI attack jumptable region, serving as the handler for one
+  of the AI attack state IDs (0x0f, i.e. the entry just before 0x10).
+interface: static void nullsub_105(void)
+details: 'A nullsub: immediately returns with mov pc, lr, touching no registers, memory, or flags. It is placed
+  directly before the AIAttackJumptable data table (a table of .word entries mapping AI attack state IDs 0x10..0x5d
+  to handler routines such as aiAttack_stepStateMachine_80EB04C, battle_aiAttackDispatch_80EB436, megamanChargeShotAiAttack_80EBE00,
+  bubbleShotAttack_80ECBB0, tornadoAiAttack_80ED454, etc.). Because the table''s first entry is index 0x10, the
+  stub''s position suggests it fills the handler slot for the state just before that index (0x0f) in whatever dispatch
+  structure indexes these handlers; as a no-op it makes that attack state do nothing. The function is followed by
+  the table itself in the same overlay region, with cross-version annotations (EXE6F: 80f05f0, EXE6G: 80f1920) noting
+  the corresponding addresses in the other BN6 versions.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c nullsub_105
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function nullsub_105
+
+    ./wf verify --function nullsub_105 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function nullsub_105
+
+    ./wf verify --function nullsub_105 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function nullsub_105
+
+    ./wf verify --function nullsub_105 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080eac5c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which AI attack state ID actually selects this stub (presumably 0x0f) has not been confirmed against the dispatch
+  code that indexes the table.
+- Whether the stub is a placeholder for an unimplemented/removed attack or an intentional "do nothing" state is
+  unknown.
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

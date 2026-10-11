@@ -1,0 +1,102 @@
+name: handleVariableDamageChip_800AEE8
+address: '0x0800AEE8'
+kind: function
+status: confirmed
+summary: Re-rolls the damage value of the currently selected chip in both battlers' records, but only when that
+  chip has the variable-damage flag set.
+interface: void handleVariableDamageChip_800AEE8(void)
+details: 'Walks two per-battler chip records rooted at byte_20349C0 (0x20349C0):
+
+  the player''s block is first, the opponent''s follows 0x50 bytes later
+
+  (battler index 0 = player, 1 = opponent). Each block begins with a
+
+  selector byte; the selected entry starts at selector*2 + 2 and holds the
+
+  chip id as a u16, with the chip''s current damage at +0xC (u16).
+
+
+  For each battler the code loads the selected chip id, fetches its chip
+
+  data via getChip8021DA8, and tests bit 0x80 of the byte at +9 of the
+
+  chip data (the variable-damage flag). When set, it calls
+
+  sub_80109A4(chip_id, battler) and stores the returned halfword as the
+
+  entry''s new damage; when clear, the stored damage is left untouched.
+
+  Chips without the flag keep whatever value is already at +0xC.
+
+
+  Quirk: the 0x80 mask is materialized in r2 right after each
+
+  getChip8021DA8 call and survives to callers when the second chip is not
+
+  variable-damage, so r2 is a caller-visible output on that path. The
+
+  final TST only updates n/z; outgoing c/v come from the last guest call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c handleVariableDamageChip_800AEE8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function handleVariableDamageChip_800AEE8
+
+    ./wf verify --function handleVariableDamageChip_800AEE8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 136 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function handleVariableDamageChip_800AEE8
+
+    ./wf verify --function handleVariableDamageChip_800AEE8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function handleVariableDamageChip_800AEE8
+
+    ./wf verify --function handleVariableDamageChip_800AEE8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800aee8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions: []
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

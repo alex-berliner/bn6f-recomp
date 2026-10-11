@@ -1,0 +1,74 @@
+name: sub_8127C64
+address: '0x08127C64'
+kind: function
+status: confirmed
+summary: Per-frame update of the closing/ending cutscene; once the screen fade starts, stores the scene's exit value
+  into the game state and returns to the map.
+interface: void scene_updateClosing_8127C64(void); /* work = r5 (scene object), toolkit = r10; clobbers r0-r4, lr,
+  flags; preserves r5-r9, r12 */
+details: 'Runs four scene-step subroutines (sub_81281E0, sub_8127F54, sub_8127FE4, sub_8128280), then the global
+  entity update handlers (entity_runAllUpdateHandlers_80465BC) and sub_80465F8. If no screen fade is active (IsScreenFadeActive
+  returns Z clear), the function returns and the scene simply runs again next frame. Once a fade is underway it
+  finalizes the scene: calls sub_8046664, obtains an exit value from sub_8127EF4 (returned in r0), loads the game
+  state pointer from toolkit + oToolkit_GameStatePtr, and stores the exit value according to bit 0 of the scene
+  object''s byte at +0xD: bit set -> 32-bit store to game state +0x78, bit clear -> byte store to game state + oGameState_Unk_13.
+  It then re-reads the +0xD mode byte and branches on bit 0 again: set -> calls ClearPETMenuDataFlag with r0=1,
+  r1=1, r2=1, r3=mode byte, followed by next_exitToMap_811F728; clear -> calls pet_menuExitToMap_811F708 with r0=mode
+  byte (re-read), r1=1, r2=1, r3=mode byte (first read). Quirk: the mode byte is read twice instead of being reused,
+  and the exit routines inherit whatever registers the previous callee left behind. The function is a leaf-style
+  wrapper whose only real inputs are r5 and r10, so its C form reads them from the caller''s register state.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_8127C64
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8127C64
+
+    ./wf verify --function sub_8127C64 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8127C64
+
+    ./wf verify --function sub_8127C64 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 9 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8127C64
+
+    ./wf verify --function sub_8127C64 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story1, story2, story8.'
+  reproduce: grep -l '^08127c64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- what the four scene-step subroutines (sub_81281E0/sub_8127F54/sub_8127FE4/sub_8128280) actually step through
+- meaning of game state +0x78 vs oGameState_Unk_13 for the exit value
+- exact semantics of the +0xD bit-0 mode byte and which scene kinds use which exit path
+- what sub_8127EF4 computes as the exit value
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

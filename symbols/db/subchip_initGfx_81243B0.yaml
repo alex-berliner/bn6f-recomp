@@ -1,0 +1,84 @@
+name: subchip_initGfx_81243B0
+address: '0x081243B0'
+kind: function
+status: confirmed
+summary: Sets up the graphics for the SubChip menu screen — builds a decompression "init refs" table, decompresses
+  the screen's tiles/palettes/fonts, prepares its text script, and blits the background tilemap to the text layer.
+interface: void subchip_initGfx_81243B0(void)
+details: 'Builds a table of init refs at unk_20096E0 from a static template at off_8124450. The template holds three
+  entries of {source ptr, size, word, word}: three compressed graphics blobs at dword_86C9108, dword_86C9AF4 and
+  dword_86C9B54, each with size 2 (a compression-format id) followed by a destination (palette_3001960, unk_3001AC0,
+  unk_3001A20) and value 0x20. For each entry the first pair is run through sub_811FB84(source, size) (presumably
+  producing a decompression descriptor word) and the two trailing words are copied unchanged; the assembled table
+  is NUL-terminated. The ref table is then fed to decompAndCopyData, which decompresses and copies the graphics
+  into VRAM/palette/WRAM destinations; a second, hardcoded ref table at byte_8124488 is processed the same way,
+  loading comp_86C8054 to 0x06000020 (the menu''s character/font tiles into the text-layer tile block) and comp_86CF82C
+  into eDecompBuffer2013A00. sub_8123300 then prepares a text script: it gets a list of compressed text pointers
+  at off_8124410 (13 entries, all CompText86CFAF8 except indices 0 and 11 which are CompText86CF994), the script
+  buffer eTextScript201C100, and the scratch buffer eDecompBuffer2013A00. Finally CopyBackgroundTiles(0, 0, 1, eTextScript201BA00,
+  0x1E, 0x14) writes a 30x20-tile background map (built from the descriptor list at off_8124498, which references
+  tilemaps, tile images like comp_86C9BD4 at VRAM 0x6014840, comp_86C9148 at 0x6003C00, comp_86CFC64 at 0x6010000,
+  and palettes byte_30016D0/byte_3001690) into BG tile block 1 — i.e. the full-screen SubChip menu backdrop. The
+  scratch buffer eDecompBuffer2013A00 is shared by every decompression stage. Preserves r4-r7; only r0-r3 and flags
+  are clobbered.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c subchip_initGfx_81243B0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function subchip_initGfx_81243B0
+
+    ./wf verify --function subchip_initGfx_81243B0 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function subchip_initGfx_81243B0
+
+    ./wf verify --function subchip_initGfx_81243B0 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function subchip_initGfx_81243B0
+
+    ./wf verify --function subchip_initGfx_81243B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^081243b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+related:
+- sub_811FB84
+open_questions:
+- What sub_811FB84 does with (source ptr, size) — presumably packs them into the compressed-pointer word the decompressor
+  consumes
+- What sub_8123300 does with the compressed-text list / script buffer pair (likely sets up the menu's text-script
+  state)
+- 'Exact screen identity: assumed the SubChip use menu; the two non-default text strings (indices 0 and 11 of off_8124410)
+  may be the ''use'' and ''cannot use'' lines'
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

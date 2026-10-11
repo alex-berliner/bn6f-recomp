@@ -1,0 +1,87 @@
+name: chatbox_EB_option
+address: '0x08041244'
+kind: function
+status: confirmed
+summary: Appends one entry to the chatbox's option (choice) list, copying the option's parameter bytes into the
+  next free slot and resetting the choice cursor.
+interface: chatbox_EB_option(u32 r1 /* unused */, const u8 *r4 optionDef, Chatbox *r5) -> r0=1, r1=oChatbox_Unk_80,
+  r2=offset of new entry's gfx-load-state byte, r3=oChatbox_Unk_70 word, r4=optionDef+4; NZCV from ADDS r4,#4; r2/r3/r4/lr
+  clobbered
+details: 'Part of the chatbox "0xEB" (option/choice) opcode handling. First sets chatbox flag bit FLAGS_3E_UNK_0010
+  via chatbox_setflags_3e and stores 0xA (10) to the halfword oChatbox_BoxYX. Then it reads the option-entry count
+  from oChatbox_Unk_80 and computes a bare offset (not an absolute address) into the chatbox struct: entryOff =
+  0xA0 + count*0x10, i.e. each entry is a 0x10-byte slot in an array starting at chatbox+0xA0. Into that slot it
+  writes optionDef[1] at +0, optionDef[2] at +4, optionDef[3] at +5, the shared word oChatbox_Unk_70 at +8, and
+  finally the byte from oChatbox_BoxGfxLoadState_0F at +0xC (the entry''s gfx-load-state trailer). The count is
+  incremented and stored back to oChatbox_Unk_80 and also (as a byte) to oChatbox_Unk_12; oChatbox_ChoiceCursorPos
+  is reset to 0 so a newly opened choice box starts with the first option highlighted. Returns 1 in r0, hands optionDef+4
+  back in r4 so the caller can advance to the next option definition, and leaves the entry offset in r2 for the
+  caller. The r1 input is never read.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c chatbox_EB_option
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_EB_option
+
+    ./wf verify --function chatbox_EB_option --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_EB_option
+
+    ./wf verify --function chatbox_EB_option --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_EB_option
+
+    ./wf verify --function chatbox_EB_option --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08041244 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Meaning of oChatbox_Unk_70 (shared word copied into every entry at +8) and oChatbox_Unk_12 (byte copy of the entry
+  count) is unknown
+- What flag bit 0x10 of the chatbox's 0x3E flag set enables
+- Whether entry slots past the first use the gaps at +1..+3 and +6..+7 for anything (left untouched here)
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

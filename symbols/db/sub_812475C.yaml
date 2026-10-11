@@ -1,0 +1,73 @@
+name: sub_812475C
+address: '0x0812475C'
+kind: function
+status: confirmed
+summary: Redraws three 8x2-tile background strips in tile block 2 at column 0x15, filling each from a tile-id table
+  or clearing it depending on scene state words and an event flag.
+interface: void sub_812475C(void); /* reads r10 (toolkit), uses state = toolkit->S2001c04_Ptr; preserves r4-r7;
+  returns r0-r3/flags as left by last callee */
+details: "Loads the scene-state pointer from the toolkit at oToolkit_S2001c04_Ptr (r10-relative, +0). For each of\
+  \ three strips it either copies an 8-wide x 2-tile row of tile ids via CopyBackgroundTiles (j=0x15, tile_block_32x32=2,\
+  \ j_size=8, i_size=2) or passes tile_ids=0 to call_sub_3005EBA, which presumably clears/fills the strip with tile\
+  \ 0:\n  - strip at i=8: real tiles (unk_201EC8C) when word at state+0x24 is nonzero, else cleared;\n  - strip\
+  \ at i=5: real tiles (unk_201ECAC) while event flag EVENT_1709 (0x1709) is set,\n    else cleared, tested via\
+  \ TestEventFlagFromImmediate (bank in r0, index in r1);\n  - strip at i=2: real tiles (unk_201ECCC) when word\
+  \ at state+0x28 is nonzero, else cleared.\nThe three source tables are consecutive 0x20-byte arrays (0x8*0x2 u16\
+  \ ids each) at 0x201EC8C/0x201ECAC/0x201ECCC in IWRAM. r4-r7 are pushed/popped; the flags and r0-r3 escape from\
+  \ the last callee call. All strips live in the same 32x32 tile block (2) at the same column, so they form a vertical\
+  \ stack of three status/icon slots on the scene background, toggled by the state words and the event flag.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_812475C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812475C
+
+    ./wf verify --function sub_812475C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812475C
+
+    ./wf verify --function sub_812475C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812475C
+
+    ./wf verify --function sub_812475C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^0812475c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+open_questions:
+- what scene/state struct S2001c04 is, and what the words at +0x24/+0x28 mean (per-strip visibility flags?)
+- what event flag 0x1709 represents in game terms
+- 'exact behaviour of call_sub_3005EBA when tile_ids is 0 (assumed: clear/fill with tile 0)'
+- which on-screen elements these three strips correspond to (icons? gauge segments? menu slots?)
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

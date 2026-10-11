@@ -1,0 +1,107 @@
+name: sub_8040B3A
+address: '0x08040B3A'
+kind: function
+status: confirmed
+summary: Sets up the chatbox's sprite sub-structure to display a character's mugshot portrait, loading its graphics
+  and animation data.
+interface: void chatbox_loadMugshotPortrait_8040B3A(u32 mugshotId /*r0*/, u32 attr01 /*r1*/, Chatbox* chatbox /*r5*/);
+  /* r4 passes through; returns r1=chatbox+0x88 value, r2/r3 whatever the sprite animation loader left, r7=chatbox
+  */
+details: 'Takes the chatbox object in r5 and operates on its sprite sub-structure at offset 0x1F8
+
+  (CHATBOX_SPRITE_OFFSET). Calls spriteLoadMugshot_800275A with the mugshot id (r0) and the
+
+  value from r1 (stored afterwards at sprite+4, some attribute/select byte), with r1 and r2
+
+  deliberately kept live across the call in the original. Then resets the sprite state fields:
+
+  sprite+0xA = 3 (halfword), sprite+0 = 0 (idle state), sprite+3 = 6, sprite+0x14 = 0.
+
+  Quirk: if the chatbox''s own state byte at chatbox+0x0A (oChatbox_Unk_0A) is already 3, the
+
+  sprite state at sprite+0 is set to 3 instead of 0, carrying the chatbox state over.
+
+  Reads chatbox field 0x90 (a resource number), shifts it left by 4, stores the low byte at
+
+  sprite+0x15, and calls sprite_loadAnimationData_spritePtrProvidedDirectly with that sprite
+
+  id (r0), sprite+3''s value 6 still in r1 and 0x90 in r2; r2 on return is whatever the loader
+
+  left there. Finally stores fixed tile base 0x3C0 at sprite+8, copies chatbox field 0x84
+
+  into sprite+0xC (halfword) and chatbox field 0x88 into sprite+0xE (byte); the 0x88 value is
+
+  also what callers observe in r1 on return. r4 and r5 are preserved; r7 ends up holding the
+
+  chatbox pointer. r0, flags (nzcv) are clobbered.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_8040B3A
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8040B3A
+
+    ./wf verify --function sub_8040B3A --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 262 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8040B3A
+
+    ./wf verify --function sub_8040B3A --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8040B3A
+
+    ./wf verify --function sub_8040B3A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08040b3a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- exact meaning of attr01 (r1) and the sprite+4 / sprite+3 = 6 fields
+- purpose of chatbox fields 0x84 and 0x88 (tile source / palette?) copied into the sprite
+- why chatbox state 3 suppresses the sprite state reset
+- the semantic of the <<4 applied to chatbox field 0x90 when deriving the sprite id
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

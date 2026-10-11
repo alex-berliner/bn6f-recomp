@@ -1,0 +1,106 @@
+name: custMenu_80298F4
+address: '0x080298F4'
+kind: function
+status: confirmed
+summary: 'Per-frame handler for the first battle tutorial custMenu: polls the current tutorial state''s check routine
+  and, if it yields a message, plays it through the chatbox while parking the menu.'
+interface: int custMenu_firstBattleTutorialTick_80298F4(custMenu* menu /* r5 */); returns r0 = 1 when a text script
+  was started this frame, 0 otherwise (no tutorial active, no check for this state, or the check produced nothing).
+  r2/r3 are returned as the callees leave them; r4-r7/r10 preserved. Flags clobbered (nzcv).
+details: 'Reads the menu struct''s state byte at +0x0C and dispatches to one of five
+
+  tutorial check routines keyed by state: sub_802996E (state 0),
+
+  sub_80299B6 (state 1), sub_80299FA (state 3), sub_8029A1E (states 4 and 5
+
+  share this check), sub_8029A36 (state 6). State 0xFF means no tutorial is
+
+  active, and state 2 (plus any other value) has no check, so those return 0
+
+  immediately. Each check receives the state byte in r0 and returns a text
+
+  script index, or 0 for "nothing to say this frame".
+
+
+  When a check returns a nonzero script index, the function looks up the
+
+  text archive in the TextScriptFirstBattleTutorials table (indexed by the
+
+  state byte, entry size 4) and runs it via chatbox_runScript. It then
+
+  parks the menu while the text plays: the previous value of the timer byte
+
+  at +0x01 is saved to +0x0D, the timer is restarted at 0x34, and the
+
+  halfword counter at +0x02 is cleared. Only r5 (the menu pointer) is
+
+  meaningfully used as input; r4/r6/r7/r10 pass through untouched.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c custMenu_80298F4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function custMenu_80298F4
+
+    ./wf verify --function custMenu_80298F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function custMenu_80298F4
+
+    ./wf verify --function custMenu_80298F4 --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 11 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function custMenu_80298F4
+
+    ./wf verify --function custMenu_80298F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080298f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- The five check routines (sub_802996E, sub_80299B6, sub_80299FA, sub_8029A1E, sub_8029A36) are untyped; what each
+  tutorial step condition actually tests is unknown.
+- Exact meaning of the timer byte at +0x01 / saved copy at +0x0D and the halfword counter at +0x02 in the custMenu
+  struct (assumed a text-display park mechanism).
+- Why state 2 has no check (skipped step or handled elsewhere).
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

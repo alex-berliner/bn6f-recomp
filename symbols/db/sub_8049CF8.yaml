@@ -1,0 +1,86 @@
+name: sub_8049CF8
+address: '0x08049CF8'
+kind: function
+status: confirmed
+summary: Resets the 0x48-byte dialog-text work buffer at 0x2001800, pre-filling its two text lines with blank tile
+  bytes (0xE5) plus 0xE6 marker bytes.
+interface: void sub_8049CF8(void) — no meaningful inputs; returns with r2=0xE5E5 and r3=0xE500 left over from the
+  last fill call, r4-r7 preserved
+details: "Zero-fills the whole 0x48-byte work block at word_2001800 (EWRAM) via ZeroFillByWord,\nthen lays out blank\
+  \ line data inside it with two HalfwordFill calls:\n\n  +0x00..+0x07  header area, zeroed (never written again\
+  \ here)\n  +0x08..+0x27  line 1: filled with halfword 0xE5E5 (i.e. repeated 0xE5 bytes, the\n                blank-textbox\
+  \ tile/character code), then a 0xE6 byte is stored at\n                +0x18 (byte_2001818)\n  +0x28..+0x47  line\
+  \ 2: filled with 0xE5E5 the same way, then a 0xE6 byte stored\n                at +0x3C (byte_200183C)\n\nThe\
+  \ two 0xE5E5 fills plus the 0x48 total size only line up if HalfwordFill's count\nargument is a byte count (0x20\
+  \ bytes = 16 halfwords per line), which matches the\nsecond line starting exactly at +0x28. The 0xE6 bytes sit\
+  \ inside the filled rows\n(at +0x10 into line 1 and +0x14 into line 2), so they look like per-line\nattribute/terminator\
+  \ markers rather than end-of-buffer bytes; their exact role in\nthe text renderer isn't confirmed from this function\
+  \ alone. Quirk: because\nHalfwordFill preserves r2/r3, the caller-visible exit state carries the last fill\nsetup\
+  \ (r2=0xE5E5, r3=0xE500) even though the function takes no arguments.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_8049CF8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8049CF8
+
+    ./wf verify --function sub_8049CF8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8049CF8
+
+    ./wf verify --function sub_8049CF8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8049CF8
+
+    ./wf verify --function sub_8049CF8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08049cf8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact consumer of word_2001800 — assumed to be the dialog/chatbox text renderer's line buffer; not traced here
+- Meaning of the 0xE6 marker bytes and why they sit at different offsets (0x10 vs 0x14) within the two lines
+- Whether HalfwordFill's count parameter is bytes or halfwords (byte-count interpretation assumed, since it makes
+  the 0x48-byte layout consistent)
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

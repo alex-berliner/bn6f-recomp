@@ -1,0 +1,81 @@
+name: object_createAIData
+address: '0x0800ED2C'
+kind: function
+status: confirmed
+summary: Allocates one of the 8 battle AI data slots (AIData + AIState + AIAttackVars) for an object, zero-fills
+  it, and returns its pointer or NULL if all slots are in use.
+interface: 'void object_createAIData() -> r0: eAIData slot base (or NULL), r2: updated eUsedAIDataBitfield value,
+  r3: address of eUsedAIDataBitfield; r4/r5 preserved; clobbers r1, lr, flags'
+details: "Finds the first free AI data slot by scanning the top byte (bits 31..0) of the global\neUsedAIDataBitfield,\
+  \ with bit 31 = slot 0 and the test mask shifting right each iteration.\nThe 8 slots live back to back at eAIData\
+  \ with a 0x100-byte stride (oAIData_Size), laid out as:\n  +0x00 AIData (0x7C bytes zero-filled),\n  +0x80 AIState\
+  \ (0x20 bytes zero-filled),\n  +0xA0 AIAttackVars (0x50 bytes zero-filled),\nall cleared via ZeroFillByWord in\
+  \ word units. On success the slot's bit is set in\neUsedAIDataBitfield and the slot base is returned in r0. If\
+  \ all 8 slots are taken, r0 = NULL\nis returned and the bitfield is left untouched. Quirks: r2/r3 hand back the\
+  \ bitfield value and\nits address so callers can update/read it without reloading; r5 is passed through unchanged\n\
+  (popped as pushed); the \"no slot\" path is checked before the bit index is exhausted, and the\nloop caps at 8\
+  \ slots.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c object_createAIData
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_createAIData
+
+    ./wf verify --function object_createAIData --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_createAIData
+
+    ./wf verify --function object_createAIData --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_createAIData
+
+    ./wf verify --function object_createAIData --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800ed2c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/object.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact field semantics inside AIData/AIState/AIAttackVars (only their sizes/offsets are known here)
+- who the callers are and how they use the returned r2/r3 bitfield pass-back
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

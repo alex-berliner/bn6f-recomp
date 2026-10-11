@@ -1,0 +1,83 @@
+name: possiblyGetBattleEmotion_8015B64
+address: '0x08015B64'
+kind: function
+status: confirmed
+summary: Picks the player's current battle emotion (face/sprite state) from AI anger/chip flags and the navi's mood,
+  returning it alongside transformation, mood and Beast Out counter from NaviStats.
+interface: 'u32 battle_getPlayerEmotion(u32 alliance /*r0: false=player side?*/); -> r0 = emotion (0..5), r1 = NaviStats.Transformation,
+  r2 = NaviStats.Mood, r3 = NaviStats.BeastOutCounter, C = set unless emotion 0 or early-out on AIData.Unk_36, V
+  = clear; r4-r6 preserved'
+details: 'Looks up the navi''s NaviStats (GetBattleNaviStatsAddr) and the player BattleObject (battle_findPlayer)
+  for the requested side, then reads the AI data pointer (oBattleObject_AIDataPtr). Emotion selection priority:
+  AIData.Unk_36 != 0 -> 5; Mood == 0 -> 5 (normal, overrides everything else); AIData.Anger != 0 -> 3; AIData.Unk_32
+  != 0 -> 1; Mood == 0xFF -> 2; otherwise 0. Also loads NaviStats.Transformation, NaviStats.Mood and NaviStats.BeastOutCounter
+  into r1-r3 for the caller, which presumably uses them to pick the portrait/emotion frame (e.g. Beast Out or emotion
+  window in battle). Quirk: the carry flag out is a side effect of the CMP/TST chain — C is clear only when the
+  decision falls through to emotion 0 (mood < 0xFF) or when the Unk_36 test branches away before any CMP ran; callers
+  may or may not consume it.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c possiblyGetBattleEmotion_8015B64
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function possiblyGetBattleEmotion_8015B64
+
+    ./wf verify --function possiblyGetBattleEmotion_8015B64 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function possiblyGetBattleEmotion_8015B64
+
+    ./wf verify --function possiblyGetBattleEmotion_8015B64 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function possiblyGetBattleEmotion_8015B64
+
+    ./wf verify --function possiblyGetBattleEmotion_8015B64 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08015b64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact meaning of AIData.Unk_32 and AIData.Unk_36 (one likely a "custom screen/chip open" or "full charge" style
+  flag, the other an anger-related override)
+- what the caller does with the C flag output and with transformation/beastOutCounter
+- what emotion values 1, 2, 3 and 5 map to visually (anger, full-sync/heat, beast-out warning, normal?)
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

@@ -1,0 +1,90 @@
+name: checkThenStartBattle_8005A8C
+address: '0x08005A8C'
+kind: function
+status: confirmed
+summary: While in the field subsystem, checks a set of "is it safe to fight now" guards and, if all pass, launches
+  the queued battle with a fade-out.
+interface: void checkThenStartBattle(void); // r10 = toolkit; no meaningful outputs; clobbers r0-r3 and flags
+details: "Called (per the readable C) with the toolkit in r10, from which it loads the\nGameState pointer (oToolkit_GameStatePtr)\
+  \ and keeps it in r5 (saved/restored via\npush/pop {r5}). It then runs a chain of guards, each of which aborts\
+  \ with no\naction if it trips:\n\n- oGameState_SubsystemIndex (byte 0 of GameState) must be 4 (field/overworld).\n\
+  - EVENT_1717_PLAYER_ADVANCE_FORWARD must be clear (player not mid-step-forward).\n- sub_809E462 (purpose unknown,\
+  \ returns a set flag) must not trip.\n- Event flags EVENT_1700 and EVENT_173E must be clear.\n- warp_LoadCurrentAndReadUnk10_8005F28\
+  \ must report no warp in progress.\n- TestPETMenuDataFlag(1) must be clear (no PET menu overlay active).\n- IsScreenFadeActive\
+  \ must report a fade IS currently active (battle starts on top\n  of an already-running fade; note the inverted\
+  \ sense).\n- IsCutsceneScriptNonNull must be clear (no cutscene script running).\n- chatbox_mask_eFlags2009F38(0x80)\
+  \ must be clear (no chatbox text on screen).\n\nIf every guard passes, it fetches the pending battle settings\
+  \ pointer via\nsub_80AA4C0 (returns pointer in r0, availability in ZF). If one is queued, it\ncalls StartBattle(settings,\
+  \ 1) and then SetScreenFade(0x2C, 0x10) to fade the\nscreen out into the battle transition.\n\nQuirk: the screen-fade\
+  \ guard requires a fade to already be active before a\nbattle may start, so this only fires on frames where a\
+  \ fade is in progress.\nUses movflag to load event-flag constants (bank 0x17 flags) before calling\nTestEventFlagFromImmediate.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c checkThenStartBattle_8005A8C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function checkThenStartBattle_8005A8C
+
+    ./wf verify --function checkThenStartBattle_8005A8C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function checkThenStartBattle_8005A8C
+
+    ./wf verify --function checkThenStartBattle_8005A8C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function checkThenStartBattle_8005A8C
+
+    ./wf verify --function checkThenStartBattle_8005A8C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08005a8c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What condition sub_809E462 tests (returns a set flag that blocks battle start)
+- Meaning of event flags EVENT_1700 and EVENT_173E (bank 0x17)
+- What the PET menu data flag 1 tracks exactly
+- Semantics of SetScreenFade(0x2C, 0x10) parameters (fade kind 0x2C, param 0x10)
+- What warp_LoadCurrentAndReadUnk10_8005F28's unk10 field means; it is used only as a warp-in-progress guard here
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

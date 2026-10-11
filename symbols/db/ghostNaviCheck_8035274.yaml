@@ -1,0 +1,90 @@
+name: ghostNaviCheck_8035274
+address: '0x08035274'
+kind: function
+status: confirmed
+summary: Checks whether the player is standing on a ghost Navi trigger in the undernet/network maps and starts the
+  shared ghost Navi encounter cutscene if the ghost has appeared but not yet been deleted.
+interface: void ghostNaviCheck_8035274(void) — takes nothing (r10 = toolkit pointer is carried over from the caller's
+  register form), returns nothing; callers do not read flags.
+details: Runs only while normal overworld control is active (IsNotSlipRunningAndNotInCutscene must return no-slip/no-cutscene,
+  i.e. Z set on return) and while event flag EVENT_1700 is clear — that flag acts as a one-shot global disable for
+  ghost Navi encounters. Reads the GameState pointer from the toolkit (r10 + oToolkit_GameStatePtr), requires GameState_MapGroup
+  >= 0x80 (the high map-group range used by the ghost Navi areas), then calls checkCoordinateTrigger_8031a7a on
+  the player overworld object's position (OverworldPlayerObjectPtr + 0x1C) to get the coordinate trigger id under
+  the player. Only trigger ids 0xD0..0xEF are considered ghost Navi triggers. It then walks a table at word_80352DC
+  of 6-byte entries { u16 triggerId, u16 requiredFlag, u16 clearedFlag } terminated by triggerId 0 (entries cover
+  triggers 0xD0..0xD6, each requiring flag 0x104/0x21A-region flags per entry and clearing flags 0x1B..0x20 paired
+  with parameter words). A parallel table at byte_803530C holds a 4-byte cutscene parameter per entry (values 1..7
+  with 0xFF filler). When the player's trigger matches an entry whose required event flag is set (ghost is currently
+  appearing) and whose cleared flag is clear (that ghost has not already been battled/deleted), it calls StartCutscene
+  with the shared CutsceneScript byte_80990B8 and the table's parameter word, then returns; otherwise it continues
+  scanning or exits. Flag checks use TestEventFlag with 16-bit flag ids from the table; the gate uses TestEventFlagFromImmediate
+  with EVENT_1700 split as group 0x17 / index 0x00.
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c ghostNaviCheck_8035274
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ghostNaviCheck_8035274
+
+    ./wf verify --function ghostNaviCheck_8035274 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ghostNaviCheck_8035274
+
+    ./wf verify --function ghostNaviCheck_8035274 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ghostNaviCheck_8035274
+
+    ./wf verify --function ghostNaviCheck_8035274 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08035274 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- exact game meaning of EVENT_1700 (likely set after all ghost Navis are dealt with or a related story point)
+- mapping of the per-entry cutscene parameter values (1..7) to the individual ghost Navi NPCs
+- whether checkCoordinateTrigger_8031a7a's exact return semantics (trigger id vs. index) are confirmed
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

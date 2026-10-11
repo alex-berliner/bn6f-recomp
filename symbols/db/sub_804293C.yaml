@@ -1,0 +1,84 @@
+name: sub_804293C
+address: '0x0804293C'
+kind: function
+status: confirmed
+summary: Chatbox text-script command that centers the next run of text horizontally, storing the computed start
+  X and draw position into the chatbox object.
+interface: u32 chatbox_placeCenteredTextRun_804293C(u32* scriptPtr /* r4 */, Chatbox* chatbox /* r5 */); returns
+  1 in r0, new draw pos in r1, aligned offset in r2, next char X in r3, scriptPtr advanced by 3 in r4; flags set
+  as for r4+3 add (N=Z=C=V=0 in practice); preserves r6, r7
+details: 'Implements a 3-byte text script command (byte at +2 = run length in tiles) for the chatbox text renderer.
+  Computes the run''s pixel width as 11*(tileCount-1)+16, then computes a centered start offset: the right edge
+  is 0xB0 (176) when the chatbox layout flag selected via chatbox_maskFlags_3e(mask=2) is set, otherwise 0xF0 (240);
+  startX = (rightEdge - width) >> 1. When the flag is clear, startX is further reduced by chatbox+oChatbox_TextScriptCharIdx
+  (characters already printed on the line). Stores startX + charIdx to chatbox+0x94 (next character X), rounds startX
+  down to a multiple of 8 pixels via ((startX>>1)<<1)<<2, adds that to chatbox+oChatbox_Unk_7C (current text draw
+  position) and stores it back. Advances the script pointer by 3 bytes; the caller is expected to continue executing
+  the script. Returns r0=1 to signal the command was consumed.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_804293C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804293C
+
+    ./wf verify --function sub_804293C --snapshots build-snapshots'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 256 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804293C
+
+    ./wf verify --function sub_804293C --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804293C
+
+    ./wf verify --function sub_804293C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0804293c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of the mask-2 layout flag in chatbox_maskFlags_3e (alternate/narrow chatbox layout vs. another mode)
+  is inferred only from the 176-vs-240 right edge.
+- Whether oChatbox_Unk_7C holds a VRAM/offset value in pixels*4 or something else; the <<2 scaling is inferred from
+  the 8-pixel alignment math.
+- Name of the text script command opcode this handler corresponds to.
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

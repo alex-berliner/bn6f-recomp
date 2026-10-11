@@ -1,0 +1,79 @@
+name: sub_80A9B9C
+address: '0x080A9B9C'
+kind: function
+status: confirmed
+summary: Brings a freshly spawned overworld object live — resolves its spawn/event flags, loads and configures its
+  sprite from its spawn-config table entry, and marks it active.
+interface: void sub_80A9B9C(u32 obj /* r5 */, u32 cfg /* r7 */); // r6 holds the object's saved z across the priority
+  fallback; clobbers r6 and returns whatever sub_80A9C26 leaves in r0-r3 and the flags
+details: 'Overworld-object spawn handler operating on two structures passed in registers: r5 = the object''s state
+  block, r7 = its spawn-config table entry. Steps: sets obj->state (+0) to 3 ("spawning") and zeroes the object''s
+  timer/counter at +0x24. Then it branches on the event flag at cfg+0 (via TestEventFlag): if the flag is already
+  set — a repeat spawn — it sets the flag at cfg+2 and clears the companion flag at cfg+4; if not set — first spawn
+  — it parks the object in state 1 instead and only clears the cfg+2 flag (this path never spawns the visible object).
+  Next it loads the object''s sprite with sprite_load(0x80, cfg+6 resource, cfg+7 sprite index). If the priority
+  byte at cfg+0xC is 0xFF, the priority is derived from position: the object''s z field (+0x14) is saved, checkZCoordModifiers_8031612''s
+  result is stored there shifted left 16, applyLayerEffectToOWObject_8035694 computes the priority from obj+0xC,
+  and the original z is restored; otherwise the cfg byte is used directly and passed to sprite_setPriority_8002E14.
+  Remaining sprite setup from the config: animation index (+8) via sprite_setAnimation plus sprite_loadAnimationData,
+  shadow disabled (sprite_noShadow), the byte at +0xA shifted left 24 into sprite_setUnk0x2c, palette at +0xB, and
+  flip at +0xD. Finally the object''s sub-state at +8 is set to 4 (active) and sub_80A9C26 is tail-called to finish
+  initialisation.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_80A9B9C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A9B9C
+
+    ./wf verify --function sub_80A9B9C --snapshots build-snapshots'
+  result: 'captured calls: 14 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A9B9C
+
+    ./wf verify --function sub_80A9B9C --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A9B9C
+
+    ./wf verify --function sub_80A9B9C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3, story2, story8, story9.'
+  reproduce: grep -l '^080a9b9c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm29.c
+coverage:
+- battles2
+- maps
+- menus3
+- story2
+- story8
+- story9
+related:
+- sub_80A9C26
+open_questions:
+- exact meaning of the three event-flag words at cfg+0/+2/+4 and how spawn-once vs repeat spawns are keyed to them
+- semantics of the byte at cfg+0xA stored via sprite_setUnk0x2c (value is shifted left by 24)
+- what sub_80A9C26 does to complete the spawn and why the first-spawn path (state 1) leaves the object hidden
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec

@@ -1,0 +1,85 @@
+name: sub_8004702
+address: '0x08004702'
+kind: function
+status: confirmed
+summary: Clears one state word (offset 0xC4) of all 16 overworld NPC object slots, presumably invalidating each
+  NPC's active/behavior word before an area (re)load.
+interface: void sub_8004702(void) — no meaningful inputs (lr = return address only); returns garbage in r0..r3 (r0=0x10,
+  r2=0, r1/r3 = loop addresses) and flags from the final CMP r0,#0x10 (Z=1, C=1, V=0, N=0); callers read back only
+  r0-r3 and nzcv per the contract.
+details: 'Walks the fixed overworld NPC object table at eOverworldNPCObjects, 16 slots of 0xD8 bytes each. In each
+  slot it computes entry + 0xA0 and stores 0 at that address + 0x24, i.e. entry + 0xC4, a u32 the readable C labels
+  the object''s "active"/behavior word. The loop is unstructured: r0 counts iterations, and the leftover register
+  values and flags leak to the caller (r0 = 0x10, r2 = 0, r1 = last store address, r3 = base + 16*0xD8), though
+  callers likely ignore them. The literal pool also references eActiveOverworldNPCObjectsBitfield, byte_2006530,
+  and a table of overworld NPC behavior dispatch handlers (sub_80A4984..sub_80AA374), but this function itself touches
+  none of them beyond the 16 zero-stores. Runs entirely from ROM, no flags or other memory written.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_8004702
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8004702
+
+    ./wf verify --function sub_8004702 --snapshots build-snapshots'
+  result: 'captured calls: 20 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261010-235203-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8004702
+
+    ./wf verify --function sub_8004702 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-235203-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8004702
+
+    ./wf verify --function sub_8004702 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08004702 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 47580ec
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact game meaning of the word at slot + 0xC4 (active flag vs. behavior/state pointer) — inferred from nearby
+  tables, not from a live caller
+- Which callers invoke this and at what point (map load, area transition, cutscene reset) — the leaking r0-r3 values
+  suggest callers just ignore the outputs
+sources:
+- tools/wf run convert-20261010-235203
+- recomp 47580ec
