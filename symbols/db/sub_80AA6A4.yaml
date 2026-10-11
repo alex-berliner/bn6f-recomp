@@ -1,0 +1,78 @@
+name: sub_80AA6A4
+address: '0x080AA6A4'
+kind: function
+status: confirmed
+summary: Jump-table dispatcher that tail-calls one of 12 game-handler routines selected by an index passed in R0.
+interface: void sub_80AA6A4(u32 r0 /* handler index */); -> r0 = handler's return; r2..r12 forwarded from handler
+  (r1 clobbered, lr clobbered, flags clobbered)
+details: "Implements a 12-way switch on R0: R0 is shifted left 2, used to index JumpTable80AA6B8 (via the\noff_80AA6B4\
+  \ pointer), the Thumb target (+1 bit) is loaded, then the function tail-calls it via\n`mov lr, pc; bx r0` followed\
+  \ by `pop {pc}` (so the caller's saved LR is used as the new PC).\nR7/R10 (and the original LR saved by the prologue)\
+  \ are inputs forwarded untouched to the\nhandler; r1, r3 and the condition flags are clobbered by the address\
+  \ computation and indirect\ncall. The 12 handler targets are:\n  0  -> alwaysTrue_80AA6E8\n  1  -> sub_80AA6EC\n\
+  \  2  -> sub_80AA756\n  3  -> isEventFlag212Set_80AA764\n  4  -> sub_80AA778\n  5  -> sub_80AA78C\n  6  -> sub_80AA7AC\n\
+  \  7  -> sub_80AA7C0\n  8  -> sub_80AA7D4\n  9  -> sub_80AA7E8\n  10 -> sub_80AA7FC\n  11 -> sub_80AA810\nEntry\
+  \ 3 (`isEventFlag212Set_80AA764`) hints these are boolean predicate/condition handlers\n(e.g. \"is event flag\
+  \ 212 set\"), but the majority are still unnamed and must be classified before\nthe dispatcher itself can be tied\
+  \ to a specific subsystem (battle/chapter/event/...).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-013540);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 73' --file inbox_farm_73.c sub_80AA6A4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AA6A4
+
+    ./wf verify --function sub_80AA6A4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-013540-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AA6A4
+
+    ./wf verify --function sub_80AA6A4 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 0 out of domain (verify run convert-20261011-013540-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AA6A4
+
+    ./wf verify --function sub_80AA6A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013540-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus3, story2, story4, story5, story6, story8, story9.'
+  reproduce: grep -l '^080aa6a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp cf4c3ee
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm29.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- Which subsystem (battle action filter, chatbox branch, event/script evaluator, scene updater, etc.) this dispatcher
+  belongs to — there is no obvious prefix yet.
+- What the r7/r10 forwarded inputs mean to the handlers (likely context pointers such as a battle state, entity,
+  or scene struct).
+- Semantic meaning of each of the 11 still-unnamed handlers (only isEventFlag212Set_80AA764 is self-describing).
+sources:
+- tools/wf run convert-20261011-013540
+- recomp cf4c3ee

@@ -1,0 +1,105 @@
+name: sub_80C3F00
+address: '0x080C3F00'
+kind: function
+status: confirmed
+summary: Initializes a battle object's sprite (panel coords, sprite/image, animation, palette, flip) and hands it
+  off to the update-phase handler.
+interface: void sub_80C3F00(struct BattleObject *obj /* r5 */)
+details: 'Battle-object construction/initialization step used when an object is being set up
+
+  for display during battle.
+
+  Reads obj fields: oBattleObject_Param1, oBattleObject_Param2 (sprite bank/slot args,
+
+  passed to sprite_load together with the fixed image id 0x80), oObjectHeader_Flags
+
+  (OR-ed with 0x02, presumably the "sprite loaded / initialized" bit),
+
+  oBattleObject_ExtraVars+4 (animation id, written to oBattleObject_CurAnim and
+
+  oBattleObject_CurAnimCopy), oBattleObject_Param3 (palette source flag),
+
+  oBattleObject_RelatedObject1Ptr (palette donor when Param3 == 0),
+
+  oBattleObject_Param4 (palette index used when Param3 != 0).
+
+  Sequence: object_setPanelsFromCoordinates -> sprite_load(0x80, Param1, Param2) ->
+
+  sprite_loadAnimationData -> sprite_noShadow -> set header flag bit 0x02 ->
+
+  sprite_setAnimation(ExtraVars[4]) -> sprite_loadAnimationData ->
+
+  palette resolution (Param4, or inherited from RelatedObject1Ptr''s sprite if Param3 == 0)
+
+  -> sprite_setPalette -> propagate object_getFlip -> write CUR_STATE_UPDATE
+
+  (value 4) into oBattleObject_CurStateActionPhaseAndPhaseInitialized ->
+
+  tail-call sub_80C3F52 to begin update-phase ticking.
+
+  The "tail-call" is realized by `pop {r4-r7, pc}`, restoring the caller''s LR pushed
+
+  at entry and branching to it, so this routine effectively transfers control to
+
+  sub_80C3F52 while preserving r4..r7.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-013540);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 73' --file inbox_farm_73.c sub_80C3F00
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C3F00
+
+    ./wf verify --function sub_80C3F00 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-013540-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C3F00
+
+    ./wf verify --function sub_80C3F00 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-013540-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C3F00
+
+    ./wf verify --function sub_80C3F00 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-013540-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, battlesweep, chips, fuzz, menus3, story2, story4, story6, story8, story9.'
+  reproduce: grep -l '^080c3f00 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp cf4c3ee
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which oBattleObject_* layout version is this; offsets like oBattleObject_Param1..Param4 and oBattleObject_ExtraVars+4
+  have no offset-name comment yet.
+- Confirm that 0x80 is the fixed image-id argument to sprite_load rather than a flag.
+- Meaning of bit 0x02 in oObjectHeader_Flags (likely "sprite graphics initialized").
+sources:
+- tools/wf run convert-20261011-013540
+- recomp cf4c3ee
