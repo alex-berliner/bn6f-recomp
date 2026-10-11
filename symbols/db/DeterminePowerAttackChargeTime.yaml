@@ -1,0 +1,93 @@
+name: DeterminePowerAttackChargeTime
+address: '0x08012F62'
+kind: function
+status: confirmed
+summary: Computes the charge-frame duration of a navi's B/A power attack from the battle object's AI data, picking
+  the A-side length and falling back to a Beast-Out length when the navi is transformed with an elementless chip.
+interface: 'u32 determinePowerAttackChargeTime(u32 selector, u32 battleObject /* in r5 */); /* r0 in: B-button selector
+  vs. A button; r0 out: charge frames (or 0xFF when no AI entry), r1 out: index into powerAttackChargeTimes table,
+  r4 preserved, NZCV trashed */'
+details: 'Resolves the AIData field for the power-attack charge time. When r0 != JOYPAD_B the routine takes the
+  A-power-attack field (offset 5 in AIData) and, only if the navi is in a Beast/Gregar/Falzar Beast Over transformation
+  (TF_GREGARBEAST..TF_FALZARBEASTOVER) AND the chip currently in the battle hand has element CHIP_ELEM_NONE, swaps
+  to the Beast-Out A-power-attack field (offset 9). When r0 == JOYPAD_B it uses the B-power-attack field (offset
+  7) directly. The hand-chip check via getCurChipInBattleHand_8010004 is effectively dead because that helper does
+  not set the control codes the test expects; the comment notes it never succeeds.
+
+  Reads from the AIData struct (r4 = battleObject->oBattleObject_AIDataPtr): the selected power-attack stat byte.
+  Reads two navi-stats bytes (transformation, then charge level index 3) via GetBattleNaviStatsByte_AllianceFromBattleObject
+  with r5 as the battle object. Indexes into powerAttackChargeTimes_8020404 with row = chargeLevel*2 and column
+  = pwrAtkStat*10, returning the halfword there. If pwrAtkStat == 0xFF, returns 0xFF as the maximum charge sentinel
+  and leaves r1 == 0xFF.
+
+  Quirks: r1 (charge-table index or 0xFF) and r2 (powerAttackChargeTimes base address on the table load path, undefined
+  on the 0xFF early return) are part of the caller-visible contract. The beast-out branch''s hand-chip existence
+  check is unreachable in practice.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261011-101420);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 77' --file inbox_farm_77.c DeterminePowerAttackChargeTime
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function DeterminePowerAttackChargeTime
+
+    ./wf verify --function DeterminePowerAttackChargeTime --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-101420-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function DeterminePowerAttackChargeTime
+
+    ./wf verify --function DeterminePowerAttackChargeTime --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-101420-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function DeterminePowerAttackChargeTime
+
+    ./wf verify --function DeterminePowerAttackChargeTime --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101420-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08012f62 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp a51146b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Whether the dead getCurChipInBattleHand_8010004 equality branch was meant to engage some other control-code path
+  in earlier builds.
+- The exact in-game uses of the returned r1 table index by callers (it is preserved across the call but not documented).
+- What powerAttackChargeTimes_8020404's rows and columns actually encode (charge level vs. pwrAtk stat, indexed
+  by halfword).
+sources:
+- tools/wf run convert-20261011-101420
+- recomp a51146b

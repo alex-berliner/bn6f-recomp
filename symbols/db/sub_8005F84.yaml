@@ -1,0 +1,77 @@
+name: sub_8005F84
+address: '0x08005F84'
+kind: function
+status: confirmed
+summary: Tears down the current scene (LCD render defaults, effect/chatbox state, 0x40 chatbox flag block) and rewinds
+  the main jumptable to step 4 with game state kind 0, phase 8, returning phase 8 in r1.
+interface: void sub_8005F84(void /* r10 = toolkit, lr = return */); returns r1 = 8 (with r2/r3 and c/v left as chatbox_clear_eFlags2009F38
+  leaves them); preserves r4-r7.
+details: "Called with r10 holding the toolkit struct (an oToolkit*). Sequence:\n  1. SetRenderInfoLCDControl(0x40)\
+  \ — restore the default LCD render-info control byte.\n  2. sub_809F68C — tear down/release whatever transient\
+  \ effect state it owns.\n  3. chatbox_8040818 — release the chatbox subsystem state.\n  4. chatbox_clear_eFlags2009F38(0x40)\
+  \ — clear the chatbox event-flag block tagged 0x40.\n  5. *oToolkit_MainJumptableIndexPtr (toolkit) = 4 — rewind\
+  \ the main jumptable to step 4 (opening/title path).\n  7. *oToolkit_GameStatePtr (toolkit) = 0 — game state kind\
+  \ reset to 0.\n  8. *(oToolkit_GameStatePtr + 0x16) (toolkit) = 8 — game state phase set to 8.\nThe byte 8 written\
+  \ last is returned in r1 (consistent with the \"r1, not r0, carries the result\" convention this code uses). r2/r3\
+  \ and c/v are whatever chatbox_clear_eFlags2009F38, the last callee, left in the flags; r4-r7 are preserved.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261011-101420);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 77' --file inbox_farm_77.c sub_8005F84
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8005F84
+
+    ./wf verify --function sub_8005F84 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-101420-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8005F84
+
+    ./wf verify --function sub_8005F84 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-101420-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8005F84
+
+    ./wf verify --function sub_8005F84 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101420-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, story2.'
+  reproduce: grep -l '^08005f84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp a51146b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battles1
+- battles2
+- maps
+- story2
+open_questions:
+- Is r10 the toolkit pointer at every call site, or can it be a different struct at some callers (the contract only
+  lists one caller)?
+- What exactly is sub_809F68C (the readable C calls it generically "effect/chatbox state release"); does it actually
+  belong to the chatbox, the effect subsystem, or both?
+- What does chatbox_clear_eFlags2009F38 (named "clear 0x40 chatbox event-flag block" in the readable C) actually
+  represent — a window-mask flag block, a script-event flag block, or something else? The flag 0x40 matches the
+  LCD-control value, which may be coincidental.
+- Is "kind 0, phase 8" the genuine opening/title-screen game state, or a reset/loading state used by multiple call
+  sites (e.g. soft reset, return to title, language select)?
+- off_8005FB4 looks like a small jumptable of +1-thunks alternating between sub_8006366 and sub_800647C (with sub_80064BE
+  and sub_80063C0 at two entries); is it actually associated with this function, or merely placed adjacent by the
+  linker?
+sources:
+- tools/wf run convert-20261011-101420
+- recomp a51146b

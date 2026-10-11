@@ -1,0 +1,97 @@
+name: map_triggerEnterMapOnWarp_8005C04
+address: '0x08005C04'
+kind: function
+status: confirmed
+summary: 'Finalises a warp: tears down the leaving map''s entities, installs the chosen warp entry, stashes overworld
+  player coords on real-world↔internet crossings, picks the respawn point, rewrites the GameState map id so cbGameState_80050EC
+  enters the destination map, and clears the warp-animation event.'
+interface: 'void map_triggerEnterMapOnWarp_8005C04(void);
+
+  // inputs: r10 = Toolkit pointer; preserved r4-r7; clobbers r0-r3, r8, r11, lr, nz/c/v
+
+  // outputs (caller-visible): r0=0, r1=old mapGroup, r2=previous LastMapGroup,
+
+  //   r3=player Z at respawn; C = bit 7 of the target map id, V from cmp transitions, N/Z set by the trailing movs
+
+  '
+details: "* Clears oGameState_Ptr_20 (warp animation \"owns\" it until completion).\n* Frees all objects of type\
+  \ mask 0x25 belonging to the outgoing map.\n* Copies the (WarpIndex-1)-th oWarpData_Size record from the warp\
+  \ table into\n  the warp work struct at oToolkit_Warp2011bb0_Ptr.\n* Resolves the incoming map (map_lookupMapIdByGroupAndNumber_8001708)\
+  \ and\n  sets LCD control to 0x40 (force display on for the new area).\n* If EVENT_171B is clear (i.e. not a real-world↔internet\
+  \ crossfade), and the\n  outgoing group differs from the warp target by bit 0x80, snapshots the\n  overworld player's\
+  \ X/Y/Z/facing into either the SavedInternetCoords or\n  SavedRealWorldCoords block (offset selected by the destination\
+  \ group bit 0x80:\n  warping *to* the internet saves the real-world coords; warping *to* real world\n  saves the\
+  \ internet coords). Also packs MapNumber<<8 | MapGroup into the MapId slot.\n* Clears EVENT_171B.\n* Selects respawn\
+  \ position based on oWarp2011bb0_MapGroupTransitionType:\n    - INTERNET_TO_REAL_WORLD: load oGameState_SavedRealWorld{X,Y,Z,FacingDirection,MapId}.\n\
+  \    - REAL_WORLD_TO_INTERNET: load oGameState_SavedInternet{X,Y,Z,FacingDirection,MapId}.\n    - default (same-world\
+  \ warp): set oWarp2011bb0_Unk_10 = 2 and load X/Y/Z/facing/MapId\n      from the warp entry that was just copied.\n\
+  * Writes PlayerX/PlayerY/PlayerZ/FacingDirectionAfterWarp from the chosen respawn.\n* Forces oGameState_SubsystemIndex\
+  \ = 0 (without this the screen stays white).\n* Updates LastMapNumber from current MapNumber, LastMapGroup from\
+  \ current\n  MapGroup, and installs MapGroup/MapNumber from the respawn MapId\n  (low byte = group, high byte\
+  \ = number).\n* Zeroes oS2001c04_Unk_12 and oS2001c04_Unk_14 (warp-animation fields).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261011-101420);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 77' --file inbox_farm_77.c map_triggerEnterMapOnWarp_8005C04
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function map_triggerEnterMapOnWarp_8005C04
+
+    ./wf verify --function map_triggerEnterMapOnWarp_8005C04 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-101420-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function map_triggerEnterMapOnWarp_8005C04
+
+    ./wf verify --function map_triggerEnterMapOnWarp_8005C04 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-101420-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function map_triggerEnterMapOnWarp_8005C04
+
+    ./wf verify --function map_triggerEnterMapOnWarp_8005C04 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-101420-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6, story7, story8,
+    story9, wander.'
+  reproduce: grep -l '^08005c04 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp a51146b
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact meaning of oWarp2011bb0_Unk_10 (set to 2 on same-world warps only) and oS2001c04_Unk_12/Unk_14.
+- Which of the two saved-coord blocks (Internet vs Real World) the MapId is packed into — code packs (currentMapNum<<8|currentMapGroup)
+  into the saved block of the world being left, but the facing offset comment is ambiguous.
+- What MAP_GROUP_TRANSITION_TYPE_* values exist beyond the two named constants.
+- Whether oGameState_FacingDirectionAfterWarp is a single byte (read with ldrb elsewhere) or a word — code stores
+  a word-sized value into it.
+sources:
+- tools/wf run convert-20261011-101420
+- recomp a51146b
