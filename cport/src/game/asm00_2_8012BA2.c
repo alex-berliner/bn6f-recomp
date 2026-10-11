@@ -136,6 +136,117 @@ Next battle_getNaviTypeFamilyConstant_8012C7C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8012DFC ── */
+/* Register offsets in the per-navi joypad table (stride 8, based at dword_2036820). */
+#define NAVI_JOYPAD_STRIDE  8
+#define NAVI_JOYPAD_OFFSET  2
+
+/* register form: calls battle_getPlayerAIData_8010022 outside this file, which has no typed C interface yet */
+static u32 get_player_ai_data(u32 *callee_r2) {
+    GUEST_CALL(battle_getPlayerAIData_8010022);
+    *callee_r2 = R2;
+    return R0;
+}
+
+/* register form: calls battle_isBattleOver outside this file, which has no typed C interface yet.
+ * After the GUEST_CALL the caller does tst r0,r0 which clears C,V and sets N,Z from the result. */
+static bool battle_is_over(u32 *callee_r3) {
+    GUEST_CALL(battle_isBattleOver);
+    *callee_r3 = R3;
+    SET_FLAGS_NZ(R0);   /* reproduces tst r0, r0: N,Z from value, C=V=0 */
+    return R0 != 0;
+}
+
+/* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet.
+ * The caller's next flag-setting instruction is cmp r0,#0x18 (SUBS stats,0x18). */
+static u32 get_navi_stats_byte(u32 navi, u32 field, u32 *callee_r1) {
+    R0 = navi;
+    R1 = field;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    *callee_r1 = R1;
+    SET_FLAGS_CMP(R0, 0x18);  /* stats,0x18: live for the early-exit path */
+    return R0;
+}
+
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet.
+ * The callee's flags (NZ) are read by the caller's bne; C,V persist to the return. */
+static bool time_stop_active(u32 *callee_r1) {
+    GUEST_CALL(battle_isTimeStop);
+    *callee_r1 = R1;
+    return !ZERO_FLAG();   /* Z clear ⇒ time stop active */
+}
+
+typedef struct {
+    u32 r1;
+    u32 r2;
+    u32 r3;
+    u32 r7;
+} JoypadResult;
+
+/* Advance one AI navi's virtual joypad for a frame.
+ * Updates held / released / pressed / up fields from the navi's button state
+ * stored in the per-navi table at dword_2036820.  A secondary mirror of the
+ * joypad fields (Unk_2a..Unk_30) is zeroed when time-stop is inactive and
+ * updated identically when it is active. */
+static JoypadResult update_navi_ai_joypad(u32 navi) {
+    u32 r2_get;
+    u32 ai_data = get_player_ai_data(&r2_get);
+
+    u32 r3_over;
+    if (battle_is_over(&r3_over)) {
+        ST16(ai_data + oAIData_JoypadHeld,     0);
+        ST16(ai_data + oAIData_JoypadReleased, 0);
+        ST16(ai_data + oAIData_JoypadPressed,  0);
+        ST16(ai_data + oAIData_JoypadUp,       0);
+        return (JoypadResult){ 0, r2_get, r3_over, navi };
+    }
+
+    u32 r1_stats;
+    u32 stats = get_navi_stats_byte(navi, 0x2C, &r1_stats);
+    if (stats >= 0x17 && stats <= 0x18)
+        return (JoypadResult){ r1_stats, r2_get, r3_over, navi };
+
+    /* Read the navi's current button state from the per-navi table */
+    u32 navi_buttons = LD16(A_dword_2036820 + NAVI_JOYPAD_STRIDE * navi + NAVI_JOYPAD_OFFSET);
+
+    /* Main joypad: shift held→released, install new held, derive pressed/up */
+    u32 prev_held = LD16(ai_data + oAIData_JoypadHeld);
+    ST16(ai_data + oAIData_JoypadReleased, prev_held);
+    ST16(ai_data + oAIData_JoypadHeld,     navi_buttons);
+    ST16(ai_data + oAIData_JoypadPressed,  (~prev_held) & navi_buttons);
+    ST16(ai_data + oAIData_JoypadUp,       (~navi_buttons) & prev_held);
+
+    u32 r1_ts;
+    if (!time_stop_active(&r1_ts)) {
+        /* Time stop inactive: clear the secondary joypad mirror */
+        ST16(ai_data + oAIData_Unk_30, 0);
+        ST16(ai_data + oAIData_Unk_2a, 0);
+        ST16(ai_data + oAIData_Unk_2c, 0);
+        ST16(ai_data + oAIData_Unk_2e, 0);
+        return (JoypadResult){ r1_ts, prev_held, navi_buttons, navi };
+    }
+
+    /* Time stop active: update secondary joypad mirror with the same edge logic */
+    u32 old_unk = LD16(ai_data + oAIData_Unk_2a);
+    ST16(ai_data + oAIData_Unk_30, old_unk);
+    ST16(ai_data + oAIData_Unk_2a, navi_buttons);
+    ST16(ai_data + oAIData_Unk_2c, (~old_unk) & navi_buttons);
+    ST16(ai_data + oAIData_Unk_2e, (~navi_buttons) & old_unk);
+    return (JoypadResult){ r1_ts, old_unk, navi_buttons, navi };
+}
+
+/* sub_8012DFC(r0 = navi_index) -> r1, r2, r3, r7, c, v
+ * Flags are produced by the last register-form helper on each path
+ * (tst-equivalent, cmp-equivalent, or the callee's own flags). */
+Next sub_8012DFC(void) {
+    JoypadResult r = update_navi_ai_joypad(R0);
+    R1 = r.r1;
+    R2 = r.r2;
+    R3 = r.r3;
+    R7 = r.r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── returnBoolIfAIDataFlagsAreSet_8012F3E ── */
 /* returnBoolIfAIDataFlagsAreSet_8012F3E:
  * Reports whether the "A button held" condition is met for the current AI
@@ -278,6 +389,64 @@ Next battle_InitNaviStatsByIndex_8013422(void) {
     R0 = statsBase + R0 * 100; /* &eBattleNaviStats0[index * 0x64] */
     GUEST_CALL(initNaviStats_WithDefaultStatsMaybe_8013438);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── initNaviStats_WithDefaultStatsMaybe_8013438 ── */
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word(u32 mem, u32 size) {
+    R0 = mem;
+    R1 = size;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* Initialize a 0x64-byte Navi battle-stats block with default values. */
+static void init_navi_stats(u32 stats) {
+    zero_fill_by_word(stats, 0x64);
+
+    /* Core battle / alliance flags */
+    ST8(stats + 0x05, 1);       /* active */
+    ST8(stats + 0x07, 0xFF);    /* sentinel: no alliance override */
+    ST8(stats + 0x08, 0);
+    ST8(stats + 0x09, 4);       /* element type */
+    ST8(stats + 0x0A, 5);       /* attack pattern */
+    ST8(stats + 0x0B, 5);       /* defense pattern */
+    ST8(stats + 0x0C, 1);
+    ST8(stats + 0x0D, 0);
+    ST8(stats + 0x0E, 0x99);    /* default attack power */
+    ST8(stats + 0x12, 0xFF);    /* unassigned support flag */
+    ST8(stats + 0x18, 0);
+    ST8(stats + 0x19, 0);
+
+    /* Custom chip slot area */
+    ST8(stats + 0x20, 1);       /* slot enabled */
+    ST8(stats + 0x21, 3);       /* slot count */
+    ST8(stats + 0x26, 0);       /* extra chip count */
+    ST8(stats + 0x27, 0x1F);    /* HP cap per chip */
+    ST8(stats + 0x28, 0);
+    ST8(stats + 0x2C, 0);
+    ST8(stats + 0x2D, 0);
+
+    /* Ranged-element slots (0x2E–0x30): 0xFF = none */
+    for (u32 off = 0x2E; off <= 0x30; off++)
+        ST8(stats + off, 0xFF);
+
+    /* HP (halfword): max = current = remaining = 100 */
+    ST16(stats + 0x3E, 0x64);
+    ST16(stats + 0x40, 0x64);
+    ST16(stats + 0x42, 0x64);
+
+    /* Support-chip IDs (0x56–0x5B): 0xFF = none */
+    for (u32 off = 0x56; off <= 0x5B; off++)
+        ST8(stats + off, 0xFF);
+
+    /* Re-set slot count after loop (original writes 0x21 last) */
+    ST8(stats + 0x21, 3);
+}
+
+/* initNaviStats_WithDefaultStatsMaybe_8013438(r0 = Navi stats block address) */
+Next initNaviStats_WithDefaultStatsMaybe_8013438(void) {
+    init_navi_stats(R0);
     RETURN_TO_CALLER();
 }
 
@@ -693,6 +862,138 @@ static void navi_ai_change_panel(u32 obj, u32 param, u32 battle_object) {
 
 Next sub_8013CC4(void) {
     navi_ai_change_panel(R0, R1, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8013DA0 ── */
+/* register form: calls battle_isPaused outside this file, which has no typed C interface yet */
+static bool is_battle_paused(void) {
+    GUEST_CALL(battle_isPaused);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 get_navi_stat(u32 battle_obj, u32 field) {
+    R0 = battle_obj;
+    R1 = field;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls sub_80143A6 outside this file, which has no typed C interface yet */
+static void ai_action_a(u32 r0_val, u32 r1_val) {
+    R0 = r0_val;
+    R1 = r1_val;
+    GUEST_CALL(sub_80143A6);
+}
+
+/* register form: calls sub_8014446 outside this file, which has no typed C interface yet */
+static void ai_action_b(void) {
+    GUEST_CALL(sub_8014446);
+}
+
+/* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */
+static u32 get_positive_rng(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return R0;
+}
+
+/* register form: SWI 6 computes value % modulus, result left in R1 */
+static u32 swi6_mod(u32 value, u32 modulus) {
+    R0 = value;
+    R1 = modulus;
+    swi_call(6);
+    return R1;
+}
+
+/* register form: calls battle_setPlayerNaviStatsField0E_8015BEC outside this file, which has no typed C interface yet */
+static void set_player_navi_field0e(u32 alliance, u32 value) {
+    R0 = alliance;
+    R1 = value;
+    GUEST_CALL(battle_setPlayerNaviStatsField0E_8015BEC);
+}
+
+/* register form: calls sub_80143CE outside this file, which has no typed C interface yet */
+static void ai_action_c(void) {
+    GUEST_CALL(sub_80143CE);
+}
+
+/* register form: calls sub_801443C outside this file, which has no typed C interface yet */
+static void ai_action_d(void) {
+    GUEST_CALL(sub_801443C);
+}
+
+/* AI tick for a battle navi.  Builds a 16-slot probability table from a
+ * weight array, picks a new decision state via RNG, and dispatches. */
+static void ai_navi_update(u32 battle_obj) {
+    if (is_battle_paused())
+        return;
+
+    /* Require navis to have three stats present before acting */
+    if (!get_navi_stat(battle_obj, 0x24))
+        return;
+    if (!get_navi_stat(battle_obj, 0x21))
+        return;
+
+    u32 stat_2c = get_navi_stat(battle_obj, 0x2C);
+    if (stat_2c != 0) {
+        /* All stats present and 0x2C non-zero: fire immediate action pair */
+        ai_action_a(stat_2c, 0x2C);
+        ai_action_b();
+        return;
+    }
+
+    /* Timer-based decision: increment tick, wait for 60 frames */
+    u32 ai_data = LD32(battle_obj + oBattleObject_AIDataPtr);
+    u32 timer = (u16)LD16(ai_data + oAIData_Unk_3a) + 1;
+    ST16(ai_data + oAIData_Unk_3a, timer);
+
+    if ((s32)timer < (s32)0x3C)
+        return;
+
+    /* Timer expired – reset and run action pair before deciding */
+    ST16(ai_data + oAIData_Unk_3a, 0);
+    ai_action_a(0, 0x2C);
+    ai_action_b();
+
+    u32 current_state = LD8(ai_data + oAIData_Unk_0b);
+
+    /* Build 16-entry mark table:
+     *  - weight[i] == current_state && state==0 → mark 1 (stay)
+     *  - weight[i] == current_state && state!=0 → mark 0 (stay)
+     *  - weight[i] != current_state            → mark = weight (transition) */
+    u8 mark[16];
+    for (int i = 0; i < 16; i++) {
+        u32 weight = LD8(A_byte_8013E44 + i);
+        if (weight != current_state) {
+            mark[i] = weight;
+        } else {
+            mark[i] = (current_state == 0) ? 1 : 0;
+        }
+    }
+
+    /* Random selection via RNG modulo table size */
+    u32 rng_val = get_positive_rng();
+    u32 index = swi6_mod(rng_val, 16);
+    u32 new_state = mark[index];
+    ST8(ai_data + oAIData_Unk_0b, new_state);
+
+    /* Dispatch based on chosen state */
+    if (new_state == 2) {
+        ai_action_c();
+    } else if (new_state == 1) {
+        ai_action_d();
+    } else {
+        /* state 0 or 3+: set player navi field 0E from lookup table */
+        u32 field_val = LD8(A_dword_8013E54 + new_state);
+        u32 alliance = LD8(battle_obj + oBattleObject_Alliance);
+        set_player_navi_field0e(alliance, field_val);
+    }
+}
+
+/* sub_8013DA0(r5 = battle object) – AI tick */
+Next sub_8013DA0(void) {
+    ai_navi_update(R5);
     RETURN_TO_CALLER();
 }
 
@@ -2270,6 +2571,130 @@ Next battleObjectStateDispatcher_8016CE8(void) {
         break;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8016D08 ── */
+#define MOVE_FLAG_BIT     (1u << 20)   /* "this object is in motion" */
+#define PHASE_CLEAR_BIT   0x1000u
+#define X_VEL_PER_STEP    0xA0000u
+#define Y_VEL_PER_STEP    0x60000u
+
+/* register form: calls object_setFlag1 outside this file, which has no typed C interface yet */
+static void call_set_flag1(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(object_setFlag1);
+}
+
+/* register form: calls battle_dispatchActorTurnByTypeAndAIIdx_800F404 outside this file */
+static void call_dispatch_actor_turn(void) {
+    GUEST_CALL(battle_dispatchActorTurnByTypeAndAIIdx_800F404);
+}
+
+/* register form: calls object_setCoordinatesFromPanels outside this file */
+static void call_set_coords_from_panels(void) {
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+/* register form: calls object_updateCollisionPanels outside this file */
+static void call_update_collision_panels(void) {
+    GUEST_CALL(object_updateCollisionPanels);
+}
+
+/* register form: calls object_clearFlag outside this file, which has no typed C interface yet */
+static void call_clear_flag(u32 bit) {
+    R0 = bit;
+    GUEST_CALL(object_clearFlag);
+}
+
+/* register form: calls battle_resetCollisionState_80101C4 outside this file */
+static void call_reset_collision_state(void) {
+    GUEST_CALL(battle_resetCollisionState_80101C4);
+}
+
+/* register form: calls object_removePanelReserve outside this file */
+static void call_remove_panel_reserve(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(object_removePanelReserve);
+}
+
+/* register form: calls sub_800E45E outside this file, which has no typed C interface yet */
+static u32 call_sub_800E45E(u32 *dy_out, u32 *phase_out) {
+    GUEST_CALL(sub_800E45E);
+    *dy_out = R1;
+    *phase_out = R2;
+    return R0;
+}
+
+/* register form: calls object_reservePanel outside this file */
+static void call_reserve_panel(u32 x, u32 y) {
+    R0 = x;
+    R1 = y;
+    GUEST_CALL(object_reservePanel);
+}
+
+/* Advance a battle object through one phase tick.
+ * Sets the "moving" flag, dispatches the actor's turn, resolves pending panel
+ * movement and collisions, releases the old panel, queries the next-step routine,
+ * then either queues a panel-advance (signed velocity + new reservation) or
+ * resets the object to its idle phase.
+ * Returns the phase-state byte that must appear in r0 at exit (4 or 8);
+ * nz is derived from it by the adapter.  r1/r2 are left by the final callee. */
+static u32 battle_phase_advance(u32 obj) {
+    /* Flag this object as moving and give it a turn in the dispatcher. */
+    call_set_flag1(MOVE_FLAG_BIT);
+    call_dispatch_actor_turn();
+
+    /* Drop ally reference; promote the future panel to the current one. */
+    ST32(obj + oBattleObject_RelatedObject1Ptr, 0);
+    ST16(obj + oBattleObject_PanelXY, LD16(obj + oBattleObject_FuturePanelXY));
+    call_set_coords_from_panels();
+    call_update_collision_panels();
+
+    /* Clear the "phase complete" bit and reset per-frame collision state. */
+    call_clear_flag(PHASE_CLEAR_BIT);
+    call_reset_collision_state();
+
+    /* Release the panel this object currently occupies. */
+    call_remove_panel_reserve(LD8(obj + oBattleObject_FuturePanelX),
+                              LD8(obj + oBattleObject_FuturePanelY));
+
+    /* Query the phase-transition routine for next-step data. */
+    u32 dy_raw, phase_raw;
+    u32 dx_raw = call_sub_800E45E(&dy_raw, &phase_raw);
+
+    ST8(obj + oBattleObject_Unk_1c, dx_raw);
+    ST8(obj + oBattleObject_Unk_1d, dy_raw);
+    ST8(obj + oBattleObject_PhaseInitialized, phase_raw);
+
+    if (phase_raw != 0) {
+        /* Signed displacement determines per-step velocity and target panel. */
+        s32 dx = (s8)dx_raw;
+        s32 dy = (s8)dy_raw;
+        ST32(obj + oBattleObject_XVelocity, (u32)(X_VEL_PER_STEP * dx));
+        ST32(obj + oBattleObject_YVelocity, (u32)(Y_VEL_PER_STEP * dy));
+
+        u32 new_fx = (u32)((s32)LD8(obj + oBattleObject_PanelX) + dx);
+        u32 new_fy = (u32)((s32)LD8(obj + oBattleObject_PanelY) + dy);
+        ST8(obj + oBattleObject_FuturePanelX, new_fx);
+        ST8(obj + oBattleObject_FuturePanelY, new_fy);
+        call_reserve_panel(new_fx, new_fy);
+
+        ST8(obj + oBattleObject_Unk_0d, 4);
+        return 4;
+    }
+
+    /* No pending phase step – return to idle. */
+    ST8(obj + oBattleObject_CurPhase, 0x18);
+    ST8(obj + oBattleObject_Unk_0d, 8);
+    return 8;
+}
+
+/* sub_8016D08(r5 = battle object ptr) -> r0 (4 or 8), r1/r2 from callee, nz */
+Next sub_8016D08(void) {
+    R0 = battle_phase_advance(R5);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
