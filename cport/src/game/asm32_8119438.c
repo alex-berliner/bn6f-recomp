@@ -1676,6 +1676,56 @@ Next sub_811BE9C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811C1AC ── */
+/* Dispatch on a battle object's class-selector byte at [obj+8].
+ * The three handlers are outside this file with no typed C interface yet.
+ * All of R2–R12, R5, and LR pass through to the callee unchanged;
+ * the callee's GUEST_CALL leaves every output register (R0, R1, R2–R12, LR)
+ * and condition flags in their final state, so the adapter writes nothing back. */
+
+/* register form: calls sub_811C1CC outside this file, which has no typed C interface yet */
+static void call_battle_handler_0(u32 obj, u8 idx,
+    u32 r2, u32 r3, u32 r4, u32 r6, u32 r7, u32 r8, u32 r9, u32 r10, u32 r11, u32 r12, u32 lr) {
+    R1 = idx; R2 = r2; R3 = r3; R4 = r4; R5 = obj;
+    R6 = r6; R7 = r7; R8 = r8; R9 = r9; R10 = r10; R11 = r11; R12 = r12; LR = lr;
+    GUEST_CALL(sub_811C1CC);
+}
+
+/* register form: calls sprite_updateAnimPassthrough_811C22C outside this file, which has no typed C interface yet */
+static void call_battle_handler_1(u32 obj, u8 idx,
+    u32 r2, u32 r3, u32 r4, u32 r6, u32 r7, u32 r8, u32 r9, u32 r10, u32 r11, u32 r12, u32 lr) {
+    R1 = idx; R2 = r2; R3 = r3; R4 = r4; R5 = obj;
+    R6 = r6; R7 = r7; R8 = r8; R9 = r9; R10 = r10; R11 = r11; R12 = r12; LR = lr;
+    GUEST_CALL(sprite_updateAnimPassthrough_811C22C);
+}
+
+/* register form: calls sub_811C234 outside this file, which has no typed C interface yet */
+static void call_battle_handler_2(u32 obj, u8 idx,
+    u32 r2, u32 r3, u32 r4, u32 r6, u32 r7, u32 r8, u32 r9, u32 r10, u32 r11, u32 r12, u32 lr) {
+    R1 = idx; R2 = r2; R3 = r3; R4 = r4; R5 = obj;
+    R6 = r6; R7 = r7; R8 = r8; R9 = r9; R10 = r10; R11 = r11; R12 = r12; LR = lr;
+    GUEST_CALL(sub_811C234);
+}
+
+/* Select handler by the class-offset byte stored at [obj + 8].
+ * Valid values are 0, 4, or 8 (word offsets into the dispatch table). */
+static void dispatch_battle_object(u32 obj,
+    u32 r2, u32 r3, u32 r4, u32 r6, u32 r7, u32 r8, u32 r9, u32 r10, u32 r11, u32 r12, u32 lr) {
+    u8 class_off = (u8)LD8(obj + 8);
+    if (class_off == 0)
+        call_battle_handler_0(obj, class_off, r2, r3, r4, r6, r7, r8, r9, r10, r11, r12, lr);
+    else if (class_off == 4)
+        call_battle_handler_1(obj, class_off, r2, r3, r4, r6, r7, r8, r9, r10, r11, r12, lr);
+    else
+        call_battle_handler_2(obj, class_off, r2, r3, r4, r6, r7, r8, r9, r10, r11, r12, lr);
+}
+
+/* sub_811C1AC(r5 = battle object, r2-r4/r6-r12/lr = handler args) -> all regs + flags */
+Next sub_811C1AC(void) {
+    dispatch_battle_object(R5, R2, R3, R4, R6, R7, R8, R9, R10, R11, R12, LR);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811C1CC ── */
 /* ------------------------------------------------------------------ *
  * Register-form helpers for the sprite/GUI routines this function
