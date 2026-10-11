@@ -1,0 +1,68 @@
+name: object_timefreezeEnd
+address: '0x0800BD34'
+kind: function
+status: confirmed
+summary: End-of-turn cleanup for a time-freeze battle object, releasing its memory and resetting animations/counters
+  on both sides.
+interface: 'void object_timefreezeEnd(u32 r5 /* battle object */) : r5 -> [r0 r1 r2 r3 lr nz c v]'
+details: Reads oBattleObject_PhaseInitialized; if non-zero the object simply frees its memory and returns. Otherwise
+  reads oBattleObject_Alliance as team (0=own, 1=opponent), notifies the team-mode helper with arg 5, then queries
+  the opposite side (team^1) via sub_800B884/sub_800B892 and only proceeds if that side's mode is 5 or 0. If sub_800B8D8(team)
+  is non-zero, it looks up the opposite side's entry via byte_203CF00_getEntryPtr_800BF5C, optionally patches an
+  attached sub-struct (offset +8 ptr, then sets +8=8, +0xB=4), zeroes the entry's +0xC counter, resets the opposite
+  side's animation state, and clears battle flags with mask 4. Finally it resets this side's team mode to 0, resets
+  its animation state, zeroes its entry +0xC counter, and calls object_freeMemory. r5 is preserved.
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c object_timefreezeEnd
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_timefreezeEnd
+
+    ./wf verify --function object_timefreezeEnd --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_timefreezeEnd
+
+    ./wf verify --function object_timefreezeEnd --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_timefreezeEnd
+
+    ./wf verify --function object_timefreezeEnd --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, chips, menus2, menus3, story2, story9.'
+  reproduce: grep -l '^0800bd34 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/object.c
+coverage:
+- battlesweep
+- chips
+- menus2
+- menus3
+- story2
+- story9
+open_questions:
+- What sub_800B884/892/8D8 actually represent (team mode get/set and a "should clear?" predicate).
+- Meaning of the patched sub-struct at entry+8 and the value 4 written at +0xB.
+- Why PhaseInitialized short-circuits to a plain free without the cleanup pass.
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f

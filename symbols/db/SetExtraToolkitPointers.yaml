@@ -1,0 +1,101 @@
+name: SetExtraToolkitPointers
+address: '0x08006C6C'
+kind: function
+status: confirmed
+summary: Initializes 22 extra toolkit pointers by storing absolute pointers (base + per-entry offset) into the toolkit's
+  GameStatePtr block.
+interface: 'void setExtraToolkitPointers_8006C6C(void);
+
+  // implicit input: r10 = toolkit struct pointer
+
+  // no explicit outputs; r1..r3 trashed (nz/c/v set), r4-r7/lr preserved
+
+  '
+details: 'Copies 22 dwords (table byte size 0x58 = 22*4) from the ToolkitExtraPtrsOffsets
+
+  table into the toolkit struct at offset oToolkit_GameStatePtr, converting each
+
+  entry from a base-relative offset to an absolute pointer by adding
+
+  eToolkitExtraPtrsMemory (base). The "and r3, r4" with r4=0 zeroes the unused
+
+  extra-toolkit offset (eUnusedExtraToolkitPtrsOffset), so the base reduces to
+
+  just eToolkitExtraPtrsMemory regardless of that variable. Used as part of
+
+  toolkit setup so the extra toolkit memory region is reachable through the
+
+  toolkit''s GameStatePtr-anchored pointer array.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c SetExtraToolkitPointers
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function SetExtraToolkitPointers
+
+    ./wf verify --function SetExtraToolkitPointers --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out of
+    domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function SetExtraToolkitPointers
+
+    ./wf verify --function SetExtraToolkitPointers --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function SetExtraToolkitPointers
+
+    ./wf verify --function SetExtraToolkitPointers --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08006c6c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Why does the loop also store at index 0x54..0x57 (one past the 22nd entry) given the `cmp ... blt` check uses
+  0x58 as limit and increments by 4 last? Looks like a copy-paste of the runtime helper copyWords_80014EC whose
+  size constant is inclusive of the last word.
+- Is eToolkitExtraPtrsMemory an EWRAM-resident region shared with the extra toolkit (a separate per-battle/per-scene
+  toolkit)?
+- The C comment marks a second helper `derive_base` that always returns `eGameState + 0`; original disassembly actually
+  returns `eToolkitExtraPtrsMemory + 0` — possible typo in the readable.
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f

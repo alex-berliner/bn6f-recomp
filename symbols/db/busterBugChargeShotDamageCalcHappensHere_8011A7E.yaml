@@ -1,0 +1,86 @@
+name: busterBugChargeShotDamageCalcHappensHere_8011A7E
+address: '0x08011A7E'
+kind: function
+status: confirmed
+summary: 'AI attack-damage calculation for the Buster-bug-style charge shot: fills an AI attack-vars struct with
+  damage derived from Attack (+1 if the user is a beast transformation), a randomized counter field, and zeroes
+  the rest, then returns 0x16.'
+interface: u32 battle_aiAttackDamageCalcBusterBug_8011A7E(u8 /*ignored*/ r5 /*= battle object (navi)*/, u8 /*ignored*/
+  r10, aiAttackVars_t *r7 /*inout*/, void (*into) lr); // r0/r1/r2/r3/r5/r6/r7/lr clobbered, NZ set, return value
+  in r0 = 0x16
+details: "Inputs are passed in registers by callers (r5 = battle navi object whose stats drive the formula,\nr7\
+  \ = the AI attack-vars struct to fill, r10/lr = extra caller state preserved/clobbered).\n\nDamage formula:\n\
+  \  damage = ((Attack + 1) * 10)\n  if get_battle_emotion(navi.alliance) == 5 (the \"beast\" transformation) damage\
+  \ *= 2\n  Stored as u16 at ai_vars + 0x08 (oAIAttackVars_Damage).\n\nA second value (oAIAttackVars_Unk_0c, u32\
+  \ at +0x0C) is computed from a navi stat byte\n(oNaviStats_Unk_4f = 0x4F):\n  - if the stat is 0 or 6, the field\
+  \ is set to 6\n  - else a \"random pick\" mask is chosen: mask = 7 when the stat is 9 or 0x23, else mask = 1\n\
+  \    and (GetPositiveSignedRNG() & mask) == 0 forces the field to 6; otherwise the raw stat\n    value is kept\
+  \ (or 6 only when the random bit was zero). The mask of 7 only matters if the\n    result is then compared with\
+  \ 0; given the visible code, 7 vs 1 has no observable effect\n    here beyond possibly never being 0, which is\
+  \ curious.\n\nAll other AI attack-vars fields (Unk_02, Unk_03, Unk_04, AttackBoost at +0x06, Unk_0a at +0x0A,\n\
+  Unk_05 at +0x05) are cleared to 0.\n\nThe function returns 0x16 (in r0, sets NZ).\n\nQuirks:\n  - The pushed r0\
+  \ between the Attack+1 read and the emotion check looks like a stub for a\n    possible future damage modifier,\
+  \ but it has no observable effect today.\n  - The \"0x16\" return value is consistent with other AI attack builders\
+  \ and is likely an\n    attack-id or completion sentinel consumed by the caller.\n  - r4 is pushed/popped around\
+  \ the function only for alignment with the tail; it is also\n    used as a temporary for the unk_0c computation.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c busterBugChargeShotDamageCalcHappensHere_8011A7E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function busterBugChargeShotDamageCalcHappensHere_8011A7E
+
+    ./wf verify --function busterBugChargeShotDamageCalcHappensHere_8011A7E --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function busterBugChargeShotDamageCalcHappensHere_8011A7E
+
+    ./wf verify --function busterBugChargeShotDamageCalcHappensHere_8011A7E --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function busterBugChargeShotDamageCalcHappensHere_8011A7E
+
+    ./wf verify --function busterBugChargeShotDamageCalcHappensHere_8011A7E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, fuzz, menus3, story2, story4, story5, story6, story7.'
+  reproduce: grep -l '^08011a7e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+open_questions:
+- What oAIAttackVars_Unk_0c actually represents (hit count? number of hits? frames of charge?) and whether the mask-7
+  branches (stat == 9 or 0x23) have a hidden effect that the lowered C does not capture.
+- The role of the oNaviStats_Unk_4f stat ("0x4F") - this seems to be a per-navi "hidden" stat not part of the standard
+  Attack/Defense/Rapid/etc. set.
+- Whether 0x16 in r0 is an attack-id or a status sentinel for the caller (other AI damage helpers in the file likely
+  share this convention).
+- Why r10 is in the input contract for callers but unused in this function body.
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f

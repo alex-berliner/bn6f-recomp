@@ -1,0 +1,83 @@
+name: transferBattleHandNaviStats_800B3D8
+address: '0x0800B3D8'
+kind: function
+status: confirmed
+summary: Transfers the current battle's hand/Navi stat blocks from their input buffers into the active battle state,
+  swapping in the AI variants when battle effect flag 0x08 is set.
+interface: void transferBattleHandNaviStats(void); // no parameters, no return value
+details: "Called once per turn to publish hand and Navi stat data into the structures the\nbattle engine reads.\n\
+  Uses GetBattleEffects to test bit 0x8; if set, the secondary (AI-side) buffers\nare used instead of the primary\
+  \ ones for both the hand (0x50-byte) record pair\nand the full Navi stats (0x64-byte) record pair.\n\nConditional\
+  \ primary hand/navi copy (0x50 bytes, CopyWords):\n  src  = byte_203F4A4  (per-slot marker byte tested against\
+  \ 0xFF)\n  dst  = byte_20349C0\n\nConditional secondary hand/navi copy under effect 0x8 (0x50 bytes):\n  src \
+  \ = byte_203F5A4  (marker byte tested against 0xFF)\n  dst  = byte_2034A10\n\nUnconditional primary Navi stats\
+  \ copy (0x64 bytes):\n  src  = byte_203F4F4\n  dst  = eBattleNaviStats0\n\nUnconditional secondary Navi stats\
+  \ copy under effect 0x8 (0x64 bytes):\n  src  = byte_203F5F4\n  dst  = eBattleNaviStats1\n\nPer-slot guard: a\
+  \ 0xFF marker byte skips that copy entirely; only non-0xFF slots\nhave their record transferred. The two unconditional\
+  \ Navi-stats copies have no\nsuch guard. r4 holds the marker pointer across the call to CopyWords; r3/r4\nare\
+  \ preserved across the function.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c transferBattleHandNaviStats_800B3D8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function transferBattleHandNaviStats_800B3D8
+
+    ./wf verify --function transferBattleHandNaviStats_800B3D8 --snapshots build-snapshots'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function transferBattleHandNaviStats_800B3D8
+
+    ./wf verify --function transferBattleHandNaviStats_800B3D8 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function transferBattleHandNaviStats_800B3D8
+
+    ./wf verify --function transferBattleHandNaviStats_800B3D8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0800b3d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Confirm whether the two 0x50-byte records (byte_203F4A4 vs byte_203F5A4) and the two 0x64-byte records (byte_203F4F4
+  vs byte_203F5F4) are player vs AI counterparts or e.g. order/timer variants.
+- Confirm the meaning of marker byte 0xFF (inactive/uninitialised slot).
+- Verify which side of the AI toggle each destination buffer (eBattleNaviStats0 vs eBattleNaviStats1) actually backs.
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f

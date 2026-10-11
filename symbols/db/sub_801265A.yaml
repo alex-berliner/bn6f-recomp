@@ -1,0 +1,82 @@
+name: sub_801265A
+address: '0x0801265A'
+kind: function
+status: confirmed
+summary: Battle damage cap used while the player navi is beast-out / transformed; returns 1 in beast-out, otherwise
+  alliance + navi bonus + transformation bonus, clamped to 0xa.
+interface: u32 computeBeastDamageCap_801265A(u32 battle_object /* r5 */); /* clobbers r0-r3, r6, lr; preserves r4-r5;
+  flags clobbered */
+details: "Reads the player-side battle object (passed in r5 by callers):\n  - oNaviStats_NaviIndex  -> navi customization\
+  \ index\n  - field 1 (Alliance?)   -> base alliance value\n  - oBattleObject_Alliance (byte at r5+oBattleObject_Alliance)\
+  \ -> alliance for the emotion query\n\nBeast-out path: if callPossiblyGetBattleEmotion_8015B54 returns 5, the\
+  \ damage cap is hard-coded to 1.\n\nNon-beast path: sums\n  alliance_idx\n  + byte_80126A4[navi_idx]      (12-byte\
+  \ table, every entry 1: identity-like bonus)\n  + off_80126B0[transformation] (28-byte table, only index 9 is\
+  \ 1)\nthen clamps the sum to a maximum of 0xa (10).\n\nR2/R3 are not real outputs: the function tails back into\
+  \ the caller with whatever the last guest call produced\n(callPossiblyGetBattleEmotion on the beast branch, the\
+  \ oNaviStats_Transformation lookup on the other branch).\nThis is almost certainly an \"Emotion returned separately\"\
+  \ quirk rather than a real two-word result.\n\nTables:\n  byte_80126A4 at 0x080126A4 - 12 bytes of 0x01, indexed\
+  \ by NaviIndex.\n  off_80126B0  at 0x080126B0 - 28-byte table indexed by Transformation; only entry 9 = 1, rest\
+  \ 0.\n    The literal \"0x100\" at 0x80126B0 is the first word (little-endian of the 0x01 in entry 9 after 9 zero\n\
+  \    bytes plus a 0x01 byte at offset 9).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c sub_801265A
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801265A
+
+    ./wf verify --function sub_801265A --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801265A
+
+    ./wf verify --function sub_801265A --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801265A
+
+    ./wf verify --function sub_801265A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, story2, story9.'
+  reproduce: grep -l '^0801265a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- story2
+- story9
+open_questions:
+- Is the second navi_stats_byte read (field = 1) actually "Alliance" of the navi's slot, or a different field whose
+  meaning is 1, e.g. the player's base attack / counter?
+- Why does the beast-out branch short-circuit to a cap of 1 rather than going through the alliance + transformation
+  bonus math?
+- Should R2/R3 be promoted to a real "emotion + beast-out counter" return pair, or are they truly accidental survivors
+  from the last guest call?
+- The 28-byte transformation table is much larger than the known transformation enum; is the index actually Transformation,
+  or another small enum that happens to alias the same offset?
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f

@@ -1,0 +1,89 @@
+name: battle_init_80052D8
+address: '0x080052D8'
+kind: function
+status: confirmed
+summary: Per-frame battle-scene init that ticks the dispatch and each sub-system, then hands off to the battle main
+  loop once the start countdown has elapsed and a screen fade is still active.
+interface: void battle_init_80052D8(void) /* r4 r6 r7 preserved; clobbers r0 r1 r2 r3 r5 r8 r9 r10 r11 r12 lr; flags
+  nz,c,v */
+details: "Battle scene initialization step (one frame). Calls a fixed sequence of subsystems that\nmake up battle\
+  \ setup/updates:\n  - dispatch_80339CC (input / event dispatch)\n  - sub_80039AA, sub_8003AFA (battle subsystem\
+  \ ticks)\n  - sub_80027B4, sub_800286C (likely battle object/animation setup)\n  - sub_8003BF4, sub_8003E98 (battle\
+  \ subsystem ticks)\n  - npc_drawSprites_800467C (NPC sprite drawing)\n  - sub_8004298, sub_8004590, sub_8004934\
+  \ (further battle subsystem ticks)\n  - event_runArmedCallback_80024AE (runs any armed scripted-event callback)\n\
+  Then calls tickCountdownGate_803F530; the bne (Z clear) means \"countdown still ticking\",\nso we only proceed\
+  \ when the countdown has finished (Z set, i.e. the gate is open).\nAlso checks IsScreenFadeActive (Z clear ->\
+  \ fade active); we proceed only when the fade\nis still active. Only when both conditions hold does it call sub_800531C,\
+  \ which is the\nbattle main loop (the comment in the assembly says \"triggers battle main\").\nPreserves r4/r6/r7\
+  \ across the call (matches the GameState pointer convention used by\nthe engine), so the function treats r5 as\
+  \ a long-lived GameState/self pointer rather\nthan allocating fresh state.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c battle_init_80052D8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_init_80052D8
+
+    ./wf verify --function battle_init_80052D8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_init_80052D8
+
+    ./wf verify --function battle_init_80052D8 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 0 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_init_80052D8
+
+    ./wf verify --function battle_init_80052D8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080052d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of each sub_80039AA / sub_8003AFA / sub_80027B4 / sub_800286C / sub_8003BF4 / sub_8003E98 / sub_8004298
+  / sub_8004590 / sub_8004934 — they are ordered init/update passes for the battle scene, but their individual roles
+  are not yet named.
+- sub_800531C is identified only as "battle main"; whether it is the per-frame battle update loop or a one-shot
+  scene transition into battle is not pinned down.
+- The two-stage gate (countdown finished AND fade still active) suggests battle_main is deliberately not entered
+  during a still-dark or pre-fade-in moment; the precise design intent (preventing first-frame glitches vs. intentional
+  sequencing) is unclear.
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f

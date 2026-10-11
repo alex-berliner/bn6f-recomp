@@ -1,0 +1,78 @@
+name: sub_8012BA2
+address: '0x08012BA2'
+kind: function
+status: confirmed
+summary: AI decision helper that returns whether the AI Navi should perform a PowerAttack this turn, gated by alliance=0xB,
+  a selected chip with element type 5 (Break) and specific chip flags, and only when the AI's PowerAttack state/button
+  indicate a button-1 press while r4=0.
+interface: u32 sub_8012BA2(u32 navi /*r0*/, u32 r4_arg /*r1*/, u32 ai_obj /*r5*/, u32 chip_idx /*r6*/); flags NZ
+  set from result
+details: "Resolves r6 to a chip descriptor via getChip8021DA8 and inspects bytes 6 (element/type) and\n9 (flags).\
+  \ Returns 1 only when:\n  - GetBattleNaviStatsByte_AllianceFromBattleObject(navi, 0x29) == 0xB,\n  - the chip's\
+  \ byte 9 has bit1 set and bit0 clear,\n  - the chip's byte 6 equals 5,\n  - and either r4 != 0, or (r4 == 0 AND\
+  \ ai_obj->AIData->PwrAtkState == 2 AND\n    ai_obj->AIData->PwrAtkButton == 1).\nOtherwise returns 0. Touches\
+  \ oBattleObject_AIDataPtr / oAIData_PwrAtkState /\noAIData_PwrAtkButton on the AI battle-object state.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c sub_8012BA2
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8012BA2
+
+    ./wf verify --function sub_8012BA2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 233 out
+    of domain (verify run convert-20261011-000854-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8012BA2
+
+    ./wf verify --function sub_8012BA2 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261011-000854-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8012BA2
+
+    ./wf verify --function sub_8012BA2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08012ba2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp df6be1f
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does alliance 0xB represent (a specific player-controlled Navi/allegiance in the Falzar scenario)?
+- Which chip family has element 5 + the described flag pattern (likely a Break/PowerAttack chip); the function name
+  in callers should clarify whether chip selection has already happened or this is the gate.
+sources:
+- tools/wf run convert-20261011-000854
+- recomp df6be1f
