@@ -1,0 +1,99 @@
+name: sub_8016E64
+address: '0x08016E64'
+kind: function
+status: confirmed
+summary: Drives one battle object's sprite animation per frame, gated on time/pause/HP and a few object flags.
+interface: 'void sub_8016E64(u32 battleObj /* r5 */);
+
+  // preserves r4, r5; clobbers r0-r3, lr, N/Z/C/V; outputs only r5
+
+  '
+details: 'Operates on the BattleObject pointed to by r5. Reads oObjectHeader_Flags (r5); if bit 0x8
+
+  is set, returns immediately. Calls battle_isTimeStop() and returns if true (time-stopped).
+
+  Reads oBattleObject_NameID (r5). When the name id is in the inclusive range 0x49..0x4E the
+
+  HP check is skipped; otherwise it must read oBattleObject_HP and return when HP == 0.
+
+  Calls GetBattleMode(); if the result is not 1, calls battle_isPaused() and returns on true.
+
+  Then calls object_getFlag() and returns if any bit of 0x80110C00 is set; calls
+
+  object_getFlag2() and returns if bit 0x8 is set.
+
+  If oBattleObject_CurAnim differs from oBattleObject_CurAnimCopy, calls
+
+  sprite_setAnimation(cur_anim), sprite_loadAnimationData(), and stores cur_anim into
+
+  oBattleObject_CurAnimCopy. Finally calls sprite_update().
+
+  In short: the per-frame "advance the sprite anim" step for a battle actor, skipped under
+
+  header flag 0x8, battle time-stop, paused (non-mode-1) battles, certain global object
+
+  flags, and zero-HP actors (except for the 0x49..0x4E name-id window).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-005019);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c sub_8016E64
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8016E64
+
+    ./wf verify --function sub_8016E64 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 239 out
+    of domain (verify run convert-20261011-005019-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8016E64
+
+    ./wf verify --function sub_8016E64 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261011-005019-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8016E64
+
+    ./wf verify --function sub_8016E64 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-005019-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story2, story4, story5, story6,
+    story8, story9.'
+  reproduce: grep -l '^08016e64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 1a91c64
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- Which NameID range 0x49..0x4E represents (chip-use / special / invincibility pass that keeps animating even at
+  0 HP)?
+- What the flag bits 0x80110C00 and 0x8 (object_getFlag / object_getFlag2) gate (status-effect / "no anim" lock?).
+sources:
+- tools/wf run convert-20261011-005019
+- recomp 1a91c64

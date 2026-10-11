@@ -1,0 +1,89 @@
+name: sub_80163B4
+address: '0x080163B4'
+kind: function
+status: confirmed
+summary: 'Phase-update step for a battle object that joins the player''s side: flag it as friendly, set its init
+  state, or play the ally-join sound and transition to phase 4.'
+interface: 'void sub_80163B4(void /* r5=obj, r10=toolkit */); clobbers r0,r1,r2,r3,lr and NZCV; preserves r4-r7,r5,r10.
+  Returns: r0 = phase status / last ST value, r1 = 2.'
+details: "Operates on the battle object passed in r5 (using oBattleObject_* layout) and the\nbattle toolkit passed\
+  \ in r10 (using oToolkit_BattleStatePtr).\n\nFirst entry (oBattleObject_PhaseInitialized == 0):\n  * If the object's\
+  \ alliance XOR with battleState->oBattleState_Unk_0d (the\n    opposing-side byte) is 0 (i.e. same alliance as\
+  \ the player):\n      - Sets bit 1 of oObjectHeader_Flags (the \"is ally / flagged\" bit).\n      - Writes 8 into\
+  \ oBattleObject_CurPhaseAndPhaseInitialized\n        (phase=8/PhaseInitialized set together).\n      - Returns;\
+  \ r1 left at 2 (preloaded for the ORR).\n  * If the alliance differs, calls list_tryAddUniqueEntry_800AA1A with\
+  \ arg 0,\n    writes 4 into oBattleObject_PhaseInitialized, and falls through to the\n    common exit (clears\
+  \ bit 1 of oObjectHeader_Flags).\n\nSubsequent entry (oBattleObject_PhaseInitialized != 0):\n  * Calls battle_getStateUnk5c_800139A;\
+  \ if bit 0 set AND sub_800AA06(0) returns\n    nonzero: plays sound 0x94 (the ally-join SFX), writes Timer=2,\
+  \ Timer2=0x10,\n    calls sprite_setAlpha_8002c7a(0) (alpha = 0, fade out), writes\n    CurPhase = 4, and returns\
+  \ leaving r1 = whatever sprite_setAlpha left\n    in r1 (=2 by previous MOV).\n  * Else falls through to the common\
+  \ exit.\n\nCommon exit: clears bit 1 of oObjectHeader_Flags via BIC r0, #2 (r1 preloaded\nwith 2 so r1=2 on every\
+  \ exit path).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-005019);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c sub_80163B4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80163B4
+
+    ./wf verify --function sub_80163B4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-005019-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80163B4
+
+    ./wf verify --function sub_80163B4 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261011-005019-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80163B4
+
+    ./wf verify --function sub_80163B4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-005019-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080163b4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 1a91c64
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of oBattleObject_CurPhaseAndPhaseInitialized = 8 (is the 8 the initialized marker, or a phase id,
+  or a combined pack? See sibling write of raw 4 into oBattleObject_CurPhase in the sound path).
+- What list_tryAddUniqueEntry_800AA1A / sub_800AA06 / oBattleState_Unk_0d / battle_getStateUnk5c_800139A actually
+  represent (battle-side telegraph counter? player-side roster?).
+- The combination "set flag bit1 / clear flag bit1 across calls" suggests the bit is a per-frame "candidate for
+  ally-join" latch whose persistence spans updates; identity of bit 1 in oObjectHeader_Flags still unconfirmed.
+sources:
+- tools/wf run convert-20261011-005019
+- recomp 1a91c64

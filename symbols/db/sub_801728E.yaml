@@ -1,0 +1,91 @@
+name: sub_801728E
+address: '0x0801728E'
+kind: function
+status: confirmed
+summary: When battle state flag 0x40 is set and the current battle object is acting and belongs to an alliance whose
+  entry byte 0x50 is non-zero, applies a per-frame dimmer/flash shader to its sprite by indexing a 32-step palette
+  ramp with (battleStateUnk40 & 0x1F).
+interface: void battle_applyDimmerShaderTo_801728E(void /* implicit r3 */, void /* implicit r5 = battleObj */, void
+  /* implicit r10 */); /* returns shader-applied result via r3/r4; clobbers nzcv, r0, r1, lr; preserves r4 */
+details: "Early-outs via locret_80172C0 if any of the three gates fail:\n  1. battle_testFlag0x40_800A8F8() == 0\n\
+  \  2. battleObj->CurAction (oBattleObject_CurAction) == 0\n  3. getEntryPtr_2036120_1D0_802E070(alliance)->byte_0x50\
+  \ == 0\nOtherwise reads battle_getStateUnk40_800A704(), masks with 0x1F to get an index\ninto byte_80172C8 (a\
+  \ 32-entry ramp 0,2,4..0x1E ramping up then down to 0; stored\ninline right after this function along with what\
+  \ looks like a stub byte_80A0C0E\nand constant 0x20406 referenced via the off_80172C4 word). The ramp value is\n\
+  expanded to value + (value << 5) i.e. value * 33 (RGB555-ish: bit pattern\n0bbbbbgggggrrrrr with 5 bits of r/r\
+  \ and ~5 bits of g) and passed to\nsprite_setColorShader as the per-frame tint factor, producing the standard\n\
+  BN dimmer/brightness oscillation over the sprite.\nTouched structs/fields: oBattleObject_CurAction, oBattleObject_Alliance\
+  \ on the\nbattle object (r5); the alliance entry-table flag byte at offset 0x50; the global\n\"stateUnk40\" word.\n\
+  Quirks: r3/r4 are returned but only r3 is meaningfully written (it is just\npropagated through); r10 input is\
+  \ ignored; the function does not touch its\ncaller's stack — it is a leaf dispatched from a battle per-frame hook\
+  \ and\nreturns via `pop {pc}`. Inline data following the code includes dword_80172E8\n= 0x173 and dword_80172EC\
+  \ = 0x17E which are not referenced in this snippet and\nlikely feed a sibling function.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-005019);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801728E.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c sub_801728E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801728E
+
+    ./wf verify --function sub_801728E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-005019-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801728E
+
+    ./wf verify --function sub_801728E --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-005019-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801728E
+
+    ./wf verify --function sub_801728E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-005019-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0801728e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801728E.c
+  where: recomp 1a91c64
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2_801728E.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly is battle state "unk40" being used as a phase/beat counter here — a turn timer, an attack windup
+  clock, or a global effect phase?
+- What does the alliance entry byte at 0x50 represent (a "should dim" flag, a hidden/invisible flag, an aura flag)?
+- The .word byte_80A0C0E and .word 0x20406 immediately after the ramp table seem to be referenced by off_80172C4
+  only insofar as they sit there; what function consumes them?
+- Is the 0x1F-masked index essentially repurposing a low-5-bit "in-game frame counter" so the dimmer oscillates
+  smoothly through the 32-entry ramp every ~32 frames?
+sources:
+- tools/wf run convert-20261011-005019
+- recomp 1a91c64
