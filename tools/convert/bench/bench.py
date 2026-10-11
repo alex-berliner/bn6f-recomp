@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The standing benchmark of the farm's prompts (review 3 Area 6.3; joint plan S2 "Measurement").
 
-  tools/wf/.venv/bin/python tools/convert/bench/bench.py run RUN [--arms typed,old] [--model M] [--jobs 3]
+  tools/wf/.venv/bin/python tools/convert/bench/bench.py run RUN [--arms typed2,typed,old] [--model M] [--jobs 3]
                                                              [--only F,G] [--difftest PATH]
   tools/wf/.venv/bin/python tools/convert/bench/bench.py summary RUN [RUN...] [--tsv OUT.tsv]
   tools/wf/.venv/bin/python tools/convert/bench/bench.py retest RUN [--jobs 8]
@@ -13,14 +13,20 @@ Candidates go through the farm's acceptance test (tools/convert/farm.py test(): 
 the register check when the arm has it, compile, difftest on the captured calls and on random inputs).
 
 Arms (ARMS below; rerun after every prompt, header or model change, and add an arm for a new prompt):
-  typed     the farm's live prompt (farm.py SYSTEM, CONVENTIONS, TEMPLATE, REPAIR), register check on
-  old       the prompt before 329fbfd, register-form C allowed (prompt_old.py), register check off
-  cards     the live prompt plus a card (symbols/db summary and interface) per function it calls, register
-            check on (review 3 A28/B22)
-  handover  the live prompt, but round 0 is the farm's repair prompt on the best candidate another model
-            wrote before (pool.py's candidates and ranking; its register-check and behaviour reports), then
-            one repair (review 3 B31); a function with no earlier candidate gets the plain first prompt
-  (cards and handover are not in the default --arms)
+  typed2    the farm's live prompt, version typed-2 (farm.py SYSTEM, CONVENTIONS, TEMPLATE, REPAIR, with the
+            callees' generated wrappers), as the farm runs it: every check run and reported together, the
+            tool's register-form notes, and the hand-over (wf/tools/handover.py): each round starts from the
+            best attempt so far, earlier ones by other models included (not the benchmark model's own: those
+            are other arms' and runs'), with a history line
+  typed     the typed prompt before it, typed-1 (prompt_typed1.py, verbatim), with typed-1's test: register
+            check first, only the first failing check reported (farm.test(..., legacy=True))
+  old       the prompt before 329fbfd, register-form C allowed (prompt_old.py), register check off, typed-1's
+            test otherwise
+  cards     typed plus a card (symbols/db summary and interface) per function it calls (review 3 A28/B22)
+  handover  typed, but round 0 is typed-1's repair prompt on the best candidate another model wrote before
+            (pool.py's candidates and ranking; its register-check and behaviour reports), then one repair
+            (review 3 B31); a function with no earlier candidate gets the plain first prompt
+  (cards and handover were the first run's extra arms: not in the default --arms)
 
 Where things go:
   - tools/convert/log/bench/RUN/ (ignored): results.jsonl, one row per round with the code, the report and
@@ -62,8 +68,10 @@ from wf.tools.models import (ACCEPTED_DIR, LOG_DIR, MAX_TOKENS, USAGE_LOG, Conve
                              conversion_context, environment_hash, first_prompt, repair_prompt)
 from wf.types import BuildFailure, FunctionName  # noqa: E402
 import farm  # noqa: E402  (tools/convert, on the path through wf.tools.models)
+from wf.tools import handover as handing  # noqa: E402
 sys.path.insert(0, str(HERE))
 import prompt_old  # noqa: E402
+import prompt_typed1  # noqa: E402
 
 FUNCTIONS = HERE / "functions.tsv"
 RUNS = LOG_DIR / "bench"
@@ -78,21 +86,30 @@ class Arm(NamedTuple):
     check_registers: bool
     farm_result: bool          # passes are real farm results (logged and accepted like the farm's)
     hand_over: bool = False    # round 0 repairs the best earlier candidate of another model (review 3 B31)
+    legacy: bool = True        # typed-1's test: only the first failing check (farm.test(..., legacy=True))
+    live: bool = False         # the farm's own prompt and test, hand-over included (handover.start_prompt)
 
 
 _ASSEMBLY = "\nOriginal assembly (bn6f disassembly):"
-assert _ASSEMBLY in farm.TEMPLATE
-# the live prompt plus a card per called function from symbols/db (review 3 A28/B22: "an arm in the first
+assert _ASSEMBLY in prompt_typed1.TEMPLATE
+# typed-1 plus a card per called function from symbols/db (review 3 A28/B22: "an arm in the first
 # benchmark run, kept if not worse")
-CARDS = SimpleNamespace(SYSTEM=farm.SYSTEM, CONVENTIONS=farm.CONVENTIONS, REPAIR=farm.REPAIR,
-                        TEMPLATE=farm.TEMPLATE.replace(_ASSEMBLY, "\n{cards}" + _ASSEMBLY[1:]))
+CARDS = SimpleNamespace(SYSTEM=prompt_typed1.SYSTEM, CONVENTIONS=prompt_typed1.CONVENTIONS, REPAIR=prompt_typed1.REPAIR,
+                        TEMPLATE=prompt_typed1.TEMPLATE.replace(_ASSEMBLY, "\n{cards}" + _ASSEMBLY[1:]))
 
-ARMS = {arm.name: arm for arm in (
-    Arm("typed", farm, check_registers=True, farm_result=True),
+ARMS = {arm.name: arm for arm in (     # the first is the one `summary` pairs with each other arm
+    Arm("typed2", farm, check_registers=True, farm_result=True, legacy=False, live=True),
+    Arm("typed", prompt_typed1, check_registers=True, farm_result=True),
     Arm("old", prompt_old, check_registers=False, farm_result=False),
     Arm("cards", CARDS, check_registers=True, farm_result=True),
-    Arm("handover", farm, check_registers=True, farm_result=True, hand_over=True),
+    Arm("handover", prompt_typed1, check_registers=True, farm_result=True, hand_over=True),
 )}
+
+
+def prompt_version(arm: Arm) -> str:
+    """typed-2 (farm.py PROMPT_VERSION), typed-1, old; an arm made from one of them: theirs plus its name."""
+    version = getattr(arm.texts, "PROMPT_VERSION", None) or getattr(arm.texts, "VERSION", None) or arm.name
+    return version if arm.name in ("typed", "typed2", "old") else f"{version}+{arm.name}"
 
 
 def prompt_hash(arm: Arm) -> str:
@@ -102,11 +119,13 @@ def prompt_hash(arm: Arm) -> str:
 
 
 def first(arm: Arm, context: ConversionContext) -> str:
-    """wf.tools.models.first_prompt with the arm's texts (the typed arm's is checked to be the farm's own)."""
+    """wf.tools.models.first_prompt with the arm's texts (the live arm's is checked to be the farm's own)."""
     contract = "\n".join(f"  {part}: {' '.join(names) or '-'}" for part, names in context.contract.by_part().items())
     cards = callee_cards(context.function) if "{cards}" in arm.texts.TEMPLATE else ""
+    callees = farm.callees_section(context.function, context.lifted) if "{callees}" in arm.texts.TEMPLATE else ""
     return arm.texts.TEMPLATE.format(conventions=arm.texts.CONVENTIONS, name=context.function, addr=context.address,
-                                     contract=contract, asm=context.assembly, lifted=context.lifted, cards=cards)
+                                     contract=contract, asm=context.assembly, lifted=context.lifted, cards=cards,
+                                     callees=callees)
 
 
 @cache
@@ -130,9 +149,12 @@ def callee_cards(function: str) -> str:
     return "What the functions it calls do (symbols/db):\n" + "\n".join(cards) + "\n\n" if cards else ""
 
 
-def repair(arm: Arm, context: ConversionContext, failure: str, code: str) -> str:
+def repair(arm: Arm, context: ConversionContext, failure: str, code: str, whose: str = "your last attempt",
+           history: str = "") -> str:
     """wf.tools.models.repair_prompt with the arm's texts."""
-    return first(arm, context) + "\n\n" + arm.texts.REPAIR.format(failure=failure[:3000], code=code or "")
+    lines = farm.HISTORY.format(attempts=history) if history else ""
+    return first(arm, context) + "\n\n" + arm.texts.REPAIR.format(failure=failure[:3000], code=code or "",
+                                                                   whose=whose, history=lines)
 
 
 @cache
@@ -157,7 +179,7 @@ def best_earlier(function: str, context: ConversionContext, model: str, difftest
     best = min(tested, key=lambda t: (order.index(t.verdict), t.failing_share, t.register_violations))
     code = best.candidate.code
     with tempfile.TemporaryDirectory() as workdir:
-        problems = farm.register_problems(function, code, workdir)
+        problems = farm.register_problems(function, code, workdir, legacy=True)   # typed-1 arm
     passed, report = test(ARMS["old"], context, code, difftest)    # behaviour, without the register check
     failure = "\n".join(part for part in (problems, "" if passed else report) if part)
     return {"code": code, "report": failure or report, "from": f"{best.candidate.model} {best.candidate.source}",
@@ -172,7 +194,14 @@ def functions(only: set[str] | None = None) -> list[dict[str, str]]:
 
 
 def failure_class(report: str) -> str:
-    """The check a failed round stopped at, in review 3 Area 2's classes."""
+    """The worst problem of a failed round, in review 3 Area 2's classes: the check typed-1's test stopped at,
+    or (a report of every problem, typed-2) its first failing section: entry point, compile, behaviour,
+    register check, style, review rule."""
+    sections = farm.report_sections(report)
+    failing = [kind for kind, _ in farm.SECTIONS if kind in sections
+               and not (kind == "behaviour" and farm.behaviour_ok(sections[kind]))]
+    if len(sections) > 1 and failing:
+        report = sections[failing[0]]
     if report.startswith("model error"):
         return "model error"
     if "no ```c code block" in report:
@@ -198,14 +227,21 @@ def failure_class(report: str) -> str:
     return "other"
 
 
+def failing_checks(report: str) -> list[str]:
+    """Every check a report says failed (a typed-2 report lists them all), in the report's order."""
+    sections = farm.report_sections(report)
+    return [kind for kind, _ in farm.SECTIONS if kind in sections
+            and not (kind == "behaviour" and farm.behaviour_ok(sections[kind]))]
+
+
 def test(arm: Arm, context: ConversionContext, code: str, difftest: Path) -> tuple[bool, str]:
-    """farm.test, as wf.tools.models.test_candidate runs it, with the arm's register check."""
+    """farm.test, as wf.tools.models.test_candidate runs it, with the arm's register check and test version."""
     farm.DIFFTEST = str(difftest)
     contract = {part: list(names) for part, names in context.contract.by_part().items()}
     with tempfile.TemporaryDirectory() as workdir:
         try:
             return farm.test(context.function, code, str(SNAPSHOTS), contract, workdir,
-                             check_registers=arm.check_registers)
+                             check_registers=arm.check_registers, legacy=arm.legacy)
         except subprocess.TimeoutExpired:
             return False, "difftest timed out (900 s)"
 
@@ -234,14 +270,16 @@ def farm_log(arm: Arm, row: dict, model: str, difftest: Path) -> None:
     entry = {"round": row["round"], "ok": row["outcome"] == "passed", "seconds": row.get("seconds", 0),
              "report": row["report"], "code": row.get("code"), "time": row["time"], "model": model,
              "kind": f"bench {arm.name}", "bench_run": row["run"], "outcome": row["outcome"],
-             "prompt_hash": row["prompt_hash"], "environment_hash": environment_hash(difftest),
+             "prompt_version": row["prompt_version"], "prompt_hash": row["prompt_hash"],
+             "environment_hash": environment_hash(difftest),
              "max_tokens": MAX_TOKENS, "input_key": farm.input_key(row["function"])}
     with open(LOG_DIR / f"{row['function']}.{tag}.jsonl", "a") as log:
         log.write(json.dumps(entry) + "\n")
     accepted = ACCEPTED_DIR / f"{row['function']}.{tag}.c"
     if row["outcome"] == "passed" and not accepted.exists():
         ACCEPTED_DIR.mkdir(parents=True, exist_ok=True)
-        accepted.write_text(row["code"].strip() + "\n")
+        code = farm.finished(row["function"], row["code"]) if arm.live else row["code"]   # as the farm keeps it
+        accepted.write_text(code.strip() + "\n")
 
 
 def read_rows(path: Path) -> list[dict]:
@@ -270,8 +308,10 @@ def run(name: str, arms: list[Arm], model: str, jobs: int, only: set[str] | None
         _pool()                          # read once, before the threads want it
     contexts = {r["function"]: conversion_context(FunctionName(r["function"])) for r in chosen}
     sample = next(c for c in contexts.values() if c is not None)
-    assert first(ARMS["typed"], sample) == first_prompt(sample), "the typed arm's prompt is not the farm's"
-    assert repair(ARMS["typed"], sample, "x", "y") == repair_prompt(sample, "x", "y")
+    assert first(ARMS["typed2"], sample) == first_prompt(sample), "the typed2 arm's prompt is not the farm's"
+    assert repair(ARMS["typed2"], sample, "x", "y", "w", "h") == repair_prompt(sample, "x", "y", whose="w", history="h")
+    leave_out = frozenset({model.replace("/", "_"), model.replace("/", "_") + "+old"})   # this model's: other runs'
+    earlier: dict[str, tuple[handing.Tried, ...]] = {}
     done: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in read_rows(results):
         done[(row["function"], row["arm"])].append(row)
@@ -288,6 +328,8 @@ def run(name: str, arms: list[Arm], model: str, jobs: int, only: set[str] | None
         if context is None:
             print(f"{function}: no lifted code or assembly", flush=True)
             return
+        if arm.live and function not in earlier:
+            earlier[function] = handing.earlier_attempts(context, difftest, leave_out, SNAPSHOTS)
         while True:
             last = rows[-1] if rows else None
             if last and (last["outcome"] in ("passed", "runaway") or last["round"] >= 1):
@@ -297,9 +339,18 @@ def run(name: str, arms: list[Arm], model: str, jobs: int, only: set[str] | None
             handed = best_earlier(function, context, model, difftest) if arm.hand_over and last is None else None
             if handed is not None:
                 prompt = repair(arm, context, handed["report"], handed["code"])
+            if arm.live:   # the farm's own way: from the best attempt so far (handover.start_prompt)
+                own = [handing.tried(r["code"], r["outcome"] == "passed", r["report"],
+                                     "your last attempt" if r is last else f"your round {r['round']}")
+                       for r in rows if r.get("code")]
+                tried = [*earlier[function], *own]
+                prompt = handing.start_prompt(context, tried)
+                if tried:
+                    best = min(tried, key=lambda t: t.rank)
+                    handed = {"from": best.whose, "verdict": best.verdict, "candidates": len(earlier[function])}
             tag = f"bench-{arm.name} {function} r{number} {name}"
             row = {"run": name, "function": function, "arm": arm.name, "round": number, "model": model,
-                   "prompt_hash": prompt_hash(arm), "max_tokens": MAX_TOKENS,
+                   "prompt_version": prompt_version(arm), "prompt_hash": prompt_hash(arm), "max_tokens": MAX_TOKENS,
                    "environment_hash": environment_hash(difftest)}
             if handed is not None:
                 row["handed"] = {k: handed[k] for k in ("from", "verdict", "candidates")}
@@ -320,7 +371,8 @@ def run(name: str, arms: list[Arm], model: str, jobs: int, only: set[str] | None
                 row |= {"in": usage.get("in"), "out": usage.get("out"), "cache_read": usage.get("cache_read"),
                         "answered_by": usage.get("answered_by")}
             row |= {"seconds": round(time.monotonic() - started), "time": datetime.now().isoformat(timespec="seconds"),
-                    "class": "-" if row["outcome"] == "passed" else failure_class(row["report"])}
+                    "class": "-" if row["outcome"] == "passed" else failure_class(row["report"]),
+                    "failing": [] if row["outcome"] == "passed" else failing_checks(row["report"])}
             with lock:
                 with open(results, "a") as log:
                     log.write(json.dumps(row) + "\n")
@@ -499,7 +551,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("mode", choices=("run", "summary", "retest"))
     ap.add_argument("run_name", metavar="RUN", nargs="+", help="summary: several runs pool their attempts")
-    ap.add_argument("--arms", default="typed,old")
+    ap.add_argument("--arms", default="typed2,typed,old")
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--jobs", type=int, default=3)
     ap.add_argument("--only", help="comma-separated functions (default: every one in functions.tsv)")

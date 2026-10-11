@@ -6,7 +6,9 @@ writes readable C, the farm's acceptance test checks it against the lifted
 original on the captured calls and random inputs, failures go back to the
 model for repair. `--prompt old` asks with the prompt before the typed one (register-form C, no
 register check; docs/reviews/2026-10-10-benchmark.md): its rounds and candidates are filed under the
-model tagged `+old` (FUNC.minimax_MiniMax-M3+old.c), a pair of its own. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
+model tagged `+old` (FUNC.minimax_MiniMax-M3+old.c), a pair of its own. With the typed prompt (typed-2),
+a round starts from the best attempt so far, another model's included (the hand-over,
+wf/tools/handover.py), and a passing candidate is kept with the generated wrappers it calls. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
 plan's quota rather than the farm model's.) Earlier: an accepted function got its symbols/db entry drafted
 by the same model. A `farm batch` run builds the host difftest once, skips
 pairs that are already finished, and runs the rest as its child runs.

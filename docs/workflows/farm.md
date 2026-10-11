@@ -6,7 +6,9 @@ writes readable C, the farm's acceptance test checks it against the lifted
 original on the captured calls and random inputs, failures go back to the
 model for repair. `--prompt old` asks with the prompt before the typed one (register-form C, no
 register check; docs/reviews/2026-10-10-benchmark.md): its rounds and candidates are filed under the
-model tagged `+old` (FUNC.minimax_MiniMax-M3+old.c), a pair of its own. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
+model tagged `+old` (FUNC.minimax_MiniMax-M3+old.c), a pair of its own. With the typed prompt (typed-2),
+a round starts from the best attempt so far, another model's included (the hand-over,
+wf/tools/handover.py), and a passing candidate is kept with the generated wrappers it calls. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
 plan's quota rather than the farm model's.) Earlier: an accepted function got its symbols/db entry drafted
 by the same model. A `farm batch` run builds the host difftest once, skips
 pairs that are already finished, and runs the rest as its child runs.
@@ -19,18 +21,20 @@ Runs are tracked in the Burr UI under project `recomp-farm`.
 
 ### `gather_context` (step)
 
-Find the function's assembly, lifted C and register contract, and its captured calls.
+Find the function's assembly, lifted C and register contract, and its captured calls; for the
+typed prompt, also every earlier attempt at it, tested today (the hand-over).
 
-- reads: `function: FunctionName`, `snapshots: SnapshotDir`
-- produces: `context: ConversionContext | NotRun`
+- reads: `function: FunctionName`, `snapshots: SnapshotDir`, `difftest: Path`, `prompt: PromptKind`
+- produces: `context: ConversionContext | NotRun`, `earlier: tuple[Tried, ...]`
 - then: `ask_model_for_c` when `there_is_something_to_convert`; `give_up` when `there_is_nothing_to_convert`
 
 ### `ask_model_for_c` (step)
 
-Ask the model (or the first source of a tier that is up) for readable C; after a failure, show it the
-failure and its code.
+Ask the model (or the first source of a tier that is up) for readable C. The typed prompt starts from
+the best attempt so far (another model's, or one of this run's) with every problem its test found and a
+history line of the others; the old prompt shows the last failure and its code.
 
-- reads: `context: ConversionContext`, `model: ModelSpec`, `prompt: PromptKind`, `attempts: tuple[Attempt, ...]`
+- reads: `context: ConversionContext`, `model: ModelSpec`, `prompt: PromptKind`, `earlier: tuple[Tried, ...]`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`
 - then: `test_reply` when `the_model_answered`; `give_up` when `the_model_failed`
 
@@ -54,7 +58,8 @@ prompt), and log the round as farm.py does.
 ### `accept_candidate` (step)
 
 Keep the passing candidate in tools/convert/accepted for review (filed under the model tagged with
-its prompt when that is not the typed one).
+its prompt when that is not the typed one; a typed one with the generated wrappers it calls and the
+tool's register-form notes, so it stands on its own).
 
 - reads: `function: FunctionName`, `model: ModelSpec`, `prompt: PromptKind`, `attempts: tuple[Attempt, ...]`
 - produces: `accepted: Path`, `outcome: FarmOutcome`

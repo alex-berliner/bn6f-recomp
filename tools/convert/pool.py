@@ -582,7 +582,12 @@ _TRIALS = re.compile(r"\((\d+) trials, (\d+) failures, (\d+) out-of-domain\)")
 
 
 def judge(passed: bool, report: str) -> tuple[Verdict, str, float]:
-    """farm.test's report as a verdict, one short line, and the share of comparisons that differed."""
+    """farm.test's report as a verdict, one short line, and the share of comparisons that differed. The
+    report lists every problem since the typed-2 test; the verdict is still that of the first failing check
+    in the order the test once stopped at (farm.first_failure), so verdicts keep their meaning."""
+    kind, first = cast(tuple[str | None, str], FARM.first_failure(report))  # pyright: ignore[reportAny]
+    if kind is not None:
+        report = first
     lines = report.splitlines() or [""]
     if report.startswith("compile errors:"):
         error = re.sub(r"^line \d+: (?:fatal )?error: ", "", lines[1] if len(lines) > 1 else "?")

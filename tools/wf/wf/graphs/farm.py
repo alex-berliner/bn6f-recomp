@@ -4,7 +4,9 @@ writes readable C, the farm's acceptance test checks it against the lifted
 original on the captured calls and random inputs, failures go back to the
 model for repair. `--prompt old` asks with the prompt before the typed one (register-form C, no
 register check; docs/reviews/2026-10-10-benchmark.md): its rounds and candidates are filed under the
-model tagged `+old` (FUNC.minimax_MiniMax-M3+old.c), a pair of its own. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
+model tagged `+old` (FUNC.minimax_MiniMax-M3+old.c), a pair of its own. With the typed prompt (typed-2),
+a round starts from the best attempt so far, another model's included (the hand-over,
+wf/tools/handover.py), and a passing candidate is kept with the generated wrappers it calls. (Entries for accepted functions are drafted afterwards by `wf drafts --drafter`, on a
 plan's quota rather than the farm model's.) Earlier: an accepted function got its symbols/db entry drafted
 by the same model. A `farm batch` run builds the host difftest once, skips
 pairs that are already finished, and runs the rest as its child runs."""
@@ -17,9 +19,10 @@ from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.tools.build import build_host_difftest, committed_tree
+from wf.tools.handover import Tried, best_start, earlier_attempts, tried
 from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, PromptKind, accept,
-                             already_accepted, ask_model, conversion_context, first_prompt, log_round, logged_rounds,
-                             out_of_rounds_before, repair_prompt, test_candidate, with_prompt)
+                             already_accepted, ask_model, conversion_context, finished, first_prompt, log_round,
+                             logged_rounds, out_of_rounds_before, repair_prompt, test_candidate, with_prompt)
 from wf.tools.sources import first_up, models_for, out_for_long
 from wf.types import BuildFailure, FunctionName, ModelSpec, NotRun, Result, SnapshotDir, ToolMessage
 
@@ -81,6 +84,7 @@ class FarmState(BaseModel):
     rounds: int                                  # repair rounds after the first attempt
     prompt: PromptKind = PromptKind.TYPED        # which prompt it is asked with
     context: ConversionContext | NotRun | None = None
+    earlier: tuple[Tried, ...] = ()              # what other models (and runs) wrote, tested today, best first
     attempts: tuple[Attempt, ...] = ()
     accepted: Path | None = None
     outcome: FarmOutcome | None = None
@@ -92,27 +96,34 @@ farm = Workflow[FarmState](FarmState, project=PROJECT)
 class GatherInput(Result):
     function: FunctionName
     snapshots: SnapshotDir
+    difftest: Path
+    prompt: PromptKind
 
 
 class GatherOutput(Result):
     context: ConversionContext | NotRun
+    earlier: tuple[Tried, ...] = ()
 
 
 @farm.step
 def gather_context(given: GatherInput) -> GatherOutput:
-    """Find the function's assembly, lifted C and register contract, and its captured calls."""
+    """Find the function's assembly, lifted C and register contract, and its captured calls; for the
+    typed prompt, also every earlier attempt at it, tested today (the hand-over)."""
     if not (given.snapshots / given.function).is_dir():
         return GatherOutput(context=NotRun(reason=ToolMessage(f"no captured calls in {given.snapshots}")))
     context = conversion_context(given.function)
     if context is None:
         return GatherOutput(context=NotRun(reason=ToolMessage("no lifted code or assembly found")))
-    return GatherOutput(context=context)
+    earlier = (earlier_attempts(context, given.difftest, snapshots=given.snapshots)
+               if given.prompt is PromptKind.TYPED else ())
+    return GatherOutput(context=context, earlier=earlier)
 
 
 class AskInput(Result):
     context: ConversionContext
     model: ModelSpec
     prompt: PromptKind
+    earlier: tuple[Tried, ...]
     attempts: tuple[Attempt, ...]
 
 
@@ -122,9 +133,14 @@ class AskOutput(Result):
 
 @farm.step
 def ask_model_for_c(given: AskInput) -> AskOutput:
-    """Ask the model (or the first source of a tier that is up) for readable C; after a failure, show it the
-    failure and its code."""
-    if given.attempts:
+    """Ask the model (or the first source of a tier that is up) for readable C. The typed prompt starts from
+    the best attempt so far (another model's, or one of this run's) with every problem its test found and a
+    history line of the others; the old prompt shows the last failure and its code."""
+    start = best_start((*given.earlier, *own_attempts(given.attempts))) if given.prompt is PromptKind.TYPED else None
+    if start is not None:
+        prompt = repair_prompt(given.context, start.best.report, start.best.code, given.prompt, whose=start.best.whose,
+                               history=start.history)
+    elif given.attempts and given.prompt is not PromptKind.TYPED:
         last = given.attempts[-1]
         failure = last.test.report if last.test else ToolMessage("the reply had no ```c code block")
         prompt = repair_prompt(given.context, failure, last.reply.candidate, given.prompt)
@@ -138,6 +154,14 @@ def ask_model_for_c(given: AskInput) -> AskOutput:
                         lambda reply: reply.error)
     attempt = Attempt(round_number=round_number, prompt=prompt, reply=reply, test=None)
     return AskOutput(attempts=(*given.attempts, attempt))
+
+
+def own_attempts(attempts: tuple[Attempt, ...]) -> tuple[Tried, ...]:
+    """This run's tested attempts, ranked (a reply without code ends the run, so every earlier one has a test)."""
+    return tuple(tried(attempt.reply.candidate, attempt.test.passed, attempt.test.report,
+                       "your last attempt" if i == len(attempts) - 1 else f"your round {attempt.round_number}")
+                 for i, attempt in enumerate(attempts)
+                 if attempt.reply.candidate is not None and attempt.test is not None)
 
 
 class TestInput(Result):
@@ -181,11 +205,12 @@ class AcceptOutput(Result):
 @farm.step
 def accept_candidate(given: AcceptInput) -> AcceptOutput:
     """Keep the passing candidate in tools/convert/accepted for review (filed under the model tagged with
-    its prompt when that is not the typed one)."""
+    its prompt when that is not the typed one; a typed one with the generated wrappers it calls and the
+    tool's register-form notes, so it stands on its own)."""
     reply = given.attempts[-1].reply
     assert reply.candidate is not None
-    return AcceptOutput(accepted=accept(given.function, with_prompt(reply.model or given.model, given.prompt),
-                                        reply.candidate),
+    code = finished(given.function, reply.candidate) if given.prompt is PromptKind.TYPED else reply.candidate
+    return AcceptOutput(accepted=accept(given.function, with_prompt(reply.model or given.model, given.prompt), code),
                         outcome=FarmOutcome.ACCEPTED)
 
 

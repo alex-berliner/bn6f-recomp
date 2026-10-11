@@ -23,7 +23,7 @@ from pydantic import BeforeValidator, Field, TypeAdapter, ValidationError, model
 
 from wf.repo import CPORT, ORIGINAL_ROM
 from wf.tools.models import FARM as _farm
-from wf.tools.models import USAGE_LOG, ConversionContext, Prompt
+from wf.tools.models import TYPED1, USAGE_LOG, ConversionContext, Prompt
 from wf.types import FunctionName, ModelSpec, Result, SnapshotDir, SymbolName, SymbolStatus, ToolMessage
 
 CandidateFile = NewType("CandidateFile", str)   # a whole readable C file a model proposed
@@ -173,7 +173,7 @@ def subsystem_prompt(subsystem: str, file_name: str, contexts: tuple[ConversionC
     functions = "\n\n".join(_function_section(context) for context in contexts)
     names = ", ".join(context.function for context in contexts)
     return Prompt(
-        cast(str, _farm.CONVENTIONS) + SUBSYSTEM_RULES  # pyright: ignore[reportAny]
+        cast(str, TYPED1.CONVENTIONS) + SUBSYSTEM_RULES  # pyright: ignore[reportAny]  # the farm's are typed-2's
         + f"\n## Reference files (already converted, the style wanted)\n{references}\n"
         + f"\n## The subsystem to convert: {subsystem}\n{functions}\n"
         + REPLY_FORMAT.format(file=file_name, names=names))

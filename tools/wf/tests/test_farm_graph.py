@@ -7,6 +7,7 @@ import pytest
 from wf.burr_typed import Finished
 from wf.graphs import farm
 from wf.graphs.farm import FarmBatchState, FarmOutcome, FarmState, farm_batch_graph, farm_graph
+from wf.tools.handover import Tried, tried
 from wf.tools.models import (AssemblyText, CandidateC, CandidateTest, Contract, ConversionContext, LiftedC,
                              ModelReply, Prompt, PromptKind, base_model, prompt_of, with_prompt)
 from wf.types import BuildFailure, FunctionName, GuestAddress, LogPath, ModelSpec, SnapshotDir, ToolMessage
@@ -32,7 +33,43 @@ def test_a_failure_goes_back_to_the_model_with_the_report(monkeypatch: pytest.Mo
 
     assert state.outcome is FarmOutcome.ACCEPTED
     assert len(state.attempts) == 2
-    assert "repair: memory differs" in prompts[1]
+    assert prompts[1].startswith("repair from your last attempt: Next leafFunction")
+    assert "report: memory differs" in prompts[1]
+
+
+def test_the_typed_prompt_starts_from_another_models_best_attempt(monkeypatch: pytest.MonkeyPatch,
+                                                                  tmp_path: Path) -> None:
+    earlier = (tried(CandidateC("compiles not"), False, "compile errors:\nline 1: error: x", "another model's (a)"),
+               tried(CandidateC("close"), False, RANDOM_DIFFERS, "another model's (b)"))
+    prompts = fake_tools(monkeypatch, tmp_path, test_results=[False, True], earlier=earlier)
+
+    state = farm_run(tmp_path)
+
+    assert state.outcome is FarmOutcome.ACCEPTED
+    assert prompts[0].startswith("repair from another model's (b): close")      # the best one, not the first
+    assert "another model's (a): does not compile (1 errors)" in prompts[0]      # the others, in one line
+    assert prompts[1].startswith("repair from another model's (b): close")      # still the best one: ours was worse
+    assert "your last attempt: the difftest failed" in prompts[1]
+
+
+def test_a_repair_starts_from_the_best_attempt_not_the_last(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    reports = [RANDOM_DIFFERS, "compile errors:\nline 3: error: y", "ok"]
+    prompts = fake_tools(monkeypatch, tmp_path, test_results=[False, False, True], reports=reports)
+
+    state = farm_run(tmp_path)
+
+    assert state.outcome is FarmOutcome.ACCEPTED
+    assert prompts[0] == "first"
+    assert prompts[2].startswith("repair from your round 0:")
+    assert "your last attempt: does not compile (1 errors)" in prompts[2]
+
+
+def test_a_typed_candidate_is_kept_finished(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls = fake_tools(monkeypatch, tmp_path, test_results=[True])
+
+    _ = farm_run(tmp_path)
+
+    assert calls.kept == ["finished: Next leafFunction(void) { RETURN_TO_CALLER(); }"]
 
 
 def test_out_of_rounds_gives_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -135,6 +172,7 @@ def test_the_old_prompt_is_its_own_pair_without_the_register_check(monkeypatch: 
     assert set(asked_for) == {ModelSpec("cheap/model+old")}
     assert calls == ["first old", "first old"]
     assert calls.register_checks == [False, False] and calls.filed == ["cheap/model+old"] * 2
+    assert calls.earlier_asked == 0 and not calls.kept[0].startswith("finished")   # no hand-over, kept as written
 
 
 def test_prompt_tags_round_trip() -> None:
@@ -146,10 +184,16 @@ def test_prompt_tags_round_trip() -> None:
 
 # ── helpers ────────────────────────────────────────────────────────────
 
+RANDOM_DIFFERS = ("captured calls: f  ok  (4 snapshots, 4 runs, 0 failures, 0 out-of-domain)\n"
+                  "random inputs: f  FAIL  (300 trials, 7 failures, 0 out-of-domain)")
+
+
 class Calls(list[Prompt]):
     """The prompts the fake model was given, and what the fake tools were asked."""
     register_checks: list[bool]
     filed: list[ModelSpec]
+    kept: list[str]
+    earlier_asked: int
 
 
 def farm_run(tmp_path: Path, rounds: int = 3, with_snapshots: bool = True) -> FarmState:
@@ -164,11 +208,14 @@ def farm_run(tmp_path: Path, rounds: int = 3, with_snapshots: bool = True) -> Fa
 
 
 def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: list[bool],
-               provider_fails: bool = False, no_code: bool = False) -> Calls:
-    """Fake model and acceptance test; returns the prompts the model was given."""
+               provider_fails: bool = False, no_code: bool = False, earlier: tuple[Tried, ...] = (),
+               reports: list[str] | None = None) -> Calls:
+    """Fake model and acceptance test (passing or failing as TEST_RESULTS say, with REPORTS or "memory
+    differs"), and EARLIER attempts of other models; returns the prompts the model was given."""
     prompts = Calls()
-    prompts.register_checks, prompts.filed = [], []
+    prompts.register_checks, prompts.filed, prompts.kept, prompts.earlier_asked = [], [], [], 0
     results = iter(test_results)
+    texts = iter(reports or [])
 
     def conversion_context(function: FunctionName) -> ConversionContext:
         return ConversionContext(function=function, address=GuestAddress(0x08001234), assembly=AssemblyText("bx lr"),
@@ -185,18 +232,31 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
         return ModelReply(candidate=CandidateC("Next leafFunction(void) { RETURN_TO_CALLER(); }"), seconds=1.0)
 
     def repair_prompt(context: ConversionContext, failure: ToolMessage, candidate: CandidateC | None,
-                      prompt: PromptKind = PromptKind.TYPED) -> Prompt:
-        return Prompt(f"repair: {failure}")
+                      prompt: PromptKind = PromptKind.TYPED, whose: str = "your last attempt",
+                      history: str = "") -> Prompt:
+        if prompt is not PromptKind.TYPED:
+            return Prompt(f"repair: {failure}")
+        return Prompt(f"repair from {whose}: {candidate}\nreport: {failure}\nhistory: {history}")
 
     def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots: SnapshotDir,
                        difftest: Path, check_registers: bool = True) -> CandidateTest:
         prompts.register_checks.append(check_registers)
         passed = next(results)
-        return CandidateTest(passed=passed, report=ToolMessage("ok" if passed else "memory differs"))
+        report = next(texts, "ok" if passed else "memory differs")
+        return CandidateTest(passed=passed, report=ToolMessage(report))
 
     def accept(function: FunctionName, model: ModelSpec, candidate: CandidateC) -> Path:
         prompts.filed.append(model)
+        prompts.kept.append(candidate)
         return tmp_path / f"{function}.c"
+
+    def earlier_attempts(context: ConversionContext, difftest: Path, leave_out: frozenset[str] = frozenset(),
+                         snapshots: Path = tmp_path) -> tuple[Tried, ...]:
+        prompts.earlier_asked += 1
+        return earlier
+
+    def finished(function: FunctionName, candidate: CandidateC) -> CandidateC:
+        return CandidateC(f"finished: {candidate}")
 
     def nothing_before(function: FunctionName, model: ModelSpec) -> None:
         return None
@@ -216,6 +276,7 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
         "conversion_context": conversion_context, "ask_model": ask_model, "first_prompt": first_prompt,
         "repair_prompt": repair_prompt, "test_candidate": test_candidate, "accept": accept,
         "already_accepted": nothing_before, "out_of_rounds_before": not_out_of_rounds, "log_round": log_round,
+        "earlier_attempts": earlier_attempts, "finished": finished,
     }
     for name, fake in fakes.items():
         monkeypatch.setattr(farm, name, fake)

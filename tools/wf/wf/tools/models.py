@@ -22,8 +22,12 @@ sys.path.insert(0, str(REPO / "tools/convert"))
 import farm  # noqa: E402  # pyright: ignore[reportMissingImports]
 sys.path.insert(0, str(REPO / "tools/convert/bench"))
 import prompt_old  # noqa: E402  # pyright: ignore[reportMissingImports]
+import prompt_typed1  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 FARM = cast(ModuleType, farm)  # farm.py's own pieces: prompts, flags, test
+# the typed prompt before typed-2, verbatim: the convert workflow's subsystem prompt keeps its conventions
+# (tools/wf/wf/tools/subsystem.py) until that prompt is benchmarked on its own
+TYPED1 = cast(ModuleType, prompt_typed1)
 _farm = FARM
 
 
@@ -93,6 +97,12 @@ def prompt_hash(prompt: PromptKind = PromptKind.TYPED) -> str:
     texts = (cast(str, module.SYSTEM), cast(str, module.CONVENTIONS), cast(str, module.TEMPLATE),  # pyright: ignore[reportAny]
              cast(str, module.REPAIR))  # pyright: ignore[reportAny]
     return hashlib.sha1("\0".join(texts).encode()).hexdigest()[:12]
+
+
+def prompt_version(prompt: PromptKind = PromptKind.TYPED) -> str:
+    """The prompt's version (farm.py PROMPT_VERSION for the typed one: typed-2 since 2026-10-10), logged
+    next to its hash."""
+    return cast(str, _farm.PROMPT_VERSION) if prompt is PromptKind.TYPED else prompt.value  # pyright: ignore[reportAny]
 
 
 _env_hashes: dict[tuple[str, float], str] = {}
@@ -186,17 +196,25 @@ def provider_blocked_until(model: ModelSpec) -> float | None:
 
 
 def first_prompt(context: ConversionContext, prompt: PromptKind = PromptKind.TYPED) -> Prompt:
+    """The prompt's TEMPLATE for the function; the typed one also lists the generated wrappers of the
+    functions it calls (farm.py callees_section)."""
     contract_text = "\n".join(f"  {part}: {' '.join(names) or '-'}" for part, names in context.contract.by_part().items())
     template = cast(str, prompt.texts.TEMPLATE)  # pyright: ignore[reportAny]
+    callees = (cast(str, _farm.callees_section(context.function, context.lifted))  # pyright: ignore[reportAny]
+               if "{callees}" in template else "")
     return Prompt(template.format(conventions=cast(str, prompt.texts.CONVENTIONS), name=context.function,  # pyright: ignore[reportAny]
                                   addr=context.address, contract=contract_text, asm=context.assembly,
-                                  lifted=context.lifted))
+                                  lifted=context.lifted, callees=callees))
 
 
 def repair_prompt(context: ConversionContext, failure: ToolMessage, candidate: CandidateC | None,
-                  prompt: PromptKind = PromptKind.TYPED) -> Prompt:
+                  prompt: PromptKind = PromptKind.TYPED, whose: str = "your last attempt", history: str = "") -> Prompt:
+    """The first prompt plus REPAIR: the attempt to start from (WHOSE it is: the typed prompt's repair
+    names it) and its report, and (the typed prompt) the one-line HISTORY of the other attempts."""
     repair = cast(str, prompt.texts.REPAIR)  # pyright: ignore[reportAny]
-    return Prompt(first_prompt(context, prompt) + "\n\n" + repair.format(failure=failure[:3000], code=candidate or ""))
+    lines = cast(str, _farm.HISTORY).format(attempts=history) if history else ""  # pyright: ignore[reportAny]
+    return Prompt(first_prompt(context, prompt) + "\n\n" + repair.format(failure=failure[:3000], code=candidate or "",
+                                                                         whose=whose, history=lines))
 
 
 def ask_model(model: ModelSpec, prompt: Prompt, tag: str, wait_out_limits: bool = True,
@@ -250,15 +268,23 @@ def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply
     row = {"round": round_number, "ok": bool(test and test.passed), "seconds": round(reply.seconds),
            "report": report, "code": reply.candidate,
            "time": datetime.now().isoformat(timespec="seconds"), "model": reply.model or model, "kind": "farm",
-           "outcome": round_outcome(reply, test).value, "prompt": prompt.value, "prompt_hash": prompt_hash(prompt),
+           "outcome": round_outcome(reply, test).value, "prompt": prompt.value, "prompt_version": prompt_version(prompt),
+           "prompt_hash": prompt_hash(prompt),
            "environment_hash": environment_hash(difftest), "max_tokens": MAX_TOKENS,
            "input_key": cast(str | None, _farm.input_key(function))}  # pyright: ignore[reportAny]
     with open(LOG_DIR / f"{function}.{_tag(with_prompt(model, prompt))}.jsonl", "a") as log:
         log.write(json.dumps(row) + "\n")
 
 
+def finished(function: FunctionName, candidate: CandidateC) -> CandidateC:
+    """A passing typed candidate as it is kept: with the generated wrappers it calls and the tool's
+    register-form notes, so it compiles and passes the register check on its own (farm.py finished)."""
+    return CandidateC(cast(str, _farm.finished(function, candidate)))  # pyright: ignore[reportAny]
+
+
 def accept(function: FunctionName, model: ModelSpec, candidate: CandidateC) -> Path:
-    """MODEL as filed: with_prompt(model, prompt) for another prompt than the typed one."""
+    """MODEL as filed: with_prompt(model, prompt) for another prompt than the typed one. A typed
+    candidate comes finished (finished())."""
     ACCEPTED_DIR.mkdir(parents=True, exist_ok=True)
     path = ACCEPTED_DIR / f"{function}.{_tag(model)}.c"
     path.write_text(candidate.strip() + "\n")
