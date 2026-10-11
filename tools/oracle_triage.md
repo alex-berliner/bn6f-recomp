@@ -84,3 +84,20 @@ functions were never compared": 70 functions that no check compared (74 in the p
 verify names the functions (`--function NAME` for each of tools/funcindex.py's
 `readable_functions()`). With no `--function`, the difftests run nothing and the oracle tests every
 lifted function.
+
+## Checkpoint verify 2026-10-11: a fourth class, and three real differences
+
+verify-20261011-170143 (all 1,971 readable functions, 16 routes, battle sweep) passed both difftests;
+the oracle found 4 functions differing. Three were real and are taken out (8e00a34):
+battle_processCollisionEvent_80C5C40 (r4 not restored), battleObject_runFirstTurnPhase_80C08EE
+(a u16 countdown where the original's is 32-bit and signed), classifyActiveChipElements_8028E4C (tests
+a callee's leftover Z where the original tests r0).
+
+The fourth, dispatchHandlerById_8010D58, had r0 = 0x76, a handler id past its five-entry table. On
+mGBA the original jumped through the word 0x1D8 bytes past the table, which happened to land in code
+and return; the port's lifted original cannot run that state at all (out of domain: no entry at that
+address), and the readable switch calls nothing. **Handled by class:** `oracle.py` now also counts a
+differing state of a readable function as out of domain when the port's lifted original cannot run it
+either (`difftest -G` with `ORACLE_LIFTED=1` on that one snapshot says "out of domain"), the rule the
+difftest applies to random inputs the original cannot run. Not with `--lifted`. Of the four states
+above it explains this one and none of the other three.

@@ -14,8 +14,9 @@ same registers and flags that its callers rely on (the lifter's contract).
 States the function does not return from, or where the host faults on an
 address the GBA would treat as open bus, are not counted. Nor are states
 that differ only because the random input left the domain a port is held to
-(`explained`): the original made a misaligned load or read open bus, or an
-input register points into the free stack below SP.
+(`explained`): the original made a misaligned load or read open bus, an
+input register points into the free stack below SP, or the port's lifted
+original cannot run the state either (a jump through a word past its table).
 
 Writes DIR/report.txt (one line per function) and keeps the snapshots of
 every failing call in DIR/fail/; the explained states are listed in
@@ -90,7 +91,8 @@ def explained(d, name, k):
         original's own pushes overwrite before it reads it there; the port's
         stack frames are not the original's.
     The first two come from mgba_run (snap_*.bus, written for the original's
-    run), the last from the entry registers."""
+    run), the third from the entry registers; a fourth (lifted_cannot_run) runs
+    the port's lifted original on the state."""
     bus = os.path.join(d, f"snap_{name}_{k}.bus")
     if os.path.exists(bus):
         note = open(bus).readline().strip()
@@ -100,7 +102,29 @@ def explained(d, name, k):
     for r in range(13):
         if FREE_STACK <= hdr[2 + r] < sp:
             return f"free stack (r{r} = {hdr[2 + r]:#x}, SP = {sp:#x})"
+    if lifted_cannot_run(d, name, k):
+        return "the lifted original cannot run it either (e.g. a jump-table index past the table)"
     return None
+
+
+def lifted_cannot_run(d, name, k):
+    """A fourth kind, for readable functions: the port's lifted original (its executable model of the
+    original) faults or leaves the domain on this state too, e.g. when a random index sends the original
+    through a word past its jump table, which on the GBA happens to land in code. The difftest counts a
+    random input the original cannot run as out of domain; this is the same rule. Not with --lifted
+    (the lifted original is what is being compared then)."""
+    if os.environ.get("ORACLE_LIFTED"):
+        return False
+    with tempfile.TemporaryDirectory(dir=os.environ.get("ORACLE_TMP")) as one:
+        for suffix in (".bin", ".exit.bin"):
+            src = os.path.join(d, f"snap_{name}_{k}{suffix}")
+            if not os.path.exists(src):
+                return False
+            shutil.copy(src, os.path.join(one, f"snap_{name}_{k}{suffix}"))
+        env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=CONTRACT, ORACLE_LIFTED="1")
+        r = subprocess.run([os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", one,
+                            name], capture_output=True, text=True, cwd=HOST, env=env)
+        return bool(re.search(rf"snap_{name}_{k}\.bin: out of domain", r.stdout))
 
 
 def batch(args):
@@ -256,7 +280,8 @@ def main():
         f.write("".join(line + "\n" for line in sorted(notes)))
     tested = [n for n, r in totals.items() if r["ok"] + r["fail"]]
     failing = [n for n, r in totals.items() if r["fail"]]
-    print(f"{len(notes)} differing states out of the port's domain (misaligned load, open bus, free stack): "
+    print(f"{len(notes)} differing states out of the port's domain (misaligned load, open bus, free stack, "
+          "lifted original out of domain): "
           f"see {args.out}/explained.txt")
     print(f"{len(tested)} of {len(us)} functions compared on at least one state; {len(failing)} differ: see {args.out}/report.txt")
 
