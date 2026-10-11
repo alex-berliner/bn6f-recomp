@@ -374,6 +374,126 @@ Next checkCurPETNaviStats1FIsOne_813C490(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813C584 ── */
+/* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
+static void zero_fill_sub_813C584(u32 addr, u32 size) {
+    R0 = addr;
+    R1 = size;
+    GUEST_CALL(ZeroFillByByte);
+}
+
+/* register form: calls CheckKeyItem outside this file, which has no typed C interface yet */
+static u32 check_key_item(u32 item_id) {
+    R0 = item_id;
+    GUEST_CALL(CheckKeyItem);
+    return R0;
+}
+
+/* register form: calls getIndexedDataTable_813B9E0 outside this file, which has no typed C interface yet */
+static u32 get_indexed_data_table(u32 index) {
+    R0 = index;
+    GUEST_CALL(getIndexedDataTable_813B9E0);
+    return R0;
+}
+
+/* register form: calls sub_813B9B4 outside this file, which has no typed C interface yet */
+static u32 lookup_battle_item(u32 col, u32 row) {
+    R0 = col;
+    R1 = row;
+    GUEST_CALL(sub_813B9B4);
+    return R0;
+}
+
+/* register form: calls toolkit_getUnk2004190EntryPtr_813B9FC outside this file, which has no typed C interface yet */
+static u32 get_item_entry_ptr(u32 item_id) {
+    R0 = item_id;
+    GUEST_CALL(toolkit_getUnk2004190EntryPtr_813B9FC);
+    return R0;
+}
+
+/* register form: calls sub_813B780 outside this file, which has no typed C interface yet */
+static u32 resolve_item_object(u32 item_index) {
+    R0 = item_index;
+    GUEST_CALL(sub_813B780);
+    return R0;
+}
+
+#define ITEM_BUFFER_SIZE   0x31
+#define GRID_DIMENSION     7
+#define GRID_ROW_STRIDE    15
+#define GRID_BASE_ROW      5
+#define GRID_BASE_COL      5
+#define KEY_ITEM_ID        0x71
+#define SLOT_TYPE_MATCH    3
+
+/*
+ * Gather battle-network items from a 7x7 grid, sort them by ID,
+ * and increment per-type counts in the caller-supplied array.
+ *
+ * count_array: pointer to a byte-per-type tally array (r0 on entry).
+ */
+static void gather_and_count_items(u32 count_array) {
+    /* Clear the two scratch buffers */
+    zero_fill_sub_813C584(A_byte_2006D68, ITEM_BUFFER_SIZE);
+    zero_fill_sub_813C584(A_byte_2006DA0, ITEM_BUFFER_SIZE);
+
+    /*
+     * Scan the 7x7 item grid.  Each cell whose type byte equals 3
+     * contributes a battle-item entry (if one exists).
+     */
+    int found_count = 0;
+    for (int row = 0; row < GRID_DIMENSION; row++) {
+        for (int col = 0; col < GRID_DIMENSION; col++) {
+            u32 key_status = check_key_item(KEY_ITEM_ID);
+            u32 table      = get_indexed_data_table(key_status);
+            u32 offset     = (u32)(row + GRID_BASE_ROW) * GRID_ROW_STRIDE
+                           + (u32)(col + GRID_BASE_COL);
+            if (LD8(table + offset) == SLOT_TYPE_MATCH) {
+                u32 entry = lookup_battle_item(col, row);
+                if (entry != 0) {
+                    ST8(A_byte_2006D68 + found_count, entry);
+                    found_count++;
+                }
+            }
+        }
+    }
+
+    /*
+     * Stable counting-sort: for each possible ID value 1..48,
+     * copy the first matching entry from buffer1 into buffer2.
+     */
+    int sorted_count = 0;
+    for (int target = 1; target < ITEM_BUFFER_SIZE; target++) {
+        for (int i = 0; i < ITEM_BUFFER_SIZE; i++) {
+            if (LD8(A_byte_2006D68 + i) == (u8)target) {
+                ST8(A_byte_2006DA0 + sorted_count, (u8)target);
+                sorted_count++;
+                break;
+            }
+        }
+    }
+
+    /*
+     * Walk the sorted list until the first zero sentinel.  For each item,
+     * resolve its object, read the type field (offset 4), and increment
+     * count_array[type].
+     */
+    for (int i = 0; LD8(A_byte_2006DA0 + i) != 0; i++) {
+        u32 entry_ptr  = get_item_entry_ptr(LD8(A_byte_2006DA0 + i) - 1);
+        u16 item_index = LD16(entry_ptr);
+        u32 object     = resolve_item_object(item_index);
+        u8 type_field  = LD8(object + 4);
+        ST8(count_array + type_field, LD8(count_array + type_field) + 1);
+    }
+}
+
+/* sub_813C584(r0 = count_array) -> r2, r3 */
+Next sub_813C584(void) {
+    gather_and_count_items(R0);
+    R2 = A_byte_2006DA0;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_813C678 ── */
 /* sub_813C678: clear the halfword referenced by the toolkit's Unk2004334 pointer
  * (r10 = toolkit). */

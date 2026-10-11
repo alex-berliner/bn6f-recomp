@@ -277,6 +277,132 @@ Next sub_8126554(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8126630 ── */
+#define SPRITE_KIND_TABLE   A_off_81266C4
+#define SLOT_FRAME_TABLE    A_dword_201FC20
+#define WARN_BYTE_A         A_byte_8124AE0
+#define WARN_BYTE_B         A_byte_8124B08
+#define SPRITE_ID           0x2F
+#define SPRITE_Y            0x58
+
+/* register form: calls getStructFrom2008450 outside this file, which has no typed C interface yet */
+static u32 get_sprite_struct(u32 slot, u32 kind) {
+    R0 = slot;
+    R4 = kind;
+    GUEST_CALL(getStructFrom2008450);
+    if (ZERO_FLAG()) return 0;
+    return R1;
+}
+
+/* register form: calls sub_8046696 outside this file, which has no typed C interface yet */
+static void warn_unexpected(u32 code, u32 kind) {
+    R0 = code;
+    R4 = kind;
+    GUEST_CALL(sub_8046696);
+}
+
+/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+static void report_unexpected_ptr(u32 pointer) {
+    R0 = pointer;
+    GUEST_CALL(sub_80465A0);
+}
+
+/* register form: calls setFieldsInThreeTableEntries_811980C outside this file, which has no typed C interface yet */
+static void set_three_entries(u32 val, u32 entry_addr, u32 table) {
+    R0 = val;
+    R1 = 0xFF;
+    R2 = 0;
+    R3 = 0;
+    R4 = entry_addr;
+    R7 = table;
+    GUEST_CALL(setFieldsInThreeTableEntries_811980C);
+}
+
+/* register form: calls sprite_setPositionForIdRange3_8119854 outside this file, which has no typed C interface yet */
+static void set_sprite_position(u32 id, u32 y, u32 z) {
+    R0 = id;
+    R1 = y;
+    R2 = z;
+    GUEST_CALL(sprite_setPositionForIdRange3_8119854);
+}
+
+/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+static void trigger_slot_effect(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_8126818);
+}
+
+/* register form: calls setSlotFieldsFromStartTo3_811A1F4 outside this file, which has no typed C interface yet */
+static void set_slot_fields(u32 val, u32 extra, u32 kind) {
+    R0 = val;
+    R1 = extra;
+    R2 = 0;
+    R3 = 0;
+    R4 = kind;
+    GUEST_CALL(setSlotFieldsFromStartTo3_811A1F4);
+}
+
+/* register form: calls sprite_moveSlotGroupXY_811A220 outside this file, which has no typed C interface yet */
+static void move_slot_group(u32 id, u32 y, u32 z) {
+    R0 = id;
+    R1 = y;
+    R2 = z;
+    GUEST_CALL(sprite_moveSlotGroupXY_811A220);
+}
+
+/*
+ * Update battle sprite animation data and position for a battle object.
+ * obj is the object base pointer (caller's r5).
+ * kind byte at obj+0xD: 0-3 → per-kind frame table path, 4 → slot path.
+ */
+static void update_battle_sprite(u32 obj) {
+    u32 kind = LD8(obj + 0xD);
+
+    if (kind != 4) {
+        u32 ptr = get_sprite_struct(0, kind);
+        if (ptr == 0) return;
+
+        u32 sprite_type = LD8(ptr + 1);
+        if (sprite_type != 0x16) {
+            warn_unexpected(3, kind);
+            report_unexpected_ptr(WARN_BYTE_A);
+        }
+
+        u32 table = LD32(SPRITE_KIND_TABLE + (kind << 2));
+        u32 entry_addr = obj + (0xA * kind);
+        u32 frame = LD16(entry_addr + 0x14) + LD16(entry_addr + 0x18);
+        u32 val = LD16(table + (frame << 2));
+
+        set_three_entries(val, entry_addr, table);
+        set_sprite_position(SPRITE_ID, SPRITE_Y, 0);
+        trigger_slot_effect(0);
+    } else {
+        u32 ptr = get_sprite_struct(0, kind);
+        if (ptr == 0) return;
+
+        u32 sprite_type = LD8(ptr + 1);
+        if (sprite_type != 0x1A)
+            report_unexpected_ptr(WARN_BYTE_B);
+
+        u32 table = SLOT_FRAME_TABLE;
+        u32 frame = LD16(obj + 0x3C) + LD16(obj + 0x40);
+        u32 offset = frame << 2;
+        u32 val = LD16(table + offset);
+        u32 extra = LD8(table + offset + 3);
+
+        set_slot_fields(val, extra, kind);
+        move_slot_group(SPRITE_ID, SPRITE_Y, 0);
+    }
+}
+
+/* sub_8126630(obj_ptr = r5) — updates sprite tables, fields, and position. */
+Next sub_8126630(void) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    update_battle_sprite(R5);
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    RETURN_TO_CALLER();
+}
+
 /* ── HandleMegaManStatusMenu8126B4C ── */
 /* HandleMegaManStatusMenu8126B4C: top-level dispatcher for the MegaMan
  * status menu. The menu object's state byte ([R5+1]) selects one of three
@@ -570,6 +696,39 @@ Next sub_8126B6C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8126DF8 ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_sub_8126DF8(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG(); /* Z clear means fade IS active (returned non-zero) */
+}
+
+/* register form: calls chatbox_clear_eFlags2009F38 outside this file, which has no typed C interface yet */
+static void clear_chatbox_eflags_sub_8126DF8(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_clear_eFlags2009F38);
+}
+
+/* register form: calls sub_81272C4 outside this file, which has no typed C interface yet */
+static void tail_call_sub_81272C4(void) {
+    GUEST_CALL(sub_81272C4);
+}
+
+/* Clear chatbox state when a screen fade is active, then jump to the battle-state handler. */
+static void fade_chatbox_guard(u32 chatbox_struct_addr) {
+    if (screen_fade_active_sub_8126DF8()) {
+        clear_chatbox_eflags_sub_8126DF8(0x40);
+        ST8(chatbox_struct_addr + 2, 4); /* set chatbox state byte to "hidden" */
+    }
+    tail_call_sub_81272C4(); /* sets r0-r7, lr, nz/c/v; reads r2, r4, r5, r10 */
+}
+
+/* sub_8126DF8(r5 = chatbox struct ptr, r2/r4/r10 = context passed through to sub_81272C4) */
+Next sub_8126DF8(void) {
+    fade_chatbox_guard(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8126FF0 ── */
 /* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
 static void run_all_entity_updates(void) {
@@ -768,6 +927,222 @@ static void sub_81272C4_impl(u32 obj_ptr) {
 /* sub_81272C4(r4 = saved, r5 = battle-object ptr, r10, lr) */
 Next sub_81272C4(void) {
     sub_81272C4_impl(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81273B4 ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_163_set(void) {
+    R0 = 1;
+    R1 = 0x63;  /* (1, 99) encodes flag 163 */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls sub_8121198 outside this file, which has no typed C interface yet */
+static u32 get_toolkit_counter(u32 toolkit) {
+    R6 = toolkit;
+    GUEST_CALL(sub_8121198);
+    return R0;
+}
+
+/* register form: calls sub_8127578 outside this file, which has no typed C interface yet */
+static void show_text_script(u32 script_num, u32 toolkit) {
+    R0 = script_num;
+    R1 = 0;
+    R2 = 0x600AC00;
+    R3 = A_eTextScript201BF20;
+    R4 = A_unk_201A600;
+    R6 = toolkit;
+    GUEST_CALL(sub_8127578);
+}
+
+/* Display a progress-tracking text message for flag 163.
+ * Increments a counter stored at toolkit+0xC; once it reaches 15 the counter
+ * is left alone and a "finished" script (0x13) is shown instead of the
+ * "in-progress" script (0x12). */
+static void select_and_display_script(u32 toolkit_container) {
+    if (!event_flag_163_set())
+        return;
+
+    u32 toolkit = LD32(toolkit_container + oToolkit_Unk200a220_Ptr);
+    u32 counter = get_toolkit_counter(toolkit) + 1;
+
+    u32 script_num;
+    if (counter == 0xF) {
+        script_num = 0x13;   /* reached the end – show completion text */
+    } else {
+        ST32(toolkit + 0xC, counter);
+        script_num = 0x12;   /* still progressing – show count text */
+    }
+
+    show_text_script(script_num, toolkit);
+}
+
+/* sub_81273B4(r10 = toolkit container) – no meaningful return value */
+Next sub_81273B4(void) {
+    select_and_display_script(R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81273F0 ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool flag_163_set(void) {
+    R0 = 1;
+    R1 = 0x63;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();  /* Z set means flag is clear; we want "flag is set" */
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_bg_tiles_sub_81273F0(u32 j, u32 i, u32 block, const void *ids,
+                          u32 j_sz, u32 i_sz, u32 map_ptr) {
+    R0 = j;
+    R1 = i;
+    R2 = block;
+    R3 = (u32)ids;
+    R4 = j_sz;
+    R5 = i_sz;
+    R7 = map_ptr;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* Paint the 3×2 tile block at the column stored in the map row, gated by event flag 163. */
+static void paint_event_tile_block(u32 map_data) {
+    if (!flag_163_set())
+        return;
+
+    /* Read the tile-column offset (signed byte at map_data+0xD), shift by +2. */
+    s32 col = (s32)(s8)LD8(map_data + 0xD) + 2;
+
+    copy_bg_tiles_sub_81273F0((u32)col, 9, 3, (const void *)A_byte_8126B10, 3, 2, map_data);
+}
+
+Next sub_81273F0(void) {
+    paint_event_tile_block(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812741C ── */
+/* Text display constants for the PET Navi intro sequence */
+#define NAVI_TEXT_BUFFER   0x6008020u
+#define NAVI_TEXT_SCRIPT   A_eTextScript201BF20
+#define NAVI_TEXT_DATA     A_byte_2017A00
+#define PET_NAVI_STATS_OFF 8          /* toolkit field holding current stat to display */
+
+/* Y screen coordinates (row*16 - 32) for each stat line */
+#define STAT_Y_LEVEL  0u
+#define STAT_Y_ATK    ((0x40u << 4) - 0x20u)
+#define STAT_Y_SPD    ((0x80u << 4) - 0x20u)
+#define STAT_Y_TYPE   ((0xC0u << 4) - 0x20u)
+
+#define SPECIES_TABLE_LEN 0x3Au
+#define NO_NAVI_MSG       0x51u
+#define PET_NAVI_TYPE_STAT  0x17
+#define PET_NAVI_SPECIES_STAT 5
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet.
+ * Saves r4-r7 because callees may clobber them (original uses push {r4-r7}/pop {r4-r7}). */
+static u8 get_cur_pet_navi_sub_812741C(void) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    GUEST_CALL(GetCurPETNavi);
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    return (u8)R0;
+}
+
+/* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet. */
+static u8 get_pet_navi_stat_sub_812741C(u8 navi, u8 stat) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = navi;
+    R1 = stat;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    return (u8)R0;
+}
+
+/* register form: calls notZero_eByte200AD04 outside this file, which has no typed C interface yet. */
+static bool byte200ad04_nonzero(void) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    GUEST_CALL(notZero_eByte200AD04);
+    bool result = !ZERO_FLAG();
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    return result;
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet. */
+static bool event_163_set(void) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = 1;
+    R1 = 0x63;   /* EVENT_163 */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    bool result = !ZERO_FLAG();
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    return result;
+}
+
+/* register form: calls sub_8127578 outside this file, which has no typed C interface yet.
+ * Its 5th argument is passed in R4; we save/restore r4-r7 across the call. */
+static void display_navi_text(u32 msg_id, u32 y_coord, u32 buf, u32 script, u32 data) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = msg_id;
+    R1 = y_coord;
+    R2 = buf;
+    R3 = script;
+    R4 = data;
+    GUEST_CALL(sub_8127578);
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+}
+
+/* Queue a single PET Navi stat line: store (stat+1) into toolkit temp, then display text. */
+static void show_navi_stat(u32 navi_data_ptr, u8 navi, u8 stat_idx, u32 msg_id, u32 y_coord) {
+    ST32(navi_data_ptr + PET_NAVI_STATS_OFF, (u32)(get_pet_navi_stat_sub_812741C(navi, stat_idx) + 1));
+    display_navi_text(msg_id, y_coord, NAVI_TEXT_BUFFER, NAVI_TEXT_SCRIPT, NAVI_TEXT_DATA);
+}
+
+/* Resolve message ID for the type/species line.
+ * If type stat (0x17) is non-zero, map via byte_812756C.
+ * Otherwise search species (stat 5) in byte_81274F8 and index into byte_8127532;
+ * default to index 2 if not found. */
+static u8 resolve_navi_type_message(u8 navi) {
+    u8 type = get_pet_navi_stat_sub_812741C(navi, PET_NAVI_TYPE_STAT);
+    if (type != 0)
+        return LD8(A_byte_812756C + type);
+
+    u8 species = get_pet_navi_stat_sub_812741C(navi, PET_NAVI_SPECIES_STAT);
+    u32 idx = 0;
+    while (idx < SPECIES_TABLE_LEN) {
+        if (LD8(A_byte_81274F8 + idx) == species)
+            return LD8(A_byte_8127532 + idx);
+        idx++;
+    }
+    return LD8(A_byte_8127532 + 2);  /* species not in table, fallback */
+}
+
+/* PET Navi intro screen: displays level, attack, speed stat lines then type/species message.
+ * toolkit_base (r10) holds the toolkit pointer. */
+static void pet_navi_intro(u32 toolkit_base) {
+    u32 navi_ptr = LD32(toolkit_base + oToolkit_Unk200a220_Ptr);
+
+    u8 navi = get_cur_pet_navi_sub_812741C();
+    show_navi_stat(navi_ptr, navi, 1, 5, STAT_Y_LEVEL);    /* level */
+    show_navi_stat(navi_ptr, navi, 2, 6, STAT_Y_ATK);      /* attack */
+    show_navi_stat(navi_ptr, navi, 3, 7, STAT_Y_SPD);      /* speed */
+
+    u8 msg;
+    navi = get_cur_pet_navi_sub_812741C();
+    if (navi == 0 && byte200ad04_nonzero() && !event_163_set()) {
+        /* No Navi bonded, special byte nonzero, event 163 not seen: show placeholder */
+        msg = NO_NAVI_MSG;
+    } else {
+        msg = resolve_navi_type_message(get_cur_pet_navi_sub_812741C());
+    }
+
+    display_navi_text(msg, STAT_Y_TYPE, NAVI_TEXT_BUFFER, NAVI_TEXT_SCRIPT, NAVI_TEXT_DATA);
+}
+
+/* sub_812741C(r10 = toolkit base pointer) -> preserves r4-r12 */
+Next sub_812741C(void) {
+    pet_navi_intro(R10);
     RETURN_TO_CALLER();
 }
 
@@ -990,6 +1365,184 @@ Next sub_81278D8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8127A1C ── */
+/* Fade timer value stored to the render-info header on scene init. */
+#define RENDER_FADE_TIMER  0x1F40
+
+/* Two output registers from sub_8120CC8 (fade-palette lookup). */
+typedef struct { u32 step, frame; } FadePair;
+
+/* ---- register-form helpers for game functions outside this file ---- */
+
+/* register form: calls zeroFillVRAM outside this file, which has no typed C interface yet */
+static void call_zero_fill_vram_sub_8127A1C(void) {
+    GUEST_CALL(zeroFillVRAM);
+}
+
+/* register form: calls ZeroFill_byte_3001960 outside this file, which has no typed C interface yet */
+static void call_zero_fill_byte_3001960(void) {
+    GUEST_CALL(ZeroFill_byte_3001960);
+}
+
+/* register form: calls ZeroFillGFX30025c0 outside this file, which has no typed C interface yet */
+static void call_zero_fill_gfx_sub_8127A1C(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+/* register form: calls sub_80015FC outside this file, which has no typed C interface yet */
+static void call_init_something(u32 arg) {
+    R0 = arg;
+    GUEST_CALL(sub_80015FC);
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void call_set_screen_fade(u32 a, u32 b) {
+    R0 = a; R1 = b;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+static void call_sub_8046664_sub_8127A1C(void) {
+    GUEST_CALL(sub_8046664);
+}
+
+/* register form: calls sub_8127CB8 outside this file, which has no typed C interface yet */
+static void call_sub_8127CB8(void) {
+    GUEST_CALL(sub_8127CB8);
+}
+
+/* register form: calls sub_8120CC8 outside this file, which has no typed C interface yet */
+static FadePair call_fade_lookup(u32 a, u32 b) {
+    R0 = a; R1 = b;
+    GUEST_CALL(sub_8120CC8);
+    FadePair p; p.step = R0; p.frame = R1;
+    return p;
+}
+
+/* register form: calls sub_81283A0 outside this file, which has no typed C interface yet */
+static void call_sub_81283A0(void) {
+    GUEST_CALL(sub_81283A0);
+}
+
+/* register form: calls sub_8128500 outside this file, which has no typed C interface yet */
+static void call_sub_8128500(void) {
+    GUEST_CALL(sub_8128500);
+}
+
+/* register form: calls palette_fillBufferWithFadeByte_8128260 outside this file, which has no typed C interface yet */
+static void call_palette_fill_fade(void) {
+    GUEST_CALL(palette_fillBufferWithFadeByte_8128260);
+}
+
+/* register form: calls sub_8127E9C outside this file, which has no typed C interface yet */
+static void call_sub_8127E9C(void) {
+    GUEST_CALL(sub_8127E9C);
+}
+
+/* register form: calls sub_8128008 outside this file, which has no typed C interface yet */
+static void call_sub_8128008(void) {
+    GUEST_CALL(sub_8128008);
+}
+
+/* register form: calls bg_ReloadBackgroundRegion_5_3_81281C0 outside this file, which has no typed C interface yet */
+static void call_bg_reload_region(void) {
+    GUEST_CALL(bg_ReloadBackgroundRegion_5_3_81281C0);
+}
+
+/* register form: calls sub_81281E0 outside this file, which has no typed C interface yet */
+static void call_sub_81281E0(void) {
+    GUEST_CALL(sub_81281E0);
+}
+
+/* register form: calls sub_8128280 outside this file, which has no typed C interface yet */
+static void call_sub_8128280(void) {
+    GUEST_CALL(sub_8128280);
+}
+
+/* ---- typed function ---- */
+
+/*
+ * Full scene-reset routine called when entering/exiting a battle or cutscene.
+ * Clears VRAM and graphics buffers, initialises the render-info header,
+ * sets the transition/fade state struct at r5, loads a fade palette entry,
+ * writes the screen-fade mode byte, and rebuilds backgrounds & palettes.
+ */
+static void init_battle_scene(u32 state, u32 toolkit) {
+    /* 1. Clear display memory */
+    call_zero_fill_vram_sub_8127A1C();
+    call_zero_fill_byte_3001960();
+    call_zero_fill_gfx_sub_8127A1C();
+
+    /* 2. One-time subsystem init (r0=0x10) */
+    call_init_something(0x10);
+
+    /* 3. Initialise render-info struct: set fade timer, clear per-plane flags */
+    u32 render = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render, RENDER_FADE_TIMER);
+    ST16(render + 0x10, 0);
+    ST16(render + 0x12, 0);
+    ST16(render + 0x14, 0);
+    ST16(render + 0x16, 0);
+    ST16(render + 0x18, 0);
+    ST16(render + 0x1A, 0);
+
+    /* 4. Transition state: mode byte and sub-state byte */
+    ST8(state + 1, 4);   /* transition mode = active */
+    ST8(state + 2, 0);   /* sub-state = idle */
+
+    /* 5. Start screen fade (type 8, speed 0x10) */
+    call_set_screen_fade(8, 0x10);
+
+    /* 6. Additional scene setup calls */
+    call_sub_8046664_sub_8127A1C();
+    call_sub_8127CB8();
+
+    /* 7. Save current scene ID into transition struct */
+    ST16(state + 0x1E, (u16)LD32(A_dword_2001140));
+
+    /* 8. Initialise fade/transition parameters */
+    ST16(state + 0x28, 4);      /* step count */
+    ST16(state + 0x20, 0);      /* current step */
+    ST16(state + 0x24, 0);
+    ST16(state + 0x2A, 0);
+    ST16(state + 0x2E, 0);
+    ST16(state + 0x22, 0xFF);   /* "no entry" markers */
+    ST16(state + 0x26, 0xFF);
+    ST16(state + 0x2C, 0xFF);
+    ST16(state + 0x30, 0xFF);
+
+    /* 9. Look up fade palette step (a=0, b=dword_8127980) */
+    FadePair fade = call_fade_lookup(0, A_dword_8127980);
+    ST8(state + 0x0C, fade.step);
+    ST8(state + 0x0E, fade.frame);
+    ST8(state + 0x0F, fade.step);
+    ST8(state + 0x10, fade.frame);
+
+    /* 10. Post-fade setup */
+    call_sub_81283A0();
+
+    /* 11. Write fade-engine control bytes */
+    ST8(A_byte_2000FE0,     7);  /* fade type */
+    ST8(A_byte_2000FE0 + 1, 4);  /* fade direction */
+
+    /* 12. Rebuild display: palettes, background map, tile regions */
+    call_sub_8128500();
+    call_palette_fill_fade();
+    call_sub_8127E9C();
+    call_sub_8128008();
+    call_bg_reload_region();
+    call_sub_81281E0();
+    call_sub_8128280();
+}
+
+/* ---- thin adapter ---- */
+
+/* sub_8127A1C(r5 = transition-state ptr, r10 = toolkit ptr) — full scene reset */
+Next sub_8127A1C(void) {
+    init_battle_scene(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8127ACC ── */
 /* sub_8127ACC: per-frame update for a battle object (r5 = object pointer).
  *
@@ -1013,6 +1566,35 @@ Next sub_8127ACC(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
     GUEST_CALL(sub_80465F8);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8127B08 ── */
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static u32 call_is_screen_fade_active_sub_8127B08(int *fade_active_out) {
+    GUEST_CALL(IsScreenFadeActive);
+    *fade_active_out = ZERO_FLAG() ? 0 : 1;   /* Z=1 → not active */
+    return R0;
+}
+
+/* Write 4 to [obj+2] (set fade mode) when the screen fade is active.
+ * When the fade is NOT active, pass through IsScreenFadeActive's r0 unchanged.
+ * The callee's flags (n z c v) remain in the emulator from GUEST_CALL;
+ * on the active path the original's "mov r0, #4" leaves N=0, Z=0 which
+ * matches the callee's Z=0/N=0 (boolean return), so no re-set is needed. */
+static u32 set_fade_mode_if_active(u32 obj_ptr) {
+    int active;
+    u32 r0 = call_is_screen_fade_active_sub_8127B08(&active);
+    if (active) {
+        r0 = 4;
+        ST8(obj_ptr + 2, 4);
+    }
+    return r0;
+}
+
+/* sub_8127B08(r5 = battle-object pointer) -> r0, nz c v */
+Next sub_8127B08(void) {
+    R0 = set_fade_mode_if_active(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1119,6 +1701,119 @@ Next chatbox_runVariantScript_8127ED4(void) {
         GUEST_CALL(chatbox_runScript_803FD9C);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81280DC ── */
+/* NPC entry event table builder: zero-fills the table, then stamps sequential
+ * 16-bit event numbers into each NPC's low/high u16 array using three sub-runs
+ * with different flag masks.  Per-entry adjusted event and first-mask flag come
+ * from npc_checkEntryEventFlagOrHidden. */
+
+#define TABLE_BASE   A_unk_2026700
+#define TABLE_SIZE   0x170
+#define ENTRY_SIZE   0x5C
+#define HIGH_OFFSET  0x2E     /* (0x17 << 1): offset of the high u16 half */
+#define FLAG_LOW     0x7000   /* 7 << 12, used in sub-runs 1 (via callee) and 3 */
+#define FLAG_MID     0x9000   /* used in sub-run 2 */
+#define RUN1_END     0x16
+#define RUN2_END     0x28
+#define RUN3_END     0x2E
+
+/* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet.
+ * Preserves caller's r1,r4,r5,r6,r7; leaves r0,r2,r3 as the callee set them. */
+static void zero_fill_sub_81280DC(u32 dest, u32 nbytes) {
+    u32 sv1 = R1, sv4 = R4, sv5 = R5, sv6 = R6, sv7 = R7;
+    R0 = dest;
+    R1 = nbytes;
+    GUEST_CALL(ZeroFillByByte);
+    R1 = sv1; R4 = sv4; R5 = sv5; R6 = sv6; R7 = sv7;
+}
+
+/* register form: calls npc_checkEntryEventFlagOrHidden_812818C outside this file,
+ * which has no typed C interface yet.  Returns callee r0 (adjusted event number);
+ * writes callee r2 (modified flag) into *out_flag.
+ * Preserves caller's r1,r4,r5,r6,r7. */
+static u32 check_entry_event(u32 event, u32 byte_off, u32 flag, u32 idx, u32 *out_flag) {
+    u32 sv1 = R1, sv4 = R4, sv5 = R5, sv6 = R6, sv7 = R7;
+    R0 = event;
+    R1 = byte_off;
+    R2 = flag;
+    R3 = idx;
+    R4 = 0;
+    GUEST_CALL(npc_checkEntryEventFlagOrHidden_812818C);
+    *out_flag = R2;
+    u32 result = R0;
+    R1 = sv1; R4 = sv4; R5 = sv5; R6 = sv6; R7 = sv7;
+    return result;
+}
+
+typedef struct { u32 r2, r3; } NpcTableResult;
+
+/* Build the NPC event table for `count` entries starting at event `start_event`.
+ * Event number accumulates across all entries (never reloaded from stack). */
+static NpcTableResult build_npc_table(u32 start_event, u32 count) {
+    NpcTableResult res;
+    zero_fill_sub_81280DC(TABLE_BASE, TABLE_SIZE);
+
+    if (count == 0) {
+        res.r2 = 7;
+        res.r3 = FLAG_LOW;
+        return res;
+    }
+
+    u32 ev = start_event;
+    for (u32 idx = 0; idx < count; idx++) {
+        u32 byte_off = ENTRY_SIZE * idx;
+        u32 lo = TABLE_BASE + byte_off;
+        u32 hi = lo + HIGH_OFFSET;
+        u32 flag;
+        ev = check_entry_event(ev, byte_off, FLAG_LOW, idx, &flag);
+
+        /* Sub-run 1: 11 u16 pairs, mask = callee-returned flag */
+        u32 off = 0;
+        while (off < RUN1_END) {
+            u32 v = ev | flag;
+            ST16(lo + off, v);
+            ST16(hi + off, v + 1);
+            ev += 2;
+            off += 2;
+        }
+        ev += 2;
+        off += 2;
+
+        /* Sub-run 2: 8 u16 pairs, mask = 0x9000 */
+        while (off < RUN2_END) {
+            u32 v = ev | FLAG_MID;
+            ST16(lo + off, v);
+            ST16(hi + off, v + 1);
+            ev += 2;
+            off += 2;
+        }
+        ev += 2;
+        off += 2;
+
+        /* Sub-run 3: 3 u16 pairs, mask = FLAG_LOW */
+        while (off < RUN3_END) {
+            u32 v = ev | FLAG_LOW;
+            ST16(lo + off, v);
+            ST16(hi + off, v + 1);
+            ev += 2;
+            off += 2;
+        }
+    }
+
+    res.r2 = FLAG_LOW;
+    res.r3 = count;
+    return res;
+}
+
+Next sub_81280DC(void) {
+    u32 count = R1;
+    NpcTableResult res = build_npc_table(R0, count);
+    R2 = res.r2;
+    R3 = res.r3;
+    SET_FLAGS_CMP(res.r3, count);
     RETURN_TO_CALLER();
 }
 
@@ -1270,6 +1965,37 @@ Next HandleCommMenu81291E8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81292A8 ── */
+/* Jump table of battle state handlers, indexed by byte offset at [r5+2]. */
+#define BATTLE_STATE_TABLE A_off_81292BC
+
+/* register form: tail-calls the battle-state handler selected by the byte offset
+ * stored at [r5+2] via the jump table; all guest registers and flags pass through
+ * to the callee, so a typed C signature cannot express this trampoline. */
+static void dispatch_battle_state(void) {
+    u8 byte_offset = LD8(R5 + 2);
+    R0 = LD32(BATTLE_STATE_TABLE + byte_offset);  /* function pointer from jump table */
+    R1 = byte_offset;                              /* handler's first argument is the raw offset */
+
+    switch (byte_offset >> 2) {                    /* logical index 0–6 */
+    case 0: GUEST_CALL(sub_81292D8); break;
+    case 1: GUEST_CALL(sub_812933C); break;
+    case 2: GUEST_CALL(sub_8129400); break;
+    case 3: GUEST_CALL(sub_8129454); break;
+    case 4: GUEST_CALL(sub_812952C); break;
+    case 5: GUEST_CALL(sub_812954C); break;
+    case 6: GUEST_CALL(sub_812956C); break;
+    }
+}
+
+/* sub_81292A8: dispatch to battle state handler via jump table.
+ * inputs:  r5 (state object pointer), r2–r12, lr (all forwarded to callee)
+ * outputs: all registers and flags set by the selected handler */
+Next sub_81292A8(void) {
+    dispatch_battle_state();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81292D8 ── */
 /* register form: calls sprite_drawIfFlagSet_812B504 outside this file, which has no typed C interface yet */
 static void call_draw_battle_sprite(void) {
@@ -1387,6 +2113,176 @@ static u32 play_cutscene_setup(u32 battle_ptr, u32 r4_orig) {
 /* sub_81292D8(battle_ptr = r5, r4 = r4) -> r4 (preserved); r0-r3 + flags from callee */
 Next sub_81292D8(void) {
     R4 = play_cutscene_setup(R5, R4);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812933C ── */
+#define JOYPAD_A_sub_812933C  1
+#define JOYPAD_B_sub_812933C  2
+#define MENU_SCRIPT_TABLE  0x081293FC  /* word 0x5B5A → bytes [0]=0x5A, [1]=0x5B */
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_sub_812933C(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return ZERO_FLAG();  /* Z set → fade active → skip input */
+}
+
+/* register form: calls menu_moveCursorUpDown_811FA22 outside this file, which has no typed C interface yet */
+static u32 move_cursor(u32 pressed, u32 cursor) {
+    R0 = pressed; R1 = 2; R2 = 1; R3 = cursor;
+    GUEST_CALL(menu_moveCursorUpDown_811FA22);
+    return R0;
+}
+
+/* register form: calls gameState_GetUnk74_8006DEC outside this file, which has no typed C interface yet */
+static u32 get_game_flags(void) {
+    GUEST_CALL(gameState_GetUnk74_8006DEC);
+    return R0;
+}
+
+/* register form: calls chatbox_runScript_803FD9C_on_eTextScript201BA20 outside this file, which has no typed C interface yet */
+static void run_chat_script(u32 script_id) {
+    R0 = script_id;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+}
+
+/* register form: calls IsButtonPressed outside this file, which has no typed C interface yet */
+static bool is_pressed(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(IsButtonPressed);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_sub_812933C(u32 id) {
+    R0 = id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls eStruct200BC30_setJumpOffset00 outside this file, which has no typed C interface yet */
+static void set_jump_offset00(u32 val) {
+    R0 = val;
+    GUEST_CALL(eStruct200BC30_setJumpOffset00);
+}
+
+/* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
+static void fade_screen(u32 kind, u32 speed) {
+    R0 = kind; R1 = speed;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* register form: calls submenu_ConfirmExitAndFade_811FB64 outside this file, which has no typed C interface yet */
+static void confirm_exit_fade(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(submenu_ConfirmExitAndFade_811FB64);
+}
+
+/* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
+static void run_entity_updates_sub_812933C(void) {
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+}
+
+/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+static void run_secondary_update(void) {
+    GUEST_CALL(sub_80465F8);
+}
+
+/* register form: calls sub_812B29C outside this file, which has no typed C interface yet */
+static void set_menu_tick(u32 ticks) {
+    R0 = ticks;
+    GUEST_CALL(sub_812B29C);
+}
+
+/*
+ * Battle-menu input handler: processes cursor movement and button presses
+ * (A = confirm current option, B = exit submenu).  state_ptr is the menu
+ * state block; toolkit_ptr gives access to the joypad.
+ */
+static void menu_input_update(u32 state_ptr, u32 toolkit_ptr) {
+    if (!screen_fade_active_sub_812933C()) {
+        u32 pressed = LD16(LD32(toolkit_ptr + oToolkit_JoypadPtr) + oJoypad_Pressed);
+        u32 cursor  = LD8(state_ptr + 0xD);
+        u32 new_cur = move_cursor(pressed, cursor);
+
+        if (new_cur != cursor) {
+            /* Cursor moved to a different option – show its dialogue */
+            ST8(state_ptr + 0xD, new_cur);
+            u32 script = LD8(MENU_SCRIPT_TABLE + new_cur);
+            u32 gs     = get_game_flags();
+            if ((gs & 1) && script == 0x5A) script = 0x5F;
+            if ((gs & 2) && script == 0x5B) script = 0x60;
+            run_chat_script(script);
+        } else if (is_pressed(JOYPAD_A_sub_812933C)) {
+            /* Confirm the currently-highlighted option */
+            play_sound_sub_812933C(SOUND_MENU_SELECT);
+            if (LD8(state_ptr + 0xD) == 0) {
+                /* "Exit" selected – reset state and fade out */
+                set_jump_offset00(0);
+                ST8(state_ptr + 1, 8);
+                ST8(state_ptr + 2, 0);
+                ST8(state_ptr + 3, 0);
+                ST8(state_ptr + 0xE, 0);
+                fade_screen(0xC, 0x10);
+            } else {
+                /* A submenu item – advance and fade */
+                ST8(state_ptr + 2, 8);
+                ST8(state_ptr + 0x21, 0);
+                fade_screen(0xC, 0x10);
+            }
+        } else if (is_pressed(JOYPAD_B_sub_812933C)) {
+            /* Cancel / back out of the menu */
+            play_sound_sub_812933C(0x83);
+            confirm_exit_fade(0x40);
+            fade_screen(0xC, 0x10);
+        }
+    }
+
+    /* Always tick entity and secondary updates, then advance menu timer */
+    run_entity_updates_sub_812933C();
+    run_secondary_update();
+    set_menu_tick(0xD);
+}
+
+/* sub_812933C(r5 = menu state ptr, r10 = toolkit ptr) */
+Next sub_812933C(void) {
+    menu_input_update(R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812AEC8 ── */
+/* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
+static void run_entity_updates_sub_812AEC8(void) {
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+}
+
+/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+static void tick_secondary_handlers(void) {
+    GUEST_CALL(sub_80465F8);
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active_sub_812AEC8(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return ZERO_FLAG();  /* Z set ⇒ a fade transition is in progress */
+}
+
+/* register form: calls pet_menuExitToMap_811F708 outside this file, which has no typed C interface yet */
+static void exit_to_overworld_map(void) {
+    GUEST_CALL(pet_menuExitToMap_811F708);
+}
+
+/* Advance all entity update handlers and secondary ticks, then return to the
+ * overworld map unless a screen fade is currently in progress. */
+static void process_tick_and_fade_exit(void) {
+    run_entity_updates_sub_812AEC8();
+    tick_secondary_handlers();
+    if (!screen_fade_active_sub_812AEC8())
+        exit_to_overworld_map();
+}
+
+/* sub_812AEC8() -> void; output registers and flags pass through from callees. */
+Next sub_812AEC8(void) {
+    process_tick_and_fade_exit();
     RETURN_TO_CALLER();
 }
 

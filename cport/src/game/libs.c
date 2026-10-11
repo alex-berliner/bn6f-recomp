@@ -8,6 +8,86 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_8144158 ── */
+/* register form: calls SWI_CpuSet outside this file, which has no typed C interface yet.
+ * CpuSet's fill source must be a guest address, so a zero is placed on the stack. */
+static void cpu_set_fill_32(u32 dest, u32 mode) {
+    SP -= 4;
+    ST32(SP, 0);
+    R0 = SP;
+    R1 = dest;
+    R2 = mode;
+    GUEST_CALL(SWI_CpuSet);
+    SP += 4;
+}
+
+/* register form: calls SWI_CpuSet outside this file, which has no typed C interface yet.
+ * CpuSet's copy source must be a guest address, so a zero halfword is placed on the stack. */
+static void cpu_set_copy_16(u32 dest, u32 mode) {
+    SP -= 4;
+    ST16(SP, 0);
+    R0 = SP;
+    R1 = dest;
+    R2 = mode;
+    GUEST_CALL(SWI_CpuSet);
+    SP += 4;
+}
+
+/* Reset the GBA link-cable (SIO) hardware and clear all multiplayer communication
+ * state.  Saves/restores IME around masked IE writes, puts SIO into general-purpose
+ * mode, fires a dummy transfer to reset the state machine, re-enables the SIO
+ * interrupt, zeroes the data registers and software communication buffers. */
+static void init_sio_and_clear_link_state(void) {
+    u32 ime = A_InterruptMasterEnableRegister;
+    u32 ie  = A_InterruptEnableRegister;
+
+    /* Save IME, mask out bits 6-7 from IE (disable SIO IRQ), restore IME */
+    u16 ime_val = LD16(ime);
+    ST16(ime, 0);
+    ST16(ie, LD16(ie) & 0xFF3F);
+    ST16(ime, ime_val);
+
+    /* SIGMD = 0: general-purpose / multi-player data mode */
+    ST16(A_SIOModeSelect_GeneralPurposeData, 0);
+
+    /* SIOCTL: write SCER (0x2000), then start transfer by OR-ing SCST|SCCK|SCDT (0x4003) */
+    u32 sioctl = A_SIOControlRegister;
+    ST16(sioctl, 0x2000);
+    ST16(sioctl, LD16(sioctl) | 0x4003);
+
+    /* Stash IME in RAM, disable interrupts, re-enable SIO IRQ (bit 7 of IE), restore IME */
+    ime_val = LD16(ime);
+    ST16(A_word_2006DFC, ime_val);
+    ST16(ime, 0);
+    ST16(ie, LD16(ie) | 0x0080);
+    ST16(ime, ime_val);
+
+    /* Clear SIO data registers */
+    ST16(A_SIOData_Normal_8bitandUARTMode_, 0);
+    ST32(A_SIOData0_Parent__Multi_PlayerMode_, 0);
+    ST32(A_SIOData0_Parent__Multi_PlayerMode_ + 4, 0);
+
+    /* Zero-fill timer-enable table (614 32-bit words) and comm halfword buffer (2 halfwords) */
+    cpu_set_fill_32(A_eTimerEnable200F460, 0x5000266);
+    cpu_set_copy_16(A_unk_200F44C, 0x1000002);
+
+    /* Clear per-link software state */
+    ST8(A_byte_200F450, 0);
+    ST8(A_byte_2006DFE, 0);
+    ST8(A_byte_2006E00, 0);
+    ST8(A_byte_200F440, 0);
+    ST8(A_byte_200F448, 0);
+    ST8(A_byte_2006E00 + 1, 0);   /* byte_2006E01 */
+    ST16(A_word_2006E02, 0);
+    ST16(A_word_2006E04, 0);
+}
+
+/* sub_8144158() -> () ; no register inputs/outputs beyond preserved callee regs */
+Next sub_8144158(void) {
+    init_sio_and_clear_link_state();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8144240 ── */
 /* sub_8144240: run both steps of the (likely per-frame) update for this
  * subsystem: sub_8144158 followed by sub_81440D8. Neither takes arguments;
@@ -933,6 +1013,268 @@ Next sound_tickAllMusicPlayers_814EA58(void) {
      * ends with the counter having just decremented to 0. */
     SET_FLAGS_CMP(0, 0);
     R0 = LR;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814EB84 ── */
+/* register form: calls SWI_CpuSet (BIOS wrapper) outside this file;
+ * needs SP because it passes a stack address as the 32-bit fill source.
+ * Leaves R2/R3 as the callee's outputs (the caller reads those after the call). */
+static void cpu_set_fill_zero(u32 dest, u32 mode) {
+    SP -= 4;
+    ST32(SP, 0);
+    R0 = SP;
+    R1 = dest;
+    R2 = mode;
+    GUEST_CALL(SWI_CpuSet);
+    SP += 4;
+}
+
+/* Reset GBA sound hardware, verify the CGB-sound tag, patch the driver jump
+ * table and state struct, zero-fill the 256-byte buffer, then stamp
+ * channel-pattern bytes.  sound_buf is the caller-supplied buffer (r0). */
+static void init_cgb_sound(u32 sound_buf) {
+    /* Enable all channels (NR52 = 0x8F) */
+    ST16(A_ControlSoundon_off_NR52_, 0x8F);
+
+    /* Clear stereo/volume pair (NR50, NR51), then set NR50 master volume to 0x77 */
+    u32 nr50 = A_ControlStereo_Volume_Enable_NR50_NR51_;
+    ST16(nr50, 0);
+
+    /* NR12/NR22/NR42 length = 8 */
+    u32 addr = (A_Channel1Duty_Length_Envelope_NR11_NR12_ | 1);   /* NR12 + 1 */
+    ST8(addr, 8);
+    addr += 6;       /* NR22 + 1 */
+    ST8(addr, 8);
+    addr += 0x10;    /* NR42 + 1 */
+    ST8(addr, 8);
+
+    /* NR14/NR24/NR44 trigger = 0x80 */
+    addr -= 0x14;    /* NR14 + 1 */
+    ST8(addr, 0x80);
+    addr += 8;       /* NR24 + 1 */
+    ST8(addr, 0x80);
+    addr += 0x10;    /* NR44 + 1 */
+    ST8(addr, 0x80);
+
+    /* NR34 (channel 3) off */
+    addr -= 0xd;     /* NR34 + 1 */
+    ST8(addr, 0);
+
+    /* NR50 master volume */
+    ST8(nr50, 0x77);
+
+    /* Verify the "Shms" tag in the CGB sound state */
+    u32 state_ptr = LD32(A_byte_3007FF0);
+    u32 tag = LD32(state_ptr);
+    if (tag != 0x68736D53)
+        return;
+
+    /* Temporarily bump tag to guard against re-entry while patching */
+    ST32(state_ptr, tag + 1);
+
+    /* Install patched sound-driver handlers in the game's function-pointer table */
+    u32 fp = A_off_3005570;
+    ST32(fp + 0x20, (A_sub_814FBFC | 1));
+    ST32(fp + 0x44, (A_sub_814E7CC | 1));
+    ST32(fp + 0x4C, (A_sub_814E7E0 | 1));
+    ST32(fp + 0x70, (A_sub_814FD54 | 1));
+    ST32(fp + 0x74, (A_sub_814E758 | 1));
+    ST32(fp + 0x78, (A_SampleFreqSet_814EDC0 | 1));
+    ST32(fp + 0x7C, (A_sub_814E4DC | 1));
+    ST32(fp + 0x80, (A_sub_814F228 | 1));
+    ST32(fp + 0x84, (A_sub_814F2F0 | 1));
+
+    /* Wire state struct to patched handlers and the sound buffer */
+    ST32(state_ptr + 0x1C, sound_buf);
+    ST32(state_ptr + 0x28, (A_CgbSound | 1));
+    ST32(state_ptr + 0x2C, (A_sub_814F44C | 1));
+    ST32(state_ptr + 0x30, (A_sub_814F3A4 | 1));
+    ST8(state_ptr + 0x0C, 0);
+
+    /* Zero-fill the 256-byte buffer (64 × 32-bit, fixed source/dest) */
+    cpu_set_fill_zero(sound_buf, 0x05000040);
+
+    /* Stamp channel-pattern identification bytes into the buffer */
+    ST8(sound_buf + 0x01, 1);
+    ST8(sound_buf + 0x1C, 0x11);
+    ST8(sound_buf + 0x41, 2);
+    ST8(sound_buf + 0x5C, 0x22);
+    ST8(sound_buf + 0x81, 3);
+    ST8(sound_buf + 0x9C, 0x44);
+    ST8(sound_buf + 0xC1, 4);
+    ST8(sound_buf + 0xDC, 0x88);
+
+    /* Restore original tag (undo the temporary bump) */
+    ST32(state_ptr, tag);
+}
+
+/* sub_814EB84(r0 = CGB sound buffer) -> r2, r3 (r4/r5/r6 preserved by push/pop).
+ * Mismatch path: r2=0, r3=NR50 address (set by adapter before the call).
+ * Match path:    r2/r3 left behind by SWI_CpuSet inside the typed function. */
+Next sub_814EB84(void) {
+    R2 = 0;
+    R3 = A_ControlStereo_Volume_Enable_NR50_NR51_;
+    init_cgb_sound(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814F3A4 ── */
+/* sub_814F3A4 – packed-table interpolation lookup.
+ *
+ * mode (r0 byte) selects the table.
+ *  Mode 4: clamp index to byte_81C0640 (simple 1-byte LUT).
+ *  Other:  clamp index to 0x82, then interpolate between two adjacent
+ *          entries of the packed table byte_81C05A4, whose low nibble
+ *          indexes an s16 pool (byte_81C0628) and high nibble is an
+ *          ASR amount; scale by the fraction byte (r2).
+ */
+
+#define MODE_SIMPLE   4
+
+#define TABLE_SIMPLE  A_byte_81C0640   /* direct byte lookup   */
+#define TABLE_PACKED  A_byte_81C05A4   /* packed entry table   */
+#define TABLE_S16     A_byte_81C0628   /* s16 value pool       */
+
+struct LookupResult {
+    u32 r0, r2, r3, r12;
+    u32 add_a, add_b;   /* operands of the final ADDS that sets nz/c/v */
+};
+
+static struct LookupResult do_lookup(u32 mode, u32 index, u32 frac, u32 r3_in)
+{
+    struct LookupResult res;
+
+    if (mode == MODE_SIMPLE) {
+        /* ── simple byte-table path ── */
+        u32 idx = index;
+        if (idx <= 0x14)
+            idx = 0;
+        else {
+            idx = (idx - 0x15) & 0xFF;
+            if (idx > 0x3B) idx = 0x3B;
+        }
+
+        res.r0  = LD8(TABLE_SIMPLE + idx);
+        res.r2  = frac;
+        res.r3  = r3_in;            /* unchanged */
+        res.r12 = frac;
+        res.add_a = idx;
+        res.add_b = TABLE_SIMPLE;   /* flags from ADDS(idx, table_addr) */
+        return res;
+    }
+
+    /* ── interpolation path ── */
+    u32 idx   = index;
+    u32 scale = frac;
+
+    if (idx <= 0x23) {
+        idx   = 0;
+        scale = 0;
+    } else {
+        idx = (idx - 0x24) & 0xFF;
+        if (idx > 0x82) {
+            idx   = 0x82;
+            scale = 0xFF;
+        }
+    }
+
+    res.r3  = TABLE_PACKED;
+    res.r12 = scale;
+    res.r2  = 0;                    /* left at 0 after final "mov r2,#0" */
+
+    /* Decode packed entry at idx → s32 value_a */
+    u32 pk_a = LD8(TABLE_PACKED + idx);
+    s32 va   = LDS16(TABLE_S16 + ((pk_a & 0xF) << 1));
+    va = (s32)va >> (s32)(pk_a >> 4);
+
+    /* Decode packed entry at idx+1 → s32 value_b */
+    u32 pk_b = LD8(TABLE_PACKED + idx + 1);
+    s32 vb   = LDS16(TABLE_S16 + ((pk_b & 0xF) << 1));
+    vb = (s32)vb >> (s32)(pk_b >> 4);
+
+    /* Linear interpolation: va + ((scale * (vb - va)) >> 8) + 0x800 */
+    s32 delta   = vb - va;
+    s32 product = (s32)scale * delta;
+    s32 interp  = va + (product >> 8);
+
+    res.r0    = (u32)(interp + 0x800);
+    res.add_a = (u32)interp;
+    res.add_b = 0x800;              /* flags from ADDS(interp, 0x800) */
+    return res;
+}
+
+/* sub_814F3A4(r0=mode, r1=index, r2=frac, r3=passthru, lr) */
+Next sub_814F3A4(void) {
+    struct LookupResult lr_ = do_lookup(
+        (R0 << 24) >> 24, (R1 << 24) >> 24, (R2 << 24) >> 24, R3);
+    R0 = lr_.r0;  R1 = LR;  R2 = lr_.r2;  R3 = lr_.r3;  R12 = lr_.r12;
+    SET_FLAGS_ADD(lr_.add_a, lr_.add_b);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814F44C ── */
+/* Structured result of the APU channel-start helper. */
+struct SoundChanResult {
+    u32 r1;       /* address of the last byte written (the trigger/consecutive register) */
+    u32 add_a;    /* SET_FLAGS_ADD operands that reproduce the original exit flags        */
+    u32 add_b;
+};
+
+/* Write the envelope/length and trigger bytes for one APU sound channel.
+ * channel is masked to its low byte; the mapping is:
+ *   1 → NR12 (len/env) then NR14 (trigger = 0x80)
+ *   2 → NR22 (len/env) then NR24 (trigger = 0x80)
+ *   3 → NR30 = 0 (stop wave channel; no separate trigger write)
+ *   0 or >3 → NR42 (len/env) then NR44 (trigger = 0x80)
+ * Returns the final register address and the ADDS operands whose flags match the
+ * original's last flag-setting instruction on each path. */
+static struct SoundChanResult configure_channel(u32 channel) {
+    channel &= 0xFF;
+    struct SoundChanResult res;
+    u32 reg;
+
+    if (channel == 1) {
+        reg = A_Channel1Duty_Length_Envelope_NR11_NR12_ + 1;
+        ST8(reg, 8);           /* envelope / length on NR12 */
+        reg += 2;              /* ADDS r1,#2 → flags */
+        ST8(reg, 0x80);        /* trigger on NR14 */
+        res.add_a = reg - 2;
+        res.add_b = 2;
+    } else if (channel == 2) {
+        reg = A_Channel2Duty_Length_Envelope_NR21_NR22_ + 1;
+        ST8(reg, 8);           /* envelope / length on NR22 */
+        reg += 4;              /* ADDS r1,#4 → flags */
+        ST8(reg, 0x80);        /* trigger on NR24 */
+        res.add_a = reg - 4;
+        res.add_b = 4;
+    } else if (channel == 3) {
+        reg = A_Channel3Stop_WaveRAMselect_NR30_;
+        ST8(reg, 0);           /* stop wave channel */
+        /* Exit flags were set by CMP r1,#3 (with r1==3), which is equivalent to
+         * ADDS 0xFFFFFFFF,1 → N=0 Z=1 C=1 V=0. */
+        res.add_a = 0xFFFFFFFF;
+        res.add_b = 1;
+    } else {
+        /* channel 0 or > 3 → use channel 4 */
+        reg = A_Channel4Length_Envelope_NR41_NR42_ + 1;
+        ST8(reg, 8);           /* envelope / length on NR42 */
+        reg += 4;              /* ADDS r1,#4 → flags */
+        ST8(reg, 0x80);        /* trigger on NR44 */
+        res.add_a = reg - 4;
+        res.add_b = 4;
+    }
+
+    res.r1 = reg;
+    return res;
+}
+
+/* sub_814F44C(r0 = channel number, lr = return address) → r0=lr, r1=trigger addr, flags */
+Next sub_814F44C(void) {
+    struct SoundChanResult res = configure_channel(R0);
+    R0 = LR;                    /* pop {r0} restores the caller's return address */
+    R1 = res.r1;
+    SET_FLAGS_ADD(res.add_a, res.add_b);
     RETURN_TO_CALLER();
 }
 

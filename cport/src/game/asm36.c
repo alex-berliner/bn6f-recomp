@@ -378,6 +378,103 @@ Next storeTableEntryIntoUnk200a220Field8_8132FC4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8132FD0 ── */
+/* register form: calls SWI 6 (game-custom tile-chain decompression), no typed C interface yet */
+static u32 swi6_decompress_tile(u32 tile, u32 param) {
+    R0 = tile;
+    R1 = param;
+    swi_call(6);
+    return R0;  /* next tile in chain; 0 means end */
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_bg_tiles_sub_8132FD0(u32 j, u32 i, u32 which_block, u32 tile_ids,
+                          u32 j_size, u32 i_size) {
+    R0 = j; R1 = i; R2 = which_block; R3 = tile_ids; R4 = j_size; R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* Build the interleaved tile-ID list for one 3-block strip into eDecompBuffer2013A00,
+ * then blit it via CopyBackgroundTiles.
+ * tile_block_header points to a structure whose u16 fields at +0xC/+0xE/+0x10 give
+ * the starting tile of each block's compression chain. */
+static void decompose_tile_block(u32 tile_block_header) {
+    /* Phase 1: count the chain length of each of the 3 blocks via SWI 6. */
+    u32 counts[3];
+    u32 total = 5;            /* 5 fixed non-sequential entries per column */
+    u32 hdr_off = 0xC;
+
+    for (int blk = 0; blk < 3; blk++) {
+        u32 tile = LD16(tile_block_header + hdr_off);
+        u32 n = 0;
+        do {
+            n++;
+            tile = swi6_decompress_tile(tile, 0xA);
+        } while (tile != 0);
+        counts[blk] = n;
+        total += n;
+        hdr_off += 2;
+    }
+
+    /* Phase 2: fill the two-column (left/right) tile-ID buffer.
+     * right byte-offset tracks the second column; left tracks the first. */
+    u32 buf   = A_eDecompBuffer2013A00;
+    u32 left  = 0;
+    u32 right = total << 1;   /* byte position where right column begins */
+
+    /* Fixed header pair from word_201C4E0 */
+    ST16(buf + left,  LD16(A_word_201C4E0));
+    left  += 2;
+    ST16(buf + right, LD16(A_word_201C4E0 + 2));
+    right += 2;
+
+    /* Block 0: sequential tile IDs from VRAM base 0x30B250 */
+    u32 base = 0x30B250;
+    for (u32 i = counts[0]; i > 0; i--) {
+        ST16(buf + left,  base); left  += 2; base++;
+        ST16(buf + right, base); right += 2; base++;
+    }
+    /* Block 0 trailer: two pairs from unk_201C4F0 (offsets 0,2→left; 4,6→right) */
+    u32 extra = A_unk_201C4F0;
+    ST16(buf + left,  LD16(extra + 0)); left  += 2;
+    ST16(buf + right, LD16(extra + 4)); right += 2;
+    ST16(buf + left,  LD16(extra + 2)); left  += 2;
+    ST16(buf + right, LD16(extra + 6)); right += 2;
+
+    /* Block 1: sequential tile IDs from VRAM base 0x30B260 */
+    base = 0x30B260;
+    for (u32 i = counts[1]; i > 0; i--) {
+        ST16(buf + left,  base); left  += 2; base++;
+        ST16(buf + right, base); right += 2; base++;
+    }
+    /* Block 1 trailer: two pairs from unk_201C500 */
+    extra = A_unk_201C500;
+    ST16(buf + left,  LD16(extra + 0)); left  += 2;
+    ST16(buf + right, LD16(extra + 4)); right += 2;
+    ST16(buf + left,  LD16(extra + 2)); left  += 2;
+    ST16(buf + right, LD16(extra + 6)); right += 2;
+
+    /* Block 2: sequential tile IDs from VRAM base 0x30B270 (no trailer) */
+    base = 0x30B270;
+    for (u32 i = counts[2]; i > 0; i--) {
+        ST16(buf + left,  base); left  += 2; base++;
+        ST16(buf + right, base); right += 2; base++;
+    }
+
+    /* Phase 3: blit the assembled tile list as a 32x32 BG block on layer 2. */
+    u32 j_size = right >> 2;   /* number of tile entries in the right column */
+    u32 j      = 0x19 - j_size;/* columns remaining (25 total minus used) */
+    copy_bg_tiles_sub_8132FD0(j, 5, 2, buf, j_size, 2);
+}
+
+/* sub_8132FD0(r5 = tile_block_header) -> preserves r4-r7 */
+Next sub_8132FD0(void) {
+    u32 save_r4 = R4, save_r5 = R5, save_r6 = R6, save_r7 = R7;
+    decompose_tile_block(R5);
+    R4 = save_r4; R5 = save_r5; R6 = save_r6; R7 = save_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8133400 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active_sub_8133400(void) {
@@ -764,6 +861,36 @@ Next sub_8134558(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8134594 ── */
+/* register form: calls submenu_isOpen_81355D8 outside this file, which has no typed C interface yet */
+static bool submenu_is_open_sub_8134594(void) {
+    GUEST_CALL(submenu_isOpen_81355D8);
+    return !ZERO_FLAG();          /* Z clear → R0 ≠ 0 → submenu is open */
+}
+
+/* register form: calls sub_813468C outside this file, which has no typed C interface yet.
+ * Saves/restores R4 and R6 because the original push/pop hides the caller's register
+ * modifications from the outer function's output contract. */
+static void call_813468C_sub_8134594(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a6) {
+    u32 saved_r4 = R4, saved_r6 = R6;
+    R0 = a0; R1 = a1; R2 = a2; R3 = a3; R4 = a4; R6 = a6;
+    GUEST_CALL(sub_813468C);
+    R4 = saved_r4; R6 = saved_r6;
+}
+
+/* Clear the submenu background tile unless the submenu is already open. */
+static void ensure_submenu_cleared(void) {
+    if (submenu_is_open_sub_8134594())
+        return;
+    call_813468C_sub_8134594(0xE7, 0x16, 0, 0x10, A_byte_81331EC, 0);
+}
+
+/* sub_8134594(): clears the submenu background tile if the submenu is not open. */
+Next sub_8134594(void) {
+    ensure_submenu_cleared();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81345B0 ── */
 /* register form: calls sub_813468C outside this file, which has no typed C interface yet */
 static void call_813468C(u32 arg0, u32 arg1, u32 arg2, u32 arg3, u32 ptr, u32 flag) {
@@ -981,6 +1108,112 @@ Next sub_813527C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8135314 ── */
+/* PET navi stat type lookup indexed by battle_obj[0xC] */
+#define ADDR_PET_NAVI_STAT_TBL  0x081353B4
+/* Battle-object field offsets for storing each navi's stat byte */
+#define ADDR_NAVI_STAT_OFFSETS  0x0813539C
+/* Flag bits set in battle_obj[0x4C] when a navi slot is active */
+#define ADDR_NAVI_FLAG_BITS     0x081353A8
+
+#define OFF_BATTLE_NAVI_SLOT    0x0C
+#define OFF_BATTLE_NAVI_FLAGS   0x4C
+#define OFF_BATTLE_TOTAL_HP     0x64
+#define NAVI_DATA_ENTRY_SIZE    0x20
+#define NAVI_DATA_HP_OFFSET     0x18
+
+/* register form: calls GetCurPETNavi outside this file, which has no typed C interface yet */
+static u8 get_cur_pet_navi_sub_8135314(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (u8)R0;
+}
+
+/* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static u8 get_pet_navi_stat_sub_8135314(s32 navi_id, s32 stat_offset) {
+    R0 = (u32)navi_id;
+    R1 = (u32)stat_offset;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (u8)R0;
+}
+
+/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+static void init_navi_entry(u32 entry_ptr) {
+    R0 = entry_ptr;
+    GUEST_CALL(sub_80465A0);
+}
+
+/* register form: calls sub_8134930 outside this file, which has no typed C interface yet */
+static u32 spawn_navi_object(u32 kind, u32 a1, u32 a2, u32 slot,
+                             u32 a3, u32 battle_obj, u8 stat, u32 data_ptr) {
+    R0 = kind;
+    R1 = a1;
+    R2 = a2;
+    R3 = slot;
+    R4 = a3;
+    R5 = battle_obj;
+    R6 = stat;
+    R7 = data_ptr;
+    GUEST_CALL(sub_8134930);
+    return R3;
+}
+
+/* Process both PET navi slots: look up each navi's stat, accumulate HP,
+ * initialize sub-arrays, spawn battle objects, and set active flags.
+ * Returns R3 from the last spawn call (or unchanged r3 input if both navis absent). */
+static u32 process_pet_navis(u32 navi_data, u32 stats_arr, u32 arg2, u32 arg3,
+                             u32 ptr_array, u32 battle_obj) {
+    u32 total_hp = 0;
+    u32 r3_out = arg3;
+
+    for (u32 slot = 0; slot < 2; slot++) {
+        /* Stat type offset from lookup table, plus slot index */
+        u8 type_idx = LD8(battle_obj + OFF_BATTLE_NAVI_SLOT);
+        s32 stat_offset = (s32)LD8(ADDR_PET_NAVI_STAT_TBL + type_idx) + (s32)slot;
+
+        /* Fetch current PET navi ID and its stat byte */
+        u8 navi_id = get_cur_pet_navi_sub_8135314();
+        u8 stat = get_pet_navi_stat_sub_8135314((s32)navi_id, stat_offset);
+
+        if (stat == 0xFF)
+            continue;  /* No navi in this slot */
+
+        /* Accumulate HP: upper half of word at navi_data[stat][0x18] */
+        u32 hp_word = LD32(navi_data + (u32)stat * NAVI_DATA_ENTRY_SIZE
+                                   + NAVI_DATA_HP_OFFSET);
+        total_hp += hp_word >> 16;
+
+        /* Initialize the per-slot navi entry */
+        u32 entry_ptr = LD32(stats_arr + slot * 4);
+        init_navi_entry(entry_ptr);
+
+        /* Store stat byte as 16-bit field in battle object */
+        u32 field_off = LD32(ADDR_NAVI_STAT_OFFSETS + slot * 4);
+        ST16(battle_obj + field_off, stat);
+
+        /* Spawn the navi's battle object; R5 and R6 are preserved by callee */
+        u32 navi_ptr = LD32(ptr_array + slot * 4);
+        r3_out = spawn_navi_object(0x24, arg2, arg3, slot, 6,
+                                   battle_obj, stat, navi_ptr);
+
+        /* Set the active-navi flag bit */
+        u32 flag = LD32(ADDR_NAVI_FLAG_BITS + slot * 4);
+        ST32(battle_obj + OFF_BATTLE_NAVI_FLAGS,
+             LD32(battle_obj + OFF_BATTLE_NAVI_FLAGS) | flag);
+    }
+
+    /* Write accumulated total HP into battle object */
+    ST32(battle_obj + OFF_BATTLE_TOTAL_HP, total_hp);
+
+    return r3_out;
+}
+
+/* sub_8135314(r0=navi_data, r1=stats_arr, r2=arg2, r3=arg3,
+ *             r4=ptr_array, r5=battle_obj) -> r3; r4-r7 preserved */
+Next sub_8135314(void) {
+    R3 = process_pet_navis(R0, R1, R2, R3, R4, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81353DC ── */
 /* sub_81353DC: thin wrapper around sub_81348DC. It invokes that routine with
  * a fixed argument set (r0 = 0x24, r1 = 0xA5, r2 = 0x28, r3 = 4, r4 = 6) and
@@ -1030,6 +1263,91 @@ Next sub_81353F0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8135500 ── */
+/* sub_8135500: Count battle objects whose alliance matches a given value,
+ * bucketed by HP tier, then check whether the current object's tier bucket
+ * would exceed the per-tier spawn limit.
+ *
+ * word_202A020 is an array of 30 battle objects (stride 0x20).
+ *   offset 0x1C (u16): alliance ID stored in bits 7..15
+ *   offset 0x18 (u32): HP stored in bits 16..31 (tier category)
+ * The first argument (obj_ptr) has its own tier byte at offset 8.
+ *
+ * Tier thresholds: <=0x13, <=0x1D, <=0x27, <=0x31, else (buckets 0-4)
+ * Tier limits:     5, 4, 3, 2, 1
+ *
+ * Returns via out-param:
+ *   r0: 1 if the limit is reached, 0 otherwise
+ *   r1: the capped limit (exceeded) or count+1 (not exceeded)
+ *   r2: bucket index 0-4 (exceeded) or unchanged from caller (not exceeded)
+ */
+
+typedef struct {
+    u32 exceeded;
+    u32 count;
+    u32 bucket;
+} TierResult;
+
+static TierResult check_tier_limit(u32 obj_ptr, u32 alliance, u32 prev_r2) {
+    /* Bucket matching battle objects by HP tier */
+    u32 counts[5] = {0, 0, 0, 0, 0};
+    const u32 limits[5] = {5, 4, 3, 2, 1};
+
+    u32 base = A_word_202A020;
+    for (u32 off = 0; off < 0x3C0; off += 0x20) {
+        u32 entry = base + off;
+        /* Extract alliance from bits 7..15 of u16 at +0x1C */
+        u32 obj_alliance = LD16(entry + 0x1C) >> 7;
+        if (obj_alliance != alliance)
+            continue;
+
+        /* Extract HP tier from upper 16 bits of u32 at +0x18 */
+        u32 tier = LD32(entry + 0x18) >> 16;
+
+        if (tier <= 0x13)       counts[0]++;
+        else if (tier <= 0x1D)  counts[1]++;
+        else if (tier <= 0x27)  counts[2]++;
+        else if (tier <= 0x31)  counts[3]++;
+        else                    counts[4]++;
+    }
+
+    /* Determine which bucket the current object belongs to */
+    u32 obj_tier = LD8(obj_ptr + 8);
+    u32 bucket;
+    if (obj_tier <= 0x13)       bucket = 0;
+    else if (obj_tier <= 0x1D)  bucket = 1;
+    else if (obj_tier <= 0x27)  bucket = 2;
+    else if (obj_tier <= 0x31)  bucket = 3;
+    else                        bucket = 4;
+
+    /* Check if adding this object would exceed the per-tier limit */
+    u32 proposed = counts[bucket] + 1;
+    if (proposed > limits[bucket]) {
+        /* Limit reached – report capped count and which tier overflowed */
+        TierResult r;
+        r.exceeded = 1;
+        r.count    = limits[bucket];
+        r.bucket   = bucket;
+        return r;
+    } else {
+        /* Room available – return the proposed count; r2 passes through */
+        TierResult r;
+        r.exceeded = 0;
+        r.count    = proposed;
+        r.bucket   = prev_r2;
+        return r;
+    }
+}
+
+/* sub_8135500(r0 = obj_ptr, r1 = alliance) -> r0(r2) */
+Next sub_8135500(void) {
+    TierResult res = check_tier_limit(R0, R1, R2);
+    R0 = res.exceeded;
+    R1 = res.count;
+    R2 = res.bucket;
+    RETURN_TO_CALLER();
+}
+
 /* ── submenu_isOpen_81355D8 ── */
 /* submenu_isOpen_81355D8: check the currently open submenu (sSubmenu).
  * Returns r1 = 0 if it is 0x20 (the "no submenu / main" state),
@@ -1044,6 +1362,119 @@ Next submenu_isOpen_81355D8(void) {
     else
         R1 = 1;
     SET_FLAGS_NZ(R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8136C24 ── */
+/* Register-form helpers for the PET Navi stats API (no typed C interface yet). */
+
+/* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static u32 get_pet_navi_byte(u32 navi, u32 stat) {
+    R0 = navi;
+    R1 = stat;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return R0;
+}
+
+/* register form: calls GetCurPETNaviStatsHword outside this file, which has no typed C interface yet */
+static u32 get_pet_navi_hword(u32 navi, u32 stat) {
+    R0 = navi;
+    R1 = stat;
+    GUEST_CALL(GetCurPETNaviStatsHword);
+    return R0;
+}
+
+/* register form: calls SetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static void set_pet_navi_byte(u32 navi, u32 stat, u32 value) {
+    R0 = navi;
+    R1 = stat;
+    R2 = value;
+    GUEST_CALL(SetCurPETNaviStatsByte);
+}
+
+/* register form: calls SetCurPETNaviStatsHword outside this file, which has no typed C interface yet */
+static void set_pet_navi_hword(u32 navi, u32 stat, u32 value) {
+    R0 = navi;
+    R1 = stat;
+    R2 = value;
+    GUEST_CALL(SetCurPETNaviStatsHword);
+}
+
+/* register form: calls GetNaviStatsIndexGivenCurPETNavi outside this file, which has no typed C interface yet */
+static u32 get_pet_navi_stats_index(u32 navi) {
+    R0 = navi;
+    GUEST_CALL(GetNaviStatsIndexGivenCurPETNavi);
+    return R0;
+}
+
+/* register form: calls init_8013B4E outside this file, which has no typed C interface yet */
+static void init_pet_navi_stats(u32 stats_index, u32 flag) {
+    R0 = stats_index;
+    R1 = flag;
+    GUEST_CALL(init_8013B4E);
+}
+
+/*
+ * Save the current PET Navi's stat block, run the stats-init routine,
+ * then restore every stat so the navi keeps its battle values.
+ *
+ * Stat layout snapshotted (17 fields, one slot unused):
+ *   byte:  0x0E, 0x21, 0x22, 0x2C, 0x2D, 0x2E, 0x2F, 0x30,
+ *          0x09, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B
+ *   hword: 0x3E, oNaviStats_CurHP (restored to 0x40)
+ */
+static void save_restore_pet_navi_stats(void) {
+    u32 snap[17];  /* slot [8] of the original stack is never used; packed here */
+    u32 i = 0;
+
+    /* Snapshot all PET Navi (index 0) stats into the local buffer. */
+    snap[i++] = get_pet_navi_byte(0, 0x0E);
+    snap[i++] = get_pet_navi_byte(0, 0x21);
+    snap[i++] = get_pet_navi_byte(0, 0x22);
+    snap[i++] = get_pet_navi_hword(0, 0x3E);
+    snap[i++] = get_pet_navi_byte(0, 0x2C);
+    snap[i++] = get_pet_navi_byte(0, 0x2D);
+    snap[i++] = get_pet_navi_byte(0, 0x2E);
+    snap[i++] = get_pet_navi_byte(0, 0x2F);
+    snap[i++] = get_pet_navi_byte(0, 0x30);
+    snap[i++] = get_pet_navi_byte(0, 0x09);
+    snap[i++] = get_pet_navi_hword(0, oNaviStats_CurHP);
+    snap[i++] = get_pet_navi_byte(0, 0x56);
+    snap[i++] = get_pet_navi_byte(0, 0x57);
+    snap[i++] = get_pet_navi_byte(0, 0x58);
+    snap[i++] = get_pet_navi_byte(0, 0x59);
+    snap[i++] = get_pet_navi_byte(0, 0x5A);
+    snap[i++] = get_pet_navi_byte(0, 0x5B);
+
+    /* Run the per-navi stats initialization (e.g. apply equipment/Cross-Flavor). */
+    u32 stats_index = get_pet_navi_stats_index(0);
+    init_pet_navi_stats(stats_index, 0);
+
+    /* Restore the saved stat block so the navi's battle values survive init. */
+    i = 0;
+    set_pet_navi_byte(0, 0x0E, snap[i++]);
+    set_pet_navi_byte(0, 0x21, snap[i++]);
+    set_pet_navi_byte(0, 0x22, snap[i++]);
+    set_pet_navi_hword(0, 0x3E, snap[i++]);
+    set_pet_navi_byte(0, 0x2C, snap[i++]);
+    set_pet_navi_byte(0, 0x2D, snap[i++]);
+    set_pet_navi_byte(0, 0x2E, snap[i++]);
+    set_pet_navi_byte(0, 0x2F, snap[i++]);
+    set_pet_navi_byte(0, 0x30, snap[i++]);
+    set_pet_navi_byte(0, 0x09, snap[i++]);
+    set_pet_navi_hword(0, 0x40, snap[i++]);  /* CurHP restored at stat 0x40 */
+    set_pet_navi_byte(0, 0x56, snap[i++]);
+    set_pet_navi_byte(0, 0x57, snap[i++]);
+    set_pet_navi_byte(0, 0x58, snap[i++]);
+    set_pet_navi_byte(0, 0x59, snap[i++]);
+    set_pet_navi_byte(0, 0x5A, snap[i++]);
+    set_pet_navi_byte(0, 0x5B, snap[i++]);
+    /* The last SetCurPETNaviStatsByte leaves r1, r2, c, v for the caller. */
+}
+
+/* sub_8136C24() — no meaningful inputs used; outputs (r1,r2,c,v) left by last callee GUEST_CALL. */
+Next sub_8136C24(void) {
+    save_restore_pet_navi_stats();
     RETURN_TO_CALLER();
 }
 
