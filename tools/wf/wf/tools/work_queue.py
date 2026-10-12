@@ -13,8 +13,8 @@ attempt: the model is never asked afresh for the function (its candidate is not 
 one retry that starts from the rejected code with the reviewer's reason as the failure report, under the
 job's caps; a job that had ended is opened again for it.
 
-Routes (the user's plan B, docs/reviews/2026-10-10-benchmark.md): the old prompt for 11-30 lines, MiniMax-M3
-first; the typed prompt elsewhere. Models within a route are in the order to try; a provider's lane takes
+Routes: the typed prompt for every size (plan B, the old prompt for 11-30 lines, ended 2026-10-12: docs/reviews/
+2026-10-12-knowledge-first.md). Models within a route are in the order to try; a provider's lane takes
 first the jobs whose next model is its own, then (rather than idle) jobs where its model comes later."""
 import fcntl
 import json
@@ -59,10 +59,10 @@ ROUTES: dict[Band, Route] = {
     Band.TINY: Route(prompt=PromptKind.TYPED, models=_models(
         "hyper/glm-5.3-flash", "minimax/MiniMax-M3", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash",
         "zai/glm-5.3-flash", "opencode/glm-5.3-flash")),
-    Band.SMALL: Route(prompt=PromptKind.OLD, models=_models(
+    Band.SMALL: Route(prompt=PromptKind.TYPED, models=_models(
         "minimax/MiniMax-M3", "hyper/glm-5.3-flash", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash",
         "zai/glm-5.3-flash", "opencode/glm-5.3-flash")),
-    Band.MEDIUM: Route(prompt=PromptKind.OLD, models=_models(
+    Band.MEDIUM: Route(prompt=PromptKind.TYPED, models=_models(
         "minimax/MiniMax-M3", "hyper/glm-5.3-flash", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash",
         "zai/glm-5.3-flash", "opencode/qwen3.8-flash")),
     Band.LARGE: Route(prompt=PromptKind.TYPED, models=_models(
@@ -280,7 +280,9 @@ def plan(ledger: Ledger, found: list[Leftover], routes: dict[Band, Route] = ROUT
     order: list[Job] = []
     for leftover in found:
         job = ledger.get(leftover.function)
-        if job is not None and job.state is JobState.OPEN and job.version != prompt_version(job.prompt):
+        route_prompt = routes[Band.of(leftover.lines)].prompt
+        if job is not None and job.state is JobState.OPEN and (job.version != prompt_version(job.prompt)
+                                                                or job.prompt is not route_prompt):
             job = job.model_copy(update={"state": JobState.RETIRED, "updated": now()})
             changed.append(job)
         today = prompt_version(routes[Band.of(leftover.lines)].prompt)

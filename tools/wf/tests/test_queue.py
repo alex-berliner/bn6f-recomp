@@ -34,10 +34,10 @@ def test_jobs_are_routed_by_size_to_one_prompt() -> None:
 
     assert [j.function for j in order] == ["small", "tiny", "large"] and len(changed) == 3
     by_name = {j.function: j for j in order}
-    assert by_name[FunctionName("small")].prompt is PromptKind.OLD and by_name[FunctionName("small")].models[0] == M3
+    assert by_name[FunctionName("small")].prompt is PromptKind.TYPED and by_name[FunctionName("small")].models[0] == M3
     assert by_name[FunctionName("tiny")].prompt is PromptKind.TYPED
     assert by_name[FunctionName("large")].version == prompt_version(PromptKind.TYPED)
-    assert ROUTES[Band.MEDIUM].prompt is PromptKind.OLD and ROUTES[Band.LARGE].prompt is PromptKind.TYPED
+    assert all(route.prompt is PromptKind.TYPED for route in ROUTES.values())   # plan B ended 2026-10-12
 
 
 def test_an_open_job_keeps_its_prompt_and_a_retired_version_starts_a_new_job() -> None:
@@ -46,13 +46,24 @@ def test_an_open_job_keeps_its_prompt_and_a_retired_version_starts_a_new_job() -
                 models=(GLM,))
     ended = job("done", (M3,), tried=(M3,)).model_copy(update={"state": JobState.EVERY_MODEL_TRIED})
 
+    old_small = {**ROUTES, Band.SMALL: ROUTES[Band.SMALL].model_copy(update={"prompt": PromptKind.OLD})}
     order, changed = plan({kept.function: kept, stale.function: stale, ended.function: ended},
-                          [leftover("small", 15), leftover("tiny", 8), leftover("done", 15)])
+                          [leftover("small", 15), leftover("tiny", 8), leftover("done", 15)], old_small)
 
     assert [j.function for j in order] == ["small", "tiny"]
     assert order[0] == kept   # same job, same prompt, its tries remembered
     assert order[1].version == prompt_version(PromptKind.TYPED) and order[1].tried == ()
     assert [(j.function, j.state) for j in changed] == [("tiny", JobState.RETIRED), ("tiny", JobState.OPEN)]
+
+
+def test_an_open_job_under_a_prompt_its_route_dropped_is_retired_for_a_new_one() -> None:
+    kept = job("small", (M3, GLM), tried=(M3,))   # an old-prompt job from plan B
+
+    order, changed = plan({kept.function: kept}, [leftover("small", 15)])
+
+    assert [(j.function, j.state, j.prompt) for j in changed] == [
+        ("small", JobState.RETIRED, PromptKind.OLD), ("small", JobState.OPEN, PromptKind.TYPED)]
+    assert order[0].prompt is PromptKind.TYPED
 
 
 def test_a_lane_takes_its_own_jobs_first_then_others_rather_than_idle() -> None:
