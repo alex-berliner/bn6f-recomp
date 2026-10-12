@@ -90,6 +90,10 @@ def explained(d, name, k, contract=None, difftest=None, detail=None):
       free stack: an input register points below SP, into memory the
         original's own pushes overwrite before it reads it there; the port's
         stack frames are not the original's.
+    Not the function's either: a state that differs only in the batch run but
+    matches when the same build runs it alone (2026-10-12: dispatchHandlerById_8010D58
+    and replaySpriteFrames_811F24C, once new captures changed the base memory; the
+    host difftest carries some state from one call into the next).
     The first two come from mgba_run (snap_*.bus, written for the original's
     run), the third from the entry registers; a fourth and a fifth run the port's
     lifted original on the state (lifted_run): it cannot run it either, or it
@@ -106,6 +110,10 @@ def explained(d, name, k, contract=None, difftest=None, detail=None):
     for r in range(13):
         if FREE_STACK <= hdr[2 + r] < sp:
             return f"free stack (r{r} = {hdr[2 + r]:#x}, SP = {sp:#x})"
+    alone = lifted_run(d, name, k, contract, difftest, lifted=False)
+    if alone is not None and re.search(rf"^snap_{name}_{k}\.bin: ok", alone, re.M):
+        return ("only after other states in the same difftest run: alone it matches the original "
+                "(host state carried over from earlier calls)")
     lifted = lifted_run(d, name, k, contract, difftest)
     if lifted is None:
         return None
@@ -117,7 +125,7 @@ def explained(d, name, k, contract=None, difftest=None, detail=None):
     return None
 
 
-def lifted_run(d, name, k, contract=None, difftest=None):
+def lifted_run(d, name, k, contract=None, difftest=None, lifted=True):
     """For readable functions: the output of the port's lifted original (its executable model of the
     original) on this state, or None. A fourth kind of state: the lifted original faults or leaves the
     domain too, e.g. when a random index sends the original through a word past its jump table, which on
@@ -125,7 +133,7 @@ def lifted_run(d, name, k, contract=None, difftest=None):
     domain, and this is the same rule. A fifth: it differs from the original exactly as the readable code
     does (2026-10-12: a random panel type read word 0xA0 of an IWRAM table, which the lifted code takes
     from the ROM source). Not with --lifted (the lifted original is what is being compared then)."""
-    if os.environ.get("ORACLE_LIFTED"):
+    if lifted and os.environ.get("ORACLE_LIFTED"):
         return None
     with tempfile.TemporaryDirectory(dir=os.environ.get("ORACLE_TMP")) as one:
         for suffix in (".bin", ".exit.bin"):
@@ -133,7 +141,9 @@ def lifted_run(d, name, k, contract=None, difftest=None):
             if not os.path.exists(src):
                 return None
             shutil.copy(src, os.path.join(one, f"snap_{name}_{k}{suffix}"))
-        env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=contract or CONTRACT, ORACLE_LIFTED="1")
+        env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=contract or CONTRACT)
+        if lifted:
+            env["ORACLE_LIFTED"] = "1"
         r = subprocess.run([difftest or os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", one,
                             name], capture_output=True, text=True, cwd=HOST, env=env)
         return r.stdout
