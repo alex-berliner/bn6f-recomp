@@ -33,7 +33,7 @@ from wf.repo import REPO, SNAPSHOTS
 from wf.tools.build import build_host_difftest, committed_tree, remove_tree
 from wf.tools.drafts import candidate_from_farm, function_at_line
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
-from wf.tools.git import commit_files
+from wf.tools.git import commit_or_restore
 from wf.tools.locks import MAIN_TREE, held
 from wf.tools.install import (DIFFTEST_CFG, game_file, install_file, lay_out_group, layout_conflicts, names_taken,
                               placed, restore_game_files, uninstall_file)
@@ -72,7 +72,8 @@ def convert_graph() -> Graph["ConvertState"]:
             Transition(after=quick_test, go_to=drop_failing_functions, when=farm_functions_to_drop),
             Transition(after=quick_test, go_to=ask_model_for_file_step, when=quick_test_failed_with_attempts_left),
             Transition(after=quick_test, go_to=give_up, when=quick_test_failed_with_no_attempts_left),
-            Transition(after=install_and_verify, go_to=review_conversion, when=verified),
+            Transition(after=install_and_verify, go_to=review_conversion, when=verified_awaiting_review),
+            Transition(after=install_and_verify, go_to=commit_conversion, when=verified_and_approved_before),
             Transition(after=install_and_verify, go_to=drop_failing_functions, when=farm_functions_to_drop),
             Transition(after=install_and_verify, go_to=ask_model_for_file_step, when=not_verified_with_attempts_left),
             Transition(after=install_and_verify, go_to=give_up, when=not_verified_with_no_attempts_left),
@@ -115,6 +116,8 @@ class Attempt(Result):
     verify_run: str | None = None
     review: Review | None = None
     laid_out: bool = False                    # a farm group's functions went to the laid-out files for the verify
+    approved_before: Review | None = None     # a farm group's review approved the rest when it dropped functions:
+                                              # once its re-test and verify pass, it is committed on that approval
     blamed: dict[FunctionName, str] = {}      # functions the install named: build errors in the laid-out files
 
 
@@ -326,10 +329,11 @@ class QuickTestOutput(Result):
 
 @workflow.step
 def quick_test(given: QuickTestInput) -> QuickTestOutput:
-    """Each function of the file against its lifted original on the captured calls and random inputs; a
-    farm group's functions must also fit the laid-out files they go to (tools/layout.py), and an old-prompt
-    group's must not read registers a callee leaves behind (tools/abi/leftovers.py, which the gate runs), set LR
-    to an address or call a guest function without GUEST_CALL (retype.register_form_hazards)."""
+    """Each function of the file against its lifted original on the captured calls and random inputs, and
+    the commit gate's leftover lint (tools/abi/leftovers.py --deep: no read of a register a callee leaves
+    behind), so a file the gate would refuse fails here, before a full verify is spent; a farm group's
+    functions must also fit the laid-out files they go to (tools/layout.py), and an old-prompt group's must
+    not set LR to an address or call a guest function without GUEST_CALL (retype.register_form_hazards)."""
     latest = given.attempts[-1]
     test = test_candidate_file(given.contexts, latest.reply, given.snapshots, given.difftest)
     if given.farm_model is not None and given.tree is not None and latest.reply.file is not None:
@@ -339,13 +343,14 @@ def quick_test(given: QuickTestInput) -> QuickTestOutput:
         if conflicts:
             lines = "\n".join(f"layout: {function}: {why}" for function, why in conflicts.items())
             test = test.model_copy(update={"passed": False, "report": ToolMessage(f"{test.report}\n{lines}")})
-        if prompt_of(given.farm_model) is PromptKind.OLD:   # register form reads leftovers the gate refuses
-            reads = leftover_reads(latest.reply.file, given.file_name)
+    if latest.reply.file is not None:
+        reads = leftover_reads(latest.reply.file, given.file_name)
+        if given.farm_model is not None and prompt_of(given.farm_model) is PromptKind.OLD:
             reads |= {function: why for function, why in register_form_hazards(latest.reply.file).items()
                       if function not in reads}
-            if reads:
-                lines = "\n".join(f"leftovers: {function}: {why}" for function, why in reads.items())
-                test = test.model_copy(update={"passed": False, "report": ToolMessage(f"{test.report}\n{lines}")})
+        if reads:
+            lines = "\n".join(f"leftovers: {function}: {why}" for function, why in reads.items())
+            test = test.model_copy(update={"passed": False, "report": ToolMessage(f"{test.report}\n{lines}")})
     return QuickTestOutput(attempts=(*given.attempts[:-1], latest.model_copy(update={"test": test})))
 
 
@@ -449,7 +454,8 @@ def commit_conversion(given: CommitInput) -> CommitOutput:
     to the laid-out files, as in its verify; an old-prompt group's register-level code is queued for retype
     and added to the lint baseline in the same commit (the gate allows that growth and no other)."""
     latest = given.attempts[-1]
-    assert latest.review is not None and latest.verification is not None
+    review = latest.review or latest.approved_before
+    assert review is not None and latest.verification is not None
     assert latest.reply.file is not None
     queued: tuple[FunctionName, ...] = ()
     with held(MAIN_TREE):
@@ -478,12 +484,17 @@ def commit_conversion(given: CommitInput) -> CommitOutput:
                    f"{', '.join(given.functions)}.\nWritten by {latest.model} through the convert workflow "
                    f"(run {current_run_id()}, attempt {latest.number}){where}; quick test and full verify passed "
                    f"(verify run {latest.verify_run}: {latest.verification.verdict.value}); reviewed and approved"
-                   + (f": {latest.review.comments}" if latest.review.comments else "") + ".\n\n"
+                   + (f": {review.comments}" if review.comments else "") + ".\n\n"
                    + (f"Register form from the farm's old prompt ({prompt_hash(PromptKind.OLD)}): {len(queued)} of them "
                       f"queued for retype in tools/abi/retype_queue.tsv ({', '.join(queued)}); the lint baseline grows "
                       "by their hits only.\n\n" if queued else "")
-                   + latest.review.attribution)
-        return CommitOutput(commit=commit_files((*files, DIFFTEST_CFG), message.strip() + "\n"), retype_queued=queued)
+                   + review.attribution)
+        try:
+            commit = commit_or_restore((*files, DIFFTEST_CFG), message.strip() + "\n", keep=(DIFFTEST_CFG,))
+        except Exception:   # the commit gate refused it: the laid-out files are back (restored), and the inbox
+            uninstall_file(given.file_name)   # file and this run's difftest.cfg lines go (others' lines stay)
+            raise
+        return CommitOutput(commit=commit, retype_queued=queued)
 
 
 def _restore_main_tree(paths: tuple[Path, ...]) -> None:
@@ -547,7 +558,7 @@ def record_symbols(given: RecordInput) -> RecordOutput:
     retype queue's rows of this install get its commit (a commit cannot name itself)."""
     if given.tree is not None:
         remove_tree(given.tree)
-    review = given.attempts[-1].review
+    review = given.attempts[-1].review or given.attempts[-1].approved_before
     if given.defer_record:
         message = (f"Document {given.subsystem}: symbols/db entries (renames wait for a batch record)\n\n"
                    f"Entries drafted by {given.attempts[-1].model}, evidence from convert run {current_run_id()}.\n\n"
@@ -556,12 +567,13 @@ def record_symbols(given: RecordInput) -> RecordOutput:
             with open(PENDING_RENAMES, "a") as pending:
                 _ = pending.write("".join(f"{rename.old} {rename.new}\n" for rename in given.renames))
             filled = given.commit is not None and fill_install_commit(given.retype_queued, given.commit)
-            _ = commit_files((*given.entries, PENDING_RENAMES, *((QUEUE,) if filled else ())), message.strip() + "\n")
+            _ = commit_or_restore((*given.entries, PENDING_RENAMES, *((QUEUE,) if filled else ())),
+                                  message.strip() + "\n")
         return RecordOutput(record=None, outcome=ConvertOutcome.COMMITTED_RECORD_PENDING)
     if given.commit is not None and given.retype_queued:
         with held(MAIN_TREE):
             if fill_install_commit(given.retype_queued, given.commit):
-                _ = commit_files((QUEUE,), f"Retype queue: install commit {given.commit[:10]} of "
+                _ = commit_or_restore((QUEUE,), f"Retype queue: install commit {given.commit[:10]} of "
                                            f"{len(given.retype_queued)} functions\n\n"
                                            + (review.attribution if review else ""))
     message = (f"Document {given.subsystem}: symbols/db entries"
@@ -596,13 +608,19 @@ class DropOutput(Result):
 @workflow.step
 def drop_failing_functions(given: DropInput) -> DropOutput:
     """A farm group keeps what passes: the functions the quick test, the verify or the review named
-    are taken out (they stay in the farm's pool), and the rest is assembled again and re-tested."""
+    are taken out (they stay in the farm's pool), and the rest is assembled again and re-tested. When the
+    review approved the rest (approve with a drop list), the rest is committed on that approval once its
+    re-test and verify pass."""
     assert given.farm_model is not None
     failing = failing_functions(given.attempts[-1])
     kept = tuple(context for context in given.contexts if context.function not in failing)
     functions = tuple(context.function for context in kept)
     reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name, names_taken(functions))
-    attempt = Attempt(number=len(given.attempts) + 1, model=given.farm_model, given=True, reply=reply)
+    review = given.attempts[-1].review
+    approval = (review.model_copy(update={"drop": ()}) if review is not None and review.decision is ReviewDecision.APPROVE
+                else given.attempts[-1].approved_before)
+    attempt = Attempt(number=len(given.attempts) + 1, model=given.farm_model, given=True, reply=reply,
+                      approved_before=approval)
     return DropOutput(contexts=kept, functions=functions, attempts=(*given.attempts, attempt),
                       dropped=(*given.dropped, *(DroppedFunction(function=function, reason=reason)
                                                  for function, reason in failing.items())))
@@ -827,7 +845,7 @@ def farm_functions_to_drop(state: ConvertState) -> bool:
         return False
     stage_failed = (not quick_test_passed(state) if latest.verification is None and latest.review is None
                     else not verified(state) if latest.review is None
-                    else latest.review.decision is ReviewDecision.REQUEST_CHANGES)
+                    else latest.review.decision is ReviewDecision.REQUEST_CHANGES or _approved_with_drops(state))
     failing = failing_functions(latest)
     return stage_failed and bool(failing) and any(context.function not in failing for context in _contexts(state))
 
@@ -853,9 +871,25 @@ def not_verified_with_no_attempts_left(state: ConvertState) -> bool:
     return not verified(state) and not farm_functions_to_drop(state) and not _attempts_left(state)
 
 
+def verified_awaiting_review(state: ConvertState) -> bool:
+    return verified(state) and _latest(state).approved_before is None
+
+
+def verified_and_approved_before(state: ConvertState) -> bool:
+    """A farm group's rest, re-verified after its review approved it and dropped the functions it named."""
+    return verified(state) and _latest(state).approved_before is not None
+
+
 def approved(state: ConvertState) -> bool:
+    """Approved as it is: a farm group's approval that drops functions takes them out first."""
     review = _latest(state).review
-    return review is not None and review.decision is ReviewDecision.APPROVE
+    return review is not None and review.decision is ReviewDecision.APPROVE and not _approved_with_drops(state)
+
+
+def _approved_with_drops(state: ConvertState) -> bool:
+    review = _latest(state).review
+    return (review is not None and review.decision is ReviewDecision.APPROVE and bool(review.drop)
+            and state.farm_model is not None)
 
 
 def changes_requested_with_attempts_left(state: ConvertState) -> bool:
@@ -898,6 +932,9 @@ def review_sheet(request: ReviewRequest) -> str:
         tokens = f"{attempt.tokens.tokens_in}/{attempt.tokens.tokens_out} tokens" if attempt.tokens else ""
         review = f", review: {attempt.review.decision.value}" if attempt.review else ""
         lines.append(f"{attempt.number}. {attempt.model}: quick test {test}, verify {verdict}{review} {tokens}")
+    if latest.reply.notes:
+        lines += ["", "## Written after a review (a retry given a review's rejection of the model's earlier candidate: "
+                      "check what the review found)", *(f"- {note}" for note in latest.reply.notes)]
     if request.dropped:
         lines += ["", f"## Taken out of this farm group ({len(request.dropped)}; they stay in the farm pool)",
                   *(f"- {each.function}: {each.reason}" for each in request.dropped)]

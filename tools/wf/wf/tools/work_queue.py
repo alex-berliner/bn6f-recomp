@@ -8,6 +8,11 @@ token cap (review 3 Area 2: about 60k a function; past it the function waits for
 the strong tier). When the farm's prompt changes version, a job still open under the old one is retired
 and the function gets a new job.
 
+A candidate a review rejected (tools/convert/rejected, with its .review.txt) is a verdict on that model's
+attempt: the model is never asked afresh for the function (its candidate is not silently replaced), but gets
+one retry that starts from the rejected code with the reviewer's reason as the failure report, under the
+job's caps; a job that had ended is opened again for it.
+
 Routes (the user's plan B, docs/reviews/2026-10-10-benchmark.md): the old prompt for 11-30 lines, MiniMax-M3
 first; the typed prompt elsewhere. Models within a route are in the order to try; a provider's lane takes
 first the jobs whose next model is its own, then (rather than idle) jobs where its model comes later."""
@@ -27,7 +32,8 @@ from pydantic import BaseModel, TypeAdapter
 from wf.repo import CPORT, SNAPSHOTS, STATE_DIR
 from wf.tools.budgets import Band, PromptVersion, renames, size_of
 from wf.tools.locks import held
-from wf.tools.models import ACCEPTED_DIR, LOG_DIR, PromptKind, base_model, prompt_version, with_prompt
+from wf.tools.models import (ACCEPTED_DIR, LOG_DIR, PromptKind, base_model, prompt_version, rejected_at_review,
+                             with_prompt)
 from wf.tools.sources import provider
 from wf.types import FunctionName, ModelSpec, Result
 
@@ -99,6 +105,9 @@ class Job(BaseModel):
     models: tuple[ModelSpec, ...]          # its route's, when it began
     tried: tuple[ModelSpec, ...] = ()      # models that finished a farm run on it
     errors: int = 0                        # farm runs that ended in a provider failure (not counted as tried)
+    names: tuple[str, ...] = ()            # today's name and the earlier ones: where a review may be filed
+    review_retries: tuple[ModelSpec, ...] = ()   # models a review rejected, owed their one retry with it
+    reviewed: tuple[ModelSpec, ...] = ()   # models that had that retry
     spent: int = 0                         # tokens over every call (input and output, estimates included)
     state: JobState = JobState.OPEN
     accepted: Path | None = None
@@ -106,7 +115,8 @@ class Job(BaseModel):
     updated: str = ""
 
     def remaining(self) -> tuple[ModelSpec, ...]:
-        return tuple(model for model in self.models if model not in self.tried)
+        """The models still to ask, in route order: those not tried, and those owed a retry with a review."""
+        return tuple(model for model in self.models if model not in self.tried or model in self.review_retries)
 
     @property
     def band(self) -> Band:
@@ -161,6 +171,7 @@ class Leftover(Result):
     lines: int
     attempts: int                  # (function, model, prompt) pairs the farm has logged for it, under any name
     logs: tuple[Path, ...] = ()    # those pairs' logs (tools/convert/log/NAME.MODEL[+old].jsonl)
+    names: tuple[str, ...] = ()    # today's name and the earlier ones (symbols/db previous_names)
 
 
 def installed_functions(game: Path) -> set[FunctionName]:
@@ -183,6 +194,9 @@ def leftovers(game: Path, snapshots: Path = SNAPSHOTS, accepted_dir: Path = ACCE
     logs: dict[FunctionName, list[Path]] = {}
     for path in log_dir.glob("*.jsonl"):
         logs.setdefault(today(path.name.split(".", 1)[0]), []).append(path)
+    earlier: dict[FunctionName, list[str]] = {}
+    for old, new in current.items():
+        earlier.setdefault(new, []).append(old)
     found: list[Leftover] = []
     for folder in snapshots.iterdir():
         name = FunctionName(folder.name)
@@ -192,7 +206,7 @@ def leftovers(game: Path, snapshots: Path = SNAPSHOTS, accepted_dir: Path = ACCE
         if lines is None or not any(folder.iterdir()):
             continue
         found.append(Leftover(function=name, lines=lines, attempts=len(logs.get(name, [])),
-                              logs=tuple(logs.get(name, []))))
+                              logs=tuple(logs.get(name, [])), names=(name, *sorted(earlier.get(name, [])))))
     return sorted(found, key=lambda leftover: (leftover.attempts, leftover.lines, leftover.function))
 
 
@@ -200,9 +214,25 @@ def new_job(leftover: Leftover, routes: dict[Band, Route] = ROUTES) -> Job:
     route = routes[Band.of(leftover.lines)]
     version = PromptVersion(prompt_version(route.prompt))
     tried = tried_in_logs(leftover.logs, route.models, route.prompt, version)
-    return Job(function=leftover.function, prompt=route.prompt, version=version, lines=leftover.lines,
-               models=route.models, tried=tried, began=now(), updated=now(),
-               state=JobState.OPEN if set(route.models) - set(tried) else JobState.EVERY_MODEL_TRIED)
+    job = Job(function=leftover.function, prompt=route.prompt, version=version, lines=leftover.lines,
+              models=route.models, tried=tried, names=leftover.names, began=now(), updated=now())
+    job = with_reviews(job)
+    return job.model_copy(update={"state": JobState.OPEN if job.remaining() else JobState.EVERY_MODEL_TRIED})
+
+
+def with_reviews(job: Job, cap: int = CAP) -> Job:
+    """The job with the retries it owes models a review rejected (each once): a model with a review counts
+    as tried (it is never asked afresh) and is owed its retry; a job that had ended without a pass is opened
+    again for one, under its token cap."""
+    owed = tuple(model for model in job.models if model not in job.reviewed
+                 and rejected_at_review(job.names or (job.function,), with_prompt(model, job.prompt)) is not None)
+    if owed == job.review_retries:
+        return job
+    tried = (*job.tried, *(model for model in owed if model not in job.tried))
+    updated = job.model_copy(update={"review_retries": owed, "tried": tried, "updated": now()})
+    if owed and job.state in (JobState.ACCEPTED, JobState.EVERY_MODEL_TRIED) and job.spent < cap:
+        updated = updated.model_copy(update={"state": JobState.OPEN, "accepted": None})
+    return updated
 
 
 def tried_in_logs(logs: Iterable[Path], models: Iterable[ModelSpec], prompt: PromptKind,
@@ -257,12 +287,17 @@ def plan(ledger: Ledger, found: list[Leftover], routes: dict[Band, Route] = ROUT
         if job is None or job.state not in (JobState.OPEN, JobState.ACCEPTED) and job.version != today:
             job = new_job(leftover, routes)
             changed.append(job)
-        elif job.state is JobState.OPEN:   # other farms may have asked some of its models since
-            elsewhere = tried_in_logs(leftover.logs, job.remaining(), job.prompt, job.version)
-            if elsewhere:
-                job = job.model_copy(update={"tried": (*job.tried, *elsewhere), "updated": now()})
-                if not job.remaining():
-                    job = job.model_copy(update={"state": JobState.EVERY_MODEL_TRIED})
+        else:
+            before = job
+            if job.state is JobState.OPEN:   # other farms may have asked some of its models since
+                elsewhere = tried_in_logs(leftover.logs, tuple(m for m in job.models if m not in job.tried),
+                                          job.prompt, job.version)
+                if elsewhere:
+                    job = job.model_copy(update={"tried": (*job.tried, *elsewhere), "updated": now()})
+            job = with_reviews(job.model_copy(update={"names": job.names or leftover.names}))
+            if job.state is JobState.OPEN and not job.remaining():
+                job = job.model_copy(update={"state": JobState.EVERY_MODEL_TRIED})
+            if job != before:
                 changed.append(job)
         if job.state is JobState.OPEN and job.remaining():
             order.append(job)
@@ -329,11 +364,15 @@ def after_run(job: Job, model: ModelSpec, accepted: Path | None, provider_failed
     """The job once MODEL's farm run on it is over. PROVIDER_FAILED: the run ended on a provider error, so the
     model has not had its try; OUTAGE: that error was the provider's quota or availability (wf/tools/sources.py
     is_source_failure), which does not count against the job."""
-    tried = job.tried if provider_failed else (*job.tried, model)
+    tried = job.tried if provider_failed or model in job.tried else (*job.tried, model)
     errors = job.errors + 1 if provider_failed and not outage else job.errors
-    if provider_failed and not outage and errors % 3 == 0:
+    if provider_failed and not outage and errors % 3 == 0 and model not in tried:
         tried = (*tried, model)   # a model that keeps failing on this job (not a quota outage) is passed over
-    updated = job.model_copy(update={"tried": tried, "errors": errors, "spent": job.spent + spent, "updated": now()})
+    retried = model in job.review_retries and not provider_failed   # its one retry with the review is spent
+    updated = job.model_copy(update={
+        "tried": tried, "errors": errors, "spent": job.spent + spent, "updated": now(),
+        "review_retries": tuple(m for m in job.review_retries if not (retried and m == model)),
+        "reviewed": (*job.reviewed, model) if retried else job.reviewed})
     if accepted is not None:
         state = JobState.ACCEPTED
     elif nothing_to_convert:

@@ -56,7 +56,7 @@ after a failure or review, show it what went wrong.
 
 Take the file out of the tree again and say why there is nothing to commit.
 
-- reads: `file_name: str`, `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`, `tree: Path | None`
+- reads: `file_name: str`, `contexts: tuple[ConversionContext, ...] | NotRun`, `difftest: Path | BuildFailure`, `without_calls: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`, `tree: Path | None`, `farm_model: typing.Optional[ModelSpec]`
 - produces: `outcome: ConvertOutcome`
 - then: the run ends
 
@@ -71,10 +71,11 @@ Guest registers only in thin `Next` adapters, or where a `register form` note sa
 
 ### `quick_test` (step)
 
-Each function of the file against its lifted original on the captured calls and random inputs; a
-farm group's functions must also fit the laid-out files they go to (tools/layout.py), and an old-prompt
-group's must not read registers a callee leaves behind (tools/abi/leftovers.py, which the gate runs), set LR
-to an address or call a guest function without GUEST_CALL (retype.register_form_hazards).
+Each function of the file against its lifted original on the captured calls and random inputs, and
+the commit gate's leftover lint (tools/abi/leftovers.py --deep: no read of a register a callee leaves
+behind), so a file the gate would refuse fails here, before a full verify is spent; a farm group's
+functions must also fit the laid-out files they go to (tools/layout.py), and an old-prompt group's must
+not set LR to an address or call a guest function without GUEST_CALL (retype.register_form_hazards).
 
 - reads: `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `difftest: Path`, `attempts: tuple[Attempt, ...]`, `file_name: str`, `farm_model: typing.Optional[ModelSpec]`, `tree: Path | None`
 - produces: `attempts: tuple[Attempt, ...]`
@@ -87,12 +88,14 @@ Put the file in the tree (a farm group's functions into the laid-out files) and 
 
 - reads: `run_dir: Path`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `snapshots: SnapshotDir`, `routes: tuple[Route, ...]`, `battle_code: bool`, `attempts: tuple[Attempt, ...]`, `tree: Path | None`, `farm_model: typing.Optional[ModelSpec]`
 - produces: `attempts: tuple[Attempt, ...]`, `checks: tuple[FunctionChecks, ...]`
-- then: `review_conversion` when `verified`; `drop_failing_functions` when `farm_functions_to_drop`; `ask_model_for_file_step` when `not_verified_with_attempts_left`; `give_up` when `not_verified_with_no_attempts_left`
+- then: `review_conversion` when `verified_awaiting_review`; `commit_conversion` when `verified_and_approved_before`; `drop_failing_functions` when `farm_functions_to_drop`; `ask_model_for_file_step` when `not_verified_with_attempts_left`; `give_up` when `not_verified_with_no_attempts_left`
 
 ### `drop_failing_functions` (step)
 
 A farm group keeps what passes: the functions the quick test, the verify or the review named
-are taken out (they stay in the farm's pool), and the rest is assembled again and re-tested.
+are taken out (they stay in the farm's pool), and the rest is assembled again and re-tested. When the
+review approved the rest (approve with a drop list), the rest is committed on that approval once its
+re-test and verify pass.
 
 - reads: `subsystem: str`, `file_name: str`, `contexts: tuple[ConversionContext, ...]`, `farm_model: typing.Optional[ModelSpec]`, `attempts: tuple[Attempt, ...]`, `dropped: tuple[DroppedFunction, ...]`
 - produces: `contexts: tuple[ConversionContext, ...]`, `functions: tuple[FunctionName, ...]`, `attempts: tuple[Attempt, ...]`, `dropped: tuple[DroppedFunction, ...]`

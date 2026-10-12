@@ -32,7 +32,7 @@ way: a shift starts with none).
 
 Find the functions left to farm and give each a job (or keep its open one), with its route.
 
-- reads: `snapshots: SnapshotDir`
+- reads: `snapshots: SnapshotDir`, `leave_alone: tuple[Path, ...]`
 - produces: `work: WorkPlan`
 - then: `keep_every_provider_busy` when `there_is_work`; `summarise` when `there_is_no_work`
 
@@ -50,6 +50,6 @@ Each provider's farm runs, passes, runaways, failures and tokens over every shif
 Run every lane's workers until the shift ends, the queue is told to stop or runs out of work; each
 farm run is a child run of this step.
 
-- reads: `run_dir: Path`, `snapshots: SnapshotDir`, `lanes: tuple[Lane, ...]`, `rounds: int`, `cap: int`, `shift_hours: float`, `until: float | None`, `difftest: Path`, `shifts: tuple[ShiftReport, ...]`
+- reads: `run_dir: Path`, `snapshots: SnapshotDir`, `lanes: tuple[Lane, ...]`, `rounds: int`, `cap: int`, `shift_hours: float`, `until: float | None`, `leave_alone: tuple[Path, ...]`, `difftest: Path`, `shifts: tuple[ShiftReport, ...]`
 - produces: `shifts: tuple[ShiftReport, ...]`, `done: bool`
 - then: `build_difftest` when `the_shift_ended`; `summarise` when `the_queue_is_done`

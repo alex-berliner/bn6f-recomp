@@ -14,7 +14,8 @@ from typing import cast
 import yaml
 
 from wf.repo import REPO
-from wf.tools.models import ACCEPTED_DIR, FARM, USAGE_LOG, ConversionContext, Prompt, conversion_context
+from wf.tools.models import (ACCEPTED_DIR, AFTER_REVIEW, FARM, USAGE_LOG, ConversionContext, Prompt,
+                             conversion_context)
 from wf.tools.sources import first_up, models_for
 from wf.tools.subsystem import CandidateFile, FileReply, SymbolDraft, parse_drafts, yaml_blocks
 from wf.types import FunctionName, ModelSpec, Result, ToolMessage
@@ -124,6 +125,7 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
     bodies: list[tuple[FunctionName, str]] = []
     drafts: list[SymbolDraft] = []
     problems: list[ToolMessage] = []
+    notes: list[ToolMessage] = []
     for function in functions:
         candidate = next((path for path in (ACCEPTED_DIR / f"{function}.{tag}.c" for tag in tags) if path.exists()),
                          ACCEPTED_DIR / f"{function}.{tags[0]}.c")
@@ -131,6 +133,9 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
             problems.append(ToolMessage(f"no accepted {model} candidate for {function}"))
             continue
         bodies.append((function, candidate.read_text().strip()))
+        note = candidate.with_name(candidate.name.removesuffix(".c") + AFTER_REVIEW)
+        if note.exists():
+            notes.append(ToolMessage(f"{function}: {note.read_text().strip()}"))
         if draft_path(candidate).exists():
             found, _ = parse_drafts(draft_path(candidate).read_text())
             drafts += found
@@ -143,7 +148,7 @@ def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, s
                 for function, body in _names_kept_apart(bodies, taken or {})]
     code = header + "\n" + "\n\n".join(sections) + "\n" if sections else None
     return FileReply(file=CandidateFile(code) if code else None, cfg_lines=(), drafts=tuple(drafts),
-                     problems=tuple(problems), seconds=0.0)
+                     problems=tuple(problems), seconds=0.0, notes=tuple(notes))
 
 
 SECTION = "/* ── {function} ── */"   # starts each function's part of an assembled file
@@ -245,7 +250,14 @@ def _with_current_names(body: str, renamed: dict[str, str]) -> str:
     return pattern.sub(lambda match: renamed[match[1]], body)
 
 
+_COMMENT_OR_STRING = re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'', re.S)
+
+
 def _defined_names(body: str) -> set[str]:
+    """The file-level names a candidate defines, read from its code only: "the disassembly's enum" in a
+    comment once made `enum ... { R0 = position; ...` of the next function body, and the group's assembly
+    renamed R0 apart (R0_sub_8003BF4, which no header defines)."""
+    body = _COMMENT_OR_STRING.sub(lambda match: re.sub(r"[^\n]", " ", match[0]), body)
     names = {match[1] for pattern in _DEFINED for match in pattern.finditer(body)}
     for enum in _ENUM_BODY.finditer(body):
         names |= {item.split("=")[0].strip() for item in enum[1].split(",") if item.split("=")[0].strip().isidentifier()}

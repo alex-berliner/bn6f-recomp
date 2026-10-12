@@ -7,10 +7,12 @@ import pytest
 from wf.burr_typed import Finished
 from wf.tools.budgets import Budget
 from wf.graphs import farm
+from wf.tools import models
 from wf.graphs.farm import FarmBatchState, FarmOutcome, FarmState, farm_batch_graph, farm_graph
 from wf.tools.handover import Tried, tried
 from wf.tools.models import (AssemblyText, CandidateC, CandidateTest, Contract, ConversionContext, LiftedC,
-                             ModelReply, Prompt, PromptKind, base_model, prompt_of, with_prompt)
+                             ModelReply, Prompt, PromptKind, ReviewedCandidate, base_model, prompt_of,
+                             with_prompt)
 from wf.types import BuildFailure, FunctionName, GuestAddress, LogPath, ModelSpec, SnapshotDir, ToolMessage
 
 FUNCTION = FunctionName("leafFunction")
@@ -179,6 +181,37 @@ def test_the_old_prompt_is_its_own_pair_without_the_register_check(monkeypatch: 
     assert calls.first_failure_only == [True, True]                                # its test as benchmarked
 
 
+def test_a_retry_after_a_review_starts_from_the_rejected_code_with_the_reason(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls = fake_tools(monkeypatch, tmp_path, test_results=[False, True])
+    reviewed = ReviewedCandidate(code=CandidateC("Next leafFunction(void) { old }"),
+                                 review=ToolMessage("it sets the flags from r6"))
+
+    state = farm_run(tmp_path, reviewed=reviewed, prompt=PromptKind.OLD)
+
+    assert state.outcome is FarmOutcome.ACCEPTED
+    assert calls[0].startswith("repair: A reviewer read this candidate") and "flags from r6" in calls[0]
+    assert calls.logged_after_review == [True, True] and calls.accepted_after_review == [True]
+
+
+def test_a_batch_leaves_a_pair_a_review_rejected_alone(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls = fake_tools(monkeypatch, tmp_path, test_results=[True])
+    rejected = tmp_path / "rejected"
+    rejected.mkdir()
+    _ = (rejected / f"{FUNCTION}.cheap_model.review.txt").write_text("wrong r2 on the empty path\n")
+    monkeypatch.setattr(models, "REJECTED_DIR", rejected)
+    monkeypatch.setattr(farm, "committed_tree", lambda name: tmp_path / name)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(farm, "build_host_difftest", lambda log_dir, build_dir="", tree=None: tmp_path / "difftest")  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    (tmp_path / "snapshots" / FUNCTION).mkdir(parents=True)
+
+    start = FarmBatchState(run_dir=tmp_path, functions=(FUNCTION,), models=(MODEL,),
+                           snapshots=SnapshotDir(tmp_path / "snapshots"))
+    outcome = farm_batch_graph().start(start, run_id="batch-reviewed", tracked=False)
+
+    assert isinstance(outcome, Finished) and calls == []
+    assert outcome.state.pairs[0].outcome is FarmOutcome.REJECTED_AT_REVIEW
+
+
 def test_prompt_tags_round_trip() -> None:
     tagged = with_prompt(MODEL, PromptKind.OLD)
     assert tagged == "cheap/model+old" and prompt_of(tagged) is PromptKind.OLD and base_model(tagged) == MODEL
@@ -200,14 +233,17 @@ class Calls(list[Prompt]):
     kept: list[str]
     earlier_asked: int
     budgets: list[int | None]
+    logged_after_review: list[bool]
+    accepted_after_review: list[bool]
 
 
-def farm_run(tmp_path: Path, rounds: int = 3, with_snapshots: bool = True) -> FarmState:
+def farm_run(tmp_path: Path, rounds: int = 3, with_snapshots: bool = True,
+             reviewed: ReviewedCandidate | None = None, prompt: PromptKind = PromptKind.TYPED) -> FarmState:
     snapshots = tmp_path / "snapshots"
     if with_snapshots:
         (snapshots / FUNCTION).mkdir(parents=True, exist_ok=True)
     start = FarmState(function=FUNCTION, model=MODEL, snapshots=SnapshotDir(snapshots),
-                      difftest=tmp_path / "difftest", rounds=rounds)
+                      difftest=tmp_path / "difftest", rounds=rounds, reviewed=reviewed, prompt=prompt)
     outcome = farm_graph().start(start, run_id="test", tracked=False)
     assert isinstance(outcome, Finished)
     return outcome.state
@@ -221,6 +257,7 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
     prompts = Calls()
     prompts.register_checks, prompts.filed, prompts.kept, prompts.earlier_asked = [], [], [], 0
     prompts.first_failure_only, prompts.budgets = [], []
+    prompts.logged_after_review, prompts.accepted_after_review = [], []
     results = iter(test_results)
     texts = iter(reports or [])
 
@@ -254,9 +291,11 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
         report = next(texts, "ok" if passed else "memory differs")
         return CandidateTest(passed=passed, report=ToolMessage(report))
 
-    def accept(function: FunctionName, model: ModelSpec, candidate: CandidateC) -> Path:
+    def accept(function: FunctionName, model: ModelSpec, candidate: CandidateC,
+               after_review: ReviewedCandidate | None = None) -> Path:
         prompts.filed.append(model)
         prompts.kept.append(candidate)
+        prompts.accepted_after_review.append(after_review is not None)
         return tmp_path / f"{function}.c"
 
     def earlier_attempts(context: ConversionContext, difftest: Path, leave_out: frozenset[str] = frozenset(),
@@ -278,8 +317,8 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_results: li
 
     def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply: ModelReply,
                   test: CandidateTest | None, difftest: Path | None = None,
-                  prompt: PromptKind = PromptKind.TYPED) -> None:
-        return None
+                  prompt: PromptKind = PromptKind.TYPED, after_review: bool = False) -> None:
+        prompts.logged_after_review.append(after_review)
 
     def reasoning_budget(model: ModelSpec, prompt: PromptKind, function: FunctionName) -> Budget:
         return Budget(tokens=12_000, basis="test")

@@ -90,7 +90,7 @@ def earlier_attempts(context: ConversionContext, difftest: Path, leave_out: froz
         with tempfile.TemporaryDirectory() as workdir:
             try:
                 passed, report = cast(tuple[bool, str], FARM.test(context.function, code, str(snapshots),  # pyright: ignore[reportAny]
-                                                                  contract, workdir))
+                                                                  contract, workdir, leftovers=True))
             except Exception as error:   # a difftest timeout: not a start
                 passed, report = False, f"not tested: {error}"[:300]
         if passed:

@@ -19,7 +19,9 @@ from wf.tools import sources
 from wf.tools.evidence import FunctionChecks, Provenance
 from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, Prompt
 from wf.tools.registers import LintedFunction, RegisterCheck
+from wf.tools.errors import ToolOutputError
 from wf.tools.retype import BASELINE, QUEUE, QueueRow
+from wf.tools.retype import leftover_reads as real_leftover_reads
 from wf.tools.subsystem import CandidateFile, FileReply, FileTest, FunctionTest, SymbolDraft, TokenUse
 from wf.types import (BattleSweepResult, BuildFailure, CommitHash, FunctionName, GuestAddress, LogPath, ModelSpec,
                       SnapshotDir,
@@ -57,6 +59,9 @@ class World:
     restored: list[Path] = field(default_factory=list[Path])        # worktrees reset to their commit
     laid_out: list[Path] = field(default_factory=list[Path])        # trees a farm group was laid out in
     committed_files: list[tuple[Path, ...]] = field(default_factory=list[tuple[Path, ...]])
+    gate_refuses: int = 0                                              # commits the gate refuses first
+    restored_files: list[tuple[Path, ...]] = field(default_factory=list[tuple[Path, ...]])   # put back after one
+    leftovers: dict[FunctionName, str] = field(default_factory=dict[FunctionName, str])   # leftover reads found
 
 
 def test_a_good_first_attempt_stops_for_review_then_commits_and_records(
@@ -119,6 +124,56 @@ def test_review_can_take_functions_out_of_a_farm_group(monkeypatch: pytest.Monke
 
     assert isinstance(again, Paused) and isinstance(again.request, ReviewRequest)
     assert world.assembled[-1] == (FUNCTION,) and world.verified[-1] == (FUNCTION,)
+
+
+def test_an_approval_that_drops_functions_commits_only_the_rest(monkeypatch: pytest.MonkeyPatch,
+                                                                tmp_path: Path) -> None:
+    world = World(quick_tests=[True, True], verdicts=[Verdict.PASSED, Verdict.PASSED])
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm-approve-drop", farm_model=FARM_MODEL,
+                   functions=(FUNCTION, OTHER))
+    assert isinstance(paused, Paused)
+
+    finished = convert_graph().resume("convert-farm-approve-drop", APPROVE.model_copy(update={"drop": (OTHER,)}))
+
+    # the rest is tested and verified again, then committed on that approval, with no second review stop
+    assert isinstance(finished, Finished) and finished.state.outcome is ConvertOutcome.RECORDED
+    assert world.assembled == [(FUNCTION, OTHER), (FUNCTION,)]
+    assert len(world.commits) == 1 and OTHER not in world.commits[0] and FUNCTION in world.commits[0]
+    assert "Reviewed-by: test" in world.commits[0]
+    assert [each.function for each in finished.state.dropped] == [OTHER]
+
+
+def test_the_quick_test_runs_the_gates_leftover_lint_on_a_typed_group(monkeypatch: pytest.MonkeyPatch,
+                                                                     tmp_path: Path) -> None:
+    world = World(quick_tests=[True, True], verdicts=[Verdict.PASSED],
+                  leftovers={OTHER: "reads r1 after f, which does not return it (site)"})
+
+    def leftover_reads(code: str, file_name: str) -> dict[FunctionName, str]:
+        return dict(world.leftovers) if len(world.assembled) == 1 else {}
+
+    monkeypatch.setattr(convert, "leftover_reads", leftover_reads)
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm-leftovers", farm_model=FARM_MODEL,
+                   functions=(FUNCTION, OTHER))
+
+    assert isinstance(paused, Paused) and isinstance(paused.request, ReviewRequest)
+    assert [(each.function, each.reason) for each in paused.request.dropped] == \
+        [(OTHER, "leftover read: reads r1 after f, which does not return it (site)")]
+    assert world.verified == [(FUNCTION,)]   # no full verify was spent on the group with OTHER in it
+
+
+def test_a_commit_the_gate_refuses_leaves_nothing_in_the_main_tree(monkeypatch: pytest.MonkeyPatch,
+                                                                  tmp_path: Path) -> None:
+    world = World(quick_tests=[True], verdicts=[Verdict.PASSED], gate_refuses=1)
+    paused = start(world, monkeypatch, tmp_path, run_id="convert-farm-gate", farm_model=FARM_MODEL)
+    assert isinstance(paused, Paused)
+
+    with pytest.raises(ToolOutputError):
+        _ = convert_graph().resume("convert-farm-gate", APPROVE)
+
+    # the laid-out file went back to the last commit (difftest.cfg is shared: only this run's lines go), and
+    # the inbox file and its difftest.cfg section were taken out
+    assert world.restored_files == [(REPO / "cport/src/game/asm03_0.c",)]
+    assert world.installed[-1] is False and world.commits == []
 
 
 def test_a_rate_limited_provider_is_passed_over(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -443,10 +498,17 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, regis
                               battle_sweep=None)
         return start.model_copy(update={"report": report})
 
-    def commit_files(files: tuple[Path, ...], message: str) -> CommitHash:
+    def commit_or_restore(files: tuple[Path, ...], message: str, keep: tuple[Path, ...] = ()) -> CommitHash:
+        if world.gate_refuses:
+            world.gate_refuses -= 1
+            world.restored_files.append(tuple(path for path in files if path not in keep))
+            raise ToolOutputError("git commit failed: gate: leftovers")
         world.commits.append(message)
         world.committed_files.append(files)
         return CommitHash("c0ffee0")
+
+    def leftover_reads(code: str, file_name: str) -> dict[FunctionName, str]:
+        return dict(world.leftovers)
 
     def restore_game_files(tree: Path) -> None:
         world.restored.append(tree)
@@ -490,11 +552,14 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, regis
         "candidate_from_farm": candidate_from_farm, "committed_tree": committed_tree, "remove_tree": remove_tree,
         "held": lambda name, exclusive=True: nullcontext(),  # pyright: ignore[reportUnknownLambdaType]
         "test_candidate_file": test_candidate_file, "install_file": install_file, "uninstall_file": uninstall_file,
-        "run_verify_in_full": run_verify_in_full, "commit_files": commit_files, "write_entries": write_entries,
+        "run_verify_in_full": run_verify_in_full, "commit_or_restore": commit_or_restore,
+        "write_entries": write_entries,
         "run_record": run_record, "tokens_for": tokens_for, "restore_game_files": restore_game_files,
         "lay_out_group": lay_out_group, "layout_conflicts": layout_conflicts, "placed": placed,
         "names_taken": names_taken,
     }
+    if convert.leftover_reads is real_leftover_reads:   # (a test may have put its own in first)
+        fakes["leftover_reads"] = leftover_reads
     for name, fake in fakes.items():
         monkeypatch.setattr(convert, name, fake)
     monkeypatch.setattr(sources, "down_until", down_until)
@@ -504,3 +569,12 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, regis
 
     if not register_check_faked:   # tests of the register check itself set their own
         monkeypatch.setattr(convert, "check_register_use", registers_clean)
+
+
+def test_the_review_sheet_shows_a_candidate_written_after_a_review() -> None:
+    reply = FileReply(file=CandidateFile("/* ── f ── */\n"), cfg_lines=(), drafts=(), problems=(), seconds=0.0,
+                      notes=(ToolMessage("f: written by a retry that was given the review: wrong r2"),))
+    request = ReviewRequest(subsystem="small functions", file_name="farm_inbox.c",
+                            attempts=(Attempt(number=1, model=FARM_MODEL, given=True, reply=reply),))
+    sheet = review_sheet(request)
+    assert "## Written after a review" in sheet and "- f: written by a retry that was given the review" in sheet

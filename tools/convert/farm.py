@@ -31,6 +31,10 @@ CFLAGS = ["-O1", "-fPIC", "-shared", "-DTARGET_FLAT", "-DDIFFTEST", f"-I{HOST}/i
 #     and BIOS calls, and the tool notes them; every check runs and the report lists every problem; a repair
 #     (and the next model) starts from the best attempt so far, with a one-line history; the rules say how
 #     names, signed loads, ST* and file-scope initializers work.
+#     2026-10-12, same version: a wrapper returns only what its callee returns to this function (the
+#     callee's contract outputs that the original reads after the call), as the commit gate's leftover lint
+#     (tools/abi/leftovers.py --deep) allows; the test runs that lint too (69 typed candidates had been taken
+#     out at install for wrappers that copied back everything the callee can leave).
 PROMPT_VERSION = "typed-2"
 
 SYSTEM = (
@@ -51,9 +55,9 @@ CONVENTIONS = r"""
      switch/?:, no memory access, no GUEST_CALL in it, at most 8 statements.
   2. the generated wrappers of the game functions it calls, listed with the function below:
      `call_NAME(...)` sets NAME's argument registers from its parameters, runs NAME and returns
-     its results: nothing, R0 as a u32, or a struct of every output register and flag (.r0, .r1,
-     ..., .z and .n for the N/Z flags, .c, .v). The tool adds them to your code: call them, do not
-     define them, and do not write your own helpers for these functions.
+     what it returns to this function: nothing, R0 as a u32, or a struct of those registers and
+     flags (.r0, .r1, ..., .z and .n for the N/Z flags, .c, .v). The tool adds them to your code:
+     call them, do not define them, and do not write your own helpers for these functions.
   3. a small helper for a call no wrapper covers: through a code address (`mov lr, pc; bx rN`, a
      jump table) with `GUEST_CALL_ADDR(address);`, or a BIOS call (`svc N`) with `swi_call(N);`.
      It sets R0.. from its parameters, makes that one call and returns R0 or a flag (ZERO_FLAG(),
@@ -313,14 +317,47 @@ def callees(name, lifted=None):
 
 def callee_wrappers(name, lifted=None):
     """{callee: gen.ContractWrapper}: a typed wrapper of each function NAME calls, from the callee's
-    lifted register contract (tools/abi/gen.py contract_wrapper, the generator of the typed calls)."""
+    lifted register contract (tools/abi/gen.py contract_wrapper, the generator of the typed calls). It
+    returns only what the callee returns to NAME (returned_to): reading anything else after the call is
+    a leftover read, which the commit gate refuses."""
     sys.path.insert(0, os.path.join(ROOT, "tools", "abi"))
     import gen
     units = _units()
-    return {callee: gen.contract_wrapper(callee, list(units[callee].contract.inputs),
-                                         list(units[callee].contract.outputs),
-                                         f"generated wrapper: {callee} has no typed C interface yet")
-            for callee in callees(name, lifted)}
+    wrappers = {}
+    for callee in callees(name, lifted):
+        outputs = list(units[callee].contract.outputs)
+        wrappers[callee] = gen.contract_wrapper(callee, list(units[callee].contract.inputs),
+                                                returned_to(name, callee, outputs),
+                                                f"generated wrapper: {callee} has no typed C interface yet",
+                                                as_struct=[r for r in outputs if re.fullmatch(r"r\d+|nz|c|v", r)]
+                                                not in ([], ["r0"]))
+    return wrappers
+
+
+_contracts_cache = {}
+
+
+def leftover_contracts():
+    """tools/abi/leftovers.py's contracts: the lifted headers, and per call site what the original reads
+    after each call (build-abi/graph.json); read once per process (the graph is large)."""
+    if HOST not in _contracts_cache:
+        sys.path.insert(0, os.path.join(ROOT, "tools", "abi"))
+        import leftovers
+        _contracts_cache[HOST] = leftovers.load_contracts(
+            lifted_dir=os.path.join(HOST, "src", "lifted"), lifted_h=os.path.join(HOST, "include", "lifted.h"))
+    return _contracts_cache[HOST]
+
+
+def returned_to(name, callee, outputs):
+    """What CALLEE returns to NAME, of its contract's OUTPUTS: those the original NAME reads after its calls
+    to CALLEE (the leftover lint's rule: tools/abi/leftovers.py classify), in OUTPUTS' order; all of OUTPUTS
+    where the call sites' liveness is not known."""
+    contracts = leftover_contracts()
+    caller, unit = contracts.of(name), contracts.of(callee)
+    if caller is None or unit is None or not contracts.have_graph:
+        return outputs
+    live = contracts.site_live.get((caller.start, unit.start))
+    return outputs if live is None else [reg for reg in outputs if reg in live and reg in unit.outputs]
 
 
 def callees_section(name, lifted=None):
@@ -416,11 +453,12 @@ SECTIONS = (
     ("compile", re.compile(r"^compile errors:", re.M)),
     ("behaviour", re.compile(r"^(?:captured calls|random inputs):|^difftest timed out", re.M)),
     ("registers", re.compile(r"^guest registers used where", re.M)),
+    ("leftovers", re.compile(r"^leftover reads:", re.M)),
     ("style", re.compile(r"^the code still uses machine-translated style", re.M)),
     ("review", re.compile(r"^line \d+: (?:struct offsets and constants|use LDS16)", re.M)),
 )
 # the order typed-1's test stopped at (the first failing check was its whole report)
-FIRST_FAILURE_ORDER = ("entry", "style", "review", "registers", "compile", "behaviour")
+FIRST_FAILURE_ORDER = ("entry", "style", "review", "registers", "compile", "behaviour", "leftovers")
 
 
 def report_sections(report):
@@ -461,7 +499,8 @@ def rank(passed, report):
     if passed:
         return (0, 0.0, 0)
     sections = report_sections(report)
-    form = sum(1 for line in sections.get("registers", "").splitlines() if line.startswith("- ")) \
+    form = sum(1 for kind in ("registers", "leftovers") for line in sections.get(kind, "").splitlines()
+               if line.startswith("- ")) \
         + ("style" in sections) + len(re.findall(r"^line \d+: ", sections.get("review", ""), re.M))
     if "entry" in sections:
         return (6, 1.0, form)
@@ -483,8 +522,8 @@ def verdict(passed, report):
     if passed:
         return "passes"
     sections = report_sections(report)
-    form = [what for kind, what in (("registers", "the register check"), ("style", "lifted style"),
-                                    ("review", "a review rule")) if kind in sections]
+    form = [what for kind, what in (("registers", "the register check"), ("leftovers", "the leftover check"),
+                                    ("style", "lifted style"), ("review", "a review rule")) if kind in sections]
     place, share, _ = rank(passed, report)
     text = sections.get("behaviour", "")
     calls, trials = _CALLS.search(text), _TRIALS.search(text)
@@ -561,15 +600,53 @@ def _difftest(name, snaps, contract, workdir):
     return ok, "\n".join(reports)
 
 
-def test(name, code, snaps, contract, workdir, check_registers=True, legacy=False):
+def leftover_problems(name, code):
+    """tools/abi/leftovers.py --deep, the commit gate's lint, on the candidate as it would be installed (the
+    tool's notes and the generated wrappers it calls, in NAME's part): the reads of a register or flag that
+    a callee leaves but does not return to NAME. The report's line numbers are the candidate's."""
+    sys.path.insert(0, os.path.join(ROOT, "tools", "abi"))
+    import leftovers
+    import tempfile
+    noted = note_register_forms(code)
+    used = wrappers_used(name, noted)
+    head = f"/* ── {name} ── */\n" + used
+    with tempfile.NamedTemporaryFile("w", suffix=".c", dir=None, delete=False) as f:
+        f.write(head + noted)
+    try:
+        sites = [s for s in leftovers.scan([f.name], leftover_contracts(), deep=True)
+                 if not s.noted and s.kind != "zflag"]
+    finally:
+        os.unlink(f.name)
+    if not sites:
+        return ""
+    offset = head.count("\n")
+    lines = noted.splitlines()
+    why = {"contract": "never returns it", "site": "does not return it to this function: the original never "
+           "reads it after this call", "passed": "does not return it, and it is passed on into the next call"}
+    out = ["leftover reads: after a call the code reads a register or flag the callee leaves but does not return "
+           "(tools/abi/leftovers.py --deep, the commit gate's check):"]
+    for s in sites:
+        line = s.line - offset
+        where = (f"line {line}: {lines[line - 1].strip()}" if 0 < line <= len(lines)
+                 else f"in the generated wrapper call_{s.callee}")
+        out.append(f"- {where}\n    reads {s.reg} after {s.callee}, which {why.get(s.kind, s.kind)}")
+    out.append("Read only what each call returns (its wrapper's result); where the original really relies on a "
+               "callee leaving a register, say so: /* register form: relies on F leaving rN */.")
+    return "\n".join(out)
+
+
+def test(name, code, snaps, contract, workdir, check_registers=True, legacy=False, leftovers=False):
     """(ok, report): the acceptance test of a candidate. Every check runs and the report lists every
     problem, worst first (review 3 Area 3 step 3): the entry point, compile errors, behaviour (the
     difftest on the captured calls, then on random inputs: whenever the code compiles), the register
     check (CHECK_REGISTERS=False skips it: register-form prompts and candidates written before it), lifted
     style, the review rules. The code is checked with the tool's register-form notes (note_register_forms)
     and compiled with the generated wrappers it calls (callee_wrappers).
+    LEFTOVERS: also the commit gate's leftover lint (leftover_problems; the farm asks for it, so what it
+    accepts can be installed; the benchmark's frozen arms do not).
     LEGACY: typed-1's test, for the benchmark's frozen arms: neither of those, and only the first failing
-    check in its order (FIRST_FAILURE_ORDER) is run and reported."""
+    check in its order (FIRST_FAILURE_ORDER) is run and reported (with LEFTOVERS: the leftover lint last,
+    once the rest passes)."""
     sections = {}
     has_entry = re.search(rf"\bNext\s+{re.escape(name)}\s*\(\s*void\s*\)", code) is not None
     if not has_entry:
@@ -591,6 +668,10 @@ def test(name, code, snaps, contract, workdir, check_registers=True, legacy=Fals
     registers = register_problems(name, code, workdir, legacy) if check_registers else ""
     if registers:
         sections["registers"] = registers
+    if leftovers and not legacy and has_entry:
+        reads = leftover_problems(name, code)
+        if reads:
+            sections["leftovers"] = reads
     if legacy:
         for kind in ("style", "review", "registers"):
             if kind in sections:
@@ -604,7 +685,8 @@ def test(name, code, snaps, contract, workdir, check_registers=True, legacy=Fals
     if compiled and has_entry:
         behaves, sections["behaviour"] = _difftest(name, snaps, contract, workdir)
         if legacy:
-            return behaves, sections["behaviour"]
+            reads = leftover_problems(name, code) if leftovers and behaves else ""
+            return (False, reads) if reads else (behaves, sections["behaviour"])
     ok = behaves and not (set(sections) - {"behaviour"})
     order = [kind for kind, _ in SECTIONS]
     return ok, "\n\n".join(sections[kind] for kind in order if kind in sections)

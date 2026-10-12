@@ -69,8 +69,8 @@ import lint  # noqa: E402  # pyright: ignore[reportMissingImports]  # tools/abi/
 from wf.burr_typed import burr_dir  # noqa: E402
 from wf.repo import RUNS  # noqa: E402
 from wf.tools.build import build_host_difftest, committed_tree  # noqa: E402
-from wf.tools.models import (ACCEPTED_DIR, FARM, LOG_DIR, CandidateC, ConversionContext, PromptKind,  # noqa: E402
-                             conversion_context, prompt_of)
+from wf.tools.models import (ACCEPTED_DIR, AFTER_REVIEW, FARM, LOG_DIR, CandidateC, ConversionContext,  # noqa: E402
+                             PromptKind, conversion_context, prompt_of)
 from wf.types import BuildFailure, FunctionName, Result  # noqa: E402
 import scorecard  # noqa: E402  # pyright: ignore[reportMissingImports]  # tools/convert/scorecard.py: size and writer
 
@@ -246,7 +246,10 @@ def read_candidates(current: dict[FunctionName, FunctionName], today: set[Functi
     a half-written last row is skipped. An accepted file a re-test wrote is not a candidate of its own
     (its code is a failed log row's), so the function still counts as failed when farmed. Code a review
     rejected (tools/convert/rejected/NAME.MODEL.c, with its .review.txt) is no candidate either, wherever it
-    turns up again (its log row, or an accepted file a later re-test wrote), so it is never chosen again."""
+    turns up again (its log row, or an accepted file a later re-test wrote), so it is never chosen again; nor is
+    anything else that model wrote for that function before: the review is a verdict on the model's attempt
+    (pool.py once wrote an earlier round's code of a reviewed pair back to accepted). What a retry given the
+    review wrote counts again: its log rows have `after_review`, its accepted file a .after-review.txt note."""
     started = time.time()
     found: dict[FunctionName, list[Candidate]] = {}
     busy: set[FunctionName] = set()
@@ -259,8 +262,11 @@ def read_candidates(current: dict[FunctionName, FunctionName], today: set[Functi
         except FileNotFoundError:
             continue
 
-    def add(written_as: str, model: str, code: str, source: str, report: str | None, newness: tuple[float, int]) -> None:
-        if (written_as, model, code.strip()) in rejected:
+    reviewed = {tuple(path.name.removesuffix(".review.txt").split(".", 1)) for path in REJECTED_DIR.glob("*.review.txt")}
+
+    def add(written_as: str, model: str, code: str, source: str, report: str | None, newness: tuple[float, int],
+            after_review: bool = False) -> None:
+        if (written_as, model, code.strip()) in rejected or ((written_as, model) in reviewed and not after_review):
             return
         name = FunctionName(written_as)
         found.setdefault(current.get(name, name), []).append(Candidate(
@@ -273,7 +279,8 @@ def read_candidates(current: dict[FunctionName, FunctionName], today: set[Functi
             from_retests.add(path)
             continue
         try:
-            add(written_as, model, path.read_text(), str(path.relative_to(REPO)), None, (path.stat().st_mtime, 0))
+            add(written_as, model, path.read_text(), str(path.relative_to(REPO)), None, (path.stat().st_mtime, 0),
+                after_review=(ACCEPTED_DIR / f"{path.stem}{AFTER_REVIEW}").exists())
         except FileNotFoundError:
             continue
     for path in sorted(LOG_DIR.glob("*.jsonl")):
@@ -292,7 +299,7 @@ def read_candidates(current: dict[FunctionName, FunctionName], today: set[Functi
             code = row.get("code")
             if not row.get("ok") and isinstance(code, str) and code.strip():
                 add(written_as, model, code, f"{path.relative_to(REPO)} round {row.get('round')}",
-                    str(row.get("report") or ""), (written, number))
+                    str(row.get("report") or ""), (written, number), after_review=row.get("after_review") is True)
     return Pool(candidates=found, farm_busy=busy, from_retests=from_retests)
 
 
@@ -577,7 +584,8 @@ def retest(function: FunctionName, candidate: Candidate, context: ConversionCont
     with tempfile.TemporaryDirectory(prefix="pool-") as workdir:
         try:
             passed, report = cast(tuple[bool, str], FARM.test(function, candidate.code, str(snapshots),  # pyright: ignore[reportAny]
-                                                              contract, workdir, check_registers=False))
+                                                              contract, workdir, check_registers=False,
+                                                              leftovers=True))
         except subprocess.TimeoutExpired:
             passed, report = False, "difftest timed out (900 s)"
         problems = cast(str, FARM.register_problems(function, candidate.code, workdir))  # pyright: ignore[reportAny]
@@ -607,6 +615,8 @@ def judge(passed: bool, report: str) -> tuple[Verdict, str, float]:
         return Verdict.NO_ENTRY, lines[0], 1.0
     if report.startswith("guest registers used"):
         return Verdict.STYLE, "register check", 1.0
+    if report.startswith("leftover reads:"):
+        return Verdict.STYLE, "leftover check (tools/abi/leftovers.py --deep)", 1.0
     if report.startswith("the code still uses"):
         return Verdict.STYLE, lines[0].replace("the code still uses machine-translated style", "lifted style"), 1.0
     if re.match(r"line \d+: ", report):

@@ -146,6 +146,7 @@ class FileReply(Result):
     error: ToolMessage | None = None   # the provider failed
     prompt_file: Path | None = None    # the prompt and raw reply, kept for reading later
     reply_file: Path | None = None
+    notes: tuple[ToolMessage, ...] = ()   # for the reviewer: a farm candidate a retry wrote after a review
 
 
 class FunctionTest(Result):

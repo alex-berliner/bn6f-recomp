@@ -82,6 +82,8 @@ Register = NewType("Register", str)           # "r0".."r12", "lr", or a flag ("n
 
 LOG_DIR = REPO / "tools/convert/log"
 ACCEPTED_DIR = REPO / "tools/convert/accepted"
+REJECTED_DIR = REPO / "tools/convert/rejected"   # candidates a review rejected: NAME.MODEL.c with NAME.MODEL.review.txt
+AFTER_REVIEW = ".after-review.txt"   # beside an accepted candidate written by a retry that was given a review
 USAGE_LOG = REPO / "tools/convert/usage.jsonl"
 MAX_TOKENS = 40000   # output cap per call (tools/convert/experiments/max_tokens-20261010.md)
 HEADERS = tuple(REPO / "cport/include" / name for name in
@@ -271,10 +273,29 @@ def test_candidate(context: ConversionContext, candidate: CandidateC, snapshots:
         try:
             passed, report = cast(tuple[bool, str], _farm.test(context.function, candidate, str(snapshots),  # pyright: ignore[reportAny]
                                                                contract, workdir, check_registers=check_registers,
-                                                               legacy=first_failure_only))
+                                                               legacy=first_failure_only, leftovers=True))
         except subprocess.TimeoutExpired:
             return CandidateTest(passed=False, report=ToolMessage("difftest timed out (900 s)"))
     return CandidateTest(passed=passed, report=ToolMessage(report))
+
+
+class ReviewedCandidate(Result):
+    """A candidate a review rejected (tools/convert/rejected), and the reviewer's reason: a verdict on that
+    model's attempt at that function. A retry starts from it, with the reason as its failure report."""
+    code: CandidateC
+    review: ToolMessage
+
+
+def rejected_at_review(names: tuple[str, ...], filed: ModelSpec) -> ReviewedCandidate | None:
+    """The candidate a review rejected for the function (under any of NAMES) and the model as filed (with its
+    prompt mark: MODEL+old), if one was."""
+    for name in names:
+        note = REJECTED_DIR / f"{name}.{_tag(filed)}.review.txt"
+        code = REJECTED_DIR / f"{name}.{_tag(filed)}.c"
+        if note.exists():
+            return ReviewedCandidate(code=CandidateC(code.read_text() if code.exists() else ""),
+                                     review=ToolMessage(note.read_text().strip()))
+    return None
 
 
 def round_outcome(reply: ModelReply, test: CandidateTest | None) -> Outcome:
@@ -286,11 +307,14 @@ def round_outcome(reply: ModelReply, test: CandidateTest | None) -> Outcome:
 
 
 def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply: ModelReply,
-              test: CandidateTest | None, difftest: Path | None = None, prompt: PromptKind = PromptKind.TYPED) -> None:
+              test: CandidateTest | None, difftest: Path | None = None, prompt: PromptKind = PromptKind.TYPED,
+              after_review: bool = False) -> None:
     """One row in tools/convert/log/FUNC.MODEL.jsonl (FUNC.MODEL+old.jsonl for the old prompt): farm.py's
     fields (round, ok, seconds, report, code) and where it came from (review 3 Area 6: time, prompt kind and
     hashes, test-environment hash, cap, the function's input key, outcome), failed provider calls included; a
-    runaway stopped at its reasoning budget has outcome "runaway" and `stopped_at`."""
+    runaway stopped at its reasoning budget has outcome "runaway" and `stopped_at`; a retry that was given a
+    review's rejection of the model's earlier candidate has `after_review` (tools/convert/pool.py counts only
+    such rows of a reviewed pair)."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     report = reply.error or (test.report if test else no_code_report(reply))
     row = {"round": round_number, "ok": bool(test and test.passed), "seconds": round(reply.seconds),
@@ -299,7 +323,7 @@ def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply
            "outcome": round_outcome(reply, test).value, "prompt": prompt.value, "prompt_version": prompt_version(prompt),
            "prompt_hash": prompt_hash(prompt),
            "environment_hash": environment_hash(difftest), "max_tokens": MAX_TOKENS,
-           "reasoning_budget": reply.budget, "stopped_at": reply.stopped_at,
+           "reasoning_budget": reply.budget, "stopped_at": reply.stopped_at, "after_review": after_review,
            "input_key": cast(str | None, _farm.input_key(function))}  # pyright: ignore[reportAny]
     with open(LOG_DIR / f"{function}.{_tag(with_prompt(model, prompt))}.jsonl", "a") as log:
         log.write(json.dumps(row) + "\n")
@@ -311,12 +335,19 @@ def finished(function: FunctionName, candidate: CandidateC) -> CandidateC:
     return CandidateC(cast(str, _farm.finished(function, candidate)))  # pyright: ignore[reportAny]
 
 
-def accept(function: FunctionName, model: ModelSpec, candidate: CandidateC) -> Path:
+def accept(function: FunctionName, model: ModelSpec, candidate: CandidateC,
+           after_review: ReviewedCandidate | None = None) -> Path:
     """MODEL as filed: with_prompt(model, prompt) for another prompt than the typed one. A typed
-    candidate comes finished (finished())."""
+    candidate comes finished (finished()). AFTER_REVIEW: written by a retry given that review: a note
+    beside the file says so (the convert workflow's review sheet shows it), so it is not taken for the
+    candidate the review rejected, nor slips past unnoticed."""
     ACCEPTED_DIR.mkdir(parents=True, exist_ok=True)
     path = ACCEPTED_DIR / f"{function}.{_tag(model)}.c"
     path.write_text(candidate.strip() + "\n")
+    if after_review is not None:
+        _ = (ACCEPTED_DIR / f"{function}.{_tag(model)}{AFTER_REVIEW}").write_text(
+            f"written {datetime.now():%Y-%m-%d %H:%M} by a retry that was given the review of {model}'s earlier "
+            f"candidate (tools/convert/rejected):\n{after_review.review}\n")
     return path
 
 

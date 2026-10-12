@@ -328,12 +328,15 @@ class ContractWrapper:
     definition: str         # the C: the result struct (if any) and the static inline wrapper
 
 
-def contract_wrapper(name: str, inputs: list[str], outputs: list[str], note: str) -> ContractWrapper:
+def contract_wrapper(name: str, inputs: list[str], outputs: list[str], note: str,
+                     as_struct: bool = False) -> ContractWrapper:
     """`call_NAME(u32 rN, ...)`: one parameter per input register in register order (r10 is left as on
     entry: the toolkit; sp and lr are the call's own), GUEST_CALL(NAME), and the result: void without
-    outputs, R0 as a u32 when r0 is the only one, else a struct `call_NAME_result` holding every output
-    register (.r0 ...) and flag (.z .n from nz, .c, .v). NOTE goes in the wrapper's `register form:`
-    comment, so tools/abi/lint.py counts it as the exception it is."""
+    outputs, R0 as a u32 when r0 is the only one (unless AS_STRUCT), else a struct `call_NAME_result`
+    holding every output register (.r0 ...) and flag (.z .n from nz, .c, .v). OUTPUTS are what the wrapper
+    copies back: the farm gives the callee's outputs its caller's original reads (AS_STRUCT then keeps the
+    struct its whole contract has, so a caller's .r0 means the same everywhere). NOTE goes in the wrapper's
+    `register form:` comment, so tools/abi/lint.py counts it as the exception it is."""
     regs = [f"r{n}" for n in range(13)]
     params = [r for r in regs if r in inputs and r != "r10"]
     out_regs = [r for r in regs if r in outputs]
@@ -344,7 +347,7 @@ def contract_wrapper(name: str, inputs: list[str], outputs: list[str], note: str
     if not out_regs and not out_flags:
         ret, give = "void", ""
         fields = ""
-    elif out_regs == ["r0"] and not out_flags:
+    elif out_regs == ["r0"] and not out_flags and not as_struct:
         ret, give = "u32", "    return R0;"
         fields = ""
     else:

@@ -34,7 +34,7 @@ Ask the model (or the first source of a tier that is up) for readable C. The typ
 the best attempt so far (another model's, or one of this run's) with every problem its test found and a
 history line of the others; the old prompt shows the last failure and its code.
 
-- reads: `context: ConversionContext`, `model: ModelSpec`, `prompt: PromptKind`, `source_wait: float`, `earlier: tuple[Tried, ...]`, `attempts: tuple[Attempt, ...]`
+- reads: `context: ConversionContext`, `model: ModelSpec`, `prompt: PromptKind`, `source_wait: float`, `reviewed: ReviewedCandidate | None`, `earlier: tuple[Tried, ...]`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`
 - then: `test_reply` when `the_model_answered`; `give_up` when `the_model_failed`
 
@@ -51,7 +51,7 @@ Record why there is no accepted candidate.
 Test the model's candidate the way farm.py accepts one (the register check only for the typed
 prompt), and log the round as farm.py does.
 
-- reads: `context: ConversionContext`, `model: ModelSpec`, `prompt: PromptKind`, `snapshots: SnapshotDir`, `difftest: Path`, `attempts: tuple[Attempt, ...]`
+- reads: `context: ConversionContext`, `model: ModelSpec`, `prompt: PromptKind`, `reviewed: ReviewedCandidate | None`, `snapshots: SnapshotDir`, `difftest: Path`, `attempts: tuple[Attempt, ...]`
 - produces: `attempts: tuple[Attempt, ...]`
 - then: `accept_candidate` when `the_candidate_passed`; `give_up` when `the_reply_had_no_code`; `ask_model_for_c` when `it_failed_with_rounds_left`; `give_up` when `it_failed_with_no_rounds_left`
 
@@ -61,6 +61,6 @@ Keep the passing candidate in tools/convert/accepted for review (filed under the
 its prompt when that is not the typed one; a typed one with the generated wrappers it calls and the
 tool's register-form notes, so it stands on its own).
 
-- reads: `function: FunctionName`, `model: ModelSpec`, `prompt: PromptKind`, `attempts: tuple[Attempt, ...]`
+- reads: `function: FunctionName`, `model: ModelSpec`, `prompt: PromptKind`, `reviewed: ReviewedCandidate | None`, `attempts: tuple[Attempt, ...]`
 - produces: `accepted: Path`, `outcome: FarmOutcome`
 - then: the run ends

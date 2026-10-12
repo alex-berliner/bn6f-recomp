@@ -6,6 +6,8 @@ from collections.abc import Callable
 from types import ModuleType
 from typing import cast
 
+import pytest
+
 from wf.repo import REPO
 from wf.tools.models import FARM
 
@@ -77,3 +79,47 @@ def test_a_wrapper_is_generated_from_the_lifted_contract() -> None:
     assert "/* register form: generated wrapper */" in definition and "R10" not in definition
     none = make("Bar", [], ["c"], "generated wrapper")
     assert cast(str, getattr(none, "declaration")).startswith("call_Bar_result call_Bar(void);")
+
+
+def test_a_narrowed_wrapper_keeps_its_callees_struct() -> None:
+    make = cast(Callable[..., object], cast(ModuleType, gen).contract_wrapper)  # pyright: ignore[reportAny, reportExplicitAny]
+    only_r0 = make("Foo", ["r0"], ["r0"], "generated wrapper", as_struct=True)
+    assert cast(str, getattr(only_r0, "declaration")).startswith("call_Foo_result call_Foo(u32 r0);")
+    assert "typedef struct { u32 r0; } call_Foo_result;" in cast(str, getattr(only_r0, "definition"))
+    nothing = make("Foo", ["r0"], [], "generated wrapper", as_struct=True)
+    assert cast(str, getattr(nothing, "declaration")).startswith("void call_Foo(u32 r0);")
+
+
+def leftovers_module() -> ModuleType:
+    sys.path.insert(0, str(REPO / "tools/abi"))
+    import leftovers  # pyright: ignore[reportMissingImports]
+    return cast(ModuleType, leftovers)
+
+
+def fake_contracts(read_after: set[str]) -> object:
+    """A caller (0x100) that calls Callee (0x200, returns r0 r1 nz) and reads READ_AFTER after the call."""
+    module = leftovers_module()
+    contract, contracts = cast(Callable[..., object], module.Contract), cast(Callable[..., object], module.Contracts)  # pyright: ignore[reportAny, reportExplicitAny]
+    caller = contract("Caller", 0x100, 0x180, {"r0"}, {"r0"}, set[str](), set[str]())
+    callee = contract("Callee", 0x200, 0x280, {"r0"}, {"r0", "r1", "nz"}, set[str](), set[str]())
+    return contracts([caller, callee], {"Caller": caller, "Callee": callee}, {(0x100, 0x200): read_after}, True)
+
+
+def test_a_wrapper_returns_only_what_the_original_reads_after_the_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(FARM, "leftover_contracts", lambda: fake_contracts({"r1", "r4"}))
+    returned_to = cast(Callable[[str, str, list[str]], list[str]], FARM.returned_to)  # pyright: ignore[reportAny]
+    assert returned_to("Caller", "Callee", ["r0", "r1", "nz"]) == ["r1"]
+    assert returned_to("Unknown", "Callee", ["r0", "r1", "nz"]) == ["r0", "r1", "nz"]   # no liveness: all
+
+
+def test_the_farm_test_reports_a_leftover_read_in_the_models_own_helper(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(FARM, "leftover_contracts", lambda: fake_contracts({"r0"}))
+    problems = cast(Callable[[str, str], str], FARM.leftover_problems)  # pyright: ignore[reportAny]
+    code = ("static u32 callee_r1(u32 x) { /* register form: calls Callee */\n    R0 = x;\n    GUEST_CALL(Callee);\n"
+            "    return R1;\n}\n\nNext Caller(void) { R0 = callee_r1(R0); RETURN_TO_CALLER(); }\n")
+    report = problems("Caller", code)
+    assert report.startswith("leftover reads:") and "- line 4: return R1;" in report
+    assert "reads r1 after Callee, which does not return it to this function" in report
+    assert problems("Caller", code.replace("return R1;", "return R0;")) == ""
+    assert report_sections(f"{BEHAVES}\n\n{report}").keys() == {"behaviour", "leftovers"}
+    assert rank(False, f"{BEHAVES}\n\n{report}")[0] == 1 and "the leftover check" in verdict(False, f"{BEHAVES}\n\n{report}")

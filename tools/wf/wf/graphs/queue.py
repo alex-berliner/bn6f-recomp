@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.graphs.farm import FarmOutcome, FarmState, farm_graph
 from wf.tools.build import build_host_difftest, committed_tree
-from wf.tools.models import USAGE_LOG
+from wf.tools.models import USAGE_LOG, rejected_at_review, with_prompt
 from wf.tools.sources import down_until, is_source_failure
 from wf.tools.work_queue import (CAP, GAME, LANES, STOP, Job, JobState, Lane, Ledger, after_run, busy_elsewhere,
                                  leftovers, pick, plan, read_ledger, recently_logged, tokens_spent, update_ledger,
@@ -361,8 +361,11 @@ class _Board:
         provider outage)."""
         offset = usage_offset(USAGE_LOG)
         run_id = f"{self.run_id}-{self.runs}-{job.function}-{model.replace('/', '_')}"
+        reviewed = (rejected_at_review(job.names or (job.function,), with_prompt(model, job.prompt))
+                    if model in job.review_retries else None)
         start = FarmState(function=job.function, model=model, snapshots=self.given.snapshots,
-                          difftest=self.given.difftest, rounds=self.given.rounds, prompt=job.prompt, source_wait=0)
+                          difftest=self.given.difftest, rounds=self.given.rounds, prompt=job.prompt, source_wait=0,
+                          reviewed=reviewed)
         outcome = farm_graph().start(start, run_id)
         if not isinstance(outcome, Finished) or outcome.state.outcome is None:
             raise RuntimeError(f"farm run {run_id} did not finish")

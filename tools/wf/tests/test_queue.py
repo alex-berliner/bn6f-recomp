@@ -8,7 +8,7 @@ from wf.burr_typed import Finished
 from wf.graphs import queue
 from wf.graphs.farm import FarmOutcome, FarmState
 from wf.graphs.queue import QueueState, queue_graph
-from wf.tools import work_queue
+from wf.tools import models, work_queue
 from wf.tools.budgets import Band, PromptVersion
 from wf.tools.models import PromptKind, prompt_version
 from wf.tools.work_queue import (ROUTES, Job, JobState, Lane, Leftover, Route, after_run, pick, plan, read_ledger,
@@ -206,3 +206,29 @@ def test_a_second_stop_request_ends_the_run_at_once() -> None:
     with pytest.raises(SystemExit):
         queue.request_stop()
     queue._stop.clear()  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_reviewed_model_gets_one_retry_with_the_review_and_is_never_asked_afresh(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    rejected = tmp_path / "rejected"
+    rejected.mkdir()
+    _ = (rejected / "f.minimax_MiniMax-M3+old.c").write_text("Next f(void) { ... }\n")
+    _ = (rejected / "f.minimax_MiniMax-M3+old.review.txt").write_text("sets the flags from r6\n")
+    monkeypatch.setattr(models, "REJECTED_DIR", rejected)
+    routes = {band: Route(prompt=PromptKind.OLD, models=(M3, GLM)) for band in Band}
+    was_accepted = job("f", (M3, GLM), tried=(M3,)).model_copy(update={"state": JobState.ACCEPTED, "spent": 10_000})
+
+    order, changed = plan({was_accepted.function: was_accepted}, [leftover("f", 15)], routes)
+
+    reopened = order[0]   # its candidate went to rejected: the job opens again for the retry, under its cap
+    assert reopened.state is JobState.OPEN and reopened.review_retries == (M3,) and changed == [reopened]
+    assert reopened.remaining() == (M3, GLM)
+    assert pick(order, "minimax", set(), set(), {"minimax", "hyper"}) == (reopened, M3)
+    retried = after_run(reopened, M3, None, False, 5000)
+    assert retried.reviewed == (M3,) and retried.review_retries == () and retried.remaining() == (GLM,)
+    again, _ = plan({retried.function: retried}, [leftover("f", 15)], routes)
+    assert again[0].review_retries == ()   # once
+    fresh, _ = plan({}, [leftover("f", 15)], routes)
+    assert fresh[0].tried == (M3,) and fresh[0].review_retries == (M3,)   # never a fresh ask, only the retry
+    spent = was_accepted.model_copy(update={"spent": 70_000})
+    assert plan({spent.function: spent}, [leftover("f", 15)], routes)[0] == []   # past its cap: it stays ended

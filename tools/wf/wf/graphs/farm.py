@@ -21,13 +21,17 @@ from wf.burr_typed import Finished, Graph, Transition, Workflow, current_run_id
 from wf.tools.budgets import reasoning_budget
 from wf.tools.build import build_host_difftest, committed_tree
 from wf.tools.handover import Tried, best_start, earlier_attempts, tried
-from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, PromptKind, accept,
-                             already_accepted, ask_model, conversion_context, finished, first_prompt, log_round,
-                             logged_rounds, out_of_rounds_before, repair_prompt, test_candidate, with_prompt)
+from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, PromptKind, ReviewedCandidate,
+                             accept, already_accepted, ask_model, conversion_context, finished, first_prompt, log_round,
+                             logged_rounds, out_of_rounds_before, rejected_at_review, repair_prompt, test_candidate,
+                             with_prompt)
 from wf.tools.sources import first_up, models_for, out_for_long
 from wf.types import BuildFailure, FunctionName, ModelSpec, NotRun, Result, SnapshotDir, ToolMessage
 
 PROJECT = "recomp-farm"
+# a retry's round 0 after a review rejected the model's candidate: the reason stands in for the test's report
+REVIEWED = ("A reviewer read this candidate against the original's assembly and rejected it (it passed the "
+            "automatic checks):\n{review}\nFix what the review found; keep what it did not question.")
 
 
 def farm_graph() -> Graph["FarmState"]:
@@ -67,6 +71,7 @@ class FarmOutcome(Enum):
     MODEL_ERROR = "the model's provider failed"
     RUNAWAY = "the reply had no code (all reasoning): left for another model"
     SOURCES_OUT = "every source was out of quota (left for a later batch)"
+    REJECTED_AT_REVIEW = "a review rejected this model's candidate (left for the queue's retry with the review)"
     NOTHING_TO_CONVERT = "no lifted code, assembly or captured calls"
 
 
@@ -86,6 +91,8 @@ class FarmState(BaseModel):
     prompt: PromptKind = PromptKind.TYPED        # which prompt it is asked with
     source_wait: float = 7200                    # seconds to wait for a provider that is down (the queue: 0,
                                                  # it gives the job to another provider instead)
+    reviewed: ReviewedCandidate | None = None    # a retry after a review rejected this model's candidate: round 0
+                                                 # starts from it, with the reviewer's reason (the queue sets it)
     context: ConversionContext | NotRun | None = None
     earlier: tuple[Tried, ...] = ()              # what other models (and runs) wrote, tested today, best first
     attempts: tuple[Attempt, ...] = ()
@@ -127,6 +134,7 @@ class AskInput(Result):
     model: ModelSpec
     prompt: PromptKind
     source_wait: float
+    reviewed: ReviewedCandidate | None
     earlier: tuple[Tried, ...]
     attempts: tuple[Attempt, ...]
 
@@ -141,7 +149,10 @@ def ask_model_for_c(given: AskInput) -> AskOutput:
     the best attempt so far (another model's, or one of this run's) with every problem its test found and a
     history line of the others; the old prompt shows the last failure and its code."""
     start = best_start((*given.earlier, *own_attempts(given.attempts))) if given.prompt is PromptKind.TYPED else None
-    if start is not None:
+    if given.reviewed is not None and not given.attempts:   # a review rejected this model's candidate: fix that
+        prompt = repair_prompt(given.context, ToolMessage(REVIEWED.format(review=given.reviewed.review)),
+                               given.reviewed.code, given.prompt, whose="your earlier candidate, which a reviewer rejected")
+    elif start is not None:
         prompt = repair_prompt(given.context, start.best.report, start.best.code, given.prompt, whose=start.best.whose,
                                history=start.history)
     elif given.attempts and given.prompt is not PromptKind.TYPED:
@@ -177,6 +188,7 @@ class TestInput(Result):
     context: ConversionContext
     model: ModelSpec
     prompt: PromptKind
+    reviewed: ReviewedCandidate | None
     snapshots: SnapshotDir
     difftest: Path
     attempts: tuple[Attempt, ...]
@@ -196,7 +208,7 @@ def test_reply(given: TestInput) -> TestOutput:
                            first_failure_only=given.prompt.first_failure_only)
             if latest.reply.candidate is not None else None)
     log_round(given.context.function, latest.reply.model or given.model, latest.round_number, latest.reply, test,
-              given.difftest, given.prompt)
+              given.difftest, given.prompt, after_review=given.reviewed is not None)
     return TestOutput(attempts=(*given.attempts[:-1], latest.model_copy(update={"test": test})))
 
 
@@ -204,6 +216,7 @@ class AcceptInput(Result):
     function: FunctionName
     model: ModelSpec
     prompt: PromptKind
+    reviewed: ReviewedCandidate | None
     attempts: tuple[Attempt, ...]
 
 
@@ -220,7 +233,8 @@ def accept_candidate(given: AcceptInput) -> AcceptOutput:
     reply = given.attempts[-1].reply
     assert reply.candidate is not None
     code = finished(given.function, reply.candidate) if given.prompt is PromptKind.TYPED else reply.candidate
-    return AcceptOutput(accepted=accept(given.function, with_prompt(reply.model or given.model, given.prompt), code),
+    return AcceptOutput(accepted=accept(given.function, with_prompt(reply.model or given.model, given.prompt), code,
+                                        after_review=given.reviewed),
                         outcome=FarmOutcome.ACCEPTED)
 
 
@@ -368,6 +382,9 @@ def convert_each_pair(given: ConvertPairsInput) -> ConvertPairsOutput:
         if accepted is not None:
             return PairResult(function=function, model=model, run_id=None, outcome=FarmOutcome.ACCEPTED,
                               accepted=accepted)
+        if any(rejected_at_review((function,), source) for source in filed):   # a reviewed verdict: never refilled
+            return PairResult(function=function, model=model, run_id=None, outcome=FarmOutcome.REJECTED_AT_REVIEW,
+                              accepted=None)
         if (out_of_rounds_before(function, filed[0], given.rounds) if len(sources) == 1
                 else sum(logged_rounds(function, source) for source in filed) > given.rounds):
             return PairResult(function=function, model=model, run_id=None, outcome=FarmOutcome.OUT_OF_ROUNDS,
