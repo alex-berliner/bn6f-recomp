@@ -76,7 +76,7 @@ def io_template(base):
         return ex[IO + 0x58:IO + 0x400]
 
 
-def explained(d, name, k, contract=None, difftest=None):
+def explained(d, name, k, contract=None, difftest=None, detail=None):
     """Why a differing state is out of the port's domain, or None. Readable code
     is typed C, held to what the game's real calls do; three kinds of random
     state leave that, and the difference they make is the harness's:
@@ -91,8 +91,12 @@ def explained(d, name, k, contract=None, difftest=None):
         original's own pushes overwrite before it reads it there; the port's
         stack frames are not the original's.
     The first two come from mgba_run (snap_*.bus, written for the original's
-    run), the third from the entry registers; a fourth (lifted_cannot_run) runs
-    the port's lifted original on the state."""
+    run), the third from the entry registers; a fourth and a fifth run the port's
+    lifted original on the state (lifted_run): it cannot run it either, or it
+    differs from the original in exactly the same bytes and registers as the
+    readable code (DETAIL: the readable run's difference lines), so the difference
+    is the lifted code's or the harness's (e.g. IWRAM data the lifted code reads
+    from its ROM source), not the readable function's."""
     bus = os.path.join(d, f"snap_{name}_{k}.bus")
     if os.path.exists(bus):
         note = open(bus).readline().strip()
@@ -102,29 +106,37 @@ def explained(d, name, k, contract=None, difftest=None):
     for r in range(13):
         if FREE_STACK <= hdr[2 + r] < sp:
             return f"free stack (r{r} = {hdr[2 + r]:#x}, SP = {sp:#x})"
-    if lifted_cannot_run(d, name, k, contract, difftest):
+    lifted = lifted_run(d, name, k, contract, difftest)
+    if lifted is None:
+        return None
+    if re.search(rf"snap_{name}_{k}\.bin: out of domain", lifted):
         return "the lifted original cannot run it either (e.g. a jump-table index past the table)"
+    same = re.findall(rf"^\s+snap_{name}_{k}\.bin: (.*)$", lifted, re.M)
+    if detail and sorted(same) == sorted(detail):
+        return "the lifted original differs the same way (the lifted code's or the harness's difference)"
     return None
 
 
-def lifted_cannot_run(d, name, k, contract=None, difftest=None):
-    """A fourth kind, for readable functions: the port's lifted original (its executable model of the
-    original) faults or leaves the domain on this state too, e.g. when a random index sends the original
-    through a word past its jump table, which on the GBA happens to land in code. The difftest counts a
-    random input the original cannot run as out of domain; this is the same rule. Not with --lifted
-    (the lifted original is what is being compared then)."""
+def lifted_run(d, name, k, contract=None, difftest=None):
+    """For readable functions: the output of the port's lifted original (its executable model of the
+    original) on this state, or None. A fourth kind of state: the lifted original faults or leaves the
+    domain too, e.g. when a random index sends the original through a word past its jump table, which on
+    the GBA happens to land in code; the difftest counts a random input the original cannot run as out of
+    domain, and this is the same rule. A fifth: it differs from the original exactly as the readable code
+    does (2026-10-12: a random panel type read word 0xA0 of an IWRAM table, which the lifted code takes
+    from the ROM source). Not with --lifted (the lifted original is what is being compared then)."""
     if os.environ.get("ORACLE_LIFTED"):
-        return False
+        return None
     with tempfile.TemporaryDirectory(dir=os.environ.get("ORACLE_TMP")) as one:
         for suffix in (".bin", ".exit.bin"):
             src = os.path.join(d, f"snap_{name}_{k}{suffix}")
             if not os.path.exists(src):
-                return False
+                return None
             shutil.copy(src, os.path.join(one, f"snap_{name}_{k}{suffix}"))
         env = dict(os.environ, BN6F_ROM=gamepaths.ORIG_ROM, ORACLE_CONTRACT=contract or CONTRACT, ORACLE_LIFTED="1")
         r = subprocess.run([difftest or os.environ.get("ORACLE_DIFFTEST", os.path.join(HOST, "build-host/difftest")), "-G", one,
                             name], capture_output=True, text=True, cwd=HOST, env=env)
-        return bool(re.search(rf"snap_{name}_{k}\.bin: out of domain", r.stdout))
+        return r.stdout
 
 
 def write_states(work, bases, pool, seed, d, io, states):
@@ -198,7 +210,8 @@ def compare(d, work, keep_dir, contract, difftest=None):
             continue
         name, k, verdict = m.group(1), m.group(2), m.group(3)
         res = results.setdefault(name, {"ok": 0, "fail": 0, "ood": 0, "why": [], "explained": []})
-        why = explained(d, name, k, contract, difftest) if verdict in ("MEM", "REG") else None
+        why = (explained(d, name, k, contract, difftest, detail.get(name)) if verdict in ("MEM", "REG")
+               else None)
         if verdict == "ok":
             res["ok"] += 1
         elif verdict == "out of domain" or why:

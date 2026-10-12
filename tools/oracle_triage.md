@@ -113,7 +113,11 @@ _object_updatePanelParameters then ORs in word 0xA0 of its 13-entry table at 0x0
 word at 0x03007BA4. On the GBA that is IWRAM (0 in this state); the lifted code reads IWRAM data from
 its ROM source (`IWRAM_ROM`), where 0x081D80A4 holds 0x6158, so the panel flags byte is 0xF8 instead
 of 0xA0 (0x02039C14). Real calls pass a panel type of 0-12 (a byte from the object). Same class as
-sub_802C5E6/sub_802C646 above, reached through an index past the table.
+sub_802C5E6/sub_802C646 above, reached through an index past the table. **Handled by class:**
+`oracle.py` now also counts a differing state of a readable function as out of domain when the
+port's lifted original, run on that snapshot (`ORACLE_LIFTED=1`), differs from the original in
+exactly the same bytes and registers: the difference is then the lifted code's or the harness's, and
+the readable code matches its lifted original there. Not with `--lifted`.
 
 The same verify's predecessors found two real (if out-of-game) differences, both fixed: Sio32IDInit
 (a shift by 32 or more is 0 on the ARM, not count mod 32: bb36704) and
