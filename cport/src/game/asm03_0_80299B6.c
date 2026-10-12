@@ -393,6 +393,50 @@ Next sub_8029EF8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8029F70 ── */
+/* sub_8029F70(r5 = battle-related object):
+ * Decides whether some battle condition holds and returns the answer in R0
+ * (1 = condition met, 0 = not met). R4 is preserved, as in the original.
+ *
+ * The condition is met outright in battle mode 8. In modes 0, 0xA and 0xB it
+ * is met unless one of the following "veto" checks fires:
+ *   - battle effects bit 0x200000 is active,
+ *   - event flag 163 (0x63) is set and byte [r5+0x10] is nonzero,
+ *   - battle flag 0x40 is set.
+ * In any other battle mode the condition is never met. */
+Next sub_8029F70(void) {
+    u32 result = 0;
+
+    GUEST_CALL(GetBattleMode);
+    u32 mode = R0;
+
+    if (mode == 8) {
+        result = 1;
+    } else if (mode == 0 || mode == 0xA || mode == 0xB) {
+        GUEST_CALL(GetBattleEffects);
+        if ((R0 & 0x200000) == 0) {
+            /* TestEventFlagFromImmediate(EVENT_163): the caller passes the
+             * flag id in R1 (R0 = 1, as in the original). */
+            R0 = 1;
+            R1 = 0x63; /* EVENT_163 */
+            GUEST_CALL(TestEventFlagFromImmediate);
+            if (!ZERO_FLAG()) {
+                /* Event flag 163 is set: require [r5+0x10] to be clear. */
+                if (LD8(R5 + 0x10) == 0)
+                    result = 1;
+            } else {
+                /* Event flag 163 is clear: require battle flag 0x40 clear. */
+                GUEST_CALL(TestBattleFlag_0x40);
+                if (ZERO_FLAG())
+                    result = 1;
+            }
+        }
+    }
+
+    R0 = result;
+    RETURN_TO_CALLER();
+}
+
 /* ── checkBattleEventGate_8029FB4 ── */
 /* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
 static u32 get_battle_mode_sub_8029FB4(void) {

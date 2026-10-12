@@ -1511,6 +1511,61 @@ Next sub_8011420(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8011450 ── */
+/* sub_8011450(r5 = battle object):
+ * Runs the "actor finished" handler for this battle object. Reads the object's
+ * AI data, looks up a handler for its AI index in a ROM jump table, and calls it
+ * with r0 = the object's related object pointer. Objects with actor type 0
+ * (no actor) return immediately. */
+Next sub_8011450(void) {
+    u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
+    u32 actorType = LD8(aiData + oAIData_ActorType);
+    u32 aiIndex = LD8(aiData + oAIData_AIIndex);
+
+    if (actorType == 0) {
+        /* No actor attached: nothing to end. (r1/r2 still hold the values the
+         * prologue loaded, matching the original.) */
+        R1 = aiIndex;
+        R2 = aiData;
+        RETURN_TO_CALLER();
+    }
+
+    /* Fetch the handler address for this AI index from the ROM jump table
+     * (off_8011470), so r1 holds the same value the original passes to the
+     * callee, then select the handler to run. */
+    R1 = LD32(A_off_8011470 + aiIndex * 4);
+    R2 = aiData;
+    R0 = LD32(R5 + oBattleObject_RelatedObject2Ptr);
+
+    switch (aiIndex) {
+    case 0: case 1: case 9: case 13: case 16: case 18: case 19:
+        GUEST_CALL(battle_EndObjectCurrentAnim_80C44D2);
+        break;
+
+    case 14:
+        GUEST_CALL(sub_80FF668);
+        break;
+
+    case 24:
+        GUEST_CALL(sub_80C46B6);
+        break;
+
+    case 2: case 3: case 4: case 5: case 6: case 7: case 8:
+    case 10: case 11: case 12: case 15: case 17:
+    case 20: case 21: case 22: case 23:
+        /* These AI indices map to a no-op handler. */
+        GUEST_CALL(nullsub_43);
+        break;
+
+    default:
+        /* AI index beyond the table: the original would jump through garbage.
+         * Treat it like the no-op handler rather than crashing. */
+        break;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_43 ── */
 /* nullsub_43: empty stub, called by the game and immediately returns. */
 Next nullsub_43(void) {

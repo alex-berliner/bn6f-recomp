@@ -1710,6 +1710,56 @@ Next sub_81202B4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8120348 ── */
+/* sub_8120348(r0 = passthrough, r1 = tilemap dest, r2 = palette, r3 = run length,
+ *             r4 = offset to second run):
+ * Fills two halfword runs of a tilemap with (palette << 12) | 0x200 -- the
+ * blank text box tile in the requested palette: `r3` halfwords starting at r1,
+ * and the same number starting at r1 + 2*r4. Afterwards both end cursors and
+ * the remaining length (r4 - r3) are handed to sub_81202B4, which keeps
+ * filling from there; sub_804A24C is called in between with what is left of
+ * the counter (normally 0) and r6 = 0.
+ * Note the fill is a do/while: even a count of 0 (or below) writes one
+ * halfword per run, matching the original's sub/bgt loop.
+ * All registers, including r4-r7, come back unchanged. */
+Next sub_8120348(void) {
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6;
+
+    u32 fill = (R2 << 12) | 0x200;   /* tilemap word: blank tile, palette r2 */
+    u32 runA = R1;                   /* fill cursor for the first run */
+    u32 runB = R1 + (R4 << 1);       /* fill cursor for the second run */
+    s32 count = (s32)R3;             /* halfwords to write per run */
+    s32 remaining = (s32)R4 - (s32)R3; /* run length left for sub_81202B4 */
+
+    do {
+        ST16(runA, fill);
+        ST16(runB, fill);
+        runA += 2;
+        runB += 2;
+    } while (--count > 0);
+
+    /* sub_804A24C(count leftover, ..., fill, end cursors, r5, 0, r7) */
+    R1 = fill;
+    R2 = runA;
+    R3 = runB;
+    R4 = (u32)count;
+    R6 = 0;
+    GUEST_CALL(sub_804A24C);
+
+    /* sub_81202B4(r1 as left by sub_804A24C, end cursors, fill, r4 - r3, 0) */
+    R2 = runA;
+    R3 = runB;
+    R4 = fill;
+    R5 = (u32)remaining;
+    R6 = 0;
+    GUEST_CALL(sub_81202B4);
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_loadFolderChipGfx_8120390 ── */
 /* register form: calls CopyWords outside this file, which has no typed C interface yet */
 static void copy_words(u32 src, u32 dest, u32 byte_size) {
@@ -1865,6 +1915,91 @@ static void build_chip_slot_list(u32 entry_index, u32 entry_base,
  *             r3 = slot_base, r5 = count) -> r7 (unchanged, preserved) */
 Next sub_81203E4(void) {
     build_chip_slot_list(R0, R1, R2, R3, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812068C ── */
+/* sub_812068C(r0 = value, r1 = row, r2 = arg2, r3 = arg3):
+ * Queries sub_81205C0 for a packed position; if one is found (result >= 0),
+ * triggers sub_802FE28 with it, then queries sub_81205C0 again with the
+ * position's high half moved down by 8. Callees observe r4 = row, r6 = arg3
+ * and r7 = the queried position, as in the original. Preserves r4-r7 and
+ * returns with the flags left by the final sub_81205C0 call. */
+Next sub_812068C(void) {
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    u32 value = R0;
+    u32 row   = R1;
+    u32 arg2  = R2;
+    u32 arg3  = R3;
+
+    R4 = row;   /* mov r4, r1 */
+    R6 = arg3;  /* mov r6, r3 */
+
+    /* First query: (value, row, arg2, 1) -> packed position, negative = none. */
+    R0 = value;
+    R1 = row;
+    R2 = arg2;
+    R3 = 1;
+    GUEST_CALL(sub_81205C0);
+    u32 pos = R0;
+    R7 = pos;
+
+    if ((s32)pos >= 0) {
+        /* Found one: sub_802FE28(pos, row + 0x16, 0, 1). R0 already holds pos. */
+        R1 = row + 0x16;
+        R2 = 0;
+        R3 = 1;
+        GUEST_CALL(sub_802FE28);
+    }
+
+    /* Re-pack the position: low half unchanged, high half shifted down by 8. */
+    u32 lowHalf  = pos << 16 >> 16;
+    u32 highHalf = (u32)(((s32)pos >> 16) + 8);
+    u32 shifted  = (highHalf << 16) | lowHalf;
+
+    /* Second query: (arg3, row, shifted position, 1). */
+    R0 = arg3;
+    R1 = row;
+    R2 = shifted;
+    R3 = 1;
+    GUEST_CALL(sub_81205C0);
+
+    /* pop {r4-r7} */
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81206C4 ── */
+/* sub_81206C4(r0 = chip entry array, r5 = list header, count at header+0x28):
+ * Walks the list of 0x20-byte chip entries backwards (newest first) and hands
+ * each one to GiveChips.  Entries whose packed value has no count in the upper
+ * 9 bits are skipped.  The list header pointer (r5) is preserved. */
+Next sub_81206C4(void) {
+    u32 count = LD16(R5 + 0x28);
+
+    if (count != 0) {
+        /* Start at the last entry and step back one 0x20-byte slot per pass. */
+        u32 entry = R0 + (count - 1) * 0x20;
+        u32 i;
+        for (i = 0; i < count; i++) {
+            /* The field at +0x1C packs two values into its low halfword:
+             * bits 15..7 are the amount, bits 6..0 the chip code. */
+            u32 packed = LD32(entry + 0x1C) << 16;
+            u32 amount = packed >> 23;
+
+            if (amount != 0) {
+                R0 = amount;
+                R1 = (packed << 9) >> 25;
+                R2 = LD32(entry + 0x14) >> 16;  /* high halfword of the +0x14 field */
+                GUEST_CALL(GiveChips);
+            }
+            entry -= 0x20;
+        }
+    }
     RETURN_TO_CALLER();
 }
 

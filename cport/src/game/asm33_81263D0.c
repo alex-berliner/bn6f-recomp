@@ -571,6 +571,62 @@ Next battle_updateChipSprite_8126630(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_812674C ── */
+/* Helper for sub_812674C: blit `tiles` tiles of the graphic whose tile data
+ * lives at byte_8124A8C into the buffer at dword_8124A94 via sub_8126570,
+ * with the first tile at x-coordinate `x`, y = 0x14.  `attr` carries the
+ * extra attribute bits for the blit (0x10000000 vs. none).  Whatever
+ * sub_8126570 leaves in R3 stays there, since the caller returns it. */
+static void blit_graphic(u32 x, u32 tiles, u32 attr)
+{
+    R0 = x;
+    R1 = 0x14;
+    R2 = 0;
+    R3 = tiles;
+    R4 = A_byte_8124A8C;
+    R6 = attr;
+    R7 = A_dword_8124A94;
+    GUEST_CALL(sub_8126570);
+}
+
+/* sub_812674C(r5 = reveal state):
+ * Progressively reveals a two-part tile graphic.  Step counter is at
+ * R5+0xD, the limit at R5+0xE.  Once the step is non-zero the left part
+ * (x = 0x58, 15 tiles, attribute 0x10000000) is drawn; the right part
+ * (x = 0xE2, 16 tiles, no attribute bits) is drawn either right away
+ * (step 0) or while the table byte_81267A0 still maps the step counter to
+ * a segment index below the limit.  sub_8126570's r3 result is passed
+ * through to the caller; r4-r7 are preserved. */
+Next sub_812674C(void) {
+    /* The original pushes r4-r7 and pops them before returning, so the
+     * callee's scratch use of them must not leak out. */
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    if (LD8(R5 + 0xD) != 0) {
+        /* Reveal in progress: draw the left part first. */
+        blit_graphic(0x58, 0xF, 0x10000000);
+
+        /* Keep drawing the right part only while segments remain: the
+         * table maps the step counter to the number of segments already
+         * done, and we stop once it reaches the limit at R5+0xE.  Both
+         * state bytes are re-read here because sub_8126570 may have
+         * advanced the animation. */
+        u32 limit = LD8(R5 + 0xE);
+        u32 segment = LD8(A_byte_81267A0 + LD8(R5 + 0xD));
+        if ((s32)segment < (s32)limit)
+            blit_graphic(0xE2, 0x10, 0);
+    } else {
+        /* Step 0: no left part yet, just draw the right part. */
+        blit_graphic(0xE2, 0x10, 0);
+    }
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── HandleMegaManStatusMenu8126B4C ── */
 /* HandleMegaManStatusMenu8126B4C: top-level dispatcher for the MegaMan
  * status menu. The menu object's state byte ([R5+1]) selects one of three
@@ -1363,6 +1419,54 @@ static void process_pet_navi_table(u32 toolkit) {
 /* battle_buildPetNaviList_8127638(toolkit = r5) — builds PET navi list, preserves r4-r7 via stack */
 Next battle_buildPetNaviList_8127638(void) {
     process_pet_navi_table(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8127718 ── */
+/* sub_8127718(r5 = textbox print state):
+ * Prints pending characters of the text buffer byte_201D74C into the textbox
+ * tile area at VRAM 0x600A000. r5+0x24 holds the index of the next character
+ * to print and r5+0x26 the index one past the last pending one; when they are
+ * equal there is nothing to do. Otherwise up to four characters are rendered,
+ * each as a 0x200-byte slice at successively higher VRAM offsets, by calling
+ * sub_8127580. Characters with code >= 0x40 are first passed through
+ * sub_8127760 (extended/control character handling), which may adjust the
+ * code left in r0 before it is forwarded to sub_8127580.
+ *
+ * r4-r7 are work registers here but must be restored for the caller, so their
+ * entry values are saved and written back on exit. */
+Next sub_8127718(void) {
+    u32 savedR4 = R4;
+    u32 savedR6 = R6;
+    u32 savedR7 = R7;
+
+    R7 = LD16(R5 + 0x24);          /* index of next character to print */
+    u32 endIndex = LD16(R5 + 0x26); /* one past the last pending character */
+
+    if (R7 != endIndex) {
+        R6 = 0;                    /* byte offset of the current slice in VRAM */
+        do {
+            R0 = LD8(A_byte_201D74C + R7); /* character code from the text buffer */
+
+            if (R0 >= 0x40)
+                GUEST_CALL(sub_8127760);   /* may rewrite the code in r0 */
+
+            /* Draw this character: r0 = code, r1 = slice offset,
+             * r2 = textbox VRAM base, r3 = script data, r4 = font table. */
+            R1 = R6;
+            R2 = 0x600A000;
+            R3 = A_TextScript873EA50;
+            R4 = A_byte_2019A00;
+            GUEST_CALL(sub_8127580);
+
+            R7 += 1;               /* advance to the next character */
+            R6 += 0x200;           /* advance to the next VRAM slice */
+        } while ((s32)R6 <= 0x600);
+    }
+
+    R4 = savedR4;
+    R6 = savedR6;
+    R7 = savedR7;
     RETURN_TO_CALLER();
 }
 

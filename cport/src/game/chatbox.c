@@ -2095,6 +2095,52 @@ Next chatbox_stepScriptEntry_80417A4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_80417E4 ── */
+/* chatbox_80417E4 (r4 = pointer to the current chatbox script command):
+ * "check key item" command. Layout of the 7-byte command:
+ *   +2: key item ID to look up with CheckKeyItem
+ *   +3: expected result to compare against
+ *   +4/+5/+6: script IDs for the equal / greater / less cases
+ * The selected script is started via chatbox_config_80408D0 unless it is the
+ * 0xFF end marker, in which case the command pointer is simply advanced past
+ * the whole command instead. Always returns 1; r4 holds the (possibly
+ * advanced) command pointer and r2 the selected branch offset on exit. */
+Next chatbox_80417E4(void) {
+    u32 cmd = R4;
+
+    R0 = LD8(cmd + 2);
+    GUEST_CALL(CheckKeyItem);
+    u32 result = R0;
+
+    u32 expected = LD8(cmd + 3);
+
+    /* Pick which branch ID to use: offset 4/5/6 for equal / greater / less. */
+    u32 branch;
+    if (result == expected)
+        branch = 4;
+    else if ((s32)result > (s32)expected)
+        branch = 5;
+    else
+        branch = 6;
+
+    u32 scriptID = LD8(cmd + branch);
+    R2 = branch;
+
+    if (scriptID != 0xFF) {
+        /* r0 is the unused first argument; it still holds the CheckKeyItem
+         * result here, exactly as in the original. */
+        R0 = result;
+        R1 = scriptID;
+        GUEST_CALL(chatbox_config_80408D0);
+    } else {
+        /* 0xFF script ID: nothing to run, just skip past this command. */
+        R4 = cmd + 7;
+    }
+
+    R0 = 1;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_evaluateChipScript_8041818 ── */
 /* register form: calls GetChipCountOfCode outside this file, which has no typed C interface yet */
 static u32 chip_count_of_code(u32 code, u32 code_param) {

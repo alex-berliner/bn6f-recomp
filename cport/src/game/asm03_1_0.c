@@ -190,6 +190,48 @@ Next sub_8033B80(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8033BE8 ── */
+/* sub_8033BE8: swap in the current PET navi's battle graphic set.
+ *
+ * Queues the 0x80-byte graphics chunk belonging to the navi currently set on
+ * the PET into VRAM at 0x06017380, then triggers the accompanying change
+ * through sub_802FE28.  Normally the graphic index comes straight from
+ * GetCurPETNavi(); before event flag EVENT_163 has been set, a nonzero value
+ * in byte_200AD04 overrides it with slot 12 instead. */
+Next sub_8033BE8(void) {
+    /* Which navi is currently set on the PET? */
+    GUEST_CALL(GetCurPETNavi);
+    u32 navi = R0;
+
+    /* EVENT_163 (passed to the callee as its bank/index pair).  While it is
+     * clear, byte 200AD04 being nonzero forces the alternate slot 12. */
+    R0 = 1;
+    R1 = 0x63;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (ZERO_FLAG()) {
+        GUEST_CALL(notZero_eByte200AD04);
+        if (!ZERO_FLAG())
+            navi = 0xC;
+    }
+
+    /* Queue the navi's graphics chunk (source taken from the 13-entry table
+     * at off_8033C24, indexed by navi id) into VRAM. */
+    R4 = navi << 2;
+    R0 = LD32(A_off_8033C24 + R4);
+    R1 = 0x6017380;
+    R2 = 0x80;
+    GUEST_CALL(QueueWordAlignedGFXTransfer);
+
+    /* Kick off the change. */
+    R0 = 0x40120006;
+    R1 = 0xC79C;
+    R2 = 1;
+    R3 = 0;
+    GUEST_CALL(sub_802FE28);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── gfxTransfer_8033DA0 ── */
 /* gfxTransfer_8033DA0(r0 = base address):
  * Queue a 32-byte PET-navi tileset transfer to VRAM buffer byte_30016D0.

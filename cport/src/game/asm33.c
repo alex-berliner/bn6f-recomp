@@ -8,6 +8,52 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_8123360 ── */
+/* sub_8123360: () -> bool (r0)
+ *
+ * Decides whether the current PET navi is considered "present" (used for
+ * overworld HUD / dialogue behaviour). Returns TRUE in r0 when:
+ *   - a navi is selected in the PET (GetCurPETNavi() != 0) and the
+ *     "navi gone" story event (EVENT_172A) has not fired, or
+ *   - the same holds, and additionally on normal maps (map group < 0x80)
+ *     the EVENT_PET_NAVI_ACTIVE flag is set.
+ * On high map groups (>= 0x80, special areas) the active flag is not
+ * required. r4 is preserved.
+ */
+
+/* TestEventFlagFromImmediate receives the 16-bit flag id split across
+ * r0 (high byte) and r1 (low byte) and reports "flag set" via !Z. */
+static u32 event_flag_set(u16 flag) {
+    R0 = (u32)flag >> 8;
+    R1 = flag & 0xFF;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+Next sub_8123360(void) {
+    u32 result = FALSE;
+
+    GUEST_CALL(GetCurPETNavi);
+    u32 curNavi = R0;
+
+    /* A navi is around unless the story event removed it. */
+    if (curNavi != 0 || !event_flag_set(EVENT_172A)) {
+        result = TRUE;
+
+        u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
+        u32 mapGroup = LD8(gameState + oGameState_MapGroup);
+
+        if ((s32)mapGroup < 0x80) {
+            /* On regular maps the navi only counts as present while
+             * its "navi active" event flag is up. */
+            result = event_flag_set(EVENT_PET_NAVI_ACTIVE);
+        }
+    }
+
+    R0 = result;
+    RETURN_TO_CALLER();
+}
+
 /* ── HandleChipFolderMenu8123434 ── */
 /* HandleChipFolderMenu8123434: 08123434-0812345C THUMB, bn6f asm33.s:390
  *   inputs:  r2 r4 r5 r6 r7 r10 lr
@@ -1248,6 +1294,75 @@ Next submenu_subchip_8124134(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── submenu_subchip_dispatch_8124144 ── */
+/* submenu_subchip_dispatch_8124144:
+ * Per-frame handler of the sub-chip folder submenu (struct UnkSubMenu in r5).
+ * If the menu is not flagged active (+0x11 bit 0), it first yields to the
+ * chatbox: while a chatbox message holds the screen (flag 0x80) nothing
+ * happens; while it is transitioning (flag 0x10) or the chatbox state
+ * machine is still busy, the submenu is forced to state 4 (its "wait"
+ * state). Otherwise it runs the per-mode step function selected by
+ * state->mode (+3). The mode byte holds a byte offset into jt_8124188
+ * (0, 4, 8, ...), not a small index. The handlers are called with
+ * r0 = jt_8124188 and r1 = the mode byte, alongside the state in r5. */
+Next submenu_subchip_dispatch_8124144(void) {
+    u32 state = R5;
+
+    if (!(LD8(state + 0x11) & 1)) {
+        /* Chatbox on screen at all? */
+        R0 = 0x80;
+        GUEST_CALL(chatbox_mask_eFlags2009F38);
+        if (R0 == 0)
+            RETURN_TO_CALLER();
+
+        /* Chatbox transitioning? Put the submenu on hold. */
+        R0 = 0x10;
+        GUEST_CALL(chatbox_mask_eFlags2009F38);
+        if (R0 != 0) {
+            ST8(state + 2, 4);
+            RETURN_TO_CALLER();
+        }
+
+        /* Chatbox waiting for input? */
+        R0 = 0x20;
+        GUEST_CALL(chatbox_mask_eFlags2009F38);
+        if (R0 == 0)
+            RETURN_TO_CALLER();
+
+        /* Chatbox state machine still running? Hold the submenu. */
+        GUEST_CALL(chatbox_GetState_8045F4C);
+        if (R0 != 0) {
+            ST8(state + 2, 4);
+            RETURN_TO_CALLER();
+        }
+    }
+
+    /* Run this frame's step for the current submenu mode. The mode byte
+     * is an offset into the jump table, so the cases are 0, 4, 8, ... */
+    R0 = A_jt_8124188;
+    R1 = LD8(state + 3);
+    switch (R1) {
+    case 0:
+    case 4:
+        GUEST_CALL(submenu_subchip_81241A0);
+        break;
+    case 8:
+        GUEST_CALL(submenu_subchip_8124230);
+        break;
+    case 0xC:
+        GUEST_CALL(submenu_subchip_812425C);
+        break;
+    case 0x10:
+        GUEST_CALL(submenu_subchip_812427C);
+        break;
+    case 0x14:
+        GUEST_CALL(submenu_subchip_81242AC);
+        break;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── submenu_subchip_81242D8 ── */
 /* submenu_subchip_81242D8: handles the sub-chip submenu when the player selects a sub-chip. */
 Next submenu_subchip_81242D8(void) {
@@ -1400,6 +1515,91 @@ Next subchip_initGfx_81243B0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_812453C ── */
+/* sub_812453C(r5 = text state):
+ * Renders the next character of the active text entry into the text-box
+ * tile buffer, then runs the follow-up update (sub_8124588).
+ *
+ * State layout at r5:
+ *   +0x0C: text box active flag
+ *   +0x0E: renderer result flag (cleared here, set from the render call)
+ *   +0x0F: current character code (table entry minus 0x80)
+ *   +0x14: index of the current text entry in the text table
+ *
+ * r4-r7 must survive the call to renderTextGfx (the original saves them
+ * around the call); r8-r12 are whatever sub_8124588 leaves behind. */
+Next sub_812453C(void) {
+    R0 = 0;
+    ST8(R5 + 0xE, R0);                          /* no rendered glyph pending */
+
+    if (LD8(R5 + 0xC) != 0) {                   /* text box active? */
+        /* Look up the current text entry's character code. */
+        u32 entryOffs = LD16(R5 + 0x14) << 1;   /* entries are 2 bytes apart */
+        u32 charCode = LD8(A_unk_201C400 + entryOffs) - 0x80;
+        ST8(R5 + 0xF, charCode);
+
+        /* renderTextGfx may clobber r4-r7, so keep the state pointer safe. */
+        u32 state = R5;
+        u32 savedR4 = R4, savedR6 = R6, savedR7 = R7;
+
+        R0 = A_eTextScript201C100;              /* text script data */
+        R1 = charCode;                          /* character to render */
+        R2 = A_unk_201AA00;                     /* glyph/work buffer */
+        R3 = 0x6007000;                         /* VRAM destination */
+        R4 = 0xB;
+        R5 = 3;
+        R6 = A_dword_86A5D60;
+        R7 = 0;
+        GUEST_CALL(renderTextGfx_8045F8C);
+
+        R4 = savedR4;
+        R5 = state;
+        R6 = savedR6;
+        R7 = savedR7;
+
+        ST8(R5 + 0xE, R0);                      /* store render result */
+    }
+
+    GUEST_CALL(sub_8124588);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8124588 ── */
+/* sub_8124588(r5 = background state struct):
+ * Refills a 15x12-tile region of tile block 2 (a 32x32-tile background block).
+ * If the flag byte at struct+0xE is nonzero, the tile ids come from the table
+ * at unk_201EBDC (via CopyBackgroundTiles); otherwise call_sub_3005EBA is used,
+ * which picks the tile source itself (tile ids = 0). */
+Next sub_8124588(void) {
+    u32 state = R5;
+    u32 savedR4 = R4;
+
+    if ((LD8(state + 0xE) & 0xFF) != 0) {
+        /* flag set: copy tiles from the static tile-id table */
+        R0 = 0xF;              /* j */
+        R1 = 0xC;              /* i */
+        R2 = 2;                /* tile block 32x32 */
+        R3 = A_unk_201EBDC;    /* tile ids */
+        R4 = 0xB;              /* j size */
+        R5 = 6;                /* i size */
+        GUEST_CALL(CopyBackgroundTiles);
+    } else {
+        /* flag clear: let the callee choose the tile source */
+        R0 = 0xF;              /* j */
+        R1 = 0xC;              /* i */
+        R2 = 2;                /* tile block 32x32 */
+        R3 = 0;                /* tile ids */
+        R4 = 0xB;              /* j size */
+        R5 = 6;                /* i size */
+        GUEST_CALL(call_sub_3005EBA);
+    }
+
+    /* the original restores r4-r7 from the stack before returning */
+    R4 = savedR4;
+    R5 = state;
+    RETURN_TO_CALLER();
+}
+
 /* ── bg_CopyTileBlock2At2_6_8x12_81245BC ── */
 /* bg_CopyTileBlock2At2_6_8x12_81245BC: copy a 6x8 block of background tiles.
  *
@@ -1427,6 +1627,46 @@ Next bg_CopyTileBlock2At2_6_8x12_81245BC(void) {
     R5 = saved_r5;
     R6 = saved_r6;
     R7 = saved_r7;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81245D4 ── */
+/* sub_81245D4(r4, r5 = map object, r10 = toolkit):
+ * Handler for an interacted-with map object. On regular map groups it marks
+ * the object (state byte at +2 = 8) and runs chatbox script 6. On map groups
+ * 0x80 and up it instead dispatches to one of the special handlers listed in
+ * the table at off_812460C, indexed by a byte read from unk_201C400 at
+ * [object+0x14] * 2 (entries 0x80/0x81 both map to the first handler).
+ * Leaves r2 = the dispatched handler address (r0 = selector byte,
+ * r1 = (selector - 0x80) * 4 as in the original); r5/r10 pass through. */
+Next sub_81245D4(void) {
+    u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
+    u32 mapGroup = LD8(gameState + oGameState_MapGroup);
+
+    if ((s32)mapGroup < 0x80) {
+        /* Regular map group: run the object's chatbox script. */
+        ST8(R5 + 2, 8);
+        R0 = 6;
+        GUEST_CALL(chatbox_runScript201C100_812474C);
+        RETURN_TO_CALLER();
+    }
+
+    /* Map group 0x80+: pick a handler from the dispatch table. */
+    u32 select = LD16(R5 + 0x14) * 2;
+    u32 kind = LD8(A_unk_201C400 + select);
+
+    R0 = kind;
+    R1 = (kind - 0x80) * 4;
+    R2 = LD32(A_off_812460C + R1);
+
+    switch (kind) {
+    case 0x80: case 0x81: GUEST_CALL(sub_8124624); break;
+    case 0x82:            GUEST_CALL(sub_8124660); break;
+    case 0x83:            GUEST_CALL(sub_812469C); break;
+    case 0x84:            GUEST_CALL(sub_81246D8); break;
+    case 0x85:            GUEST_CALL(sub_812471C); break;
+    }
 
     RETURN_TO_CALLER();
 }
@@ -1522,6 +1762,37 @@ Next background_updateSceneStrips_812475C(void) {
     R5 = r5;
     R6 = r6;
     R7 = r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81247EC ── */
+/* sub_81247EC:
+ * Draws six lines of text (the library/help entry descriptions). Each entry i
+ * (0..5) renders text id byte_8124864[i] from script TextScript873D9FC into
+ * the RAM buffer off_812482C[i], generating tiles to the VRAM destination
+ * byte_8124848[i] (0x06004000 + i*0x200), using dword_86B7AE0 as graphics
+ * source and an 8x1 tile block.
+ * r5/r8-r12 afterwards are whatever renderTextGfx_8045F8C leaves behind;
+ * r4/r6/r7 (and r8/r9) come back exactly as they entered. */
+Next sub_81247EC(void) {
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    for (u32 i = 0; i < 6; i++) {
+        R0 = A_TextScript873D9FC;              /* text script bank */
+        R1 = LD16(A_byte_8124864 + i * 2);     /* text id: 0x80 .. 0x85 */
+        R2 = LD32(A_off_812482C + i * 4);      /* destination text buffer in RAM */
+        R3 = LD32(A_byte_8124848 + i * 4);     /* destination VRAM tile address */
+        R4 = 8;                                /* width in tiles */
+        R5 = 1;                                /* height in tiles */
+        R6 = A_dword_86B7AE0;                  /* font/graphics source */
+        R7 = 0;
+        GUEST_CALL(renderTextGfx_8045F8C);
+    }
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
     RETURN_TO_CALLER();
 }
 

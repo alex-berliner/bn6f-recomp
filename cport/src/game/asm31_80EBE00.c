@@ -2107,6 +2107,93 @@ Next sub_80FDCA4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FDEC4 ── */
+/* sub_80FDEC4(r5 = battle object, r3/r10 = context pass-through):
+ * Turn-end style housekeeping for one BattleObject:
+ *   - query the AI difficulty tier (result stashed in r4, where the
+ *     original keeps it; dead afterwards but restored from the stack),
+ *   - call sub_80FE05C(2) (result kept in r6, likewise dead but must be
+ *     live across the battle_findPlayer call),
+ *   - find the player on the opposite alliance,
+ *   - call sub_80CAC58(player, 2, obj + 0x60),
+ *   - clear obj->ExtraVars[1] and store the object's panel position,
+ *     packed as PanelX | PanelY << 4, into obj->ExtraVars[2].
+ * Ends with r0 = the packed panel position, r1 = PanelY << 4 (values the
+ * original leaves in place after the ORR), NZ from that ORR, C clear
+ * (the LSL #4 of a byte can never shift a set bit out) and V untouched
+ * from sub_80CAC58. r4/r6/r7 end as they came in. */
+Next sub_80FDEC4(void) {
+    u32 savedR4 = R4, savedR6 = R6, savedR7 = R7;
+
+    GUEST_CALL(battle_getAiDifficultyTier_800FE36);
+    R4 = R0; /* AI difficulty tier */
+
+    R0 = 2;
+    GUEST_CALL(sub_80FE05C);
+    R6 = R0; /* kept live across the battle_findPlayer call below */
+
+    /* look up the object on the other side of the field */
+    R0 = (u32)LD8(R5 + oBattleObject_Alliance) ^ 1u;
+    R1 = 1;
+    GUEST_CALL(battle_findPlayer);
+    /* r0/r1 now hold the callee's result, which sub_80CAC58 reads */
+
+    R2 = 2;
+    R7 = R5 + 0x60; /* scratch pointer the callee works on */
+    GUEST_CALL(sub_80CAC58);
+    R7 = savedR7;
+
+    ST32(R5 + oBattleObject_ExtraVars + 4, 0);
+
+    /* pack the panel position: X in the low byte, Y in the next nibble */
+    R0 = (u32)LD8(R5 + oBattleObject_PanelX);
+    R1 = (u32)LD8(R5 + oBattleObject_PanelY);
+    /* lsl r1, r1, #4: carry is bit 28 of a byte-sized value, always 0 */
+    cpu.c = 0;
+    R1 <<= 4;
+    R0 |= R1;
+    SET_FLAGS_NZ(R0);
+    ST32(R5 + oBattleObject_ExtraVars + 8, R0);
+
+    R4 = savedR4;
+    R6 = savedR6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FDEFC ── */
+/* sub_80FDEFC(r5 = battle object):
+ * AI bookkeeping for a battle object, run each AI tick.
+ *
+ * 1. If the AI's state word (GetAIDataUnk0x48Flag) has bit 5 set, raise the
+ *    OBJECT_FLAGS_UNK_4 flag on the object (marks it as "about to act").
+ * 2. ExtraVars+8 holds the panel the object last targeted, packed as
+ *    (panelY << 4) | panelX. If that stored target differs from the panel the
+ *    object is actually standing on now (PanelX/PanelY), copy the old target
+ *    into ExtraVars+4 (the "previous" slot) and record the current panel as
+ *    the new stored target. If they already match, do nothing. */
+Next sub_80FDEFC(void) {
+    u32 obj = R5;
+
+    GUEST_CALL(GetAIDataUnk0x48Flag);
+    if (R0 & 0x20) {
+        R0 = OBJECT_FLAGS_UNK_4;
+        GUEST_CALL(object_setFlag1);
+    }
+
+    u32 storedTarget = LD32(obj + (oBattleObject_ExtraVars + 8));
+    u32 targetX = storedTarget & 0x7;   /* low 3 bits: X coordinate */
+    u32 targetY = storedTarget >> 4;    /* upper bits: Y coordinate */
+    u32 panelX = LD8(obj + oBattleObject_PanelX);
+    u32 panelY = LD8(obj + oBattleObject_PanelY);
+
+    if (targetX != panelX || targetY != panelY) {
+        ST32(obj + (oBattleObject_ExtraVars + 4), targetX | (targetY << 4));
+        ST32(obj + (oBattleObject_ExtraVars + 8), panelX | (panelY << 4));
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FDF4C ── */
 /* sub_80FDF4C: fetch the address of the dword_80FDF5C work area and pass it
  * to sub_800FE28, which does the real work. Its results (r0, r2) are ours. */
@@ -2195,6 +2282,44 @@ static void ai_attack_phase_dispatch(u32 r7) {
  * r7 = AIAttackVars pointer; index byte read from oAIAttackVars_Unk_00. */
 Next battle_aiDispatchAttackPhase_80FE0D4(void) {
     ai_attack_phase_dispatch(R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FE0F8 ── */
+/* sub_80FE0F8(r5 = battle object, r7 = AI attack state):
+ * Enemy AI windup handler for an attack. While the windup is running
+ * (Unk_01 != 0), tick its timer (Unk_10) down; once it expires, hand
+ * control back to the firing state by writing 4 to Unk_00. When the
+ * windup has not started yet, begin it: mark it as begun, set the
+ * "shot fired" bit in the AI flag word (bit 0x20), play animation 8
+ * and load the windup timer with 14 frames. If the bit was already
+ * set, go straight to the firing state instead. */
+Next sub_80FE0F8(void) {
+    if (LD8(R7 + oAIAttackVars_Unk_01) != 0) {
+        /* windup in progress: count the timer down */
+        s32 timer = (s32)LD16(R7 + oAIAttackVars_Unk_10) - 1;
+        ST16(R7 + oAIAttackVars_Unk_10, (u16)timer);
+        if (timer <= 0)
+            ST16(R7 + oAIAttackVars_Unk_00, 4); /* windup done: fire */
+        RETURN_TO_CALLER();
+    }
+
+    /* start a new windup */
+    ST8(R7 + oAIAttackVars_Unk_01, 4);
+
+    GUEST_CALL(GetAIDataUnk0x48Flag);
+    R1 = 0x20;
+    if (R0 & R1) {
+        /* shot already fired this attack: go straight to firing */
+        ST16(R7 + oAIAttackVars_Unk_00, 4);
+        RETURN_TO_CALLER();
+    }
+
+    /* mark the shot as fired and start the windup animation */
+    R0 = 0x20;
+    GUEST_CALL(SetAIDataUnk0x48Flag); /* clobbers r1 */
+    ST8(R5 + oBattleObject_CurAnim, 8);
+    ST16(R7 + oAIAttackVars_Unk_10, 0xE);
     RETURN_TO_CALLER();
 }
 

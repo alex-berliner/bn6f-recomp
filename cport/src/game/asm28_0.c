@@ -79,6 +79,40 @@ Next deliverCutsceneMail_8098BE8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8098E6C ── */
+/* sub_8098E6C:
+ * Copies three settings bytes from a fixed table entry into the work struct
+ * reached through R10+0x3C. The entry index is the byte at R5+4; each entry
+ * is 0x1C bytes and bytes 0x18..0x1A are written to struct bytes 6..8.
+ * A table byte of 0xFF means "leave the target byte unchanged".
+ * Returns R0 = 0 with the NZ flags reflecting that zero, and leaves
+ * R1 = entry index, R2 = 0x1C * index in the registers. R4-R7 are preserved
+ * (the original's push/pop restores them, despite the table/struct pointers
+ * living in R4/R7 mid-function). */
+Next sub_8098E6C(void) {
+    u32 index = LD8(R5 + 4);
+    u32 entry = A_off_8098CFC + 0x1C * index;
+    u32 dst = LD32(R10 + 0x3C);
+
+    u32 value = LD8(entry + 0x18);
+    if (value != 0xFF)
+        ST8(dst + 6, value);
+
+    value = LD8(entry + 0x19);
+    if (value != 0xFF)
+        ST8(dst + 7, value);
+
+    value = LD8(entry + 0x1A);
+    if (value != 0xFF)
+        ST8(dst + 8, value);
+
+    R0 = 0;
+    R1 = index;
+    R2 = 0x1C * index;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── RunLMessageTextScript ── */
 /* RunLMessageTextScript: at 0x08099218
  *

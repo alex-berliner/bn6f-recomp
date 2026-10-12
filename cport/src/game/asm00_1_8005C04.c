@@ -1726,6 +1726,58 @@ Next spawnMegaMan_80073CC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── spawnEnemy_80073E2 ── */
+/* spawnEnemy_80073E2: spawn one enemy from an EnemySetup record (r6).
+ *
+ * EnemySetup layout:
+ *   +0: bit 0 = alliance, remaining bits used to dispatch to this spawner
+ *   +1: bits 0-2 = panel x, bits 4-7 = panel y (passed unmasked, as in the original)
+ *   +2/3: 12-bit enemy id (viruses, or an enemy navi when > 0xFF)
+ *
+ * Returns the battle object left by battle_spawnEnemyObject_800768C
+ * (its r4/r6/r7 results pass straight through to our caller); r5 is preserved.
+ */
+Next spawnEnemy_80073E2(void) {
+    u32 setup = R6;
+
+    u32 pos = LD8(setup + 1);
+    u32 panel_x = pos & 7;   /* bits 0-2 */
+    u32 panel_y = pos >> 4;  /* bits 4-7, no mask: a byte with bit 7 set lands on another row */
+
+    /* Low byte plus high nibble shifted up: a u12 enemy id. */
+    u32 enemy_idx = LD8(setup + 2) + ((LD8(setup + 3) & 0xF) << 8);
+
+    /* Only one bit of alliance survives; the rest of byte 0 chose this spawner. */
+    u32 alliance = LD8(setup) & 1;
+
+    u32 saved_r5 = R5;
+
+    R5 = 0; /* extra argument to battle_spawnEnemyObject_800768C */
+
+    /* Ask for the current battle effects; unless bit 15 is set, the enemy id
+     * is first run through sub_800EC80 (which may substitute a different id). */
+    R0 = enemy_idx;
+    R1 = panel_x;
+    R2 = panel_y;
+    R3 = alliance;
+    GUEST_CALL(GetBattleEffects);
+    if (!(R0 & 0x8000)) {
+        R0 = enemy_idx;
+        GUEST_CALL(sub_800EC80);
+        enemy_idx = R0;
+    }
+
+    R0 = enemy_idx;
+    R1 = panel_x;
+    R2 = panel_y;
+    R3 = alliance;
+    R5 = 0;
+    GUEST_CALL(battle_spawnEnemyObject_800768C);
+
+    R5 = saved_r5; /* pop {r5}: r5 must reach the caller unchanged */
+    RETURN_TO_CALLER();
+}
+
 /* ── spawnMetalCube_800748A ── */
 /* spawnMetalCube_800748A: maybe-spawn a MetalCube into the slot table
  * pointed to by r5, based on the EnemySetup panel at r6.

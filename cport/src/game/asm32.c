@@ -2230,6 +2230,40 @@ Next sub_8117C4C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8117CD4 ── */
+/* sub_8117CD4: draw-related helper for the menu system. It picks the menu
+ * state block to read from (the shared submenu if one is open, otherwise
+ * whatever menu object sub_81312F4 hands back), builds three arguments from
+ * its fields and passes them to sub_812068C:
+ *   r0 = byte    at menu+0x17 (some selection/counter field)
+ *   r1 = 0x5140 when that byte equals halfword menu+0x1E, else 0x6140
+ *   r2 = 0xC08003 - (s16 at menu+0x18 << 19), a screen/scroll-derived value
+ *   r3 = halfword at menu+0x1E
+ * r0-r3 and the flags on return are whatever sub_812068C leaves; r7 is
+ * preserved (the original saves and restores it around the calls). */
+Next sub_8117CD4(void) {
+    u32 menu = A_sSubmenu;
+
+    GUEST_CALL(submenu_isOpen_81355D8);
+    if (!ZERO_FLAG()) {
+        /* No submenu open: use the menu object the game gives us instead. */
+        GUEST_CALL(sub_81312F4);
+        menu = R0;
+    }
+
+    u32 selection = LD8(menu + 0x17);
+    u32 entry     = LD16(menu + 0x1E);
+    u32 scroll    = (u32)LDS16(menu + 0x18) << 19;
+
+    R0 = selection;
+    R1 = (selection == entry) ? 0x5140 : 0x6140;
+    R2 = 0xC08003 - scroll;
+    R3 = entry;
+    GUEST_CALL(sub_812068C);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── entity_setLookupEntryStateFromFlag_8117D10 ── */
 /* entity_setLookupEntryStateFromFlag_8117D10(r0 = flag, r1 = entity):
  * Look up the entity in the table at 0x2008450; if an entry exists for it,

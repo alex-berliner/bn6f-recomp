@@ -1430,6 +1430,51 @@ Next object_saveStateAndSetState8_8133E7C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8133E88 ── */
+/* sub_8133E88(r5 = background state struct):
+ * redraws a two-layer scrolling background into tile block 1:
+ *  - a full 30x20-tile base layer taken from the tile id table unk_201CA20, and
+ *  - a 60x17-tile parallax layer taken from unk_2020A20, scrolled horizontally
+ *    by the signed value at [r5+0x18] (the layer starts at j = -scroll).
+ * Then calls sub_8134138 to finish the update. r4-r7 are preserved. */
+Next sub_8133E88(void) {
+    u32 savedR4 = R4;
+    u32 savedR5 = R5;
+    u32 savedR6 = R6;
+    u32 savedR7 = R7;
+    u32 bgState = R5;
+
+    /* the original copies the struct pointer into r7 before the callees run */
+    R7 = bgState;
+
+    /* base layer: j = 0, i = 0, tile block 1, 30x20 tiles */
+    R0 = 0;
+    R1 = 0;
+    R2 = 1;
+    R3 = A_unk_201CA20;
+    R4 = 0x1E;
+    R5 = 0x14;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    /* parallax layer: j = -scroll x (sign-extended halfword at +0x18),
+     * i = 2, tile block 1, 60x17 tiles */
+    R0 = (u32)-(s32)LDS16(bgState + 0x18);
+    R1 = 2;
+    R2 = 1;
+    R3 = A_unk_2020A20;
+    R4 = 0x3C;
+    R5 = 0x11;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    GUEST_CALL(sub_8134138);
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81340DC ── */
 /* sub_81340DC: run the update routine for the data at byte_813314C, then, if
  * battle struct slot 3 currently exists, reposition its sprite to (0xC0, 3)

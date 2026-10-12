@@ -873,6 +873,46 @@ Next registry_setEntryStatusByKey_8119C74(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8119C94 ── */
+/* sub_8119C94: pick one of the (x, y) offset pairs stored in the table at
+ * byte_8119CCC based on the navi currently equipped in the PET, and return
+ * the pair in r0 (x) / r1 (y).
+ *
+ * Entry selection:
+ *   - navi 0: entry index = its stats byte 0x17, plus 0x17 more while the
+ *     EVENT_163 flag is set (two different "forms" of that navi).
+ *   - any other navi n: entry index = 0xB + n.
+ * Each table entry is two s16 values (4 bytes). */
+Next sub_8119C94(void) {
+    s32 entry_index;
+
+    GUEST_CALL(GetCurPETNavi);
+    u32 navi_id = R0;
+
+    if (navi_id != 0) {
+        entry_index = 0xB + navi_id;
+    } else {
+        /* Navi 0: read stats byte 0x17 (its form/counter), then shift to
+         * the second set of entries when EVENT_163 is set. */
+        R0 = 0;
+        R1 = 0x17;
+        GUEST_CALL(GetCurPETNaviStatsByte);
+        entry_index = R0;
+
+        R0 = 1;
+        R1 = EVENT_163;
+        GUEST_CALL(TestEventFlagFromImmediate);
+        if (!ZERO_FLAG())
+            entry_index += 0x17;
+    }
+
+    u32 entry_addr = A_byte_8119CCC + entry_index * 4;
+    R0 = LDS16(entry_addr);
+    R1 = LDS16(entry_addr + 2);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── entity_RunStateHandler_8119E40 ── */
 /* entity_RunStateHandler_8119E40: jump-table dispatcher for the state handler at r5.
  *
@@ -900,6 +940,33 @@ Next entity_RunStateHandler_8119E40(void) {
      * never occurs in practice, so there is nothing to do */
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8119F88 ── */
+/* sub_8119F88(r5 = object):
+ * Wipe the object's graphics out of object VRAM. The object's resource entry
+ * (selected by the id byte at [r5+5]) holds the starting tile numbers of its
+ * two VRAM blocks; each block is zero-filled so the tiles can be reused.
+ * Block 1 starts at tile [entry+0] and is 0xA00 bytes (80 tiles) long,
+ * block 2 starts at tile [entry+8] and is 0x780 bytes (60 tiles) long.
+ * Preserves r0 and r3 for the caller. */
+Next sub_8119F88(void) {
+    u32 savedR0 = R0;
+
+    u32 entry = LD32(A_off_8119FD0 + (LD8(R5 + 5) << 2));
+
+    /* Zero the first VRAM tile block. */
+    R0 = A_vObjectTiles + (LD32(entry) << 5);
+    R1 = 0xA00;
+    GUEST_CALL(ZeroFillByEightWords);
+
+    /* Zero the second VRAM tile block. */
+    R0 = A_vObjectTiles + (LD32(entry + 8) << 5);
+    R1 = 0x780;
+    GUEST_CALL(ZeroFillByEightWords);
+
+    R0 = savedR0;
     RETURN_TO_CALLER();
 }
 
@@ -1361,6 +1428,45 @@ static u32 apply_sprite_tweak(void) {
 
 Next sub_811A29C(void) {
     apply_sprite_tweak();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A2EC ── */
+/* sub_811A2EC:
+ * Adjusts the sprite attribute word at offset 0x2C of the menu-table entry
+ * selected for the current state index. The caller's R0-R3 are passed
+ * straight through to menu_getTableEntryForStateIndex_811A268, which
+ * returns the entry pointer in R0 plus two flag values in R1 and R2.
+ *
+ * - No entry (R0 == 0), or flags saying "reset" (R2 == 0 but R1 != 0):
+ *   clear the whole 0x1FC0 field and store 0xF80 in its place.
+ * - Otherwise: OR 0x1FC0 into the attribute word, then clear the single
+ *   bit selected by R2 (bit R2+1 of the 0x1000 bit run), leaving that
+ *   sub-field at zero while the rest of the field is filled. */
+Next sub_811A2EC(void) {
+    GUEST_CALL(menu_getTableEntryForStateIndex_811A268);
+
+    u32 entry = R0;
+    u32 flag1 = R1;
+    u32 flag2 = R2;
+
+    if (entry != 0 && (flag2 != 0 || flag1 == 0)) {
+        /* Fill the 0x1FC0 field, then clear the one bit picked by flag2. */
+        u32 bitIndex = (flag2 + 1) & 0xFF;          /* ARM LSR uses the low byte */
+        u32 clearMask = bitIndex < 32 ? (0x1000u >> bitIndex) : 0;
+
+        R0 = entry;
+        GUEST_CALL(sprite_getUnk0x2c);
+        R0 = (R0 | 0x1FC0u) & ~clearMask;
+        GUEST_CALL(sprite_setUnk0x2c);
+    } else {
+        /* Reset the whole field to the fixed value 0xF80. */
+        R0 = entry;
+        GUEST_CALL(sprite_getUnk0x2c);
+        R0 = (R0 & ~0x1FC0u) | 0xF80u;
+        GUEST_CALL(sprite_setUnk0x2c);
+    }
+
     RETURN_TO_CALLER();
 }
 
@@ -2069,6 +2175,42 @@ Next sprite_submenuUpdateAnimAndPos_811B298(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811B314 ── */
+/* sub_811B314(r0 = object id, r1 = animation id):
+ * Fetch the object's sprite struct from the list at 2008450 (result in r1,
+ * "not found" signalled in the Z flag). Give up if there is no struct or if
+ * its state byte has the 0x08 flag set. Otherwise start the requested
+ * animation on it, load its frame data and hide its shadow.
+ * Leaves r2 = 8 once the struct has been examined; r4/r5 are preserved. */
+Next sub_811B314(void) {
+    u32 animationId = R1;
+    u32 savedR4 = R4;
+    u32 savedR5 = R5;
+
+    /* mov r4, r1: the animation id travels in r4 for the rest of the call. */
+    R4 = animationId;
+
+    GUEST_CALL(getStructFrom2008450);
+    if (!ZERO_FLAG()) {
+        u32 sprite = R1;
+
+        R2 = 0x08;
+        if (!(LD8(sprite) & 0x08)) {
+            R5 = sprite;
+            R0 = animationId;
+            GUEST_CALL(sprite_setAnimation);
+            GUEST_CALL(sprite_loadAnimationData);
+            GUEST_CALL(sprite_noShadow);
+        }
+    }
+
+    /* pop {r4,r5}: the original restores both saved registers on every path,
+     * so the struct pointer in r5 is only visible to the callees above. */
+    R4 = savedR4;
+    R5 = savedR5;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811B3F4 ── */
 /* Dispatch one object's per-frame update handler through the jump table
  * jt_811B408. The selector byte at [object+8] picks one of three handlers;
@@ -2498,6 +2640,36 @@ Next adjustSpriteByOffset_811BE9C(void) {
     R2 = res.flag_table;
     /* R3 and C,V left by sprite_setCoordinates GUEST_CALL; only NZ come from TST. */
     SET_FLAGS_NZ(res.flag_val);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811BED4 ── */
+/* sub_811BED4(r0 = entry id, r1 = record pointer):
+ * Looks up the record identified by r0 in the structure pool at 0x2008450.
+ * If no such record exists (lookup clears Z), nothing is written. Otherwise
+ * a status byte is stored at offset 0 of the record: 0x23 when the record's
+ * kind byte (offset 0x0C) selects a non-zero entry of byte_811BF94, and 1
+ * otherwise (or when the caller passed id 0).
+ *
+ * Note: getStructFrom2008450 updates r1 with the resolved record pointer,
+ * so all accesses below must use r1 as it is *after* the call. */
+Next sub_811BED4(void) {
+    u32 id = R0;
+
+    R0 = R1;
+    GUEST_CALL(getStructFrom2008450);
+    u32 record = R1;              /* lookup replaces r1 with the record pointer */
+
+    if (ZERO_FLAG())              /* id not present in the pool: leave it alone */
+        RETURN_TO_CALLER();
+
+    u32 value = 1;
+    if (id != 0) {
+        u8 kind = LD8(record + 0xC);
+        if (LD8(A_byte_811BF94 + kind) != 0)
+            value = 0x23;
+    }
+    ST8(record, value);
     RETURN_TO_CALLER();
 }
 

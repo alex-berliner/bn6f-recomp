@@ -1468,6 +1468,48 @@ found:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C9726 ── */
+/* sub_80C9726 (r5 = battle object):
+ * Runs the handler for the object's current action, then manages the object's
+ * "busy" flag bit (0x02): the bit is set as soon as the handler returns, and
+ * cleared again unless the alliance check (sub_800EB6C) returns nonzero, or
+ * when the related object's AI data reports flag 0x100000. r5 is preserved. */
+Next sub_80C9726(void) {
+    u32 obj = R5;
+
+    /* off_80C976C: table of per-action handlers, indexed by CurAction:
+     * 0 -> sub_80C9774, 1 -> sub_80C97B4. The handler is entered with
+     * r0 = action and r1 = its own table entry. */
+    u32 action = LD8(obj + oBattleObject_CurAction);
+    u32 handler = LD32(A_off_80C976C + action);
+    R0 = action;
+    R1 = handler;
+    if (action == 0)
+        GUEST_CALL(sub_80C9774);
+    else
+        GUEST_CALL(sub_80C97B4);
+
+    /* Mark the object as busy while its action runs. */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Unless the alliance check passes, the action is done already:
+     * clear the busy flag again. */
+    R0 = LD8(obj + oBattleObject_Alliance);
+    GUEST_CALL(sub_800EB6C);
+    if (R0 == 0)
+        ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) & ~2u);
+
+    /* If the related object's AI data has flag 0x100000 set, the action
+     * ends here as well: clear the busy flag. */
+    R5 = LD32(obj + oBattleObject_RelatedObject1Ptr);
+    GUEST_CALL(GetAIDataUnk0x48Flag);
+    if ((R0 & 0x100000) != 0)
+        ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) & ~2u);
+
+    R5 = obj;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C9774 ── */
 /* Apply the related object's position plus this object's velocity components
  * to this object's X/Y/Z, copy bit 1 of the related object's header flags
@@ -2008,6 +2050,40 @@ Next battle_applyElementAttackModIfEnabled_80CAD14(void) {
         /* tst r0, r0: only nz is affected, c/v stay as the caller set them */
         SET_FLAGS_NZ(R0);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CAEC8 ── */
+/* sub_80CAEC8(r0 = panel x, r1 = panel y, r2 = element,
+ *              r5 = source object, r6 = damage value):
+ * Spawn a type-3 battle object (kind 0x37) on the given panel, then copy the
+ * source object's alliance/direction-flip halfword into it, store the damage
+ * value, and set its header flag 0x10 (spawned-this-frame marker).
+ * Returns the spawned object pointer in r5; leaves r5 unchanged (the source
+ * pointer) when spawning failed. */
+Next sub_80CAEC8(void) {
+    u32 panelX = R0;
+    u32 panelY = R1;
+    u32 element = R2;
+    u32 source = R5;
+    u32 damage = R6;
+
+    R0 = 0x37;
+    GUEST_CALL(object_spawnType3);
+    u32 obj = R5;
+
+    if (obj != 0) {
+        ST8(obj + oBattleObject_PanelX, panelX);
+        ST8(obj + oBattleObject_PanelY, panelY);
+        ST8(obj + oBattleObject_Element, element);
+        ST32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler, damage);
+        ST16(obj + oBattleObject_AllianceAndDirectionFlip,
+             LD16(source + oBattleObject_AllianceAndDirectionFlip));
+        ST8(obj + oObjectHeader_Flags,
+            LD8(obj + oObjectHeader_Flags) | 0x10);
+    }
+
+    R5 = source; /* the pop restores the caller's r5, which is the output */
     RETURN_TO_CALLER();
 }
 

@@ -895,6 +895,66 @@ Next battle_naviAI_tick_8013DA0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8013E58 ── */
+/* sub_8013E58: dispatch one of the "navi update" handlers in the table at
+ * off_8013E9C, chosen from the navi stats byte 0x1A read via the battle
+ * object's alliance link.
+ *
+ * Byte values 9 and 10 are special-cased: they don't index the table
+ * directly but pick a random entry from the first (1..4) or second (5..8)
+ * half of it, with r4 = 0 / 4 telling the handler which half (side) was
+ * chosen. Any other value indexes the table as-is with r4 = 4.
+ *
+ * The callee is invoked with the thumb handler pointer in r0 and the table
+ * address in r1 (as `mov lr, pc; bx r0` does in the original); it runs with
+ * r4 = 0/4, while the caller's own r4 is preserved across the whole call.
+ * The leading GetBattleEffects/GetBattleMode checks both fall through to
+ * the same place — GetBattleMode is only consulted when bit 3 of the
+ * effects flags is clear, and neither result is used. */
+Next sub_8013E58(void) {
+    u32 savedR4 = R4;
+
+    GUEST_CALL(GetBattleEffects);
+    if ((R0 & 8) == 0) {
+        GUEST_CALL(GetBattleMode);
+    }
+
+    R1 = 0x1A;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    u32 stat = R0;
+
+    u32 index;
+    if (stat == 9 || stat == 10) {
+        u32 base = (stat == 9) ? 0 : 4;
+        R4 = base;
+        GUEST_CALL(GetRNG);
+        index = (R0 & 3) + base + 1;
+    } else {
+        R4 = 4;
+        index = stat;
+    }
+
+    /* Fetch the handler pointer from the dispatch table; the callee finds
+     * it in r0, the table base in r1. */
+    R1 = A_off_8013E9C;
+    R0 = LD32(A_off_8013E9C + index * 4);
+
+    switch (index) {
+    case 0: GUEST_CALL(nullsub_45);   break;
+    case 1: GUEST_CALL(sub_8013EC2); break;
+    case 2: GUEST_CALL(sub_8013ECC); break;
+    case 3: GUEST_CALL(sub_8013ED6); break;
+    case 4: GUEST_CALL(sub_8013EE6); break;
+    case 5: GUEST_CALL(sub_8013EF0); break;
+    case 6: GUEST_CALL(sub_8013EFA); break;
+    case 7: GUEST_CALL(sub_8013F04); break;
+    case 8: GUEST_CALL(sub_8013F14); break;
+    }
+
+    R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_45 ── */
 /* nullsub_45: does nothing; presumably a stub for a removed feature call. */
 Next nullsub_45(void) {

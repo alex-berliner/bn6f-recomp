@@ -2252,6 +2252,37 @@ Next sub_8031122(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80311B6 ── */
+/* sub_80311B6(r0 = object with position fields):
+ * Compute how far the object moved since its last recorded position
+ * ([+0]-[+0xC] horizontally, [+4]-[+0x10] vertically). If it moved on both
+ * axes at once, the delta is discarded (snapped to zero); otherwise it is
+ * kept. The delta is written to the camera/scroll state at dword_200F3E0
+ * (+0x18/+0x1C), then sprite_worldToScreenPos_80310EC converts the state's
+ * world position into screen coordinates. Returns whatever that callee
+ * returns in r0 (r6 is left pointing at the object for the callee). */
+Next sub_80311B6(void) {
+    u32 obj = R0;
+    u32 state = A_dword_200F3E0;
+
+    u32 dx = LD32(obj) - LD32(obj + 0xC);
+    u32 dy = LD32(obj + 4) - LD32(obj + 0x10);
+
+    if (dx != 0 && dy != 0) {
+        /* diagonal movement: drop the delta entirely */
+        dx = 0;
+        dy = 0;
+    }
+
+    ST32(state + 0x18, dx);
+    ST32(state + 0x1C, dy);
+
+    R0 = state;
+    R6 = obj;
+    GUEST_CALL(sprite_worldToScreenPos_80310EC);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80311F4 ── */
 /* register form: calls sub_8031122 with current R0,R1,R2; no typed C interface yet */
 static void call_8031122(void) {
