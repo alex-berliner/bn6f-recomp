@@ -1,0 +1,80 @@
+name: object_freeCollisionData
+address: '0x080198CE'
+kind: function
+status: confirmed
+summary: Disables a collision data slot and clears its index bit in the engine-wide active-collision bitfield (NULL-safe).
+interface: void object_freeCollisionData(struct CollisionData *r0); // r0 = collision data slot (NULL allowed);
+  clobbers r1, r2, r3 and N/Z flags
+details: "Guards against a NULL r0 and returns immediately. Otherwise:\n  - Writes 0 to r0->oCollisionData_Enabled\
+  \ (byte), marking the slot inactive.\n  - Reads a per-slot mask bit from r0->oCollisionData_CollisionIndexBit\
+  \ (word).\n  - ANDs the global eActiveCollisionDataBitfield with the bitwise-NOT of that mask\n    and stores\
+  \ the result back, releasing the slot's occupancy bit.\nTrailing the function are large static data tables (PanelOffsetListsPointerTable\
+  \ and\nadjacency/mask tables like byte_8019C7C) used elsewhere for collision panel setup;\nobject_freeCollisionData\
+  \ itself only touches the two fields above and the single\nglobal at off_80198E4.\n\nRegister form, old prompt;\
+  \ queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205824);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801728E.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 14' --file inbox_farm_old_14.c
+    object_freeCollisionData
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_freeCollisionData
+
+    ./wf verify --function object_freeCollisionData --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 181 out
+    of domain (verify run convert-20261011-205824-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_freeCollisionData
+
+    ./wf verify --function object_freeCollisionData --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 87 out of domain (verify run convert-20261011-205824-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_freeCollisionData
+
+    ./wf verify --function object_freeCollisionData --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205824-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080198ce ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801728E.c
+  where: recomp b59b7bb
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm00_2_801728E.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Is oCollisionData_Enabled a single byte flag or one of a small array per slot?
+- What population/use semantics drive eActiveCollisionDataBitfield (cap, reuse, etc.)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205824
+- recomp b59b7bb

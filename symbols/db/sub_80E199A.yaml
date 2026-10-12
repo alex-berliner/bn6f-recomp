@@ -1,0 +1,78 @@
+name: sub_80E199A
+address: '0x080E199A'
+kind: function
+status: confirmed
+summary: Converts an attack-bait slot index to a byte offset (3 bytes per entry) in the bait table.
+interface: u32 sub_80E199A(u32 slot /* r0 */) -> u32 offset /* r0 */; clobbers r1; sets NZ from result
+details: 'The slot index is masked with 0x87FF (the only stored constant in the function). The masked value is
+
+  LSL #17; the bit shifted out into C is bit 15 of the source. Based on that bit (BCC test), the shifted
+
+  value is either LSR #16 (when bit 15 set) or LSR #17 (when clear), then multiplied by 3 via MUL r0,r1
+
+  with r1=3. Net effect: for slots < 0x8000 the offset is slot*3, and for slots >= 0x8000 (after the mask
+
+  meaning the upper bit is still 0 since mask is 0x87FF) the offset is (slot << 1) * 3, effectively
+
+  doubling the stride for high half — consistent with a two-row bait table layout. Located right after
+
+  off_80E19B0 (pointer to off_802CD5C) and off_80E19B4 (pointer to byte_203C960), the surrounding bait
+
+  table metadata. MUL clobbers NZ from the low 32 bits of the product and does not touch C from the
+
+  preceding LSR.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205824);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 14' --file inbox_farm_old_14.c
+    sub_80E199A
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E199A
+
+    ./wf verify --function sub_80E199A --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-205824-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E199A
+
+    ./wf verify --function sub_80E199A --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-205824-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E199A
+
+    ./wf verify --function sub_80E199A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205824-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080e199a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp b59b7bb
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- story9
+open_questions:
+- Exact structure of the bait table referenced via off_80E19B0 / off_80E19B4
+- Which bit of the slot index truly maps to the doubled stride (the code's branching on bit 15 appears vestigial
+  given the 0x87FF mask, suggesting it may be reused logic from an unmasked variant)
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205824
+- recomp b59b7bb

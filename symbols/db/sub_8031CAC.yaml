@@ -1,0 +1,71 @@
+name: sub_8031CAC
+address: '0x08031CAC'
+kind: function
+status: confirmed
+summary: Computes the target's relative position, then runs a fixed-point half-plane (cross-area) test against a
+  hard-coded test point/normal, and finally calls sub_8031B7C.
+interface: void sub_8031CAC(void);  // clobbers r2,r3,r4,r6,r7; touches flags N,Z,C,V
+details: 'Thin wrapper that drives a single battle collision/query step: (1) battle_calcRelPosToTarget_803172E fills
+  in the relative-position pair from the actor in r0 toward the current battle target. (3) It then stages constants
+  for math_pointCrossHalfPlaneTest_8031594: r2 = 0 (unused), r4 = 0xE, r3 = 0x10, r5 = 0xE. These four small constants
+  act as a hard-coded point/normal pair for the cross product half-plane test (point = 0xE, 0x10; normal = 0xE with
+  r2 as the implicit zero of the 2D cross). (4) sub_8031B7C is then invoked to act on the result. Because the test
+  inputs are baked in, this routine is a specialized "is the target within this fixed cross/area relative to me"
+  probe used by the battle subsystem rather than a general utility.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205824);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 14' --file inbox_farm_old_14.c
+    sub_8031CAC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8031CAC
+
+    ./wf verify --function sub_8031CAC --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 282 out
+    of domain (verify run convert-20261011-205824-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8031CAC
+
+    ./wf verify --function sub_8031CAC --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 77 out of domain (verify run convert-20261011-205824-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8031CAC
+
+    ./wf verify --function sub_8031CAC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205824-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: fuzz, maps, menus2, story3.'
+  reproduce: grep -l '^08031cac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp b59b7bb
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- fuzz
+- maps
+- menus2
+- story3
+open_questions:
+- What unit / coordinate system is used by the 0xE/0x10 constants (pixel offset, tile offset, or something else)?
+- What does sub_8031B7C do with the half-plane result (does it set a flag, branch, or store a value)?
+- Is the constant 0xE/0x10 derived from the target's size or a per-panel value, or is it truly fixed?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205824
+- recomp b59b7bb

@@ -1,0 +1,86 @@
+name: GetVerActorTyAndAIIdx_80182B4
+address: '0x080182B4'
+kind: function
+status: confirmed
+summary: Looks up the battle enemy's per-index {game version, actor type, AI index} record
+interface: u16 enemy_idx (r0) -> const u8* record (r0); clobbers r1, NZC; preserves nothing
+details: "Returns a pointer into the 3-byte-per-entry table at byte_80182C4, indexed by\n`enemy_idx * 3`. Each entry\
+  \ is `{ version, ActorType, ai_index }`.\nThe table covers the catalogue of battle opponents by enum index:\n\
+  \  * 0x00..0xFF: viruses (Mettaur family 0x00..0x7E, Gunner family 0x85..0x9C,\n    and a large tail of 0x01 placeholder\
+  \ entries 0xBB..0xFF).\n  * 0x100..0x19F: Navi opponents (boss Navis) — entries 0x191..0x19F\n    decay to `{0x00,\
+  \ ACTOR_TYPE_NAVI, 0x00}` and the lone anomaly at 0x112 is\n    encoded as `{0x05, 0x00, 0x03}`.\n  * 0x1A0..0x1C3:\
+  \ player-side actors (MegaMan 0x1A0 and the roster 0x1A1..).\nACTOR_TYPE_VIRUS / ACTOR_TYPE_NAVI / ACTOR_TYPE_PLAYER\
+  \ / ActorType are the\nactor class enum. The function is a pure table lookup (mul r1,r0,#3 +\nbase pointer add),\
+  \ with no bounds check; callers are expected to pass a\nvalid enemy enum value.\n\nRegister form, old prompt;\
+  \ queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205824);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801728E.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 14' --file inbox_farm_old_14.c
+    GetVerActorTyAndAIIdx_80182B4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function GetVerActorTyAndAIIdx_80182B4
+
+    ./wf verify --function GetVerActorTyAndAIIdx_80182B4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-205824-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function GetVerActorTyAndAIIdx_80182B4
+
+    ./wf verify --function GetVerActorTyAndAIIdx_80182B4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-205824-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function GetVerActorTyAndAIIdx_80182B4
+
+    ./wf verify --function GetVerActorTyAndAIIdx_80182B4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205824-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080182b4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801728E.c
+  where: recomp b59b7bb
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm00_2_801728E.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Whether ACTOR_TYPE_VIRUS==0 / ACTOR_TYPE_NAVI==1 / ACTOR_TYPE_PLAYER==2 in this enum (relative to ACTOR_TYPE_NAVI
+  / ACTOR_TYPE_PLAYER seen above).
+- Why the entry at "0x112" breaks the ACTOR_TYPE_NAVI pattern (`0x05, 0x00, 0x03`) — likely a boss variant or data
+  error worth flagging if used.
+- Whether the trailing 0x01 placeholders 0xBB..0xFF and 0x191..0x19F are truly dead (unused indices) or filler that
+  callers must avoid.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205824
+- recomp b59b7bb

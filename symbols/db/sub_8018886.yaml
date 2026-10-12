@@ -1,0 +1,88 @@
+name: sub_8018886
+address: '0x08018886'
+kind: function
+status: hypothesis
+summary: Returns a pointer to a 0x44-byte sprite/animation record from one of three tables, optionally remapping
+  the sub-index through a 16-entry LUT when the table index is 0.
+interface: const void *u8(u16 tableIdx, u16 subIdx); // r0=tableIdx, r1=subIdx -> r0=ptr; clobbers r1,r2,r3; flags
+  NZCV clobbered; preserves nothing
+details: 'Entry point at 0x8018886. If r0==0, r1 is replaced by an 8-bit load at byte_80188B0 + r1 (a 16-byte LUT
+  that maps 0..15 to values in {0,1,2}, e.g. indices 0,13,14,15 -> 0; 1..5 -> 1; 6..10,12 -> 2). The (possibly remapped)
+  r1 is then used as a record index and r0 is used to pick a base pointer from the 3-entry pointer table at off_80188A0
+  -> {byte_80188C0, byte_801898C, byte_80191C8}. The final pointer returned is base + r1 * 0x44. Returns via mov
+  pc,lr; r0 holds the result, r3=0x44 leftover. Function preserves nothing (r1,r2 clobbered).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205824);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801728E.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 14' --file inbox_farm_old_14.c
+    sub_8018886
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8018886
+
+    ./wf verify --function sub_8018886 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 184 out
+    of domain (verify run convert-20261011-205824-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8018886
+
+    ./wf verify --function sub_8018886 --snapshots build-snapshots'
+  result: 46 compared, 0 differed, 50 out of domain (verify run convert-20261011-205824-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8018886
+
+    ./wf verify --function sub_8018886 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205824-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08018886 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801728E.c
+  where: recomp b59b7bb
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm00_2_801728E.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What subsystem owns the three tables at "byte_80188C0:0x080188C0", "byte_801898C:0x0801898C", "byte_80191C8:0x080191C8"
+  — these look like packed 68-byte sprite/animation descriptors (note byte_80188C0 spans into .word literals, suggesting
+  it's a heterogeneous blob, not pure 0x44-stride records).
+- What does the 16-entry remap at "byte_80188B0:0x080188B0" correspond to (chip IDs? element? form?).
+- Why is the remap only applied when tableIdx==0 — does the other two tables already encode the mapping?
+- The record stride is hardcoded as 0x44 but the per-table payload in byte_80188C0 contains mixed bytes and words;
+  is the 0x44 stride actually honored by callers, or is this an obfuscated/incorrectly-recovered standalone routine?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205824
+- recomp b59b7bb

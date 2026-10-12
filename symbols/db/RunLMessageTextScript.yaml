@@ -1,0 +1,82 @@
+name: RunLMessageTextScript
+address: '0x08099218'
+kind: function
+status: confirmed
+summary: Plays a chatbox line spoken by the player's PET Navi (humor joke or poem) when valid, otherwise falls back
+  to the current map's train/text script.
+interface: void chatbox_runPETNaviScript_08099218(void); // uses R10 (toolkit ptr), preserves r4-r7, returns NZ
+  and 0 in r0
+details: "Called when the player talks to their PET Navi. Branches via GetCurPETNavi() and, if no PET Navi is set,\
+  \ runs the default map text script (chatbox_uncompMapTextArchives_803FD3C then chatbox_runTrainScript indexed\
+  \ by oGameState_Unk_15).\n\nWhen a PET Navi exists and either the map group is in the Internet range (>= INTERNET_MAP_GROUP_START)\
+  \ or the offline gate passes (none of EVENT_COPYBOT_ACTIVE / EVENT_PET_NAVI_ACTIVE / EVENT_172A in flag bank 0x17\
+  \ are blocking), it consults NaviStats:\n  - Humor == 1 -> decompresses CompText8738B24 and runs chatbox_runScript\
+  \ with index 0 (Megaman jokes).\n  - Poem == 1 -> decompresses CompText873A528 and runs chatbox_runScript with\
+  \ index 0 (Navi poems).\n  - Otherwise -> default map/train script.\n\nTouches: GameState via toolkit (R10 + oToolkit_GameStatePtr)\
+  \ -> oGameState_MapGroup, oGameState_Unk_15; PET Navi stats via GetNaviStatsByte at offsets oNaviStats_Humor /\
+  \ oNaviStats_Poem. The output \"nz\" flag with r0=0 is the \"I handled it\" return contract for the chatbox script\
+  \ dispatcher.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C\
+  \ allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205824);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 14' --file inbox_farm_old_14.c
+    RunLMessageTextScript
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function RunLMessageTextScript
+
+    ./wf verify --function RunLMessageTextScript --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-205824-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function RunLMessageTextScript
+
+    ./wf verify --function RunLMessageTextScript --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-205824-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function RunLMessageTextScript
+
+    ./wf verify --function RunLMessageTextScript --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205824-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, chips, fuzz, maps, story1, story2, story3, story4, story5, story6, story8.'
+  reproduce: grep -l '^08099218 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp b59b7bb
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm28_0.c
+coverage:
+- battles2
+- chips
+- fuzz
+- maps
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+open_questions:
+- Whether oGameState_Unk_15 is really a "train station text script" selector or some more general chatbox index.
+- What unsetting EVENT_PET_NAVI_ACTIVE / EVENT_COPYBOT_ACTIVE / EVENT_172A actually represents in offline worlds
+  (likely progression/availability flags of the PET Navi chatter feature).
+- Why script index 0 specifically (one-line joke/poem) rather than a randomized picker.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205824
+- recomp b59b7bb
