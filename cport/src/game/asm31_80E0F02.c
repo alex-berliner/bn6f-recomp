@@ -94,6 +94,201 @@ Next battle_setExtraAnimState_80E0F2E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t4_0x10_80E17E8 ── */
+/* t4_0x10_80E17E8: state dispatcher for the time-freeze battle object.
+ *
+ * r5 points to the battle object. Its CurState byte is used directly as a
+ * byte offset into the handler table at off_80E17FC, so the three known
+ * states 0/4/8 select object_timefreezeBegin / sub_80E1808 /
+ * object_timefreezeEnd. The chosen handler runs with the caller's registers
+ * intact except r0 = state byte and r1 = the loaded table entry; when it
+ * returns, the original's `mov lr,pc / bx r1 / pop {pc}` idiom sends control
+ * straight back to this routine's own caller, letting the handler's r5 and
+ * r8-r12 flow through as the outputs. */
+
+/* register form: the handler target is read from a table at run time and
+ * reached through its code address, which no generated wrapper covers; r0
+ * and r1 must hold the state byte and the table entry exactly as the
+ * original leaves them before branching. */
+static void run_timefreeze_state_handler(u32 objectPtr) {
+    u32 state = LD8(objectPtr + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80E17FC + state);
+
+    R0 = state;    /* the original calls the handler with the state byte in r0 */
+    R1 = handler;  /* ...and the loaded table entry in r1 */
+    GUEST_CALL_ADDR(handler);
+}
+
+Next t4_0x10_80E17E8(void) {
+    run_timefreeze_state_handler(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E1808 ── */
+/* Battle-object action dispatch. r5 points at the object; its CurAction byte
+ * indexes a table of five handlers (dim screen, two generic object routines,
+ * the dim-battle handler, undim screen). The chosen handler runs with the
+ * object's live register state -- r0 = CurAction, r1 = its own address,
+ * r2-r7/r10 as the caller left them -- and whatever it leaves in r5 and
+ * r8-r12 is what our caller receives, so this whole function is one indirect
+ * tail call. */
+
+/* register form: the handler is reached by address through the object's
+ * action table, so no call_NAME wrapper covers it; it is invoked with the
+ * guest register file as the original leaves it, and its register results
+ * (r5, r8-r12) must pass through to our caller untouched. */
+static u32 run_object_action_handler(u32 handler, u32 action,
+                                     u32 r2, u32 r3, u32 r4, u32 r5,
+                                     u32 r6, u32 r7, u32 r10) {
+    R0 = action;        /* the original calls with r0 = CurAction */
+    R1 = handler;       /* ...and r1 still holding the table entry */
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R10 = r10;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* Read the object's current action, pick the handler from the dispatch
+ * table, and run it. */
+static void dispatch_object_action(u32 r2, u32 r3, u32 r4, u32 object,
+                                   u32 r6, u32 r7, u32 r10) {
+    u32 action = LD8(object + oBattleObject_CurAction);
+    u32 handler = LD32(A_off_80E181C + action);
+    run_object_action_handler(handler, action, r2, r3, r4, object, r6, r7, r10);
+}
+
+Next sub_80E1808(void) {
+    dispatch_object_action(R2, R3, R4, R5, R6, R7, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E1830 ── */
+/* Battle-object phase dispatcher.
+ *
+ * r5 points to a battle object whose CurPhase byte selects one of four
+ * per-phase handlers from the jump table at off_80E1844. The handler is
+ * invoked with r0 = phase and r1 = its own entry address (the table entry
+ * is still in r1 when the callee starts), with r2-r7 passing through
+ * unchanged, and returns straight back to sub_80E1830's caller. The
+ * handler's results are the updated object pointer in r5 and r8-r12;
+ * r4, r6 and r7 are preserved. */
+
+/* register form: the handler's address is read from the object's jump table
+ * at run time, so the call goes through a computed code address (the
+ * original's mov lr, pc; bx r1) that no generated wrapper covers. */
+static void call_phase_handler_sub_80E1830(u32 phase, u32 handler) {
+    R0 = phase;      /* handlers receive the phase index in r0 */
+    R1 = handler;    /* ... and their own entry address in r1 */
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Run the phase handler selected by the object's CurPhase byte. */
+static void run_object_phase_handler(u32 object) {
+    u32 phase = LD8(object + oBattleObject_CurPhase);
+    u32 handler = LD32(A_off_80E1844 + phase);
+    call_phase_handler_sub_80E1830(phase, handler);
+}
+
+Next sub_80E1830(void) {
+    run_object_phase_handler(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── timefreezeObjectRunFunction_80E1880 ── */
+/*
+ * Time-freeze object phase runner (0x080E1880).
+ *
+ * Runs one step of a frozen battle object's phase logic. On the first entry
+ * (PhaseInitialized clear) the object's per-type handler is fetched from the
+ * jump table at off_802CD5C (indexed by Unk_19) and invoked with the object's
+ * panel position / element / params / damage counter in r0-r2, r4, r6, the
+ * related object pointer in r5 and the object's state block (obj+0x18) in r7.
+ * If the handler leaves the object's Unk_30 phase value inside 0xDD..0x118,
+ * the object's key fields are snapshotted into the global buffer at
+ * 0x203C960. The phase is then marked initialized (4), and unless animation
+ * is suppressed the object's current phase advances to 8.
+ */
+
+#define TIMEFREEZE_SNAPSHOT_BASE   A_byte_203C960
+#define TIMEFREEZE_STATE_BLOCK     0x18     /* obj + 0x18 passed to the handler in r7 */
+#define PHASE_INIT_DONE            4
+#define PHASE_ADVANCE              8
+#define SNAPSHOT_PHASE_MIN         0xDD     /* Unk_30 in [0xDD, 0xDD+0x3B] triggers the snapshot */
+#define SNAPSHOT_PHASE_RANGE       0x3B
+
+/* register form: the per-type handler is reached through a computed jump-table
+ * address (mov lr,pc / bx r3), so no generated wrapper exists for it. Its
+ * arguments arrive in guest registers R0-R7 and its results are whatever it
+ * leaves in R5 and R8-R12, none of which can be expressed as typed C
+ * parameters or a return value; the registers the original pushes/pops around
+ * the call are saved and restored here instead. */
+static void call_timefreeze_handler(u32 obj) {
+    u32 savedR4 = R4;
+    u32 savedR6 = R6;
+    u32 savedR7 = R7;
+
+    u32 handler = LD32(A_off_802CD5C
+                       + ((u32)LD8(obj + oBattleObject_Unk_19) << 2));
+
+    R0 = LD8(obj + oBattleObject_PanelX);
+    R1 = LD8(obj + oBattleObject_PanelY);
+    R2 = LD8(obj + oBattleObject_Element);
+    R3 = handler;
+    R4 = LD32(obj + oBattleObject_Params);
+    R5 = LD32(obj + oBattleObject_RelatedObject1Ptr);
+    R6 = LD32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler)
+       + LD16(obj + oBattleObject_Unk_32);
+    R7 = obj + TIMEFREEZE_STATE_BLOCK;
+
+    GUEST_CALL_ADDR(handler);
+
+    /* The original's pop {r5} / pop {r4,r6,r7,...}: the object pointer and
+     * the caller's saved registers go back to their incoming values. */
+    R4 = savedR4;
+    R5 = obj;
+    R6 = savedR6;
+    R7 = savedR7;
+}
+
+/* Copy the object's current state into the global time-freeze snapshot. */
+static void snapshot_object_state(u32 obj) {
+    ST8(TIMEFREEZE_SNAPSHOT_BASE,       LD8(obj + oBattleObject_Unk_19));
+    ST8(A_byte_203C961,                 LD8(obj + oBattleObject_Element));
+    ST16(A_word_203C962,                LD16(obj + oBattleObject_Unk_32));
+    ST32(A_dword_203C964,               LD32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler));
+    ST32(A_byte_203C968,                LD32(obj + oBattleObject_Params));
+}
+
+static void timefreeze_run_phase(u32 obj) {
+    if (LD8(obj + oBattleObject_PhaseInitialized) == 0) {
+        call_timefreeze_handler(obj);
+
+        /* Snapshot the object if the handler left it in phase 0xDD..0x118. */
+        u32 phase = LD16(obj + oBattleObject_Unk_30);
+        if ((u32)(phase - SNAPSHOT_PHASE_MIN) <= SNAPSHOT_PHASE_RANGE)
+            snapshot_object_state(obj);
+
+        ST8(obj + oBattleObject_PhaseInitialized, PHASE_INIT_DONE);
+    }
+
+    /* Unless animation is suppressed, advance to the next phase. */
+    if (LD8(obj + oBattleObject_PreventAnim) == 0)
+        ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, PHASE_ADVANCE);
+}
+
+/* Thin adapter: r5 is the object; r8-r12 are left behind by the handler
+ * called inside the typed function (or untouched when it is not called),
+ * and r5 is restored to its incoming value there, so nothing to write. */
+Next timefreezeObjectRunFunction_80E1880(void) {
+    timefreeze_run_phase(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80E18DA ── */
 /* sub_80E18DA: tick a battle object's vanish/teleport phase.
  *

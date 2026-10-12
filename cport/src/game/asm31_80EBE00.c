@@ -394,6 +394,39 @@ Next sub_80EC350(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80EC7A6 ── */
+/* AI attack dispatch, sub_80EC7A6.
+ *
+ * r7 points at the AI's attack-variable block; the byte at
+ * oAIAttackVars_Unk_00 selects an entry of the two-word jump table at
+ * off_80EC7B8. The original does `mov lr, pc; bx r1` into the selected
+ * handler, so the whole function behaves as a tail call: the registers the
+ * handler leaves behind (r1, r5, r8-r12) are this function's outputs, and
+ * they come back from the dispatched call itself. The push {lr} / pop {pc}
+ * pair only saves and restores the return address, which the port's calling
+ * convention handles around the call.
+ */
+
+/* register form: performs the original's `mov lr, pc; bx r1` call through the
+ * jump table. The target is loaded from a table in guest memory, so no
+ * generated wrapper covers it, and the handler's register outputs have to be
+ * left in the guest registers for this function's caller. */
+static void run_ai_attack_handler(u32 ai_vars) {
+    u32 selector = LD8(ai_vars + oAIAttackVars_Unk_00);
+    u32 target = LD32(A_off_80EC7B8 + selector);
+
+    R0 = selector;    /* the selector byte, as the original passes it on */
+    R1 = target;      /* the original still holds the table entry in r1 */
+
+    GUEST_CALL_ADDR(target);
+}
+
+/* inputs: r5 r6 r7 r10 lr -> outputs: r1 r5 r8 r9 r10 r11 r12 */
+Next sub_80EC7A6(void) {
+    run_ai_attack_handler(R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80EC7C0 ── */
 /* sub_80EC7C0: AI attack controller — Thunder/Lightning-style attack that
  * spawns a projectile on its second tick and finishes after four ticks.
@@ -577,6 +610,39 @@ Next ai_attackTickDelayTimer_80EC90E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80EC960 ── */
+/* AI attack state-machine dispatcher (sub_80EC960).
+ *
+ * Reads the attack state byte from the AI attack vars block, uses it as a
+ * raw byte offset into the two-entry jump table at off_80EC974, and calls
+ * the handler it finds there with r0 = state byte.  Everything the caller
+ * cares about (r1, r5, r8..r12) is simply whatever the handler leaves
+ * behind, so the call flows straight through. */
+
+/* register form: the handler target is computed at runtime by indexing the
+ * jump table with the state byte, so no compile-time function name can be
+ * used and no generated wrapper covers this call site. */
+static void call_attack_handler_sub_80EC960(u32 handler, u32 state) {
+    R0 = state;         /* handler argument: current attack state */
+    R1 = handler;       /* the original enters the callee with r1 = table word */
+    GUEST_CALL_ADDR(handler);
+}
+
+/* One step of the AI attack: pick and run the handler for the state byte.
+ * Note the table is indexed by the byte itself, not scaled by 4. */
+static void run_ai_attack_step_sub_80EC960(u32 attack_vars) {
+    u32 state   = LD8(attack_vars + oAIAttackVars_Unk_00);
+    u32 handler = LD32(A_off_80EC974 + state);
+    call_attack_handler_sub_80EC960(handler, state);
+}
+
+/* sub_80EC960(r7 = AI attack vars block)
+ * inputs: r2 r5 r6 r7 r10 lr; outputs: r1 r5 r8 r9 r10 r11 r12 (from callee) */
+Next sub_80EC960(void) {
+    run_ai_attack_step_sub_80EC960(R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── aiAttack_tickTimerAndExitWhenDone_80ECA0C ── */
 /* aiAttack_tickTimerAndExitWhenDone_80ECA0C: tick down the AI attack timer in the object's AIAttackVars.
  * When the counter (oAIAttackVars_Unk_10) drops below zero, leave the attack
@@ -629,6 +695,39 @@ Next sub_80ECAA4(void) {
     ST32(R1 + oAIData_Unk_68, 0);
     GUEST_CALL(object_exitAttackState);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80ECF2E ── */
+/* sub_80ECF2E: AI attack-state dispatcher.
+ *
+ * Reads the current attack-state byte from the AI attack variable block
+ * (r7) and calls the matching handler through the table at off_80ECF40:
+ *   state 0 -> sub_80ECF48
+ *   state 1 -> sub_80ECF8E
+ * The state byte is passed in r0, the handler's own table address in r1
+ * (exactly as the original leaves them before `bx r1`).  Everything the
+ * handler leaves behind — r1, r5, r8-r12 — is this function's result;
+ * r0/r2/r3/r4/r6/r7/lr are scratch. */
+
+/* register form: indirect call through the AI attack-state jump table
+ * (mov lr, pc; bx r1 with the table entry); no wrapper covers it */
+static u32 call_attack_handler_sub_80ECF2E(u32 state, u32 handler) {
+    R0 = state;
+    R1 = handler;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* Look up the handler for the current attack state and call it. */
+static void ai_attack_dispatch(u32 vars) {
+    u32 state = LD8(vars + oAIAttackVars_Unk_00);
+    u32 handler = LD32(A_off_80ECF40 + state);
+    call_attack_handler_sub_80ECF2E(state, handler);
+}
+
+Next sub_80ECF2E(void) {
+    ai_attack_dispatch(R7);
     RETURN_TO_CALLER();
 }
 
@@ -1018,6 +1117,92 @@ Next sub_80FD3CC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FD4C8 ── */
+/* Enemy AI attack dispatcher. The AI state block holds an attack index in
+ * its oAIAttackVars_Unk_00 byte; that index selects an entry of the jump
+ * table at off_80FD4DC and this function calls the matching attack routine.
+ * Everything the caller sees afterwards (r1, r5, r8-r12) is simply whatever
+ * the dispatched handler left behind; r7 survives the call, matching the
+ * original's push {r7} / pop {r7} pair. */
+
+/* Call the selected attack routine by address.
+ * register form: the dispatch goes through a jump table (ldr r1,[table,off];
+ * bx r1), so no generated wrapper covers it. The callee must see exactly the
+ * registers the original gives it: the attack index in r0 and the raw table
+ * entry (the handler's own address) still in r1 at the moment of the call. */
+static u32 call_attack_handler_sub_80FD4C8(u32 attack_index, u32 table_entry) {
+    R0 = attack_index;
+    R1 = table_entry;
+    GUEST_CALL_ADDR(table_entry);
+    return R0;
+}
+
+/* Read the attack index from the AI state block and run the handler it
+ * selects. All results flow through from the handler untouched. */
+static void run_ai_attack(u32 state) {
+    u32 attack_index = LD8(state + oAIAttackVars_Unk_00);
+    u32 table_entry = LD32(A_off_80FD4DC + attack_index);
+    call_attack_handler_sub_80FD4C8(attack_index, table_entry);
+}
+
+/* sub_80FD4C8(r7 = AI attack state block).
+ * outputs r1 r5 r8 r9 r10 r11 r12 come from the dispatched handler and are
+ * already in the registers when the handler returns, so the adapter writes
+ * none of them. */
+Next sub_80FD4C8(void) {
+    run_ai_attack(R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD5AE ── */
+/* AI attack command dispatcher.
+ *
+ * r7 points to an AI attack variable block; the byte at
+ * oAIAttackVars_Unk_00 is a raw byte offset into the handler table at
+ * off_80FD5C0. The selected handler is entered with the dispatcher's live
+ * register state (r0 = command byte, r1 = handler address, the caller's
+ * r3/r5/r6/r7/r10 untouched, SP shifted down by the push {r7,lr}) and
+ * returns straight through the dispatcher's pop {r7,pc} to the dispatcher's
+ * caller, so this behaves as a tail call that additionally restores r7.
+ * Everything the caller sees afterwards (r1/r5/r8-r12, flags) is whatever
+ * the handler left in the guest register file. */
+
+/* register form: the handler is reached through a jump-table address and
+ * must see the dispatcher's exact register state (r0/r1 set here, r3/r5/r6/
+ * r7/r10 passed through, SP lowered by the dispatcher's push {r7,lr}); its
+ * results stay in the guest register file (r1/r5/r8-r12), which typed C
+ * values cannot carry out of the call. */
+static void call_attack_handler_sub_80FD5AE(u32 handler, u32 cmd, u32 r3, u32 r5, u32 r6,
+                                u32 r7, u32 r10, u32 ret_lr) {
+    SP -= 8;                        /* push {r7,lr} */
+    ST32(SP, r7);
+    ST32(SP + 4, ret_lr);
+    R0 = cmd;                       /* command byte, as at the original bx */
+    R1 = handler;                   /* the original leaves the handler in r1 */
+    R3 = r3;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R10 = r10;
+    GUEST_CALL_ADDR(handler);
+    SP += 8;                        /* pop {r7,pc} */
+    R7 = r7;                        /* ...restores the incoming r7 */
+}
+
+/* Typed body: pick the handler for the command byte and run it. */
+static void dispatch_ai_attack(u32 vars, u32 r3, u32 r5, u32 r6, u32 r10,
+                               u32 ret_lr) {
+    u32 cmd = LD8(vars + oAIAttackVars_Unk_00);
+    /* The table is indexed by the raw byte value, not by entry number. */
+    u32 handler = LD32(A_off_80FD5C0 + cmd);
+    call_attack_handler_sub_80FD5AE(handler, cmd, r3, r5, r6, vars, r10, ret_lr);
+}
+
+Next sub_80FD5AE(void) {
+    dispatch_ai_attack(R7, R3, R5, R6, R10, LR);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FD6F4 ── */
 /* sub_80FD6F4(r5 = battle object ptr, r7 = attack vars ptr):
  * AI attack behaviour: on first call, snapshot a timer from oAIAttackVars_Unk_18 and start
@@ -1039,6 +1224,53 @@ Next sub_80FD6F4(void) {
             GUEST_CALL(object_exitAttackState);
         }
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD718 ── */
+/* sub_80FD718 — AI attack-script step dispatcher.
+ *
+ * r7 points to an AIAttackVars block; the byte at oAIAttackVars_Unk_00 holds
+ * the current step, stored as a byte offset into the handler table at
+ * off_80FD72C. The word at that offset is the thumb address of the handler
+ * for this step. The handler is entered with the caller's registers intact
+ * except r0 = step and r1 = its own table entry (the original's
+ * "ldr r1,[r1,r0]; mov lr,pc; bx r1" sequence), and whatever it leaves in
+ * r1/r5/r8-r12 is this function's result. Afterwards r7 is restored to the
+ * block pointer, matching the original's push/pop {r7} around the call. */
+
+/* register form: the handler address comes from the runtime table at
+ * off_80FD72C, so this call has to go through the address (mov lr,pc; bx). */
+static u32 call_attack_handler_sub_80FD718(u32 handler, u32 step, u32 table_entry,
+                               u32 arg_r3, u32 arg_r5, u32 arg_r6, u32 arg_r10)
+{
+    R0 = step;          /* ldrb r0,[r7,#oAIAttackVars_Unk_00] */
+    R1 = table_entry;   /* ldr r1,[r1,r0] */
+    R3 = arg_r3;
+    R5 = arg_r5;
+    R6 = arg_r6;
+    R10 = arg_r10;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+static void dispatch_attack_step(u32 vars, u32 arg_r3, u32 arg_r5,
+                                 u32 arg_r6, u32 arg_r10)
+{
+    u32 saved_vars = vars;                     /* push {r7} */
+    u32 step = LD8(vars + oAIAttackVars_Unk_00);
+    u32 handler = LD32(A_off_80FD72C + step);  /* ldr r1,[r1,r0] */
+
+    call_attack_handler_sub_80FD718(handler, step, handler, arg_r3, arg_r5, arg_r6, arg_r10);
+
+    /* register form: the handler ran on the live guest register file and may
+     * have clobbered r7; the original's pop {r7} puts the block pointer back,
+     * which can only be expressed by writing the guest register itself. */
+    R7 = saved_vars;
+}
+
+Next sub_80FD718(void) {
+    dispatch_attack_step(R7, R3, R5, R6, R10);
     RETURN_TO_CALLER();
 }
 
@@ -2229,6 +2461,46 @@ Next battle_attackTimerTick_8109CBC(void) {
 
     /* Leave the attack state either way. */
     GUEST_CALL(object_exitAttackState);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8109CE6 ── */
+/* AI attack state-machine dispatcher (bn6f asm31.s).
+ *
+ * Reads the AI attack sub-state byte from the AIAttackVars struct pointed to
+ * by r7 and jumps to its handler through the table at off_8109CF8:
+ *   0x00 -> sub_8109D08
+ *   0x04 -> sub_8109D70
+ *   0x08 -> aiAttackVars_countdownSub_8109D98
+ *   0x0c -> ai_attackTickDown_timerEndExit_8109DBA
+ * The handler is entered with r0 = sub-state index and r1 = its own table
+ * entry (mov lr, pc; bx r1), and the results it leaves in r1/r5/r8-r12 are
+ * this routine's outputs, so register state flows straight through to
+ * sub_8109CE6's caller. */
+
+/* register form: the dispatch target comes from the jump table at
+ * off_8109CF8, so this is a mov lr, pc / bx rN call that no generated
+ * wrapper covers. The handler must run on the live register file (r0 =
+ * sub-state index, r1 = its table entry, r5/r6/r7/r10 passed through
+ * untouched) and leaves the outputs r1/r5/r8-r12 in place; those values
+ * cannot be round-tripped through C locals or a result struct. */
+static u32 dispatch_ai_attack_handler(u32 handler, u32 index, u32 tableEntry) {
+    R0 = index;
+    R1 = tableEntry;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* Read the sub-state index from the AI attack vars, look up its handler in
+ * the dispatch table and run it. */
+static u32 run_ai_attack_step_sub_8109CE6(u32 attackVars) {
+    u32 index = LD8(attackVars + oAIAttackVars_Unk_00);
+    u32 handler = LD32(A_off_8109CF8 + index);
+    return dispatch_ai_attack_handler(handler, index, handler);
+}
+
+Next sub_8109CE6(void) {
+    run_ai_attack_step_sub_8109CE6(R7);
     RETURN_TO_CALLER();
 }
 

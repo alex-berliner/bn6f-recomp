@@ -8,6 +8,51 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── start_copyMemory ── */
+/* start_copyMemory copies 'size' bytes (r2) from src (r0) to dst (r1),
+ * one word at a time, walking backwards from the end of the buffers.
+ * Each iteration pre-decrements r2 by 4, copies the word at that offset,
+ * and loops until the subtraction yields zero. The Z/C/V flags the
+ * callers see are those of that final SUBS (r2 was 4, so Z set, C set,
+ * V clear); r2 ends at 0 and r3 holds the last word copied. */
+
+/* Result of the copy: the value r2 held before the final subtraction
+ * (so the adapter can set the flags exactly as that SUBS did), the
+ * final r2, and the last word read into r3. */
+struct start_copyMemory_result {
+    u32 size_before_last_sub;
+    u32 final_r2;
+    u32 last_word;
+};
+
+static struct start_copyMemory_result copy_memory_backwards(u32 src, u32 dst, u32 size) {
+    u32 size_before_last_sub = size;
+    u32 last_word = 0;
+
+    do {
+        size_before_last_sub = size;
+        size -= 4;
+        last_word = LD32(src + size);
+        ST32(dst + size, last_word);
+    } while (size != 0);
+
+    struct start_copyMemory_result result;
+    result.size_before_last_sub = size_before_last_sub;
+    result.final_r2 = size;
+    result.last_word = last_word;
+    return result;
+}
+
+/* inputs: r0 = src, r1 = dst, r2 = size (bytes), lr = return address
+ * outputs: nz c v from the final SUBS, r2 = 0, r3 = last word copied */
+Next start_copyMemory(void) {
+    struct start_copyMemory_result result = copy_memory_backwards(R0, R1, R2);
+    R2 = result.final_r2;
+    R3 = result.last_word;
+    SET_FLAGS_CMP(result.size_before_last_sub, 4);
+    RETURN_TO_CALLER();
+}
+
 /* ── entryRomInit_800023C ── */
 /* register form: calls sub_3005DA0 outside this file, which has no typed C interface yet.
  * The original pops the saved caller-LR into r0 and bx's to it, so the return value

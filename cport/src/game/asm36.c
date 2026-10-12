@@ -62,6 +62,89 @@ Next sub_81322D8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81322E8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sub_803E8F8 has no typed C interface yet */
+static inline u32 call_sub_803E8F8(void) {
+    GUEST_CALL(sub_803E8F8);
+    return R0;
+}
+
+/* Class-method dispatcher.
+ *
+ * sub_803E8F8 looks up the runtime record for the object (its result is the
+ * value the eventual handler receives in r2). The byte at state+0x0E is a
+ * method index; the table at off_8132304 holds one thunk address per index.
+ * Control is transferred to that thunk (mov lr, pc; bx r0), and whatever it
+ * leaves in r2..r12 is what our callers see — this function itself only
+ * sets the call up and lets the guest state flow through.
+ *
+ * Callee entry state (as in the original at the bx):
+ *   r0 = the thunk address just loaded,
+ *   r1 = table base (off_8132304),
+ *   r2 = sub_803E8F8's result,
+ *   r3..r12 = untouched from our caller (sub_803E8F8 preserves r1/r2/r5,
+ *     so r5 still points at the caller's state block).
+ */
+
+/* register form: indirect call through a code address (mov lr, pc; bx r0).
+ * The thunk must be entered with a specific guest register image, which no
+ * typed wrapper can express; the helper builds it and makes the one call. */
+static void call_method_thunk(u32 target, u32 table_base, u32 lookup_result) {
+    R0 = target;
+    R1 = table_base;
+    R2 = lookup_result;
+    GUEST_CALL_ADDR(target);
+}
+
+/* r5 = object state pointer */
+static void run_class_dispatch(u32 state) {
+    u32 record = call_sub_803E8F8();
+    u32 index  = LD8(state + 0xE);
+    u32 thunk  = LD32(A_off_8132304 + (index << 2));
+    call_method_thunk(thunk, A_off_8132304, record);
+}
+
+Next sub_81322E8(void) {
+    run_class_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8132310 ── */
+/* Menu/object state dispatcher: the byte at object+0x12 selects one of several
+ * handlers from the jump table at jt_8132324. The chosen handler is called and
+ * its register results (r2-r12) flow straight through to this routine's own
+ * caller; r0, r1 and the flags are scratch. */
+
+/* register form: one-shot helper for a call through a code address (the
+ * original's "mov lr, pc; bx rN"). It loads R0/R1 with the handler address and
+ * jump-table base exactly as the original leaves them, and replicates the
+ * original's push {lr} so the callee runs with the same guest SP and the same
+ * leftover stack word is left behind in memory. */
+static void call_menu_handler(u32 handler, u32 tableBase, u32 returnAddress) {
+    R0 = handler;
+    R1 = tableBase;
+    SP -= 4;
+    ST32(SP, returnAddress);
+    GUEST_CALL_ADDR(handler);
+    SP += 4;
+}
+
+/* Read the object's state byte, pick the matching handler from the jump table
+ * and call it. r2 and r5 reach the handler untouched through the guest
+ * register file, and whatever the handler leaves in r2-r12 is the result. */
+static void dispatch_menu_handler(u32 objectPtr, u32 returnAddress) {
+    u32 state = LD8(objectPtr + 0x12);
+    u32 handler = LD32(A_jt_8132324 + (state << 2));
+    call_menu_handler(handler, A_jt_8132324, returnAddress);
+}
+
+/* sub_8132310(r2 = argument, r5 = object, lr = caller return) -> r2..r12 */
+Next sub_8132310(void) {
+    dispatch_menu_handler(R5, LR);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8132330 ── */
 /* sub_8132330(r2 = dest, r5 = src):
  * Copy src[0x13] (an index, treated as u8) into a u16 lookup table entry, written to dest+0xA. */

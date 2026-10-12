@@ -8,6 +8,77 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_81440D8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3; } call_SWI_CpuSet_result;
+/* register form: generated wrapper: SWI_CpuSet has no typed C interface yet */
+static inline call_SWI_CpuSet_result call_SWI_CpuSet(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(SWI_CpuSet);
+    return (call_SWI_CpuSet_result){ R1, R2, R3 };
+}
+
+/* sub_81440D8 - shut down the link-communication hardware (run before the
+ * game hands control over to different hardware/mode): back up and mask the
+ * interrupt state, stop SIO and Timer 3, then BIOS-zero the timer-enable
+ * block and the SIO buffer at 0x200F44C.
+ *
+ * register form: the CpuSet source operand is a scratch word on the guest
+ * stack whose address must be handed to the BIOS, so SP is read and adjusted
+ * here (SP -= 8 ... SP += 8); a plain C buffer would not live at the guest
+ * stack address the call needs. */
+static call_SWI_CpuSet_result reset_comm_hardware(void) {
+    u32 ime = LD16(A_InterruptMasterEnableRegister);
+    u32 ie;
+    call_SWI_CpuSet_result last;
+
+    /* Save IME, disable interrupts, trim IE to 0xFF3F (clears the timer IRQ
+     * sources), then restore IME. */
+    ST16(A_word_2006DFC, ime);
+    ST16(A_InterruptMasterEnableRegister, 0);
+    ie = LD16(A_InterruptEnableRegister);
+    ST16(A_InterruptEnableRegister, ie & 0xFF3F);
+    ST16(A_InterruptMasterEnableRegister, ime);
+
+    /* SIOCNT = 0x2000 (0x80 << 6) stops the serial engine, Timer 3 is
+     * stopped, and the register at SIOCNT + 0xDA is set to 0xC0. */
+    ST16(A_SIOControlRegister, 0x80 << 6);
+    ST16(A_Timer3Control, 0);
+    ST16(A_SIOControlRegister + 0xDA, 0xC0);
+
+    /* BIOS-fill with zeros: 0x266 halfwords into the timer-enable block, and
+     * 2 words into the SIO buffer; the fill sources are stack scratch slots
+     * (only the low halfword of the second slot is written, as in the
+     * original). */
+    SP -= 8;
+    ST32(SP, 0);
+    call_SWI_CpuSet(SP, A_eTimerEnable200F460, 0x5000266);
+    ST16(SP + 4, 0);
+    last = call_SWI_CpuSet(SP + 4, A_unk_200F44C, 0x1000002);
+    SP += 8;
+
+    /* Clear the second byte of the SIO buffer header. */
+    ST8(A_unk_200F44C + 1, 0);
+
+    /* r1/r2/r3 exactly as the last BIOS CpuSet left them. */
+    return last;
+}
+
+/* Entry: thin adapter. The original preserves r4/r5 (push/pop around the
+ * body) and leaves lr alone, so the adapter does not touch them. Its last
+ * flag-setting instruction is "mov r1, r4" (= adds r1, r4, #0) with
+ * r4 = 0x200F44C, i.e. C = 0, V = 0 (and N = 0, Z = 0). */
+Next sub_81440D8(void) {
+    call_SWI_CpuSet_result out = reset_comm_hardware();
+    R1 = out.r1;
+    R2 = out.r2;
+    R3 = out.r3;
+    SET_FLAGS_ADD(A_unk_200F44C, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── link_initAndClear_8144158 ── */
 /* register form: calls SWI_CpuSet outside this file, which has no typed C interface yet.
  * CpuSet's fill source must be a guest address, so a zero is placed on the stack. */
@@ -134,6 +205,45 @@ Next rfu_handleVBlank_81453D4(void) {
         GUEST_CALL(sub_81461B0);
         GUEST_CALL(sub_81464B4);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_814692C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_rfu_handleVBlank_81453D4_result;
+/* register form: generated wrapper: rfu_handleVBlank_81453D4 has no typed C interface yet */
+static inline call_rfu_handleVBlank_81453D4_result call_rfu_handleVBlank_81453D4(void) {
+    GUEST_CALL(rfu_handleVBlank_81453D4);
+    return (call_rfu_handleVBlank_81453D4_result){ R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* sub_814692C: tail-call trampoline into the RFU VBlank handler.
+ *
+ * The original is:  push {lr}; bl rfu_handleVBlank_81453D4; pop {r0}; bx r0
+ * i.e. the return address is parked on the stack, the handler runs, and its
+ * return lands on the pop/bx that jumps straight back to our caller. The
+ * handler's r4-r12 are this function's results; r0-r3, lr and the flags are
+ * clobbered, and the stack pointer ends where it started. */
+static call_rfu_handleVBlank_81453D4_result run_rfu_vblank(u32 return_address) {
+    /* register form: push {lr} lowers the guest SP and leaves the return
+     * address on the guest stack across the call (the callee's own frame
+     * sits below it), and the trailing pop {r0} removes it again, so the
+     * guest SP must actually move here; no parameter can carry this. */
+    SP -= 4;
+    ST32(SP, return_address);
+
+    call_rfu_handleVBlank_81453D4_result res = call_rfu_handleVBlank_81453D4();
+
+    SP += 4;    /* pop {r0}: stack back to the caller's level */
+    return res;
+}
+
+Next sub_814692C(void) {
+    call_rfu_handleVBlank_81453D4_result res = run_rfu_vblank(LR);
+
+    R4 = res.r4, R5 = res.r5, R6 = res.r6, R7 = res.r7;
+    R8 = res.r8, R9 = res.r9, R10 = res.r10, R11 = res.r11, R12 = res.r12;
+
     RETURN_TO_CALLER();
 }
 

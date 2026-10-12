@@ -207,6 +207,42 @@ Next object_dimScreen(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800BDB2 ── */
+/* sub_800BDB2 — battle object phase dispatcher.
+ *
+ * Reads the object's current phase byte and jumps through the table at
+ * off_800BDC4 to that phase's handler:
+ *   phase 0 -> sub_800BDD0, phase 1 -> sub_800BE0C, phase 2 -> sub_800BE2C.
+ *
+ * The jump is effectively a tail call: the original sets lr to the following
+ * `pop {pc}`, which restores this function's caller, so the handler returns
+ * straight to whoever called sub_800BDB2. The handler's results are exactly
+ * the outputs of this function (r5, r8-r12); it receives the object in r5 and
+ * whatever r10 held, both of which pass through untouched.
+ */
+
+/* register form: the handler address is data loaded from the jump table
+ * A_off_800BDC4, not a named game function, so no generated wrapper exists
+ * and GUEST_CALL_ADDR is the only way to reach it. The guest call leaves the
+ * handler's r5/r8-r12 results in the guest registers, which is what the
+ * adapter must hand back to the caller. */
+static void call_phase_handler_sub_800BDB2(u32 target, u32 phase) {
+    R0 = phase;   /* the original keeps the phase byte in r0 across the jump */
+    R1 = target;  /* ...and the table entry itself in r1 */
+    GUEST_CALL_ADDR(target);
+}
+
+static void dispatch_object_phase(u32 object) {
+    u32 phase  = LD8(object + oBattleObject_CurPhase);
+    u32 target = LD32(A_off_800BDC4 + phase);
+    call_phase_handler_sub_800BDB2(target, phase);
+}
+
+Next sub_800BDB2(void) {
+    dispatch_object_phase(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── byte_203CF00_getEntryPtr_800BF5C ── */
 /* byte_203CF00_getEntryPtr_800BF5C(r0 = index):
  * Convert a slot index into an address within the byte_203CF00 array,

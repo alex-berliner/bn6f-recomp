@@ -1530,6 +1530,27 @@ Next ReadCutsceneCameraScriptSignedHalfword(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ReadCutsceneCameraScriptWord ── */
+/* Read a 32-bit word from a cutscene camera script stream.
+ * r0 = offset into the script, r1 = script base pointer.
+ * The word is stored little-endian (byte at addr+0 is least significant).
+ * Returns the word in r0; r1, r2 and r3 are left untouched (the original
+ * saves/restores r3 around its temporary use). */
+static u32 read_script_word_ReadCutsceneCameraScriptWord(u32 offset, u32 base) {
+    u32 addr = base + offset;
+
+    return (u32)LD8(addr + 0)
+         | ((u32)LD8(addr + 1) <<  8)
+         | ((u32)LD8(addr + 2) << 16)
+         | ((u32)LD8(addr + 3) << 24);
+}
+
+/* ReadCutsceneCameraScriptWord(r0 = offset, r1 = base) -> r0 = word */
+Next ReadCutsceneCameraScriptWord(void) {
+    R0 = read_script_word_ReadCutsceneCameraScriptWord(R0, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCmd_end_for_map_reload_maybe_8037c64 ── */
 /* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
 static bool event_1741_is_set(void) {

@@ -2315,6 +2315,97 @@ Next sub_8128750(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81287B4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5; } call_battle_queueHpUpdate_8128C20_result;
+/* register form: generated wrapper: battle_queueHpUpdate_8128C20 has no typed C interface yet */
+static inline call_battle_queueHpUpdate_8128C20_result call_battle_queueHpUpdate_8128C20(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_queueHpUpdate_8128C20);
+    return (call_battle_queueHpUpdate_8128C20_result){ R5 };
+}
+
+typedef struct { u32 r5; } call_sub_8128B34_result;
+/* register form: generated wrapper: sub_8128B34 has no typed C interface yet */
+static inline call_sub_8128B34_result call_sub_8128B34(void) {
+    GUEST_CALL(sub_8128B34);
+    return (call_sub_8128B34_result){ R5 };
+}
+
+/* sub_81287B4 - battle menu scene step dispatcher.
+ *
+ * The routine picks one of three handler routines from the jump table at
+ * off_81287D0, indexed by the step byte stored at [r5+2], and enters it with
+ * "mov lr, pc; bx r0" - i.e. the handler sees the caller's entire register
+ * file and sub_81287B4 keeps whatever the handler leaves in r5/r8-r12.
+ * Afterwards two common follow-ups run unconditionally:
+ *   battle_queueHpUpdate_8128C20 (gets the handler's r5, returns an updated r5)
+ *   sub_8128B34                  (gets r10, returns an updated r5)
+ */
+
+/* Registers the original leaves behind when the step is done. */
+typedef struct {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+} SceneStepResult;
+
+/* register form: the jump-table dispatch hands the whole caller register file
+ * to the selected handler ("mov lr, pc; bx r0") and its results are whatever
+ * the handler leaves in r5/r8-r12. No C calling convention can express a
+ * whole-register call, so this helper programs the guest registers directly
+ * around the single indirect call, then performs the two common follow-ups. */
+static SceneStepResult run_scene_step(u32 a_r0, u32 a_r1, u32 a_r2, u32 a_r3,
+                                      u32 a_r4, u32 a_r5, u32 a_r6, u32 a_r7,
+                                      u32 a_r8, u32 a_r9, u32 a_r10,
+                                      u32 a_r11, u32 a_r12)
+{
+    SceneStepResult result;
+
+    /* Step byte selects the handler; it is already a byte offset into the
+     * table of Thumb entry points (sceneStep / menu step handlers). */
+    u32 step = LD8(a_r5 + 2);
+    u32 handler = LD32(A_off_81287D0 + step);
+
+    R0 = a_r0; R1 = a_r1; R2 = a_r2; R3 = a_r3;
+    R4 = a_r4; R5 = a_r5; R6 = a_r6; R7 = a_r7;
+    R8 = a_r8; R9 = a_r9; R10 = a_r10; R11 = a_r11; R12 = a_r12;
+
+    GUEST_CALL_ADDR(handler);
+
+    /* Keep what the handler left behind; the two follow-ups preserve
+     * r8-r12, so these are the final values for everything but r5. */
+    result.r5 = R5;
+    result.r8 = R8;
+    result.r9 = R9;
+    result.r10 = R10;
+    result.r11 = R11;
+    result.r12 = R12;
+
+    /* Common follow-up 1: queue an HP update for the (possibly moved) state. */
+    result.r5 = call_battle_queueHpUpdate_8128C20(result.r5).r5;
+
+    /* Common follow-up 2: reads r10, which is unchanged from entry here. */
+    result.r5 = call_sub_8128B34().r5;
+
+    return result;
+}
+
+Next sub_81287B4(void) {
+    SceneStepResult out = run_scene_step(R0, R1, R2, R3, R4, R5, R6, R7,
+                                         R8, R9, R10, R11, R12);
+    R5 = out.r5;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── sceneStep_81287DC ── */
 /* sceneStep_81287DC:
  *   inputs:  r5 r10 lr
@@ -3331,6 +3422,92 @@ Next sub_81298F8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129918 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B25C_result;
+/* register form: generated wrapper: sub_812B25C has no typed C interface yet */
+static inline call_sub_812B25C_result call_sub_812B25C(u32 r0, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_812B25C);
+    return (call_sub_812B25C_result){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/*
+ * Text-box command step (sub_8129918).
+ *
+ * Byte 3 of the object at r5 selects the next text-command handler out of the
+ * jump table at off_8129930. The byte already holds the table's byte offset
+ * (0x00, 0x04, 0x08, 0x0C, 0x10, 0x14 -> sub_8129948, sub_812996C, sub_81299B0,
+ * sub_8129A20, sub_8129A28, sub_8129A54), so it indexes the table directly.
+ *
+ * The original dispatches with `mov lr, pc; bx r0`, so the handler starts with
+ * r0 = its own table entry, r1 = the state byte, and every other register
+ * (r2-r7, r10-r12, SP) exactly as the caller of sub_8129918 left them. When it
+ * returns, the common follow-up sub_812B25C runs with r0 = 0x12 and whatever
+ * r4/r5/r6 the handler left behind; sub_812B25C's results (r5, r8-r12) are
+ * this function's results.
+ */
+
+/* The dispatched handler may change r4/r5/r6, and the follow-up call to
+ * sub_812B25C must see the changed values, so the dispatch helper reads them
+ * back out of the guest registers and hands them to the typed code. */
+typedef struct {
+    u32 r4, r5, r6;
+} handler_regs;
+
+/* register form: the dispatch is a call through a jump-table address
+ * (mov lr, pc; bx r0), which no generated wrapper covers. */
+static handler_regs call_text_handler(u32 state) {
+    u32 handler = LD32(A_off_8129930 + state);
+
+    R0 = handler;   /* the handler runs with r0 = its own table entry */
+    R1 = state;     /* ...and r1 = the raw state byte */
+    GUEST_CALL_ADDR(handler);
+
+    handler_regs after;
+    after.r4 = R4;
+    after.r5 = R5;
+    after.r6 = R6;
+    return after;
+}
+
+typedef struct {
+    u32 r5, r8, r9, r10, r11, r12;
+} text_step_result;
+
+static text_step_result sub_8129918_body(u32 obj) {
+    u32 state = LD8(obj + 3);
+    handler_regs h = call_text_handler(state);
+
+    /* r1/r2/r3/r7/r8/r9/r11/r12 and r10 reach sub_812B25C exactly as the
+     * dispatched handler left them: the wrapper only loads its parameter
+     * registers (r0, r4, r5, r6) and passes the live guest registers through. */
+    call_sub_812B25C_result follow = call_sub_812B25C(0x12, h.r4, h.r5, h.r6);
+
+    text_step_result out;
+    out.r5 = follow.r5;
+    out.r8 = follow.r8;
+    out.r9 = follow.r9;
+    out.r10 = follow.r10;
+    out.r11 = follow.r11;
+    out.r12 = follow.r12;
+    return out;
+}
+
+Next sub_8129918(void) {
+    text_step_result out = sub_8129918_body(R5);
+    R5 = out.r5;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8129948 ── */
 /* sub_8129948(r5 = some struct):
  * Reads the byte at r5+0x1D and passes it to sub_812B318.
@@ -3493,6 +3670,78 @@ Next chipSelectInit_8129B90(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129F28 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sprite_drawIfFlagSet_812B504_result;
+/* register form: generated wrapper: sprite_drawIfFlagSet_812B504 has no typed C interface yet */
+static inline call_sprite_drawIfFlagSet_812B504_result call_sprite_drawIfFlagSet_812B504(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_drawIfFlagSet_812B504);
+    return (call_sprite_drawIfFlagSet_812B504_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Drawing one battle object (sub_8129F28).
+ *
+ * The record pointer arrives in r5; the kind byte at record+2 selects one of
+ * two draw routines through the two-entry jump table at off_8129F40. That
+ * handler does the type-specific work and hands back updated state in
+ * r5/r6/r10/r11. Afterwards sprite_drawIfFlagSet_812B504 commits the sprite
+ * to the OAM if the record's visibility flag is set; it takes the record in
+ * r5, updates r5/r6 again and preserves r10 (and never touches r11). */
+
+/* Register results of a draw step: the outputs of sub_8129F28. */
+typedef struct {
+    u32 r5, r6, r10, r11;
+} DrawState;
+
+/* register form: the draw routine is reached through a jump table
+ * (mov lr, pc; bx rN) and is entered with the full live register state —
+ * r0 = handler address, r1 = the kind byte, r2..r12 as on entry — while its
+ * results come back in r5/r6/r10/r11. No typed signature can express that,
+ * so this helper performs the single indirect call itself and returns the
+ * registers that matter. */
+static DrawState call_draw_handler(u32 r2, u32 r3, u32 r4, u32 r5, u32 r6,
+                                   u32 r8, u32 r9, u32 r10, u32 r11, u32 r12)
+{
+    u32 kind = LD8(r5 + 2);
+    u32 handler = LD32(A_off_8129F40 + kind);
+
+    R0 = handler;                 /* the original branches with r0 = handler */
+    R1 = kind;
+    R2 = r2; R3 = r3; R4 = r4;
+    R5 = r5; R6 = r6;
+    R8 = r8; R9 = r9; R10 = r10; R11 = r11; R12 = r12;
+
+    GUEST_CALL_ADDR(handler);
+
+    DrawState out = { R5, R6, R10, R11 };
+    return out;
+}
+
+/* Dispatch on the record's kind byte, then commit the sprite if visible. */
+static DrawState draw_object(u32 r2, u32 r3, u32 r4, u32 r5, u32 r6,
+                             u32 r8, u32 r9, u32 r10, u32 r11, u32 r12)
+{
+    DrawState st = call_draw_handler(r2, r3, r4, r5, r6, r8, r9, r10, r11, r12);
+
+    call_sprite_drawIfFlagSet_812B504_result committed =
+        call_sprite_drawIfFlagSet_812B504(st.r5);
+
+    st.r5 = committed.r5;
+    st.r6 = committed.r6;
+    /* r10 survives the sprite call unchanged; r11 is not touched by it. */
+    return st;
+}
+
+Next sub_8129F28(void) {
+    DrawState st = draw_object(R2, R3, R4, R5, R6, R8, R9, R10, R11, R12);
+    R5 = st.r5;
+    R6 = st.r6;
+    R10 = st.r10;
+    R11 = st.r11;
+    RETURN_TO_CALLER();
+}
+
 /* ── pet_tickEntitiesAndExitToMap_812AEC8 ── */
 /* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
 static void run_entity_updates_sub_812AEC8(void) {
@@ -3527,6 +3776,72 @@ static void process_tick_and_fade_exit(void) {
 /* pet_tickEntitiesAndExitToMap_812AEC8() -> void; output registers and flags pass through from callees. */
 Next pet_tickEntitiesAndExitToMap_812AEC8(void) {
     process_tick_and_fade_exit();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812AEE0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B26C_result;
+/* register form: generated wrapper: sub_812B26C has no typed C interface yet */
+static inline call_sub_812B26C_result call_sub_812B26C(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_812B26C);
+    return (call_sub_812B26C_result){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Battle object update dispatcher (sub_812AEE0).
+ *
+ * r5 points to a battle object; byte 2 of the object selects one update
+ * handler from the table at off_812AEF8. The original performs the call
+ * with `mov lr, pc; bx r0`, so each handler is entered with r0 = its own
+ * table entry (handlers reach the parameter data stored after their code
+ * through it) and r1 = the selector byte, while r5/r6/r10 pass through
+ * unchanged. When the handler returns, the shared post-update routine
+ * sub_812B26C runs with the r5/r6 the handler left behind; its results
+ * in r5 r8 r9 r10 r11 r12 are this function's outputs. */
+
+/* register form: one-shot helper for the dispatch-table call — the
+ * handler address is only known at runtime (mov lr, pc; bx r0), so no
+ * generated wrapper covers it, and the handler must see r5/r6/r10
+ * exactly as they sit in the guest register file. */
+static u32 call_handler_from_table(u32 handler, u32 table_entry, u32 selector) {
+    R0 = table_entry;
+    R1 = selector;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* register form: the handler is selected at runtime from the dispatch
+ * table, so which registers it clobbers (notably r5/r6, which the
+ * post-update routine then consumes) cannot be expressed in typed C —
+ * the state after the indirect call has to be read back from the guest
+ * register file, and the final outputs written back there. */
+static void update_battle_object(void) {
+    u32 selector = LD8(R5 + 2);
+    u32 handler  = LD32(A_off_812AEF8 + selector);
+
+    /* mov lr, pc; bx r0: run the selected update handler with
+     * r0 = its own table entry, r1 = the selector byte. */
+    call_handler_from_table(handler, handler, selector);
+
+    /* Shared tail: the post-update step runs on the object state as the
+     * handler left it (r10 passes through the wrapper untouched). */
+    call_sub_812B26C_result post = call_sub_812B26C(R5, R6);
+
+    R5  = post.r5;
+    R8  = post.r8;
+    R9  = post.r9;
+    R10 = post.r10;
+    R11 = post.r11;
+    R12 = post.r12;
+}
+
+Next sub_812AEE0(void) {
+    /* Everything happens in register form: update_battle_object() runs
+     * the dispatched handler plus the shared post-update routine and
+     * leaves the outputs (r5 r8 r9 r10 r11 r12) in the guest registers. */
+    update_battle_object();
     RETURN_TO_CALLER();
 }
 

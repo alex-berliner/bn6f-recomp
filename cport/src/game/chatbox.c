@@ -2235,6 +2235,69 @@ Next chatbox_8042370(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_FB_special ── */
+/* Chatbox "FB special" script command (08042388).
+ *
+ * The command word pointed to by r4 is a script action: the byte at offset 1 selects an
+ * entry in the jump table jt_804239C, and the handler found there is called and simply
+ * returns back through this dispatcher to whoever ran the script step.
+ *
+ * Register state at the call, exactly as the original dispatcher leaves it:
+ *   r0    = the raw jump-table entry (handler address | thumb bit)
+ *   r1    = action byte * 4 (the scaled table offset)
+ *   r2-r12, V flag = passed through untouched
+ * The lsl that scales the index also sets nz/c in the original; those derived values are
+ * not part of the caller contract, so they are not recreated here. Everything the outer
+ * caller sees afterwards (r0-r3/r12, the flags) is whatever the handler left behind. */
+
+/* register form: calls the chatbox action handlers outside this file, which have no typed
+ * C interface yet, and the handler must be entered with the jump-table entry in r0, the
+ * scaled index in r1 and r2-r12/V untouched, so this cannot be an ordinary typed call. */
+static void call_chatbox_action_handler(u32 action)
+{
+    u32 table_offset = action * 4;
+
+    /* Load the entry from the game's table so r0 matches the original bit for bit
+     * (including the thumb bit) and the table stays the single source of truth. */
+    R0 = LD32(A_jt_804239C + table_offset);
+    R1 = table_offset;
+
+    switch (action) {
+    case 0:  GUEST_CALL(chatbox_80423DC);                          break;
+    case 1:  GUEST_CALL(chatbox_8042418);                          break;
+    case 2:  GUEST_CALL(chatbox_804244C);                          break;
+    case 3:  GUEST_CALL(chatbox_804247C);                          break;
+    case 5:  GUEST_CALL(chatbox_textScriptAction_openShop_80424BC); break;
+    case 6:  GUEST_CALL(chatbox_80424E0);                          break;
+    case 8:  GUEST_CALL(chatbox_804252C);                          break;
+    case 10: GUEST_CALL(chatbox_8042580);                          break;
+    case 11: GUEST_CALL(chatbox_80425A0);                          break;
+    case 13: GUEST_CALL(chatbox_80425E0);                          break;
+    case 14: GUEST_CALL(chatbox_80425C0);                          break;
+    case 15: GUEST_CALL(chatbox_launchMailOption_80425F0);                          break;
+    default:
+        /* Table entries 4, 7, 9 and 12 are null; the original would jump to address 0
+         * and crash. Real scripts never request them. */
+        break;
+    }
+}
+
+/* Read the action byte out of the current script command and run its handler. */
+static void run_chatbox_FB_special(u32 script_ptr)
+{
+    u32 action = LD8(script_ptr + 1);
+
+    call_chatbox_action_handler(action);
+}
+
+/* chatbox_FB_special(r4 = current script command pointer)
+ * All outputs (r0-r12, nz/c/v) are whatever the dispatched handler left behind, so the
+ * adapter only forwards r4 and returns. */
+Next chatbox_FB_special(void) {
+    run_chatbox_FB_special(R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_textScriptAction_openShop_80424BC ── */
 /* chatbox_textScriptAction_openShop_80424BC: chatbox text-script action used at shop counters.
  * Sets chatbox flag 0x3E bit 1 (the "close chatbox" mask, FLAGS_3E_UNK_0001
@@ -2432,6 +2495,82 @@ Next sub_80428FC(void) {
     R4 += 4;
     R0 = 1;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_placeCenteredTextRun_804293C ── */
+/* register form: calls chatbox_maskFlags_3e outside this file, which has no typed C interface yet */
+static bool chatbox_layout_flag_set(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_maskFlags_3e);
+    return !ZERO_FLAG();          /* chatbox_maskFlags_3e: Z set when no masked flag is set */
+}
+
+/* Outputs of the chatbox "place next text run" script command. */
+typedef struct {
+    u32 result;         /* r0: always 1 (command consumed) */
+    u32 nextDrawPos;    /* r1: new oChatbox_Unk_7C */
+    u32 alignedOffset;  /* r2: start offset rounded down to a multiple of 8 pixels */
+    u32 nextCharX;      /* r3: byte stored to chatbox+0x94 */
+    u32 scriptPtr;      /* r4: command pointer before the caller steps over it */
+} ChatboxPlaceText;
+
+/* Text script command that horizontally places the next run of chatbox text.
+ * r4 points at the 3-byte command (byte 2 = run length in tiles), r5 at the
+ * chatbox object. Computes the centered start X, records it in the chatbox,
+ * and leaves the script pointer for the caller to step past the command. */
+static ChatboxPlaceText chatbox_place_text(u32 scriptPtr, u32 chatbox)
+{
+    ChatboxPlaceText out;
+
+    /* Pixel width of the run: 11 per tile except the last, plus 16 margin. */
+    u32 width = 11u * (LD8(scriptPtr + 2) - 1u) + 16u;
+
+    /* Right edge of the text area: 176 with the alternate layout flag, else 240. */
+    u32 rightEdge = chatbox_layout_flag_set(2) ? 0xB0u : 0xF0u;
+
+    /* Centered start offset: half of the free space... */
+    u32 startX = (rightEdge - width) >> 1;
+
+    /* ...shifted back by the characters already printed on the current line
+     * when the layout flag is clear. */
+    if (!chatbox_layout_flag_set(2))
+        startX -= LD8(chatbox + oChatbox_TextScriptCharIdx);
+
+    u32 charIdx = LD8(chatbox + oChatbox_TextScriptCharIdx);
+    u32 nextCharX = startX + charIdx;
+    ST8(chatbox + 0x94, nextCharX);
+
+    /* Round the start offset down to a multiple of 8 pixels
+     * ((x >> 1) << 1 drops the low bit, << 2 scales to pixels/4)
+     * and record it as the position the text renderer draws from next. */
+    u32 alignedOffset = (startX >> 1) << 3;
+    u32 nextDrawPos = LD32(chatbox + oChatbox_Unk_7C) + alignedOffset;
+    ST32(chatbox + oChatbox_Unk_7C, nextDrawPos);
+
+    out.result = 1;
+    out.nextDrawPos = nextDrawPos;
+    out.alignedOffset = alignedOffset;
+    out.nextCharX = nextCharX;
+    out.scriptPtr = scriptPtr;
+    return out;
+}
+
+/* chatbox_placeCenteredTextRun_804293C(r4 = text script command pointer, r5 = chatbox object)
+ * -> r0 = 1, r1 = new draw position, r2 = aligned offset, r3 = next char X,
+ *    r4 = command pointer + 3.
+ * Flags: the original ends with adds r4,#3 then movs r0,#1, leaving
+ * N=Z=0 (both results small and positive) and C=V=0 (a script pointer plus
+ * 3 cannot carry or overflow). SET_FLAGS_ADD on the same r4+3 yields exactly
+ * that N/Z/C/V combination. */
+Next chatbox_placeCenteredTextRun_804293C(void) {
+    ChatboxPlaceText out = chatbox_place_text(R4, R5);
+    R0 = out.result;
+    R1 = out.nextDrawPos;
+    R2 = out.alignedOffset;
+    R3 = out.nextCharX;
+    R4 = out.scriptPtr + 3;
+    SET_FLAGS_ADD(out.scriptPtr, 3);
     RETURN_TO_CALLER();
 }
 

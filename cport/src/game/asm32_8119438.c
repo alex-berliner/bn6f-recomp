@@ -1364,6 +1364,69 @@ Next sub_811A29C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811A414 ── */
+/* sub_811A414: state dispatcher for the battle object in r5.
+ *
+ * Reads the object's state byte at (r5 + 8) and uses it as a raw byte
+ * offset into the jump table at off_811A428 (states are stored
+ * pre-multiplied by 4: 0 -> sub_811A434, 4 -> sub_811A4DC, 8 -> sub_811A5B4).
+ * The chosen handler is entered with r0 = its own table entry (handler
+ * address | Thumb bit) and r1 = the raw state byte; every other register
+ * passes through untouched. `mov lr, pc; bx r0` makes the handler return to
+ * the `pop {pc}` right after the branch, which returns to this function's
+ * caller — so the handler's registers (r2, r3, r5, r10, r11) become this
+ * function's results.
+ */
+
+/* Register results left by a state handler; these are sub_811A414's outputs. */
+struct StateHandlerResult {
+    u32 r2;
+    u32 r3;
+    u32 r5;
+    u32 r10;
+    u32 r11;
+};
+
+/* register form: the state handlers are reached through the jump table at
+ * off_811A428 (ldr r0,[table]; mov lr,pc; bx r0), i.e. a call through an
+ * address that no generated wrapper covers. The handler sees every register
+ * except r0/r1 exactly as the dispatcher's caller left it, so only r0 and
+ * r1 are set here; the five output registers are read back after the call
+ * (a handler that leaves one of them alone passes its incoming value
+ * through, as in the original). */
+static struct StateHandlerResult call_state_handler(u32 handler, u32 state) {
+    R0 = handler; /* table entry as loaded from off_811A428 */
+    R1 = state;   /* raw state byte from (r5 + 8) */
+
+    GUEST_CALL_ADDR(handler);
+
+    struct StateHandlerResult out;
+    out.r2 = R2;
+    out.r3 = R3;
+    out.r5 = R5;
+    out.r10 = R10;
+    out.r11 = R11;
+    return out;
+}
+
+/* Look up and run the state handler of the object at obj. */
+static struct StateHandlerResult dispatch_object_state(u32 obj, u32 r10) {
+    (void)r10; /* r10 passes through the register file untouched */
+    u32 state = LD8(obj + 8);
+    u32 handler = LD32(A_off_811A428 + state);
+    return call_state_handler(handler, state);
+}
+
+Next sub_811A414(void) {
+    struct StateHandlerResult out = dispatch_object_state(R5, R10);
+    R2 = out.r2;
+    R3 = out.r3;
+    R5 = out.r5;
+    R10 = out.r10;
+    R11 = out.r11;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811A434 ── */
 /* sub_811A434 — initialise a slot-list icon sprite.
  *
@@ -1465,6 +1528,30 @@ Next sub_811A434(void) {
 /* sub_811A4FC:
  * Trivial wrapper that pushes LR and pops it into PC, i.e. a no-op tail return. */
 Next sub_811A4FC(void) {
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A500 ── */
+/* sub_811A500: dispatch to the update routine of the object in r5.
+ *
+ * The object's type byte (offset 7) indexes a small jump table at
+ * off_811A514 (0 -> sub_811A51C, 1 -> sprite_updatePositionAndClamp_811A57C).
+ * The original performs `mov lr, pc; bx r0`, so the selected handler runs
+ * with every register intact and returns straight to our caller; its
+ * r5/r10/r11 are therefore this function's outputs. */
+
+/* register form: the call goes through an address read from the jump table
+ * (mov lr, pc; bx rN), and the handlers receive the object in r5, so r5
+ * must be live when the call is made */
+static void dispatch_object_update(u32 object_ptr) {
+    u32 index = LD8(object_ptr + 7) << 2;
+    u32 handler = LD32(A_off_811A514 + index);
+    R5 = object_ptr;
+    GUEST_CALL_ADDR(handler);
+}
+
+Next sub_811A500(void) {
+    dispatch_object_update(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1897,6 +1984,32 @@ static u32 sprite_update_animation(u32 sprite_ptr) {
 /* sprite_submenuUpdateAnimAndPos_811B298(r5 = sprite ptr) -> r2 = coord table base */
 Next sprite_submenuUpdateAnimAndPos_811B298(void) {
     R2 = sprite_update_animation(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811B3F4 ── */
+/* Dispatch one object's per-frame update handler through the jump table
+ * jt_811B408. The selector byte at [object+8] picks one of three handlers;
+ * each handler is entered with its own entry address in r0 and the selector
+ * byte in r1, exactly as the original's `bx r0` sets things up.
+ *
+ * register form: the call goes through a code address taken from the jump
+ * table (mov lr, pc; bx r0), so there is no typed wrapper for the handlers.
+ * The callee leaves r2, r3, r5, r10 and r11 behind for the caller. */
+static void run_object_update(u32 object) {
+    u32 selector = LD8(object + 8);
+    u32 handler = LD32(A_jt_811B408 + selector);
+
+    R0 = handler;        /* handlers expect their own entry address in r0 */
+    R1 = selector;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* sub_811B3F4: jump-table dispatch to an object's update handler.
+ * Outputs r2/r3/r5/r10/r11 are simply whatever the handler leaves behind;
+ * the flags are clobbers and are not propagated. */
+Next sub_811B3F4(void) {
+    run_object_update(R5);
     RETURN_TO_CALLER();
 }
 
