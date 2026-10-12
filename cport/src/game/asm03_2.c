@@ -1407,31 +1407,6 @@ Next checkScrambledCounter_8047366(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── findRecordWithHalfwordAtOffset2_804743C ── */
-/* findRecordWithHalfwordAtOffset2_804743C: scan R4 8-byte records starting at R7, comparing the halfword
- * at offset +2 of each against R0.  Flag result only: Z set if a match was
- * found (flag value 0), N/Z clear if the search ran out of records (flag
- * value 1).  R1 ends as the last halfword read (unchanged if R4 <= 0);
- * R3-R7 are preserved. */
-Next findRecordWithHalfwordAtOffset2_804743C(void) {
-    u32 target = R0;
-    u32 record = R7;
-    s32 count = (s32)R4;
-    s32 i;
-    u32 notFound = 1;
-
-    for (i = 0; i < count; i++, record += 8) {
-        R1 = LD16(record + 2);
-        if (target == R1) {
-            notFound = 0;
-            break;
-        }
-    }
-
-    SET_FLAGS_NZ(notFound);
-    RETURN_TO_CALLER();
-}
-
 /* ── battleFindEntryByFieldByte_8047456 ── */
 /* battleFindEntryByFieldByte_8047456(r0 = value to look up, r4 = entry count, r7 = table base):
  * Scan a table of 8-byte entries, comparing r0 against the byte at offset 4
