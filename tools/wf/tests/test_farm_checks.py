@@ -123,3 +123,15 @@ def test_the_farm_test_reports_a_leftover_read_in_the_models_own_helper(monkeypa
     assert problems("Caller", code.replace("return R1;", "return R0;")) == ""
     assert report_sections(f"{BEHAVES}\n\n{report}").keys() == {"behaviour", "leftovers"}
     assert rank(False, f"{BEHAVES}\n\n{report}")[0] == 1 and "the leftover check" in verdict(False, f"{BEHAVES}\n\n{report}")
+
+
+def test_a_kept_candidate_is_shown_again_without_its_generated_wrappers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(FARM, "callees", lambda name, lifted=None: ["Callee"])  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    kept = ("/* generated wrappers of the game functions it calls (tools/abi/gen.py) */\n"
+            "typedef struct { u32 r0, r1; } call_Callee_result;\n"
+            "/* register form: generated wrapper: Callee has no typed C interface yet */\n"
+            "static inline call_Callee_result call_Callee(u32 r0) {\n    R0 = r0;\n    GUEST_CALL(Callee);\n"
+            "    return (call_Callee_result){ R0, R1 };\n}\n\n"
+            "Next Caller(void) { u32 x = call_Callee(R0).r1; R0 = x; RETURN_TO_CALLER(); }\n")
+    shown = cast(Callable[[str, str], str], FARM.without_generated_wrappers)("Caller", kept)  # pyright: ignore[reportAny]
+    assert shown == "Next Caller(void) { u32 x = call_Callee(R0).r1; R0 = x; RETURN_TO_CALLER(); }\n"

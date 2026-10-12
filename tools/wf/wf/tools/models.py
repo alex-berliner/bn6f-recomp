@@ -329,6 +329,12 @@ def log_round(function: FunctionName, model: ModelSpec, round_number: int, reply
         log.write(json.dumps(row) + "\n")
 
 
+def written_by_model(function: FunctionName, candidate: CandidateC) -> CandidateC:
+    """A kept candidate without the generated wrappers the tool put in (farm.py without_generated_wrappers): what
+    a model is shown of it again (the tool adds today's wrappers)."""
+    return CandidateC(cast(str, _farm.without_generated_wrappers(function, candidate)))  # pyright: ignore[reportAny]
+
+
 def finished(function: FunctionName, candidate: CandidateC) -> CandidateC:
     """A passing typed candidate as it is kept: with the generated wrappers it calls and the tool's
     register-form notes, so it compiles and passes the register check on its own (farm.py finished)."""

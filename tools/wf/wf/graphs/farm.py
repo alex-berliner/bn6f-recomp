@@ -24,7 +24,7 @@ from wf.tools.handover import Tried, best_start, earlier_attempts, tried
 from wf.tools.models import (CandidateTest, ConversionContext, ModelReply, Prompt, PromptKind, ReviewedCandidate,
                              accept, already_accepted, ask_model, conversion_context, finished, first_prompt, log_round,
                              logged_rounds, out_of_rounds_before, rejected_at_review, repair_prompt, test_candidate,
-                             with_prompt)
+                             with_prompt, written_by_model)
 from wf.tools.sources import first_up, models_for, out_for_long
 from wf.types import BuildFailure, FunctionName, ModelSpec, NotRun, Result, SnapshotDir, ToolMessage
 
@@ -151,7 +151,8 @@ def ask_model_for_c(given: AskInput) -> AskOutput:
     start = best_start((*given.earlier, *own_attempts(given.attempts))) if given.prompt is PromptKind.TYPED else None
     if given.reviewed is not None and not given.attempts:   # a review rejected this model's candidate: fix that
         prompt = repair_prompt(given.context, ToolMessage(REVIEWED.format(review=given.reviewed.review)),
-                               given.reviewed.code, given.prompt, whose="your earlier candidate, which a reviewer rejected")
+                               written_by_model(given.context.function, given.reviewed.code), given.prompt,
+                               whose="your earlier candidate, which a reviewer rejected")
     elif start is not None:
         prompt = repair_prompt(given.context, start.best.report, start.best.code, given.prompt, whose=start.best.whose,
                                history=start.history)

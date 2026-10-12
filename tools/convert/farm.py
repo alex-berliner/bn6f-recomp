@@ -437,6 +437,18 @@ def note_register_forms(code):
     return code
 
 
+def without_generated_wrappers(name, code):
+    """CODE as the model wrote it: without the generated wrappers finished() put before it (a kept candidate
+    shown to a model again, e.g. after a review: the tool adds today's wrappers itself)."""
+    code = code.replace("/* generated wrappers of the game functions it calls (tools/abi/gen.py) */\n", "")
+    for callee in callees(name):
+        c = re.escape(callee)
+        code = re.sub(rf"^typedef struct \{{[^}}]*\}} call_{c}_result;\n", "", code, flags=re.M)
+        code = re.sub(rf"^/\* register form: generated wrapper: {c} has no typed C interface yet \*/\n"
+                      rf"static inline [^\n]*\bcall_{c}\([^)]*\) \{{\n(?:    [^\n]*\n)*?\}}\n\n?", "", code, flags=re.M)
+    return code
+
+
 def finished(name, code):
     """The candidate as it is kept and installed: self-contained, with the generated wrappers it calls
     and the tool's register-form notes."""
