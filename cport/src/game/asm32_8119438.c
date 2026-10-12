@@ -1364,6 +1364,110 @@ Next sub_811A29C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811A434 ── */
+/* sub_811A434 — initialise a slot-list icon sprite.
+ *
+ * Inputs:  r5 = slot state pointer, r10 = caller scratch, lr
+ * Outputs: r2, r3, r5, r10, r11
+ *
+ * Writes the sprite-id byte (0x23) at the start of the slot struct, then picks
+ * a sprite/animation pair based on a global submenu mode byte and the slot's
+ * flag byte, builds the GUI sprite with palette/priority tweaks, runs the
+ * per-slot helpers, then schedules the next-step handler.
+ */
+
+/* Offsets into the slot-state struct (relative to r5). */
+#define SLOT_STATE_KIND      0   /* sprite-id byte written at the start    */
+#define SLOT_STATE_FLAG      4   /* non-zero → use the "flagged" art pair  */
+#define SLOT_STATE_ANIM      5   /* animation index to load                */
+#define SLOT_STATE_FLAGS2    8   /* written 4 here at the end              */
+#define SLOT_STATE_ANIMCOPY  0xC /* mirror of the animation byte           */
+
+Next sub_811A434(void) {
+    u32 slot = R5;
+
+    /* First action of the original: write the sprite-id byte 0x23 at slot+0. */
+    ST8(slot + SLOT_STATE_KIND, 0x23);
+
+    /* Choose the sprite id and GUI descriptor. Both `sSubmenu[1] == 0x1C`
+     * aliases assign the same address — kept for control-flow fidelity. */
+    u32 kind = 0x24;
+    u32 art  = (u32)A_byte_20231A0;
+    if (LD8((u32)A_sSubmenu + 1) == 0x1C)
+        art = (u32)A_byte_20231A0;
+
+    if (LD8(slot + SLOT_STATE_FLAG) != 0) {
+        kind = 0x23;
+        art  = (u32)A_eGuiSprite2022AA0;
+        if (LD8((u32)A_sSubmenu + 1) == 0x1C)
+            art = (u32)A_eGuiSprite2022AA0;
+    }
+
+    /* Build the GUI sprite. */
+    R0 = kind;
+    R1 = art;
+    GUEST_CALL(initGuiSprite_8002770);
+
+    /* Mirror the animation byte into the secondary slot and load it. */
+    u32 anim = LD8(slot + SLOT_STATE_ANIM);
+    ST8(slot + SLOT_STATE_ANIMCOPY, (u8)anim);
+    R0 = (u8)anim;
+    GUEST_CALL(sprite_setAnimation);
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_noShadow);
+
+    /* Palette 0, priority 2. */
+    R0 = 0;
+    GUEST_CALL(sprite_setPalette);
+    R0 = 2;
+    GUEST_CALL(sprite_setPriority_8002E14);
+
+    /* Halfword-from-ROM-table → slotList store.
+     * ROM table at byte_811A4BC is loaded into R1 as a u32 pointer; the
+     * index is the slot's flag byte (which is 0 or 1 here), shifted left 2. */
+    R1 = (u32)A_byte_811A4BC;
+    {
+        u32 idx   = LD8(slot + SLOT_STATE_FLAG);
+        u32 entry = LD32((u32)A_byte_811A4BC + (idx << 2));
+        R0 = entry;
+    }
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+
+    /* Sub-entry palette bank. ROM table at 0x100 (off_811A4D8) holds:
+     *   00 01 00 00 (little-endian 0x100), indexed by the slot flag byte. */
+    {
+        u32 idx   = LD8(slot + SLOT_STATE_FLAG);
+        u32 entry = LD8((u32)A_off_811A4D8 + idx);
+        R1 = (u32)A_off_811A4D8;
+        R0 = entry;
+    }
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+
+    /* Record field A = 3. */
+    R0 = 3;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+
+    /* Per-slot base setup. */
+    GUEST_CALL(sprite_setPositionByFlags_811A5BC);
+
+    /* Flagged slots get an extra init pass. */
+    if (LD8(slot + SLOT_STATE_FLAG) != 0)
+        GUEST_CALL(sub_811A640);
+
+    /* Mark slot ready (4) and tail-call the next-step handler. */
+    ST8(slot + SLOT_STATE_FLAGS2, 4);
+    GUEST_CALL(sub_811A4DC);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A4FC ── */
+/* sub_811A4FC:
+ * Trivial wrapper that pushes LR and pops it into PC, i.e. a no-op tail return. */
+Next sub_811A4FC(void) {
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_updatePositionAndClamp_811A57C ── */
 /* sprite_updatePositionAndClamp_811A57C: clamp a sprite's X coordinate against 0x3C (using a per-state
  * clamp table) and reset a state byte, then chain into sub_811A51C.
@@ -1398,6 +1502,19 @@ Next sprite_updatePositionAndClamp_811A57C(void) {
     /* Chain into the next stage. */
     GUEST_CALL(sub_811A51C);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A5B4 ── */
+/* sub_811A5B4: wrapper that clears a sprite's scale counter and marks it
+ * unscalable, then returns to caller.
+ *   inputs:  r5 lr
+ *   outputs: r2 r3 r5
+ *   clobbers: nz c v r0 r1 lr
+ *   preserved: r4 r5 r6 r7
+ */
+Next sub_811A5B4(void) {
+    GUEST_CALL(sprite_clearScaleCounterAndMakeUnscalable_804668A);
     RETURN_TO_CALLER();
 }
 
@@ -1436,6 +1553,56 @@ Next sprite_setPositionByFlags_811A5BC(void) {
     R1 = (u32)y;
     GUEST_CALL(sprite_setCoordinates);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A68C ── */
+/* sub_811A68C
+ * inputs:   r1 (index into byte table), r10, lr
+ * outputs:  r10, r11
+ * reads an unsigned byte from a small table, passes it to sub_811A718.
+ */
+Next sub_811A68C(void) {
+    u32 index_byte = LD8(A_dword_811A69C + R1);
+    R0 = index_byte;
+    GUEST_CALL(sub_811A718);
+    /* r10/r11 are left as sub_811A718 set them; original tail is `pop {pc}`. */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A6A0 ── */
+/* sub_811A6A0(r1 = index): look up a byte in the 0x181716 table at index r1,
+ * then call sub_811A718 with that byte in r0.
+ *   inputs:  r1 r10 lr
+ *   outputs: r10 r11
+ *   clobbers: r0 r1 r2 r3 r4 r12 lr, flags nz/c/v
+ *   preserved: r5 r6 r7 r8 r9 */
+Next sub_811A6A0(void) {
+    u8 table = LD8(A_dword_811A6B0 + R1);
+    R0 = table;
+    GUEST_CALL(sub_811A718);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A6B4 ── */
+Next sub_811A6B4(void) {
+    /* inputs:  r1, r10, lr
+     * outputs: r10, r11
+     * Fetches a byte from the lookup table at dword_811A6C4 indexed by r1
+     * and dispatches to sub_811A718 with it as the argument. */
+    u8 index_byte = LD8(A_dword_811A6C4 + R1);
+    R0 = index_byte;
+    GUEST_CALL(sub_811A718);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A6C8 ── */
+/* sub_811A6C8(r1 = index): look up a packed value from a 3-byte table and call sub_811A718
+ * with the indexed byte as argument. */
+Next sub_811A6C8(void) {
+    /* Table at 0x0811A6D8 holds 0x1F1E1D (3 bytes). The index r1 selects one of them. */
+    R0 = LD8(0x0811A6D8 + R1);
+    GUEST_CALL(sub_811A718);
     RETURN_TO_CALLER();
 }
 

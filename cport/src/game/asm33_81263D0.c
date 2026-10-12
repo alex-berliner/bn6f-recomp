@@ -1403,6 +1403,47 @@ Next bg_Draw8x8TileBlock3FromTable_81277E0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8127800 ── */
+/* sub_8127800(r10, lr):
+ * Walk two parallel event-flag tables (group A: story/social flags,
+ * group B: completion/chip flags). If any pair (A[i], B[i]) has either
+ * flag set, set EVENT_F7 and stop; otherwise keep walking until exhausted.
+ */
+Next sub_8127800(void) {
+    static const u32 group_a[13] = {
+        0x00000321, 0x00000327, 0x0000032D, 0x00000333, 0x00000339,
+        0x00000345, 0x0000034B, 0x00000351, 0x00000357, 0x0000035D,
+        0x0000033F, 0x00000369, 0x00000303,
+    };
+    static const u32 group_b[13] = {
+        0x000000AC, 0x000000AD, 0x000000AE, 0x000000AF, 0x000000B0,
+        0x000000B1, 0x000000B2, 0x000000B3, 0x000000B4, 0x000000B5,
+        0x000000B6, 0x000000B7, 0x000000B8,
+    };
+
+    for (u32 i = 0; i < 13; i++) {
+        R0 = group_a[i];
+        GUEST_CALL(TestEventFlag);
+        if (!ZERO_FLAG()) {
+        match:
+            /* any hit sets EVENT_F7 */
+            R0 = 0;
+            R1 = 0xF7;
+            GUEST_CALL(SetEventFlagFromImmediate);
+            break;
+        }
+        R0 = group_b[i];
+        GUEST_CALL(TestEventFlag);
+        if (ZERO_FLAG()) {
+            /* neither flag of the pair set -> advance */
+            continue;
+        }
+        goto match;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81278D8 ── */
 /* sub_81278D8(r5 = struct pointer): return struct + 0x40 + (s8)(r5[0xD]) * 8,
  * i.e. the address of entry [r5[0xD]] of the 8-byte-element array at r5+0x40. */
@@ -1410,6 +1451,24 @@ Next sub_81278D8(void) {
     s32 index = (s8)LD8(R5 + 0xD);
     u32 base = LD32(R5 + 0x40);
     R0 = base + (index * 8);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8127990 ── */
+/* sub_8127990(r0 = some_ptr, r10 = ?, lr = ?):
+ *   prepares the pet-submenu on return and, if r0 is non-NULL,
+ *   marks sSubmenu.unk_0D = 1 so the caller will display its menu.
+ *   Output: r2 is preserved (callers rely on this).
+ */
+Next sub_8127990(void) {
+    u32 ptr = R0;
+
+    GUEST_CALL(pet_prepareMenuOnReturn_811F6C0);
+
+    if (ptr != 0) {
+        ST8(A_sSubmenu + 0xD, 1);
+    }
+
     RETURN_TO_CALLER();
 }
 
@@ -2198,6 +2257,61 @@ Next sub_81284A4(void) {
     ST8(R0, R1);
     R1 = 4;
     ST8(R0 + 1, R1);       /* byte_2000FE1 = byte_2000FE0 + 1 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8128750 ── */
+/* sub_8128750: battle/title screen init - clears VRAM/OAM, sets up render info,
+ * initialises the toolkit state block, runs the various sub-initialisers and
+ * kicks off the screen-fade animation. */
+Next sub_8128750(void) {
+    /* Reset all GBA video buffers to zero. */
+    GUEST_CALL(zeroFillVRAM);
+    GUEST_CALL(ZeroFill_byte_3001960);
+    GUEST_CALL(ZeroFillGFX30025c0);
+
+    /* Stage = 0x10 (some "scene" indicator for toolkit_applyOverlayPalette_80015FC). */
+    R0 = 0x10;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+
+    /* r10 holds the toolkit pointer; mirror it into r7 for the render-info setup. */
+    R7 = R10;
+    u32 renderInfo = LD32(R7 + oToolkit_RenderInfoPtr);
+
+    /* Default render-info layout: tile base 0x1F40, all other slot offsets zero. */
+    ST16(renderInfo + 0x00, 0x1F40);
+    ST16(renderInfo + 0x10, 0);
+    ST16(renderInfo + 0x12, 0);
+    ST16(renderInfo + 0x14, 0);
+    ST16(renderInfo + 0x16, 0);
+    ST16(renderInfo + 0x18, 0);
+    ST16(renderInfo + 0x1A, 0);
+
+    /* State byte = 4, timer byte = 0. */
+    ST8(R5 + 0x01, 4);
+    ST8(R5 + 0x02, 0);
+
+    GUEST_CALL(sub_81288FC);
+
+    /* A couple of flag bytes cleared. */
+    ST8(R5 + 0x0F, 0);
+    ST8(R5 + 0x10, 0);
+
+    /* Two "object slot" halfwords and one byte seeded with 0xFF (no-object sentinel). */
+    ST16(R5 + 0x26, 0xFF);
+    ST16(R5 + 0x22, 0xFF);
+    ST8(R5 + 0x0E, 0xFF);
+
+    GUEST_CALL(sub_81289C4);
+    GUEST_CALL(sub_8128A44);
+    GUEST_CALL(sub_8128AB0);
+    GUEST_CALL(sub_8128B34);
+
+    /* Fade from black (8 steps, 0x10 == palette bank 1). */
+    R0 = 8;
+    R1 = 0x10;
+    GUEST_CALL(SetScreenFade);
+
     RETURN_TO_CALLER();
 }
 

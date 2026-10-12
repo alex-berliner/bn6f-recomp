@@ -188,6 +188,29 @@ Next sub_81130E4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81130F0 ── */
+Next sub_81130F0(void) {
+    /* Wrapper that updates internal state then dispatches the battle
+     * object's state machine for this frame. */
+    GUEST_CALL(sub_8113114);
+    GUEST_CALL(battleObjectStateDispatcher_8016CE8);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8113114 ── */
+/* sub_8113114: clears BattleObject.RelatedObject1Ptr to 0.
+ * inputs: r4 = AIData pointer, r5 = BattleObject pointer
+ * clobbers: r0, r1, nz */
+Next sub_8113114(void) {
+    u32 r0 = LD8(R4 + oAIData_Version_16);
+    r0 = r0 & 1;
+    (void)r0; /* bit 0 of AI version, result unused beyond flag setting */
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    ST32(R5 + oBattleObject_RelatedObject1Ptr, R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_packObjStateBitToAttrCode_8113154 ── */
 /* battle_packObjStateBitToAttrCode_8113154(r4 = battle object, r6 = destination byte):
  * Packs the object's state bit at offset 0x16 (bit 0 only) into a small
@@ -1492,6 +1515,44 @@ Next sprite_slotInitKind23_81178FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811794C ── */
+Next sub_811794C(void) {
+    /* Frame-update step for the in-battle HP/shield bar UI tile. Picks the
+     * tile variant (r4 = 0x21 = max, 0x23 = normal) based on the current
+     * battle-chip art, places the sprite, advances its animation, then
+     * writes back the new frame. */
+
+    u32 variant = 0x23;
+    GUEST_CALL(sub_8047D84);
+    if ((s32)R0 != 0) {
+        u8 first = LD8(R0);
+        if (first == 1 && LD16(R0 + 2) == 0x70) {
+            variant = 0x21;
+        }
+    }
+    ST8(R5, (u8)variant);
+
+    /* Place sprite: x = 0x24 + ((0x1E - (sprite_palette_slot - 0xC)) << 3), y = 0x38 */
+    u32 palette_idx = LD8(R7 + 8);
+    R0 = 0x24 + ((0x1E - (palette_idx - 0xC)) << 3);
+    R1 = 0x38;
+    GUEST_CALL(sprite_setCoordinates);
+
+    /* Advance the tile animation by one step. */
+    GUEST_CALL(sub_8117998);
+
+    /* If the frame index changed, push it to the sprite engine. */
+    u32 frame = R0;
+    if (frame != (u32)LD8(R5 + 5)) {
+        ST8(R5 + 5, (u8)frame);
+        GUEST_CALL(sprite_setAnimation);
+        GUEST_CALL(sprite_loadAnimationData);
+    }
+
+    GUEST_CALL(sprite_update);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8117998 ── */
 /* sub_8117998: fetches a lookup-table pointer from sub_8047D84, then computes
  * (byte[table] - 1) * 2 + byte[r5 + 4]; r0 = the resulting offset.
@@ -1970,6 +2031,42 @@ Next battle_refreshObjectSprite_8117E20(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8117E60 ── */
+/* sub_8117E60: update a battle sprite's animation/animation data.
+ * Inputs:  r5 = battle sprite struct ptr, r7 = object/base state ptr
+ * Outputs: r2 r3 r5 (r2/r3 from the tail call; r5 untouched)
+ * Clobbers: r0 r1
+ */
+Next sub_8117E60(void) {
+    u8 sprite_dir  = LD8(R5 + 3);                 /* [r5+3] = facing direction */
+    u8 sprite_base = LD8(R5 + 4);                 /* [r5+4] = base anim index  */
+    u8 obj_dir_raw = LD8(R7 + 0xD);               /* [r7+0xD] = object facing  */
+    u8 target_anim;
+
+    if ((obj_dir_raw >> 1) == sprite_dir) {
+        /* Same lane as the sprite: maybe bump from base anim. */
+        target_anim = sprite_base;
+        if (obj_dir_raw != 2 && obj_dir_raw != 0)
+            target_anim = sprite_base + 1;
+    } else {
+        /* Opposite lane: use ranged anim, +5 base, +1 if 2-lanes-or-same-row. */
+        target_anim = sprite_base + 5;
+        if (obj_dir_raw >= 2 && LD8(R7 + 0x21) != 0)
+            target_anim = sprite_base + 6;
+    }
+
+    if (target_anim != LD8(R5 + 0xC)) {
+        ST8(R5 + 0xC, target_anim);
+        R0 = target_anim;
+        GUEST_CALL(sprite_setAnimation);
+        GUEST_CALL(sprite_loadAnimationData);
+        GUEST_CALL(sprite_noShadow);
+    }
+
+    GUEST_CALL(sprite_update);   /* R2/R3 outputs come from this leaf */
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_initBattle_8118F44 ── */
 /* Coordinate table for battle sprites (x,y pairs, indexed by sprite field +5 * 4) */
 #define SPRITE_TYPE_INIT        0x23
@@ -2214,6 +2311,17 @@ Next sprite_testFrameParamsMaskC0_81190F8(void) {
      * tst r0, r0 then re-derives the same N/Z while leaving C/V cleared. */
     SET_FLAGS_ADD(R0, 0);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8119118 ── */
+/* sub_8119118(r0):
+ * If the global struct lookup succeeds, set its field at offset 8 to 8. */
+Next sub_8119118(void) {
+    /* Call lookup helper; on success r1 points at the struct. */
+    GUEST_CALL(getStructFrom2008450);
+    if (!ZERO_FLAG())
+        ST8(R1 + 8, 8);
     RETURN_TO_CALLER();
 }
 
