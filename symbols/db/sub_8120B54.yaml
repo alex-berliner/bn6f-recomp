@@ -1,0 +1,92 @@
+name: sub_8120B54
+address: '0x08120B54'
+kind: function
+status: confirmed
+summary: Maps a chip ID to its style-sub-element override code (6–10) via a fixed ROM lookup table, gated by guard
+  byte, battle phase, active effects, and style-swap slot state.
+interface: 'style_override_t style_getChipOverrideCode_8120B54(uint32_t chipId /*r2*/, uint32_t in_r3 /*passthrough*/);
+
+  /* r10 = pointer consumed by GetBattleEffects; returns r0 = override code, r3 = column index */
+
+  '
+details: "1. Short-circuits to default 0xFF if the global guard byte at EWRAM 0x0200AD04 is zero\n   (notZero_eByte200AD04\
+  \ sets Z when byte == 0).\n2. Queries battle phase via sub_803F674. If phase >= 2 (mid/late battle), checks\n\
+  \   GetBattleEffects for bit 3 (mask 0x08). When that bit is clear the function calls\n   sub_8144D30 (side-effect\
+  \ only) and returns the default 0xFF; when set it continues\n   to the table scan.\n3. Reads link/style-swap slot\
+  \ 4 via link_getSlotState_803F740(4). If r1 != 0 the style\n   swap is \"occupied\" and the function returns default\
+  \ 0xFF.\n4. Scans a 5-row ROM table at 0x08120BB4 (stride 4 bytes, loop bound 0x18). Each row\n   holds a base\
+  \ chip ID: 0x019B, 0x01AA, 0x01B9, 0x01C8, 0x01D7 — consecutive groups of\n   15 (0x0F) chip IDs. For each column\
+  \ 0..14 it tests base+col == r2. A match selects\n   the parallel entry from the result table at 0x08120BCC (codes\
+  \ 6, 7, 8, 9, 10) and\n   stores the column index in r3.\n5. No match falls through to the last table entry at\
+  \ offset 0x14, which is 0xFF, and\n   leaves r3 at 15.\nCallee sub_803F674 clobbers r4–r6; those are preserved\
+  \ here via push/pop so the\nregister contract reports them as preserved across the whole function.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8120B54
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8120B54
+
+    ./wf verify --function sub_8120B54 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8120B54
+
+    ./wf verify --function sub_8120B54 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8120B54
+
+    ./wf verify --function sub_8120B54 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08120b54 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What do codes 6–10 correspond to exactly in the game's style-element taxonomy (e.g. specific Cross-Flavor sub-types
+  or element tags)?
+- Which named chips occupy IDs 0x019B–0x01E5 (the five 15-chip ranges), and is this the full set of style-override-eligible
+  chips?
+- What is the purpose of the sub_8144D30 call on the 'late battle, no effect' path — does it mutate state or is
+  the return value ignored here?
+- What does GetBattleEffects read from r10, and which specific effect corresponds to bit 3?
+- Is the slot-4 check specifically the style-swap (Fusion/Cross) slot, and why does a non-zero r1 mean 'occupied'
+  versus 'available'?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

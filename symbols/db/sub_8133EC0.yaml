@@ -1,0 +1,86 @@
+name: sub_8133EC0
+address: '0x08133EC0'
+kind: function
+status: confirmed
+summary: 'Initializes a screen''s runtime data: resolves a relocation table for dynamic asset pointers, decompresses
+  and copies static graphics/sprite data to VRAM and work RAM, loads a compressed text-script pointer table, and
+  blits two background tile maps into tile block 1.'
+interface: 'void screen_initData_8133EC0(void);
+
+  /* Reads: r10 (caller convention, unused in body). Returns with r4-r7 preserved (push/pop). */
+
+  '
+details: 'Phase 1 – Relocation table build: iterates 4 records of 16 bytes from off_8133F70 (key, size, dst, len).
+  Each key is resolved via getKeyedTableEntry_811FB84; the resolved pointer plus the two raw destination/length
+  words are written sequentially into unk_20096E0, terminated with 0.
+
+  Phase 2 – Decompression: decompAndCopyData is called twice: (a) on the relocation table just built (4 entries
+  referencing comp_86C9108, comp_86C9B54, comp_86C9AA4, byte_872CF94 → palette_3001960, unk_3001AC0, unk_3001A80,
+  unk_3001AE0); (b) on a static 19-entry table at off_8133FB8 writing tile/sprite data to VRAM (0x6012800, 0x6012C00,
+  0x6008020, 0x6014800, 0x6014980, 0x60149C0, 0x6000020) and work-RAM (unk_203526C, unk_2034B6C, unk_3001A20, unk_2024A20,
+  unk_2026A20, unk_203486C, etc.).
+
+  Phase 3 – Text-script table: sub_8123300 loads a 13-entry pointer table (off_8133F30, mostly CompText86CF1A8 with
+  two CompText86CEE84) into eTextScript2028A20 via decompression buffer eDecompBuffer2013A00.
+
+  Phase 4 – Background tile blit: two CopyBackgroundTiles calls into tile block 1: (0,0) 30×20 tiles from unk_201CA20;
+  (0,2) 60×17 tiles from unk_2020A20. Tile IDs are u16 arrays at those addresses; the "i=2" row offset places the
+  wider map below the first.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8133EC0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8133EC0
+
+    ./wf verify --function sub_8133EC0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8133EC0
+
+    ./wf verify --function sub_8133EC0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8133EC0
+
+    ./wf verify --function sub_8133EC0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08133ec0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which specific screen or battle context triggers this initialization?
+- Is the 13-entry text table the full script set or a subset per scene?
+- What distinguishes the two palettes (palette_3001960 vs unk_3001AC0/3001AE0) in terms of usage?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

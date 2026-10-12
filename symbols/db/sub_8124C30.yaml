@@ -1,0 +1,73 @@
+name: sub_8124C30
+address: '0x08124C30'
+kind: function
+status: confirmed
+summary: Dispatches the current battle-phase byte (work r5 +0x02) to one of 20 thumb handler in off_8124C44.
+interface: void battle_phaseDispatch_8124C30(u32 r2, void* r5_work, u32 r10); returns r0=0; preserves c/v from handler;
+  r1, r2, r3, r5, r7–r12, lr pass through from the handler.
+details: 'Reads the phase index byte from the battle work object at r5+2 and uses it as a raw byte offset
+
+  into the handler table at off_8124C44 (no shift; the byte is already in 4-byte units: 0,4,8…0x4C
+
+  for the 20 entries). Loads the thumb target with `ldr r0,[r0,r1]`, sets r1 to the phase byte, and
+
+  tail-calls it via `mov lr,pc; bx r0`. After the handler returns, the dispatcher forces r0=0
+
+  (clears N, sets Z) and pops pc.
+
+  The 20 dispatch targets cover the battle sprite pipeline: pair tick/refresh, shield update,
+
+  stage-2 init, intro, updates-and-fade, and the transition tick sub_8125170.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8124C30
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8124C30
+
+    ./wf verify --function sub_8124C30 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8124C30
+
+    ./wf verify --function sub_8124C30 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 1 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8124C30
+
+    ./wf verify --function sub_8124C30 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^08124c30 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+open_questions:
+- Why is r0 forced to 0 after the handler returns — is it a generic "no error" return, or does some caller rely
+  on r0 being zeroed across every dispatch?
+- Is the phase byte expected to stay in 0..19, or can out-of-range values (e.g. 0x4D+ from a corrupted work object)
+  silently index past the table?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

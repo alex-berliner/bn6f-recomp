@@ -1,0 +1,85 @@
+name: sub_814E758
+address: '0x0814E758'
+kind: function
+status: confirmed
+summary: Advances a sound channel's script stream to read the next target pitch, then scans the channel's active-note
+  list to mark the first matching unplayed note as dispatched.
+interface: void snd_dispatchChannelNote_814E758(/* r1 = */ uint32_t chan);  /* r4, r5 preserved; clobbers r0-r3,
+  flags */
+details: 'Reads the byte at *(chan+0x40) (script read pointer). If that byte < 0x80 it is treated as a new pitch:
+  stored at chan+5 and the pointer is advanced by 1. If >= 0x80 the stream is considered halted and the previously
+  stored pitch at chan+5 is reused. The resulting pitch byte is called "key". The function then walks the linked
+  note list whose head is at chan+0x20. Each note entry has a flag byte at offset 0x00 (bits 0x83 = quality/eligible,
+  bit 0x40 = already played), a pitch byte at 0x11, and a next-node pointer at 0x34. A self-referencing next pointer
+  (node->next == node) is zeroed and treated as list end. The first note that is eligible (quality bits set), not
+  yet played (0x40 clear), and whose pitch matches key gets bit 0x40 set. Only one note per call is flagged. r4/r5
+  are pushed and popped, so callers relying on them are unaffected.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_814E758
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_814E758
+
+    ./wf verify --function sub_814E758 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_814E758
+
+    ./wf verify --function sub_814E758 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_814E758
+
+    ./wf verify --function sub_814E758 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814e758 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What exact quality bits does mask 0x83 (bits 0 and 7) represent in the audio script format?
+- Who sets up the note list at chan+0x20 and how does the self-referencing sentinel arise?
+- Is 0x80 as a stream-halt byte part of a documented scripting opcode set in MMBN6's audio engine?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

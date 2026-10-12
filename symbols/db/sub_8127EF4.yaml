@@ -1,0 +1,81 @@
+name: sub_8127EF4
+address: '0x08127EF4'
+kind: function
+status: confirmed
+summary: Counts how many story event-flag pairs (both lo and hi set) also satisfy a bit-7 table condition matching
+  bit-0 of the object's status byte at +0xD.
+interface: u32 countMatchedStoryFlagGates(u16* event_flags, u8* object) -> count in r0
+details: 'Iterates idx from 0x1CA0 to 0x1D1F (128 story event-flag indices).
+
+  For each idx it calls TestEventFlag twice: on FLAG_LO_BASE+idx (0x1CA0+idx)
+
+  and FLAG_HI_BASE+idx (0x1D20+idx). Both must be set (non-zero flag) to proceed.
+
+  If both are set, reads byte_812851C + idx*4 and tests bit 7 (0x80), then
+
+  compares against bit 0 of byte at [r5+0xD]. When the two bits are equal,
+
+  the counter r4 is incremented.
+
+  Returns the total count in r0.
+
+  r10 is passed in by callers but never read inside the function.
+
+  The function pushes/pops r4-r7 and lr, so those are fully preserved.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8127EF4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8127EF4
+
+    ./wf verify --function sub_8127EF4 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8127EF4
+
+    ./wf verify --function sub_8127EF4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8127EF4
+
+    ./wf verify --function sub_8127EF4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3, story1, story2, story8.'
+  reproduce: grep -l '^08127ef4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- What game entities use r5+0xD bit 0 and what is byte_812851C's per-index table representing (NPC gate conditions,
+  item availability, story branch flags)?
+- Why are flags stored in two separate ranges (0x1CA0 / 0x1D20) rather than a single contiguous block—do lo/hi correspond
+  to different event categories (e.g. chapter vs. sub-scenario)?
+- What does the stride of 4 (idx*4) into byte_812851C suggest about the table layout beyond the bit-7 check—other
+  bytes unused here?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

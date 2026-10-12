@@ -1,0 +1,72 @@
+name: sub_8120618
+address: '0x08120618'
+kind: function
+status: confirmed
+summary: Converts a range of 0x20-byte battle-grid panel entries into packed BCD tilemap words for display.
+interface: void battle_decodePanelTiles_8120618(u32 firstIndex /*r0*/, u32 tableBase /*r1*/, u32 dst /*r2*/, u32
+  tileSrcBase /*r3*/, u32 count /*r5*/); // clobbers r0-r3, nzcv; preserves r4-r7
+details: 'Iterates `count` panels starting at `firstIndex` in the 0x20-byte-stride table at `tableBase`. For each
+  panel: reads the u16 at +0x1C; if bits 7+ are zero (inactive), writes two zero u32s to `dst`. Otherwise reads
+  the u32 at +0x14; if the low halfword is zero (no HP/damage value), also writes two zeros. If the high halfword
+  (the numeric value) exceeds 0x63 (99 decimal), it is clamped to 99. SVC 6 is used to perform an unsigned division
+  by 10, yielding quotient (tens digit) and remainder (ones digit). Each digit is turned into a tile index by adding
+  1 (if nonzero) then shifting left by 1 (×2) and adding `tileSrcBase`; a quotient of zero instead maps directly
+  to `tileSrcBase`. The two 16-bit tile indices are packed into one u32 and stored at `dst`; a second u32 equal
+  to the first plus 0x10001 is stored at `dst+4`, producing an adjacent tile (likely a second row of the same digit
+  pair). The loop is do-while, so it executes at least once even when `count` is zero.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8120618
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8120618
+
+    ./wf verify --function sub_8120618 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 291 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8120618
+
+    ./wf verify --function sub_8120618 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 36 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8120618
+
+    ./wf verify --function sub_8120618 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08120618 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What does the 0x10001 offset represent — is it a row stride for a two-row tile entry (e.g. upper/lower half of
+  an 8x16 glyph)?
+- Does the field at panel+0x14 store current HP in the high halfword and a flag/ID in the low halfword?
+- What subsystem owns the 0x20-byte panel table (battle field layout struct)?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

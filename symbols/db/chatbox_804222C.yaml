@@ -1,0 +1,85 @@
+name: chatbox_804222C
+address: '0x0804222C'
+kind: function
+status: confirmed
+summary: 'Advance the chatbox text script by one entry: copy the referenced string into the next slot of the text
+  ring buffer, bump the slot pointer, and push the new script position onto a depth-indexed stack.'
+interface: void chatbox_advanceString_804222C(u32 r4_scriptPtr, struct Chatbox* r5_chatbox) -> r0=1, r2=4, r4=dst
+  (NZCV clobbered)
+details: 'Reads r4 as a script-cursor pointer and r5 as the chatbox struct.
+
+  Bumps the recursion/depth byte at oChatbox_Unk_05, then indexes
+
+  A_byte_8043B54 by LD8(scriptPtr+2) << 3 to fetch a (srcPtr, wordCount)
+
+  pair. Computes the destination in the 64-byte-slot text ring buffer at
+
+  A_byte_200AFA0 using the u16 slot index at chatbox+0x64, calls
+
+  CopyWords(srcPtr, dst, wordCount), advances that slot index, stores
+
+  dst at oChatbox_TextScriptCursorPtr and the advanced script pointer
+
+  (scriptPtr+3) at oChatbox_Unk_44 and at chatbox+0x140+(depth-1)*4.
+
+  Returns 1 with r2=4 (opcode 04 in the bytecode dispatch loop at
+
+  0x80422A0-ish) and r4 = dst (the newly written string in the ring
+
+  buffer, which the next script op will consume).
+
+
+  Register form kept (C call semantics could not work): r4 = script pointer, r5 = chatbox struct, r0/r2/r4 returned.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c chatbox_804222C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_804222C
+
+    ./wf verify --function chatbox_804222C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 295 out of
+    domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_804222C
+
+    ./wf verify --function chatbox_804222C --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 56 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_804222C
+
+    ./wf verify --function chatbox_804222C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0804222c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- What bytecode opcode selects this handler, and what does that opcode mean semantically (push string vs. push number/control)?
+- Is byte_200AFA0 the chatbox text scratch ring buffer, and is chatbox+0x64 always the writing index?
+- What is the depth-indexed stack at chatbox+0x140 used for (e.g., for restoring cursor on pop/return)?
+- Does r0 always come back as 1; is r2=4 a fixed return opcode or a side product of CopyWords' clobbers?
+- 'Calling-convention work: register form kept because r4 = script pointer, r5 = chatbox struct, r0/r2/r4 returned.'
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

@@ -1,0 +1,76 @@
+name: sub_810DB20
+address: '0x0810DB20'
+kind: function
+status: confirmed
+summary: AI helper that picks the next valid panel one step closer to its target along the Y axis (preferred) or
+  X axis, validated via object_checkPanelParameters.
+interface: 'void aiStepPanelTowardTarget_810DB20(u32 /*r5*/ battle_obj, u32 /*r6*/ ai_state); // out: r0 = candidate
+  panel X (0 if none valid), r1 = candidate panel Y; clobbers r2, r3, lr; flags NZCV clobbered'
+details: "Reads battle_obj->PanelY (r5+oBattleObject_PanelY) and ai_state->Unk_05 (r6+oAIState_Unk_05).\n  If they\
+  \ differ, nudges PanelY by ±1 toward Unk_05, reads PanelX from the object,\n  calls GetAllianceDependentPanelParamArgs\
+  \ with table byte_810DBF0 (via off_810DCF4),\n  then object_checkPanelParameters(x, y, r2, r3). If it returns\
+  \ non-zero, returns\n  (x, y) immediately (Y axis path wins).\nFalls through to X axis: compares PanelX (r5+oBattleObject_PanelX)\
+  \ with ai_state->Unk_04\n  (r6+oAIState_Unk_04). If equal, returns (0, Unk_04) — note the C verifies r0 = 0,\n\
+  \  r1 = ai_state Unk_04 (target X is loaded into r1 in this branch only when equal).\n  If not equal, nudges PanelX\
+  \ by ±1 toward Unk_04, calls the same\n  GetAllianceDependentPanelParamArgs (off_810DCF8 also points to byte_810DBF0)\
+  \ with\n  (newX, PanelY, r2, r3) into object_checkPanelParameters. If non-zero, returns\n  (newX, PanelY); otherwise\
+  \ returns (0, PanelY).\nBoth axis helpers share the same lookup table byte_810DBF0 (passed via r3 through\nGetAllianceDependentPanelParamArgs,\
+  \ which produces the panel-attribute args r2/r3 for\nobject_checkPanelParameters). Used by an NPC/object AI driver\
+  \ (probably a moving enemy\nor allied chip) to decide its next panel position when stepping toward a stored target.\n\
+  Quirks: the \"no Y step valid\" fallthrough reuses the same r3 table pointer, and the\nX-equal branch's return\
+  \ value {0, target_x} is somewhat unusual (r1 is loaded with\nUnk_04 rather than PanelY). The presaved r4/r5/r6/r7\
+  \ across the BL calls is the\nreason for the push/pop sets around them.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_810DB20
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810DB20
+
+    ./wf verify --function sub_810DB20 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 262 out of
+    domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810DB20
+
+    ./wf verify --function sub_810DB20 --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 83 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810DB20
+
+    ./wf verify --function sub_810DB20 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story4, story6, story9.'
+  reproduce: grep -l '^0810db20 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- story4
+- story6
+- story9
+open_questions:
+- Which AI driver(s) call this; is the target (Unk_04/Unk_05) the player's panel, an allied object's panel, or a
+  flagged goal?
+- What does byte_810DBF0 encode — is it a panel-flag bitmask that differs between player and ally alliances?
+- Is the (0, target_x) return when X already aligned intentional, a bug, or a sentinel callers interpret?
+- Do callers inspect r0 == 0 as 'no step found', or do they always pass the result onward into a movement routine?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

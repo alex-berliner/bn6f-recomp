@@ -1,0 +1,81 @@
+name: sub_81337E8
+address: '0x081337E8'
+kind: function
+status: confirmed
+summary: 'Per-frame update of the submenu scene object: dispatches flow handlers when open, triggers close-out dialog
+  when closed, and refreshes layout and button groups.'
+interface: void submenu_tick_81337E8(u32 r2, u32 r4, u32 objectPtr /*r5*/, u32 toolkit /*r10*/) -> modifies r5,
+  r8, r9, r12; preserves r7, r10
+details: "r5 is the submenu scene object (state bytes at +1, +2). r10 is the Toolkit pointer\n(used to read oToolkit_JoypadPtr\
+  \ → oJoypad_LowSensitivityHeld).\n\nWhen the submenu is open (submenu_isOpen_81355D8 returns Z):\n  Chains three\
+  \ flow-handler calls (sub_8133BB4, sub_8133C0C, sub_8134A3C); each\n  must return Z to fall through to the select-press\
+  \ path. In select-press path:\n    1. chatbox_selectPress_8133C58 confirms the highlighted entry.\n    2. Probes\
+  \ held Start/A/B via sub_811F7F8 (reads joypad low-sensitivity bits from\n       toolkit); if a button is held,\
+  \ skips commit.\n    3. If no button held and submenu still open, checks folder-edit arrows via\n       checkLeftRightInputForFolderEdit_8133E3C(3).\
+  \ On arrow press:\n       object_saveStateAndSetState8_8133E7C persists state, then\n       entity_setLookupEntryStateFromFlag_8117D10(1,\
+  \ 3) updates the target entity.\n\nWhen the submenu is closed:\n  If sSubmenu.unk_02 != 0x24 and (sSubmenu.unk_1B\
+  \ & 0x40) == 0, presses Start/B/A\n  set object state byte +1 = 0x10, +2 = 0, runs eTextScript2028A20 script 0x17\
+  \ via\n  chatbox_runScript_803FD9C, and plays SOUND_UNSELECT_7B (0x7B).\n\nCommon tail (always reached): refreshes\
+  \ submenu layout (sub_81341A0), clears BG if\nclosed (submenu_clearBgIfClosed_8134594), updates two windowed button\
+  \ groups\n(sub_81353DC, sub_81353F0 with indices 5/0 and 6/1).\n\nsSubmenu (0x2009a30) is the global submenu state\
+  \ block; fields unk_02 (mode) and\nunk_1B (flags, bit 6 gates close-out dialog).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_81337E8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81337E8
+
+    ./wf verify --function sub_81337E8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81337E8
+
+    ./wf verify --function sub_81337E8 --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 60 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81337E8
+
+    ./wf verify --function sub_81337E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081337e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+related:
+- sub_8133BB4
+open_questions:
+- What are the three flow handlers (sub_8133BB4, sub_8133C0C, sub_8134A3C) doing concretely—scroll animation, cursor
+  move, sub-menu navigation?
+- What does eTextScript2028A20 script 0x17 display—the 'Exit' confirmation prompt?
+- Why is sSubmenu.unk_1B bit 6 (0x40) checked alongside unk_02 != 0x24 before allowing the close-out dialog?
+- Are r8/r9/r12 meaningfully modified by sub_811F7F8 or merely passed through as a side-effect of its register convention?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

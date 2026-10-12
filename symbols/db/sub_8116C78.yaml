@@ -1,0 +1,107 @@
+name: sub_8116C78
+address: '0x08116C78'
+kind: function
+status: confirmed
+summary: Advance the per-frame palette animation of a battle sprite when its alliance matches the caller's, then
+  apply the resulting sub-palette bank and palette.
+interface: 'void sprite_tickMatchPaletteAnim_8116C78(u32 r5 /*sprite_ptr*/, u32 r7 /*related_ptr*/);
+
+  /* r5 preserved on exit; clobbers r0-r3, r6, lr, NZCV */
+
+  '
+details: 'Reads alliance ID (byte 4) from both the sprite (r5) and a related object (r7).
+
+  If they are equal the sprite participates in the match animation; otherwise
+
+  default bank 0xD / palette 1 are used.
+
+
+  When animating, indexes a 4-byte-per-frame table (byte_8116CCC, two entries:
+
+  {bank 0xC, pal 0, nextFrame 1, nextTimer 8} and {bank 0xD, pal 1, nextFrame 0,
+
+  nextTimer 8}) using the sprite''s frame index at byte 0xC.  The per-frame
+
+  countdown at byte 0xD is decremented; on wrap-to-negative the next entry''s
+
+  frame index and timer are loaded.
+
+
+  Bit 6 of the sprite''s control byte 0 (the "match pending" flag) is always
+
+  cleared before returning.
+
+
+  Finally calls sprite_setSubEntryPaletteBank_800304A(bank, r5) and
+
+  sprite_setPalette(palette, r5) to push the resolved values into the OAM
+
+  / palette subsystem.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8116C78
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8116C78
+
+    ./wf verify --function sub_8116C78 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 245 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8116C78
+
+    ./wf verify --function sub_8116C78 --snapshots build-snapshots'
+  result: 18 compared, 0 differed, 78 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8116C78
+
+    ./wf verify --function sub_8116C78 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08116c78 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What sets bit 6 of byte 0 (the match-pending flag) before this tick is called?
+- Is r7 always a battle-NPC pointer, or could it be another sprite or a Nav object?
+- The table only has two frames; is there a longer animation table for other palette-bank pairs, or is this specific
+  to the 'match' highlight?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

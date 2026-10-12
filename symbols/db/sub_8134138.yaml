@@ -1,0 +1,74 @@
+name: sub_8134138
+address: '0x08134138'
+kind: function
+status: confirmed
+summary: Updates a battle sprite's x position from a per-side base table and flips its side flag (0 or 1) once the
+  sprite crosses the target-x threshold.
+interface: void sprite_battleUpdatePosAndFlipSide_8134138(u8 *obj); // obj = r7, modifies +0xE/+0xF/+0x18-derived
+  fields; no return
+details: 'Reads the side sub-id from obj+0xE (0 or 1), indexes a 16-bit base-x table at dword_813418C (values {0x030,
+  0x1B6} → 48 and 438 px) to get the starting x for that side. Reads the sprite''s current x (s16 at obj+0x18),
+  multiplies by 8, subtracts from the base, and passes the resulting offset plus y=0x58 and z=0 to sprite_setPositionForIdRange3_8119854,
+  which moves a battle-range-3 sprite. Then copies obj+0xE to obj+0xF (previous-side bookkeeping). Finally re-derives
+  obj+0xE: if the old side was 0, it stays 0 unless current-x > target-x (obj+0x1A) AND current-x >= 11 (0xB), in
+  which case it flips to 1; if the old side was 1, it stays 1 unless current-x < target-x AND current-x <= 19 (0x13),
+  in which case it flips to 0. The thresholds 11 and 19 likely correspond to grid-cell boundaries in the battle
+  field. The single call target sprite_setPositionForIdRange3_8119854 restricts the move to sprites whose ID falls
+  in a "range 3" bucket (battle NPCs / enemy sprites).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8134138
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8134138
+
+    ./wf verify --function sub_8134138 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8134138
+
+    ./wf verify --function sub_8134138 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 72 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8134138
+
+    ./wf verify --function sub_8134138 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08134138 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What does 0x58 as the second argument to setPositionForIdRange3 represent (y-offset, depth, or a mode flag)?
+- Are 0xB and 0x13 pixel or tile thresholds; does the table dword_813418C cover more than two entries?
+- Which specific battle sprites (IDs in range 3) call this, and what visual behaviour does the side flip produce?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

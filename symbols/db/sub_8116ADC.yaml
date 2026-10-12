@@ -1,0 +1,78 @@
+name: sub_8116ADC
+address: '0x08116ADC'
+kind: function
+status: confirmed
+summary: Dispatches the ePET menu update routine by a variant byte stored at offset 8 of the battle object, setting
+  r7 to the global menu-data pointer before calling through a 3-entry jump table.
+interface: void epetMenuVariantDispatch(u32 r5 /* battle_obj */); // outputs r2,r3,r5,r10,r11; clobbers r0,r1,r4,r6,r8,r9,r12,nzcv,lr;
+  preserves r7
+details: 'Loads the global ePETMenuData pointer into r7 (a callee convention for this subsystem). Reads a single-byte
+  variant index from [r5 + 8]. Uses that index to select a function pointer from the 3-entry jump table at 0x08116AF0:
+  entry 0 → sub_8116B00, entry 1 → sprite_dispatchVariantUpdate_8116B9C, entry 2 → sub_8116C38. Dispatches via computed
+  branch (mov lr, pc; bx r0). No return-value handling; the dispatched routine''s side effects on the battle object
+  and r2/r3/r10/r11 are what callers observe.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8116ADC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8116ADC
+
+    ./wf verify --function sub_8116ADC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8116ADC
+
+    ./wf verify --function sub_8116ADC --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 21 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8116ADC
+
+    ./wf verify --function sub_8116ADC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08116adc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What do the three variant cases represent in game terms (e.g. idle, active-pet, menu-overlay)?
+- Is r10 an index into the ePET menu array or a state phase?
+- Does ePETMenuData point to the same structure used by other menu routines, or is it pet-specific?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

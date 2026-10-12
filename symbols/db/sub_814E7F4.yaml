@@ -1,0 +1,87 @@
+name: sub_814E7F4
+address: '0x0814E7F4'
+kind: function
+status: confirmed
+summary: Interpolates between two adjacent decoded audio samples, blends by an 8-bit fraction, and scales by the
+  caller struct's amplitude field.
+interface: u32 audio_interpSample_814E7F4(SampleStruct *struct_ptr /*r0*/, u8 sample_index /*r1*/, u8 blend_factor
+  /*r2*/) /*->r0 = scaled value, r12 = struct_ptr*/
+details: "The function receives a pointer to a sample-playback struct (r0, kept in r12),\na sample-table index byte\
+  \ (r1), and an 8-bit blend fraction (r2, used as the\nhigh byte of the multiplier). It performs:\n1. Clamps the\
+  \ index to 0xB2; if clamped, forces the blend byte to 0xFF so the\n   last valid entry is fully selected.\n2.\
+  \ Reads two consecutive bytes from the packed-index table at byte_81C04A8\n   (offset by the clamped index and\
+  \ index+1).\n3. Decodes each byte via the 16-entry u32 value table at byte_81C055C:\n   low nibble selects the\
+  \ table slot, high nibble provides a right-shift,\n   giving a base sample amplitude.\n4. Computes the linear\
+  \ interpolation: base + (next - base) * blend >> 32,\n   using umul3232H32 for the 32x32 high-product.\n5. Multiplies\
+  \ the interpolated result by the struct's u32 amplitude field\n   at offset +4, again via umul3232H32, returning\
+  \ the final scaled sample.\nQuirk: r6 and r7 are used as internal scratch for the clamped index and\nshifted blend\
+  \ word respectively, but are preserved across the call.\nThe two global tables (byte_81C04A8, byte_81C055C) form\
+  \ a run-length /\nquantisation scheme that compresses the 179-entry (0x00..0xB2) sample\nwaveform.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_814E7F4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_814E7F4
+
+    ./wf verify --function sub_814E7F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_814E7F4
+
+    ./wf verify --function sub_814E7F4 --snapshots build-snapshots'
+  result: 32 compared, 0 differed, 64 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_814E7F4
+
+    ./wf verify --function sub_814E7F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814e7f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What is the exact layout of the SampleStruct referenced by r0 (beyond the amplitude at +4)?
+- Are the 179-entry tables per-instrument or a shared master waveform?
+- Who calls this and how frequently—once per sample output, per frame, or per note transition?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

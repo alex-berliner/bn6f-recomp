@@ -1,0 +1,70 @@
+name: sub_8124D78
+address: '0x08124D78'
+kind: function
+status: confirmed
+summary: 'Initialises a battle sprite: resets its animation controller, enables entity tick, copies current pose
+  into prev-frame slots for interpolation, launches entry animation (type 0xA), configures two pose slots, then
+  finalises.'
+interface: 'void sprite_initForBattleEntry_8124D78(uint32_t r5 /* battle-sprite base */); outputs: c, v, r1, r2,
+  r3, r5, r7, r8, r9, r10, r11, r12; clobbers: nz, r0, r4; preserves r5, r6.'
+details: "Operates on the battle-sprite struct whose base is passed in r5. Steps: (1) sub_8126818(r0=0, r5=base)\
+  \ resets the animation controller. (2) sub_811983C(r0=1, r1=1) enables the entity tick (r2 result reused later).\
+  \ (3) Writes byte 1 to base+0x0D (in-play / active flag). (4) Copies halfword at base+0x1E into base+0x20 and\
+  \ base+0x22 into base+0x24\n    (previous-frame pose X/Y for smooth interpolation).\n(5) sub_81255F8(r0=0xA, r5=base)\
+  \ starts the entry animation of type 0xA. (6) Calls sub_8125444, sub_8125D94, and wrapper_sub8126570 (intermediate\n\
+  \    setup helpers whose internals are not yet documented).\n(7) sprite_setStructHalfwordPairOnThree(slot 4):\
+  \ pointer base+0x58, halfword base+0x12. (8) sprite_setStructHalfwordPairOnThree(slot 7): pointer base+0x5C; if\
+  \ that\n    pointer equals 0x27 the halfword at base+0x1C is used, otherwise 0 is passed.\n(9) sub_812674C and\
+  \ sub_81267A8 finalise the sprite (the latter writes back\n    c/v and r1-r3 that propagate to the caller).\n\
+  r10 and lr are inputs per the contract but are only read back as outputs through callee side-effects; the function\
+  \ body does not touch them directly."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8124D78
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8124D78
+
+    ./wf verify --function sub_8124D78 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8124D78
+
+    ./wf verify --function sub_8124D78 --snapshots build-snapshots'
+  result: 23 compared, 0 differed, 6 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8124D78
+
+    ./wf verify --function sub_8124D78 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^08124d78 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- story2
+open_questions:
+- What do sub_8125444, sub_8125D94, and wrapper_sub8126570 do internally?
+- What is the semantic meaning of animation entry type 0xA (walk-in? pop-in? drop-in?)
+- Why does the slot-7 branch test the pointer itself against 0x27 rather than an index?
+- What fields does sub_81267A8 finalise and why must c/v survive to the caller?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

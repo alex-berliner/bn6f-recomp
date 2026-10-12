@@ -1,0 +1,66 @@
+name: sub_8129D00
+address: '0x08129D00'
+kind: function
+status: confirmed
+summary: Handles D-pad cursor movement, A-confirm, and B-cancel for a battle-side list (chip/program submenu).
+interface: "void menu_handleListInput_8129D00(u32 listBase /*r5*/, u32 r6, u32 r7, u32 toolkitPtr /*r10*/)\n   \
+  \ -> r4 (cursor), r5, r6, r10 preserved/modified;\n   flags NZ, C, V clobbered; Z, N clobbered by callees.\n"
+details: "Polls this-frame joypad via toolkit->joypad->Pressed (r10 -> oToolkit_JoypadPtr -> oJoypad_Pressed).\n\
+  List state struct lives at r5: [0x20] = item count, [0x13] = current cursor index.\nCursor loop is performed by\
+  \ menu_moveCursorUpDown_811FA22 with r2=1 (presumably wrap-enabled\nor step-1); returned value is the new cursor\
+  \ index.\n  - If cursor changed: stores new index and calls sub_812B3E4 (presumably redraw/refresh the\n    item\
+  \ display for the newly highlighted entry).\n  - Else if A pressed: plays SOUND_MENU_SELECT and calls sub_812B414\
+  \ (battle_selectTarget_\n    812B414 — picks the highlighted target / executes the highlighted action).\n  - Else\
+  \ if B pressed: plays SOUND_EXIT_SUBMENU, sets state byte [0x03] = 0x0C (close submenu\n    phase), clears [0x1C]\
+  \ and [0x1E] to 0, and ORs bit 0 into flag byte [0x1B] (mark\n    \"changed dirty\" so the parent repaints).\n\
+  r6, r7, r10 are passed in purely to forward to callees.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8129D00
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129D00
+
+    ./wf verify --function sub_8129D00 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129D00
+
+    ./wf verify --function sub_8129D00 --snapshots build-snapshots'
+  result: 54 compared, 0 differed, 42 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129D00
+
+    ./wf verify --function sub_8129D00 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08129d00 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Exact meaning of the 0x0C "close" value at offset 0x03 and the flags at 0x1B/0x1C/0x1E (presumably the standard
+  chip-select / submenu control block).
+- Whether sub_812B3E4 also redraws an info pane for the highlighted entry.
+- Whether r2=1 to menu_moveCursorUpDown_811FA22 is a wrap flag, step size, or sound id.
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

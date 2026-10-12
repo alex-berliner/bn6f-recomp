@@ -1,0 +1,74 @@
+name: sub_81279A8
+address: '0x081279A8'
+kind: function
+status: confirmed
+summary: Returns 1 if all gated story-event flags are satisfied (or none are outstanding); returns 0 as soon as
+  an unset event with the 0x80 'blocking' attribute is found.
+interface: u32 story_checkEventGate(void) /* r0 = 0 or 1; nz reflect r0; r4–r7 preserved; clobbers r0–r3, lr */
+details: 'Reads entry count from dword_2001140. Iterates i = 0..count-1 over byte_2006530 (story-progress table).
+
+  Each byte is converted to a flag index by adding 0x1DA0 and passed to TestEventFlag.
+
+  If the flag is already set (Z clear), the entry is skipped.
+
+  If the flag is NOT set (Z set), the parallel attribute table byte_812851C is consulted at offset 4*entry_byte;
+
+  bit 0x80 in that byte marks the event as a hard gate.
+
+  Finding any such unset-but-gated event immediately returns 0.
+
+  If the loop completes with no blockers (or count == 0), returns 1.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_81279A8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81279A8
+
+    ./wf verify --function sub_81279A8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81279A8
+
+    ./wf verify --function sub_81279A8 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81279A8
+
+    ./wf verify --function sub_81279A8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, story1, story2, story8.'
+  reproduce: grep -l '^081279a8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- story1
+- story2
+- story8
+open_questions:
+- What game subsystem calls this and what does it do with the 0 vs 1 result (e.g., gate a cutscene trigger, enable
+  a NetSave area, allow a BossBattle transition)?
+- Are there other bits in the attribute byte besides 0x80 that carry meaning?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

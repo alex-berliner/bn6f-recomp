@@ -1,0 +1,81 @@
+name: sub_810D998
+address: '0x0810D998'
+kind: function
+status: confirmed
+summary: 'Battle enemy AI state-machine step: runs a pre-check (sub_810DAF0); if it returns nonzero, the AI is paused;
+  otherwise the AI state''s 4-entry handler is invoked via a jump table indexed by oAIState_Unk_00.'
+interface: void aiStepDispatch(u32 r4, u32 r5, u32 r6, u32 r7, u32 r8, u32 r9, u32 r10, u32 r11, u32 r12, u32 lr);
+  /* returns r1, r5, r8, r9, r10, r11, r12; clobbers nz/c/v, r0, r2, r3, r7, lr; preserves r4, r6 */
+details: "Entry path:\n  1. bl sub_810DAF0 — pre-check using r4, r5, r7, r8, r9, r11, r12.\n     Returns r0 = \"\
+  should we run the AI?\" (nonzero = skip handler this tick).\n     Returns updated r1, r4, r5, r6 (note r6 is the\
+  \ live AI-block pointer and may be re-derived),\n     r7, r8, r9, r10, r11, r12.\n  2. If pre-check returned nonzero:\
+  \ pop {r4,r6,pc} restores the entry-time r4 and r6 and returns\n     the pre-check's r1/r5/r8/r9/r10/r11/r12.\n\
+  \  3. If pre-check returned zero: load off_810D9B0 (which points to off_810D9B4, the\n     4-entry handler table),\
+  \ then ldrb r0, [r6,#oAIState_Unk_00] indexes it.\n     The 4 entries are sub_810D9C4, sub_810DA00, sub_810DA24,\
+  \ sub_810DAE4 — one per\n     AI state (0..3). Dispatch is via `mov lr, pc; bx r1` (THUMB switch), so the\n  \
+  \   handler is called in Arm mode with r0 = state, and the handler is expected to\n     return via the linker-generated\
+  \ return (i.e. the original bx destination is\n     the THUMB entry +1).\n  4. On return from the handler, pop\
+  \ {r4,r6,pc} again restores the entry-time r4 and\n     r6 and returns r1/r5/r8/r9/r10/r11/r12 as set by the handler.\n\
+  \nStructures touched:\n  * AI block at r6 (passed in, possibly rewritten by sub_810DAF0); field oAIState_Unk_00\n\
+  \    is a single byte at offset \"oAIState_Unk_00\" used as the dispatch index (0..3).\n  * The 4 AI-state handlers\
+  \ live at the THUMB-function+1 addresses stored in the table\n    at off_810D9B4; the bx-with-+1 quirk means they\
+  \ execute in Arm mode with the\n    standard r0=state, lr=return convention and must end with the matching bx-pair\n\
+  \    return that the original `bx r1` set up.\n\nQuirks:\n  - sub_810D998 itself never modifies r4 or r6; both\
+  \ are pushed/popped around the\n    pre-check and the handler, so callers see r4 and r6 unchanged.\n  - r7 is\
+  \ clobbered: the pre-check's r7 is consumed (r7 isn't part of the return\n    set), so handlers must not rely\
+  \ on the entry-time r7.\n  - oAIState_Unk_00 implies \"AI state, unknown purpose, offset 0\" — only the low\n\
+  \    two bits are meaningful as a table index (the table is 4 entries).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_810D998
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810D998
+
+    ./wf verify --function sub_810D998 --snapshots build-snapshots'
+  result: 'captured calls: 36 runs, 0 failures, 21 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810D998
+
+    ./wf verify --function sub_810D998 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 22 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810D998
+
+    ./wf verify --function sub_810D998 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story4, story6, story9.'
+  reproduce: grep -l '^0810d998 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- story4
+- story6
+- story9
+open_questions:
+- What does oAIState_Unk_00 actually represent (idle / approach / attack / etc.)?
+- What does sub_810DAF0 check (animation lock, HP, panel occupancy, turn state)?
+- Where is the AI block (the r6 pointer) originally allocated and owned — enemy struct, navi AI struct, or a battle-global?
+- What semantic event transitions each state, and which sub_810D9C4 / sub_810DA00 / sub_810DA24 / sub_810DAE4 implements
+  which phase?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

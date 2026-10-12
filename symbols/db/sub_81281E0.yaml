@@ -1,0 +1,74 @@
+name: sub_81281E0
+address: '0x081281E0'
+kind: function
+status: confirmed
+summary: Battle object icon display — submits up to four OBJs to the sprite queue using an icon descriptor table
+  and a per-record tile source.
+interface: void sub_81281E0(struct battle_obj_state *r5);
+details: "Reads the battle-object state at r5:\n  +0x1E u16 count — number of icons to draw; 0 short-circuits, >4\
+  \ is clamped to 4.\n  +0x24 u16 base   — index into the dword_2027590 sprite-record pool (records are 0x20 bytes;\
+  \ index is re-read each iteration — every icon's base depends on the live field).\n\nFor each icon i in [0, count):\n\
+  \  • Reads a packed on-screen (x,y) from byte_8128250 (pairs of halfwords, 4 bytes per icon: entries cover cols\
+  \ 0x18/0x28/0x38/0x48 rows 0x18 — single row of four icons).\n  • Builds the sprite record pointer = dword_2027590\
+  \ + (base + i) * 0x20.\n  • Tile = 0x210 + ((record.dword0 >> 16 & ~0x80) << 2) — so the high halfword of the\
+  \ first word of the record supplies the tile index (with bit 7 forced clear) shifted up by 2.\n  • Calls sub_802FE28(attr01\
+  \ = 0x40000000 | packedPos, attr2 = (0xA << 12) | (2 << 10) | tile, 0, 2) — i.e. affine OBJ slot, 4bpp, palette\
+  \ 2, with tile 0xA800|tile.\n\nReturns r5 unchanged (only used as a preserved scratch slot). Loop uses r7 as the\
+  \ counter; r6 holds count; r4 holds the packed position; r3 is loaded from the table; r0/r1/r2 are call arguments\
+  \ to the sprite-queue routine.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_81281E0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81281E0
+
+    ./wf verify --function sub_81281E0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 294 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81281E0
+
+    ./wf verify --function sub_81281E0 --snapshots build-snapshots'
+  result: 35 compared, 0 differed, 61 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81281E0
+
+    ./wf verify --function sub_81281E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3, story1, story2, story8.'
+  reproduce: grep -l '^081281e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- Confirm sub_802FE28 is the sprite-queue / OBJ submission routine (consistent with the I/O register base 0x40000000,
+  the 0xA800 attr2 shape, and the 4th arg = 2).
+- The icon positions are only one row at y=0x18, x=0x18/0x28/0x38/0x48; identify which battle object this represents
+  (HP readout? charge gauge? status icons?).
+- Whether tile bit-7 being cleared has any specific meaning (flag clear in the source tile, or just noise).
+- Use of r5 as both input and "preserved return" suggests it is a register-passed this-pointer into a battle step
+  function rather than a return value; confirm caller pattern.
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

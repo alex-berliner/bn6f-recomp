@@ -1,0 +1,72 @@
+name: sub_81299B0
+address: '0x081299B0'
+kind: function
+status: confirmed
+summary: Handles battle sub-menu cursor movement (Up/Down over 3 items), A to confirm (with EVENT_F2 special-cased
+  to a chatbox script) and B to back out to sub-menu state 0x0C.
+interface: "void sub_81299B0(u32 r5_state, u32 r6, u32 r7, u32 r10_toolkit)\n  // outputs/clobbers: r0, r1, r2,\
+  \ r3, r4, lr; flags NZ C V; preserved r5 r6 r7 r10\n"
+details: '- Pulls the just-pressed joypad via r10->toolkit->joypad->Pressed, then runs menu_moveCursorUpDown_811FA22
+  over 3 items starting at r5+0x12 (the sub-menu cursor index), wrapping at 1.
+
+  - If the returned cursor index changed, stores the new index at r5+0x12 and refreshes the sub-menu listing via
+  sub_812B3CC.
+
+  - On A (SOUND_MENU_SELECT): if the cursor is on item 1 AND EVENT_F2 (0xF2) is NOT set, runs chatbox script 5 via
+  chatbox_runScript_803FD9C_on_eTextScript201BA20; otherwise commits via battle_selectTarget_812B414.
+
+  - On B (SOUND_EXIT_SUBMENU): sets r5[3]=0x0C (exit sub-menu state), clears r5[0x1C] and r5[0x1E], and ORs 1 into
+  the flag byte at r5[0x1B] (marks the sub-menu as dirty/to-redraw).
+
+  - Touches r5 offsets 0x03, 0x12, 0x1B, 0x1C, 0x1E on the state struct.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_81299B0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81299B0
+
+    ./wf verify --function sub_81299B0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81299B0
+
+    ./wf verify --function sub_81299B0 --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 54 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81299B0
+
+    ./wf verify --function sub_81299B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^081299b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Exact meaning of r5+0x1B bit 0 (a "needs redraw"/"dirty" flag).
+- Why EVENT_F2 gating on item 1 routes to chatbox script 5 instead of the normal select path.
+- Relationship between sub_812B3CC and sub_812B414 (refresh vs confirm target).
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

@@ -1,0 +1,79 @@
+name: submenu_subchip_81240D0
+address: '0x081240D0'
+kind: function
+status: confirmed
+summary: Sub-chip submenu input handler; processes Start/B to confirm-exit-and-fade, A to jack in (after checking
+  the slot's sub-chip table entry), and Up/Down to move the cursor among more than one sub-chip option, then redraws.
+interface: void submenu_subchip_handleInput(u32 r2, u32 r4, struct SubChipSubmenu* state_r5, u32 r6, u32 r7, struct
+  Toolkit* toolkit_r10) -> r5 r8 r9 r10 r11 r12; clobbers r0 r1 r2 r3 r4 r6 r7 lr, n z c v
+details: "Runs once per frame for the sub-chip submenu (state struct in r5 with fields\n+0x0C = u8 option_count,\
+  \ +0x14 = u16 cursor_index; toolkit in r10).\n- If Start or B is held, calls submenu_ConfirmExitAndFade_811FB64\
+  \ with r0=8 (likely exit\n  state id) and the current state, then runs the redraw helper sub_81244EC and returns.\n\
+  - Else if option_count != 0 and A is held, looks up unk_201C400[cursor*2 + 1] (a packed\n  table of sub-chip slot\
+  \ entries; the +1 byte being non-zero marks the slot as filled).\n  Empty slot plays SOUND_CANT_JACK_IN; filled\
+  \ slot calls sub_81245D4 (the actual\n  jack-in / equip-sub-chip action) and plays SOUND_MENU_SELECT. Either path\
+  \ redraws via\n  sub_81244EC.\n- Otherwise reads toolkit->joypad->LowSensitivityHeld and, if option_count > 1,\
+  \ calls\n  menu_moveCursorUpDown_811FA22 (r0=held, r1=count, r2=1 wrap flag, r3=current cursor),\n  then stores\
+  \ the returned index back at state+0x14 and redraws. With count <= 1 just\n  redraws without changing the cursor.\n\
+  End-of-frame redraw is always performed through sub_81244EC; the function tail-calls\nsub_81244EC rather than\
+  \ falling through."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c submenu_subchip_81240D0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function submenu_subchip_81240D0
+
+    ./wf verify --function submenu_subchip_81240D0 --snapshots build-snapshots'
+  result: 'captured calls: 39 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function submenu_subchip_81240D0
+
+    ./wf verify --function submenu_subchip_81240D0 --snapshots build-snapshots'
+  result: 43 compared, 0 differed, 53 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function submenu_subchip_81240D0
+
+    ./wf verify --function submenu_subchip_81240D0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^081240d0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+open_questions:
+- What the entries in unk_201C400 actually encode (the +1 byte being the "has sub-chip" flag is inferred from the
+  cant-jack-in branch; the +0 byte's role is unknown).
+- Which option_count value signals "no sub-chips available" (the A-press branch is skipped when +0xC == 0; whether
+  0 means truly empty vs. hidden is not clear).
+- Exact meaning of r0=8 passed to submenu_ConfirmExitAndFade_811FB64 (likely an exit sub-state / fade id but not
+  verified).
+- What sub_81245D4 does in detail (jacks the player in? equips the sub-chip? consumes it?).
+- Why option_count == 1 disables cursor movement (single entry, or guard for a different layout where the cursor
+  index is repurposed?).
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

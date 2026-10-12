@@ -1,0 +1,104 @@
+name: sub_813BEA8
+address: '0x0813BEA8'
+kind: function
+status: confirmed
+summary: Scans the toolkit's unknown-entry table, collects up to 0x31 unique info-table IDs into a scratch buffer,
+  and bumps one of two tally bytes on the counter (oToolkit_Unk200431c_Ptr) by 1 or 2 when 5 or more distinct IDs
+  are found.
+interface: void sub_813BEA8(void /* r10 = toolkit ptr */); /* r7 preserved; clobbers r0/r2, NZCV */
+details: 'Zero-fills the 0x31-byte scratch buffer at byte_2006D30 with 0xFF (the
+
+  "not yet seen" sentinel). Iterates index 0..0x30 of the unknown-entry table
+
+  via toolkit_getUnk2004190EntryPtr_813B9FC; for each live entry (low u16
+
+  flag != 0) follows the flag to an info structure through sub_813B780 and
+
+  reads byte 3 as the ID. Each ID is appended into the scratch buffer only
+
+  if it is not already present there, until the buffer is full. After the
+
+  scan, if the number of collected unique IDs exceeds 4, it loads the
+
+  counter struct pointer (r10->field at oToolkit_Unk200431c_Ptr) and bumps
+
+  its offset 0xB byte by +1 when exactly 5 IDs were collected, otherwise
+
+  (+2) on offset 0xC — i.e. distinct-ID overflow tally. The thresholds
+
+  and asymmetric bump amounts (1 vs 2) suggest a "reward tier" trigger
+
+  keyed on how full the ID set is.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_813BEA8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_813BEA8
+
+    ./wf verify --function sub_813BEA8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_813BEA8
+
+    ./wf verify --function sub_813BEA8 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_813BEA8
+
+    ./wf verify --function sub_813BEA8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0813bea8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What entries populate the table toolkit_getUnk2004190EntryPtr_813B9FC walks?
+- What game state is field oToolkit_Unk200431c_Ptr and what do offsets 0xB/0xC actually count (e.g. bonus chips,
+  library completeness, encounter kinds)?
+- Why is the bump +1 vs +2 split at "exactly 5" — are 0xB/0xC two different counters or one counter with a pending
+  state?
+- Is the 0x31 cap on collected IDs the same as the table size, or an independent cap?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

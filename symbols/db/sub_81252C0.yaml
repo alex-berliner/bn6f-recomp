@@ -1,0 +1,65 @@
+name: sub_81252C0
+address: '0x081252C0'
+kind: function
+status: confirmed
+summary: Loads the static and scene-specific background tilemaps into VRAM, blanking target tile-block slots first.
+interface: void scene_loadBackgrounds(u32 scene_ptr /*r5*/);
+details: "Called with a per-scene state pointer in r5. Procedure:\n1. Calls sub_3005EBA twice to blank 32x32 tile-block\
+  \ slots 2 and 3 in VRAM\n   (tileset region 0, block indices 2/3, size 0x1E wide, heights 0x11 and 2),\n   clearing\
+  \ stale data before new tilemaps are copied.\n2. Calls CopyBackgroundTiles to paste the fixed (scripted) background\
+  \ tilemap\n   from eTextScript201BA20 into tile-block slot 1 (region 0), 0x1E x 0x14 tiles.\n3. Reads [scene_ptr\
+  \ + 0x74], subtracts 0x95 to derive the scene-specific tileset\n   index, then calls CopyBackgroundTiles to paste\
+  \ the per-scene tilemap from\n   eTextScript201BF20 into tile-block slot 2 at offset (tileset_idx, 2),\n   covering\
+  \ 0x5B x 0x11 tiles.\nPreserves r4-r7 (push/pop) so the tile-block indices and sizes survive across\nthe two helper\
+  \ calls that clobber them.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_81252C0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81252C0
+
+    ./wf verify --function sub_81252C0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81252C0
+
+    ./wf verify --function sub_81252C0 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81252C0
+
+    ./wf verify --function sub_81252C0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^081252c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+open_questions:
+- What does sub_3005EBA do exactly? Its parameters (r0-r5) suggest a VRAM tile-blank or DMA-fill helper.
+- Is [scene_ptr+0x74] the raw tileset ID or an index into a tileset table? The 0x95 offset is large.
+- Are the two eTextScript tilemap scripts always the same pair regardless of which scene, or do they switch at higher
+  levels?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

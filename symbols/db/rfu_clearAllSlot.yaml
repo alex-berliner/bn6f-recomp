@@ -1,0 +1,87 @@
+name: rfu_clearAllSlot
+address: '0x0814A828'
+kind: function
+status: confirmed
+summary: Clear all four wireless RFU slot buffers (data and link), mark each slot closed, reset the RFU link-state
+  control bytes, and restore the saved IME state.
+interface: void rfu_clearAllSlots(void); /* returns RFU base pointer via r2; flags C=1,V=0 (cmp r5,#3 after loop);
+  clobbers r2,r3 and r0/r1 scratch; preserves r4-r8 */
+details: "Called early in the wireless (RFU) subsystem bring-up/teardown path. Saves and clears the GBA IME (InterruptMasterEnableRegister)\
+  \ so the clear runs without reentrancy. Then loops exactly 4 times (slots 0-3), and for each slot:\n  * Fills\
+  \ the per-slot data buffer pointed to by dword_2010CB0[slot*4] with zeros (SWI_CpuSet, mode 0x1000034: copy +\
+  \ fill by halfword count of 0x34).\n  * Fills the per-slot link/destination buffer pointed to by off_2010CA0[slot*4]\
+  \ with zeros (SWI_CpuSet, mode 0x100000a: halfword count of 10 = 5 words).\n  * Writes the \"closed\" status byte\
+  \ 0x10 at (RFU_base + 0x10 + slot).\nAfter the loop it resets the RFU state-control bytes at offset 0x04/0x05/0x06\
+  \ and sets the link-type byte 0x57 at offset 0x0F, plus zeros byte 0x02 of the secondary RFU structure at dword_2010CC4.\
+  \ Finally restores the saved IME value. The function returns the RFU base pointer (from dword_2010CC0) in r2;\
+  \ the loop's exit comparison (cmp r5,#3) yields C=1,V=0 by contract.\nQuirks: uses the stack itself (SP and SP+2)\
+  \ as the zero-fill source for SWI_CpuSet, so the stack pointer is adjusted by 4 around the loop; pushes r8 alongside\
+  \ r4-r7/lr so the saved IME halfword lives there.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c rfu_clearAllSlot
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function rfu_clearAllSlot
+
+    ./wf verify --function rfu_clearAllSlot --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function rfu_clearAllSlot
+
+    ./wf verify --function rfu_clearAllSlot --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function rfu_clearAllSlot
+
+    ./wf verify --function rfu_clearAllSlot --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814a828 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which caller is expected to consume r2 (the RFU base pointer) immediately after — no caller in the supplied contract
+  shows it being read back, so the return may be vestigial or feed a chained RFU call.
+- Exact meaning of bytes 0x04/0x05/0x06/0x0F in the RFU control structure; 0x57 looks like a default link-type/discovery
+  value rather than a clear.
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

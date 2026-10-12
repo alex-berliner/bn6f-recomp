@@ -1,0 +1,89 @@
+name: sub_810DA4C
+address: '0x0810DA4C'
+kind: function
+status: confirmed
+summary: AI step that picks a movement-target X for a battle object by probing the front tile and locating the opposing-side
+  object.
+interface: void ai_selectMovementTarget_810DA4C(void) /* r5 = battle object, r6 = AI state, r10, lr in; r1 = range
+  lo, r5 preserved out; clobbers r0,r2,r3,lr,NZCV */
+details: 'Battle-object AI helper. Reads the object''s facing via object_getFrontDirection and
+
+  adds it to oBattleObject_PanelX to get the panel one step ahead; together with
+
+  oBattleObject_PanelY and the ExtraVars+4 word it calls sub_8109708 (panel-validity
+
+  / walkability check). If that returns non-zero the front tile is blocked, it writes
+
+  0xC into oAIState_Unk_00 of the r6 AI-state struct and aborts. Otherwise it XORs
+
+  oBattleObject_Alliance with 1 to get the opposing side and calls sub_80103F8 to
+
+  resolve that side''s battle object (r4). It stashes r4[0x13] into oAIState_Unk_05.
+
+  A second call to object_getFrontDirection provides a step offset d; with
+
+  ExtraVars[0] as a multiplier it builds a target X range [px+min(d, d*extra0), px+max(d, d*extra0)].
+
+  It then compares r4[0x12] (enemy''s panel X) to that range: if the enemy sits inside
+
+  the range it stores px (our column) into oAIState_Unk_04, otherwise enemy_x - d*extra0.
+
+  Finally oAIState_Unk_02 is set to 4. r1 is returned as the low end of the range.
+
+  Preserves r4..r7; clobbers r0,r2,r3,lr,NZCV.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_810DA4C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810DA4C
+
+    ./wf verify --function sub_810DA4C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810DA4C
+
+    ./wf verify --function sub_810DA4C --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 29 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810DA4C
+
+    ./wf verify --function sub_810DA4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story4, story6, story9.'
+  reproduce: grep -l '^0810da4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- story4
+- story6
+- story9
+open_questions:
+- Identity and meaning of sub_8109708 (likely panel-validity / attack-probe routine).
+- Identity of sub_80103F8 (probably resolve-opposing-battle-object by alliance).
+- Exact semantics of the AI-state bytes written (0xC, 4, plus Unk_04/Unk_05); how the higher-level AI loop consumes
+  Unk_04 as the chosen target column.
+- Role of oBattleObject_ExtraVars[0] vs [4] (likely step distance and a per-object reach / area parameter).
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

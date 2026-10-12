@@ -1,0 +1,82 @@
+name: sub_8129870
+address: '0x08129870'
+kind: function
+status: confirmed
+summary: Handles D-pad selection (up/down among 3 items), A confirm, and B cancel on a small vertical choice menu,
+  writing the resulting sub-state into the menu struct.
+interface: void sub_8129870(u32 r5, u32 r6, u32 r7, u32 r10 /*toolkit*/); // returns r4 r5 r6 r10; clobbers NZCV
+  r0-r3 lr
+details: 'Reads the currently-pressed buttons at r10->toolkit->joypad->Pressed and the current
+
+  cursor index at r5+0x12. Calls menu_moveCursorUpDown_811FA22 with (pressed, max=3,
+
+  step=1, curIndex, curIndex, r5, r6, r7) to clamp movement. If the returned new index
+
+  differs, persists it back to r5+0x12 and calls sub_812B39C(r4=oldIndex, r5) to
+
+  refresh the menu (likely redraw / mark dirty).
+
+  On A: plays SOUND_MENU_SELECT, sets r5+3 = 0xC (a "selected" sub-state code),
+
+  zeroes r5+0x1C and r5+0x1E, and sets bit 0 of r5+0x1B (a "dirty / needs re-issue".
+
+  On B: plays SOUND_EXIT_SUBMENU, sets r5+3 = 0x10 (a "cancel/back" sub-state code),
+
+  and applies the same zero + flag-bit pattern.
+
+  Likely a menu-state handler for a 3-option vertical menu (e.g., save/load, delete,
+
+  or a confirm dialog), where 0xC and 0x10 at offset 3 are state IDs the parent state
+
+  machine dispatches on.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8129870
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129870
+
+    ./wf verify --function sub_8129870 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129870
+
+    ./wf verify --function sub_8129870 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129870
+
+    ./wf verify --function sub_8129870 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08129870 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Which menu/state owns offset 3 == 0xC (A-confirm) and == 0x10 (B-cancel)?
+- What is the meaning of r5+0x1B bit 0 and the cleared counters at 0x1C / 0x1E?
+- Is the 3-item cap hard-coded, or derived from another field of the menu struct?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

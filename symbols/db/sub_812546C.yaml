@@ -1,0 +1,68 @@
+name: sub_812546C
+address: '0x0812546C'
+kind: function
+status: confirmed
+summary: Draws a multi-row 32x32 background tile graphic for a battle-scene object, selecting an alternate tile
+  set for the bottom rows when a flag is set.
+interface: void battle_drawBgTileRows(u32 bgObj /*r5*/) — outputs r3, r4, r6, r7 from the last CopyBackgroundTiles
+  call; r5 and r6 preserved.
+details: 'Reads the base tile index at bgObj+0x74 and a mode flag at bgObj+0x64. Unconditionally copies three rows
+  (0-2) of 2×3 32×32 tiles via CopyBackgroundTiles at row-specific offsets (-0x94, -0x82, -0x70), each using a different
+  tile-ID table (byte_812489C, byte_81248C0, byte_81248E4).  If the mode flag at 0x64 is zero it copies one additional
+  row at -0x5E (tile table byte_812492C).  If nonzero it copies two rows: row 3 at -0x5E using alternate table byte_8124908,
+  then row 4 at -0x4C using byte_812492C.  j_size=9, i_size=2 for every call.  r10 is listed as an input by the
+  caller convention but is not referenced in this function body.  r7 is set to r5 at entry and survives the function.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_812546C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812546C
+
+    ./wf verify --function sub_812546C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 245 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812546C
+
+    ./wf verify --function sub_812546C --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 54 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812546C
+
+    ./wf verify --function sub_812546C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^0812546c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+open_questions:
+- What specific battle-scene object (BG struct) owns the 0x74 tile-base and 0x64 mode flag — Falzar sprite, stage
+  background, or a sub-weapon panel?
+- Why is row 4 (offset -0x4C) only drawn on the alternate (nonzero flag) path; what visual difference does the alternate
+  tile set produce?
+- Is r10 meaningful to any caller, or is it a vestigial register-slot in the contract?
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

@@ -1,0 +1,84 @@
+name: sub_8128A44
+address: '0x08128A44'
+kind: function
+status: confirmed
+summary: Renders up to 8 consecutive text glyphs from a script into one row of VRAM tile data, using the chatbox/textbox
+  state's start-index and total character count.
+interface: "void sub_8128A44(struct ChatboxState* r5 /*in: state ptr, +0x1E = char count, +0x24 = start idx */,\n\
+  \                 u32 /*in*/ r10);\n// clobbers r0,r1,r2,r3,r12,NZCV; preserves r4,r6,r7; trashes r8,r9,r11,r12\
+  \ via callee\n// returns via r5 (state), r8, r9, r10, r11, r12 from renderTextGfx_8045F8C\n"
+details: 'Iterates glyphCount = min(remaining_chars, 8) times (bounded by 0x8). Each iteration
+
+  reads the attribute byte at eTextScript201BF00 + 2*(startIdx+i) and calls
+
+  renderTextGfx_8045F8C with palette slot 0xA, copying one glyph into a 0x280-byte
+
+  VRAM tile slot at 0x6004020 + i*0x280, sourced from byte_2017A00 + i*0x280,
+
+  using dword_86A5D60 and a zero flag, with the 4bpp tile data fetched from
+
+  TextScript873D9FC. The state object (r5) carries the start character index at
+
+  offset 0x24 (shifted left 1 for byte addressing) and the total character count
+
+  at offset 0x1E; when count == startIdx*2 the remaining is 0 and nothing renders.
+
+  Early-returns (locret_8128A8E) skip the loop entirely if char count is zero.
+
+  The pushed register frame {r4-r7,lr} around the loop is to restore the caller''s
+
+  preserved registers after renderTextGfx_8045F8C clobbers them.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8128A44
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8128A44
+
+    ./wf verify --function sub_8128A44 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8128A44
+
+    ./wf verify --function sub_8128A44 --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 13 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8128A44
+
+    ./wf verify --function sub_8128A44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08128a44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Is this strictly a "chatbox" renderer, or a generic textbox/bitmap-font row renderer reused by menus and battle
+  text? Caller r10 hints at a chatbox/screen state.
+- Why is the start index stored halved at +0x24 (it is shifted *1 again to get the byte offset into the attribute
+  table)?
+- Is dword_86A5D60 a glyph width/stride or a palette/script descriptor?
+- The 0x8 max glyphs suggests a fixed 8-tile-wide row (one BG tile map row of 8 columns on GBA).
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

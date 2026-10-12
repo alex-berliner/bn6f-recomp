@@ -1,0 +1,88 @@
+name: sub_809F942
+address: '0x0809F942'
+kind: function
+status: confirmed
+summary: Scans the NPC proximity list for the first NPC inside the player's asymmetric collision diamond (same Z-plane,
+  diamond bounds on dx−dy and dx+dy) and stores its pointer as the current interaction target; short-circuits when
+  event 0x1708 is set.
+interface: 'npc_checkProximityDiamond_809F942(toolkit: u32 /* r10 */) -> r3; outputs r4, r6 (preserved); clobbers
+  r0-r2, r5, r7, flags; returns 0 when no NPC is in range'
+details: 'Resolves the overworld player object via toolkit→gameState→player. Reads a proximity-NPC count from byte_2000210[0]
+  and an array of NPC pointers starting at byte_2000210+0x10. For each NPC: (1) reject unless NPC+0x2C (z-plane)
+  equals player+0x24; (2) compute dx = NPC+0x24 − player+0x1C and dy = NPC+0x28 − player+0x20 in subpixel 16.16
+  units; (3) accept if −0x38 ≤ (dx−dy)>>16 ≤ 0x24 and −0x1C ≤ (dx+dy)>>16 ≤ 0x1C (an axis-aligned diamond, asymmetric
+  because the forward reach is wider than the backward). On first hit the NPC pointer is stored at byte_2000210+0x8;
+  on exhaustion NULL is stored. In both the hit and miss paths the routine calls clearBattleStateIfEvent1708Pending_809F90C.
+  If event flag 0x1708 is already set the function returns without touching the proximity array. The proximity array
+  is a linked/sequential list maintained elsewhere; this function only reads it.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_809F942
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809F942
+
+    ./wf verify --function sub_809F942 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809F942
+
+    ./wf verify --function sub_809F942 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809F942
+
+    ./wf verify --function sub_809F942 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0809f942 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/npc.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Why are the diamond bounds asymmetric (0x24 forward vs 0x38 backward)? Likely a facing-direction offset baked
+  into the shape—needs confirmation against the sprite facing code.
+- What event 0x1708 represents and why it suppresses proximity detection entirely.
+- Whether the clearBattleStateIfEvent1708Pending call is a side-effect of the collision system or an independent
+  housekeeping step.
+- Who populates the proximity list at byte_2000210 and at what frequency.
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66

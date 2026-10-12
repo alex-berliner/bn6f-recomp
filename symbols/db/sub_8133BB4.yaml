@@ -1,0 +1,83 @@
+name: sub_8133BB4
+address: '0x08133BB4'
+kind: function
+status: confirmed
+summary: 'Handles a B-button press in the Navi customizer/submenu: either clears an in-progress exit flag with its
+  SFX, kicks off the quit-and-fade confirm, or fires a chatbox script with the "can''t jack-in" cue.'
+interface: void sub_8133BB4(u32 r2, u32 r4 /*chatbox?*/, u32 r5 /*submenu state struct*/, u32 r10 /*toolkit*/) ->
+  out NZ, r2, r5, r10 (all clobbered)
+details: "Per-frame handler invoked while the Navi submenu is up. It first checks `IsButtonPressed(JOYPAD_B)`;\n\
+  if B is not held the function returns immediately with the original Z/NZ flags preserved.\n\nThree branches follow,\
+  \ gated by two fields of the submenu state struct in r5:\n\n* `r5+0x44` (AFA_SUBMENU_EXIT_FLAG, 1 byte): when\
+  \ set, this is a \"second B\" to cancel the\n  in-progress exit. The flag is cleared and `PlaySoundEffect(SOUND_EXIT_SUBMENU)`\
+  \ is played,\n  leaving the return NZ flags and r2/r5/r10 from that SFX call.\n\n* `r5+0x17` (AFA_CHAT_STATE)\
+  \ == 0x1E: special \"exit confirmation\" mode. Calls\n  `submenu_ConfirmExitAndFade_811FB64(8, ...)`, then clears\
+  \ `r5+2` (chatbox state byte).\n  Returns with NZ forced non-zero (the literal `mov r0,#1; tst r0,r0`).\n\n* Otherwise\
+  \ the \"open a chatbox\" path:\n  - `r5+0xD = r5+0x03` (copies a source-identifier byte into the chatbox slot)\n\
+  \  - `r5+0x02 = 8` (chatbox state/transition byte)\n  - reads a script index from `r5+0x1E`\n  - loads the global\
+  \ chatbox pointer via `r10->oToolkit_ChatboxPtr` and stashes that index\n    at `chatbox+0x4C` (the slot a chatbox\
+  \ script looks up to know what to display — likely\n    the \"I can't jack in right now\" line)\n  - calls `chatbox_runScript_803FD9C_on_eTextScript2028A20(2,\
+  \ r4, r5)`\n  - plays `SOUND_CANT_JACK_IN` and returns with NZ set non-zero.\n\nAll callees (`IsButtonPressed`,\
+  \ `PlaySoundEffect`, `chatbox_runScript_…`,\n`submenu_ConfirmExitAndFade_811FB64`) are emitted via the lifter's\
+  \ `call_*` wrappers\nbecause they have no typed C interface yet; r2/r5/r10 in the return value are whatever\n\
+  the last callee left in those registers (r4 is read but never propagated back).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121240);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 96' --file inbox_farm_96.c sub_8133BB4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8133BB4
+
+    ./wf verify --function sub_8133BB4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121240-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8133BB4
+
+    ./wf verify --function sub_8133BB4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121240-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8133BB4
+
+    ./wf verify --function sub_8133BB4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121240-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08133bb4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp eaf8a66
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+related:
+- sub_81337E8
+open_questions:
+- Exact meaning of `r5+0x17 == 0x1E` (which sub-state it represents; the C source labels it AFA_CHAT_STATE).
+- The chatbox script index stored at `chatbox+0x4C` — is it truly the script id, or a slot/arg for `eTextScript2028A20`?
+  The readable notes it as "placeholder".
+- Whether the r4 passed in is a chatbox-related pointer or simply preserved scratch.
+- Why `r5+0x02 = 8` (phase/transition code) — other code in the subsystem likely reads this same byte; needs a cross-reference.
+sources:
+- tools/wf run convert-20261012-121240
+- recomp eaf8a66
