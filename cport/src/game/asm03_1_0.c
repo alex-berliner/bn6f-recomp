@@ -1636,6 +1636,86 @@ Next sub_8034E3C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── HandleCoordinateInteractionCutscene ── */
+/* register form: calls IsNotSlipRunningAndNotInCutscene outside this file, which has no typed C interface yet */
+static bool not_slipping_and_not_in_cutscene(void) {
+    GUEST_CALL(IsNotSlipRunningAndNotInCutscene);
+    return !ZERO_FLAG();          /* answers in Z: clear means it is safe to run a cutscene */
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool event_flag_set_HandleCoordinateInteractionCutscene(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();          /* Z clear means the flag is set */
+}
+
+/* register form: calls StartCutscene outside this file, which has no typed C interface yet */
+static void start_cutscene_HandleCoordinateInteractionCutscene(u32 script, u32 param) {
+    R0 = script;
+    R1 = param;
+    GUEST_CALL(StartCutscene);
+}
+
+/* Start the object-interaction cutscene for the coordinate interaction the player is
+ * standing on.  Interaction value 0 means "none"; 0xF0-0xFF are the sixteen ordinary
+ * slots of the current map (each guarded by a one-shot event flag), and Graveyard 2
+ * additionally has sixteen extra slots at 0x60-0x6F. */
+static void handle_coordinate_interaction_cutscene(u32 toolkit) {
+    if (!not_slipping_and_not_in_cutscene())
+        return;
+
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u8 interaction = LD8(gameState + oGameState_CoordInteractionValue);
+    if (interaction == 0)
+        return;
+
+    u8 mapGroup  = LD8(gameState + oGameState_MapGroup);
+    u8 mapNumber = LD8(gameState + oGameState_MapNumber);
+
+    u32 tableBase;   /* array, per map group, of pointers to per-map text-index tables */
+    u32 groupIndex;  /* index into tableBase */
+    u32 slot;        /* index into the selected map's text-index table */
+
+    if (mapGroup == GROUP_GRAVEYARD_IMMORTAL_AREA
+        && mapNumber == MAP_GRAVEYARD2
+        && interaction >= 0x60 && interaction <= 0x6F) {
+        /* Graveyard 2's extra interactions are listed in the internet-area table,
+         * in slots 0x10-0x1F right after the ordinary ones. */
+        tableBase  = A_off_8034728;
+        groupIndex = mapGroup - INTERNET_MAP_GROUP_START;
+        slot       = interaction - 0x60 + 0x10;
+    } else {
+        if (interaction < 0xF0)
+            return;                        /* not an ordinary interaction slot */
+        slot = interaction - 0xF0;
+        if (event_flag_set_HandleCoordinateInteractionCutscene(EVENT_16C0 + slot))
+            return;                        /* one-shot interaction, already triggered */
+
+        if ((s32)mapGroup >= INTERNET_MAP_GROUP_START) {
+            tableBase  = A_off_8034728;
+            groupIndex = mapGroup - INTERNET_MAP_GROUP_START;
+        } else {
+            tableBase  = A_off_803461C;
+            groupIndex = mapGroup;
+        }
+    }
+
+    u32 groupTables = LD32(tableBase + groupIndex * 4);
+    u32 mapTexts    = LD32(groupTables + mapNumber * 4);
+    u8 textIndex    = LD8(mapTexts + slot);
+    if (textIndex == 0xFF)
+        return;                            /* 0xFF = nothing to show for this slot */
+
+    start_cutscene_HandleCoordinateInteractionCutscene(A_CutsceneScriptObjectInteract_8098358, textIndex);
+}
+
+/* HandleCoordinateInteractionCutscene(r10 = toolkit) -> r2 unchanged */
+Next HandleCoordinateInteractionCutscene(void) {
+    handle_coordinate_interaction_cutscene(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── maybeStartEntranceCutscene_8034F68 ── */
 /* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
 static bool cutscene_script_non_null_sub_8034F68(void) {
