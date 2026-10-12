@@ -2599,6 +2599,30 @@ Next battle_initShipSprite_80CAF14(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CAF9C ── */
+/* sub_80CAF9C: Per-object battle update tick.
+ * r5 = battle object pointer.
+ * If the battle has ended → mark the object for destruction.
+ * If time is stopped → skip this tick.
+ * Otherwise → dispatch to the object's current action handler (jump table). */
+Next sub_80CAF9C(void) {
+    GUEST_CALL(battle_isBattleOver);
+    if (R0 != 0) {
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+        RETURN_TO_CALLER();
+    }
+
+    GUEST_CALL(battle_isTimeStop);
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Action jump table (off_80CAFC4) has a single entry: sub_80CAFC8 for action 0. */
+    GUEST_CALL(sub_80CAFC8);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── object_destroyWrapper_80CB078 ── */
 /* object_destroyWrapper_80CB078: thin wrapper that destroys the object pointed to by R0
  * via the generic object destructor; all results and flags come straight

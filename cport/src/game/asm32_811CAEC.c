@@ -2183,6 +2183,45 @@ Next sub_81203E4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81204C4 ── */
+/* sub_81204C4(r0 = entry index, r1 = array base, r2 = dest pointer,
+ *             r3 = sub_8120504 param, r5 = number of entries (signed)):
+ * Iterate over 32-byte battle-chip slots starting at base + index*32.
+ * For each slot whose 16-bit field at +0x1C has bits[15:7] non-zero,
+ * look up that chip's type byte and pass it to sub_8120504 together
+ * with an 8-byte dest slot.  Otherwise zero the dest slot.
+ * Dest advances 8 bytes per entry; slot pointer advances 32 bytes. */
+Next sub_81204C4(void) {
+    s32  count = (s32)R5;
+    u32  base  = R1 + R0 * 32;
+    u32  dest  = R2;
+    u32  param = R3;
+    s32  i     = 0;
+
+    do {
+        u16 chip_field  = (u16)LD16(base + 0x1C);
+        u32 chip_select = (u32)(chip_field >> 7);  /* non-zero → chip present */
+
+        if (chip_select) {
+            R0 = chip_select;
+            GUEST_CALL(getChip8021DA8);
+            R0 = (u8)LD8(R0 + 8);
+            R1 = dest;
+            R2 = param;
+            GUEST_CALL(sub_8120504);
+        } else {
+            ST32(dest,     0);
+            ST32(dest + 4, 0);
+        }
+
+        base += 0x20;
+        dest += 8;
+        i++;
+    } while (i < count);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_812053C ── */
 /* sub_812053C:
  *   Ask sub_81205C0 for a value; if it came back non-negative, build an
