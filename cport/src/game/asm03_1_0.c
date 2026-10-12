@@ -74,6 +74,45 @@ Next triggerSomeUpdateForInternetOrRealWorld_8033948(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── gfxTransfer_8033978 ── */
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx_transfer(const void *src, void *dest, u32 size) {
+    R0 = (u32)src;
+    R1 = (u32)dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* register form: calls gfxTransfer_8033DA0 outside this file, which has no typed C interface yet */
+static void call_gfx_transfer_8033DA0(u32 a0) {
+    R0 = a0;
+    GUEST_CALL(gfxTransfer_8033DA0);
+}
+
+/* Transfer graphics into VRAM for the current map group.
+ * Internet maps load a richer sprite/font set; regular maps load a smaller one
+ * and then trigger a follow-up transfer. */
+static void load_map_gfx(void) {
+    /* register form: read toolkit/game state through R10 to match the original */
+    u32 toolkit = LD32(R10 + oToolkit_GameStatePtr);
+    u8 map_group = LD8(toolkit + oGameState_MapGroup);
+
+    if ((s32)map_group >= (s32)INTERNET_MAP_GROUP_START) {
+        /* Internet map: load sprites (0x340 bytes) and a small extra block (0x20 bytes). */
+        queue_gfx_transfer((const void *)A_byte_86C1F80, (void *)0x6017200, 0x340);
+        queue_gfx_transfer((const void *)A_byte_86C1F20, (void *)A_byte_30016D0, 0x20);
+    } else {
+        /* Regular map: load the standard sprite block, then run the follow-up transfer. */
+        queue_gfx_transfer((const void *)A_dword_86C0D20, (void *)0x6017200, 0x100);
+        call_gfx_transfer_8033DA0(0);
+    }
+}
+
+Next gfxTransfer_8033978(void) {
+    load_map_gfx();
+    RETURN_TO_CALLER();
+}
+
 /* ── dispatch_80339CC ── */
 /*
  * PET menu scene dispatcher (singleton scene state eS2011E30).
@@ -1953,6 +1992,58 @@ Next initGameProgressBuffer_803532c(void) {
     ST8(gameState + 6 /* oGameState_GameProgress */, 0);
 
     R3 = i; /* 0x19 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803537C ── */
+/* Table of (map_group, event_flag) pairs used to auto-fire EVENT_28 when the player
+ * enters a matching map. Terminated by an entry with map_group == 0. */
+struct autoinc_entry { u16 map_group; u16 event_flag; };
+
+/* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void clear_event_flag_immediate(u32 flag) {
+    R0 = 0;
+    R1 = flag;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool test_event_flag_sub_803537C(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls SetEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static void set_event_flag_immediate(u32 flag) {
+    R0 = 0;
+    R1 = flag;
+    GUEST_CALL(SetEventFlagFromImmediate);
+}
+
+/* Scan the EVENT_28 auto-increment table: if the current map group has an entry whose
+ * event flag is set, re-arm EVENT_28 (which we cleared first so this routine can also
+ * be the trigger). tool is the value the caller had in r10 (toolkit pointer). */
+static void apply_autoinc_event_28(u32 tool) {
+    u32 game_state = LD32(tool + oToolkit_GameStatePtr);
+    u16 map_group = LD16(game_state + oGameState_MapGroup);
+
+    clear_event_flag_immediate(0x28);
+
+    const struct autoinc_entry *tbl = (const struct autoinc_entry *)A_word_80353B8;
+    for (;;) {
+        if (tbl->map_group == 0)
+            break;
+        if (tbl->map_group == map_group && test_event_flag_sub_803537C(tbl->event_flag)) {
+            set_event_flag_immediate(0x28);
+            break;
+        }
+        tbl++;
+    }
+}
+
+Next sub_803537C(void) {
+    apply_autoinc_event_28(R10);
     RETURN_TO_CALLER();
 }
 

@@ -3347,6 +3347,59 @@ Next t3_0xf_80C6414(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C6438 ── */
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void call_sprite_load_sub_80C6438(u32 a, u32 b, u32 c) {
+    R0 = a; R1 = b; R2 = c;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_noShadow outside this file, which has no typed C interface yet */
+static void call_sprite_noShadow_sub_80C6438(void) {
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: calls object_getCoordinatesForPanels outside this file, which has no typed C interface yet */
+static void call_object_getCoordinatesForPanels(u32 obj, u32 px, u32 py) {
+    R0 = px; R1 = py;
+    GUEST_CALL(object_getCoordinatesForPanels);
+    ST32(obj + oBattleObject_X, R0);
+    ST32(obj + oBattleObject_Y, R1);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void call_PlaySoundEffect(u32 effect) {
+    R0 = effect;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls sub_80C647C outside this file, which has no typed C interface yet */
+static void call_sub_80C647C(void) {
+    GUEST_CALL(sub_80C647C);
+}
+
+/* "Item get" reaction: flag the object active, load its sprite, snap it to its panel's
+ * world coordinates with a quick upward hop, play the pickup SFX, then advance to the
+ * per-state update routine. */
+static void battleobject_item_react(u32 obj) {
+    ST8(obj + oObjectHeader_Flags, (u8)(LD8(obj + oObjectHeader_Flags) | 0x02));
+    call_sprite_load_sub_80C6438(0x80, 0x0C, 0x13);
+    call_sprite_noShadow_sub_80C6438();
+    ST8(obj + oBattleObject_CurAnim, 0);
+    ST8(obj + oBattleObject_CurAnimCopy, 0xFF);
+    ST32(obj + oBattleObject_ZVelocity, 0x80000);
+    call_object_getCoordinatesForPanels(obj, LD8(obj + oBattleObject_PanelX), LD8(obj + oBattleObject_PanelY));
+    ST32(obj + oBattleObject_Z, 0x1000000);
+    call_PlaySoundEffect(0xA1);
+    ST8(obj + oBattleObject_CurState, CUR_STATE_UPDATE);
+    call_sub_80C647C();
+}
+
+Next sub_80C6438(void) {
+    battleobject_item_react(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_PlayHurtAnimAndSetAction8_80C6524 ── */
 /* battleObject_PlayHurtAnimAndSetAction8_80C6524(r5 = battle object):
  * Switch the object to animation 1, play sound effect 0xA2, and set its

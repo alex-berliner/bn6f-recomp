@@ -814,6 +814,36 @@ Next object_Clear3RAMBytes_800371A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_800372A ── */
+/* Read the slot table's count pointer and slot byte offset (r2/r3 in the original).
+ * Registers the object pointer at the slot selected by its Type nibble. */
+typedef struct {
+    u32 count_ptr;
+    u32 slot_offset;
+} SlotInfo;
+
+static SlotInfo register_object_in_slot(u32 object) {
+    u8 type = LD8(object + oBattleObject_Type);
+    u32 pair_addr = A_object_PtrPairs_800374C + ((type & 0xF) << 3);
+    u32 slot_base = LD32(pair_addr);
+    u32 count_ptr = LD32(pair_addr + 4);
+    u8 count = LD8(count_ptr);
+    u32 slot_offset = (u32)count << 2;
+    ST32(slot_base + slot_offset, object);
+    ST8(count_ptr, count + 1);
+    SlotInfo info;
+    info.count_ptr = count_ptr;
+    info.slot_offset = slot_offset;
+    return info;
+}
+
+Next object_800372A(void) {
+    SlotInfo info = register_object_in_slot(R5);
+    R2 = info.count_ptr;
+    R3 = info.slot_offset;
+    RETURN_TO_CALLER();
+}
+
 /* ── ZeroFillObjectInteractionAreas_800378C ── */
 /* ZeroFillObjectInteractionAreas_800378C: clear the overworld object
  * interaction-area pool and reset the number of entries it holds.
