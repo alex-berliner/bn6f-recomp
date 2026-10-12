@@ -43,8 +43,8 @@ from wf.tools.registers import RegisterCheck, check_register_use
 from wf.tools.sources import TIERS, Tier, first_up, is_source_failure
 from wf.tools.subsystem import (FileReply, FileTest, TokenUse, ask_model_for_file, candidate_from_file, repair_prompt,
                                 subsystem_prompt, test_candidate_file, tokens_for)
-from wf.types import (BuildFailure, CommitHash, FunctionName, ModelSpec, NotRun, Rename, Result, Route, SnapshotDir,
-                      SymbolName, ToolMessage)
+from wf.types import (BattleSweepResult, BuildFailure, CommitHash, FunctionName, ModelSpec, NotRun, Rename, Result,
+                      Route, SnapshotDir, SymbolName, ToolMessage)
 
 PROJECT = "recomp-convert"
 DEFAULT_MODELS = TIERS[Tier.STRONG]
@@ -618,6 +618,7 @@ class GiveUpInput(Result):
     without_calls: tuple[FunctionName, ...]
     attempts: tuple[Attempt, ...]
     tree: Path | None
+    farm_model: ModelSpec | None = None
 
 
 class GiveUpOutput(Result):
@@ -643,7 +644,9 @@ def give_up(given: GiveUpInput) -> GiveUpOutput:
     if given.attempts and _sources_out(given.attempts[-1]):
         return GiveUpOutput(outcome=ConvertOutcome.SOURCES_OUT)
     registers = given.attempts[-1].registers if given.attempts else None
-    if given.attempts and given.attempts[-1].given and registers is not None and not registers.clean:
+    register_form_allowed = given.farm_model is not None and prompt_of(given.farm_model) is PromptKind.OLD
+    if (given.attempts and given.attempts[-1].given and registers is not None and not registers.clean
+            and not register_form_allowed):
         return GiveUpOutput(outcome=ConvertOutcome.REGISTER_FORM)
     return GiveUpOutput(outcome=ConvertOutcome.OUT_OF_ATTEMPTS)
 
@@ -722,15 +725,18 @@ def failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
             if owner is not None:
                 failing[owner] = f"the full build failed in its code: {line.strip()}"[:300]
         routes = attempt.verification.failed_routes
-        if routes and not failing:
-            # the game differs on a route and no check names a function: set the later half aside (it goes
-            # back to the pool and halves again in a later group) and verify the rest
+        sweep = attempt.verification.battle_sweep
+        battles = len(sweep.failures) if isinstance(sweep, BattleSweepResult) else 0
+        if (routes or battles) and not failing:
+            # the game differs on a route or in recorded battles and no check names a function: set the later
+            # half aside (it goes back to the pool and halves again in a later group) and verify the rest
             parts = [owner for owner in (function_at_line(code, number)
                                          for number, line in enumerate(code.splitlines(), start=1)
                                          if _SECTION_START.match(line)) if owner is not None]
+            where = (f"lockstep differed on {', '.join(routes)}" if routes
+                     else f"the battle sweep differed in {battles} battles")
             for function in parts[len(parts) // 2:]:
-                failing[function] = (f"set aside: lockstep differed on {', '.join(routes)} and no check named a "
-                                     "function; bisecting")
+                failing[function] = f"set aside: {where} and no check named a function; bisecting"
     if attempt.test is not None and not attempt.test.passed:
         for test in attempt.test.functions:
             if not test.passed:

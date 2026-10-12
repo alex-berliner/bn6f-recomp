@@ -10,8 +10,8 @@ import pytest
 from wf.burr_typed import Finished, Paused
 from wf.graphs import convert
 from wf.graphs.capture import CaptureReport, CaptureState
-from wf.graphs.convert import (GIVEN_CANDIDATE, ConvertOutcome, ConvertState, Review, ReviewDecision, ReviewRequest,
-                               convert_graph, review_sheet)
+from wf.graphs.convert import (GIVEN_CANDIDATE, Attempt, ConvertOutcome, ConvertState, Review, ReviewDecision,
+                               ReviewRequest, convert_graph, failing_functions, review_sheet)
 from wf.graphs.record import RecordReport, RecordState, RecordVerdict
 from wf.graphs.verify import Verdict, VerifyReport, VerifyState
 from wf.repo import REPO
@@ -21,7 +21,8 @@ from wf.tools.models import AssemblyText, Contract, ConversionContext, LiftedC, 
 from wf.tools.registers import LintedFunction, RegisterCheck
 from wf.tools.retype import BASELINE, QUEUE, QueueRow
 from wf.tools.subsystem import CandidateFile, FileReply, FileTest, FunctionTest, SymbolDraft, TokenUse
-from wf.types import (BuildFailure, CommitHash, FunctionName, GuestAddress, ModelSpec, SnapshotDir,
+from wf.types import (BattleSweepResult, BuildFailure, CommitHash, FunctionName, GuestAddress, LogPath, ModelSpec,
+                      SnapshotDir,
                       SourceVersion, SymbolName, SymbolStatus, ToolMessage)
 
 FUNCTION = FunctionName("sub_8030808")
@@ -324,6 +325,23 @@ def test_a_typed_farm_group_in_register_form_is_still_refused(monkeypatch: pytes
                      functions=(FUNCTION,), register_check_faked=True)
 
     assert isinstance(finished, Finished) and finished.state.outcome is ConvertOutcome.REGISTER_FORM
+
+
+def test_a_battle_sweep_difference_no_check_names_sets_half_the_group_aside() -> None:
+    code = "\n".join(f"/* ── {name} ── */\nNext {name}(void) {{ RETURN_TO_CALLER(); }}"
+                     for name in ("sub_8000100", "sub_8000200", "sub_8000300", "sub_8000400"))
+    sweep = BattleSweepResult(battles=116, identical=105, failures=(ToolMessage("0x80af270"),) * 11,
+                              log=LogPath(Path("sweep.log")), seconds=1.0)
+    report = VerifyReport(sources=SourceVersion(commit=CommitHash("abc"), has_uncommitted_changes=True),
+                          verdict=Verdict.FAILED, build_failure=None, failed_functions=(), oracle_differences=(),
+                          never_compared=(), routes_checked=(), failed_routes=(), battle_sweep=sweep)
+    attempt = Attempt(number=1, model=FARM_MODEL, given=True, verification=report,
+                      reply=FileReply(file=CandidateFile(code), cfg_lines=(), drafts=(), problems=(), seconds=0.0))
+
+    failing = failing_functions(attempt)
+
+    assert sorted(failing) == ["sub_8000300", "sub_8000400"]
+    assert "the battle sweep differed in 11 battles" in failing[FunctionName("sub_8000300")]
 
 
 # ── the fakes ──────────────────────────────────────────────────────────
