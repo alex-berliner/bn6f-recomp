@@ -2093,6 +2093,96 @@ Next battle_loadFolderChipGfx_8120390(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81203E4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_ZeroFillByWord_result;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result call_ZeroFillByWord(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result){ R3 };
+}
+
+typedef struct { u32 r0; } call_getChip8021DA8_result;
+/* register form: generated wrapper: getChip8021DA8 has no typed C interface yet */
+static inline call_getChip8021DA8_result call_getChip8021DA8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getChip8021DA8);
+    return (call_getChip8021DA8_result){ R0 };
+}
+
+/* register form: generated wrapper: sub_811FF54 has no typed C interface yet */
+static inline u32 call_sub_811FF54(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_811FF54);
+    return R0;
+}
+
+/* sub_81203E4 -- build a packed chip-slot list.
+ *
+ * Zero-fills 0x38 bytes at the output list, then walks `count` consecutive
+ * 0x20-byte entries of the table starting at entry_base + entry_index * 0x20.
+ * For each entry, the halfword at +0x1C shifted right by 7 tells whether a
+ * chip occupies the slot:
+ *   - set:    look the chip up, map its id byte through sub_811FF54 to a
+ *             slot number, and store two words built from packed 16-bit
+ *             halves (slot_base + slot*4, +1, then +0x20002, +0x20003)
+ *             at out_list + 8*i and out_list + 8*i + 4;
+ *   - clear:  store two zero words there.
+ *
+ * The loop is a do-while: the original only tests the counter at the bottom
+ * (cmp/blt), so the body always executes at least once, even when the count
+ * is zero or negative. r4 is bumped by 0x80 per iteration but never read;
+ * r4-r7 are pushed/popped, so the only architectural output is r7, which
+ * comes back unchanged.
+ */
+
+#define SLOT_ENTRY_SIZE     0x20    /* bytes per entry in the source table */
+#define SLOT_LIST_SIZE      0x38    /* bytes zero-filled in the output list */
+#define SLOT_STATUS_OFFSET  0x1C    /* status halfword within an entry */
+#define CHIP_ID_OFFSET      6       /* id byte within the chip data record */
+#define SLOT_ADDR_SPACING   0x20002 /* constant added to the second word */
+
+static void build_chip_slot_list(u32 entry_index, u32 entry_base,
+                                 u32 out_list, u32 slot_base, u32 count)
+{
+    call_ZeroFillByWord(out_list, SLOT_LIST_SIZE);
+
+    u32 entry = entry_base + entry_index * SLOT_ENTRY_SIZE;
+    u32 out   = out_list;
+    s32 i     = 0;
+
+    do {
+        u32 present = (u32)LD16(entry + SLOT_STATUS_OFFSET) >> 7;
+
+        u32 word_lo, word_hi;
+        if (present != 0) {
+            u32 chip = call_getChip8021DA8(present).r0;
+            u32 slot = call_sub_811FF54(LD8(chip + CHIP_ID_OFFSET));
+            u32 addr = slot_base + slot * 4;
+            word_lo = addr | ((addr + 1) << 16);
+            word_hi = word_lo + SLOT_ADDR_SPACING;
+        } else {
+            word_lo = 0;
+            word_hi = 0;
+        }
+        ST32(out, word_lo);
+        ST32(out + 4, word_hi);
+
+        entry += SLOT_ENTRY_SIZE;
+        out += 8;               /* r7 gains 4 and the index gains 4: 8 per slot */
+        i++;
+    } while (i < (s32)count);
+}
+
+/* sub_81203E4(r0 = entry_index, r1 = entry_base, r2 = out_list,
+ *             r3 = slot_base, r5 = count) -> r7 (unchanged, preserved) */
+Next sub_81203E4(void) {
+    build_chip_slot_list(R0, R1, R2, R3, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_812053C ── */
 /* sub_812053C:
  *   Ask sub_81205C0 for a value; if it came back non-negative, build an

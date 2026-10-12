@@ -2197,6 +2197,110 @@ Next chatbox_F1_textspeed(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_F2_clearmsgbox ── */
+/* Chatbox text-script opcode F2 ("clear message box"): abandon the message
+ * currently being printed, reset the chatbox's print state, and resume the
+ * text script at the opcode that follows this one. */
+
+/* Result of the F2 handler: the value returned in r0 plus the registers the
+ * original happens to leave behind for its callers. */
+typedef struct {
+    u32 result;        /* r0: always 1 (opcode handled) */
+    u32 table_ptr;     /* r1: address of the field-offset table (off_8041C48) */
+    u32 field_offset;  /* r2: last field offset read from that table (0x1D6) */
+    u32 script_ptr;    /* r4: text-script pointer advanced past the opcode */
+} ClearMsgboxResult;
+
+/* register form: calls chatbox_set_eFlags2009F38 outside this file, which has no typed C interface yet */
+static void set_eFlags_2009F38(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(chatbox_set_eFlags2009F38);
+}
+
+/* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
+static void set_flags_3e_chatbox_F2_clearmsgbox(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_setflags_3e);
+}
+
+/* register form: calls chatbox_clearFlags_3e outside this file, which has no typed C interface yet */
+static void clear_flags_3e(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_clearFlags_3e);
+}
+
+/* register form: calls chatbox_resetAndClearBuffers_8045F60 outside this file, which has no typed C interface yet */
+static void reset_and_clear_buffers_chatbox_F2_clearmsgbox(u32 char_idx, u32 buffer) {
+    R0 = char_idx;
+    R1 = buffer;
+    GUEST_CALL(chatbox_resetAndClearBuffers_8045F60);
+}
+
+/* script_ptr: current text-script pointer (advanced past the opcode);
+ * chatbox:    the chatbox object. */
+static ClearMsgboxResult clear_msgbox(u32 script_ptr, u32 chatbox) {
+    ClearMsgboxResult out;
+
+    /* Mark event-flag group 0x200 as set. */
+    set_eFlags_2009F38(0x200);
+
+    /* If a print speed is configured, mirror that in the 3E flag word:
+     * set bit 0, clear bit 6. */
+    if (LD8(chatbox + oChatbox_TextScriptPrintSpeed) != 0) {
+        set_flags_3e_chatbox_F2_clearmsgbox(FLAGS_3E_UNK_0001);
+        clear_flags_3e(FLAGS_3E_UNK_0040);
+    }
+
+    /* Stop the "text finished" / "waiting for input" 3E flags. */
+    clear_flags_3e(FLAGS_3E_UNK_0400 | FLAGS_3E_UNK_0800);
+
+    /* Step the interpreter past this opcode and reset the print state. */
+    script_ptr += 1;
+    ST32(chatbox + oChatbox_CurrTextScriptPtr, script_ptr);
+
+    ST8(chatbox + oChatbox_TextScriptState_04, 0);
+    ST32(chatbox + oChatbox_Unk_64, 0);
+    ST8(chatbox + oChatbox_Unk_12, 0);
+    ST8(chatbox + oChatbox_CurrLine, 0);
+    ST8(chatbox + oChatbox_Unk_17, 0);
+    ST8(chatbox + oChatbox_Unk_3D, 0);
+    ST32(chatbox + oChatbox_Unk_80, 0);
+    ST32(chatbox + oChatbox_Unk_78, 4);
+    ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
+    ST32(chatbox + oChatbox_Unk_74, 1);
+
+    /* Carry the current character index over to Unk_94, then have the
+     * shared buffer routine reset and clear the print buffers. */
+    u32 char_idx = LD8(chatbox + oChatbox_TextScriptCharIdx);
+    ST8(chatbox + oChatbox_Unk_94, char_idx);
+    reset_and_clear_buffers_chatbox_F2_clearmsgbox(char_idx, chatbox + oChatbox_Unk_94);
+
+    /* Zero the two halfword scratch fields named by the offset table. */
+    u32 field_table = A_off_8041C48;
+    ST16(chatbox + LD32(field_table), 0);
+    u32 last_offset = LD32(field_table + 4);
+    ST16(chatbox + last_offset, 0);
+
+    out.result = 1;
+    out.table_ptr = field_table;
+    out.field_offset = last_offset;
+    out.script_ptr = script_ptr;
+    return out;
+}
+
+/* chatbox_F2_clearmsgbox(r4 = text-script pointer, r5 = chatbox object)
+ * -> r0 = 1 (flags NZ set), r1/r2 = leftover table pointer and offset,
+ * r4 = advanced script pointer. r3 and r5 are left untouched. */
+Next chatbox_F2_clearmsgbox(void) {
+    ClearMsgboxResult out = clear_msgbox(R4, R5);
+    R0 = out.result;
+    R1 = out.table_ptr;
+    R2 = out.field_offset;
+    R4 = out.script_ptr;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_F3_control ── */
 /* chatbox_F3_control(r4 = pointer to the current F3 chatbox opcode):
  * Executes one F3 (chatbox show/hide) opcode from the text script.

@@ -74,6 +74,225 @@ Next triggerSomeUpdateForInternetOrRealWorld_8033948(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── dispatch_80339CC ── */
+/*
+ * PET menu scene dispatcher (singleton scene state eS2011E30).
+ *
+ * Each tick this runs the handler selected by the scene's state byte
+ * (oS2011E30_Idx_04). The real-world and internet variants of the scene
+ * have separate handler tables; in the real world the CopyBot / PetNavi
+ * event flags choose between the two table entries allocated per state
+ * (PetNavi active picks the even entry, otherwise the odd one). If the
+ * PET menu data check fails the scene does nothing this tick.
+ *
+ * The original wraps the whole dispatch in push/pop {r4-r7}: the handlers
+ * are guest code that clobbers r4-r7 (and r5 is even repurposed to hold
+ * the scene object), so the caller's r4-r7 always come back unchanged.
+ */
+
+/* register form: calls TestPETMenuDataFlag outside this file, which has no typed C interface yet */
+static bool pet_menu_data_flag_set(u32 mode) {
+    R0 = mode;
+    GUEST_CALL(TestPETMenuDataFlag);
+    return !ZERO_FLAG();          /* Z clear: check says "skip the scene update" */
+}
+
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_set_dispatch_80339CC(u32 bank, u32 flag) {
+    R0 = bank;                    /* movflag loads the flag bank into r0 ... */
+    R1 = flag;                    /* ... and the flag index into r1 */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls callback_noop_8033A7C outside this file, which has no typed C interface yet */
+static void call_callback_noop_8033A7C(u32 self) {
+    R5 = self;
+    GUEST_CALL(callback_noop_8033A7C);
+}
+
+/* register form: calls sub_8033A80 outside this file, which has no typed C interface yet */
+static void call_sub_8033A80(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033A80);
+}
+
+/* register form: calls onUpdateInRealWorld_8033A96 outside this file, which has no typed C interface yet */
+static void call_onUpdateInRealWorld_8033A96(u32 self) {
+    R5 = self;
+    GUEST_CALL(onUpdateInRealWorld_8033A96);
+}
+
+/* register form: calls sub_8033AB0 outside this file, which has no typed C interface yet */
+static void call_sub_8033AB0(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033AB0);
+}
+
+/* register form: calls battle_resetState_8033AC4 outside this file, which has no typed C interface yet */
+static void call_battle_resetState_8033AC4(u32 self) {
+    R5 = self;
+    GUEST_CALL(battle_resetState_8033AC4);
+}
+
+/* register form: calls sub_8033ADC outside this file, which has no typed C interface yet */
+static void call_sub_8033ADC(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033ADC);
+}
+
+/* register form: calls sub_8033AF0 outside this file, which has no typed C interface yet */
+static void call_sub_8033AF0(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033AF0);
+}
+
+/* register form: calls noop_8033B08 outside this file, which has no typed C interface yet */
+static void call_noop_8033B08(u32 self) {
+    R5 = self;
+    GUEST_CALL(noop_8033B08);
+}
+
+/* register form: calls sub_8033B0C outside this file, which has no typed C interface yet */
+static void call_sub_8033B0C(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033B0C);
+}
+
+/* register form: calls onUpdateInInternet_8033B1E outside this file, which has no typed C interface yet */
+static void call_onUpdateInInternet_8033B1E(u32 self) {
+    R5 = self;
+    GUEST_CALL(onUpdateInInternet_8033B1E);
+}
+
+/* register form: calls sub_8033B30 outside this file, which has no typed C interface yet */
+static void call_sub_8033B30(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033B30);
+}
+
+/* register form: calls sub_8033B46 outside this file, which has no typed C interface yet */
+static void call_sub_8033B46(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033B46);
+}
+
+/* register form: calls sub_8033B5C outside this file, which has no typed C interface yet */
+static void call_sub_8033B5C(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033B5C);
+}
+
+/* register form: calls sub_8033B6E outside this file, which has no typed C interface yet */
+static void call_sub_8033B6E(u32 self) {
+    R5 = self;
+    GUEST_CALL(sub_8033B6E);
+}
+
+/* Run the real-world handler for the table byte offset `slot`
+ * (JumpTable8033A1C entry slot / 4). The scene state byte only reaches 5,
+ * so slots stay within the 11-entry table. */
+static void run_real_world_handler(u32 slot, u32 self) {
+    switch (slot) {
+    case 0:                       /* entry 0: state 0 */
+        call_callback_noop_8033A7C(self);
+        break;
+    case 4: case 36: case 40:     /* entries 1, 9, 10 */
+        call_sub_8033A80(self);
+        break;
+    case 8: case 28: case 32:     /* entries 2, 7, 8 */
+        call_onUpdateInRealWorld_8033A96(self);
+        break;
+    case 12:                      /* entry 3 */
+        call_sub_8033AB0(self);
+        break;
+    case 16:                      /* entry 4 */
+        call_battle_resetState_8033AC4(self);
+        break;
+    case 20:                      /* entry 5 */
+        call_sub_8033ADC(self);
+        break;
+    case 24:                      /* entry 6 */
+        call_sub_8033AF0(self);
+        break;
+    }
+}
+
+/* Run the internet handler for the table byte offset `slot`
+ * (JumpTableInternet8033A4C entry slot / 4). */
+static void run_internet_handler(u32 slot, u32 self) {
+    switch (slot) {
+    case 0:                       /* entry 0: state 0 */
+        call_noop_8033B08(self);
+        break;
+    case 4: case 36: case 40:     /* entries 1, 9, 10 */
+        call_sub_8033B0C(self);
+        break;
+    case 8: case 28: case 32:     /* entries 2, 7, 8 */
+        call_onUpdateInInternet_8033B1E(self);
+        break;
+    case 12:                      /* entry 3 */
+        call_sub_8033B30(self);
+        break;
+    case 16:                      /* entry 4 */
+        call_sub_8033B46(self);
+        break;
+    case 20:                      /* entry 5 */
+        call_sub_8033B5C(self);
+        break;
+    case 24:                      /* entry 6 */
+        call_sub_8033B6E(self);
+        break;
+    }
+}
+
+/* Advance the PET menu scene by one tick. The handler callees leave their
+ * results in the guest registers (r2, r3, r8-r12 pass through untouched);
+ * r4-r7 are restored by the adapter, matching the original's pop. */
+static void dispatch_pet_menu_scene(u32 toolkit) {
+    if (pet_menu_data_flag_set(1))
+        return;
+
+    u32 self = A_eS2011E30;
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 mapGroup = LD8(gameState + oGameState_MapGroup);
+
+    if ((s32)mapGroup >= (s32)INTERNET_MAP_GROUP_START) {
+        /* Internet: the state byte indexes the internet table directly. */
+        u32 slot = (u32)LD8(self + oS2011E30_Idx_04) * 8;
+        run_internet_handler(slot, self);
+        return;
+    }
+
+    /* Real world: each state owns two table entries; the CopyBot/PetNavi
+     * event flags pick between them. State 0 always lands on entry 0 and
+     * never consults the flags. */
+    u32 state = LD8(self + oS2011E30_Idx_04);
+    u32 slot;
+    if (state == 0)
+        slot = 0;
+    else if (event_flag_set_dispatch_80339CC(0x17, 0x29))      /* EVENT_COPYBOT_ACTIVE */
+        slot = state * 8 - 4;
+    else if (event_flag_set_dispatch_80339CC(0x17, 0x1D))      /* EVENT_PET_NAVI_ACTIVE */
+        slot = state * 8;
+    else
+        slot = state * 8 - 4;                 /* neither flag: odd entry */
+
+    run_real_world_handler(slot, self);
+}
+
+/* dispatch_80339CC(r10 = toolkit) -> c, v from the last callee; r2, r3,
+ * r8-r12 pass through from the callee; r4-r7 preserved (the original's
+ * push/pop {r4-r7} shields them from the handler callees). */
+Next dispatch_80339CC(void) {
+    /* push {r4-r7,lr}: the handlers are guest code and trash r4-r7. */
+    u32 callerR4 = R4, callerR5 = R5, callerR6 = R6, callerR7 = R7;
+    dispatch_pet_menu_scene(R10);
+    /* pop {r4-r7}: hand the caller's values back, clobbers and all. */
+    R4 = callerR4, R5 = callerR5, R6 = callerR6, R7 = callerR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── callback_noop_8033A7C ── */
 /* callback_noop_8033A7C: does nothing; exists only as a callable placeholder
  * (its callers treat it as an empty callback). */
@@ -573,6 +792,129 @@ Next clearWorkBuffer_2011A40_80341AA(void) {
     R0 = A_byte_2011A40;
     R1 = 0xC;
     GUEST_CALL(ZeroFillByWord); /* ZeroFillByWord(ptr, num_bytes) */
+    RETURN_TO_CALLER();
+}
+
+/* ── ho_jackIn_80341B6 ── */
+/* Jack-in sequence dispatcher (hooked into the jack-in cutscene).
+ *
+ * byte_2011A40 holds the current jack-in step as a word offset (0, 4 or 8).
+ * Depending on whether the map being entered lies in the internet or the real
+ * world, that step selects a handler from one of two ROM jump tables, and the
+ * handler runs with:
+ *   r0 = its own address, as loaded from the table (entered via bx r0),
+ *   r1 = the step offset,
+ *   r2 = the game state pointer,
+ *   r5 = &byte_2011A40 (the handlers advance the step through it),
+ * and the flags from the map-group comparison. The handler's r0-r3 and flag
+ * results flow straight through to our caller; r4-r7 come back from the
+ * original's pop {r4-r7,pc}, i.e. exactly as our caller left them. */
+
+typedef struct { u32 r4, r5, r6, r7; } JackInSavedRegs;
+
+/* register form: calls transmission_BeginTransmissionScene_80341F8 outside this file, which has no typed C interface yet */
+static void call_transmission_scene(u32 stepByte, u32 gameState, u32 mapGroup)
+{
+    R0 = LD32(A_off_80341DC + stepByte);    /* handler address, entered via bx r0 */
+    R1 = stepByte;                          /* current jack-in step (word offset) */
+    R2 = gameState;
+    R5 = A_byte_2011A40;                    /* handlers reach the step through r5 */
+    SET_FLAGS_CMP(mapGroup, INTERNET_MAP_GROUP_START);
+    GUEST_CALL(transmission_BeginTransmissionScene_80341F8);
+}
+
+/* register form: calls ho_8034218 outside this file, which has no typed C interface yet */
+static void call_ho_8034218(u32 stepByte, u32 gameState, u32 mapGroup)
+{
+    R0 = LD32(A_off_80341DC + stepByte);
+    R1 = stepByte;
+    R2 = gameState;
+    R5 = A_byte_2011A40;
+    SET_FLAGS_CMP(mapGroup, INTERNET_MAP_GROUP_START);
+    GUEST_CALL(ho_8034218);
+}
+
+/* register form: calls map_setupEnterMapAfterWarp_803423C outside this file, which has no typed C interface yet */
+static void call_setup_enter_map_after_warp(u32 stepByte, u32 gameState, u32 mapGroup)
+{
+    R0 = LD32(A_off_80341DC + stepByte);
+    R1 = stepByte;
+    R2 = gameState;
+    R5 = A_byte_2011A40;
+    SET_FLAGS_CMP(mapGroup, INTERNET_MAP_GROUP_START);
+    GUEST_CALL(map_setupEnterMapAfterWarp_803423C);
+}
+
+/* register form: calls sub_80342DC outside this file, which has no typed C interface yet */
+static void call_sub_80342DC(u32 stepByte, u32 gameState, u32 mapGroup)
+{
+    R0 = LD32(A_off_80341E8 + stepByte);
+    R1 = stepByte;
+    R2 = gameState;
+    R5 = A_byte_2011A40;
+    SET_FLAGS_CMP(mapGroup, INTERNET_MAP_GROUP_START);
+    GUEST_CALL(sub_80342DC);
+}
+
+/* register form: calls sub_80342E4 outside this file, which has no typed C interface yet */
+static void call_sub_80342E4(u32 stepByte, u32 gameState, u32 mapGroup)
+{
+    R0 = LD32(A_off_80341E8 + stepByte);
+    R1 = stepByte;
+    R2 = gameState;
+    R5 = A_byte_2011A40;
+    SET_FLAGS_CMP(mapGroup, INTERNET_MAP_GROUP_START);
+    GUEST_CALL(sub_80342E4);
+}
+
+/* register form: calls map_beginEnterMapOnWarpStep4_80342EC outside this file, which has no typed C interface yet */
+static void call_begin_enter_map_on_warp_step4(u32 stepByte, u32 gameState, u32 mapGroup)
+{
+    R0 = LD32(A_off_80341E8 + stepByte);
+    R1 = stepByte;
+    R2 = gameState;
+    R5 = A_byte_2011A40;
+    SET_FLAGS_CMP(mapGroup, INTERNET_MAP_GROUP_START);
+    GUEST_CALL(map_beginEnterMapOnWarpStep4_80342EC);
+}
+
+/* Run the handler for the current jack-in step and return the caller's r4-r7,
+ * which the original restores with pop {r4-r7,pc} after the handler returns. */
+static JackInSavedRegs run_jack_in_step(u32 toolkit, u32 callerR4, u32 callerR5,
+                                        u32 callerR6, u32 callerR7)
+{
+    JackInSavedRegs restored = { callerR4, callerR5, callerR6, callerR7 };
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 mapGroup  = LD8(gameState + oGameState_MapGroup);
+    u32 stepByte  = LD8(A_byte_2011A40);
+
+    if ((s32)mapGroup >= INTERNET_MAP_GROUP_START) {
+        /* internet map groups */
+        if (stepByte == 4)
+            call_sub_80342E4(stepByte, gameState, mapGroup);
+        else if (stepByte == 8)
+            call_begin_enter_map_on_warp_step4(stepByte, gameState, mapGroup);
+        else
+            call_sub_80342DC(stepByte, gameState, mapGroup);
+    } else {
+        /* real-world map groups */
+        if (stepByte == 4)
+            call_ho_8034218(stepByte, gameState, mapGroup);
+        else if (stepByte == 8)
+            call_setup_enter_map_after_warp(stepByte, gameState, mapGroup);
+        else
+            call_transmission_scene(stepByte, gameState, mapGroup);
+    }
+
+    return restored;
+}
+
+Next ho_jackIn_80341B6(void) {
+    JackInSavedRegs restored = run_jack_in_step(R10, R4, R5, R6, R7);
+    R4 = restored.r4;
+    R5 = restored.r5;
+    R6 = restored.r6;
+    R7 = restored.r7;
     RETURN_TO_CALLER();
 }
 

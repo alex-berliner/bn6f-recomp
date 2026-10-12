@@ -2058,6 +2058,37 @@ Next SetDummyBGScrollCallbacks(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CallBGScrollCallback0 ── */
+/* CallBGScrollCallback0 (0x08001994): trampoline for slot 0 of the BG scroll
+ * callback table.  It reads the handler pointer out of the table, calls it
+ * with r0 = the handler pointer itself and r1 = the table base (the two
+ * values the original has live at its `bx r0`), and returns straight back to
+ * its own caller.  Everything the handler leaves in r4-r12 is what the
+ * caller of this stub sees, which is why those registers are listed as
+ * outputs; r0-r3 and the flags are clobbered by the handler. */
+
+/* Helper for the original's `mov lr, pc; bx r0`: transfer control to guest
+ * code at an address that is only known at run time (it was read from the
+ * callback table), with the argument registers the original leaves behind. */
+static u32 call_bg_scroll_handler(u32 handler, u32 tableBase) { /* register form: calls through a guest code address (noted by the tool) */
+    R0 = handler;
+    R1 = tableBase;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* Typed body: load the slot-0 handler from eBGScrollCallbacks and invoke it. */
+static void invoke_bg_scroll_callback0(void) {
+    u32 tableBase = A_eBGScrollCallbacks;
+    u32 handler = LD32(tableBase + oBGScrollCallbacks_Callback0);
+    call_bg_scroll_handler(handler, tableBase);
+}
+
+Next CallBGScrollCallback0(void) {
+    invoke_bg_scroll_callback0();
+    RETURN_TO_CALLER();
+}
+
 /* ── CallBGScrollCallback1 ── */
 /* Offset of the Callback1 slot within the eBGScrollCallbacks table.
  * Mirrors `ldr r0, [r1, #oBGScrollCallbacks_Callback1_CallBGScrollCallback1]` (off_200A888 - 0x200a880). */
