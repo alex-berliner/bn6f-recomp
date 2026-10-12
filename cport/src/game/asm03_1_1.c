@@ -785,6 +785,48 @@ Next sub_803BAE2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803BB2C ── */
+/* sub_803BB2C(r0 = textArchive, r10 = toolkit):
+ * Show a network text script chosen by the main jump table index.
+ * r4-r7 are preserved despite callees clobbering r4/r5. */
+Next sub_803BB2C(void) {
+    u32 archive = R0;
+    u32 idx_ptr = LD32(R10 + oToolkit_MainJumptableIndexPtr);
+    u32 main_idx = LD8(idx_ptr);
+
+    /* Save callee-clobbered preserved registers (original does push {r4-r7,lr}) */
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+    u32 saved_r6 = R6;
+    u32 saved_r7 = R7;
+
+    if (main_idx == 0x28 || main_idx == 0x30) {
+        /* Connection-request script */
+        R0 = A_TextScriptNetworkRequestConnection87F2A1C;
+        R1 = archive;
+        GUEST_CALL(chatbox_runScript_803FD9C);
+    } else if (main_idx == 0x4C) {
+        /* Enter-folder-name script; sub_8123360 picks variant 0 or 1 */
+        GUEST_CALL(sub_8123360);
+        R0 = LD32(A_TextScriptNetworkEnterFolderNamePtrs + (R0 << 2));
+        R1 = archive;
+        GUEST_CALL(chatbox_runScript_803FD9C);
+    } else {
+        /* Fallback script with white-dot indicator */
+        R0 = A_TextScript87E36F8;
+        R1 = archive;
+        GUEST_CALL(chatbox_runScriptAndSetWhiteDot803FE74);
+    }
+
+    /* Restore preserved registers (original does pop {r4-r7,pc}) */
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803BB7C ── */
 /* sub_803BB7C(r0 = value, r5 = object):
  * store r0 into the object's field at offset 0x28. */

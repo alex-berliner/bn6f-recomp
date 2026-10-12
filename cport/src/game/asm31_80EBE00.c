@@ -3048,6 +3048,58 @@ Next battle_aiAttackPhaseDispatch_80FE21E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FE240 ── */
+/* sub_80FE240(r5 = battle object ptr, r7 = AI attack vars ptr):
+ * Advance the per-attack AI timer.  On the first tick it initialises the
+ * attack and either fires it immediately or starts a delay countdown.
+ * While the delay is active it decrements the countdown each tick; once
+ * the countdown expires (or no delay was needed) it sets the trigger
+ * field to 4, which the outer AI loop interprets as "attack now". */
+Next sub_80FE240(void) {
+    u32 aiVars = R7;
+    u32 battleObj = R5;
+
+    if (LD8(aiVars + oAIAttackVars_Unk_01) != 0) {
+        /* Already initialised – tick down the delay counter */
+        s32 remaining = (s32)LD16(aiVars + oAIAttackVars_Unk_10) - 1;
+        ST16(aiVars + oAIAttackVars_Unk_10, (u16)remaining);
+
+        if (remaining > 0) {
+            /* Still waiting – return unchanged */
+            RETURN_TO_CALLER();
+        }
+
+        /* Countdown expired: fire the attack */
+        ST16(aiVars + oAIAttackVars_Unk_00, 4);
+    } else {
+        /* First tick: set up the attack state */
+        ST8(aiVars + oAIAttackVars_Unk_01, 4);
+        ST8(aiVars + oAIAttackVars_Unk_16, 0);
+        ST8(aiVars + oAIAttackVars_Unk_17, 0);
+
+        GUEST_CALL(GetAIDataUnk0x48Flag);
+
+        R1 = 0x20;  /* delay-required bit */
+        if ((R0 & R1) == 0) {
+            /* No delay: trigger the attack immediately */
+            ST16(aiVars + oAIAttackVars_Unk_00, 4);
+        } else {
+            /* Delayed attack: clear the gate flag, begin countdown */
+            R0 = 0x20;
+            GUEST_CALL(ClearAIDataUnk0x48Flag);
+
+            ST8(battleObj + oBattleObject_CurAnim, 7);
+
+            R0 = 0xE1;
+            GUEST_CALL(PlaySoundEffect);
+
+            ST16(aiVars + oAIAttackVars_Unk_10, 0x13);  /* 19-tick delay */
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiAttackWindupTick_80FE284 ── */
 /* battle_aiAttackWindupTick_80FE284: AI attack state machine tick.
  * r5 = battle object, r7 = AI attack vars.

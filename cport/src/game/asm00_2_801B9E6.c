@@ -1755,6 +1755,49 @@ Next palette_QueueObjectPalettePair_801CDEC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801CE28 ── */
+/* sub_801CE28: Advance a generic state-machine step counter (byte_2036840+0x7),
+ * then dispatch to the current mode's tick handler via a 4-entry jump table.
+ *
+ * State block at byte_2036840:
+ *   +0x00  mode (table byte-offset: 0, 4, 8, or 12)
+ *   +0x07  step counter
+ *   +0x08  sub-phase (hold indicator during text printing)
+ *
+ * Hold: when the counter would reach 5, mode==4 (chatbox printing), and
+ * sub-phase is 2 or 4, the counter is NOT written (machine stalls).
+ *
+ * The handler is called as a sub-routine (bx with lr=epilogue); after it
+ * returns, we restore r5 (preserved) and return to our caller.
+ */
+Next sub_801CE28(void) {
+    u32 stateBase = A_byte_2036840;
+    u32 savedR5 = R5;  /* r5 is preserved for our caller */
+
+    u32 nextStep = (u32)LD8(stateBase + 0x7) + 1;
+
+    /* Stall the counter during a text-printing hold */
+    bool stall = false;
+    if (nextStep == 5 && LD8(stateBase) == 4) {
+        u8 subPhase = LD8(stateBase + 0x8);
+        if (subPhase == 2 || subPhase == 4)
+            stall = true;
+    }
+
+    if (!stall)
+        ST8(stateBase + 0x7, nextStep);
+
+    /* Dispatch: call the handler indexed by mode byte */
+    R0 = LD8(stateBase);   /* handler reads mode from r0 */
+    R5 = stateBase;        /* handler reads state pointer from r5 */
+    u32 handler = LD32(A_off_801CE5C + R0);  /* thumb-mode target */
+    GUEST_CALL_ADDR(handler);
+
+    R5 = savedR5;  /* restore preserved register (mirrors pop {r5,pc}) */
+
+    RETURN_TO_CALLER();
+}
+
 /* ── screenFadeOutStepTick_801CE6C ── */
 /* screenFadeOutStepTick_801CE6C: tick the staged fade driven by the work block at R5.
  *

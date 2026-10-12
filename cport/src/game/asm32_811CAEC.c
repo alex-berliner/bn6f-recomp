@@ -2183,6 +2183,45 @@ Next sub_81203E4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81204C4 ── */
+/* sub_81204C4(r0 = entry index, r1 = array base, r2 = dest pointer,
+ *             r3 = sub_8120504 param, r5 = number of entries (signed)):
+ * Iterate over 32-byte battle-chip slots starting at base + index*32.
+ * For each slot whose 16-bit field at +0x1C has bits[15:7] non-zero,
+ * look up that chip's type byte and pass it to sub_8120504 together
+ * with an 8-byte dest slot.  Otherwise zero the dest slot.
+ * Dest advances 8 bytes per entry; slot pointer advances 32 bytes. */
+Next sub_81204C4(void) {
+    s32  count = (s32)R5;
+    u32  base  = R1 + R0 * 32;
+    u32  dest  = R2;
+    u32  param = R3;
+    s32  i     = 0;
+
+    do {
+        u16 chip_field  = (u16)LD16(base + 0x1C);
+        u32 chip_select = (u32)(chip_field >> 7);  /* non-zero → chip present */
+
+        if (chip_select) {
+            R0 = chip_select;
+            GUEST_CALL(getChip8021DA8);
+            R0 = (u8)LD8(R0 + 8);
+            R1 = dest;
+            R2 = param;
+            GUEST_CALL(sub_8120504);
+        } else {
+            ST32(dest,     0);
+            ST32(dest + 4, 0);
+        }
+
+        base += 0x20;
+        dest += 8;
+        i++;
+    } while (i < count);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_812053C ── */
 /* sub_812053C:
  *   Ask sub_81205C0 for a value; if it came back non-negative, build an
@@ -2577,6 +2616,47 @@ static void build_bcd_tilemap(u32 tile_map, u32 val1, u32 val2,
 /* scoreboard_buildScoreBcdTilemap_8120900(r0=tile_map, r1=val1, r2=val2, r3=base_tile, r4=j, r6=i) */
 Next scoreboard_buildScoreBcdTilemap_8120900(void) {
     build_bcd_tilemap(R0, R1, R2, R3, R4, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81209DC ── */
+/* sub_81209DC(r0 = category index into range table):
+ * Selects a random battle element ID and a bias modifier.
+ *   1. Looks up the number of possible outcomes for the category (ROM table).
+ *   2. Draws a random index in [0, range) via the secondary RNG.
+ *   3. If category >= 2, shifts the index by +0x60 into a higher ID band.
+ *   4. Draws a second random index in [0, 21) via the primary RNG to pick
+ *      a bias/skew byte from a lookup table.
+ * Returns: r0 = low byte of the adjusted random ID, r1 = bias table value.
+ * r6, r7 are preserved. */
+Next sub_81209DC(void) {
+    u32 category = R0;
+
+    /* Range table at ROM 0x8120A14: {0x44, 0x60, 0x44}.
+     * Out-of-domain indices simply read whatever follows in ROM, matching original. */
+    u32 range = LD32(A_off_8120A14 + (category << 2));
+
+    /* Draw a random value and take it modulo the category's range. */
+    GUEST_CALL(GetPositiveSignedRNGSecondary);
+    R1 = range;
+    swi_call(6);
+    /* R1 = secondary_rng % range (unsigned remainder) */
+
+    /* Categories 2 and above shift into a different element ID band. */
+    if ((s32)category >= 2)
+        R1 += 0x60;
+
+    u32 adjusted = R1;
+
+    /* Draw a second random value modulo 21 to select a bias modifier. */
+    GUEST_CALL(GetPositiveSignedRNG);
+    R1 = 21;
+    swi_call(6);
+
+    /* R0 = low byte of the adjusted ID; R1 = bias_table[secondary_index]. */
+    R0 = adjusted & 0xFF;
+    R1 = LD8(A_byte_8120A20 + R1);
+
     RETURN_TO_CALLER();
 }
 

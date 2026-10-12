@@ -2236,6 +2236,66 @@ Next battle_addObjectToAllianceEntryList_80077D2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_main_8007800 ── */
+/* battle_main_8007800: per-frame battle dispatcher.
+ * Runs two pre-frame hooks, dispatches to the active battle-state handler
+ * via a jump table (indexed by a byte stored at offset 0 of the BattleState),
+ * then performs post-state bookkeeping: increment frame counter, query
+ * battle effects, extract state-byte nibbles.
+ *
+ * Preserved: r4, r5 (saved/restored via push/pop in original).
+ * Flags on return: N,Z from TST(R0,R0); C=0; V from last callee. */
+Next battle_main_8007800(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    /* Pre-frame global state updates */
+    GUEST_CALL(sub_801FE6C);
+    GUEST_CALL(sub_8020140);
+
+    /* Fetch BattleState pointer from Toolkit */
+    R5 = LD32(R10 + oToolkit_BattleStatePtr);
+
+    /* Dispatch to the handler selected by the state-byte jump table.
+     * The byte at offset 0 is used directly as a table byte-offset
+     * (entries at 0x00, 0x04, 0x08, 0x0C, 0x10, 0x14). */
+    u32 stateByte = LD8(R5 + oBattleState_Index_00);
+    switch (stateByte) {
+    case 0x00: GUEST_CALL(sub_8007850);           break;
+    case 0x04: GUEST_CALL(battle_update_8007A44); break;
+    case 0x08: GUEST_CALL(sub_8007B80);           break;
+    case 0x0C: GUEST_CALL(sub_8007E62);           break;
+    case 0x10: GUEST_CALL(sub_8007F4E);           break;
+    default: break; /* 0x14: handler was removed from the ROM */
+    }
+
+    /* Increment the per-frame battle counter */
+    ST32(R5 + oBattleState_Unk_60, LD32(R5 + oBattleState_Unk_60) + 1);
+
+    /* Query how many battle effects are currently active */
+    GUEST_CALL(GetBattleEffects);
+    u32 effectsCount = R0;
+
+    /* Get low byte and upper nibble of the current state byte */
+    GUEST_CALL(battle_getStateByteNibbles_800A832);
+
+    /* Rearrange for caller: R2 = nibble_hi, R1 = nibble_lo,
+     * R0 = raw state byte at offset 0x0A, R3 = effects count */
+    R2 = R1;
+    R1 = R0;
+    R0 = LD8(R5 + oBattleState_Unk_0a);
+    R3 = effectsCount;
+
+    /* TST R0, R0: sets N, Z from R0; C cleared; V unchanged */
+    SET_FLAGS_NZ(R0);
+
+    /* Restore preserved registers */
+    R4 = saved_r4;
+    R5 = saved_r5;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchPhase_8007978 ── */
 /* battle_dispatchPhase_8007978: battle phase dispatcher.
  *

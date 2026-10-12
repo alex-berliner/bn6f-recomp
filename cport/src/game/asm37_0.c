@@ -760,6 +760,78 @@ Next sub_813C678(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813CBCC ── */
+/* sub_813CBCC: Process PETNavi stat slots 1..0xF by dispatching each slot's
+ * registered handler from a computed function-pointer table.
+ *
+ * First clears the "processed" event flag (page 0x17, bit 0x20 = EVENT_1720).
+ * If stat 0x1F == 1 (a special flag), delegates entirely to sub_813C020 and returns.
+ * Otherwise, walks slots 1 through 0xF:
+ *   1. Looks up a capped stat-type byte (0..3) via getUnk...813BF0C.
+ *   2. Computes table index = statType*4 + slot*16.
+ *   3. Loads the handler address from the table at A_byte_813CC18 + index.
+ *   4. If non-null, calls it via indirect branch (bx), then re-sets the event flag.
+ *   5. Increments the loop counter (which the handler may have modified).
+ *
+ * The push/pop of {r4-r7,lr} ensures the caller's r4-r7 are preserved despite
+ * handlers freely clobbering registers via the indirect call.
+ */
+
+/* EVENT_1720: page 0x17, bit 0x20 */
+#define EVENT_1720_PAGE  0x17u
+#define EVENT_1720_BIT   0x20u
+
+Next sub_813CBCC(void) {
+    /* Save r4-r7 and lr (original: push {r4-r7,lr} / pop {r4-r7,pc}). */
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    /* Clear the "already processed this round" event flag. */
+    R0 = EVENT_1720_PAGE;
+    R1 = EVENT_1720_BIT;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+
+    /* Special path: if PETNavi stat 0x1F == 1, delegate and skip all slots. */
+    GUEST_CALL(checkCurPETNaviStats1FIsOne_813C490);
+    if ((s32)R0 == 1) {
+        GUEST_CALL(sub_813C020);
+        R4 = savedR4; R5 = savedR5; R6 = savedR6; R7 = savedR7;
+        RETURN_TO_CALLER();
+    }
+
+    /* Walk stat slots 1 through 0xF. */
+    R6 = 1;
+    while ((s32)R6 < 0x10) {
+        /* Get the capped stat-type (0..3) for this slot. */
+        R0 = R6;
+        GUEST_CALL(getUnk200431cTableByteCapped3_813BF0C);
+
+        if (R0 != 0) {
+            /* Table offset: statType * 4 + slot * 16 (entries are 32-bit pointers). */
+            R0 = (R0 << 2) + (R6 << 4);
+            R2 = 0;
+            R1 = LD32(A_byte_813CC18 + R0);
+
+            if (R1 != 0) {
+                /* Indirect call to the slot handler (original: mov lr, pc; bx r1).
+                 * Handler may clobber any register including R6. */
+                GUEST_CALL_ADDR(R1);
+
+                /* Mark this slot as processed by re-setting the event flag. */
+                R0 = EVENT_1720_PAGE;
+                R1 = EVENT_1720_BIT;
+                GUEST_CALL(SetEventFlagFromImmediate);
+            }
+        }
+
+        /* Advance loop counter; handler may have altered R6. */
+        R6 = R6 + 1;
+    }
+
+    /* Restore caller's r4-r7 (original: pop {r4-r7,pc}). */
+    R4 = savedR4; R5 = savedR5; R6 = savedR6; R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_clearIncompatibleChipSlot_813CEA0 ── */
 /* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
 static u8 get_pet_navi_stat_sub_813CEA0(u32 a1, u32 a2) {
