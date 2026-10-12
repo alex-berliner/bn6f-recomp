@@ -23,6 +23,7 @@ Otherwise `unsure`, with both proposals and the reasons. Mechanically confident 
 from __future__ import annotations
 
 import argparse
+import glob
 import concurrent.futures as cf
 import hashlib
 import json
@@ -109,7 +110,10 @@ def block(name: str, s: dict, calls: list[str], sigs: dict, g: dict) -> tuple[st
     cl = []
     for c in calls[:12]:
         cs = sigs.get(c)
-        if cs:
+        dec = DECIDED.get(c)
+        if dec:
+            cl.append(f"{c}: decided {dec}")
+        elif cs:
             cl.append(f"{c}: upper {' '.join(cs['upper_args']) or '-'}; lower {' '.join(cs['lower_args']) or '-'}"
                       f"; own {' '.join(cs['own_reads']) or '-'}"
                       + (f"; bn6f {cs['bn6f_comment']}" if cs.get("bn6f_comment") else ""))
@@ -117,6 +121,9 @@ def block(name: str, s: dict, calls: list[str], sigs: dict, g: dict) -> tuple[st
             f"upper: {' '.join(s['upper_args']) or '-'}; result {s['ret']['from']}\n"
             f"lower: {' '.join(s['lower_args']) or '-'}; result {s.get('lower_ret', '?')}\n"
             f"own code reads first: {' '.join(sorted(asmsrc.own_reads(lines))) or '-'}\n"
+            + (f"liveness over its own code and its callees' needs (mechanical; read on some path): "
+               f"{' '.join(s['narrow_args']) or '-'}\n" if s.get("narrow_args") is not None else "")
+            + ""
             + (f"captured calls ({s['captured_calls']}): " + "; ".join(caps) + "\n" if caps else "captured calls: none\n")
             + (f"bn6f comment: {s['bn6f_comment']}\n" if s.get("bn6f_comment") else "")
             + (f"readable C today: {'; '.join(rd)}\n" if rd else "")
@@ -140,8 +147,29 @@ def batches(names: list[str], sigs: dict, g: dict) -> list[list[str]]:
     return out
 
 
+DECIDED: dict[str, str] = {}   # round 2+: callees' agreed signatures, shown instead of their bounds
+ROUND = [1]
+
+
 def batch_id(names: list[str]) -> str:
-    return hashlib.sha1(" ".join(names).encode()).hexdigest()[:12]
+    key = " ".join(names) + (f" round {ROUND[0]}" if ROUND[0] > 1 else "")
+    return hashlib.sha1(key.encode()).hexdigest()[:12]
+
+
+def load_decided() -> None:
+    """Round 2+: the agreed signatures of the last merge (build/sig/final.json), as one line each."""
+    if not os.path.exists(FINAL):
+        return
+    for n, r in json.load(open(FINAL)).items():
+        if r.get("confidence") != "confident":
+            continue
+        if r.get("decided_by") == "model+mechanical":
+            ps = r["model"]["params"]
+            ret = (r["model"].get("ret") or {})
+            args = ", ".join(f"{p.get('type')} {p.get('name')} in {p.get('reg')}" for p in ps) or "void"
+            DECIDED[n] = f"({args}) -> {ret.get('type', 'void')} in {ret.get('reg', 'none')}"
+        else:
+            DECIDED[n] = (f"(args {' '.join(r['upper_args']) or 'none'}) -> {r['ret']['from']}")
 
 
 def parse(reply: str) -> list[dict] | None:
@@ -156,6 +184,11 @@ def parse(reply: str) -> list[dict] | None:
 
 
 def run(args) -> None:
+    ROUND[0] = args.round
+    global MODEL_DIR
+    if args.round > 1:
+        MODEL_DIR = os.path.join(ROOT, f"build/sig/model-r{args.round}")
+        load_decided()
     sigs, g, subs = load()
     bounds = json.load(open(os.path.join(ROOT, "build/sig/bounds.json")))
     for n, s in sigs.items():
@@ -222,7 +255,14 @@ def agree(s: dict, m: dict) -> list[str]:
     """Reasons a model's signature disagrees with the mechanical pass (none: they agree)."""
     why = []
     regs = [p.get("reg") for p in m.get("params", []) if p.get("reg") != "r10"]
-    upper, lower = set(s["upper_args"]), set(s["lower_args"]) - {"r10"}
+    upper = set(s["upper_args"])
+    if s.get("narrow_args") is not None:
+        narrow = set(s["narrow_args"])
+        if not narrow <= set(regs):
+            why.append(f"drops registers read on some path (liveness): {sorted(narrow - set(regs))}")
+        if not set(regs) <= upper:
+            why.append(f"registers outside the contract: {sorted(set(regs) - upper)}")
+        return why + agree_ret_types(s, m)
     if not set(regs) <= upper:
         why.append(f"registers outside the contract: {sorted(set(regs) - upper)}")
     for r in sorted(upper - set(regs) - {"r10"}):
@@ -234,7 +274,14 @@ def agree(s: dict, m: dict) -> list[str]:
             if w is not None and r not in w:
                 why.append(f"drops {r}, which it passes unchanged to {c} (an argument there)")
                 break
-    own = set(s["own_reads"]) - {"r10"}
+    return why + agree_ret_types(s, m, own_check=True)
+
+
+def agree_ret_types(s: dict, m: dict, own_check: bool = False) -> list[str]:
+    why = []
+    regs = [p.get("reg") for p in m.get("params", []) if p.get("reg") != "r10"]
+    upper = set(s["upper_args"])
+    own = set(s["own_reads"]) - {"r10"} if own_check else set()
     if not own <= set(regs):
         why.append(f"drops registers its own code reads first: {sorted(own - set(regs))}")
     ret = (m.get("ret") or {}).get("reg", "none")
@@ -266,14 +313,43 @@ def agree(s: dict, m: dict) -> list[str]:
 CALLEE_ARGS: dict[str, set[str]] = {}
 
 
+def regkey(r: str) -> int:
+    return int(r[1:]) if r[1:].isdigit() else 99
+
+
+def choose(s: dict, m: dict | None) -> dict:
+    """The signature to use: the registers liveness found (or the model's, where liveness could not
+    run), named and typed by the model where it answered, else by the mechanical pass."""
+    mech = {p["reg"]: p for p in s["params"]}
+    model = {p.get("reg"): p for p in (m or {}).get("params", []) if isinstance(p, dict)}
+    if s.get("narrow_args") is not None:
+        regs = sorted(s["narrow_args"], key=regkey)
+    elif m is not None:
+        regs = [r for r in model if r and r != "r10"]
+    else:
+        regs = [r for r in mech if r != "r10"]
+    params = []
+    for r in regs:
+        mp, cp = model.get(r) or {}, mech.get(r) or {}
+        params.append({"reg": r, "type": mp.get("type") or cp.get("type") or "u32",
+                       "name": mp.get("name") or cp.get("name") or r})
+    ret = dict((m or {}).get("ret") or {"reg": s["ret"]["from"], "type": s["ret"]["type"] or "u32"})
+    if ret.get("reg") in (None, "none"):
+        ret = {"reg": "none", "type": "void"}
+    dropped = sorted(set(model) - set(regs) - {"r10", None}, key=regkey)
+    return {"params": params, "ret": ret, "dropped_by_liveness": dropped}
+
+
 def merge(_args) -> None:
     sigs = json.load(open(SIG))
     g = json.load(open(GRAPH))
     calls = callees(g)
     bounds = json.load(open(os.path.join(ROOT, "build/sig/bounds.json")))
     answers: dict[str, tuple[str, dict]] = {}
-    for f in sorted(os.listdir(MODEL_DIR)) if os.path.isdir(MODEL_DIR) else []:
-        d = json.load(open(os.path.join(MODEL_DIR, f)))
+    dirs = [MODEL_DIR] + sorted(glob.glob(os.path.join(ROOT, "build/sig/model-r*")))   # later rounds win
+    files = [os.path.join(d, f) for d in dirs if os.path.isdir(d) for f in sorted(os.listdir(d))]
+    for path in files:
+        d = json.load(open(path))
         for a in d["answers"]:
             if isinstance(a, dict) and a.get("name") in d["names"]:
                 answers[a["name"]] = (d["model"], a)
@@ -297,8 +373,11 @@ def merge(_args) -> None:
             rec["disagreements"] = why
             rec["confidence"] = "confident" if not why else "unsure"
             rec["decided_by"] = "model+mechanical" if not why else "-"
+            if not why:
+                rec["chosen"] = choose(s, a)
         elif s["confidence"] == "confident":
             rec["decided_by"] = "mechanical"
+            rec["chosen"] = choose(s, None)
         stats[rec["confidence"]] = stats.get(rec["confidence"], 0) + 1
         out[n] = rec
     json.dump(out, open(FINAL, "w"), indent=0)
@@ -315,6 +394,8 @@ def main() -> None:
     r.add_argument("--subsystem", nargs="*")
     r.add_argument("--all", action="store_true", help="also functions the mechanical pass settled")
     r.add_argument("--redo-mech", action="store_true")
+    r.add_argument("--round", type=int, default=1, help="2+: show callees' agreed signatures (last merge)")
+    r.add_argument("--bottom-up", action="store_true", help="callees before callers (one batch per depth level)")
     sub.add_parser("merge")
     a = ap.parse_args()
     run(a) if a.cmd == "run" else merge(a)

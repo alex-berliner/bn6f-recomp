@@ -286,13 +286,98 @@ def bn6f_comment(lines: list[str], name: str) -> str | None:
     return None
 
 
+def narrow(g: dict, bounds: dict) -> dict[str, set[str] | None]:
+    """Each entry's arguments by liveness over its own assembly (tools/sig/asm.py live_in), a call
+    reading what its callee needs by the same measure, to a fixpoint over the call graph (growing from
+    nothing, so every register in the result is read on some path). Bounded by the contract's upper
+    bound. None where the assembly leaves through a computed jump or calls through a pointer the
+    routes never showed a target for: the contract stays."""
+    ents = g["entries"]
+    lines = {n: asmsrc.asm_of(e.get("src")) for n, e in ents.items()}
+    unobserved = set()
+    targets: dict[str, set[str]] = collections.defaultdict(set)
+    for site in g["sites"]:
+        if site["kind"] == "call" and site.get("target") in ents:
+            targets[site["caller"]].add(site["target"])   # constant code addresses the lifter resolved
+        if site["kind"] == "indirect":
+            if not site.get("observed"):
+                unobserved.add(site["caller"])
+            for t in site.get("observed") or []:
+                if t in ents:
+                    targets[site["caller"]].add(t)
+                elif t != "return":
+                    unobserved.add(site["caller"])     # a target that is no entry: unknown here
+    upper = {n: set(bounds.get(n, {}).get("final", {}).get("args", [])) | ({"r10"} if "r10" in ents[n].get("inputs_final", []) else set())
+             for n in ents}
+    # what a call leaves changed: may-write without the registers the callee restores
+    writes = {n: set(e.get("may_write_final") or e.get("may_write") or []) - set(e.get("preserved") or [])
+              for n, e in ents.items()}
+    T: dict[str, set[str] | None] = {n: set() for n in ents}
+    dead = {n for n in ents if ents[n]["unit"] in unobserved}
+    for n in dead:
+        T[n] = None
+    tainted: set[str] = set()     # used the contract's bound of a callee liveness could not narrow
+    for _round in range(30):
+        changed = 0
+        for n, e in ents.items():
+            if T[n] is None:
+                continue
+            unit = e["unit"]
+
+            def args_of(c, unit=unit):
+                if c == "<indirect>":
+                    if not targets[unit]:
+                        hit.add(1)
+                        return {f"r{i}" for i in range(13)}
+                    out = set()
+                    for t in targets[unit]:
+                        if T[t] is None or t in tainted:
+                            hit.add(1)
+                        out |= (T[t] if T[t] is not None else upper[t])
+                    return out
+                if c in T:
+                    if T[c] is None or c in tainted:
+                        hit.add(1)
+                    return T[c] if T[c] is not None else upper[c]
+                hit.add(1)
+                return {f"r{i}" for i in range(13)}       # unknown code: everything
+
+            def writes_of(c, unit=unit):
+                if c == "<indirect>":
+                    out = set()
+                    for t in targets[unit]:
+                        out |= writes.get(t, set())
+                    return out
+                return writes.get(c, {f"r{i}" for i in range(13)})
+
+            hit: set[int] = set()
+            got = asmsrc.live_in(lines[n], args_of, writes_of)
+            if hit and n not in tainted:
+                tainted.add(n)
+                changed += 1
+            new = None if got is None else (got & upper[n])
+            if new != T[n]:
+                if new is None or T[n] is None or not new <= T[n]:
+                    T[n] = new if new is None or T[n] is None else (T[n] | new)
+                    changed += 1
+        if not changed:
+            break
+    return T, tainted
+
+
 def derive(g: dict, bounds: dict) -> dict[str, dict]:
     syms, inst = Symbols(), Instances()
     by_addr = {int(e["addr"], 16) & ~1: n for n, e in g["entries"].items()}
     caps = read_captures(by_addr)
     readable = readable_signatures()
     passes = own_args_unchanged(g)
+    T, tainted = narrow(g, bounds)
     sigs: dict[str, dict] = {}
+    callee_of: dict[str, set[str]] = collections.defaultdict(set)
+    for site in g["sites"]:
+        if site["kind"] in ("call", "tail") and site.get("target"):
+            callee_of[site["caller"]].add(site["target"])
+    ents = g["entries"]
     for name, e in g["entries"].items():
         p = bounds.get(name, {}).get("final") or e.get("proposal_final") or {}
         low = bounds.get(name, {}).get("ceiling") or {}
@@ -302,7 +387,12 @@ def derive(g: dict, bounds: dict) -> dict[str, dict]:
         cap = caps.get(name)
         rd = readable.get(name)
         params = []
-        for i, reg in enumerate(p.get("args", [])):
+        narrowed = T.get(name)
+        partial = None
+        if name in tainted and narrowed is not None:
+            partial, narrowed = narrowed, None
+        arg_regs = p.get("args", []) if narrowed is None else [r for r in p.get("args", []) if r in narrowed]
+        for i, reg in enumerate(arg_regs):
             ev = []
             c = None
             if cap:
@@ -342,10 +432,13 @@ def derive(g: dict, bounds: dict) -> dict[str, dict]:
         sigs[name] = {"addr": e["addr"], "unit": e["unit"], "src": e.get("src"), "readable": bool(e.get("readable")),
                       "params": params, "ret": ret, "globals": p.get("globals", []), "keep": p.get("keep", []),
                       "flags_out": p.get("flags_out", []), "flags_in": p.get("flags_in", []),
-                      "blockers": p.get("blockers", []), "unwinds": bool(e.get("may_unwind")),
+                      "blockers": p.get("blockers", []), "unwinds": bool(e.get("may_unwind")) and not any(ents.get(c, {}).get("may_unwind") for c in callee_of[e["unit"]]),
+                      "callee_may_unwind": any(ents.get(c, {}).get("may_unwind") for c in callee_of[e["unit"]]),
                       "captured_calls": cap["calls"] if cap else 0,
                       "upper_args": p.get("args", []), "lower_args": low.get("args", []),
                       "own_reads": sorted(r for r in own if r in p.get("args", [])),
+                      "narrow_args": None if narrowed is None else sorted(r for r in narrowed if r != "r10"),
+                      "narrow_partial": None if partial is None else sorted(r for r in partial if r != "r10"),
                       "bn6f_comment": comment, "asm_lines": len(lines)}
     # callers: propagate a class to callee args without captures
     for (caller, callee), regs in passes.items():
@@ -368,8 +461,8 @@ def derive(g: dict, bounds: dict) -> dict[str, dict]:
 def confidence(s: dict) -> str:
     if s["unwinds"]:
         return "none"
-    if set(s["upper_args"]) - set(s["own_reads"]):
-        return "unsure"          # some argument may only be passed on to callees: a reader decides
+    if s["narrow_args"] is None:
+        return "unsure"          # a computed jump or an unseen pointer call: the contract's bound stands
     for p in s["params"]:
         if not p["type"]:
             return "unsure"
