@@ -304,6 +304,66 @@ Next sub_8029D80(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8029EF8 ── */
+/* sub_8029EF8: Build the list of selectable candidates into the caller's work area.
+ *
+ * Five candidates (index 0..4) are considered.  Candidate i is listed only when
+ *  - its story event flag is set (flags 0xE7..0xEB, table at byte_8029F4C),
+ *  - bit (5 + i) of the mask word at dword_20349A0 is clear, and
+ *  - PET navi stats byte 0x17 does not name it as the active one (it reads 6 + i).
+ * Each listed candidate writes its index to work[0x50 + n] and 0 to work[0x55 + n].
+ * Returns how many candidates were listed.
+ */
+
+#define CANDIDATE_COUNT    5     /* one slot per candidate, indices 0..4 */
+
+#define EVENT_FLAG_TABLE   A_byte_8029F4C  /* ROM table of the candidates' event flags */
+#define EXCLUDE_MASK       A_dword_20349A0 /* RAM word: bit 5+index set = candidate unavailable */
+#define EXCLUDE_MASK_BIT   5
+#define ACTIVE_STATS_BYTE  0x17  /* PET navi stats byte reporting the active candidate */
+#define ACTIVE_ID_BASE     6     /* ...as 6+index, i.e. 6..10 for candidates 0..4 */
+#define LISTED_ID_OFFSET   0x50  /* work[n]: index of the n-th listed candidate */
+#define LISTED_ZERO_OFFSET 0x55  /* work[n]: parallel byte, always cleared to 0 */
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
+static bool event_flag_set(u16 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();         /* TestEventFlag sets Z when the flag is clear */
+}
+
+/* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */
+static u8 pet_navi_stats_byte(u32 navi, u32 stat) {
+    R0 = navi;
+    R1 = stat;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (u8)R0;
+}
+
+static u32 list_selectable_candidates(u32 work) {
+    u32 listed = 0;
+
+    for (u32 i = 0; i < CANDIDATE_COUNT; i++) {
+        if (!event_flag_set((u16)LD32(EVENT_FLAG_TABLE + i * 4)))
+            continue;                                   /* not unlocked yet */
+        if (LD32(EXCLUDE_MASK) & (1u << (EXCLUDE_MASK_BIT + i)))
+            continue;                                   /* masked out */
+        if (pet_navi_stats_byte(0, ACTIVE_STATS_BYTE) == ACTIVE_ID_BASE + i)
+            continue;                                   /* skip the active candidate */
+
+        ST8(work + LISTED_ID_OFFSET + listed, i);
+        ST8(work + LISTED_ZERO_OFFSET + listed, 0);
+        listed++;
+    }
+
+    return listed;
+}
+
+Next sub_8029EF8(void) {
+    R0 = list_selectable_candidates(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── checkBattleEventGate_8029FB4 ── */
 /* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
 static u32 get_battle_mode_sub_8029FB4(void) {
@@ -862,6 +922,68 @@ Next objStepFinishSetState4_802BE0C(void) {
 
     R4 = saved_r4;
     R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802BE36 ── */
+/* ----------------------------------------------------------------------
+ * sub_802BE36 -- one per-frame tick of a battle object (r5 -> object).
+ *
+ * Object fields touched here:
+ *   +0x01  u8   state     switched to 4 once the progress counter tops out
+ *   +0x02  u16  timer     cleared at the same moment
+ *   +0x04  u8   mode      mode 2 skips the per-frame updates below
+ *   +0x06  s8   progress  stepped by 2 each tick, clamped at 3
+ *   +0x08  u8   id        argument of sub_802C6EC
+ *   +0x0e  u8   frame     second argument of sub_802C4E8
+ *   +0x1c  ptr  component first argument of sub_802C4E8
+ * ---------------------------------------------------------------------- */
+
+/* register form: calls sub_802C4E8 outside this file, which has no typed C interface yet */
+static void run_component_update(u32 component, u32 frame) {
+    R0 = component;
+    R1 = frame;
+    GUEST_CALL(sub_802C4E8);
+}
+
+/* register form: calls sub_802C6EC outside this file, which has no typed C interface yet */
+static void run_display_update(u32 id) {
+    R0 = id;
+    GUEST_CALL(sub_802C6EC);
+}
+
+/* Advance the object's progress counter by 2.  When it reaches 3 the
+ * sequence is finished: the counter is pinned at 3, the state moves on
+ * to 4 and the timer restarts.  Unless the object is in mode 2 (frozen),
+ * its component and display are refreshed afterwards. */
+static void tick_object(u32 obj) {
+    /* register form: the callees bake the guest stack pointer into r6 (an
+     * output the caller reads), so SP must sit exactly where the original's
+     * push {lr} leaves it -- 4 below entry, holding the saved return address
+     * -- for the whole body; this guest-stack effect cannot be written in
+     * plain C. */
+    SP -= 4;
+    ST32(SP, LR);
+
+    s32 progress = (s8)LD8(obj + 6) + 2;
+    ST8(obj + 6, progress);
+    if (progress >= 3) {
+        ST8(obj + 6, 3);      /* pin the counter at its maximum */
+        ST8(obj + 1, 4);      /* switch to the follow-up state */
+        ST16(obj + 2, 0);     /* restart the halfword timer */
+    }
+
+    if (LD8(obj + 4) != 2) {  /* mode 2: no per-frame updates */
+        run_component_update(LD32(obj + 0x1c), LD8(obj + 0xe));
+        run_display_update(LD8(obj + 8));
+    }
+
+    SP += 4;                  /* the original's pop {pc} */
+}
+
+/* sub_802BE36(r5 = object) -> r5 unchanged; r6/r7 as the last callee leaves them */
+Next sub_802BE36(void) {
+    tick_object(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1531,6 +1653,71 @@ Next blitTileBlockToRowBuffer_802C4B6(void) {
     R1 = R4; /* row counter as the original leaves it */
     R2 = src;
     SET_FLAGS_CMP(R1, R4);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802C4E8 ── */
+/* Five-big-digit timer display: converts a value to BCD and draws it as five
+ * 1x2-tile digits in an M'SS"CC layout (the gaps in the x positions below hold
+ * the separator tiles), capped at 9'59"99. Digit glyphs start at tile 0xA0,
+ * two tiles per digit, drawn with palette (palette + 9). */
+
+#define TIMER_CAP_BCD        0x95999 /* BCD-coded 9'59"99, largest shown value */
+#define TIMER_DIGIT_TILE     0xA0    /* first digit glyph tile ("0" = 0xA0/0xA1) */
+#define TIMER_DIGIT_COUNT    5
+
+/* x position (in tiles) of each digit, least significant first -- the
+ * original's table at 0x802C538; gaps at 0x0F/0x12 are the separators */
+static const u8 timer_digit_x[TIMER_DIGIT_COUNT] = { 0x14, 0x13, 0x11, 0x10, 0x0E };
+
+/* register form: calls memory_bcd_8000D84 outside this file, which has no typed C interface yet */
+static u32 to_bcd(u32 value) {
+    R0 = value;
+    GUEST_CALL(memory_bcd_8000D84);
+    return R0;
+}
+
+/* register form: calls blitTileBlockToRowBuffer_802C4B6 outside this file (no
+ * typed C interface yet); the callee takes the digit's two tile-map entries by
+ * guest address, so they must sit in the original's stack slot (entry SP - 12),
+ * and the original leaves the loop's r6 (that slot) and r7 (the x table) in
+ * those registers for its callers. */
+static void blit_digit_tiles(u32 x, u16 top_entry, u16 bottom_entry) {
+    SP -= 12;
+    ST16(SP, top_entry);
+    ST16(SP + 2, bottom_entry);
+    R0 = x;    /* column */
+    R1 = 4;    /* row */
+    R2 = SP;   /* the two tile-map entries on the guest stack */
+    R3 = 1;    /* one tile wide */
+    R4 = 2;    /* two tiles tall */
+    GUEST_CALL(blitTileBlockToRowBuffer_802C4B6);
+    R6 = SP;             /* return-time r6 = the digit buffer slot */
+    R7 = A_byte_802C538; /* return-time r7 = the digit x-position table */
+    SP += 12;
+}
+
+/* Draw `time` (converted to BCD) as the five big timer digits, using palette
+ * number (palette + 9) for the tile-map entries. */
+static void draw_timer(u32 time, u32 palette) {
+    u32 digits = to_bcd(time);
+    if ((s32)digits > (s32)TIMER_CAP_BCD) /* signed compare, as the original */
+        digits = TIMER_CAP_BCD;
+
+    /* tile-map entry base: palette (palette + 9) in bits 12-15,
+     * first of the digit's two glyph tiles in the low bits */
+    u32 entry_base = ((palette + 9) << 12) | TIMER_DIGIT_TILE;
+
+    for (int i = 0; i < TIMER_DIGIT_COUNT; i++) {
+        u32 entry = entry_base + (digits & 0xF) * 2;
+        blit_digit_tiles(timer_digit_x[i], entry, entry + 1);
+        digits >>= 4; /* next digit, up to the ten-minutes place */
+    }
+}
+
+/* sub_802C4E8(r0 = time value, r1 = palette) -> r5 unchanged, r6/r7 left as by the loop */
+Next sub_802C4E8(void) {
+    draw_timer(R0, R1);
     RETURN_TO_CALLER();
 }
 
@@ -2714,6 +2901,81 @@ Next battle_getAllianceEntryStatus_802E4B8(void) {
 
     R1 = 0x54;
     R0 = (LD8(entry + 0x54) != 0) ? 0xD : 1;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802E4E4 ── */
+/* One-shot bits in the AI-data flag word read by GetAIData_Unk_44_Flag. */
+#define AIDATA_FLAG_TIMER  0x02000000u /* literal "timer_2000000" in the disassembly */
+#define AIDATA_FLAG_INVULN 0x20000000u /* drives the permanent-invulnerability branch */
+
+/* register form: calls getEntryPtr_2036120_1D0_802E070 outside this file, which has no typed C interface yet */
+static u32 alliance_entry_ptr(u32 alliance) {
+    R0 = alliance;
+    GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
+    return R0;
+}
+
+/* register form: calls GetAIData_Unk_44_Flag outside this file, which has no typed C interface yet */
+static u32 ai_data_flags(void) {
+    GUEST_CALL(GetAIData_Unk_44_Flag);
+    return R0;
+}
+
+/* register form: calls ClearAIData_Unk_44_Flag outside this file, which has no typed C interface yet */
+static void clear_ai_data_flags(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(ClearAIData_Unk_44_Flag);
+}
+
+/* register form: calls sub_802E1EC outside this file, which has no typed C interface yet */
+static void post_entry_write_update(void) {
+    /* the original runs this right after each entry-field write below */
+    GUEST_CALL(sub_802E1EC);
+}
+
+/* register form: calls object_setInvulnerableTime outside this file, which has no typed C interface yet */
+static void set_invulnerable_time(u32 frames) {
+    R0 = frames;
+    GUEST_CALL(object_setInvulnerableTime);
+}
+
+/* register form: calls sub_802D310 outside this file, which has no typed C interface yet */
+static void post_invulnerability_update(void) {
+    /* the original runs this only after granting invulnerability below */
+    GUEST_CALL(sub_802D310);
+}
+
+/* Consume two one-shot AI-data flag bits on behalf of a battle object, applying
+ * each one to the entry for the object's alliance (0x1D0-byte entries, table at
+ * 0x2036120):
+ *   AIDATA_FLAG_TIMER:  entry byte 0x50 = 1, then the entry post-update.
+ *   AIDATA_FLAG_INVULN: entry byte 0x54 = 1, post-update, load the entry's 0x30
+ *                       halfword timer with 0x1E0 (480), make the object
+ *                       invulnerable indefinitely, then the follow-up update.
+ * Both bits are checked even if the first one already fired. */
+static void handle_ai_data_flag_triggers(u32 object) {
+    u32 entry = alliance_entry_ptr(LD8(object + oBattleObject_Alliance));
+
+    if (ai_data_flags() & AIDATA_FLAG_TIMER) {
+        clear_ai_data_flags(AIDATA_FLAG_TIMER);
+        ST8(entry + 0x50, 1);
+        post_entry_write_update();
+    }
+
+    if (ai_data_flags() & AIDATA_FLAG_INVULN) {
+        clear_ai_data_flags(AIDATA_FLAG_INVULN);
+        ST8(entry + 0x54, 1);
+        post_entry_write_update();
+        ST16(entry + 0x30, 0x1E0);      /* 480-frame timer */
+        set_invulnerable_time(0xFFFF);  /* effectively unlimited */
+        post_invulnerability_update();
+    }
+}
+
+/* sub_802E4E4(r5 = battle object) -> r2, r3 (leftovers from the last callee above) */
+Next sub_802E4E4(void) {
+    handle_ai_data_flag_triggers(R5);
     RETURN_TO_CALLER();
 }
 

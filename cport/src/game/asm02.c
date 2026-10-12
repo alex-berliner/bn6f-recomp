@@ -207,6 +207,84 @@ Next addChipsToChipPackOffset_8021b5a(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── TakeChips ── */
+/* Outcome codes TakeChips reports (in r3, and -- as the original also does -- in r0). */
+enum TakeChipsStatus {
+    TAKE_TAKEN      = 0, /* chips were removed; the owned count is still positive */
+    TAKE_NONE_OWNED = 1, /* the owned count was already zero */
+    TAKE_NOT_ENOUGH = 2  /* fewer owned than requested; nothing is taken */
+};
+
+/* Where a chip code's owned count lives, from the pack lookup. */
+struct ChipCodeQuantity {
+    u32 count_addr;  /* address of the owned-count byte (lookup result in r0) */
+    u32 empty_value; /* second value the lookup leaves in r3; TakeChips reports it
+                        in r1 instead of a count once the count reaches zero */
+};
+
+/* Everything TakeChips leaves behind for its caller. */
+struct TakeChipsResult {
+    u32 count;   /* r1: new owned count, or empty_value once it hit zero */
+    u32 status;  /* r3 (and r0): TAKE_* code */
+    u32 amount;  /* r2: echoed back unchanged; the original preserves r2 (push/pop
+                    around the lookup) even though the lookup may clobber it */
+};
+
+/* register form: calls getOffsetToQuantityOfChipCodeMaybe_8021c7c outside this file, which has no typed C interface yet */
+static struct ChipCodeQuantity find_chip_code_quantity(u32 chip_idx, u32 chip_code, u32 amount) {
+    struct ChipCodeQuantity found;
+    R0 = chip_idx;
+    R1 = chip_code;
+    R2 = amount; /* the take amount doubles as the lookup's third argument */
+    GUEST_CALL(getOffsetToQuantityOfChipCodeMaybe_8021c7c);
+    found.count_addr = R0;
+    found.empty_value = R3;
+    return found;
+}
+
+/* Remove `amount` copies of a chip from the pack. The owned count never drops
+ * below zero: if fewer than `amount` are owned, the take is refused and the
+ * count is left alone. When the count reaches zero, `empty_value` from the
+ * lookup is reported instead of the count. */
+static struct TakeChipsResult take_chips(u32 chip_idx, u32 chip_code, u32 amount) {
+    struct ChipCodeQuantity found = find_chip_code_quantity(chip_idx, chip_code, amount);
+    struct TakeChipsResult result;
+    u32 count = LD8(found.count_addr);
+    u32 new_count;
+    u32 status;
+
+    if (count == 0) {
+        status = TAKE_NONE_OWNED;
+        new_count = 0;
+    } else {
+        status = TAKE_TAKEN;
+        new_count = count - amount;
+        if ((s32)count < (s32)amount) {
+            /* would underflow: refuse the take, keep the current count */
+            status = TAKE_NOT_ENOUGH;
+            new_count = count;
+        }
+    }
+
+    ST8(found.count_addr, (u8)new_count);
+
+    result.count = new_count != 0 ? new_count : found.empty_value;
+    result.status = status;
+    result.amount = amount;
+    return result;
+}
+
+/* TakeChips(r0 = chip index, r1 = chip code, r2 = amount)
+ * -> r0/r3 = status, r1 = new count (or the lookup's empty value), r2 kept intact */
+Next TakeChips(void) {
+    struct TakeChipsResult result = take_chips(R0, R1, R2);
+    R0 = result.status;
+    R1 = result.count;
+    R2 = result.amount;
+    R3 = result.status;
+    RETURN_TO_CALLER();
+}
+
 /* ── GetChipCountOfCode ── */
 /* register form: calls sub_8006EA4 outside this file, which has no typed C interface yet */
 static bool chip_code_is_valid(u32 chip_idx, u32 search_item) {

@@ -62,6 +62,114 @@ Next clearDword_203CA70Record_80084C0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8009158 ── */
+/* Battle state machine tick: runs the current state's phase handler (chosen through the
+ * jump table at off_80091BC), then keeps the low-HP warning siren in step with the
+ * player's HP: it starts when HP falls to a quarter of max or below and stops again
+ * once HP climbs back above that. */
+
+/* GetBattleEffects() bit that enables the low-HP warning check */
+#define BATTLE_EFFECTS_LOW_HP_WARNING 0x8
+
+/* Sound ids used by the warning (both sound calls take 0x1F as their first argument) */
+#define SOUND_LOW_HP_WARNING 0x11A /* looping low-HP siren          */
+#define SOUND_LOW_HP_OFF     0x100 /* stops the siren               */
+
+/* register form: calls one of the battle state phase handlers from the jump table at
+ * off_80091BC outside this file, which have no typed C interface yet. The index field
+ * holds a byte offset into the table (4 * state number), and the original passes it in
+ * r0 before branching through the table entry. */
+static void run_state_phase_handler(u32 table_offset)
+{
+    R0 = table_offset;
+    switch (table_offset) {
+    case 0x00: GUEST_CALL(sub_80091F0); break;
+    case 0x04: GUEST_CALL(battle_dispatchStatePhase_80092A0); break;
+    case 0x08: GUEST_CALL(sub_8009338); break;
+    case 0x0C: GUEST_CALL(sub_800938A); break;
+    case 0x10: GUEST_CALL(battle_DispatchStatePhase_800945C); break;
+    case 0x14: GUEST_CALL(sub_80094DA); break;
+    case 0x18: GUEST_CALL(sub_800951E); break;
+    case 0x1C: GUEST_CALL(sub_8009552); break;
+    case 0x20: GUEST_CALL(sub_8009594); break;
+    case 0x24: GUEST_CALL(sub_80095C8); break;
+    default: break; /* out of range: never happens, the index is always 0..9 * 4 */
+    }
+}
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 get_battle_effects(void)
+{
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: calls battle_preUpdateAndGetPlayerObject_80103EC outside this file, which has no typed C interface yet */
+static u32 preupdate_and_get_player_object(void)
+{
+    GUEST_CALL(battle_preUpdateAndGetPlayerObject_80103EC);
+    return R0;
+}
+
+/* register form: calls sound_800065A outside this file, which has no typed C interface yet */
+static void sound_setup_800065A(u32 channel, u32 param, u32 pitch)
+{
+    R0 = channel; R1 = param; R2 = pitch;
+    GUEST_CALL(sound_800065A);
+}
+
+/* register form: calls sound_8000672 outside this file, which has no typed C interface yet */
+static void sound_play_8000672(u32 channel, u32 sound_id)
+{
+    R0 = channel; R1 = sound_id;
+    GUEST_CALL(sound_8000672);
+}
+
+/* register form: the battle state pointer is carried in r5 and the guest callees above
+ * (the phase handler in particular) may leave an updated pointer there; the original
+ * addresses the low-HP flag through r5, so the current value can only be had from the
+ * register itself */
+static u32 battle_state_in_r5(void)
+{
+    return R5;
+}
+
+static void battle_state_update(u32 battle_state)
+{
+    run_state_phase_handler(LD8(battle_state + oBattleState_Index_01));
+
+    if ((get_battle_effects() & BATTLE_EFFECTS_LOW_HP_WARNING) == 0)
+        return;
+
+    u32 player = preupdate_and_get_player_object();
+    u16 hp = LD16(player + oBattleObject_HP);
+    u16 quarter_max = LD16(player + oBattleObject_MaxHP) / 4;
+
+    battle_state = battle_state_in_r5();
+    u16 warning_active = LD16(battle_state + oBattleState_Unk_20); /* 1 while the siren plays */
+
+    if (hp > quarter_max) {
+        if (warning_active == 0)
+            return; /* warning not playing, nothing to stop */
+        ST16(battle_state + oBattleState_Unk_20, 0);
+        sound_setup_800065A(0x1F, 0xFFFF, 0);            /* release the warning tone */
+        sound_play_8000672(0x1F, SOUND_LOW_HP_OFF);
+    } else {
+        if (warning_active != 0)
+            return; /* warning already playing */
+        ST16(battle_state + oBattleState_Unk_20, 1);
+        sound_setup_800065A(0x1F, 0xFFFF, 0x100);         /* arm the warning tone */
+        sound_play_8000672(0x1F, SOUND_LOW_HP_WARNING);
+    }
+}
+
+/* sub_8009158(r5 = battle state) -> no computed outputs: r2..r6 and r8..r12 carry
+ * whatever the phase handler and the sound calls left in them */
+Next sub_8009158(void) {
+    battle_state_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── task484_RunFrame_800927C ── */
 /* task484_RunFrame_800927C: run one frame of the task identified by ID 0x484.
  * Requests the task (setting its request bits), dispatches it, then runs

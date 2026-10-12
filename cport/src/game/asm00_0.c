@@ -565,6 +565,113 @@ Next clearWord_e200AC1C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── QueueGFXTransfersInList ── */
+/* Bit 31 of a transfer's source address: the source is LZ77-packed data that
+ * gets unpacked into the entry's buffer before queueing. */
+#define GFX_SOURCE_PACKED 0x80000000u
+
+/* Size of one entry in the transfer list handled below. */
+#define GFX_TRANSFER_ENTRY_SIZE 12
+
+/* register form: calls SWI_LZ77UnCompReadNormalWrite8bit outside this file, which has no typed C interface yet */
+static void lz77_unpack_to_buffer(u32 src, u32 dest) {
+    R0 = src;
+    R1 = dest;
+    GUEST_CALL(SWI_LZ77UnCompReadNormalWrite8bit);
+}
+
+/* register form: calls QueueByteAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_byte_aligned_transfer(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueByteAlignedGFXTransfer);
+}
+
+/* register form: calls QueueHwordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_hword_aligned_transfer(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueHwordAlignedGFXTransfer);
+}
+
+/* register form: calls QueueWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_word_aligned_transfer(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueWordAlignedGFXTransfer);
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_eight_word_aligned_transfer(u32 src, u32 dest, u32 size) {
+    R0 = src;
+    R1 = dest;
+    R2 = size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* Walk a list of 12-byte graphics transfer requests, ended by an entry whose
+ * source word is 0, and queue each one as a copy to its destination.
+ *
+ * Each entry:
+ *   +0  source data; if GFX_SOURCE_PACKED is set, the low 31 bits point at
+ *       LZ77 data that is unpacked into the entry's buffer (+8) first
+ *   +4  destination of the queued transfer (0 with a packed source:
+ *       unpack only, queue nothing)
+ *   +8  plain source: byte count to transfer;
+ *       packed source: scratch buffer the data is unpacked into
+ *
+ * Unpacked data begins with a word whose top 24 bits give its total size in
+ * bytes, counting that header word itself.
+ */
+static void queue_gfx_transfers_in_list(u32 list) {
+    for (u32 entry = list; ; entry += GFX_TRANSFER_ENTRY_SIZE) {
+        u32 source = LD32(entry);
+        if (source == 0)
+            break; /* end of the list */
+
+        u32 src, dest, size;
+
+        if (source & GFX_SOURCE_PACKED) {
+            /* Unpack the compressed graphics into the scratch buffer. */
+            u32 buffer = LD32(entry + 8);
+            lz77_unpack_to_buffer(source & ~GFX_SOURCE_PACKED, buffer);
+
+            dest = LD32(entry + 4);
+            if (dest == 0)
+                continue; /* unpacked only; nothing to queue */
+
+            src = buffer + 4;                 /* skip the size header, */
+            size = (LD32(buffer) >> 8) - 4;   /* which counts itself */
+        } else {
+            src = source;
+            dest = LD32(entry + 4);
+            size = LD32(entry + 8);
+        }
+
+        /* Queue the copy at the widest alignment its size permits: 32-byte
+         * bursts when the size is a multiple of 32, else word, halfword or byte. */
+        if (size & 1)
+            queue_byte_aligned_transfer(src, dest, size);
+        else if (size & 3)
+            queue_hword_aligned_transfer(src, dest, size);
+        else if (size & 0x1F)
+            queue_word_aligned_transfer(src, dest, size);
+        else
+            queue_eight_word_aligned_transfer(src, dest, size);
+    }
+}
+
+/* QueueGFXTransfersInList(r0 = transfer list) */
+/* r1-r3 keep whatever the last queued transfer left in them and r4-r7 are
+ * popped back unchanged, so this adapter writes no output registers. */
+Next QueueGFXTransfersInList(void) {
+    queue_gfx_transfers_in_list(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── memory_bcdConvert ── */
 /* memory_bcdConvert: convert the value in r0 to packed BCD (8 decimal digits,
  * 4 bits each, most significant digit in the top nibble).

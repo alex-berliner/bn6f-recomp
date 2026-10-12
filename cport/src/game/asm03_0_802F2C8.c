@@ -491,6 +491,34 @@ Next menu_onStartPressBeginTransition_802F7E8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802F88E ── */
+/* Graphics request table consumed by scriptListRun_8001158: five 8-byte entries plus a
+ * zero terminator, stored in ROM right after this function. */
+#define GFX_REQUEST_TABLE_802F8AC 0x0802F8AC
+
+/* register form: calls scriptListRun_8001158 outside this file, which has no typed C interface yet */
+static void run_gfx_request_table(u32 table) {
+    R0 = table;
+    GUEST_CALL(scriptListRun_8001158);
+}
+
+/* Per-frame update for the given Toolkit (r10). While the current animation
+ * frame sits in frames 0..32 of its 64-frame cycle, keep re-submitting this
+ * object's graphics request table. */
+static void toolkit_refresh_gfx(u32 toolkit) {
+    u32 frame_counter = LD32(toolkit + oToolkit_CurFramePtr);
+    u32 frame = LD16(frame_counter) & 0x3F; /* position in the 64-frame cycle */
+
+    if (frame <= 0x20) /* original skips the call when frame > 0x20 */
+        run_gfx_request_table(GFX_REQUEST_TABLE_802F8AC);
+}
+
+/* sub_802F88E(r10 = toolkit) */
+Next sub_802F88E(void) {
+    toolkit_refresh_gfx(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_submitOamSet_802F994 ── */
 /* register form: calls scriptListRun_8001158 outside this file, which has no typed C interface yet */
 static void call_sub_8001158(u32 oam_data_ptr) {
@@ -767,6 +795,38 @@ Next copyBGTiles_802FD3C(void) {
 
     /* the original push/pop keeps the caller's r5 intact */
     R5 = savedR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802FD54 ── */
+/* StartScreen (passed in r5) byte offsets used by sub_802FD54.
+ * Names describe this function's use of them; the disassembly uses raw #2/#9. */
+#define oStartScreen_Mode  2 /* nonzero -> the state written below becomes 3 instead of 2 */
+#define oStartScreen_State 9 /* state byte refreshed by this function */
+
+/* register form: calls startScreen_TstZero outside this file, which has no typed C interface yet */
+static bool start_screen_tst_zero(void) {
+    GUEST_CALL(startScreen_TstZero);
+    return !ZERO_FLAG(); /* answers in Z: clear means the test passed */
+}
+
+/* Refresh the start screen's state byte (offset 9): if the startScreen_TstZero
+ * check passes, store 3 when the mode byte (offset 2) is set, otherwise 2.
+ * Does nothing when the check fails. */
+static void update_start_screen_state(u32 self) {
+    if (!start_screen_tst_zero())
+        return;
+
+    u8 state = 2;
+    if (LD8(self + oStartScreen_Mode) != 0)
+        state = 3;
+
+    ST8(self + oStartScreen_State, state);
+}
+
+/* sub_802FD54(r5 = *StartScreen) */
+Next sub_802FD54(void) {
+    update_start_screen_state(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1797,6 +1857,186 @@ static u32 ow_line_draw(u32 obj, u32 ctx) {
 /* owObject_lineDraw_8030CAC(r0 = OWObjectCoords*, r5 = draw context) -> r0, r3, r5, r7, r8 */
 Next owObject_lineDraw_8030CAC(void) {
     R3 = ow_line_draw(R0, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8030DA2 ── */
+/* Trail recorder state at dword_2011D10 (disassembly symbols:
+ * word_2011D16, byte_2011D18, byte_2011D19, byte_2011D1A, dword_2011D24). */
+#define oTrail_LastTile   0x06 /* u16: flattened index of the last tile recorded */
+#define oTrail_Pitch      0x08 /* u8: tiles per row used to flatten a position (low bit ignored) */
+#define oTrail_RowBias    0x09 /* u8: rows the grid origin is shifted down (halved when used) */
+#define oTrail_Count      0x0A /* u8: number of entries recorded so far */
+#define oTrail_BytesUsed  0x14 /* u32: bytes of entry data recorded so far */
+#define oTrail_Entries    0x18 /* the entries themselves, TRAIL_ENTRY_SIZE bytes each */
+#define oTrailEntry_Tile  0x00 /* u16: flattened tile index */
+#define oTrailEntry_X     0x04 /* u32: pixel x, aligned down to a multiple of 8 */
+#define oTrailEntry_Y     0x08 /* u32: pixel y, aligned down to a multiple of 8 */
+
+#define TRAIL_MAX_ENTRIES 16
+#define TRAIL_ENTRY_SIZE  0x10
+
+/* Record the tile containing pixel position (x, y) in the trail recorder at
+ * dword_2011D10.  A run of positions over the same tile is recorded only once,
+ * and once 16 entries are held further tiles are ignored. */
+static void trail_add_tile(s32 x, s32 y) {
+    u32 trail = A_dword_2011D10;
+
+    /* Flatten the position into a single tile index: each axis is converted
+     * from pixels (8 px per tile) and biased (x by half the pitch, y by half
+     * the row bias); the pitch's low bit is dropped for the row stride. */
+    u32 pitch = LD8(trail + oTrail_Pitch);
+    u32 column = (u32)(x >> 3) + (pitch >> 1);
+    u32 row = (u32)(y >> 3) + (LD8(trail + oTrail_RowBias) >> 1);
+    u32 tile = row * (pitch & ~1u) + column;
+
+    u32 count = LD8(trail + oTrail_Count);
+    if (LD16(trail + oTrail_LastTile) == tile || count + 1 >= TRAIL_MAX_ENTRIES)
+        return; /* same tile as the previous entry, or the recorder is full */
+
+    ST16(trail + oTrail_LastTile, tile);
+    ST8(trail + oTrail_Count, count + 1);
+    ST32(trail + oTrail_BytesUsed, LD32(trail + oTrail_BytesUsed) + TRAIL_ENTRY_SIZE);
+
+    /* Fill the next free entry, indexed by the count from before the increment. */
+    u32 entry = trail + oTrail_Entries + TRAIL_ENTRY_SIZE * count;
+    ST16(entry + oTrailEntry_Tile, tile);
+    ST32(entry + oTrailEntry_X, (u32)x & ~7u);
+    ST32(entry + oTrailEntry_Y, (u32)y & ~7u);
+}
+
+/* sub_8030DA2(r4 = pixel x, r7 = pixel y) -> r0, r4, r5, r7 unchanged.
+ * The original only writes the trail recorder and saves/restores those
+ * registers, so the adapter simply leaves them alone. */
+Next sub_8030DA2(void) {
+    trail_add_tile((s32)R4, (s32)R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8030E14 ── */
+/* sub_8030E14 — hit-test a segment against a point table and solve the crossing.
+ *
+ * The segment endpoints arrive split across the argument registers:
+ * (x1,y1) = (r2,r4), (x2,y2) = (r3,r5).  `matrix` (r0) points at reference
+ * point 0, an (x,y) pair at +0/+4, with reference point 1 at +0xC/+0x10.
+ * mode (r6) == 1 makes the test one-sided (reference point 1 is not checked).
+ * A hit needs reference point 0 strictly on the negative side of the
+ * segment's (extended) line and, unless mode is 1, reference point 1 not on
+ * that side.  On a hit each axis of the crossing point is solved by dividing
+ * the line equation at reference point 0 by the other axis's delta
+ * (sub_8031048) and un-biasing by reference point 0's coordinates; a miss
+ * answers (0,0).  The remaining output registers carry the working values
+ * the original leaves behind on each path. */
+
+typedef struct {
+    u32 quotient;  /* sub_8031048's result, left in r7 */
+    u32 remainder; /* what it leaves in r6 (becomes this function's r6 output) */
+} DivideResult;
+
+typedef struct {
+    u32 x, y;                          /* r0/r1: crossing offset from reference point 0 */
+    u32 reg4, reg6, reg7, reg8, reg9;  /* the other listed output registers */
+} SegmentHit;
+
+/* register form: calls sub_8031048 outside this file, which has no typed C interface yet */
+static DivideResult axis_divide(u32 matrix, u32 cross, u32 side, u32 dividend, u32 divisor)
+{
+    DivideResult out;
+    R0 = matrix;    /* point table the result is taken against */
+    R2 = cross;     /* line constant */
+    R3 = dividend;  /* numerator, mirrored into r6 as at the call site */
+    R4 = divisor;   /* the original's call site duplicates the divisor into r4 */
+    R5 = side;      /* sign value still live in r5 at the call site */
+    R6 = dividend;
+    R7 = divisor;
+    GUEST_CALL(sub_8031048);
+    out.quotient  = R7;
+    out.remainder = R6;
+    return out;
+}
+
+/* Sign of the segment's (extended) line at (px,py): negative on one side,
+ * positive on the other, zero on the line. */
+static s32 line_side(u32 cross, u32 dy, u32 neg_dx, u32 px, u32 py)
+{
+    return (s32)(cross + px * dy + py * neg_dx);
+}
+
+/* Miss: answer (0,0); r4 keeps the last py*neg_dx product, r6/r7 the segment
+ * deltas, r8 the mode stashed on entry, r9 the caller's value untouched. */
+static SegmentHit miss(u32 last_product, u32 dy, u32 neg_dx, u32 mode, u32 r9_in)
+{
+    SegmentHit hit;
+    hit.x = 0;
+    hit.y = 0;
+    hit.reg4 = last_product;
+    hit.reg6 = dy;
+    hit.reg7 = neg_dx;
+    hit.reg8 = mode;
+    hit.reg9 = r9_in;
+    return hit;
+}
+
+static SegmentHit segment_line_hit(u32 matrix, u32 x1, u32 y1, u32 x2, u32 y2,
+                                   u32 mode, u32 r9_in)
+{
+    u32 dy     = y2 - y1;            /* segment y delta */
+    u32 neg_dx = x1 - x2;            /* negated segment x delta */
+    u32 cross  = x2 * y1 - x1 * y2;  /* constant of the segment's line */
+
+    u32 ref0_x = LD32(matrix);       /* reference point 0 */
+    u32 ref0_y = LD32(matrix + 4);
+
+    /* Reference point 0 must lie strictly on the negative side of the line. */
+    s32 side0 = line_side(cross, dy, neg_dx, ref0_x, ref0_y);
+    if (side0 >= 0)
+        return miss(ref0_y * neg_dx, dy, neg_dx, mode, r9_in);
+
+    /* Unless mode 1 makes the test one-sided, reference point 1 must not be
+     * on that side too.  The sign value sitting in r5 at the solve calls is
+     * the one from whichever test actually ran. */
+    u32 live_side = (u32)side0;
+    if (mode != 1) {
+        u32 ref1_x = LD32(matrix + 0xC);
+        u32 ref1_y = LD32(matrix + 0x10);
+        s32 side1 = line_side(cross, dy, neg_dx, ref1_x, ref1_y);
+        if (side1 < 0)
+            return miss(ref1_y * neg_dx, dy, neg_dx, mode, r9_in);
+        live_side = (u32)side1;
+    }
+
+    /* Hit: solve one axis at a time, dividing out the other axis's delta.
+     * The original re-reads reference point 0 after each divide, so mirror
+     * those load points. */
+    DivideResult y_axis = axis_divide(matrix, cross, live_side,
+                                      0u - (cross + ref0_x * dy), neg_dx);
+    ref0_y = LD32(matrix + 4);
+    u32 y = y_axis.quotient - ref0_y;    /* r8, returned in r1 */
+
+    DivideResult x_axis = axis_divide(matrix, cross, live_side,
+                                      0u - (cross + ref0_y * neg_dx), dy);
+    ref0_x = LD32(matrix);
+    u32 x = x_axis.quotient - ref0_x;    /* r9, returned in r0 */
+
+    SegmentHit hit;
+    hit.x = x;
+    hit.y = y;
+    hit.reg4 = x;                  /* r4 mirrors the x result */
+    hit.reg6 = x_axis.remainder;   /* r6/r7 keep the last divide's leftovers */
+    hit.reg7 = x_axis.quotient;
+    hit.reg8 = y;                  /* r8 mirrors the y result */
+    hit.reg9 = x;
+    return hit;
+}
+
+/* sub_8030E14(r0 = matrix, r2/r4 = (x1,y1), r3/r5 = (x2,y2), r6 = mode,
+ *             r9 passed through on a miss)
+ *   -> r0/r1 crossing offset from reference point 0 ((0,0) on a miss),
+ *      plus the r4/r6..r9 outputs */
+Next sub_8030E14(void) {
+    SegmentHit hit = segment_line_hit(R0, R2, R4, R3, R5, R6, R9);
+    R0 = hit.x, R1 = hit.y, R4 = hit.reg4;
+    R6 = hit.reg6, R7 = hit.reg7, R8 = hit.reg8, R9 = hit.reg9;
     RETURN_TO_CALLER();
 }
 

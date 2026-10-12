@@ -779,6 +779,60 @@ Next sub_8004590(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── SpawnOverworldNPCObject ── */
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word_SpawnOverworldNPCObject(u32 address, u32 byte_count) {
+    R0 = address;
+    R1 = byte_count;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* Claim the first free slot in the overworld NPC table (one bit per object in
+ * eActiveOverworldNPCObjectsBitfield, scanned from slot 0 = top bit), clear the
+ * object's state and fill in its placement: index, x, y, z and the movement
+ * word (speed/timer bytes). Returns the claimed object's address, or 0 when
+ * every slot is already in use. */
+static u32 spawn_overworld_npc(u32 index, u32 x, u32 y, u32 z, u32 movement) {
+    u32 active = LD32(A_eActiveOverworldNPCObjectsBitfield);
+    u32 slotBit = 0x80000000;             /* slot 0 owns the top bit */
+    u32 npc = A_eOverworldNPCObject0_Flags;
+    const u32 tableEnd = A_byte_2006530;  /* one past the last NPC object */
+
+    while (active & slotBit) {            /* skip objects that are spawned */
+        slotBit >>= 1;
+        npc += oOverworldNPCObject_Size;
+        if ((s32)npc >= (s32)tableEnd)    /* walked past the table: it is full */
+            return 0;
+    }
+
+    ST32(A_eActiveOverworldNPCObjectsBitfield, active | slotBit);
+
+    /* wipe everything from the movement byte to the end of the object,
+     * then fill in the header and the placement fields */
+    zero_fill_by_word_SpawnOverworldNPCObject(npc + oOverworldNPCObject_MovementSpeed_MovementTimer_Undetected_06_Unk_07, 0x9C);
+    ST8(npc, OBJECT_FLAG_ACTIVE | OBJECT_FLAG_STOP_SPRITE_UPDATE);
+    ST8(npc + oOverworldNPCObject_Index, index);
+    ST32(npc + oOverworldNPCObject_X, x);
+    ST32(npc + oOverworldNPCObject_Y, y);
+    ST32(npc + oOverworldNPCObject_Z, z);
+    ST32(npc + oOverworldNPCObject_MovementSpeed_MovementTimer_Undetected_06_Unk_07, movement);
+    return npc;
+}
+
+/* SpawnOverworldNPCObject(r0 = index, r1 = x, r2 = y, r3 = z, r4 = movement)
+ * -> r5 = new object (0 if the table is full); r0-r4 come back unchanged. */
+Next SpawnOverworldNPCObject(void) {
+    u32 index = R0, x = R1, y = R2, z = R3, movement = R4;
+    /* A full table returns with C/V left over from the original's
+     * "slot vs. table end" compare (equal: C=1, V=0). Prime them here; a
+     * successful spawn overwrites every flag inside ZeroFillByWord. */
+    SET_FLAGS_CMP(0, 0);
+    R5 = spawn_overworld_npc(index, x, y, z, movement);
+    R0 = index, R1 = x, R2 = y, R3 = z;   /* r0-r3 die in ZeroFillByWord, r4 survives it */
+    SET_FLAGS_NZ(R5);                     /* success clears Z, a full table sets it */
+    RETURN_TO_CALLER();
+}
+
 /* ── FreeOverworldNPCObject ── */
 /* FreeOverworldNPCObject(r5 = overworld NPC object header):
  * Frees an overworld NPC's object slot: clears the NPC's bit in the
@@ -2240,6 +2294,87 @@ static void finish_battle_and_enter_map(u32 toolkit) {
 
 Next endBattleAndEnterMap_800531C(void) {
     finish_battle_and_enter_map(R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_800536E ── */
+/* Sound ids for the early warp cue, selected by the GameState byte at +5
+ * (ROM table hword_80053E0: 0xE7, 0xEC). */
+static const u16 warp_entry_cues[2] = { 0xE7, 0xEC };
+
+/* register form: calls the overworld per-frame update/draw routines
+ * (dispatch_80339CC, sub_80039AA, sub_8003AFA, sub_80027B4, sub_800286C,
+ * sub_8003BF4, sub_8003E98, npc_drawSprites_800467C, sub_8004298,
+ * sub_8004590, sub_8004934, event_runArmedCallback_80024AE) outside this
+ * file, which have no typed C interface yet */
+static void run_overworld_updates(void) {
+    GUEST_CALL(dispatch_80339CC);
+    GUEST_CALL(sub_80039AA);
+    GUEST_CALL(sub_8003AFA);
+    GUEST_CALL(sub_80027B4);
+    GUEST_CALL(sub_800286C);
+    GUEST_CALL(sub_8003BF4);
+    GUEST_CALL(sub_8003E98);
+    GUEST_CALL(npc_drawSprites_800467C);
+    GUEST_CALL(sub_8004298);
+    GUEST_CALL(sub_8004590);
+    GUEST_CALL(sub_8004934);
+    GUEST_CALL(event_runArmedCallback_80024AE);
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
+static bool screen_fade_active(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return !ZERO_FLAG(); /* answers in Z: set when no fade is running */
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_sound_effect_sub_800536E(u32 sound_id) {
+    R0 = sound_id;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls chatbox_8040818 outside this file, which has no typed C interface yet */
+static void run_chatbox_8040818(void) {
+    GUEST_CALL(chatbox_8040818);
+}
+
+/* register form: calls map_triggerEnterMapOnWarp_8005C04 outside this file, which has no typed C interface yet */
+static void map_trigger_enter_on_warp(void) {
+    GUEST_CALL(map_triggerEnterMapOnWarp_8005C04);
+}
+
+/* GameState::Tick (self in r5): run every overworld subsystem's frame update,
+ * then, while a screen fade is running, step the warp countdown in
+ * oGameState_Unk_68 — play cue sounds at fixed steps and, once it expires,
+ * finish the warp via the chatbox and the map's on-warp-enter event. */
+static void game_state_tick(u32 self) {
+    run_overworld_updates();
+
+    if (!screen_fade_active())
+        return;
+
+    s32 countdown = (s32)LD32(self + oGameState_Unk_68) - 1;
+    if (countdown < 0) {
+        /* Timer ran out (field is still 0 on disk): complete the map warp. */
+        run_chatbox_8040818();
+        map_trigger_enter_on_warp();
+        return;
+    }
+    ST32(self + oGameState_Unk_68, countdown);
+
+    if (countdown == 0x29) {
+        play_sound_effect_sub_800536E(0x171); /* late warp cue */
+    } else if (countdown == 0x9E) {
+        u32 variant = LD8(self + 5); /* GameState byte at +5 picks the cue */
+        if (variant <= 1)
+            play_sound_effect_sub_800536E(warp_entry_cues[variant]);
+    }
+}
+
+/* sub_800536E(r5 = self) -> r8..r12 (left by the callees) */
+Next sub_800536E(void) {
+    game_state_tick(R5);
     RETURN_TO_CALLER();
 }
 

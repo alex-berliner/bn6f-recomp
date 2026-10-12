@@ -687,6 +687,105 @@ Next screenFade_InitFadeBlock_800634C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8006366 ── */
+/* Field layout of one entry in the eScreenFade array (the fade this routine steps). */
+#define oScreenFade_Started     0x2   /* u8  - latched on the first update; the countdown starts the frame after */
+#define oScreenFade_Step        0x4   /* u16 - amount taken off Counter on each update */
+#define oScreenFade_Counter     0x6   /* u16 - fade time left; grey level = Counter >> 4 */
+#define oScreenFade_Id          0x8   /* u16 - id handed to both palette repaint calls */
+#define oScreenFade_EndCounter  0xA   /* u16 - Counter value at which the fade is finished */
+#define oScreenFade_PalBase     0xC   /* u8  - base palette slot; repaints use PalBase+0x12 / +0x13 */
+#define oScreenFade_Palette1    0x10  /* u32 - palette repainted through slot PalBase+0x12 */
+#define oScreenFade_Palette2    0x14  /* u32 - palette repainted through slot PalBase+0x13 */
+#define oScreenFade_RepaintArg1 0x18  /* u16 - extra argument of the first repaint call */
+#define oScreenFade_RepaintArg2 0x1C  /* u16 - extra argument of the second repaint call */
+
+/* register form: calls sub_8002378 outside this file, which has no typed C interface yet.
+ * The grey colour travels in r1 and again in r6 (the original parks a copy in r6 across
+ * the call); r4 and r6 are saved and restored so the update as a whole leaves them as it
+ * found them, the way the original's push/pop does.  Whatever the callee leaves in r2/r3
+ * stays there: on this path those are sub_8006366's results. */
+static void repaint_fade_palette(u16 id, u32 color, u16 arg, u32 slot, u32 palette) {
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+    R0 = id;
+    R1 = color;
+    R2 = arg;
+    R3 = slot;
+    R4 = palette;
+    R6 = color;
+    GUEST_CALL(sub_8002378);
+    R4 = saved_r4;
+    R6 = saved_r6;
+}
+
+/* register form: calls screenFade_StopAndFreePalettes_8006330 outside this file, which has
+ * no typed C interface yet.  The original reaches the call with r1..r4 = new counter, end
+ * counter, old Started flag, 1; the callee passes r3 (and r4) straight through, so r3 must
+ * hold the old flag here — it is one of sub_8006366's results.  r4 is restored afterwards
+ * as the original's pop does; the callee's r2 leftover is left in place as the other result. */
+static void stop_screen_fade(u32 fade_offset, u16 counter, u16 end_counter, u8 started) {
+    u32 saved_r4 = R4;
+    R0 = fade_offset;
+    R1 = counter;
+    R2 = end_counter;
+    R3 = started;
+    R4 = 1;
+    GUEST_CALL(screenFade_StopAndFreePalettes_8006330);
+    R4 = saved_r4;
+}
+
+/* Advance one screen fade by a frame.
+ *
+ * The first update only latches Started.  From then on Counter ticks down by Step,
+ * clamped at zero; while it is still above EndCounter the fade's two palettes are
+ * repainted with a plain grey whose brightness follows the countdown, and once Counter
+ * has reached EndCounter the fade is stopped and its palettes freed. */
+static void screen_fade_update(u32 fade) {
+    u16 counter = LD16(fade + oScreenFade_Counter);
+    u16 step = LD16(fade + oScreenFade_Step);
+    u8 started = LD8(fade + oScreenFade_Started);
+
+    ST8(fade + oScreenFade_Started, 1);
+
+    /* The frame the fade appears on does not tick down yet. */
+    if (started) {
+        if (counter >= step)
+            counter -= step;
+        else
+            counter = 0;
+    }
+    ST16(fade + oScreenFade_Counter, counter);
+
+    u16 end_counter = LD16(fade + oScreenFade_EndCounter);
+    if (counter <= end_counter) {
+        stop_screen_fade(fade - A_eScreenFade, counter, end_counter, started);
+        return;
+    }
+
+    /* One grey for both palettes, with B = G = R = Counter >> 4. */
+    u32 level = counter >> 4;
+    u32 color = level | (level << 5) | (level << 10);
+
+    repaint_fade_palette(LD16(fade + oScreenFade_Id), color,
+                         LD16(fade + oScreenFade_RepaintArg1),
+                         LD8(fade + oScreenFade_PalBase) + 0x12,
+                         LD32(fade + oScreenFade_Palette1));
+    repaint_fade_palette(LD16(fade + oScreenFade_Id), color,
+                         LD16(fade + oScreenFade_RepaintArg2),
+                         LD8(fade + oScreenFade_PalBase) + 0x13,
+                         LD32(fade + oScreenFade_Palette2));
+}
+
+/* sub_8006366(r5 = fade entry): per-frame update of one screen fade.
+ * r2/r3 end up holding what the last callee leaves behind (on the stop path r3 carries the
+ * old Started flag through the callee), and r4/r5 keep their incoming values, so there
+ * are no register results for the adapter to write. */
+Next sub_8006366(void) {
+    screen_fade_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_800647C ── */
 /* sub_800647C (r5 = effect work area):
  * Adds the step size at +4 to the counter at +6, clamping it at the limit at

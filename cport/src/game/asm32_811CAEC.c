@@ -1144,6 +1144,104 @@ Next next_exitToMap_811F728(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── SubMenuControl ── */
+/* Screen ids of the pause ("sub") menu. The submenu state stores the id as a
+ * byte offset into the screen handler jump table, so the ids step by 4; the
+ * table's remaining slots (0x34..0x48) are NULL and are never selected. */
+enum SubmenuScreen {
+    SUBMENU_CHIP_FOLDER = 0x00, /* chip folder  (HandleChipFolderMenu8123434) */
+    SUBMENU_SUB_CHIP    = 0x04, /* sub chips    (DispatchSubChipMenu8123F5C)  */
+    SUBMENU_LIBRARY     = 0x08, /* library      (HandleLibraryMenu8124B3C)    */
+    SUBMENU_MEGAMAN     = 0x0C, /* MegaMan page (HandleMegaManStatusMenu8126B4C) */
+    SUBMENU_EMAIL       = 0x10, /* e-mail       (HandleEmailMenu81279F8)      */
+    SUBMENU_KEY_ITEMS   = 0x14, /* key items    (HandleKeyItemMenu8128730)    */
+    SUBMENU_COMM        = 0x18, /* comm menu    (HandleCommMenu81291E8)       */
+    SUBMENU_SAVE        = 0x1C, /* save screen  (HandleSaveMenu8132B88)       */
+    SUBMENU_UNK_20      = 0x20, /* unidentified (sub_8133200) */
+    SUBMENU_UNK_24      = 0x24, /* unidentified (sub_81356D4) */
+    SUBMENU_UNK_28      = 0x28, /* unidentified (sub_8136DE0) */
+    SUBMENU_UNK_2C      = 0x2C, /* unidentified (sub_81378B4) */
+    SUBMENU_UNK_30      = 0x30  /* unidentified (sub_8128CBC) */
+};
+
+/* register form: calls GetRNG outside this file, which has no typed C interface yet */
+static void advance_rng(void) {
+    GUEST_CALL(GetRNG); /* rolled value is discarded; the call just steps the RNG */
+}
+
+/* register form: dispatches to a submenu screen handler outside this file,
+ * which has no typed C interface yet. The callee is chosen from a jump table
+ * at runtime and expects the submenu state pointer in r5 plus two words from
+ * SubMenuControl's caller in r2/r3 — a convention no typed C call can express.
+ * The handlers are also free to clobber r4-r7: the original push {r4-r7,lr}s
+ * them before the dispatch and pop {r4-r7,pc}s them at the end, so park the
+ * caller's r4-r7 (and lr, as the push does) on the guest stack and restore
+ * them afterwards. */
+static void run_screen_handler(u8 screen, u32 submenu, u32 handler_arg2, u32 handler_arg3) {
+    SP -= 20;
+    ST32(SP,      R4);
+    ST32(SP + 4,  R5);
+    ST32(SP + 8,  R6);
+    ST32(SP + 12, R7);
+    ST32(SP + 16, LR);
+
+    R1 = screen; /* screen id, as the table lookup leaves it for the callee */
+    R2 = handler_arg2;
+    R3 = handler_arg3;
+    R5 = submenu;
+
+    switch (screen) {
+    case SUBMENU_CHIP_FOLDER: GUEST_CALL(HandleChipFolderMenu8123434); break;
+    case SUBMENU_SUB_CHIP:    GUEST_CALL(DispatchSubChipMenu8123F5C); break;
+    case SUBMENU_LIBRARY:     GUEST_CALL(HandleLibraryMenu8124B3C); break;
+    case SUBMENU_MEGAMAN:     GUEST_CALL(HandleMegaManStatusMenu8126B4C); break;
+    case SUBMENU_EMAIL:       GUEST_CALL(HandleEmailMenu81279F8); break;
+    case SUBMENU_KEY_ITEMS:   GUEST_CALL(HandleKeyItemMenu8128730); break;
+    case SUBMENU_COMM:        GUEST_CALL(HandleCommMenu81291E8); break;
+    case SUBMENU_SAVE:        GUEST_CALL(HandleSaveMenu8132B88); break;
+    case SUBMENU_UNK_20:      GUEST_CALL(sub_8133200); break;
+    case SUBMENU_UNK_24:      GUEST_CALL(sub_81356D4); break;
+    case SUBMENU_UNK_28:      GUEST_CALL(sub_8136DE0); break;
+    case SUBMENU_UNK_2C:      GUEST_CALL(sub_81378B4); break;
+    case SUBMENU_UNK_30:      GUEST_CALL(sub_8128CBC); break;
+    default: break; /* remaining table slots are NULL; never selected in-game */
+    }
+
+    R4 = LD32(SP);
+    R5 = LD32(SP + 4);
+    R6 = LD32(SP + 8);
+    R7 = LD32(SP + 12);
+    SP += 20; /* the original pops the saved lr straight into pc */
+}
+
+/* One frame of the pause menu: run the handler of the screen named by the
+ * submenu state, then step the RNG — unless the comm screen sits in one of two
+ * states (its second screen id reads "comm" or "save") that leave the RNG
+ * stream alone. handler_arg2/3 are the words the screen handlers read from
+ * r2/r3; they come straight from SubMenuControl's caller and are handed
+ * through untouched. */
+static void update_submenu(u32 toolkit, u32 handler_arg2, u32 handler_arg3) {
+    u32 submenu = LD32(toolkit + oToolkit_SubmenuPtr); /* submenu state */
+
+    run_screen_handler(LD8(submenu), submenu, handler_arg2, handler_arg3);
+
+    /* The handler may have switched screens mid-frame, so look again. */
+    if (LD8(submenu) == SUBMENU_COMM) {
+        u8 second = LD8(submenu + 1); /* second screen id, same encoding */
+        if (second == SUBMENU_COMM || second == SUBMENU_SAVE)
+            return;
+    }
+
+    advance_rng();
+}
+
+/* SubMenuControl(r10 = toolkit); r8-r12 pass through the screen handler,
+ * r4-r7 are returned to the caller unchanged. */
+Next SubMenuControl(void) {
+    update_submenu(R10, R2, R3);
+    RETURN_TO_CALLER();
+}
+
 /* ── IsButtonPressed ── */
 /* IsButtonPressed(r0 = button mask):
  * Tests whether any of the buttons in r0 were newly pressed this frame.

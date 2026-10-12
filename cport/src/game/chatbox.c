@@ -908,6 +908,106 @@ Next chatbox_E6_end(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_E7_buttonhalt ── */
+/* Flag bits managed by chatbox_setflags_3e / chatbox_clearFlags_3e */
+#define FLAGS_3E_UNK_0400_chatbox_E7_buttonhalt 0x0400
+#define FLAGS_3E_UNK_0020 0x0020
+#define FLAGS_3E_UNK_0001_chatbox_E7_buttonhalt 0x0001
+
+/* Joypad bits, as stored in the chatbox's JoypadUp / JoypadHeld fields */
+#define JOYPAD_A   0x0001
+#define JOYPAD_B   0x0002
+#define JOYPAD_ANY 0x03FF
+
+/* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
+static void set_3e_flags(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_setflags_3e);
+}
+
+/* register form: calls chatbox_clearFlags_3e outside this file, which has no typed C interface yet */
+static void clear_3e_flags(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_clearFlags_3e);
+}
+
+typedef struct {
+    u32 script;      /* r4: script pointer, advanced past the opcode once the wait is over */
+    u32 script_byte; /* r2: operand byte once the wait is active, else the value passed in */
+} ButtonHaltResult;
+
+/* Script opcode E7: pause the script until the player confirms with a button.
+ *
+ * self is the chatbox and script points at the opcode; the byte after it
+ * selects which buttons confirm: 0 means A or B, anything else means any
+ * button.  The first few frames only run the BoxYX counter down from 5 (so
+ * the button that advanced the previous line is not still held), then a newly
+ * pressed button -- or holding B until the counter climbs back to 10 -- ends
+ * the pause and consumes the two opcode bytes. */
+static ButtonHaltResult chatbox_buttonhalt(u32 self, u32 script, u32 prev_script_byte) {
+    ButtonHaltResult out = { script, prev_script_byte };
+    bool confirmed = false;
+    u16 counter;
+    u16 confirm_buttons;
+
+    /* Mark the box as waiting: 0x400 stays for the whole command, 0x21 only
+     * while the wait is still running. */
+    set_3e_flags(FLAGS_3E_UNK_0400_chatbox_E7_buttonhalt);
+    set_3e_flags(FLAGS_3E_UNK_0020 | FLAGS_3E_UNK_0001_chatbox_E7_buttonhalt);
+    ST8(self + oChatbox_Unk_03, 0);
+
+    switch (LD8(self + oChatbox_TextScriptState_04)) {
+    case 2: /* already waiting for a button */
+        break;
+
+    case 1: /* still counting down; arm the buttons once the count runs out */
+        counter = LD16(self + oChatbox_BoxYX);
+        if (counter == 0) {
+            ST8(self + oChatbox_TextScriptState_04, 2);
+            break;
+        }
+        ST16(self + oChatbox_BoxYX, counter - 1);
+        return out;
+
+    default: /* first frame of the pause */
+        ST16(self + oChatbox_BoxYX, 5);
+        ST8(self + oChatbox_TextScriptState_04, 1);
+        return out;
+    }
+
+    out.script_byte = LD8(script + oChatbox_TextScriptIdx);
+    confirm_buttons = out.script_byte != 0 ? JOYPAD_ANY : JOYPAD_A | JOYPAD_B;
+
+    if (LD16(self + oChatbox_JoypadUp) & confirm_buttons)
+        confirmed = true;
+    else if (LD16(self + oChatbox_JoypadHeld) & JOYPAD_B) {
+        /* holding B ends the pause once the counter gets back to ten */
+        counter = LD16(self + oChatbox_BoxYX);
+        if ((s16)counter >= 10) /* signed compare, as in the original's bge */
+            confirmed = true;
+        else
+            ST16(self + oChatbox_BoxYX, counter + 1);
+    }
+
+    if (confirmed) {
+        clear_3e_flags(FLAGS_3E_UNK_0020 | FLAGS_3E_UNK_0001_chatbox_E7_buttonhalt);
+        ST8(self + oChatbox_TextScriptState_04, 0);
+        ST16(self + oChatbox_BoxYX, 0);
+        ST32(self + oChatbox_Unk_74, 1);
+        out.script = script + 2; /* skip the opcode and its operand byte */
+    }
+    return out;
+}
+
+/* 0x08040EF4: (&self@r5, char *script@r4) -> r0 (always 0), r2, r4 */
+Next chatbox_E7_buttonhalt(void) {
+    ButtonHaltResult out = chatbox_buttonhalt(R5, R4, R2);
+    R0 = 0; /* the original leaves r0 = 0 on every exit path */
+    R2 = out.script_byte;
+    R4 = out.script;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_E8_msgbox ── */
 /* register form: the jump table dispatch (GUEST_CALL_ADDR) and post-call stride
  * advance read/modify R0 and R4 directly; these registers are set up for the callee

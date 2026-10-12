@@ -794,6 +794,60 @@ Next countActiveNaviBonuses_800FE52(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800FF5E ── */
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 navi_stat_byte(u32 stat_offset) {
+    R1 = stat_offset;   /* the battle object rides in the live r5, as in the original */
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode_sub_800FF5E(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls ai_setBeastOutPwrAtk_800FFAA outside this file, which has no typed C interface yet */
+static void set_beast_out_pwr_atk(u32 ai_data, u32 value) {
+    u32 caller_r4 = R4;
+    R0 = value;
+    R4 = ai_data;    /* the callee takes the AI data block in r4 (battle object stays in the live r5) */
+    GUEST_CALL(ai_setBeastOutPwrAtk_800FFAA);
+    R4 = caller_r4;  /* the original keeps r4 pushed across the whole function; leave the caller's value */
+}
+
+/* (Re)fill the AI data block of the navi that owns battle_object from its alliance's navi
+ * stats table: unknown stat 0x04, the B-button ability, the attack powers and the BeastOut
+ * attack.  A set stat 0x2C means the navi manages its own AI data and is left untouched. */
+static void refresh_ai_data(u32 battle_object) {
+    u32 ai = LD32(battle_object + oBattleObject_AIDataPtr);
+
+    if (navi_stat_byte(0x2C) != 0)
+        return;              /* this navi manages its AI data itself, leave it alone */
+
+    u32 unk_04;
+    if (get_battle_mode_sub_800FF5E() == 9)
+        unk_04 = navi_stat_byte(0x44);   /* battle mode 9 has its own stat for this */
+    else
+        unk_04 = 0xFF;                   /* any other mode: "none" */
+    ST8(ai + oAIData_Unk_04, unk_04);
+
+    ST8(ai + oAIData_BButton, navi_stat_byte(4));
+
+    set_beast_out_pwr_atk(ai, navi_stat_byte(5));
+
+    ST8(ai + oAIData_APwrAtk, navi_stat_byte(0x39));
+    ST8(ai + oAIData_BLeftAbility, navi_stat_byte(7));
+    ST8(ai + oAIData_BeastOutAPwrAtk, 0xFF);   /* BeastOut attack power starts as "none" */
+}
+
+/* sub_800FF5E(r5 = battle object): refresh the owner navi's AI data; no outputs. */
+Next sub_800FF5E(void) {
+    refresh_ai_data(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_setBeastOutPwrAtk_800FFAA ── */
 /* ai_setBeastOutPwrAtk_800FFAA(r0 = new BPwrAtk value, r4 = AI data):
  * Beast Out bookkeeping for the AI's held power attack. A Beast value
@@ -1475,5 +1529,77 @@ Next battle_isChipSpecialDarkInvisQualifying_8012ABC(void) {
     }
 
     R0 = result;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8012AFA ── */
+/* BattleNaviStats bytes read below.  Note the original feeds the byte read with
+ * NAVI_STAT_NAVI back in as the handle of the NAVI_STAT_FORM lookup (r0 is never
+ * reloaded between the two calls), so the port does the same. */
+#define NAVI_STAT_NAVI 0x29
+#define NAVI_STAT_FORM 0x2C
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 navi_stats_byte(u32 battle_object, u32 stat) {
+    R0 = battle_object;
+    R1 = stat;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 get_chip_data(u32 which_chip) {
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: the original runs its chip-trait tests as "tst r1,r2" and the
+ * callers read r2 back afterwards, so the masks have to go into the real
+ * register; on paths that never reach the tests r2 keeps the previous guest
+ * call's leftover value, which no plain C return value can reproduce */
+static void tst_mask_in_r2(u32 mask) {
+    R2 = mask;
+}
+
+/* Is the navi's current chip a qualifying "power attack" chip with its trigger
+ * armed?  Qualifies only for the special navi ids (7 / 0x13), a chip whose trait
+ * byte (chip+9) has bit 0x02 set and bit 0x01 clear and whose kind (chip+4) is 4,
+ * and - unless force_armed skips the check - an AI power attack that is in
+ * mid-state (2) with its button held (1).  The trait-test masks (2, then 1)
+ * stay behind in r2 exactly as in the original. */
+static bool pwr_atk_chip_ready(u32 battle_object, u32 force_armed, u32 owner_object) {
+    u32 navi = navi_stats_byte(battle_object, NAVI_STAT_NAVI);
+    if (navi != 7) {
+        u32 form = navi_stats_byte(navi, NAVI_STAT_FORM); /* fed the first byte, like the original */
+        if (form != 7 && form != 0x13)   /* the two qualifying navi/form ids */
+            return false;
+    }
+
+    u32 chip = get_chip_data(battle_object);
+    u8 traits = LD8(chip + 9);           /* trait bits of the chip */
+    tst_mask_in_r2(0x02);
+    if (!(traits & 0x02))                /* trait bit 1 must be set ... */
+        return false;
+    tst_mask_in_r2(0x01);
+    if (traits & 0x01)                   /* ... and trait bit 0 must be clear */
+        return false;
+    if (LD8(chip + 4) != 4)              /* only chip kind 4 qualifies */
+        return false;
+
+    if (force_armed != 0)
+        return true;
+
+    /* otherwise the power attack has to be armed on the owner's AI data */
+    u32 ai_data = LD32(owner_object + oBattleObject_AIDataPtr);
+    if (LD8(ai_data + oAIData_PwrAtkState) != 2)
+        return false;
+    return LD8(ai_data + oAIData_PwrAtkButton) == 1;
+}
+
+/* sub_8012AFA(r0 = battle object, r1 = force-armed flag, r5 = object owning the AI data) -> r0
+ * (r2's trait-test mask is written inside via tst_mask_in_r2; r6/r7 are left alone) */
+Next sub_8012AFA(void) {
+    R0 = pwr_atk_chip_ready(R0, R1, R5);
     RETURN_TO_CALLER();
 }

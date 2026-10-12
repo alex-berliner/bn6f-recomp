@@ -8,6 +8,86 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── HandleChipFolderMenu8123434 ── */
+/* HandleChipFolderMenu8123434: 08123434-0812345C THUMB, bn6f asm33.s:390
+ *   inputs:  r2 r4 r5 r6 r7 r10 lr
+ *   outputs: r5 r8 r9 r10 r11 r12
+ *   clobbers (unused by callers): nz c v r0 r1 r2 r3 r4 r6 r7 lr
+ *   preserved: -
+ */
+
+/* Offset of the state byte in the chip-folder menu work area (r5).
+ * NOTE: the stored value is a *byte offset* into the five-entry handler
+ * table at off_8123448 -- the original indexes it with an unshifted
+ * "ldr r0,[r0,r1]", so the stored states are 0, 4, 8, 12, 16 and the
+ * handler index is state / 4, not state itself. */
+#define oFolderMenu_State 1
+
+/* Each handler table entry is one word wide. */
+#define FOLDER_MENU_TABLE_STRIDE 4
+
+/* register form: calls chipFolder_screenInit_812345C outside this file, which has no typed C interface yet */
+static void folder_menu_state0(u32 state) {
+    R0 = 0x0812345D; /* chipFolder_screenInit_812345C+1: the raw bx r0 target the original passes */
+    R1 = state;
+    GUEST_CALL(chipFolder_screenInit_812345C);
+}
+
+/* register form: calls sub_8123514 outside this file, which has no typed C interface yet */
+static void folder_menu_state1(u32 state) {
+    R0 = 0x08123515; /* sub_8123514+1 */
+    R1 = state;
+    GUEST_CALL(sub_8123514);
+}
+
+/* register form: calls pet_menu_runFrame_81237BC outside this file, which has no typed C interface yet */
+static void folder_menu_state2(u32 state) {
+    R0 = 0x081237BD; /* pet_menu_runFrame_81237BC+1 */
+    R1 = state;
+    GUEST_CALL(pet_menu_runFrame_81237BC);
+}
+
+/* register form: calls chipFolder_init_812349C outside this file, which has no typed C interface yet */
+static void folder_menu_state3(u32 state) {
+    R0 = 0x0812349D; /* chipFolder_init_812349C+1 */
+    R1 = state;
+    GUEST_CALL(chipFolder_init_812349C);
+}
+
+/* register form: calls sub_81234DC outside this file, which has no typed C interface yet */
+static void folder_menu_state4(u32 state) {
+    R0 = 0x081234DD; /* sub_81234DC+1 */
+    R1 = state;
+    GUEST_CALL(sub_81234DC);
+}
+
+/* The chip-folder menu is a five-state machine: the state byte of the work
+ * area in r5 selects one of five handlers via the jump table at off_8123448.
+ * The chosen handler is entered exactly as the original's "mov lr,pc; bx r0"
+ * leaves things: r0 = the handler's own table entry, r1 = the raw state byte.
+ * The other live context (r2, r4, r6, r7, r10) rides through the guest
+ * registers, and the handler's results (r5, r8-r12) are likewise left in the
+ * guest registers by GUEST_CALL, so nothing needs to be passed back up here. */
+static void handle_chip_folder_menu(u32 menu) {
+    u32 state = LD8(menu + oFolderMenu_State);
+
+    /* The state byte holds handler_index * 4 (see oFolderMenu_State). */
+    switch (state / FOLDER_MENU_TABLE_STRIDE) {
+    case 0: folder_menu_state0(state); break;
+    case 1: folder_menu_state1(state); break;
+    case 2: folder_menu_state2(state); break;
+    case 3: folder_menu_state3(state); break;
+    case 4: folder_menu_state4(state); break;
+    }
+}
+
+/* HandleChipFolderMenu8123434(r5 = chip-folder menu work area)
+ * -> r5, r8-r12, as written by the selected state handler. */
+Next HandleChipFolderMenu8123434(void) {
+    handle_chip_folder_menu(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── chipFolder_screenInit_812345C ── */
 /*
  * chipFolder_screenInit_812345C — one-time setup of the chip folder screen.

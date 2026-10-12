@@ -1579,6 +1579,85 @@ Next battle_TickAIDataTimer0f_8015A16(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8015A38 ── */
+/* Navi stat-byte indices (Get/SetBattleNaviStatsByte_AllianceFromBattleObject). */
+enum {
+    NAVI_STAT_0x17 = 0x17, /* navi state: 0x0B and 0x0C pause the countdown */
+    NAVI_STAT_0x21 = 0x21, /* the countdown timer itself */
+    NAVI_STAT_0x29 = 0x29, /* gate flag: must be clear for the countdown to run */
+    NAVI_STAT_0x2C = 0x2C, /* status kind: must be 0x0B..0x18 for it to run */
+};
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which
+ * has no typed C interface yet. It takes the battle object in r5 (the original parks it there
+ * with "mov r5, r0" and never reloads it), r1 is the stat index, and r0 carries no argument of
+ * its own -- the original simply leaves the previous call's result there, so we pass that
+ * leftover through. r7 is 0 at every call in the original ("mov r7, #0" up top). */
+static u32 get_navi_stat_byte(u32 battleObject, u32 r0_prev, u32 statIndex) {
+    u32 savedR5 = R5, savedR7 = R7;
+    R0 = r0_prev;
+    R1 = statIndex;
+    R5 = battleObject; /* the object lives in r5 for this callee */
+    R7 = 0;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    R5 = savedR5;
+    R7 = savedR7;
+    return R0;
+}
+
+/* register form: calls SetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which
+ * has no typed C interface yet; same r5-object convention as the getter, new value in r2, and
+ * the getter's last result still sitting in r0. */
+static void set_navi_stat_byte(u32 battleObject, u32 r0_prev, u32 statIndex, u32 value) {
+    u32 savedR5 = R5, savedR7 = R7;
+    R0 = r0_prev;
+    R1 = statIndex;
+    R2 = value;
+    R5 = battleObject;
+    R7 = 0;
+    GUEST_CALL(SetBattleNaviStatsByte_AllianceFromBattleObject);
+    R5 = savedR5;
+    R7 = savedR7;
+}
+
+/* Tick the navi's stat-0x21 countdown down by one, but only while it may run: the gate flag
+ * (stat 0x29) is clear, the navi state (stat 0x17) is neither 0x0B nor 0x0C, and the status
+ * kind (stat 0x2C) is in 0x0B..0x18.  A NULL battle object, or an already-empty timer, does
+ * nothing.  Always answers 0 (the original returns its zeroed r7). */
+static u32 tick_navi_stat_0x21_countdown(u32 battleObject) {
+    if (battleObject == 0)
+        return 0;
+
+    /* The original never reloads r0 between the stat calls, so each call sees the previous
+     * call's result there; thread it along to keep every call bit-identical. */
+    u32 r0_prev = battleObject; /* r0 still holds the object for the first read */
+
+    r0_prev = get_navi_stat_byte(battleObject, r0_prev, NAVI_STAT_0x29);
+    if (r0_prev != 0)
+        return 0; /* gate flag set: countdown paused */
+
+    u32 state = get_navi_stat_byte(battleObject, r0_prev, NAVI_STAT_0x17);
+    if (state == 0x0B || state == 0x0C)
+        return 0; /* these navi states pause the countdown */
+
+    u32 kind = get_navi_stat_byte(battleObject, state, NAVI_STAT_0x2C);
+    if ((s32)kind < 0x0B || (s32)kind > 0x18)
+        return 0; /* only this status-kind range ticks */
+
+    u32 timer = get_navi_stat_byte(battleObject, kind, NAVI_STAT_0x21);
+    if (timer != 0)
+        set_navi_stat_byte(battleObject, timer, NAVI_STAT_0x21, timer - 1);
+
+    return 0;
+}
+
+/* sub_8015A38(r0 = battle object) -> r0 = 0.
+ * r2 keeps whatever the last stat call left behind; r5/r6/r7 are preserved. */
+Next sub_8015A38(void) {
+    R0 = tick_navi_stat_0x21_countdown(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_setObjectTextId_8015B22 ── */
 /* battle_setObjectTextId_8015B22(r0 = name id, r5 = battle object):
  * Store the object's NameID. Name id 0 maps to the default 0x1A0;
@@ -2314,6 +2393,71 @@ static u32 teardown_battle_object(u32 obj_ptr) {
 Next battle_teardownObject_80165F8(void) {
     R0 = teardown_battle_object(R5);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8016860 ── */
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
+static u32 get_battle_navi_stats_byte(u32 field) {
+    R1 = field;    /* r0 is handed to the callee untouched, exactly as the original does */
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls object_getFlag outside this file, which has no typed C interface yet */
+static u32 object_get_flag(void) {
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+/* register form: calls GetBattleMode outside this file, which has no typed C interface yet */
+static u32 get_battle_mode_sub_8016860(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* register form: calls battle_getStateUnk40_800A704 outside this file, which has no typed C interface yet */
+static u32 battle_get_state_unk40(void) {
+    GUEST_CALL(battle_getStateUnk40_800A704);
+    return R0;
+}
+
+/* register form: calls sprite_setColorShader outside this file, which has no typed C interface yet */
+static void sprite_set_color_shader(u32 value) {
+    R0 = value;
+    GUEST_CALL(sprite_setColorShader);
+}
+
+/* Per-frame battle object update: pulse the object's sprite color shader.
+ * The shader value is a byte from a 32-entry triangular ramp table
+ * (0, 2, ..., 0x1E, ..., 0) indexed by battle state unk40 & 0x1F, shifted
+ * left 5 bits -- or used unshifted in battle mode 1.  The pulse is skipped
+ * for alliances 0x17..0x18, for actions 0 and 0x56, and when the object's
+ * flag bit 0x8 is clear. */
+static void pulse_object_color_shader(u32 obj) {
+    s32 alliance = (s32)get_battle_navi_stats_byte(0x2C /* alliance field */);
+    if (alliance >= 0x17 && alliance <= 0x18)
+        return;                        /* these alliances never pulse */
+
+    u8 action = LD8(obj + oBattleObject_CurAction);
+    if (action == 0 || action == 0x56)
+        return;                        /* no action / action 0x56 */
+
+    if ((object_get_flag() & 0x8) == 0)
+        return;                        /* needs object flag bit 3 */
+
+    u32 shift = 5;
+    if (get_battle_mode_sub_8016860() == 1)
+        shift = 0;                     /* battle mode 1 uses the byte unshifted */
+
+    u32 ramp_step = battle_get_state_unk40() & 0x1F;
+    u32 brightness = LD8(A_byte_80168A8 + ramp_step);  /* the ramp table in ROM */
+    sprite_set_color_shader(brightness << shift);
+}
+
+/* sub_8016860(r5 = battle object) */
+Next sub_8016860(void) {
+    pulse_object_color_shader(R5);
     RETURN_TO_CALLER();
 }
 

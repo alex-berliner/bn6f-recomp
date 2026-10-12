@@ -270,6 +270,70 @@ Next sub_8146BF4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── rfu_STC_clearAPIVariables ── */
+/* register form: calls rfu_clearAllSlot outside this file, which has no typed C interface yet */
+static void rfu_clear_all_slots(void) {
+    GUEST_CALL(rfu_clearAllSlot);
+}
+
+/* register form: calls SWI_CpuSet outside this file, which has no typed C interface yet.
+ * CpuSet takes its fill value by guest address, so the halfword has to be staged in
+ * scratch space on the guest stack (SP -= 4 ... SP += 4) where the BIOS can read it. */
+static void cpu_set_fill16(u16 value, u32 dest, u32 halfword_count) {
+    SP -= 4;
+    ST16(SP, value);
+    R0 = SP;
+    R1 = dest;
+    R2 = 0x01000000 | halfword_count; /* bit 24 set: fixed-value fill, 16-bit units */
+    GUEST_CALL(SWI_CpuSet);
+    SP += 4;
+}
+
+/* rfu_STC_clearAPIVariables: reset the wireless-adapter API state.
+ *
+ * Runs with interrupts disabled (IME saved and restored). Wipes the 40-byte
+ * link-state block behind dword_2010CC4 (only bit 3 of its first byte survives)
+ * and the 180-byte API work block behind dword_2010CC0, re-seeds their header
+ * fields, releases every slot, then clears the link-state block's four
+ * status halfwords at +0x12..+0x18. */
+static void clear_rfu_api_variables(void) {
+    u16 saved_ime = LD16(A_InterruptMasterEnableRegister);
+    ST16(A_InterruptMasterEnableRegister, 0);
+
+    /* Link-state block: clear 40 bytes, but bit 3 of byte 0 survives the reset. */
+    u32 link_state = LD32(A_dword_2010CC4);
+    u8 kept_flag = LD8(link_state) & 0x08;
+    cpu_set_fill16(0, link_state, 20);
+    ST8(LD32(A_dword_2010CC4), kept_flag);
+
+    /* API work block: clear 180 bytes, then re-seed the header fields. */
+    cpu_set_fill16(0, LD32(A_dword_2010CC0), 90);
+    ST8(LD32(A_dword_2010CC0) + 9, 4);
+    ST8(LD32(A_dword_2010CC4) + 6, 0);
+    ST8(LD32(A_dword_2010CC0), 0xFF);
+
+    rfu_clear_all_slots();
+
+    ST8(LD32(A_dword_2010CC4) + 9, 0);
+    /* Four halfword flags at +0x12..+0x18 of the link-state block
+     * (the pointer is re-read every iteration, as the original does). */
+    for (u32 i = 0; i < 4; i++)
+        ST16(LD32(A_dword_2010CC4) + 0x12 + 2 * i, 0);
+
+    ST16(A_InterruptMasterEnableRegister, saved_ime);
+}
+
+/* rfu_STC_clearAPIVariables() -> r2, r3
+ * Takes no arguments. r2 and r3 are the leftovers of the original's zeroing loop
+ * (the counter ended at 4, the fill value was 0); r4-r8 were only saved/restored,
+ * and everything else the function leaves behind is memory side effects. */
+Next rfu_STC_clearAPIVariables(void) {
+    clear_rfu_api_variables();
+    R2 = 4;
+    R3 = 0;
+    RETURN_TO_CALLER();
+}
+
 /* ── rfu_setTimerInterrupt ── */
 /* rfu_setTimerInterrupt(r0, r1): set up the hardware timer used by the
  * wireless library, with the two arguments swapped and the first one

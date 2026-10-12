@@ -822,6 +822,121 @@ Next battle_runTutorialDialog_8026FC0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802728C ── */
+/* Battle chat window object (S20364C0): fields used by the state dispatcher. */
+#define oChatbox_State 2     /* u8: state byte, used as a raw BYTE offset into the
+                              * handler table below, so live states are 0,4,8,12,16 */
+#define oChatbox_Work  0x40  /* word handed to every state handler in r4 */
+
+/* State-handler table.  The original picks the target with an unscaled
+ * "ldr r1,[r1,r0]": the state byte indexes the table in bytes, one word slot
+ * per state value (0x00,0x04,0x08,0x0C,0x10). */
+#define CHATBOX_HANDLER_TABLE 0x080272A4
+
+/* The five table entries (function addresses with the Thumb bit set). */
+#define CHATBOX_H_LOAD_OBJ_AND_SET_STATE4 (0x080272B8 + 1) /* state 0x00 */
+#define CHATBOX_H_80272D0                 (0x080272D0 + 1) /* state 0x04 */
+#define CHATBOX_H_SET_STATE4_IF_FLAG80    (0x08027320 + 1) /* state 0x08 */
+#define CHATBOX_H_8027332                 (0x08027332 + 1) /* state 0x0C */
+#define CHATBOX_H_8027394                 (0x08027394 + 1) /* state 0x10 */
+
+/* register form: calls battle_loadObjTableEntryAndSetState4_80272B8 outside this file, which has no typed C interface yet */
+static void chatbox_state_load_obj_table_entry(u32 self, u32 work, u32 state) {
+    R0 = state;                                  /* the state byte itself */
+    R1 = CHATBOX_H_LOAD_OBJ_AND_SET_STATE4;      /* handler's own address, as the table load leaves r1 */
+    R4 = work;
+    R5 = self;
+    GUEST_CALL(battle_loadObjTableEntryAndSetState4_80272B8);
+}
+
+/* register form: calls sub_80272D0 outside this file, which has no typed C interface yet */
+static void chatbox_state_80272D0(u32 self, u32 work, u32 state) {
+    R0 = state;
+    R1 = CHATBOX_H_80272D0;
+    R4 = work;
+    R5 = self;
+    GUEST_CALL(sub_80272D0);
+}
+
+/* register form: calls chatbox_setState4IfFlag80Clear_8027320 outside this file, which has no typed C interface yet */
+static void chatbox_state_set_state4_if_flag80_clear(u32 self, u32 work, u32 state) {
+    R0 = state;
+    R1 = CHATBOX_H_SET_STATE4_IF_FLAG80;
+    R4 = work;
+    R5 = self;
+    GUEST_CALL(chatbox_setState4IfFlag80Clear_8027320);
+}
+
+/* register form: calls sub_8027332 outside this file, which has no typed C interface yet */
+static void chatbox_state_8027332(u32 self, u32 work, u32 state) {
+    R0 = state;
+    R1 = CHATBOX_H_8027332;
+    R4 = work;
+    R5 = self;
+    GUEST_CALL(sub_8027332);
+}
+
+/* register form: calls sub_8027394 outside this file, which has no typed C interface yet */
+static void chatbox_state_8027394(u32 self, u32 work, u32 state) {
+    R0 = state;
+    R1 = CHATBOX_H_8027394;
+    R4 = work;
+    R5 = self;
+    GUEST_CALL(sub_8027394);
+}
+
+/* register form: calls sub_8029C08 outside this file, which has no typed C interface yet */
+static void chatbox_common_update(void) {
+    /* No argument: run with the r5 the state handler left behind, exactly as
+     * the original's "bl sub_8029C08" does (it never reloads r5). */
+    GUEST_CALL(sub_8029C08);
+}
+
+/* Advance the battle chat window one frame: run the handler picked by the
+ * state byte from the table at 0x080272A4, then always run the common
+ * follow-up update.  Returns the caller's r4, which the original only saves
+ * and restores around the whole sequence. */
+static u32 chatbox_step(u32 self, u32 saved_r4) {
+    u32 work = LD32(self + oChatbox_Work);
+    u32 state = LD8(self + oChatbox_State);
+
+    /* Same fetch the original performs: an unscaled word load from the handler
+     * table at the raw byte offset stored in the state field. */
+    u32 handler = LD32(CHATBOX_HANDLER_TABLE + state);
+
+    switch (handler) {
+    case CHATBOX_H_LOAD_OBJ_AND_SET_STATE4: /* load obj table entry, move to state 4 */
+        chatbox_state_load_obj_table_entry(self, work, state);
+        break;
+    case CHATBOX_H_80272D0:
+        chatbox_state_80272D0(self, work, state);
+        break;
+    case CHATBOX_H_SET_STATE4_IF_FLAG80:    /* state 4 unless flag 0x80 is set */
+        chatbox_state_set_state4_if_flag80_clear(self, work, state);
+        break;
+    case CHATBOX_H_8027332:
+        chatbox_state_8027332(self, work, state);
+        break;
+    case CHATBOX_H_8027394:
+        chatbox_state_8027394(self, work, state);
+        break;
+    default:
+        /* Unreachable with live game data: any other state byte would send
+         * the original's bx outside the table (a crash). */
+        break;
+    }
+
+    chatbox_common_update();
+    return saved_r4;
+}
+
+/* sub_802728C(r5 = chat window object).
+ * r2/r3/r5/r6/r8-r12 end up as whatever the callees leave behind. */
+Next sub_802728C(void) {
+    R4 = chatbox_step(R5, R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_loadObjTableEntryAndSetState4_80272B8 ── */
 /* battle_loadObjTableEntryAndSetState4_80272B8: load the AI/behavior table entry selected by the object's
  * state byte (+0xC) into the object (+0x40) and switch its state to 4.
@@ -861,6 +976,82 @@ Next chatbox_setState4IfFlag80Clear_8027320(void) {
         SET_FLAGS_NZ(R0);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8027332 ── */
+/* sub_8027332 -- a scripted-batch step: spawn the rest of the current batch of
+ * entries (one sub_8001040 call each), then count the step's wait timer down
+ * and end the step when it expires or the player cuts it short with buttons. */
+
+/* fields of the owning object (r5) */
+#define oScriptStep_State      0x02  /* halfword: state number; 4 moves the step on */
+#define oScriptStep_ScriptPos  0x40  /* word: where to resume the script           */
+#define oScriptStep_WaitTimer  0x44  /* word: frames of waiting left               */
+
+/* ROM table (byte_8027388) supplying sub_8001040's r2 argument, indexed by the
+ * low 7 bits of an entry's flags byte (first words 0, 0x40000000, then the ROM
+ * data that follows -- as far in as the original can read). */
+#define ENTRY_ARG2_TABLE A_byte_8027388
+
+/* register form: calls sub_8001040 outside this file, which has no typed C interface yet.
+ * register form: also returns the call's leftover r3 -- the original hands that value back
+ * to its callers whenever it skips the joypad read, and it exists only in the guest
+ * register file, so C cannot reconstruct it. */
+static u32 spawn_batch_entry(u8 a, u8 b, u32 arg2) {
+    R0 = a;
+    R1 = b;
+    R2 = arg2;
+    R3 = 0xB37A;  /* fixed arguments at this call site */
+    R4 = 1;
+    GUEST_CALL(sub_8001040);
+    return R3;
+}
+
+/* Entries are three bytes (a, b, flags) beginning one byte past script_pos; bit 7 of
+ * the flags byte marks the batch's last entry, its low 7 bits pick the r2 argument.
+ * After the batch, the wait timer ticks down and the step ends -- script position
+ * saved, state 4 -- when it reaches zero, or early on the A button once no more than
+ * 0x44 frames remain, or on the B button at any point in that window.
+ * Returns the value to leave in r3: the joypad pointer when it was read, otherwise
+ * the last spawn call's leftover r3. */
+static u32 run_batch_and_wait(u32 script_pos, u32 owner, u32 toolkit) {
+    u32 pos = script_pos + 1;  /* skip the byte in front of the first entry */
+    u32 leftover_r3;
+
+    bool last_entry;
+    do {
+        u8 flags = LD8(pos + 2);
+        leftover_r3 = spawn_batch_entry(LD8(pos), LD8(pos + 1),
+                          LD32(ENTRY_ARG2_TABLE + ((flags & 0x7F) << 2)));
+        last_entry = (LD8(pos + 2) & 0x80) != 0;  /* re-read after the call, as the original does */
+        pos += 3;
+    } while (!last_entry);
+
+    u32 frames_left = LD32(owner + oScriptStep_WaitTimer) - 1;
+    ST32(owner + oScriptStep_WaitTimer, frames_left);
+
+    u32 r3 = leftover_r3;
+    bool step_done = frames_left == 0;
+    if (!step_done && (s32)frames_left <= 0x44) {
+        u32 joypad = LD32(toolkit + oToolkit_JoypadPtr);
+        r3 = joypad;  /* the original keeps the joypad pointer in r3 from here on */
+        step_done = (LD16(joypad + 2) & 1) != 0   /* A held    */
+                 || (LD16(joypad + 4) & 2) != 0;  /* B pressed */
+    }
+
+    if (step_done) {
+        ST32(owner + oScriptStep_ScriptPos, pos);
+        ST16(owner + oScriptStep_State, 4);
+    }
+
+    return r3;
+}
+
+/* sub_8027332(r4 = entry-list position, r5 = owning object, r10 = toolkit).
+ * r2 keeps whatever the last spawn call left there; r5/r6/r10 are untouched. */
+Next sub_8027332(void) {
+    R3 = run_batch_and_wait(R4, R5, R10);
     RETURN_TO_CALLER();
 }
 
@@ -972,6 +1163,62 @@ Next chatbox_resetTextStateIfHidden_80273EC(void) {
         ST16(R5 + 2, 0);
     }
     GUEST_CALL(sub_8029C08); /* self stays in r5 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8027CCC ── */
+/* unk_2035000 is a grid of u16 entries (tile indices); one row of the grid
+ * is 30 bytes, i.e. 15 entries. */
+#define UNK_2035000_ROW_BYTES 0x1E
+
+/* Stamp a width x height rectangle of running tile indices into the grid at
+ * 0x02035000, starting with firstTile at (column, row).
+ *
+ * columnWise (r5 == 1): consecutive indices run down a column; stepping one
+ *   column right advances by the rectangle's height, and the next row of the
+ *   rectangle starts one index after the row above.
+ * otherwise: consecutive indices run across a row, and each row continues
+ *   where the row above ended.
+ *
+ * Returns the index that follows the filled rectangle (firstTile plus the
+ * number of cells written), which the original leaves in r2. */
+static u32 fill_grid_rect(u32 column, u32 row, u32 firstTile, u32 width, u32 height, u32 columnWise) {
+    u32 step = (columnWise == 1) ? height : 1; /* index change per column */
+
+    u32 rowAddr = A_unk_2035000 + row * UNK_2035000_ROW_BYTES + column * 2;
+    u32 rowStartTile = firstTile; /* first index written on the current row */
+    u32 tile = firstTile;         /* running index (original r2) */
+
+    do {
+        u32 addr = rowAddr;
+        u32 remaining = width;
+
+        tile = rowStartTile;
+        do {
+            ST16(addr, tile);
+            addr += 2;
+            tile += step;
+        } while (--remaining != 0);
+
+        rowAddr += UNK_2035000_ROW_BYTES; /* one grid row down */
+
+        if (step == 1) {
+            rowStartTile = tile; /* next row simply carries on from here */
+        } else {
+            rowStartTile += 1;   /* next row starts one index later */
+            tile -= step - 1;    /* index that follows the rectangle so far */
+        }
+    } while (--height != 0);
+
+    return tile;
+}
+
+/* sub_8027CCC(r0 = column, r1 = row, r2 = first tile index, r3 = width,
+ *             r4 = height, r5 = numbering order) -> r2 = index after the block.
+ * The original pushes r6/r7 and pops them back before returning, so it leaves
+ * them (and r0/r1/r3-r5) as the caller had them; they are simply not touched. */
+Next sub_8027CCC(void) {
+    R2 = fill_grid_rect(R0, R1, R2, R3, R4, R5);
     RETURN_TO_CALLER();
 }
 
@@ -1652,6 +1899,234 @@ Next bg_ReloadTileBlock3Screen_80283B0(void) {
     /* Restore the caller's r4/r5 (the original saves them across both calls). */
     R4 = saved_r4;
     R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80283C8 ── */
+/* sub_80283C8: set the sprite palettes of the ten active-chip (custom screen)
+ * icons from each slot's kind byte.
+ *
+ * Kinds 1-3 keep whatever palette their icon already has; kind 0xA uses the
+ * standard palette; kinds 0/6/7 pick between the standard and an alternate
+ * palette via the flag byte at offset 7; any other kind uses a third palette.
+ * The chosen palette goes into the top six bits of the four attribute
+ * halfwords of the slot's icon sprites; the low ten bits are kept.
+ *
+ * The original leaves loop leftovers in r0/r1/r2 and callers may read them, so
+ * they are reproduced exactly: r0 ends as the last value it held -- the last
+ * stored attribute halfword, or the last slot's kind byte if that slot was
+ * skipped -- r1 as 0x3FF once any icon was recolored (otherwise the leftover
+ * r1 of getLocOfActiveChips), r2 as the last palette used, or 0 if the last
+ * slot was skipped. */
+
+#define ACTIVE_CHIP_SLOT_COUNT 10
+#define ACTIVE_CHIP_STRIDE     0xC
+#define ACTIVE_CHIP_KIND       0    /* slot's kind byte: selects the palette */
+#define ACTIVE_CHIP_FLAG_BYTE  7    /* kinds 0/6/7 only: 1 picks the alternate palette */
+
+#define ATTR_PALETTE_MASK      0x3FF /* low 10 bits of each attribute halfword are kept */
+
+/* the four attribute halfwords per icon: two sprites, two halfwords each */
+static const u8 iconAttrOffsets[4] = { 0x00, 0x02, 0x1E, 0x20 };
+
+/* indices into the palette halfword table at byte_8028470: 0xB000, 0xC000, 0x9000 */
+enum { PALETTE_STANDARD = 0, PALETTE_ALTERNATE = 1, PALETTE_OTHER = 2 };
+
+/* register form: calls getLocOfActiveChips_8027E1C outside this file, which has no typed C interface yet */
+static u32 active_chip_slots(u32 *leftoverR1) {
+    R0 = 0;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    *leftoverR1 = R1;           /* becomes our r1 output if no icon is recolored */
+    return R0;
+}
+
+/* Register values sub_80283C8 leaves behind for its caller. */
+typedef struct {
+    u32 lastAttrStored; /* r0: last stored attribute halfword, or the last
+                           slot's kind byte if that slot was skipped */
+    u32 attrMask;       /* r1: 0x3FF after the first recolor, otherwise the
+                           leftover r1 of getLocOfActiveChips */
+    u32 lastPalette;    /* r2: palette applied to the last slot, 0 if skipped */
+} ChipIconPaletteResults;
+
+static ChipIconPaletteResults recolor_active_chip_icons(void) {
+    u32 leftoverR1;
+    u32 chip = active_chip_slots(&leftoverR1);
+
+    ChipIconPaletteResults out;
+    out.lastAttrStored = chip;  /* r0 holds the chip-list pointer until the first kind read */
+    out.attrMask = leftoverR1;  /* r1 keeps the callee's leftover until a recolor runs */
+    out.lastPalette = 0;
+
+    for (u32 slot = 0; slot < ACTIVE_CHIP_SLOT_COUNT; slot++, chip += ACTIVE_CHIP_STRIDE) {
+        out.lastPalette = 0;        /* the original re-clears r2 at the top of every pass */
+
+        u8 kind = LD8(chip + ACTIVE_CHIP_KIND);
+        out.lastAttrStored = kind;  /* r0 now holds this slot's kind byte */
+
+        if (kind == 1 || kind == 2 || kind == 3)
+            continue;               /* these kinds keep the palette they already have */
+
+        int paletteIndex;
+        if (kind == 0xA) {
+            paletteIndex = PALETTE_STANDARD;
+        } else if (kind == 0 || kind == 6 || kind == 7) {
+            paletteIndex = (LD8(chip + ACTIVE_CHIP_FLAG_BYTE) == 1)
+                               ? PALETTE_ALTERNATE : PALETTE_STANDARD;
+        } else {
+            paletteIndex = PALETTE_OTHER;
+        }
+        u16 palette = LD16(A_byte_8028470 + 2 * paletteIndex);
+
+        u32 icon = LD32(A_off_802843C + 4 * slot); /* this slot's icon sprites */
+        for (int i = 0; i < 4; i++) {
+            u32 attr = icon + iconAttrOffsets[i];
+            out.lastAttrStored = (LD16(attr) & ATTR_PALETTE_MASK) | palette;
+            ST16(attr, out.lastAttrStored);
+        }
+        out.attrMask = ATTR_PALETTE_MASK;
+        out.lastPalette = palette;
+    }
+
+    return out;
+}
+
+Next sub_80283C8(void) {
+    ChipIconPaletteResults out = recolor_active_chip_icons();
+    R0 = out.lastAttrStored;
+    R1 = out.attrMask;
+    R2 = out.lastPalette;
+    SET_FLAGS_CMP(ACTIVE_CHIP_SLOT_COUNT, ACTIVE_CHIP_SLOT_COUNT); /* loop always finishes all ten slots */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8028476 ── */
+/* sub_8028476 - run whatever is recorded as the "active" chip entry for the side
+ * the given battle object fights on.  getLocOfActiveChips returns the side's
+ * active-chip record; the record's first byte (the entry kind) picks the
+ * handler.  That kind byte is also loaded into r1 before the dispatch, so it is
+ * this function's r1 output whenever no handler runs (unknown kinds). */
+
+/* Battle object byte at +7: the side (alliance) whose active chips to look up. */
+#define BATTLEOBJ_SIDE 7
+
+/* Offsets inside the active-chip record returned by getLocOfActiveChips. */
+#define ACTIVE_REC_KIND    0 /* u8:  kind of active entry (dispatch below)      */
+#define ACTIVE_REC_ID_DATA 8 /* u32*: record whose first u16 is a raw chip id */
+
+/* register form: calls getLocOfActiveChips_8027E1C outside this file, which has no typed C
+ * interface yet, then performs the original's follow-up "ldrb r1,[r0]": the kind byte is
+ * loaded into guest r1, an output register the caller sees whenever no handler runs, so it
+ * has to be written here rather than returned through C. */
+static u32 locate_active_chips(u32 side, u8 *kind) {
+    R0 = side;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    *kind = LD8(R0);
+    R1 = *kind;
+    return R0;
+}
+
+/* register form: calls getChipID_802A54E outside this file, which has no typed C interface yet */
+static u32 get_chip_id_sub_8028476(u32 raw_id, u8 kind) {
+    R0 = raw_id;
+    R1 = kind; /* the original still has the kind byte in r1 at this call */
+    GUEST_CALL(getChipID_802A54E);
+    return R0;
+}
+
+/* register form: calls sub_80284E2 outside this file, which has no typed C interface yet */
+static void activate_chip(u32 chip_id) {
+    R0 = chip_id;
+    /* r1 stays as getChipID left it, exactly as in the original's tail call */
+    GUEST_CALL(sub_80284E2);
+}
+
+/* register form: calls beastout_QueuePaletteGFXAndSheets_80286D4 outside this file, which has no typed C interface yet */
+static void active_kind_1(u32 rec, u8 kind) {
+    R0 = rec;
+    R1 = kind;
+    GUEST_CALL(beastout_QueuePaletteGFXAndSheets_80286D4);
+}
+
+/* register form: calls sub_802871C outside this file, which has no typed C interface yet */
+static void active_kind_2(u32 rec, u8 kind) {
+    R0 = rec;
+    R1 = kind;
+    GUEST_CALL(sub_802871C);
+}
+
+/* register form: calls sub_8028754 outside this file, which has no typed C interface yet */
+static void active_kind_3(u32 rec, u8 kind) {
+    R0 = rec;
+    R1 = kind;
+    GUEST_CALL(sub_8028754);
+}
+
+/* register form: calls sub_80287A4 outside this file, which has no typed C interface yet */
+static void active_kind_4_or_5(u32 rec, u8 kind) {
+    R0 = rec;
+    R1 = kind;
+    GUEST_CALL(sub_80287A4);
+}
+
+/* register form: calls sub_80285FE outside this file, which has no typed C interface yet */
+static void active_kind_6_or_7(u32 raw_id, u8 kind) {
+    R0 = raw_id;
+    R1 = kind;
+    GUEST_CALL(sub_80285FE);
+}
+
+/* register form: calls sub_802877C outside this file, which has no typed C interface yet */
+static void active_kind_8_or_9(u32 rec, u8 kind) {
+    R0 = rec;
+    R1 = kind;
+    GUEST_CALL(sub_802877C);
+}
+
+/* Dispatch on the active-chip record's kind byte.  Kind 0 is a plain chip: its
+ * raw id is resolved to a real chip id and then activated.  Kinds 6/7 also
+ * fetch the raw id but hand it over unresolved.  Every other known kind has
+ * its own handler and receives the record itself; unknown kinds run nothing. */
+static void run_active_chip(u32 object) {
+    u8 kind;
+    u32 rec = locate_active_chips(LD8(object + BATTLEOBJ_SIDE), &kind);
+
+    switch (kind) {
+    case 0:
+        activate_chip(get_chip_id_sub_8028476(LD16(LD32(rec + ACTIVE_REC_ID_DATA)), kind));
+        break;
+    case 1:
+        active_kind_1(rec, kind);
+        break;
+    case 2:
+        active_kind_2(rec, kind);
+        break;
+    case 3:
+        active_kind_3(rec, kind);
+        break;
+    case 4:
+    case 5:
+        active_kind_4_or_5(rec, kind);
+        break;
+    case 6:
+    case 7:
+        active_kind_6_or_7(LD16(LD32(rec + ACTIVE_REC_ID_DATA)), kind);
+        break;
+    case 8:
+    case 9:
+        active_kind_8_or_9(rec, kind);
+        break;
+    default:
+        /* Unknown kind: nothing runs and r1 keeps the kind byte that
+         * locate_active_chips already wrote there, as in the original. */
+        break;
+    }
+}
+
+/* sub_8028476(r5 = battle object).  All outputs (r1-r12, lr) are whatever the
+ * guest handlers left in the register file; the port computes none itself. */
+Next sub_8028476(void) {
+    run_active_chip(R5);
     RETURN_TO_CALLER();
 }
 

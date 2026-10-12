@@ -8,6 +8,148 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_80173F4 ── */
+/* Phase handler addresses as stored in the original's jump table at off_801740C.
+ * The table is indexed by the raw CurPhase byte, so the phases count 0, 4, 8, 0xC;
+ * the stored values carry the Thumb bit. */
+#define PHASE_HANDLER_00 0x0801741Du /* sub_801741C + 1 */
+#define PHASE_HANDLER_04 0x0801746Fu /* sub_801746E + 1 */
+#define PHASE_HANDLER_08 0x080174ABu /* battle_objectTickTimerAndSetPhaseC_80174AA + 1 */
+#define PHASE_HANDLER_0C 0x080174BFu /* battle_tickIntroState_80174BE + 1 */
+
+enum {
+    PHASE_00 = 0x0,
+    PHASE_04 = 0x4,
+    PHASE_08 = 0x8,
+    PHASE_0C = 0xC,
+};
+
+/* register form: calls sprite_forceWhitePalette outside this file, which has no typed C interface yet */
+static void force_white_palette(void) {
+    GUEST_CALL(sprite_forceWhitePalette);
+}
+
+/* register form: calls sub_801741C outside this file, which has no typed C interface yet.
+ * The original loads the chosen handler's address into r1 before jumping to it, and a
+ * handler may leave r1 untouched, so r1 must carry that address into the call. */
+static void run_phase_00(u32 phase) {
+    R0 = phase;
+    R1 = PHASE_HANDLER_00;
+    GUEST_CALL(sub_801741C);
+}
+
+/* register form: calls sub_801746E outside this file, which has no typed C interface yet.
+ * The original loads the chosen handler's address into r1 before jumping to it, and a
+ * handler may leave r1 untouched, so r1 must carry that address into the call. */
+static void run_phase_04(u32 phase) {
+    R0 = phase;
+    R1 = PHASE_HANDLER_04;
+    GUEST_CALL(sub_801746E);
+}
+
+/* register form: calls battle_objectTickTimerAndSetPhaseC_80174AA outside this file, which has no typed C interface yet.
+ * The original loads the chosen handler's address into r1 before jumping to it, and a
+ * handler may leave r1 untouched, so r1 must carry that address into the call. */
+static void run_phase_08(u32 phase) {
+    R0 = phase;
+    R1 = PHASE_HANDLER_08;
+    GUEST_CALL(battle_objectTickTimerAndSetPhaseC_80174AA);
+}
+
+/* register form: calls battle_tickIntroState_80174BE outside this file, which has no typed C interface yet.
+ * The original loads the chosen handler's address into r1 before jumping to it, and a
+ * handler may leave r1 untouched, so r1 must carry that address into the call. */
+static void run_phase_0C(u32 phase) {
+    R0 = phase;
+    R1 = PHASE_HANDLER_0C;
+    GUEST_CALL(battle_tickIntroState_80174BE);
+}
+
+/* Flash every sprite white, then run this battle object's current phase
+ * handler (jump table off_801740C, indexed by the raw CurPhase byte).
+ * Whatever registers the handler leaves behind (r1, r5, r8-r12) reach our
+ * caller unchanged, exactly as in the original's jump-table call; the object
+ * pointer in r5 and r10 reach the handler untouched. */
+static void flash_white_then_run_phase(u32 battleObject) {
+    force_white_palette();
+
+    u8 phase = LD8(battleObject + oBattleObject_CurPhase);
+    switch (phase) {
+    case PHASE_00: run_phase_00(phase); break;
+    case PHASE_04: run_phase_04(phase); break;
+    case PHASE_08: run_phase_08(phase); break;
+    case PHASE_0C: run_phase_0C(phase); break;
+    }
+}
+
+/* sub_80173F4(r5 = battle object) -> r1, r5, r8-r12 as left by the phase handler */
+Next sub_80173F4(void) {
+    flash_white_then_run_phase(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801746E ── */
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
+static bool battle_time_stopped(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return !ZERO_FLAG();          /* the original skips the whole sequence when the result is nonzero */
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet.
+ * The AI data pointer is still in r1 at this call in the original, so it is passed along. */
+static void play_sound_effect_sub_801746E(u32 id, u32 ai) {
+    R0 = id;
+    R1 = ai;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls spawn_t1_0x0_EffectObject outside this file, which has no typed C interface yet.
+ * The original calls it twice back to back; the second call reuses whatever register state the
+ * first one left behind, so both calls sit side by side here. */
+static void spawn_effect_object_pair(u32 source, u32 x, u32 y, u32 z) {
+    R0 = source;
+    R1 = x;
+    R2 = y;
+    R3 = z;
+    R4 = 3;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+}
+
+/* Start the object's destruction sequence: switch it to animation 2 and let the animator run
+ * again, unlink its paired object, clear the AI scratch fields, play sound 0x6C, spawn the
+ * effect-object pair at its position and arm the 21-frame countdown into phase 8.
+ * Nothing happens while time stop is active. */
+static void begin_destruction_sequence(u32 obj) {
+    if (battle_time_stopped())
+        return;
+
+    ST8(obj + oBattleObject_CurAnim, 2);
+    ST32(obj + oBattleObject_RelatedObject1Ptr, 0);
+    ST8(obj + oBattleObject_PreventAnim, 0);
+
+    u32 ai = LD32(obj + oBattleObject_AIDataPtr);
+    ST32(ai + oAIData_Unk_5c, 0);
+    ST32(ai + oAIData_Unk_68, 0);
+
+    play_sound_effect_sub_801746E(0x6C, ai);
+
+    /* the spawner takes the object's position words at +0x34 plus a pointer just past them */
+    u32 x = LD32(obj + 0x34);
+    u32 y = LD32(obj + 0x38);
+    u32 z = LD32(obj + 0x3C);
+    spawn_effect_object_pair(obj + 0x40, x, y, z);
+
+    ST16(obj + oBattleObject_Timer, 0x15);
+    ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 8);
+}
+
+/* sub_801746E(r5 = battle object) -> r1 (left as the last callee returned it), r5/r10 unchanged */
+Next sub_801746E(void) {
+    begin_destruction_sequence(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectTickTimerAndSetPhaseC_80174AA ── */
 /* battle_objectTickTimerAndSetPhaseC_80174AA (r5 = battle object): tick the object's action timer down by
  * one. When it reaches zero, reset the timer and advance the object to
@@ -982,6 +1124,138 @@ Next battle_spawnHitEffectAtArm_801A42E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801A45C ── */
+/* ---------------------------------------------------------------------------
+ * sub_801A45C: counter-hit resolution for one battle object
+ * ------------------------------------------------------------------------- */
+
+/* Collision flag 0x40: this object was struck inside its counter window. */
+#define COLLISION_FLAG_COUNTER_HIT 0x40
+
+/* Popup id handed to sub_802E032 for the counter-hit callout. */
+#define POPUP_COUNTER_HIT 0x1500
+
+/* Per-side stat-table entry that tallies counter hits. */
+#define TALLY_COUNTER_HITS 8
+
+/* r4/r6 belong to the caller's frame (the original saves them with push {r4,r6});
+ * the typed function hands the entry values back so the adapter can restore them. */
+typedef struct {
+    u32 saved_r4;
+    u32 saved_r6;
+} counter_hit_result_t;
+
+/* register form: the original's plain `mov r2, #0x40` on the early-out path is a
+ * register output (r2) that callers observe; no game function is involved and a C
+ * local cannot become guest r2, so write the output register directly */
+static void set_output_r2(u32 value) {
+    R2 = value;
+}
+
+/* register form: calls battle_testFlag0x40_800A8F8 outside this file, which has no
+ * typed C interface yet. It takes the flag mask in r2 and also reads the caller's
+ * live context (object r5, collision data r4, collision flags r6). */
+static bool battle_flag_0x40_set(u32 obj, u32 collision, u32 flags) {
+    R2 = 0x40;
+    R4 = collision;
+    R5 = obj;
+    R6 = flags;
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+    return R0 != 0;
+}
+
+/* register form: calls sub_802E032 outside this file, which has no typed C interface
+ * yet. Besides (side, popup id) in r0/r1 it consumes the context registers r4-r6. */
+static void show_counter_hit_popup(u32 side, u32 obj, u32 collision, u32 flags) {
+    R0 = side;
+    R1 = POPUP_COUNTER_HIT;
+    R4 = collision;
+    R5 = obj;
+    R6 = flags;
+    GUEST_CALL(sub_802E032);
+}
+
+/* register form: calls tableAddSaturatedByte_800AB46 outside this file, which has no
+ * typed C interface yet. (side, entry, delta) go in r0-r2 and the context in r4-r6. */
+static void bump_side_tally(u32 side, u32 entry, u32 delta, u32 obj, u32 collision, u32 flags) {
+    R0 = side;
+    R1 = entry;
+    R2 = delta;
+    R4 = collision;
+    R5 = obj;
+    R6 = flags;
+    GUEST_CALL(tableAddSaturatedByte_800AB46);
+}
+
+/* register form: calls battle_isBattleOver outside this file, which has no typed C
+ * interface yet (it reads no argument registers) */
+static bool battle_is_over(void) {
+    GUEST_CALL(battle_isBattleOver);
+    return R0 != 0;
+}
+
+/* register form: calls sub_801E270 outside this file, which has no typed C interface
+ * yet; it takes the counter-hit event entirely from the context registers r4-r6
+ * (object, collision data, collision flags) instead of r0-r3 */
+static void run_counter_hit_event(u32 obj, u32 collision, u32 flags) {
+    R4 = collision;
+    R5 = obj;
+    R6 = flags;
+    GUEST_CALL(sub_801E270);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C
+ * interface yet */
+static void play_sound(u32 sound) {
+    R0 = sound;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* Resolve a counter hit on `obj`: bit 0x40 appeared in its collision flags, i.e. it
+ * was struck while attacking. While global battle flag 0x40 is set, show the
+ * counter-hit popup on the opposing side; either way credit that side's counter
+ * tally and restart this object's counter timer. If the battle is still running,
+ * fire the counter-hit event and play the select sound.
+ * saved_r4/saved_r6 are the caller's register values that must survive (push {r4,r6}). */
+static counter_hit_result_t resolve_counter_hit(u32 obj, u32 saved_r4, u32 saved_r6) {
+    counter_hit_result_t result = { saved_r4, saved_r6 };
+
+    u32 collision = LD32(obj + oBattleObject_CollisionDataPtr);
+    u32 flags = LD32(collision + oCollisionData_FlagsFromCollision);
+
+    if (!(flags & COLLISION_FLAG_COUNTER_HIT)) {
+        set_output_r2(0x40);        /* the original leaves r2 = 0x40 when bailing out here */
+        return result;
+    }
+
+    if (battle_flag_0x40_set(obj, collision, flags))
+        show_counter_hit_popup(LD8(obj + oBattleObject_Alliance) ^ 1, obj, collision, flags);
+
+    /* Re-read the alliance: the popup spawn ran in between, exactly as the original does. */
+    bump_side_tally(LD8(obj + oBattleObject_Alliance) ^ 1, TALLY_COUNTER_HITS, 1,
+                    obj, collision, flags);
+
+    ST8(collision + oCollisionData_CounterTimer, 0);
+
+    if (battle_is_over())
+        return result;
+
+    /* The original keeps sub_801E270's r0 alive across the sound call (push/pop {r0}),
+     * but r0 is a clobbered register, so it is not reproduced here. */
+    run_counter_hit_event(obj, collision, flags);
+    play_sound(SOUND_SELECT_86);
+    return result;
+}
+
+/* sub_801A45C(r5 = battle object) -> r2 (0x40 on early out, else callee leftover),
+ * r4/r6 restored, r5/r7-r12 untouched here and left as the callees dropped them. */
+Next sub_801A45C(void) {
+    counter_hit_result_t result = resolve_counter_hit(R5, R4, R6);
+    R4 = result.saved_r4;
+    R6 = result.saved_r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_spawnArmHitEffect_801A4A6 ── */
 /* battle_spawnArmHitEffect_801A4A6(r5 = battle object):
  * Checks the object's collision data byte at offset 0xA4; when it reports
@@ -1309,5 +1583,80 @@ Next battle_clearAIDataAndBarrier_801A7F4(void) {
     ST32(aiData + oAIData_Unk_60, 0);
     ST8(collision + 6, 0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801AEB0 ── */
+/* ------------------------------------------------------------------ */
+/* Object status flags used by object_getFlag / object_setFlag2 etc.   */
+#define OBJ_FLAG2_STATUS_2     0x000002u
+#define OBJ_FLAG2_FLINCH       0x000004u  /* hit-stun flag */
+#define OBJ_FLAG2_STATUS_0x10  0x000010u
+#define OBJ_FLAG2_STATUS_0x100 0x000100u
+
+/* Target states that ignore parts of a hit. */
+#define OBJ_FLAGS_SUPERARMOR_OR_ANGER 0x220000u /* per the original's comment */
+#define OBJ_FLAGS_0x100040            0x100040u
+
+/* Bits of CollisionData.hitModifierFinal: what each set bit does to the hit object. */
+#define HITMOD_FLINCH       0x01u /* object flinches unless it has superarmor/anger */
+#define HITMOD_STATUS_2     0x02u /* sets object status flag 2 */
+#define HITMOD_REACTION     0x3Cu /* any of these bits starts a status reaction */
+#define HITMOD_ALT_REACTION 0x40u /* picks the flag-0x100 reaction instead of 0x10 */
+
+/* register form: calls object_getFlag outside this file, which has no typed C interface yet */
+static u32 object_flags(void) {
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+/* register form: calls object_setFlag2 outside this file, which has no typed C interface yet */
+static void object_set_flag2(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(object_setFlag2);
+}
+
+/* register form: calls object_clearFlag2 outside this file, which has no typed C interface yet */
+static void object_clear_flag2(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(object_clearFlag2);
+}
+
+/* Apply a collision's final hit modifier to the object that was hit.
+ *
+ * Each set bit of the hit modifier puts the target into the matching state via
+ * its status flags; the "reaction" bits additionally mark the object at
+ * oBattleObject_Unk_0f so the rest of the battle code knows the reaction fired.
+ */
+static void apply_hit_modifiers(u32 object, u32 collision) {
+    u32 hitModifier = LD8(collision + oCollisionData_HitModifierFinal);
+    u32 flags = object_flags();
+
+    /* Flinching is ignored while the target has superarmor or anger. */
+    if (!(flags & OBJ_FLAGS_SUPERARMOR_OR_ANGER) && (hitModifier & HITMOD_FLINCH))
+        object_set_flag2(OBJ_FLAG2_FLINCH);
+
+    if (hitModifier & HITMOD_STATUS_2)
+        object_set_flag2(OBJ_FLAG2_STATUS_2);
+
+    /* No reaction bits set: nothing further to do. */
+    if (!(hitModifier & HITMOD_REACTION))
+        return;
+
+    if (hitModifier & HITMOD_ALT_REACTION) {
+        /* Alternate reaction: take flag 0x100 and drop the flinch flag again. */
+        object_set_flag2(OBJ_FLAG2_STATUS_0x100);
+        object_clear_flag2(OBJ_FLAG2_FLINCH);
+        ST8(object + oBattleObject_Unk_0f, 1); /* original stores this twice */
+    } else if (!(object_flags() & OBJ_FLAGS_0x100040)) {
+        /* Weaker reaction, skipped if the target is already in a 0x100040 state. */
+        object_set_flag2(OBJ_FLAG2_STATUS_0x10);
+        ST8(object + oBattleObject_Unk_0f, 1);
+    }
+}
+
+/* sub_801AEB0(r5 = hit battle object, r7 = collision data) -> no outputs */
+Next sub_801AEB0(void) {
+    apply_hit_modifiers(R5, R7);
     RETURN_TO_CALLER();
 }

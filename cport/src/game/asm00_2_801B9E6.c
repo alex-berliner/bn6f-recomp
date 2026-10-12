@@ -317,6 +317,243 @@ Next object_updateSpriteTimestop(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── UpdateBattleObjectSprite ── */
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
+static bool battle_time_is_stopped(u32 *leftover_r1) {
+    GUEST_CALL(battle_isTimeStop);
+    *leftover_r1 = R1;   /* the caller can still read r1, which this call leaves behind */
+    return !ZERO_FLAG(); /* the original branches with bne: Z clear means time is stopped */
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void set_sprite_animation(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void load_sprite_animation_data(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static void update_sprite_UpdateBattleObjectSprite(void) {
+    GUEST_CALL(sprite_update);
+}
+
+/* register form: the original's early exits return right after a tst, leaving its own
+ * r0/r1 and N/Z for the caller (C/V untouched); on the paths that end in a call, those
+ * same registers must stay exactly as the last callee left them, and the entry adapter
+ * may not branch between the two behaviors, so plain C cannot express this. */
+static void return_early_without_update(u32 r0, u32 r1, u32 tst_result) {
+    R0 = r0;
+    R1 = r1;
+    SET_FLAGS_NZ(tst_result);
+}
+
+/* UpdateBattleObjectSprite: advance one battle object's sprite for this frame.
+ *
+ * The update is skipped when the object is inactive, has sprite updates disabled,
+ * is caught by an active time stop (unless flagged to keep updating through it),
+ * or has collision data with its animation locked (PreventAnim set). A changed
+ * CurAnim is applied and cached in CurAnimCopy before the sprite is advanced. */
+static void update_battle_object_sprite(u32 obj) {
+    u8 flags = LD8(obj + oObjectHeader_Flags);
+
+    if (!(flags & OBJECT_FLAG_ACTIVE)) {
+        return_early_without_update(flags, OBJECT_FLAG_ACTIVE, flags & OBJECT_FLAG_ACTIVE);
+        return;
+    }
+    if (flags & OBJECT_FLAG_STOP_SPRITE_UPDATE) {
+        return_early_without_update(flags, OBJECT_FLAG_STOP_SPRITE_UPDATE,
+                                    flags & OBJECT_FLAG_STOP_SPRITE_UPDATE);
+        return;
+    }
+
+    /* What the original holds in r1 if it exits at the PreventAnim check below:
+     * either the flag constant from its last mov, or battle_isTimeStop's leftover
+     * r1 when that call was made (the caller can read r1 in both cases). */
+    u32 r1_if_anim_locked = OBJECT_FLAG_UPDATE_DURING_TIMESTOP;
+    if (!(flags & OBJECT_FLAG_UPDATE_DURING_TIMESTOP)
+        && battle_time_is_stopped(&r1_if_anim_locked))
+        return; /* time stopped: the caller sees battle_isTimeStop's own results */
+
+    /* Objects with collision data and a locked animation do not animate. */
+    if (LD32(obj + oBattleObject_CollisionDataPtr) != 0) {
+        u8 prevent_anim = LD8(obj + oBattleObject_PreventAnim);
+        if (prevent_anim != 0) {
+            return_early_without_update(prevent_anim, r1_if_anim_locked, prevent_anim);
+            return;
+        }
+    }
+
+    /* Apply a newly chosen animation, then advance the sprite one frame. */
+    u8 cur_anim = LD8(obj + oBattleObject_CurAnim);
+    if (cur_anim != LD8(obj + oBattleObject_CurAnimCopy)) {
+        set_sprite_animation(cur_anim);
+        load_sprite_animation_data();
+        /* re-read CurAnim: the animation calls may have changed it */
+        ST8(obj + oBattleObject_CurAnimCopy, LD8(obj + oBattleObject_CurAnim));
+    }
+    update_sprite_UpdateBattleObjectSprite();
+}
+
+/* UpdateBattleObjectSprite(r5 = battle object) */
+Next UpdateBattleObjectSprite(void) {
+    update_battle_object_sprite(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_updateSpritePaused ── */
+/* object_updateSpritePaused: 0801BCA6-0801BCD0 THUMB (bn6f asm00_2.s:25827)
+ *   inputs:  r5 r10 lr
+ *   outputs: nz c v r0 r1 r2 r3 r4 r5 lr
+ *   clobbers (unused by callers): -
+ *   preserved: r4 r5 */
+
+/* oObjectHeader_Flags bit 0: only objects with this bit keep stepping their sprite here. */
+#define OBJ_FLAG_SPRITE_UPDATES 0x01
+
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
+static bool time_stop_active(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return !ZERO_FLAG();       /* answers in Z: clear while a time-stop holds the battle */
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_set_animation_object_updateSpritePaused(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_load_animation_data_object_updateSpritePaused(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static void sprite_update_frame(void) {
+    GUEST_CALL(sprite_update);
+}
+
+/* register form: the early-out at the flag check must leave this function's own
+ * results in the guest registers (r0 = flags byte, r1 = 1, Z set by the tst),
+ * while every other path must keep the last callee's leftover registers and flags.
+ * The adapter may not branch, so it can never choose between the two, and plain C
+ * cannot read the callees' register/flag leftovers back to route them through a
+ * return value. */
+static void set_skip_result(u8 flags) {
+    R0 = flags;
+    R1 = 1;
+    SET_FLAGS_NZ(flags & OBJ_FLAG_SPRITE_UPDATES);  /* the tst result: bit clear, so Z set */
+}
+
+/* Step the sprite of a battle object whose logic is paused: adopt a newly selected
+ * animation, then advance the sprite one frame. Unflagged objects, and the whole
+ * battle while a time-stop is active, leave memory and the register file untouched. */
+static void update_paused_object_sprite(u32 obj) {
+    u8 flags = LD8(obj + oObjectHeader_Flags);
+    if (!(flags & OBJ_FLAG_SPRITE_UPDATES)) {
+        set_skip_result(flags);
+        return;
+    }
+
+    if (time_stop_active())
+        return;    /* frozen: battle_isTimeStop's register/flag leftovers stand as the result */
+
+    u8 anim = LD8(obj + oBattleObject_CurAnim);
+    if (anim != LD8(obj + oBattleObject_CurAnimCopy)) {
+        sprite_set_animation_object_updateSpritePaused(anim);
+        sprite_load_animation_data_object_updateSpritePaused();
+        /* re-read CurAnim, as the original does: the animation calls may adjust it */
+        ST8(obj + oBattleObject_CurAnimCopy, LD8(obj + oBattleObject_CurAnim));
+    }
+
+    sprite_update_frame();
+}
+
+Next object_updateSpritePaused(void) {
+    update_paused_object_sprite(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801BCF4 ── */
+/* Bits of oObjectHeader_Flags that gate the per-frame sprite update. */
+enum {
+    OBJF_HAS_SPRITE      = 0x01, /* clear: this object's sprite is not animated */
+    OBJF_FROZEN          = 0x08, /* set: sprite update disabled entirely */
+    OBJF_IGNORE_TIMESTOP = 0x10, /* set: keeps animating while time is stopped */
+};
+
+/* register form: calls battle_isPaused outside this file, which has no typed C interface yet */
+static bool battle_is_paused(void) {
+    GUEST_CALL(battle_isPaused);
+    return !ZERO_FLAG(); /* nonzero result means the battle is paused */
+}
+
+/* register form: calls battle_isTimeStop outside this file, which has no typed C interface yet */
+static bool time_is_stopped(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return !ZERO_FLAG(); /* nonzero result means time stop is active */
+}
+
+/* register form: calls sprite_setAnimation outside this file, which has no typed C interface yet */
+static void sprite_set_animation_sub_801BCF4(u8 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void sprite_load_animation_data_sub_801BCF4(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls sprite_update outside this file, which has no typed C interface yet */
+static void update_sprite_sub_801BCF4(void) {
+    GUEST_CALL(sprite_update);
+}
+
+/* Per-frame sprite update for one battle object: load a new animation if the
+ * object's current one changed, then advance the sprite. Skipped while the
+ * battle is paused or time is stopped (unless the object's flags exempt it),
+ * for objects without an animated sprite or with updates frozen, and for
+ * collidable objects whose current animation is locked.
+ * Returns obj unchanged, as the original preserves r5. */
+static u32 battle_object_update_sprite(u32 obj) {
+    if (battle_is_paused())
+        return obj;
+
+    u8 flags = LD8(obj + oObjectHeader_Flags);
+    if (!(flags & OBJF_HAS_SPRITE))
+        return obj;
+    if (flags & OBJF_FROZEN)
+        return obj;
+    if (!(flags & OBJF_IGNORE_TIMESTOP) && time_is_stopped())
+        return obj;
+
+    /* Only objects with collision data can lock their animation. */
+    if (LD32(obj + oBattleObject_CollisionDataPtr) != 0
+        && LD8(obj + oBattleObject_PreventAnim) != 0)
+        return obj;
+
+    u8 anim = LD8(obj + oBattleObject_CurAnim);
+    if (anim != LD8(obj + oBattleObject_CurAnimCopy)) {
+        sprite_set_animation_sub_801BCF4(anim);
+        sprite_load_animation_data_sub_801BCF4();
+        /* Re-read CurAnim: the sprite calls may have touched it. */
+        ST8(obj + oBattleObject_CurAnimCopy, LD8(obj + oBattleObject_CurAnim));
+    }
+
+    update_sprite_sub_801BCF4();
+    return obj;
+}
+
+/* sub_801BCF4(r5 = battle object) -> r5 (unchanged) */
+Next sub_801BCF4(void) {
+    R5 = battle_object_update_sprite(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── AddRandomVarianceToTwoCoords ── */
 /* AddRandomVarianceToTwoCoords(r0 = variance mask, r1 = coord A, r3 = coord B):
  * Jitter two coordinates by a centered random offset applied in the
@@ -668,6 +905,107 @@ Next sub_801C304(void) {
     u32 r3 = R3;
     decompress_portrait_tiles(R4, R5, R7);
     R3 = r3;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801C906 ── */
+/* Tile id of the first small digit glyph. Each digit is two vertically stacked tiles
+ * (top at DIGIT_GLYPH_TILES + digit*2, bottom one below it), so a nibble indexes its
+ * glyph directly; nibble 0xA is the blank used to pad short numbers. */
+#define DIGIT_GLYPH_TILES  0xD1A0
+#define BLANK_TILE_NIBBLES 0xAAAA
+
+/* register form: calls memory_bcdConvert outside this file, which has no typed C interface yet */
+static u32 to_packed_bcd(u16 value) {
+    R0 = value;
+    GUEST_CALL(memory_bcdConvert);
+    return R0;
+}
+
+/* register form: calls countHexDigits_8000C5C outside this file, which has no typed C interface yet */
+static u32 count_hex_digits_sub_801C906(u32 value) {
+    R0 = value;
+    GUEST_CALL(countHexDigits_8000C5C);
+    return R0;
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
+static void copy_background_tiles_sub_801C906(u32 j, u32 i, u32 which_tile_block_32x32, u32 tile_ids,
+                                  u32 j_size, u32 i_size) {
+    R0 = j;
+    R1 = i;
+    R2 = which_tile_block_32x32;
+    R3 = tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
+static void queue_gfx_transfer(u32 queued_src, u32 mut_queued_dest, u32 queued_size) {
+    R0 = queued_src;
+    R1 = mut_queued_dest;
+    R2 = queued_size;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+}
+
+/* The original pushes r4-r7 on entry and pops them on return (r5 comes back via the
+ * mid-function pop and the last callee preserving it), so these must reach the caller
+ * with their entry values even though the gfx callees clobber the live registers. */
+struct PreservedRegisters {
+    u32 r4;
+    u32 r5;
+    u32 r6;
+    u32 r7;
+};
+
+/* Redraw an object's four-digit decimal readout (its HP shown on the field):
+ * convert the value at +0x24 into decimal digits, stamp them right-aligned with the
+ * digit glyphs into background tile block 3 at the object's map position, and queue
+ * the 32-byte companion tile selected by the index at +3 for VRAM upload.
+ * The preserved registers ride through unchanged, as the original's push/pop guarantees. */
+static struct PreservedRegisters draw_number_label(u32 obj, struct PreservedRegisters preserved) {
+    /* One decimal digit per nibble; shifting 0xAAAA past the significant digits fills the
+     * unused high positions with 0xA, so the number comes out right-aligned and blank-padded. */
+    u32 packed = to_packed_bcd(LD16(obj + 0x24));
+    packed |= BLANK_TILE_NIBBLES << (count_hex_digits_sub_801C906(packed) * 4);
+
+    /* register form: the 4x2 tile-id buffer must live at a guest stack address,
+     * since that address is handed to CopyBackgroundTiles */
+    SP -= 0x10;
+    u32 tile_ids = SP;
+
+    /* Fill the 4x2 tile grid from the right: each nibble picks a digit glyph
+     * (its top tile plus the tile directly beneath it). */
+    for (int column = 3; column >= 0; column--) {
+        u32 top_tile = DIGIT_GLYPH_TILES + (packed & 0xF) * 2;
+        ST16(tile_ids + column * 2, top_tile);
+        ST16(tile_ids + 8 + column * 2, top_tile + 1);
+        packed >>= 4;
+    }
+
+    /* Draw the 4-wide, 2-tall block one tile right of the stored map position. */
+    copy_background_tiles_sub_801C906(LD8(obj + 1) + 1, LD8(obj + 2), 3, tile_ids, 4, 2);
+
+    SP += 0x10;
+
+    /* Queue the companion tile: 32 bytes of ROM gfx chosen by the object's index,
+     * described by the {source, destination, size} table at off_801C970. */
+    u32 upload = A_off_801C970;
+    queue_gfx_transfer(LD32(upload) + LD8(obj + 3) * 0x20, LD32(upload + 4), LD32(upload + 8));
+
+    return preserved;
+}
+
+/* sub_801C906(r5 = label object) -> r3 (leftover from the gfx transfer call),
+ * r4-r7 restored to their entry values */
+Next sub_801C906(void) {
+    struct PreservedRegisters preserved = { R4, R5, R6, R7 };
+    struct PreservedRegisters out = draw_number_label(R5, preserved);
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    R7 = out.r7;
     RETURN_TO_CALLER();
 }
 
@@ -1472,6 +1810,123 @@ Next sub_801DC6E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801DC7C ── */
+/* ---------------------------------------------------------------------------
+ * Object status list: four 0x14-byte slots at byte_203EB50.  A slot is free
+ * when its kind byte is zero; a claimed slot caches a battle object's name
+ * ID and HP (shown by the battle UI) together with the object pointer.
+ * ------------------------------------------------------------------------- */
+#define STATUS_LIST       A_byte_203EB50
+#define STATUS_SLOTS      4
+#define STATUS_SLOT_SIZE  0x14
+
+/* fields of one 0x14-byte slot */
+#define oStatus_Kind      0x0   /* u8:  0 = free, else a STATUS_KIND_* value */
+#define oStatus_HP        0x2   /* u16: object's current HP */
+#define oStatus_Param0    0x4   /* u8:  caller byte passed in r0 */
+#define oStatus_Param1    0x5   /* u8:  caller byte passed in r1 */
+#define oStatus_NameID    0x6   /* u16: object's name ID */
+#define oStatus_Unk08     0x8   /* u8:  cleared when the slot is claimed */
+#define oStatus_Unk09     0x9   /* u8:  cleared when the slot is claimed */
+#define oStatus_Object    0xC   /* u32: owning battle object */
+#define oStatus_Unk10     0x10  /* u32: 0x0B0B0B0B stamp written on claim */
+
+#define STATUS_KIND_FREE    0
+#define STATUS_KIND_NORMAL  3
+#define STATUS_KIND_SPECIAL 0x1B
+
+#define STATUS_UI_REQUEST  4   /* request bit that refreshes the status readouts */
+
+/* register form: calls eStruct2035280_SetRequestBits_801BECC outside this file, which has no typed C interface yet */
+static u32 request_status_ui_refresh(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(eStruct2035280_SetRequestBits_801BECC);
+    return R2;    /* the callee's leftover r2; the original's caller sees it in r2 */
+}
+
+/* Everything sub_801DC7C leaves in its output registers.  r2, r3 and the c/v
+ * flags differ per path, so the typed function reports them for the adapter.
+ * r1 and lr are not here: they are either untouched or pure callee leftovers
+ * that the GUEST_CALL above already left sitting in the guest registers. */
+typedef struct {
+    u32 added;   /* r0: 0 = slot claimed, 1 = already listed or list full */
+    u32 r2;      /* duplicate/full: object field of the slot the scan stopped on;
+                    claim: the SetRequestBits callee's leftover r2 */
+    u32 r3;      /* duplicate/full: slots left in the scan; claim: the new kind */
+    u32 cmp_a;   /* the adapter runs SET_FLAGS_CMP(cmp_a, cmp_b) to restore c/v */
+    u32 cmp_b;
+} AddStatusResult;
+
+/* Claim a status slot for `object` (guest address of a battle object),
+ * storing the two caller bytes beside it.  The first free slot wins; if the
+ * object already owns a slot, or all four slots are taken, nothing is
+ * written.  A successful claim pokes request bit 4 so the UI rebuilds. */
+static AddStatusResult status_list_add(u32 param0, u32 param1, u32 object)
+{
+    AddStatusResult out;
+    u32 slot = STATUS_LIST;
+    u32 slots_left = STATUS_SLOTS;   /* the countdown the original keeps in r3 */
+    u32 owner = 0;                   /* object field of the slot the scan stops on */
+    bool duplicate = false;
+
+    while (LD8(slot + oStatus_Kind) != STATUS_KIND_FREE) {
+        owner = LD32(slot + oStatus_Object);
+        if (owner == object) {       /* the object already has a slot */
+            duplicate = true;
+            break;
+        }
+        slot += STATUS_SLOT_SIZE;
+        slots_left--;
+        if (slots_left == 0)         /* all four slots are in use */
+            break;
+    }
+
+    if (duplicate || slots_left == 0) {
+        out.added = 1;
+        out.r2 = owner;              /* the slot's object field the scan stopped on */
+        out.r3 = slots_left;         /* 0 when the list was full */
+        out.cmp_a = 0;               /* last flag op was an equal cmp / a 1-1 sub: C=1, V=0 */
+        out.cmp_b = 0;
+        return out;
+    }
+
+    u16 name_id = LD16(object + oBattleObject_NameID);
+    u8 kind = STATUS_KIND_NORMAL;
+    if (name_id == 0xEB || (name_id >= 0x49 && name_id <= 0x4E))
+        kind = STATUS_KIND_SPECIAL;  /* a few special name IDs use the other kind */
+
+    ST16(slot + oStatus_NameID, name_id);
+    ST8(slot + oStatus_Kind, kind);
+    ST8(slot + oStatus_Param0, param0);
+    ST8(slot + oStatus_Param1, param1);
+    ST16(slot + oStatus_HP, LD16(object + oBattleObject_HP));
+    ST32(slot + oStatus_Unk10, 0x0B0B0B0B);
+    ST32(slot + oStatus_Object, object);
+    ST8(slot + oStatus_Unk08, 0);
+    ST8(slot + oStatus_Unk09, 0);
+
+    out.added = 0;
+    out.r2 = request_status_ui_refresh(STATUS_UI_REQUEST);
+    out.r3 = kind;                   /* r3 still holds the kind across the call */
+    out.cmp_a = name_id;             /* the name-ID compares are the last flag setters */
+    out.cmp_b = 0x4E;
+    return out;
+}
+
+/* sub_801DC7C(r0 = param0, r1 = param1, r5 = battle object) -> r0.
+ * r1 and lr are never written back: the original returns via
+ * pop {r4,r6,r7,pc}, so on a claim the caller sees the SetRequestBits
+ * callee's leftover r1/lr (which the GUEST_CALL already left in place),
+ * and on the other paths both registers are simply unchanged. */
+Next sub_801DC7C(void) {
+    AddStatusResult out = status_list_add(R0, R1, R5);
+    R0 = out.added;
+    R2 = out.r2;
+    R3 = out.r3;
+    SET_FLAGS_CMP(out.cmp_a, out.cmp_b);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_801DD34 ── */
 /* sub_801DD34(r5 = search id):
  * Scan the four 0x14-byte records at byte_203EB50 and clear the first
@@ -1933,6 +2388,89 @@ Next battle_redrawCommandMenuWindow_801E1A4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801E1E4 ── */
+/* sub_801E1E4: redraw the backdrop strip of an on-screen window object.
+ * r5 points at the owning object; the byte at +0xC selects the layout:
+ *   2          -> narrow strip, and the dispatcher is NOT notified
+ *   anything   -> dispatcher gets flag 0x400 first, then the full-width strip
+ * Afterwards bit 0x100 is set in the flag word kept for the struct at
+ * 0x2035280 (marks the background as drawn/dirty). */
+
+/* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet.
+ * r4-r6 are put back afterwards: the original keeps them in a single push/pop
+ * frame for its whole body, so their entry values must cross every guest call. */
+static void dispatch_notify(u32 flags) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6;
+    R0 = flags;
+    GUEST_CALL(dispatch_801DACC);
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+}
+
+/* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet.
+ * Its last two operands (j_size, i_size) travel in r4/r5 rather than on the
+ * stack, so r4-r6 are restored around the call exactly the way the original's
+ * push {r4-r6} ... pop {r4-r6} frame does. */
+static void copy_background_tiles_sub_801E1E4(u32 j, u32 i, u32 tile_block_32x32,
+                                  const u16 *tile_ids, u32 j_size, u32 i_size) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6;
+    R0 = j;
+    R1 = i;
+    R2 = tile_block_32x32;
+    R3 = (u32)tile_ids;
+    R4 = j_size;
+    R5 = i_size;
+    GUEST_CALL(CopyBackgroundTiles);
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+}
+
+/* register form: calls flagSetBits_eStruct2035280_801BEB8 outside this file, which has no typed C interface yet.
+ * It leaves r3-r6 alone, and being the final guest call of the function, its
+ * leftovers in r0-r3 and lr are precisely the outputs callers observe. */
+static void set_flag_bits_sub_801E1E4(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(flagSetBits_eStruct2035280_801BEB8);
+}
+
+/* Draw the two-row backdrop strip for the window object at `self`.
+ *
+ * State byte +0xC == 2 keeps the narrow strip: 8 tiles wide starting at
+ * column 11, tile table word_801EE58. Any other value first hands flag 0x400
+ * to dispatch_801DACC, then draws the full 17-tile strip from column 7 with
+ * tile table word_801EE14. Either way, finish by setting bit 0x100 in the
+ * flag word of the struct at 0x2035280. */
+static void draw_window_backdrop(u32 self) {
+    const u16 *tile_ids;
+    u32 tiles_cut = 9;               /* narrow layout drops 9 of the 17 tiles */
+
+    if (LD8(self + 0xC) != 2) {
+        tiles_cut = 0;               /* full-width layout */
+        dispatch_notify(1u << 10);   /* flag 0x400 */
+        tile_ids = (const u16 *)A_word_801EE14;
+    } else {
+        tile_ids = (const u16 *)A_word_801EE58;
+    }
+
+    copy_background_tiles_sub_801E1E4(7 + tiles_cut / 2,  /* left edge column j    */
+                          2,                  /* top edge row i        */
+                          3,                  /* which 32x32 tile block */
+                          tile_ids,
+                          17 - tiles_cut,     /* width in tiles        */
+                          2);                 /* height in tiles       */
+
+    set_flag_bits_sub_801E1E4(1u << 8);          /* bit 0x100 */
+}
+
+/* sub_801E1E4(r5 = window object) -> r0-r3 and lr carry the last callee's
+ * leftovers; r4-r12 are returned unchanged. */
+Next sub_801E1E4(void) {
+    draw_window_backdrop(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── eStruct2035280_DrawMessageMode_801E228 ── */
 /* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
 static void call_dispatch_801DACC(u32 flags) {
@@ -1996,6 +2534,92 @@ Next eStruct2035280_DrawMessageMode_801E228(void) {
     R5 = r5_save;
     R6 = r6_save;
     R7 = r7_save;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801E4B0 ── */
+/* sub_801E4B0: scan the four u16 slots at +0x28 of the struct passed in r5
+ * (0xFF marks the end of the used slots; values above 8 count as 8). Each
+ * filled slot is handed to the IWRAM handler call_sub_3005EBA twice - first
+ * with mode 0 and a five-word parameter block on the stack, then with mode 3,
+ * keeping only the saved slot offset on the stack. Afterwards bit 0x2000 is
+ * cleared in the state flag word at 0x20352C4; r0-r3 end up as that flag
+ * helper leaves them, exactly like the original. */
+
+#define SLOT_TABLE_OFFSET 0x28   /* four u16 slots in the struct from r5 */
+#define SLOT_TABLE_ENTRIES 4
+#define SLOT_EMPTY 0xFF
+
+/* register form: calls call_sub_3005EBA outside this file, which has no typed C
+ * interface yet. It is invoked twice per slot: besides r0-r3 it is handed
+ * further values in r4-r6 and reads a parameter block that the original builds
+ * by hand on the guest stack, with the slot offset saved just above that block
+ * so the second call finds it as its only stack word - so the whole call
+ * sequence, including the SP pushes, is staged here. */
+static void dispatch_slot_pair(u32 pos, u32 slot_offset, u32 level, u32 slot_addr) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6;
+
+    SP -= 24;                        /* parameter block plus saved slot offset */
+    ST32(SP, pos);
+    ST32(SP + 4, slot_offset);
+    ST32(SP + 8, 0);
+    ST32(SP + 12, level + 1);
+    ST32(SP + 16, 2);
+    ST32(SP + 20, slot_offset);
+
+    R0 = pos;                        /* first call: mode 0 */
+    R1 = slot_offset;
+    R2 = 0;
+    R3 = 0;
+    R4 = level + 1;
+    R5 = 2;
+    R6 = slot_addr;
+    GUEST_CALL(call_sub_3005EBA);
+
+    SP += 20;                        /* drop the block, keep the saved offset */
+    R0 = pos;                        /* second call: mode 3 */
+    R1 = slot_offset;
+    R2 = 3;
+    R3 = 0;
+    R4 = level + 1;
+    R5 = 2;
+    R6 = slot_addr;
+    GUEST_CALL(call_sub_3005EBA);
+
+    SP += 4;
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+}
+
+/* register form: calls flags_clearBits_20352C4_801BEC2 outside this file,
+ * which has no typed C interface yet. */
+static void clear_state_flag_bits(u32 bits) {
+    R0 = bits;
+    GUEST_CALL(flags_clearBits_20352C4_801BEC2);
+}
+
+/* Fire the handler for every filled slot of the table, then clear the flag
+ * bit that gates this whole feature. */
+static void run_slot_table(u32 owner) {
+    u32 slot_addr = owner + SLOT_TABLE_OFFSET;
+    for (u32 slot_offset = 0; slot_offset < SLOT_TABLE_ENTRIES * 2;
+         slot_offset += 2, slot_addr += 2) {
+        u32 value = LD16(slot_addr);
+        if (value == SLOT_EMPTY)
+            break;                   /* first unused slot ends the scan */
+        u32 level = value;
+        if (level >= 9)
+            level = 8;               /* slot values are meant to stay in 0..8 */
+        dispatch_slot_pair(0x1D - level, slot_offset, level, slot_addr);
+    }
+    clear_state_flag_bits(1u << 13);
+}
+
+/* sub_801E4B0(r5 = owner struct; lr is the return address, r10 passes through,
+ * r0-r3 are whatever the flag helper last left in them). */
+Next sub_801E4B0(void) {
+    run_slot_table(R5);
     RETURN_TO_CALLER();
 }
 

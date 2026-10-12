@@ -169,6 +169,60 @@ Next ai_attackState_SetupSpecial_8112FBA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ai_8113038 ── */
+#define ANIM_END_MARKER 0x80 /* frame-parameter bit marking the end of an animation */
+
+/* register form: calls sprite_getFrameParameters outside this file, which has no typed C interface yet */
+static u32 sprite_frame_params(u32 anim) {
+    R0 = anim;
+    GUEST_CALL(sprite_getFrameParameters);
+    return R0;
+}
+
+/* register form: calls object_exitAttackState outside this file, which has no typed C interface yet */
+static u32 exit_attack_state(u32 frames_left, u32 r1_in) {
+    R0 = frames_left; /* the expired countdown, as the original passes it */
+    R1 = r1_in;       /* the original's end-marker mask is still in r1 here */
+    GUEST_CALL(object_exitAttackState);
+    return R1;        /* this call decides the r1 ai_8113038's caller sees */
+}
+
+/* Advance a battle object's attack state by one frame (its AIAttackVars at `attack`).
+ * The first frame marks the attack started, switches the object to animation 3
+ * and loads the duration from Unk_18 into the countdown at Unk_10.  Each frame,
+ * a running animation is stopped once its frame parameters report the end
+ * marker, and when the countdown expires the object leaves the attack state.
+ * Returns the value to leave in r1 (an output of the original): the end-marker
+ * mask once the animation check has run, otherwise the incoming r1 or whatever
+ * the exit call left in it. */
+static u32 step_attack_state(u32 object, u32 attack, u32 r1) {
+    if (LD8(attack + oAIAttackVars_Unk_01) == 0) {
+        /* first frame of the attack */
+        ST8(attack + oAIAttackVars_Unk_01, 1);
+        ST8(object + oBattleObject_CurAnim, 3);
+        ST16(attack + oAIAttackVars_Unk_10, LD16(attack + oAIAttackVars_Unk_18));
+    }
+
+    u32 anim = LD8(object + oBattleObject_CurAnim);
+    if (anim != 0) {
+        r1 = ANIM_END_MARKER; /* the original builds its test mask in r1, which callers read */
+        if (sprite_frame_params(anim) & ANIM_END_MARKER)
+            ST8(object + oBattleObject_CurAnim, 0); /* animation finished: stop it */
+    }
+
+    u32 frames_left = LD16(attack + oAIAttackVars_Unk_10) - 1;
+    ST16(attack + oAIAttackVars_Unk_10, (u16)frames_left);
+    if ((s32)frames_left <= 0)
+        r1 = exit_attack_state(frames_left, r1); /* countdown expired: leave the attack state */
+    return r1;
+}
+
+/* ai_8113038(r5 = battle object, r7 = its AI attack vars) -> r1 */
+Next ai_8113038(void) {
+    R1 = step_attack_state(R5, R7, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81130E4 ── */
 /* sub_81130E4:
  *   inputs:  r4 r5 r10 lr
