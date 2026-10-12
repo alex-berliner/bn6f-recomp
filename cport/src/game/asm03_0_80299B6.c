@@ -323,7 +323,7 @@ Next countUnmaskedEventFlags_8029EC8(void) {
         if (ZERO_FLAG())
             continue; /* flag not set: doesn't count */
 
-        u32 maskBits = LD32(LD32(A_dword_20349A0));
+        u32 maskBits = LD32(A_dword_20349A0);
         u32 maskBit = (1u << i) << 5;
         if ((maskBits & maskBit) == 0)
             count++; /* set and not yet masked out */

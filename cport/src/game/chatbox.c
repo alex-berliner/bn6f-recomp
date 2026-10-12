@@ -2875,7 +2875,7 @@ static u32 chatbox_advance(u32 script_ptr, u32 chatbox) {
     call_CopyWords(src, dst, count);
 
     /* Advance the ring-buffer write slot. */
-    ST16(slot_field, slot_idx + 1);
+    ST16(slot_field, LD16(slot_field) + 1);   /* read again after the copy, as the original */
 
     /* Store cursor and new script position. */
     ST32(chatbox + oChatbox_TextScriptCursorPtr, dst);
@@ -2884,7 +2884,7 @@ static u32 chatbox_advance(u32 script_ptr, u32 chatbox) {
     ST32(chatbox + oChatbox_Unk_44, new_ptr);
 
     /* Save script position in the depth-indexed slot. */
-    ST32(chatbox + 0x140 + (depth - 1) * 4, new_ptr);
+    ST32(chatbox + 0x140 + (LD8(chatbox + oChatbox_Unk_05) - 1) * 4, new_ptr);
 
     return dst;
 }

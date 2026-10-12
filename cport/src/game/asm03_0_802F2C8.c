@@ -3316,21 +3316,17 @@ Next battle_calcRelPosToTarget_803172E(void) {
     R6 = pos;
     R0 = A_dword_200F3E0;
 
-    s32 relX     = (s32)LD32(pos) >> 15;
-    s32 relY     = (s32)LD32(pos + 4) >> 15;
-    s32 nextRelX = (s32)LD32(pos + 0xC) >> 15;
-    s32 nextRelY = (s32)LD32(pos + 0x10) >> 15;
-
-    R7 = relX - targetX;
+    /* each word is read just before its store, as the original: pos may point into dword_200F3E0 */
+    R7 = ((s32)LD32(pos) >> 15) - targetX;
     ST32(A_dword_200F3E0, R7);
 
-    R7 = relY - targetY;
+    R7 = ((s32)LD32(pos + 4) >> 15) - targetY;
     ST32(A_dword_200F3E0 + 4, R7);
 
-    R7 = nextRelX - targetX;
+    R7 = ((s32)LD32(pos + 0xC) >> 15) - targetX;
     ST32(A_dword_200F3E0 + 0xC, R7);
 
-    R7 = nextRelY - targetY;
+    R7 = ((s32)LD32(pos + 0x10) >> 15) - targetY;
     ST32(A_dword_200F3E0 + 0x10, R7);
 
     RETURN_TO_CALLER();
