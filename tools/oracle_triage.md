@@ -101,3 +101,20 @@ differing state of a readable function as out of domain when the port's lifted o
 either (`difftest -G` with `ORACLE_LIFTED=1` on that one snapshot says "out of domain"), the rule the
 difftest applies to random inputs the original cannot run. Not with `--lifted`. Of the four states
 above it explains this one and none of the other three.
+
+## Full verify 2026-10-12: one difference, IWRAM data relocated to ROM
+
+After the installs of 10-11/12 (old-prompt sets 12-25, typed sets 81-91), the full verify
+verify-20261012-015023 (bd5770c: all 2,346 readable functions, 16 routes) passed both difftests and
+lockstep; the oracle found one differing state, in battle_objectDispatchPanelChange_80C6CFC. Not the
+readable code: its lifted original (`ORACLE_LIFTED=1`) differs the same way. The random r2 is
+0x03007DA0 (a stack address), which object_setPanelType stores as panel type 0xA0;
+_object_updatePanelParameters then ORs in word 0xA0 of its 13-entry table at 0x03007924, i.e. the
+word at 0x03007BA4. On the GBA that is IWRAM (0 in this state); the lifted code reads IWRAM data from
+its ROM source (`IWRAM_ROM`), where 0x081D80A4 holds 0x6158, so the panel flags byte is 0xF8 instead
+of 0xA0 (0x02039C14). Real calls pass a panel type of 0-12 (a byte from the object). Same class as
+sub_802C5E6/sub_802C646 above, reached through an index past the table.
+
+The same verify's predecessors found two real (if out-of-game) differences, both fixed: Sio32IDInit
+(a shift by 32 or more is 0 on the ARM, not count mod 32: bb36704) and
+battle_objectDispatchPanelChange_80C6CFC itself (it switched on the low byte of r2: bd5770c).
