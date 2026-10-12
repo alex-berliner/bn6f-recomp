@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
     unsigned test_frames = test_env ? (unsigned)atoi(test_env) : 0, last_digest = ~0u;
     unsigned rng = 12345, test_keys = 0;
     unsigned latched = 0x3FF, written = 0x3FF, prev_when = 0, events = 0, frames_run = 0;
-    unsigned held = 0x3FF, when = 0;
+    unsigned held = 0x3FF, when = 0, wrap_base = 0;
     int first = 1, paused = 0, recording = 1;
     Uint64 next = SDL_GetPerformanceCounter();
     const double tick = SDL_GetPerformanceFrequency() / FPS;
@@ -353,8 +353,12 @@ int main(int argc, char **argv) {
                 test_keys = (rng >> 8) & 0xFB;  /* A B START RIGHT LEFT UP DOWN; never SELECT */
             held = 0x3FF & ~test_keys;
         }
-        /* The same game-frame timeline as mgba_run's replay. */
-        when = core->busRead16(core, core->busRead32(core, GAME_FRAME_ADDR));
+        /* The same game-frame timeline as mgba_run's replay: the u16 counter,
+         * continued past its wrap at 65535. */
+        unsigned raw = core->busRead16(core, core->busRead32(core, GAME_FRAME_ADDR));
+        if (!first && raw < (prev_when & 0xFFFF) && (prev_when & 0xFFFF) - raw > 0x8000)
+            wrap_base += 0x10000;
+        when = wrap_base + raw;
         if (first || when != prev_when) {
             if (!first && when < prev_when && recording) {
                 recording = 0;

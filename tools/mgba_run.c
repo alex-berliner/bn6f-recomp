@@ -214,6 +214,25 @@ static void ce_count(uint32_t site, uint32_t target, uint32_t lr) {
     ce_lost++;
 }
 
+/* The game's frame counter (a u16 behind a pointer at ADDR), unwrapped: when it
+ * reads lower than before (the wrap past 65535) counting continues upward
+ * from the previous value, so a trace longer than 65536 game frames keeps
+ * one increasing timeline. Traces that never wrap see the raw counter. */
+static unsigned gc_base, gc_last;   /* file scope: --resume-game-frame sets them after --load-state */
+static unsigned game_counter(struct mCore *core, unsigned long addr) {
+    unsigned c = core->busRead16(core, core->busRead32(core, addr));
+    if (c < gc_last)
+        gc_base += gc_last + 1 - c;
+    gc_last = c;
+    return gc_base + c;
+}
+
+/* What game_counter would return now, without moving its state (for reads in mid-frame). */
+static unsigned game_counter_peek(struct mCore *core, unsigned long addr) {
+    unsigned c = core->busRead16(core, core->busRead32(core, addr));
+    return c < gc_last ? gc_base + gc_last + 1 : gc_base + c;
+}
+
 int main(int argc, char **argv) {
     const char *rom = NULL, *input = NULL, *shots = NULL, *bios = NULL, *dump = NULL;
     unsigned frames = 600, every = 0, bios_intro = 0;
@@ -229,6 +248,12 @@ int main(int argc, char **argv) {
     /* --load-state FILE / --save-state FILE: start from / end with an mGBA
      * save state (for building input traces step by step). */
     const char *load_state = NULL, *save_state = NULL;
+    /* --resume-game-frame G (with --load-state of a state saved at game frame G, e.g. by
+     * --save-state-every): the unwrapped game frame counter goes on from G, and --poke-at writes
+     * before G (already in the state) are skipped. --save-state-every N PREFIX: save a state at the
+     * start of the first hardware frame of every game frame that is a multiple of N, as
+     * PREFIX_GGGGGGG.state (checkpoints to resume a long trace from). */
+    unsigned long resume_g = 0, save_every = 0, next_save = 0; const char *save_prefix = NULL;
     /* --save FILE: start with this save memory (a private copy; the file is
      * never written). Traces recorded from a save carry it as NAME.sav. */
     const char *save_file = NULL;
@@ -251,9 +276,21 @@ int main(int argc, char **argv) {
      * and a port see the change at the same moment). Needs --profile-game
      * covering G (stepping). VALUE may be "*ADDR" (read at the write's
      * size) or "*ADDR^X" (that, XOR X). */
-    unsigned long poke_pc = 0, poke_g = 0;
-    const char *poke_spec = NULL;
-    int poked = 0;
+    /* repeatable: several writes, each at its own game frame (in order).
+     * G is the game frame counter at the start of the hardware frame, so where
+     * a write lands depends on the build's speed: a build still busy with game
+     * frame G's work when that hardware frame starts gets it at the end of G,
+     * one that had finished G at the end of G+1. --poke-live: G is the
+     * counter when PC is reached instead (with
+     * main_awaitFrame's entry, the game frame whose work just ended), the same
+     * point in every build; "at=" in the "poke" lines is that counter, so a
+     * replay of the original says where its writes landed. */
+    int poke_live = 0;
+    enum { MAX_POKES = 65536 };
+    static unsigned long poke_gs[MAX_POKES];
+    static const char *poke_specs[MAX_POKES];
+    unsigned long poke_pc = 0;
+    int npokes = 0, next_poke = 0;
     /* --trace-branches FILE: while stepping (--profile-game window), write
      * every non-sequential PC (branch target) with the game frame. */
     FILE *branch_trace = NULL;
@@ -327,12 +364,17 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--call-snaps")) { call_dir = argv[++i]; call_steps = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--dump-save")) dump_save = argv[++i];
         else if (!strcmp(argv[i], "--final-digest")) final_digest = 1;
+        else if (!strcmp(argv[i], "--poke-live")) poke_live = 1;
         else if (!strcmp(argv[i], "--poke-at")) {
-            poke_pc = strtoul(argv[++i], 0, 0); poke_g = strtoul(argv[++i], 0, 0); poke_spec = argv[++i];
+            poke_pc = strtoul(argv[++i], 0, 0);
+            if (npokes == MAX_POKES) { fprintf(stderr, "too many --poke-at\n"); return 1; }
+            poke_gs[npokes] = strtoul(argv[++i], 0, 0); poke_specs[npokes++] = argv[++i];
         }
         else if (!strcmp(argv[i], "--trace-branches")) branch_trace = fopen(argv[++i], "w");
         else if (!strcmp(argv[i], "--watch")) { watch_addr = strtoul(argv[++i], 0, 0); watch_len = strtoul(argv[++i], 0, 0); }
         else if (!strcmp(argv[i], "--save-state")) save_state = argv[++i];
+        else if (!strcmp(argv[i], "--resume-game-frame")) resume_g = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--save-state-every")) { save_every = strtoul(argv[++i], 0, 0); save_prefix = argv[++i]; }
         else if (!strcmp(argv[i], "--snap-exit")) snap_exit = 1;
         else if (!strcmp(argv[i], "--snap-keep-interrupted")) snapf_keep_interrupted = 1;
         else if (!strcmp(argv[i], "--snap-funcs")) {
@@ -434,6 +476,12 @@ int main(int argc, char **argv) {
         fclose(f);
         free(buf);
     }
+    if (resume_g && game_frame_addr) {   /* the counter reads resume_g now; earlier writes are in the state */
+        gc_last = core->busRead16(core, core->busRead32(core, game_frame_addr));
+        gc_base = (unsigned)resume_g - gc_last;
+        while (next_poke < npokes && poke_gs[next_poke] < resume_g) next_poke++;
+    }
+    if (save_every) next_save = (resume_g / save_every + 1) * save_every;
 
     if (call_dir) {
         DIR *d = opendir(call_dir);
@@ -615,7 +663,19 @@ int main(int argc, char **argv) {
          * same input at the same game state. */
         unsigned when = fr;
         if (game_frame_addr) {
-            when = core->busRead16(core, core->busRead32(core, game_frame_addr));
+            when = game_counter(core, game_frame_addr);
+            if (save_every && when >= next_save) {
+                char path[600];
+                snprintf(path, sizeof path, "%s_%07u.state", save_prefix, when);
+                size_t n = core->stateSize(core);
+                void *buf = malloc(n);
+                FILE *f = fopen(path, "wb");
+                if (!f || !core->saveState(core, buf) || fwrite(buf, 1, n, f) != n) fprintf(stderr, "cannot save state %s\n", path);
+                else printf("state game=%u hw=%u %s\n", when, fr, path);
+                if (f) fclose(f);
+                free(buf);
+                next_save = (when / save_every + 1) * save_every;
+            }
             if (shot_game && shots && when >= shot_game) {
                 char path[512];
                 snprintf(path, sizeof path, "%s/game_%06lu.ppm", shots, shot_game);
@@ -760,7 +820,7 @@ int main(int argc, char **argv) {
             break;
         }
         /* a pending --poke-at steps its frame on its own */
-        int poke_step = poke_spec && !poked && game_frame_addr && when + 1 >= poke_g;
+        int poke_step = next_poke < npokes && game_frame_addr && when + 1 + 2 * poke_live >= poke_gs[next_poke];
         if (pg_active || poke_step || ce_out) {
             /* step one hardware frame, attributing cycles to the PC */
             uint32_t f0 = core->frameCounter(core);
@@ -788,9 +848,10 @@ int main(int argc, char **argv) {
                         ce_next = u + ((cpsr & 0x20) ? 2 : 4);
                     }
                 }
-                if (poke_spec && !poked && when >= poke_g && ((uint32_t)pc & ~1u) == (poke_pc & ~1u)) {
+                unsigned at = next_poke < npokes && ((uint32_t)pc & ~1u) == (poke_pc & ~1u) ? game_counter_peek(core, game_frame_addr) : 0;
+                while (next_poke < npokes && (poke_live ? at : when) >= poke_gs[next_poke] && ((uint32_t)pc & ~1u) == (poke_pc & ~1u)) {
                     static char spec[16384];
-                    snprintf(spec, sizeof spec, "%s", poke_spec);
+                    snprintf(spec, sizeof spec, "%s", poke_specs[next_poke]);
                     for (char *t = strtok(spec, ","); t; t = strtok(NULL, ",")) {
                         uint32_t a = strtoul(t, &t, 0), v = 0, sz = 4;
                         if (*t == '=') t++;
@@ -807,9 +868,9 @@ int main(int argc, char **argv) {
                         if (sz == 1) core->busWrite8(core, a, v);
                         else if (sz == 2) core->busWrite16(core, a, v);
                         else core->busWrite32(core, a, v);
-                        printf("poke game=%u %08x=%x/%u\n", when, a, v, sz);
+                        printf("poke game=%u %08x=%x/%u at=%u\n", when, a, v, sz, at);
                     }
-                    poked = 1;
+                    next_poke++;
                 }
                 if (branch_trace && (uint32_t)pc != prev_pc + 2 && (uint32_t)pc != prev_pc + 4)
                     fprintf(branch_trace, "%u %08x\n", when, (uint32_t)pc);
@@ -1011,7 +1072,7 @@ done:
         static const struct { const char *n; unsigned base, size; } dr[] = {
             { "ewram", 0x02000000, 0x40000 }, { "pal", 0x05000000, 0x400 },
             { "vram", 0x06000000, 0x18000 }, { "oam", 0x07000000, 0x400 } };
-        unsigned when = game_frame_addr ? core->busRead16(core, core->busRead32(core, game_frame_addr)) : 0;
+        unsigned when = game_frame_addr ? game_counter(core, game_frame_addr) : 0;
         printf("final game=%u hw=%u", when, frames);
         for (unsigned r = 0; r < 4; r++) {
             unsigned long long h = 1469598103934665603ull;
