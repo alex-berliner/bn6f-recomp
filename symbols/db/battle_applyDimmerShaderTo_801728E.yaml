@@ -1,85 +1,80 @@
 name: battle_applyDimmerShaderTo_801728E
 address: '0x0801728E'
 kind: function
-status: probable
-summary: When battle state flag 0x40 is set and the current battle object is acting and belongs to an
-  alliance whose entry byte 0x50 is non-zero, applies a per-frame dimmer/flash shader to its sprite by
-  indexing a 32-step palette ramp with (battleStateUnk40 & 0x1F).
-interface: void battle_applyDimmerShaderTo_801728E(void /* implicit r3 */, void /* implicit r5 = battleObj
-  */, void /* implicit r10 */); /* returns shader-applied result via r3/r4; clobbers nzcv, r0, r1, lr;
-  preserves r4 */
-details: "Early-outs via locret_80172C0 if any of the three gates fail:\n  1. battle_testFlag0x40_800A8F8()\
-  \ == 0\n  2. battleObj->CurAction (oBattleObject_CurAction) == 0\n  3. getEntryPtr_2036120_1D0_802E070(alliance)->byte_0x50\
-  \ == 0\nOtherwise reads battle_getStateUnk40_800A704(), masks with 0x1F to get an index\ninto byte_80172C8\
-  \ (a 32-entry ramp 0,2,4..0x1E ramping up then down to 0; stored\ninline right after this function along\
-  \ with what looks like a stub byte_80A0C0E\nand constant 0x20406 referenced via the off_80172C4 word).\
-  \ The ramp value is\nexpanded to value + (value << 5) i.e. value * 33 (RGB555-ish: bit pattern\n0bbbbbgggggrrrrr\
-  \ with 5 bits of r/r and ~5 bits of g) and passed to\nsprite_setColorShader as the per-frame tint factor,\
-  \ producing the standard\nBN dimmer/brightness oscillation over the sprite.\nTouched structs/fields:\
-  \ oBattleObject_CurAction, oBattleObject_Alliance on the\nbattle object (r5); the alliance entry-table\
-  \ flag byte at offset 0x50; the global\n\"stateUnk40\" word.\nQuirks: r3/r4 are returned but only r3\
-  \ is meaningfully written (it is just\npropagated through); r10 input is ignored; the function does\
-  \ not touch its\ncaller's stack — it is a leaf dispatched from a battle per-frame hook and\nreturns\
-  \ via `pop {pc}`. Inline data following the code includes dword_80172E8\n= 0x173 and dword_80172EC =\
-  \ 0x17E which are not referenced in this snippet and\nlikely feed a sibling function.\n"
+status: confirmed
+summary: Applies a hit-flash darken shader to the sprite of the current acting battle object when the battle is
+  in the "enemy-being-hit" flag state.
+interface: "void battle_applyHitFlashShadeToActor_801728E(void);\n  // in:  r5 = battle object; r10 = unknown caller\
+  \ state; lr = return\n  // out: r3, r4 = (clobbered, used by caller); r10 preserved\n  // clobbers: nzcv r0, r1,\
+  \ lr\n  // preserved: r4\n"
+details: 'Early-outs if battle flag 0x40 is clear, or if the current battle object has no active action
+
+  (oBattleObject_CurAction == 0), or if the opposing entry''s 0x50 status byte is zero.
+
+  Reads battle_getStateUnk40_800A704, masks with 0x1F, and uses the result as an index into the
+
+  in-function table byte_80172C8 (32 entries: ramps up 0,2,4,...,0x1E then mirrors back down),
+
+  producing a brightness/dim shade index. The shade index is multiplied by 0x21 (i.e. 33) and
+
+  passed to sprite_setColorShader as the packed RGB shading value (R=shadeIdx, G=shadeIdx*2
+
+  mod 32, B=0) — a single-channel "darken" tint typical of a hit-flash.
+
+  Structures: oBattleObject (r5: oBattleObject_CurAction, oBattleObject_Alliance); battle-side
+
+  state at 0x02036120 (entry accessed via getEntryPtr_2036120_1D0_802E070, byte at +0x50);
+
+  battle_getStateUnk40_800A704 timer. Effect target: the sprite of the currently acting object.
+
+  Quirks: r4 is preserved across the call despite r3/r4 being output; r10 input is unused
+
+  inside. The 0x21 multiplier is the standard "shadeIdx -> 0x21 standard packing" conversion.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
 evidence:
 - method: readable-c
-  date: '2026-10-11'
-  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261011-005019);
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-233358);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm00_2_801728E.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c
-    sub_801728E
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 22' --file inbox_farm_old_22.c
+    battle_applyDimmerShaderTo_801728E
 - method: difftest
-  date: '2026-10-11'
+  date: '2026-10-12'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_801728E
+  reproduce: './wf capture --function battle_applyDimmerShaderTo_801728E
 
-    ./wf verify --function sub_801728E --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    300 out of domain (verify run convert-20261011-005019-verify-3)'
+    ./wf verify --function battle_applyDimmerShaderTo_801728E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-233358-verify-2)'
 - method: cpu-oracle
-  date: '2026-10-11'
+  date: '2026-10-12'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_801728E
+  reproduce: './wf capture --function battle_applyDimmerShaderTo_801728E
 
-    ./wf verify --function sub_801728E --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-005019-verify-3)
+    ./wf verify --function battle_applyDimmerShaderTo_801728E --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-233358-verify-2)
 - method: lockstep
-  date: '2026-10-11'
+  date: '2026-10-12'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_801728E
+  reproduce: './wf capture --function battle_applyDimmerShaderTo_801728E
 
-    ./wf verify --function sub_801728E --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-005019-verify-3)
+    ./wf verify --function battle_applyDimmerShaderTo_801728E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233358-verify-2)
 - method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
-    story4, story5, story6, story7, story8, story9.'
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
   reproduce: grep -l '^0801728e ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-11'
+- date: '2026-10-12'
   what: readable C replacement in cport/src/game/asm00_2_801728E.c
-  where: recomp 1a91c64
-  tool: tools/wf convert (minimax/MiniMax-M3)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm00_2_801728E.c after review against the assembly (the
-    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
-    that differs from the original: Output r3 is wrong on the full (shader) path. The contract lists r3
-    as an output. The original never writes r3 itself, so it returns with the r3 that sprite_setColorShader
-    leaves (`ldrb r3,[r5,#oObjectHeader_TypeAndSpriteOffset]; lsr/lsl #4; add r3,r3,r5`, which is r5 +
-    (TypeAndSpriteOffset & 0xF0)). The C adapter does `R3 = sub_801728E_core(R3, R5, R10);`. The core
-    returns its r3_in argument on e...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_801728E -> battle_applyDimmerShaderTo_801728E
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
+  where: recomp 44d7082
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm00_2_801728E.c
 coverage:
 - battle
 - battles1
@@ -98,16 +93,14 @@ coverage:
 - story8
 - story9
 open_questions:
-- What exactly is battle state "unk40" being used as a phase/beat counter here — a turn timer, an attack
-  windup clock, or a global effect phase?
-- What does the alliance entry byte at 0x50 represent (a "should dim" flag, a hidden/invisible flag, an
-  aura flag)?
-- The .word byte_80A0C0E and .word 0x20406 immediately after the ramp table seem to be referenced by off_80172C4
-  only insofar as they sit there; what function consumes them?
-- Is the 0x1F-masked index essentially repurposing a low-5-bit "in-game frame counter" so the dimmer oscillates
-  smoothly through the 32-entry ramp every ~32 frames?
+- What exactly oBattleObject_Alliance encodes (1=player/2=enemy?) and which entry is selected by getEntryPtr_2036120_1D0_802E070.
+- What the 0x50 status byte of the opposing entry represents (turn/condition flag?).
+- Whether battle_getStateUnk40_800A704 is the per-frame hit-flash timer or some other counter, and what value starts
+  the pulse.
+- Why the shader is only applied when the opposing entry's 0x50 byte is nonzero (e.g. enemy is alive / has been
+  targeted).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
 sources:
-- tools/wf run convert-20261011-005019
-- recomp 1a91c64
-previous_names:
-- sub_801728E
+- tools/wf run convert-20261011-233358
+- recomp 44d7082
