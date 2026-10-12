@@ -300,6 +300,120 @@ Next MapScriptCutsceneCmd_jump_if_flag_range_clear(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44 ── */
+/* Map-script command 0x8035b44 -- "coordinate trigger, not equal".
+ * Reads a signed operand byte, folds it (shifted into the top halfword) into the
+ * player's third coordinate word and asks checkCoordinateTrigger for the trigger
+ * value at the player's position.  While that value equals the next script byte
+ * the interpreter merely skips this 7-byte command (script pc += 7); once it
+ * differs the pc jumps to the word operand that follows.  Always answers 1
+ * ("keep interpreting"). */
+
+/* Raw player-object field offsets as in the disassembly. */
+#define PLAYER_COORD_X 0x1C
+#define PLAYER_COORD_Y 0x20
+#define PLAYER_COORD_Z 0x24
+
+/* Both halves of checkCoordinateTrigger_8031a7a's answer, as the callee leaves
+ * them in r0/r1; the command falls back to r1 when r0 comes back zero. */
+typedef struct {
+    u32 primary;   /* r0 */
+    u32 fallback;  /* r1 */
+} CoordinateTriggerAnswer;
+
+/* What the command leaves behind for the script interpreter. */
+typedef struct {
+    u32 script_pc; /* r7: where interpretation continues */
+    u32 status;    /* r0: always 1 ("keep running") */
+} MapScriptCommandResult;
+
+/* register form: calls ReadMapScriptSignedByte outside this file, which has no typed
+ * C interface yet (operand size in r6 = 2, result in r4, as the original relies on) */
+static u32 read_map_script_signed_byte(void) {
+    R6 = 2;
+    GUEST_CALL(ReadMapScriptSignedByte);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptByte outside this file, which has no typed C
+ * interface yet (operand size in r6 = 1, result in r4) */
+static u32 read_map_script_byte_MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44(void) {
+    R6 = 1;
+    GUEST_CALL(ReadMapScriptByte);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptWord outside this file, which has no typed C
+ * interface yet (operand size in r6 = 3, result in r4) */
+static u32 read_map_script_word_MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44(void) {
+    R6 = 3;
+    GUEST_CALL(ReadMapScriptWord);
+    return R4;
+}
+
+/* register form: calls checkCoordinateTrigger_8031a7a outside this file, which has
+ * no typed C interface yet (takes the coordinate triple by guest address) */
+static CoordinateTriggerAnswer check_coordinate_trigger(u32 coords_addr) {
+    CoordinateTriggerAnswer answer;
+    R0 = coords_addr;
+    GUEST_CALL(checkCoordinateTrigger_8031a7a);
+    answer.primary = R0;
+    answer.fallback = R1;
+    return answer;
+}
+
+/* Equal trigger value -> fall through past this command; not equal -> jump to the
+ * word operand. */
+static MapScriptCommandResult run_coordinate_trigger_not_equal(u32 script_pc /* r7 */,
+                                                               u32 toolkit /* r10 */,
+                                                               u32 return_addr /* lr on entry */) {
+    MapScriptCommandResult out;
+
+    /* register form: the whole command runs on the guest stack -- push {lr} saves
+     * the return address at SP_entry-4 and a 3-word coordinate buffer is placed
+     * below it; its guest address is handed to checkCoordinateTrigger and every
+     * callee must see the original's sp, so the writes land byte-for-byte alike */
+    SP -= 4;                            /* push {lr} */
+    ST32(SP, return_addr);
+
+    u32 operand = read_map_script_signed_byte();
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 player = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+    u32 x = LD32(player + PLAYER_COORD_X);
+    u32 y = LD32(player + PLAYER_COORD_Y);
+    u32 z = LD32(player + PLAYER_COORD_Z) + (operand << 16);
+
+    SP -= 12;                           /* coordinate triple below the saved lr */
+    ST32(SP, x);
+    ST32(SP + 4, y);
+    ST32(SP + 8, z);
+    CoordinateTriggerAnswer answer = check_coordinate_trigger(SP);
+    SP += 12;
+
+    /* The command uses the callee's r1 answer only when its r0 is zero. */
+    u32 trigger_value = answer.primary != 0 ? answer.primary : answer.fallback;
+
+    u32 compare_byte = read_map_script_byte_MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44();
+    if (trigger_value == compare_byte)
+        out.script_pc = script_pc + 7;            /* equal: skip this 7-byte command */
+    else
+        out.script_pc = read_map_script_word_MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44();   /* not equal: jump to the word operand */
+
+    SP += 4;                            /* pop {pc} */
+    out.status = 1;
+    return out;
+}
+
+/* 0x8035b44 (r7 = script pc, r10 = toolkit, lr = return address) -> r7, r0 = 1, nz */
+Next MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44(void) {
+    MapScriptCommandResult result = run_coordinate_trigger_not_equal(R7, R10, LR);
+    R7 = result.script_pc;
+    R0 = result.status;
+    SET_FLAGS_NZ(result.status);
+    RETURN_TO_CALLER();
+}
+
 /* ── MapScriptCmd_jump_if_coord_interaction_value_not_equal ── */
 /* MapScriptCmd_jump_if_coord_interaction_value_not_equal (0x08035BB2):
  * Map script command "jump if coord-interaction value != <byte>".
@@ -1004,6 +1118,51 @@ Next PlayMapMusic(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── StartCutscene ── */
+/* register form: calls ZeroFillByWord outside this file, which has no typed C interface yet */
+static void zero_fill_by_word(u32 dest, u32 num_bytes) {
+    R0 = dest;
+    R1 = num_bytes;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* Start a cutscene from the top of `script`, passing it `param`.
+ * `toolkit` is the Toolkit (kept in r10) that owns the cutscene state.
+ * Returns the default Unk_34 table -- the value the original leaves in r0. */
+static u32 start_cutscene(u32 toolkit, u32 script, u32 param) {
+    u32 state = LD32(toolkit + oToolkit_CutsceneStatePtr);
+
+    /* Wipe the whole cutscene state, then lay in the new script. */
+    zero_fill_by_word(state, oCutsceneState_Size);
+
+    ST32(state + oCutsceneState_CutsceneScriptPos, script);
+    ST32(state + oCutsceneState_originalCutsceneScriptPos_40, script);
+    ST32(state + oCutsceneState_Unk_04, param);
+
+    /* The three secondary script slots start out parked on the dummy script. */
+    ST32(state + oCutsceneState_CutsceneScriptPos2, A_DummyCutsceneScript);
+    ST32(state + oCutsceneState_CutsceneScriptPos3, A_DummyCutsceneScript);
+    ST32(state + oCutsceneState_CutsceneScriptPos4, A_DummyCutsceneScript);
+
+    /* Dialogue comes from the cutscene text archive; Unk_34 gets its default table. */
+    ST32(state + oCutsceneState_TextArchivePtr, A_eTextScript202DA04);
+    ST32(state + oCutsceneState_Unk_34, A_off_8036EC4);
+
+    return A_off_8036EC4;
+}
+
+/* StartCutscene(r0 = script, r1 = param, r10 = Toolkit) -> r0 = default Unk_34 table.
+ * r1 is preserved (the original pushes it across the fill call and pops it back);
+ * r2/r3 and the flags keep whatever ZeroFillByWord left behind, exactly as in the
+ * original, so they are not rewritten here. */
+Next StartCutscene(void) {
+    u32 script = R0;
+    u32 param = R1;
+    R0 = start_cutscene(R10, script, param);
+    R1 = param;
+    RETURN_TO_CALLER();
+}
+
 /* ── cutscene_end_8036ED4 ── */
 /* Script value the cutscene interpreter is parked on when a cutscene ends:
  * the "script position" marker consumed by the dummy cutscene script. */
@@ -1583,6 +1742,105 @@ static u32 end_cutscene_maybe_reload(void) {
 Next CutsceneCmd_end_for_map_reload_maybe_8037c64(void) {
     R0 = end_cutscene_maybe_reload();
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── CutsceneCmd_pause ── */
+/* register form: calls TestCutsceneFlag outside this file, which has no typed C interface yet */
+static bool cutscene_flag_set(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestCutsceneFlag);
+    return !ZERO_FLAG();          /* Z is set while the flag is clear */
+}
+
+/* register form: calls SetCutsceneFlag outside this file, which has no typed C interface yet */
+static void set_cutscene_flag_CutsceneCmd_pause(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(SetCutsceneFlag);
+}
+
+/* register form: calls ClearCutsceneFlag outside this file, which has no typed C interface yet */
+static void clear_cutscene_flag_CutsceneCmd_pause(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(ClearCutsceneFlag);
+}
+
+/* register form: calls ReadMapScriptByte outside this file, which has no typed C interface yet
+ * (it receives its selector in r6 - the original passes 1 for the command's operand byte and 2
+ * for the immediate byte behind an 0xFF escape - and returns the byte it read in r4) */
+static u32 read_map_script_byte_CutsceneCmd_pause(u32 selector) {
+    R6 = selector;
+    GUEST_CALL(ReadMapScriptByte);
+    return R4;
+}
+
+#define PAUSE_OPERAND_IMMEDIATE 0xFF   /* operand byte meaning "length follows inline" */
+
+/* What one tick of the pause command leaves in registers for the script interpreter. */
+struct PauseCmdResult {
+    u32 timer_offset;   /* r1: offset of this script's pause timer inside the cutscene state */
+    u32 duration;       /* r4: pause length, carried in r4 across ticks */
+    u32 command_ptr;    /* r7: script read pointer, moved past the command once it finishes */
+    bool finished;      /* r0/nz: 1 when the pause expired and the script may continue */
+};
+
+/* CutsceneCmd_pause: hold this cutscene script for a number of ticks.
+ * On the first tick the script's pause flag is raised and the length operand is read -
+ * either an index into the cutscene state or, after an 0xFF escape byte, an inline
+ * immediate - and stored as the pause timer. Every tick (the first included) counts
+ * that timer down; when it runs past zero the flag is cleared and the read pointer
+ * skips the 3-byte command so interpretation continues with the next one. */
+static struct PauseCmdResult cutscene_cmd_pause(u32 cutscene, u32 command_ptr, u32 duration)
+{
+    struct PauseCmdResult result;
+
+    /* Which of the two script slots this state runs offsets both its flag and its timer. */
+    u32 which = LD8(cutscene + oCutsceneState_WhichCutsceneScript);
+    u32 pause_flag = which + CUTSCENE_FLAG_SCRIPT_1_PAUSED;
+    u32 timer_offset = which + oCutsceneState_CutsceneScript1PauseTimer;
+
+    if (!cutscene_flag_set(pause_flag)) {
+        /* Pause not armed yet: raise the flag and fetch the length operand. */
+        set_cutscene_flag_CutsceneCmd_pause(pause_flag);
+
+        u32 operand = read_map_script_byte_CutsceneCmd_pause(1);
+        if (operand != PAUSE_OPERAND_IMMEDIATE)
+            duration = LD8(cutscene + operand);   /* indexed length held in the state */
+        else
+            duration = read_map_script_byte_CutsceneCmd_pause(2);   /* escaped: the length byte follows */
+
+        ST8(cutscene + timer_offset, duration);
+    }
+
+    /* Every tick, including the one that armed it, decrements the timer. */
+    u8 timer = LD8(cutscene + timer_offset);
+    ST8(cutscene + timer_offset, timer - 1);
+
+    bool expired = (timer == 0);   /* 0 - 1 underflows: the pause has run out */
+
+    result.timer_offset = timer_offset;
+    result.duration = duration;
+    result.finished = expired;
+
+    if (expired) {
+        /* End the pause and resume with the command after this one. */
+        clear_cutscene_flag_CutsceneCmd_pause(pause_flag);
+        command_ptr += 3;          /* skip the 3-byte pause command */
+    }
+    result.command_ptr = command_ptr;
+
+    return result;
+}
+
+/* CutsceneCmd_pause(r5 = cutscene state, r7 = script read pointer, r4 = carried pause
+ * length) -> nz, r1, r4, r7 */
+Next CutsceneCmd_pause(void) {
+    struct PauseCmdResult r = cutscene_cmd_pause(R5, R7, R4);
+    R1 = r.timer_offset;
+    R4 = r.duration;
+    R7 = r.command_ptr;
+    R0 = r.finished;
+    SET_FLAGS_NZ(r.finished);
     RETURN_TO_CALLER();
 }
 
@@ -2399,6 +2657,143 @@ Next CutsceneCmd_ow_player_sprite_special_with_arg(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CutsceneCmd_move_player_in_facing_direction ── */
+/* Facing-direction step table in ROM (byte_8037CB4): signed (dx, dy) pairs indexed
+ * by the overworld player's facing direction -- 0x10 = full step, 0x08 = diagonal
+ * half step, negative = left/up.  Read straight from guest ROM like the original. */
+
+/* Opcode, duration reference, optional immediate duration byte, s16 speed. */
+#define MOVE_PLAYER_COMMAND_LENGTH 5
+
+/* What the command leaves in the cutscene interpreter's registers. */
+typedef struct {
+    u32 status;    /* r0: 1 = command finished, 0 = still waiting */
+    u32 r4;        /* r4: step-table address once the move has started, else the value carried in */
+    u32 scriptPos; /* r7: cutscene-script cursor, advanced past the command when it finishes */
+} MovePlayerResult;
+
+/* register form: calls GetOWPlayerFacingDirection outside this file, which has no typed C interface yet */
+static u32 ow_player_facing_direction(void) {
+    GUEST_CALL(GetOWPlayerFacingDirection);
+    return R0;
+}
+
+/* register form: calls TestCutsceneFlag outside this file, which has no typed C interface yet */
+static bool cutscene_flag_is_set(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestCutsceneFlag);
+    return !ZERO_FLAG(); /* answers in Z: set means the flag is clear */
+}
+
+/* register form: calls SetCutsceneFlag outside this file, which has no typed C interface yet */
+static void set_cutscene_flag_CutsceneCmd_move_player_in_facing_direction(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(SetCutsceneFlag);
+}
+
+/* register form: calls ClearCutsceneFlag outside this file, which has no typed C interface yet */
+static void clear_cutscene_flag_CutsceneCmd_move_player_in_facing_direction(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(ClearCutsceneFlag);
+}
+
+/* register form: calls ReadMapScriptByte outside this file, which has no typed C interface yet
+ * (cutscene state in r5, 1-based parameter number in r6, script cursor in r7; the byte comes back in r4) */
+static u32 read_script_parameter_byte(u32 cutscene, u32 paramNumber, u32 scriptPos) {
+    R5 = cutscene;
+    R6 = paramNumber;
+    R7 = scriptPos;
+    GUEST_CALL(ReadMapScriptByte);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptSignedHalfword outside this file, which has no typed C interface yet
+ * (same register convention as ReadMapScriptByte; the halfword comes back in r4) */
+static u32 read_script_parameter_halfword(u32 cutscene, u32 paramNumber, u32 scriptPos) {
+    R5 = cutscene;
+    R6 = paramNumber;
+    R7 = scriptPos;
+    GUEST_CALL(ReadMapScriptSignedHalfword);
+    return R4;
+}
+
+/* register form: calls owPlayer_offsetS200ace0Coords_809e1fa outside this file, which has no typed C interface yet
+ * (the original always passes 0 as the third argument) */
+static void ow_player_add_special_coord_offset(s32 dx, s32 dy) {
+    R0 = (u32)dx;
+    R1 = (u32)dy;
+    R2 = 0;
+    GUEST_CALL(owPlayer_offsetS200ace0Coords_809e1fa);
+}
+
+/* Cutscene script command: glide the overworld player in the direction it is
+ * currently facing for a scripted number of frames (auto-walks, pushes, ...).
+ *
+ * First frame: latch the facing direction, raise cutscene flag 8 (glide in
+ * progress) and read the duration -- parameter 1 is either an offset into the
+ * cutscene state or 0xFF, meaning the duration is the immediate byte in
+ * parameter 2.  Every frame, including the first: read the signed 16-bit speed
+ * (parameter 3), scale it by the facing direction's (dx, dy) step and add it to
+ * the player's special overworld coordinates, then count the duration down.
+ * When it runs out, clear the flag, skip the whole 5-byte command in the script
+ * and report the command finished.
+ */
+static MovePlayerResult move_player_in_facing_direction(u32 cutscene, u32 scriptPos, u32 r4In) {
+    MovePlayerResult result;
+    result.status = 0;       /* "waiting" unless the move completes below */
+    result.r4 = r4In;        /* only overwritten once the player starts moving */
+    result.scriptPos = scriptPos;
+
+    /* Without a cutscene script this command does nothing but wait. */
+    if (LD8(cutscene + oCutsceneState_WhichCutsceneScript) == 0)
+        return result;
+
+    u32 facing = ow_player_facing_direction();
+
+    if (!cutscene_flag_is_set(CUTSCENE_FLAG_8)) {
+        /* First frame of the glide: mark it active and load the duration. */
+        set_cutscene_flag_CutsceneCmd_move_player_in_facing_direction(CUTSCENE_FLAG_8);
+        u32 duration = read_script_parameter_byte(cutscene, 1, scriptPos);
+        if (duration == 0xff)
+            duration = read_script_parameter_byte(cutscene, 2, scriptPos); /* immediate value */
+        else
+            duration = LD8(cutscene + duration); /* cutscene-state variable */
+        ST8(cutscene + oCutsceneState_OWPlayerCoordSpecialTimer, duration);
+    }
+
+    /* Parameter 3 is the per-frame speed; push the player along the facing
+     * direction's step vector (the original keeps the table address in r4). */
+    u32 speed = read_script_parameter_halfword(cutscene, 3, scriptPos) << 8;
+    s32 stepX = (s8)LD8(A_byte_8037CB4 + facing * 2);
+    s32 stepY = (s8)LD8(A_byte_8037CB4 + facing * 2 + 1);
+    ow_player_add_special_coord_offset((s32)(speed * stepX), (s32)(speed * stepY));
+    result.r4 = A_byte_8037CB4;
+
+    /* One frame less to go; the command keeps waiting while the count is positive. */
+    s32 framesLeft = (s32)LD8(cutscene + oCutsceneState_OWPlayerCoordSpecialTimer) - 1;
+    ST8(cutscene + oCutsceneState_OWPlayerCoordSpecialTimer, framesLeft);
+    if (framesLeft > 0)
+        return result;
+
+    /* Glide done: drop the flag and skip the whole command in the script. */
+    clear_cutscene_flag_CutsceneCmd_move_player_in_facing_direction(CUTSCENE_FLAG_8);
+    result.scriptPos = scriptPos + MOVE_PLAYER_COMMAND_LENGTH;
+    result.status = 1;
+    return result;
+}
+
+/* CutsceneCmd_move_player_in_facing_direction(r5 = cutscene state, r7 = script
+ * cursor, r4 = value carried in) -> r0/nz, r4, r7.  r1/r2 stay whatever the last
+ * guest call left behind. */
+Next CutsceneCmd_move_player_in_facing_direction(void) {
+    MovePlayerResult result = move_player_in_facing_direction(R5, R7, R4);
+    R0 = result.status;
+    R4 = result.r4;
+    R7 = result.scriptPos;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac ── */
 /* CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac:
  * Map-script cutscene command that sets the overworld player's fixed
@@ -2441,6 +2836,101 @@ Next CutsceneCmd_write_or_offset_ow_player_fixed_anim_select_8037dac(void) {
     R7 = R7 + 4;
     R0 = 1;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptSubCmd_spawn_ow_map_object ── */
+/* MapScriptSubCmd_spawn_ow_map_object (0x08037E4C): map script subcommand that
+ * spawns an overworld map object and records it in one of the cutscene state's
+ * 16 owMapObjectPtrs slots. */
+
+/* register form: calls ReadMapScriptByte outside this file, which has no typed C interface yet */
+static u32 read_map_script_byte_MapScriptSubCmd_spawn_ow_map_object(u32 command, u32 byte_offset) {
+    /* the script readers take the offset inside the current command in r6 and
+       the command pointer in r7, and leave the value they read in r4 */
+    R6 = byte_offset;
+    R7 = command;
+    GUEST_CALL(ReadMapScriptByte);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptHalfword outside this file, which has no typed C interface yet */
+static u32 read_map_script_halfword_MapScriptSubCmd_spawn_ow_map_object(u32 command, u32 byte_offset) {
+    R6 = byte_offset;
+    R7 = command;
+    GUEST_CALL(ReadMapScriptHalfword);
+    return R4;
+}
+
+/* register form: calls ReadMapScriptWord outside this file, which has no typed C interface yet */
+static u32 read_map_script_word_MapScriptSubCmd_spawn_ow_map_object(u32 command, u32 byte_offset) {
+    R6 = byte_offset;
+    R7 = command;
+    GUEST_CALL(ReadMapScriptWord);
+    return R4;
+}
+
+/* register form: calls SpawnOverworldMapObject outside this file, which has no typed C interface yet */
+static u32 spawn_overworld_map_object(u32 type, u32 halfword_3, u32 halfword_5, u32 halfword_7,
+                                      u32 word_9, u32 slot_address, u32 command) {
+    R0 = type;
+    R1 = halfword_3 << 16;   /* the halfword parameters ride in the top 16 bits of r1..r3 */
+    R2 = halfword_5 << 16;
+    R3 = halfword_7 << 16;
+    R4 = word_9;
+    R6 = slot_address;       /* the cutscene-state slot the new object belongs in */
+    R7 = command;
+    GUEST_CALL(SpawnOverworldMapObject);
+    return R5;               /* the new object's pointer comes back in r5 */
+}
+
+/* What the subcommand leaves for the script interpreter: r4 = the command's
+ * word parameter, r5 = the cutscene state pointer (unchanged), r7 = the script
+ * pointer past this 13-byte command.  r1/r2 are not carried here: the original
+ * just leaves whatever SpawnOverworldMapObject last put in them. */
+typedef struct {
+    u32 word_param;
+    u32 cutscene_state;
+    u32 next_command;
+} OwMapObjectSpawnResult;
+
+/* Handle the "spawn overworld map object" subcommand.
+ * cutscene_state (r5) is the running cutscene state, slot (r4) is the slot
+ * number taken from the script (only the low 4 bits count, selecting one of
+ * the 16 owMapObjectPtrs entries), command (r7) points at the current script
+ * command, laid out as:
+ *   +2        byte      object type
+ *   +3,+5,+7  halfword  parameters handed to the spawn, packed up top
+ *   +9        word      extra parameter */
+static OwMapObjectSpawnResult spawn_ow_map_object_from_script(u32 cutscene_state, u32 slot, u32 command) {
+    u32 slot_address = cutscene_state + oCutsceneState_owMapObjectPtrs_44 + (slot & 0xF) * 4;
+
+    u32 type       = read_map_script_byte_MapScriptSubCmd_spawn_ow_map_object(command, 2);
+    u32 halfword_3 = read_map_script_halfword_MapScriptSubCmd_spawn_ow_map_object(command, 3);
+    u32 halfword_5 = read_map_script_halfword_MapScriptSubCmd_spawn_ow_map_object(command, 5);
+    u32 halfword_7 = read_map_script_halfword_MapScriptSubCmd_spawn_ow_map_object(command, 7);
+    u32 word_9     = read_map_script_word_MapScriptSubCmd_spawn_ow_map_object(command, 9);
+
+    u32 object = spawn_overworld_map_object(type, halfword_3, halfword_5, halfword_7,
+                                            word_9, slot_address, command);
+    ST32(slot_address, object);   /* the slot now owns the spawned object */
+
+    OwMapObjectSpawnResult result;
+    result.word_param     = word_9;          /* r4: word parameter passed on to the interpreter */
+    result.cutscene_state = cutscene_state;  /* r5: the original preserves it */
+    result.next_command   = command + 13;    /* r7: skip the 13-byte command */
+    return result;
+}
+
+/* MapScriptSubCmd_spawn_ow_map_object(r4 = slot, r5 = cutscene state, r7 = script command)
+ * -> nz r1 r2 r4 r5 r7 */
+Next MapScriptSubCmd_spawn_ow_map_object(void) {
+    OwMapObjectSpawnResult r = spawn_ow_map_object_from_script(R5, R4, R7);
+    R4 = r.word_param;
+    R5 = r.cutscene_state;
+    R7 = r.next_command;
+    R0 = 1;            /* subcommand handled; "mov r0, #1" also sets the final nz */
+    SET_FLAGS_NZ(R0);  /* r1/r2 stay exactly as SpawnOverworldMapObject left them */
     RETURN_TO_CALLER();
 }
 
@@ -3089,6 +3579,184 @@ Next CutsceneCmd_do_camera_shake(void) {
     R0 = 1;
 
     LR = saved_lr;
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptCutsceneCmd_add_bbs_message_range ── */
+/* MapScriptCutsceneCmd_add_bbs_message_range (0x080382BA)
+ * Map-script cutscene command: add a range of BBS (bulletin-board) messages,
+ * then advance the script cursor (r7) past the 4-byte command:
+ *   +0 opcode, +1 u16 id of the first message, +3 u8 message count. */
+
+#define BBS_RANGE_FIRST_ID_OFFSET 1 /* u16 at command+1: first message id */
+#define BBS_RANGE_COUNT_OFFSET    3 /* u8 at command+3: how many to add   */
+#define BBS_RANGE_CMD_SIZE        4 /* bytes consumed by the command      */
+
+/* register form: calls ReadMapScriptHalfword outside this file, which has no typed C interface yet */
+static u32 read_map_script_halfword_MapScriptCutsceneCmd_add_bbs_message_range(u32 offset) {
+    /* Reads the u16 at command+`offset`; this helper answers in r4 instead of r0. */
+    R6 = offset;
+    GUEST_CALL(ReadMapScriptHalfword);
+    return R4;
+}
+
+/* What the byte reader hands back; the command consumes both. */
+typedef struct {
+    u32 start_id; /* r0: id the queued range starts from  */
+    s32 count;    /* r4: repeat count read from the script */
+} BbsMessageRange;
+
+/* register form: calls ReadMapScriptByte outside this file, which has no typed C interface yet */
+static BbsMessageRange read_map_script_byte_MapScriptCutsceneCmd_add_bbs_message_range(u32 start_id, u32 offset) {
+    BbsMessageRange range;
+    /* Reads the u8 at command+`offset`. The original calls it with the halfword in
+     * r0, starts its loop from the r0 it gets back, and takes the repeat count from
+     * the r4 it leaves behind — not from the earlier halfword read. */
+    R0 = start_id;
+    R6 = offset;
+    GUEST_CALL(ReadMapScriptByte);
+    range.start_id = R0;
+    range.count = (s32)R4;
+    return range;
+}
+
+/* register form: calls reqBBS_addBBSMessage_813e5dc outside this file, which has no typed C interface yet */
+static void queue_bbs_message(u32 message_id, u32 count_remaining) {
+    /* Queues one BBS message (r0 = id); the original enters this call with the id
+     * mirrored in r6 and the remaining count in r4. */
+    R0 = message_id;
+    R6 = message_id;
+    R4 = count_remaining;
+    GUEST_CALL(reqBBS_addBBSMessage_813e5dc);
+}
+
+/* What the command hands back through the adapter. */
+typedef struct {
+    u32 script_cursor; /* r7 out: advanced past the whole command            */
+    s32 messages_left; /* r4 out: counter remainder (0, or -1 if count was 0) */
+} BbsMessageRangeResult;
+
+/* Queue `count` consecutive BBS messages starting at `start_id`, then step the script
+ * cursor past the command. The body always runs at least once — the original only
+ * tests the counter after the first request — so a count of 0 still queues one
+ * message and leaves a remainder of -1. */
+static BbsMessageRangeResult add_bbs_message_range(u32 script_cursor) {
+    BbsMessageRangeResult result;
+    BbsMessageRange range;
+    u32 first_id;
+    u32 message_id;
+    s32 messages_left;
+
+    /* u16 at +1: id the range starts from, handed on to the byte reader in r0. */
+    first_id = read_map_script_halfword_MapScriptCutsceneCmd_add_bbs_message_range(BBS_RANGE_FIRST_ID_OFFSET);
+    /* u8 at +3: how many messages to add (count comes back in r4, start id in r0). */
+    range = read_map_script_byte_MapScriptCutsceneCmd_add_bbs_message_range(first_id, BBS_RANGE_COUNT_OFFSET);
+
+    message_id = range.start_id;
+    messages_left = range.count;
+    do {
+        queue_bbs_message(message_id, (u32)messages_left);
+        message_id++;
+        messages_left--;
+    } while (messages_left > 0);
+
+    result.script_cursor = script_cursor + BBS_RANGE_CMD_SIZE;
+    result.messages_left = messages_left;
+    return result;
+}
+
+/* MapScriptCutsceneCmd_add_bbs_message_range(r7 = script cursor)
+ * -> r0 = 1, r7 = cursor + 4, r4 = counter remainder, nz from r0 = 1;
+ *    r1/r2 keep whatever the last guest call left in them. */
+Next MapScriptCutsceneCmd_add_bbs_message_range(void) {
+    BbsMessageRangeResult result = add_bbs_message_range(R7);
+    R7 = result.script_cursor;
+    R4 = (u32)result.messages_left;
+    R0 = 1; /* command handled */
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptCutsceneCmd_add_mail_range ── */
+/* Cutscene script command "add mail range": queue a run of mails into the
+ * inbox.  The dispatcher hands the script cursor (this command's position in
+ * the script) in r7 and its leftover in r0; the operand readers are given
+ * that same cursor every time and never advance it -- the cursor moves only
+ * by the final +4 that steps past this 4-byte command.
+ *
+ * The readers (ReadMapScriptHalfword/Byte) take an argument in r0, an
+ * operand selector in r6 and the cursor in r7, and they do NOT preserve r4:
+ * the halfword read (whose own result in r0 is discarded) leaves a working
+ * value in r4 that is handed to the byte read in r0, and the byte read
+ * leaves the length of the mail run in r4.  The entry value of r4 is never
+ * used.  The loop tests after the first mail, so one mail is queued even
+ * for a zero length.  r1/r2 are command outputs only as leftovers of the
+ * last addMail call and are left alone here. */
+
+typedef struct {
+    s32 mailsLeft;     /* final r4: the run counter once the loop is done */
+    u32 scriptCursor;  /* final r7: the cursor stepped past this command */
+} MailRangeResult;
+
+/* register form: calls ReadMapScriptHalfword outside this file, which has no typed C interface yet */
+static u32 read_map_script_halfword_MapScriptCutsceneCmd_add_mail_range(u32 argument, u32 operand, u32 scriptCursor) {
+    R0 = argument;
+    R6 = operand;
+    R7 = scriptCursor;
+    GUEST_CALL(ReadMapScriptHalfword);
+    return R4;    /* the halfword itself (r0) is discarded; the reader's r4 output carries a working value on */
+}
+
+/* register form: calls ReadMapScriptByte outside this file, which has no typed C interface yet */
+static u32 read_map_script_byte_MapScriptCutsceneCmd_add_mail_range(u32 argument, u32 operand, u32 scriptCursor, s32 *runLengthOut) {
+    R0 = argument;
+    R6 = operand;
+    R7 = scriptCursor;
+    GUEST_CALL(ReadMapScriptByte);
+    *runLengthOut = (s32)R4;   /* the reader leaves the run length in r4 */
+    return R0;                 /* the byte read: the id of the first mail */
+}
+
+/* register form: calls addMail_802f238 outside this file, which has no typed C interface yet */
+static void add_mail(u32 mailId, s32 mailsLeft, u32 scriptCursor) {
+    R0 = mailId;    /* addMail takes the mail id in r0 and r6, the remaining
+                     * count in r4 and the cursor in r7; its r0/r1/r2 results
+                     * are not used by this command */
+    R4 = (u32)mailsLeft;
+    R6 = mailId;
+    R7 = scriptCursor;
+    GUEST_CALL(addMail_802f238);
+}
+
+static MailRangeResult add_mail_range(u32 commandArg, u32 scriptCursor) {
+    MailRangeResult result;
+    u32 mailId;
+    s32 runLength;
+    u32 workingValue;
+
+    /* operand 1: a halfword the command does not use */
+    workingValue = read_map_script_halfword_MapScriptCutsceneCmd_add_mail_range(commandArg, 1, scriptCursor);
+
+    /* operand 2: the id of the first mail of the run */
+    mailId = read_map_script_byte_MapScriptCutsceneCmd_add_mail_range(workingValue, 3, scriptCursor, &runLength);
+
+    /* queue mailId, mailId + 1, ... (always at least one mail) */
+    do {
+        add_mail(mailId, runLength, scriptCursor);
+        mailId++;
+    } while (--runLength > 0);
+
+    result.mailsLeft = runLength;
+    result.scriptCursor = scriptCursor + 4;   /* skip the rest of the command */
+    return result;
+}
+
+Next MapScriptCutsceneCmd_add_mail_range(void) {
+    MailRangeResult result = add_mail_range(R0, R7);   /* r0 rides through to the first operand read */
+    R4 = (u32)result.mailsLeft;
+    R7 = result.scriptCursor;
+    R0 = 1;            /* the command's status result */
+    SET_FLAGS_NZ(1);   /* mov r0, #1: Z clear, N clear */
     RETURN_TO_CALLER();
 }
 

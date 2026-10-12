@@ -8,6 +8,76 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── reqBBS_addBBSMessage_813e5dc ── */
+/* BBS (bulletin-board) message bookkeeping: event-flag ids and RAM tables
+ * used by reqBBS_addBBSMessage. */
+#define BBS_FLAG_FIRST      0x17A0         /* event-flag id of BBS message 0 */
+#define BBS_FLAG_SECOND     0x19A0         /* second flag range also marked when adding */
+#define BBS_FLAG_VALUE      2              /* value both flags are set to */
+#define BBS_BOARD_CAPACITY  64             /* message numbers logged per board */
+#define BBS_MESSAGE_LOG     A_byte_2001400 /* per board: 64 logged message numbers */
+#define BBS_WRITE_INDEX     A_unk_2000FC0  /* per board: u32 index of the next free log slot */
+
+/* The registers the original leaves behind for its caller. */
+typedef struct {
+    u32 writeIndex; /* r0: the board's write index after the append */
+    u32 indexTable; /* r1: base of the per-board write indexes */
+    u32 messageLog; /* r2: this board's 64 entries in the message log */
+} BbsAddResult;
+
+/* register form: calls SetEventFlag outside this file, which has no typed C interface yet */
+static void set_event_flag(u32 flag, u32 value) {
+    /* register form: the original pushes its caller's r3/r7 and pops them at
+     * the end, so both must survive this guest call; SetEventFlag may clobber
+     * the caller-saved r3, which plain typed C cannot express. */
+    u32 keepR3 = R3;
+    u32 keepR7 = R7;
+    R0 = flag;
+    R1 = value;
+    GUEST_CALL(SetEventFlag);
+    R3 = keepR3;
+    R7 = keepR7;
+}
+
+/* Add the message identified by event flag `flag`
+ * (BBS_FLAG_FIRST + board * 64 + number on that board) to its board:
+ * mark it in both flag ranges, then append its number to the board's log
+ * and bump the board's write index. */
+static BbsAddResult add_bbs_message(u32 flag) {
+    u32 message = flag - BBS_FLAG_FIRST;   /* message number over all boards */
+
+    set_event_flag(flag, BBS_FLAG_VALUE);
+    set_event_flag(BBS_FLAG_SECOND + message, BBS_FLAG_VALUE);
+
+    u32 board = message / BBS_BOARD_CAPACITY;
+    u32 number = message % BBS_BOARD_CAPACITY;
+
+    u32 boardLog = BBS_MESSAGE_LOG + board * BBS_BOARD_CAPACITY; /* this board's log */
+    u32 boardIndex = BBS_WRITE_INDEX + board * 4;                /* its u32 write index */
+
+    u32 nextSlot = LD32(boardIndex);
+    ST8(boardLog + nextSlot, number);   /* log the message number */
+    ST32(boardIndex, nextSlot + 1);     /* one log slot used up */
+
+    BbsAddResult result;
+    result.writeIndex = nextSlot + 1;
+    result.indexTable = BBS_WRITE_INDEX;
+    result.messageLog = boardLog;
+    return result;
+}
+
+/* reqBBS_addBBSMessage_813e5dc(r0 = event flag of the message) -> r0 r1 r2.
+ * r3 and r7 come back unchanged (the original pushed/popped them; the helper
+ * shields them around the guest calls) and lr stays as the last SetEventFlag
+ * call left it, exactly as in the original. */
+Next reqBBS_addBBSMessage_813e5dc(void) {
+    BbsAddResult result = add_bbs_message(R0);
+    R0 = result.writeIndex;
+    R1 = result.indexTable;
+    R2 = result.messageLog;
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_813E616 ── */
 /* reqBBS_813E616:
  * Reset the BBS (bulletin board) work areas: fill the board buffer at
