@@ -562,6 +562,74 @@ Next t4_0x12_80E1A90(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E1AB4 ── */
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E1AB4 0x8u
+#define CUR_STATE_UPDATE_sub_80E1AB4 0x4u
+/* sub_80E1AB4: Initialize a battle object sprite when it enters its action state.
+ * Inputs:  r5 = battle object pointer, lr = return address
+ * Outputs: r5 = battle object pointer (preserved)
+ * Clobbers: nz c v r0 r1 r2 r3 lr
+ */
+Next sub_80E1AB4(void) {
+    /* Position object using its panel coordinates. */
+    GUEST_CALL(object_setCoordinatesFromPanels);
+
+    /* Reset the 16-bit Z coordinate to 0. */
+    ST16(R5 + oBattleObject_Z16, 0);
+
+    /* Load sprite tile 0x80, with sub-tile info 8 / 0xC. */
+    R0 = 0x80;
+    R1 = 8;
+    R2 = 0xC;
+    GUEST_CALL(sprite_load);
+
+    /* Load the sprite's animation data and disable its shadow. */
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_noShadow);
+
+    /* Set the "flag 2" bit on the object's header. */
+    u8 Flags0 = LD8(R5);
+    ST8(R5, Flags0 | 2);
+
+    /* Set current animation to 0x0E (both the live copy and the saved copy). */
+    R0 = 0x0E;
+    ST8(R5 + oBattleObject_CurAnim, R0);
+    ST8(R5 + oBattleObject_CurAnimCopy, R0);
+    GUEST_CALL(sprite_setAnimation);
+    GUEST_CALL(sprite_loadAnimationData);
+
+    /* Use palette 0 and sync flip state with the object's facing. */
+    R0 = 0;
+    GUEST_CALL(sprite_setPalette);
+    GUEST_CALL(object_getFlip);
+    GUEST_CALL(sprite_setFlip);
+
+    /* Mark the object's state action phase as "update". */
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E1AB4, CUR_STATE_UPDATE_sub_80E1AB4);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E1AFA ── */
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E1AFA 0x8u
+/* sub_80E1AFA(r5 = BattleObject*, r10, lr):
+ * If the battle is over, set the battle object's state action phase to CUR_STATE_DESTROY.
+ *
+ *   inputs:  r5 r10 lr
+ *   outputs: -
+ *   clobbers: nz r0 r1 r3 lr
+ *   preserved: -
+ */
+Next sub_80E1AFA(void) {
+    GUEST_CALL(battle_isBattleOver);
+    if (R0 == 0) {
+        RETURN_TO_CALLER();
+    }
+
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E1AFA, CUR_STATE_DESTROY);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80E1B0A ── */
 /* sub_80E1B0A:
  *   inputs:  r5 lr

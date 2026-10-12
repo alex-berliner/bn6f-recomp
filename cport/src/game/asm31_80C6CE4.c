@@ -3146,6 +3146,49 @@ Next sub_80CE198(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CE1D6 ── */
+Next sub_80CE1D6(void) {
+    u8 phase = LD8(R5 + oBattleObject_CurPhase);
+
+    if (phase == 0) {
+        u32 self = R5;
+        u32 target = LD32(self + oBattleObject_RelatedObject1Ptr);
+        u32 amount = LD16(self + oBattleObject_Damage);
+        if (amount == 0)
+            amount = LD16(target + oBattleObject_MaxHP);
+
+        /* object_addHP expects r5 = target object. Save/restore self around it. */
+        R0 = amount;
+        R5 = target;
+        GUEST_CALL(object_addHP);
+        R5 = self;
+
+        R0 = SOUND_UNK_8A;
+        GUEST_CALL(PlaySoundEffect);
+
+        /* Pull 3 effect parameters from target + 0x34, advance R0 by 12 (ldmia r0!). */
+        u32 params_src = LD32(self + oBattleObject_RelatedObject1Ptr) + 0x34;
+        R1 = LD32(params_src);
+        R2 = LD32(params_src + 4);
+        R3 = LD32(params_src + 8);
+        R0 = params_src + 12;
+        R4 = 6;
+        GUEST_CALL(spawn_t1_0x0_EffectObject);
+
+        ST16(R5 + oBattleObject_Timer, 0x3C);
+        ST8(R5 + oBattleObject_CurPhase, 4);
+    } else {
+        u16 timer = LD16(R5 + oBattleObject_Timer) - 1;
+        ST16(R5 + oBattleObject_Timer, timer);
+        if (timer != 0)
+            RETURN_TO_CALLER();
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+             CUR_STATE_DESTROY);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80CE21C ── */
 /* sub_80CE21C(r5 = object, lr = return address):
  *   Free the object's allocated memory and return to caller. */

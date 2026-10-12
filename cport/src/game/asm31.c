@@ -2990,6 +2990,61 @@ Next t3_0x9_80C5DDC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C5E00 ── */
+/* sub_80C5E00(r5 = battleObject, r8 = ?, r10 = ?):
+ * Initialize a battle object's spawn state: position from panels, copy Param2 into Timer,
+ * build and present its collision data, and advance the state machine to CUR_STATE_UPDATE.
+ *   inputs:  r5 r8 r10 lr
+ *   outputs: r5 r8
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r5 r6 r7 */
+Next sub_80C5E00(void) {
+    /* Place the object according to its panel coordinates. */
+    GUEST_CALL(object_setCoordinatesFromPanels);
+
+    /* Param2 becomes the new Timer value. */
+    ST16(R5 + oBattleObject_Timer, LD8(R5 + oBattleObject_Param2));
+
+    /* Try to allocate collision data; bail and free the object on failure. */
+    GUEST_CALL(object_createCollisionData);
+    SET_FLAGS_CMP(R0, 0);
+    if (R0 == 0) {
+        GUEST_CALL(object_freeMemory);
+        RETURN_TO_CALLER();
+    }
+
+    /* Pick collision flags based on Param3:
+     *   0 -> 3, 1 -> 1, anything else -> 0. */
+    R3 = 3;
+    u8 param3 = LD8(R5 + oBattleObject_Param3);
+    if (param3 != 0) {
+        R3 = 1;
+        if (param3 != 1) {
+            R3 = 0;
+        }
+    }
+
+    /* hand = 0xA, group = 5, flags as chosen above. */
+    R1 = 0xA;
+    R2 = 5;
+    GUEST_CALL(object_setupCollisionData);
+
+    /* No hit effect. */
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    GUEST_CALL(object_setCollisionHitEffect);
+
+    GUEST_CALL(object_clearCollisionRegion);
+    GUEST_CALL(object_presentCollisionData);
+
+    /* Move into the running (update) phase of the state machine. */
+    R0 = CUR_STATE_UPDATE;
+    SET_FLAGS_NZ(R0);
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, R0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C5E44 ── */
 /* sub_80C5E44(r5 = battle object):
  * Per-frame collision step for a battle object. Removes the object's old

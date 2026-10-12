@@ -243,6 +243,56 @@ Next sub_800BDB2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800BDD0 ── */
+/* sub_800BDD0:
+ *   inputs:  r5 r10 lr
+ *   outputs: r5 r10
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r5 r6 r7 r10
+ *
+ * Drives the battle object's animation/phase logic for a specific action id range.
+ * If the object's Unk_30 maps into the 0xDD..0x118 window AND a paired table lookup
+ * returns 0xBA, we kick off a panel-targeted sub-animation (sub_800B884) and a
+ * panel-XY routine (sub_800ABC6), then set CurPhaseAndPhaseInitialized = 4.
+ * Otherwise we advance CurAction by 4 and zero out CurPhaseAndPhaseInitialized. */
+Next sub_800BDD0(void) {
+    u32 unk30 = LD16(R5 + oBattleObject_Unk_30);
+    u32 actionWindow = unk30 - 0xDD;
+
+    if (actionWindow <= 0x3B) {
+        u32 alliance = LD8(R5 + oBattleObject_Alliance);
+        R0 = alliance ^ 1;
+        R1 = 0;
+        GUEST_CALL(getTable2036720EntryFields_802CE78);
+
+        if (R0 == 0xBA) {
+            R0 = LD8(R5 + oBattleObject_Alliance);
+            R1 = 4;
+            GUEST_CALL(sub_800B884);
+
+            R0 = LD8(R5 + oBattleObject_PanelX);
+            R1 = LD8(R5 + oBattleObject_PanelY);
+            GUEST_CALL(sub_800ABC6);
+
+            R0 = 4;
+            SET_FLAGS_NZ(R0);
+            ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, R0);
+            RETURN_TO_CALLER();
+        }
+    }
+
+    /* Default path: skip the panel animation, just advance CurAction and clear phase. */
+    u32 curAction = LD8(R5 + oBattleObject_CurAction);
+    curAction += 4;
+    SET_FLAGS_ADD(curAction - 4, 4);
+    ST8(R5 + oBattleObject_CurAction, curAction);
+
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── byte_203CF00_getEntryPtr_800BF5C ── */
 /* byte_203CF00_getEntryPtr_800BF5C(r0 = index):
  * Convert a slot index into an address within the byte_203CF00 array,

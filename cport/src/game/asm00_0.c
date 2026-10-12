@@ -2195,6 +2195,44 @@ Next BGScrollCB_BG3Diagonal3to2Scroll(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── BGScrollCB_BG1UpScroll ── */
+Next BGScrollCB_BG1UpScroll(void) {
+    /* Tick the BG1 scroll counter and update the BG1 vertical scroll.
+     * r10 = toolkit, whose RenderInfo has the scroll target. */
+
+    /* Load counter 0, subtract 4, store it back. */
+    u32 counter = LD32(A_eBGScrollCBCounters);
+    counter = counter - 4;
+    ST32(A_eBGScrollCBCounters, counter);
+
+    /* Convert counter to scroll position (divide by 16) and write it. */
+    u32 scroll = counter >> 4;
+    u32 renderInfoPtr = LD32(R10 + oToolkit_RenderInfoPtr);
+    ST16(renderInfoPtr + oRenderInfo_Unk_12, scroll);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── BGScrollCB_BG3UpScroll ── */
+/* BGScrollCB_BG3UpScroll:
+ *   BG3 vertical scroll callback. Advances the shared counter0 by 4 pixels
+ *   (scrolling up by 4 lines per frame) and stores the resulting scroll
+ *   position in render info. Inputs: r10 = Toolkit ptr. Clobbers: r1, r3,
+ *   nz, c, v. */
+Next BGScrollCB_BG3UpScroll(void) {
+    u32 counters = A_eBGScrollCBCounters;
+    u32 counter  = LD32(counters) - 4;
+    ST32(counters, counter);
+
+    /* (counter >> 4) is the per-tile scroll; the low 4 bits are the
+     * sub-tile offset. Store it as halfwords so the renderer can read it
+     * cheaply. */
+    u32 r1 = R10;
+    u32 render_info = LD32(r1 + oToolkit_RenderInfoPtr);
+    ST16(render_info + oRenderInfo_Unk_1a, (u16)(counter >> 4));
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_39 ── */
 /* nullsub_39 does nothing and just returns to the caller. */
 static void nullsub_39_impl(void) {
