@@ -1825,6 +1825,7 @@ static u32 get_chip_data_addr(u32 chipId) {
 }
 
 /* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+/* leftover unused: GetBattleNaviStatsByte's r0 (its only caller discards it; the original overwrites it) */
 static u32 get_battle_navi_stats_byte(u32 naviId, u32 offset) {
     R0 = naviId;
     R1 = offset;

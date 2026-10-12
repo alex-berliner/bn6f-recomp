@@ -888,6 +888,8 @@ static void call_encryption_apply_pack(u32 gs) {
 
 /* register form: calls sub_803C3E0 outside this file, which has no typed C interface yet.
  * Returns R0; caller branches on Z (beq). */
+/* register form: relies on sub_803C3E0 leaving r0: its Z is r0 == 0 (ldrb r0; tst r0, r0), so testing r0
+ * is the original's beq */
 static u32 call_sub_803C3E0(u32 gs) {
     R5 = gs;
     GUEST_CALL(sub_803C3E0);

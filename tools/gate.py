@@ -16,7 +16,7 @@ Checks, each only when the commit touches what it checks:
            their reproduce lines name exist in the entries the commit touches; the stamp report
            (tools/stamps.py: what changed since each function was stamped, and the action) is
            shown, not enforced
-  leftovers tools/abi/leftovers.py --check (a few seconds): no readable code reads a register or
+  leftovers tools/abi/leftovers.py --deep --check (a few seconds): no readable code reads a register or
            flag a callee leaves behind but does not return (R1-A21), unless the site carries a note
   golden   tools/lifter/golden.py check (about 40 s), when tools/lifter changes: the lifter still
            writes the recorded output, or the commit re-records it (`golden.py update`)
@@ -204,7 +204,7 @@ def check_leftovers(hook: bool, changed: list[str]) -> Result:
             paths = [f"{work}/{GAME}"]
         else:
             paths = []
-        done = subprocess.run([sys.executable, os.path.join(ROOT, LEFTOVERS), "--quiet", *paths],
+        done = subprocess.run([sys.executable, os.path.join(ROOT, LEFTOVERS), "--quiet", "--deep", *paths],
                               capture_output=True, text=True)
         try:
             report = json.loads(done.stdout)

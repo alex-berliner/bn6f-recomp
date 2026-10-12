@@ -1436,6 +1436,7 @@ Next battle_spawnTypeD3ObjectWithPanelElementAndDamage_80DFF84(void) {
 /* t4_0x0_80E0548: battle-object state dispatcher (ROM jump table at off_80E055C) */
 
 /* register form: calls battle_objectInitAction_80E0568 outside this file, which has no typed C interface yet */
+/* leftover unused: battle_objectInitAction_80E0568's r0 (t4_0x0_80E0548's callers do not read r0) */
 static u32 call_sub_80E0568(u32 state, u32 handler_addr) {
     R0 = state;
     R1 = handler_addr;
@@ -1444,6 +1445,7 @@ static u32 call_sub_80E0568(u32 state, u32 handler_addr) {
 }
 
 /* register form: calls battle_objectTickTimer_80E05C4 outside this file, which has no typed C interface yet */
+/* leftover unused: battle_objectTickTimer_80E05C4's r0 (t4_0x0_80E0548's callers do not read r0) */
 static u32 call_sub_80E05C4(u32 state, u32 handler_addr) {
     R0 = state;
     R1 = handler_addr;

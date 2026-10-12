@@ -516,6 +516,7 @@ static void call_sprite_setFlip(u32 flip) {
  * The original ends with `pop {r4-r7, pc}` whose loaded PC value is the SAVED lr pushed at
  * entry (the caller's lr, not a within-function address). We model that: this function is
  * tail-called by the adapter, which supplies the correct LR. */
+/* leftover unused: sub_80C3F52's r0 (battleObj_initSprite_80C3F00's callers read only r5) */
 static u32 call_sub_80C3F52(void) {
     GUEST_CALL(sub_80C3F52);
     return R0;

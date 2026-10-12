@@ -723,6 +723,8 @@ static bool func_809E462_nonzero(void) {
 }
 
 /* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
+/* register form: relies on chatbox_mask_eFlags2009F38 leaving r0: its Z is r0 == 0 (and r0, r1), so testing
+ * r0 is the original's branch on Z */
 static s32 chatbox_mask_flag(s32 flag) {
     R0 = (u32)flag;
     GUEST_CALL(chatbox_mask_eFlags2009F38);

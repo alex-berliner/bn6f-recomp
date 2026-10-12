@@ -73,6 +73,7 @@ static void call_clear_event_flag(u32 flag) {
 }
 
 /* register form: calls record_writeU16IfIdMatches_809FDCE outside this file */
+/* leftover unused: record_writeU16IfIdMatches_809FDCE's r1 (its only caller discards the result) */
 static u32 call_record_write(u32 group_type, u32 slots, u32 match_count) {
     R0 = group_type;
     R1 = slots;

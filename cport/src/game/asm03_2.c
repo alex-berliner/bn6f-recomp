@@ -334,6 +334,10 @@ Next reqBBS_initRequestWorkArea_8046CC8(void) {
 
 /* register form: dispatches to the selected shop handler, saving and restoring
  * r4-r7, r8-r9, r12, lr exactly as the original's push/pop pairs do */
+/* The handlers' r0 is handed back to ShopControl's r0 unchanged, which no caller of ShopControl reads: */
+/* leftover unused: sub_8046D4C's r0, battle_objectAdvanceCounterToState8_8046DDC's r0, sub_8046DF8's r0 */
+/* leftover unused: scramblePanel_tick_8046E06's r0, dialogueEnd_unlockPlayer_8046E48's r0, sub_8046E84's r0 */
+/* leftover unused: chatbox_confirmShopPurchase_8046ED2's r0, chatbox_stepContextScript_8047028's r0 */
 static u32 call_shop_handler(u32 handler_addr, u32 state_offset) {
     u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
     u32 s8 = R8, s9 = R9, s12 = R12, slr = LR;
@@ -572,6 +576,8 @@ static void call_refresh_chatbox(void) {
 }
 
 /* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
+/* register form: relies on chatbox_mask_eFlags2009F38 leaving r0: its Z is r0 == 0 (and r0, r1), so testing
+ * r0 is the original's branch on Z */
 static u32 chatbox_mask_flag(u32 flag) {
     R0 = flag;
     GUEST_CALL(chatbox_mask_eFlags2009F38);

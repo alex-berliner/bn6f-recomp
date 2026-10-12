@@ -167,6 +167,10 @@ functions, normalised to C types).
   (`register form: relies on F leaving rN (contract says clobbered)` or
   `leftover unused: F's rN (why)`); "zflag" sites (the original branches on F's Z, the C tests
   r0, which F also returns) are listed for a look at F. 0 open sites since 2026-10-10.
+  `--deep` (the commit gate's way since 2026-10-11) also reads helpers, with the original of the
+  entry whose part holds them, and `return` expressions: a helper's `GUEST_CALL(F); return R0;`
+  for an F that does not return r0 fails unless noted (make such a helper `void`). Its 21 sites in
+  the tree were all harmless and carry notes (docs/reviews/2026-10-11-mutation-survey.md).
 
 What the export says today (1,435 readable entries in 1,434 units; 13 routes, 1,314
 distinct edges from 340 of 1,862 computed call/jump sites). Readable units whose callers

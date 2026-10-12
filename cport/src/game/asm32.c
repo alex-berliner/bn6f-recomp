@@ -1432,6 +1432,7 @@ static void set_sub_record_field_a_sub_81178FC(u32 val)      { R0 = val;        
 /* register form: calls sprite_setPriority_8002E14 outside this file, which has no typed C interface yet */
 static void set_sprite_priority(u32 prio)        { R0 = prio;              GUEST_CALL(sprite_setPriority_8002E14); }
 /* register form: calls sub_811794C outside this file, which has no typed C interface yet */
+/* leftover unused: sub_811794C's r0 (sprite_slotInitKind23_81178FC's callers read neither r0 nor the flags) */
 static u32 call_sub_811794C(void)                {                         GUEST_CALL(sub_811794C); return R0; }
 /* register form: calls sub_8117998 outside this file, which has no typed C interface yet */
 static u8   call_sub_8117998(void)               {                         GUEST_CALL(sub_8117998); return (u8)R0; }
@@ -1829,6 +1830,7 @@ static void call_sprite_setCoordinates_sub_8117BE8(int x, int y) {
 }
 
 /* register form: calls sub_8117C4C outside this file, which has no typed C interface yet */
+/* leftover unused: sub_8117C4C's r0 (sprite_initGuiSlotA_8117BE8's callers read neither r0 nor the flags) */
 static u32 call_postInit(void) {
     R0 = 0;
     GUEST_CALL(sub_8117C4C);

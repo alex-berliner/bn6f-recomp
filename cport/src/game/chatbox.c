@@ -2003,6 +2003,7 @@ static u32 default_text_script(u32 kind, u32 arg1, u32 arg2, u32 arg3) {
 }
 
 /* register form: calls chatbox_formatBcdNumber_8042A14 outside this file, which has no typed C interface yet */
+/* leftover unused: chatbox_formatBcdNumber_8042A14's r0 (its only caller discards the result) */
 static u32 setup_text_script(u32 scriptPtr, u32 param, u32 textBank) {
     R0 = scriptPtr; R1 = param; R2 = textBank;
     GUEST_CALL(chatbox_formatBcdNumber_8042A14);

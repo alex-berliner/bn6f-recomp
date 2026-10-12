@@ -3,6 +3,7 @@
 
   tools/abi/leftovers.py [PATH...] [--graph FILE]    JSON report on stdout, summary on stderr
   tools/abi/leftovers.py --check                     also exit 1 on a read without a note
+  tools/abi/leftovers.py --deep ...                  also helpers and `return` expressions (the gate's way)
   tools/abi/leftovers.py --reads FUNCTION            what FUNCTION reads after each callee (JSON)
   leftovers.reads_after_calls(FUNCTION)              the same from Python (tools/stamps.py)
 
@@ -627,7 +628,7 @@ def main() -> int:
     ap.add_argument("--deep", action="store_true",
                     help="also helpers (with their part's original) and `return` expressions: catches a helper's "
                          "`return R0 != 0` after TestEventFlag (the mutation survey, docs/reviews/2026-10-11-"
-                         "mutation-survey.md); not the gate's default until its open sites are triaged")
+                         "mutation-survey.md); the commit gate and the convert workflow run with it")
     ap.add_argument("--reads", metavar="FUNCTION",
                     help="only list what FUNCTION reads after each of its calls (JSON: callee -> registers)")
     args = ap.parse_args()

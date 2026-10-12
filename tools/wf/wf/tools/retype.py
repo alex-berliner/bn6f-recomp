@@ -185,7 +185,7 @@ def leftover_reads(code: str, file_name: str) -> dict[FunctionName, str]:
     with tempfile.TemporaryDirectory(prefix="wf-leftovers-") as scratch:
         path = Path(scratch) / file_name
         _ = path.write_text(code)
-        done = subprocess.run([sys.executable, str(LEFTOVERS), "--quiet", str(path)], capture_output=True, text=True,
+        done = subprocess.run([sys.executable, str(LEFTOVERS), "--quiet", "--deep", str(path)], capture_output=True, text=True,
                               check=False)
     if not done.stdout.strip():
         raise RuntimeError(f"tools/abi/leftovers.py failed: {done.stderr.strip()[-500:]}")

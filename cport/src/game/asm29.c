@@ -343,12 +343,16 @@ static void set_event_flag_register(u16 flag) {
 }
 
 /* register form: calls sub_80A5268 outside this file, which has no typed C interface yet */
+/* leftover unused: sub_80A5268's r0 (it becomes mapEntry_update_80A51F8's r0 and flags, which its callers
+ * do not read) */
 static u32 call_sub_80A5268(void) {
     GUEST_CALL(sub_80A5268);
     return R0;
 }
 
 /* register form: calls sub_80A5350 outside this file, which has no typed C interface yet */
+/* leftover unused: sub_80A5350's r0 (it becomes mapEntry_update_80A51F8's r0 and flags, which its callers
+ * do not read) */
 static u32 call_sub_80A5350(void) {
     GUEST_CALL(sub_80A5350);
     return R0;
