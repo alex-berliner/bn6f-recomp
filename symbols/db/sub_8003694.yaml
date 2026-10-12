@@ -1,0 +1,72 @@
+name: sub_8003694
+address: '0x08003694'
+kind: function
+status: confirmed
+summary: Projects a world-space object's (x,y,z) into screen coordinates through the camera, returning screen_x,
+  screen_y, in-viewport visibility, and a Z depth ready to be passed into an OAM-affine descriptor.
+interface: ProjectionResult cameraProjectObject_8003694(u32 obj_ptr /* r0 */, u32 toolkit /* r10 */); /* returns
+  r0=screen_x, r1=screen_y, r2=visibility 0/1, r3=depth+DRAW_Z_OFFSET, nzcv set by the depth+DRAW_Z_OFFSET add */
+details: "Reads the camera pointer through r10 (r10 holds the toolkit base, then LD32 to +oToolkit_CameraPtr yields\
+  \ the camera struct). The world->screen math uses camera fields at offsets 0x3C (X), 0x40 (Y), 0x44 (Z):\n  dx\
+  \ = obj.x - cam.x;  dy = obj.y - cam.y;  cam_z = cam.z\n  ScreenX    = ((dx + dy) >> 16) + 0x78      /* centered\
+  \ on 240px-wide screen */\n  half_diff  = (dy - dx) >> 1\n  depth_raw  = ((cam_z + 0x800000 + half_diff) >> 16)\n\
+  \  ScreenY    = ((half_diff - obj.z + cam_z) >> 16) + 0x52\n  depth_out  = depth_raw + 0x60             /* DRAW_Z_OFFSET\
+  \ bias for OAM */\nViewport clip uses signed compares against X in [-0x20, 0x110) and Y in [-0x20, 0xE0); the\
+  \ \"visible\" flag is 1 when inside, 0 when outside.\nThe 0x60 depth offset addition is done last so that nzcv\
+  \ are derived from depth_raw + 0x60, which the callers chain into another ADD (visible to subsequent flag-using\
+  \ code as a fresh add's flags). The depth+0x60 also seems to match the affine parameter scaling format expected\
+  \ by the affine-OAM slot setup, hinting this is a sprite/3D-object draw helper. Preserved regs: r4-r9.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c sub_8003694
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8003694
+
+    ./wf verify --function sub_8003694 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115748-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8003694
+
+    ./wf verify --function sub_8003694 --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 57 out of domain (verify run convert-20261012-115748-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8003694
+
+    ./wf verify --function sub_8003694 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, story5, story6.'
+  reproduce: grep -l '^08003694 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp d652253
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- maps
+- story5
+- story6
+open_questions:
+- Which callers are sprites vs. world objects (NPCs, items, props)? The math (0x78/0x52 screen centering + 0x800000
+  depth bias) suggests a floor-projected 3D/iso scene rather than a battle sprite.
+- Whether the object's offsets (0/4/8) are really (x,y,z) or could be (u16,u16,u16) pairs (the >>16 shifts tolerate
+  both interpretations).
+- Whether oToolkit_CameraPtr points at a camera struct whose 0x3C/0x40/0x44 are the camera's world position vs.
+  fields (just "0x3C" is unmarked in the printed contract).
+sources:
+- tools/wf run convert-20261012-115748
+- recomp d652253

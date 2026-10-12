@@ -1,0 +1,95 @@
+name: sub_800801C
+address: '0x0800801C'
+kind: function
+status: hypothesis
+summary: Battle-object state dispatcher (per-frame tick of an object's state timer/handler).
+interface: "void sub_800801C(void /* pass-through r2 r3 r4 r6 r7 r10 lr */);\n  returns nothing explicit; r0 = byte\
+  \ at object+4 (0x203CA74); r2..r12 clobbered;\n  nz/c/v flags clobbered; r5 preserved (via push {r5,lr} / pop\
+  \ {r5,pc}).\n"
+details: 'Reads the state byte at dword_203CA70 (offset 0), uses it as a byte-scaled index
+
+  into the jump table at off_8008038 (10 entries: sub_800840C, sub_8008064,
+
+  sub_80080D2, sub_80081A4, sub_800825A, sub_80082DC, sub_800834A, sub_80083E4,
+
+  sub_8008452, battle_objAdvanceStateTimer_8008492) and tail-bx''s through it,
+
+  loading R0 with the state byte and R5 with the object base. After the handler
+
+  returns, runs the shared helper sub_802DE5C (likely post-state housekeeping /
+
+  timer advance), then loads the byte at object+4 (byte_203CA74) into R0 as the
+
+  call''s return value. The base pointer dword_203CA70 names suggest this is a
+
+  per-frame dispatch into one of ten "object state machine" phases for an entity
+
+  in battle (possibly the current battle-object''s sub-state).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c sub_800801C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800801C
+
+    ./wf verify --function sub_800801C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 36 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115748-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800801C
+
+    ./wf verify --function sub_800801C --snapshots build-snapshots'
+  result: 34 compared, 0 differed, 62 out of domain (verify run convert-20261012-115748-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800801C
+
+    ./wf verify --function sub_800801C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0800801c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp d652253
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which battle struct is dword_203CA70 / byte_203CA74 part of (current object vs. boss vs. field obj)?
+- Is r5 truly preserved across the tail-bx dispatcher, or does it change semantics for the handler?
+- Does sub_802DE5C increment a per-state timer whose value surfaces as the returned byte?
+- Why is the LAST table entry named battle_objAdvanceStateTimer_8008492 while the dispatcher itself is sub_800801C
+  — are these the same routine mislabeled, or distinct?
+sources:
+- tools/wf run convert-20261012-115748
+- recomp d652253

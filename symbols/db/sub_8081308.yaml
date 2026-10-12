@@ -1,0 +1,89 @@
+name: sub_8081308
+address: '0x08081308'
+kind: function
+status: confirmed
+summary: Computes the Weather Computron puzzle status byte for the current map, returning 7 (non-qualifying map),
+  the raw battle-settings byte, 0x15 (puzzle available but unflagged), or 0x10 (puzzle already solved / no rule
+  applies).
+interface: "u32 getWeatherCompStatus_8081308(void);\n  inputs:  r10 = current toolkit pointer (GameStatePtr, BattleStatePtr)\n\
+  \  outputs: r0  = status byte (7, raw settings byte, 0x10, or 0x15)\n  clobbers: r0, r1, r2, r3, LR, flags N/Z/C/V\n\
+  \  preserved: r4, r5, r6, r7\n  calls: TestEventFlag (u16 flag) -> flags\n"
+details: "- Reads oToolkit_BattleStatePtr -> oBattleState_BattleSettings byte at +4; if it is not 0xFF, that byte\
+  \ is returned unchanged (custom/non-standard battle path).\n- Otherwise reads oGameState_MapGroup (byte) / oGameState_MapNumber\
+  \ (byte) via GameStatePtr.\n- If map_group < 0x80, returns 7 (not an overworld-eligible map).\n- For map_group\
+  \ >= 0x80, indexes pt_808139C (a table of pointers, one per group 0x80+) by (map_group - 0x80) * 4. A NULL pointer\
+  \ entry returns 7.\n- Looks up the per-map weather byte at [table + map_number]. If it is not 0x10 it is returned\
+  \ as-is.\n- For the 0x10 case (Weather Computron / Pavilion puzzle maps), scans a (map_id halfword, event_flag\
+  \ halfword) list at word_8081368 terminated by 0x0000. The halfword view of the current map_group is compared\
+  \ against each entry:\n    * matching entry + TestEventFlag(flag) Z clear  -> return 0x10 (event already completed).\n\
+  \    * matching entry + TestEventFlag(flag) Z set    -> return 0x15 (puzzle still active, flag unset).\n    *\
+  \ end of list with no match                   -> return 0x10 (unchanged).\n- The embedded list (word_8081368)\
+  \ holds the Weather-Comp puzzle maps:\n    0x0083 / 0x0BE1, 0x0183 / 0x0BE2, 0x0283 / 0x0BE3, 0x0285 / 0x0FD2\n\
+  \  (i.e. Mr. Weather Computron areas and Pavilion Comp 3).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm21.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c sub_8081308
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8081308
+
+    ./wf verify --function sub_8081308 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-115748-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8081308
+
+    ./wf verify --function sub_8081308 --snapshots build-snapshots'
+  result: 56 compared, 0 differed, 40 out of domain (verify run convert-20261012-115748-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8081308
+
+    ./wf verify --function sub_8081308 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08081308 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm21.c
+  where: recomp d652253
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm21.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Why 0x15 is used as the "puzzle active" sentinel and what downstream state it gates.
+- The semantics of returning the raw battle_settings byte (+4) when not 0xFF; what value of +4 makes the caller
+  treat it specially.
+- Whether pt_808139C is shared with other map-driven status lookups (it sits in the same data page as this function's
+  table).
+sources:
+- tools/wf run convert-20261012-115748
+- recomp d652253

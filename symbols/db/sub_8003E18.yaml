@@ -1,0 +1,76 @@
+name: sub_8003E18
+address: '0x08003E18'
+kind: function
+status: confirmed
+summary: Iterates the battle object list and updates/queues each sprite, then finalizes the frame.
+interface: void sub_8003E18(void); // clobbers r0-r3, r10, r12, flags, lr; preserves r4-r9, r11
+details: "Walks dword_2039A10 for byte_2036778 object slots. For each object the\nstatus byte at offset 0 controls\
+  \ per-sprite work:\n  - bit 1 set: calls sprite_projectAndCull (transform at +0x34), then\n    sprite_ensureGfxResident(r0=1),\
+  \ then sprite_queueFramePieces(r0=2,\n    r1=0x40) on the piece list at +0x90.\n  - bit 1 clear: zeroes the queued-piece\
+  \ counter at +0x90+0x24; if bit 0\n    is also set, still calls sprite_projectAndCull to keep the transform\n\
+  \    up to date.\nAfter the loop it calls sub_80028C0(1) to commit the batched frame. Saves\nand restores r4-r9\
+  \ and r12 across the callees that would clobber them.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c sub_8003E18
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8003E18
+
+    ./wf verify --function sub_8003E18 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261012-115748-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8003E18
+
+    ./wf verify --function sub_8003E18 --snapshots build-snapshots'
+  result: 70 compared, 0 differed, 26 out of domain (verify run convert-20261012-115748-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8003E18
+
+    ./wf verify --function sub_8003E18 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08003e18 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp d652253
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Identity of sub_80028C0 (likely the sprite-batcher flush / frame submit).
+- Meaning of the status byte's bit 0 vs bit 1 (visible-but-not-drawable vs fully drawn).
+sources:
+- tools/wf run convert-20261012-115748
+- recomp d652253

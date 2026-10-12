@@ -1,0 +1,87 @@
+name: object_setupCollisionData
+address: '0x08019FB4'
+kind: function
+status: confirmed
+summary: Initializes a battle object's collision-data block from its parent object, resolves self/target collision-type
+  flag tables, applies a time-stop bit, and finalizes via sub_8019F44.
+interface: void object_setupCollisionData(u32 outCollisionPtr, u32 selfTableIdx, u32 targetTableIdx, u8 hitModifierBase
+  /* r3 */, u32 parentBattleObject /* r5 */, u32 unused_r10) -> {u32 r0, u32 r1, u32 r6} (clobbers r3, lr, flags
+  NZCV)
+details: "Writes through the oCollisionData_* fields of the struct pointed to by r0, sourcing most fields\nfrom\
+  \ the parent battle object at r5:\n  - oCollisionData_ParentObjectPtr = parent (r5)\n  - oCollisionData_HitModifierBase\
+  \ = low byte of r3\n  - oCollisionData_PrimaryElement = element low nibble\n  - oCollisionData_SecondaryElement\
+  \ = element high nibble\n  - oCollisionData_AllianceAndDirectionFlip copied from parent\n  - oCollisionData_PanelXY\
+  \ copied from parent\n  - oCollisionData_Region forced to 1\n  - oCollisionData_StaminaDamageCounterDisabler =\
+  \ low byte of parent's 16-bit field\n  - oCollisionData_SelfDamage = parent's Damage\nThen calls object_getTableEntry_801A0BA\
+  \ twice (alliance from r5 vs. r1 self-table idx, then\nr2 target-table idx) to populate oCollisionData_SelfCollisionTypeFlags\
+  \ and\noCollisionData_TargetCollisionTypeFlags. If battle_isTimeStop returns nonzero, ORs bit 16\n(0x10000) into\
+  \ SelfCollisionTypeFlags. Finishes by invoking sub_8019F44(collPtr, target.r1, parent).\nr10 input is ignored\
+  \ inside this function.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801728E.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c object_setupCollisionData
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_setupCollisionData
+
+    ./wf verify --function object_setupCollisionData --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115748-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_setupCollisionData
+
+    ./wf verify --function object_setupCollisionData --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261012-115748-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_setupCollisionData
+
+    ./wf verify --function object_setupCollisionData --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08019fb4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2_801728E.c
+  where: recomp d652253
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_2_801728E.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does sub_8019F44 do (finalize/normalize after the two table lookups)?
+- Why is the 0x10000 bit specifically the time-stop marker, and is this bit shared with other 'frozen/inactive'
+  states?
+- Why is Region hard-coded to 1 — does a wider region (0/2/3) ever come from the parent?
+- What does r6 returned from sub_8019F44 signify for callers (preserved r6 here suggests it was live across the
+  call)?
+sources:
+- tools/wf run convert-20261012-115748
+- recomp d652253

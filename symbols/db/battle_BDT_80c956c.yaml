@@ -1,0 +1,75 @@
+name: battle_BDT_80c956c
+address: '0x080C956C'
+kind: function
+status: confirmed
+summary: Thunder-1 BattleObject — chooses travel axis/direction toward the opponent (or facing) and writes velocity
+  + lifetime timer, applying a speed/bump when Param1 == 2.
+interface: void battle_thunderSetVelocity_80c956c(u32 r5 thunderObj /* in */, u32 lr) -> u32 r2 thunderObj->Param1;
+  clobbers r0 r1 r3 lr; preserves r4 r6 r7; flags nv c
+details: "Thunder-1 (\"BDT\") AI helper. Called with the thunder BattleObject pointer\nin r5. Uses FindOpponentPanelXYForThunderObject(oppX=r0,\
+  \ oppY=r1) to locate\nthe target panel.\n  - If no opponent panel is found (r0 == 0), the direction is taken from\n\
+  \    object_getFrontDirection() and motion is purely horizontal.\n  - If oppY == thunderY (same row): move horizontally\
+  \ toward oppX.\n  - If oppX == thunderX (same column): move vertically toward oppY.\n  - Otherwise (neither matches;\
+  \ the assembly flow falls through into the\n    same-row branch): move horizontally toward oppX.\nSign of chosen\
+  \ direction: -1 if the target panel is less than the\nthunder's panel coordinate on the chosen axis, otherwise\
+  \ +1.\n\nSpeed bases loaded from the literal pool at 0x080C95DC–0x080C95E8:\n  0xAAAB — normal X base  (≈ 1/3\
+  \ of 0x10000 * 0x8000 in signed .16)\n  0x10000 — powered X base (charges / heavier thunder)\n  0x6666 — normal\
+  \ Y base\n  0x999A — powered Y base\n\"Powered\" values are picked when Param1 == 2; otherwise normal values.\n\
+  Multiplication is `mul r0, r1` (signed-word multiply low), so the result\nis direction * base stored as a 32-bit\
+  \ signed velocity. The unused axis\nvelocity is cleared to 0.\n\nLifetime timer stored at oBattleObject_Timer:\n\
+  \  0x3C (60 frames) normally, 0x28 (40 frames) when Param1 == 2.\nNote: the assembly writes the timer after the\
+  \ velocity in both branches,\nusing Param1 re-read in r2.\n\nThe function tail-loads `pc` from `lr` (Thumb-2 `pop\
+  \ {pc}`), so it is\ncalled as a `bl` tail-jump, not really push/pop-balanced with `push {lr}`\nat entry.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c battle_BDT_80c956c
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_BDT_80c956c
+
+    ./wf verify --function battle_BDT_80c956c --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 186 out of
+    domain (verify run convert-20261012-115748-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_BDT_80c956c
+
+    ./wf verify --function battle_BDT_80c956c --snapshots build-snapshots'
+  result: 35 compared, 0 differed, 32 out of domain (verify run convert-20261012-115748-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_BDT_80c956c
+
+    ./wf verify --function battle_BDT_80c956c --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, story8.'
+  reproduce: grep -l '^080c956c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp d652253
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles2
+- story8
+open_questions:
+- The "neither panel coordinate matches" branch silently re-uses the horizontal/toward-oppX logic — verify this
+  matches the real Thunder-1 homing behavior or whether it should fall back to getFrontDirection.
+- Exact field semantics of oBattleObject_Param1 — likely a power/charge level set elsewhere by the chip handler
+  (value 2 = charged).
+- Why `r4` and `r7` are part of the FindOpponentPanelXY call contract; the readable C version annotates them as
+  outputs but the assembly shown only touches r5 and the locals.
+sources:
+- tools/wf run convert-20261012-115748
+- recomp d652253

@@ -1,0 +1,75 @@
+name: sound_80006A2
+address: '0x080006A2'
+kind: function
+status: confirmed
+summary: Play a background-music track on one of the MML sound channels, also recording the song id in the GameState
+  indicator.
+interface: void sound_80006A2(u32 song_id /* r0 */, u32 channel_arg /* r1 */, u32 channel_index /* r2 */, void *toolkit
+  /* r10 */); /* clobbers r1-r3,r4-r10,r12,lr; NZCV; preserves r4-r10,r12 */
+details: 'If song_id <= 0x25 (signed compare), the song id is stashed as a byte at oGameState_BGMusicIndicator inside
+  the GameState struct pointed to by oToolkit_GameStatePtr of the Toolkit.
+
+  The channel_index (r2 << 2) is used to fetch a per-channel working buffer pointer from a 32-entry ROM table at
+  off_8000704 (entries 0x00..0x1F, mostly byte_2010xxx/unk_2010xxx scratch areas; slot 0x1F is off_2010890, the
+  function''s own tail literal).
+
+  Five driver calls into sound_8000808 then orchestrate the MML engine for that channel: start the song (m4a_SongNumStart+1),
+  attach the channel buffer (sub_814EB1C+1), reset to arg 0xFF/0 (sub_814F9AC+1), commit the song number (sub_814E9F0+1),
+  and bind the channel_arg (sub_814EAF0+1).
+
+  r4..r7 are pushed/popped only to spill caller-saved r12/r8/r9/r10 so the function can address its toolkit argument
+  across the sub-call chain.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c sound_80006A2
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sound_80006A2
+
+    ./wf verify --function sound_80006A2 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 268 out of
+    domain (verify run convert-20261012-115748-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sound_80006A2
+
+    ./wf verify --function sound_80006A2 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261012-115748-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sound_80006A2
+
+    ./wf verify --function sound_80006A2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080006a2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp d652253
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- story9
+open_questions:
+- Which entry of off_8000704 corresponds to which MML channel (the table order may not be physical channel order).
+- Whether r1 (channel_arg) is volume, loop count, priority, or another engine-specific parameter.
+- Meaning of the BGMusicIndicator field beyond a "last requested song" cache (e.g., is it consulted for restart
+  on map load?).
+- Why song_id > 0x25 is silently skipped — does the table only cover up to 0x25 and higher are SE rather than BGM,
+  or is this a guard against an invalid id?
+sources:
+- tools/wf run convert-20261012-115748
+- recomp d652253

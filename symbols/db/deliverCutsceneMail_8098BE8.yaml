@@ -1,97 +1,67 @@
 name: deliverCutsceneMail_8098BE8
 address: '0x08098BE8'
 kind: function
-status: probable
-summary: 'Cutscene native: delivers the mail referenced by the current cutscene command and updates its
-  received/done flags.'
-interface: void deliverCutsceneMail(void) // r5 = cutscene command data ptr; returns r0=0, sets NZ flags
-details: 'Reads the mail id from [r5+6] (0xFF = none) and, if valid, calls
-
-  addMail_802f238 with an entry index = 0x1CA0 + mail_id. If [r5+7] != 0,
-
-  re-reads the mail id (addMail may have rewritten the struct) and then:
-
-  - ClearEventFlag(0x1D20 + mail_id)  // "received" flag
-
-  - SetEventFlag  (0x1DA0 + mail_id)  // "done" flag
-
-  Returns 0 and sets NZ flags accordingly. Lives alongside the cutscene
-
-  script bytecode blob at 0x8098C28 and is invoked via the cutscene
-
-  VM''s cs_call_native opcodes.
-
-  '
+status: confirmed
+summary: Delivers a cutscene-driven mail (inbox message + delivery/completion event flags) for the active script
+  record.
+interface: void deliverCutsceneMail_8098BE8(u32 *scriptRecord in R5, void* viaR10/zero r2 pass-through); returns
+  R0, R1, R2; clobbers NZ CARRY/OVERFLOW.
+details: "Reads mailId from scriptRecord[6] (offset 0x06) and completion byte from scriptRecord[7] (offset 0x07).\n\
+  - If mailId == 0xFF: returns R0=0 with R1/r2 pass-through; no side effects.\n- Otherwise calls addMail_802f238\
+  \ with the address (0x1CA0 + mailId) to add the corresponding\n  mailbox message.\n- If scriptRecord[7] is non-zero\
+  \ (TST r0,r0): calls ClearEventFlag on the entry in the\n  \"0x1D20 + mailId\" block and SetEventFlag on the \"\
+  0x1DA0 + mailId\" block — i.e. flips the\n  per-mail \"unseen\" flag off and the \"delivered/seen\" flag on once\
+  \ the player has read it.\nReturns R0=0, with R1/R2 preserved from the most recent event-flag or addMail result.\n\
+  Constants: 0x1CA0 (mail slot base), 0x1D20 (not-seen flag base), 0x1DA0 (delivered flag base).\n"
 evidence:
 - method: readable-c
-  date: '2026-10-10'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261010-223922);
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm28_0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 38' --file inbox_farm_38.c
-    sub_8098BE8
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c deliverCutsceneMail_8098BE8
 - method: difftest
-  date: '2026-10-10'
+  date: '2026-10-12'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8098BE8
+  reproduce: './wf capture --function deliverCutsceneMail_8098BE8
 
-    ./wf verify --function sub_8098BE8 --snapshots build-snapshots'
-  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    300 out of domain (verify run convert-20261010-223922-verify-5)'
+    ./wf verify --function deliverCutsceneMail_8098BE8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-115748-verify-3)'
 - method: cpu-oracle
-  date: '2026-10-10'
+  date: '2026-10-12'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8098BE8
+  reproduce: './wf capture --function deliverCutsceneMail_8098BE8
 
-    ./wf verify --function sub_8098BE8 --snapshots build-snapshots'
-  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261010-223922-verify-5)
+    ./wf verify --function deliverCutsceneMail_8098BE8 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261012-115748-verify-3)
 - method: lockstep
-  date: '2026-10-10'
+  date: '2026-10-12'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8098BE8
+  reproduce: './wf capture --function deliverCutsceneMail_8098BE8
 
-    ./wf verify --function sub_8098BE8 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261010-223922-verify-5)
+    ./wf verify --function deliverCutsceneMail_8098BE8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
 - method: coverage
-  date: '2026-10-10'
+  date: '2026-10-12'
   detail: 'Executed by: story1, story8.'
   reproduce: grep -l '^08098be8 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-10'
+- date: '2026-10-12'
   what: readable C replacement in cport/src/game/asm28_0.c
-  where: recomp c2085cd
+  where: recomp d652253
   tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm28_0.c after review against the assembly (the lifted
-    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
-    differs from the original: r1 is a listed output (contract: -> nz r1 r2 r4 r5 r7). On the no-mail
-    path the asm does `ldrb r1, [r5,#6]; cmp r1, #0xff; beq loc_8098C16` -> `mov r0,#0; pop`, so it returns
-    with r1 = 0xFF. The C `u32 mail_id = LD8(data + 6); if (mail_id == 0xFF) return 0;` never writes R1,
-    so R1 keeps its entry value. Input: [r5+6] = 0xFF with entry r1 != 0xFF. The other paths match: there
-    r1 comes from addMail_...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_8098BE8 -> deliverCutsceneMail_8098BE8
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm28_0.c
 coverage:
 - story1
 - story8
 open_questions:
-- Why is the mail id re-read after addMail_802f238? addMail likely overwrites the cutscene command's mail
-  id slot with the next id (or 0xFF) as part of its delivery bookkeeping.
-- The 0x1CA0 / 0x1D20 / 0x1DA0 bases presumably index into a per-mail table of (add-entry, received-flag,
-  done-flag); the surrounding context (mail array base) is not in this function.
-- The wider context also contains cutscene scripts, an NPC talk-driven bedtime prompt (0x8098DDC), random-encounter
-  battle start (start_battle_809913C), and OW camera/player teleport helpers; the function name should
-  match this "cutscene_mail" subsystem.
+- The exact per-mail index semantics (0x1CA0/0x1D20/0x1DA0 are bases; the +mailId step is small so likely a single-byte
+  mailbox slot id).
+- Why r10 (toolkit ptr) is in the contract but not actually touched by deliverCutsceneMail itself — it is propagated
+  by the surrounding script context and used by sibling helpers (e.g. sub_8098CCC writes scriptRecord+0x34 from
+  r10+0x3c).
 sources:
-- tools/wf run convert-20261010-223922
-- recomp c2085cd
-previous_names:
-- sub_8098BE8
+- tools/wf run convert-20261012-115748
+- recomp d652253

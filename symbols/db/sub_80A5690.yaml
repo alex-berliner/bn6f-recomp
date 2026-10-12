@@ -1,0 +1,93 @@
+name: sub_80A5690
+address: '0x080A5690'
+kind: function
+status: confirmed
+summary: Tests whether the field camera lies within any rectangular hotspot region defined for the current map group.
+interface: "void sub_80A5690(u32 /*r5*/ camera, u32 /*r6*/ param,\n                 u32 /*r10*/ toolkit) -> u32\
+  \ r0 /*1=inside,0=outside*/, u32 r2 /*last scaled X threshold*/;\nflags clobbered: nzcv\n"
+details: 'Looks up the current map via the global Toolkit (r10 -> oToolkit_GameStatePtr ->
+
+  oGameState_MapGroup byte). If MapGroup == 0x85 it forces region index 2, otherwise
+
+  it reads index from gameState+5. The index selects one of three region tables
+
+  (off_80A5714 -> byte_80A53B0 / byte_80A53DC / byte_80A5408) of 2D box centers
+
+  (s16 x, s16 y) and an entry count from dword_80A5720 (values 1, 2, 3). The entry
+
+  count is also written back to camera+6.
+
+
+  Each entry is converted to 16.16 fixed point with an -8/+8 baked-in offset and
+
+  compared against the camera position stored at camera+0xC (x) and camera+0x10 (y).
+
+  sub_80A5724 is called with the absolute axis distances pushed on the stack and
+
+  returns a per-axis radius threshold (r0=x, r1=y) also scaled by <<16. The camera
+
+  is "inside" the region if |dx| <= thresholdX && |dy| <= thresholdY. The loop is
+
+  do-while, so the body always runs at least once; the comparison is unsigned
+
+  (bgt), and r2 is left holding the last computed scaled X threshold (visible to
+
+  callers via the contract).
+
+
+  r5/r6/r7 are preserved (r7 used as loop counter i).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-115748);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file inbox_farm_92.c sub_80A5690
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A5690
+
+    ./wf verify --function sub_80A5690 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115748-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A5690
+
+    ./wf verify --function sub_80A5690 --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 81 out of domain (verify run convert-20261012-115748-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A5690
+
+    ./wf verify --function sub_80A5690 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115748-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story5, story6.'
+  reproduce: grep -l '^080a5690 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp d652253
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm29.c
+coverage:
+- story5
+- story6
+open_questions:
+- What does sub_80A5724 actually compute? (per-axis radius from r6 and the region index/entry?) The "0x80B0B" packed
+  dword_80A5720 looks like it could also encode per-map-group flags.
+- Why is region index hard-coded to 2 when MapGroup == 0x85? 0x85 is unusual for a normal area; could be a special
+  overlay (e.g. title/transition).
+- Meaning of the +8/-8 offset baked into the box center before scaling.
+- Why r2 (last X threshold) is exposed in the contract and how callers use it.
+sources:
+- tools/wf run convert-20261012-115748
+- recomp d652253
