@@ -1,0 +1,87 @@
+name: gfxTransfer_8033978
+address: '0x08033978'
+kind: function
+status: confirmed
+summary: Queues graphics (sprites/font tiles) into VRAM appropriate to the current map group, then runs a follow-up
+  transfer for non-Internet maps.
+interface: "void loadMapGroupGFX_8033978(void)\n  // inputs:  r10 = caller's \"toolkit\"/game-state base ptr (read\
+  \ via oToolkit_GameStatePtr -> oGameState_MapGroup); lr = return\n  // outputs: none directly; r0/r1/r2/r3/r5/r7\
+  \ trashed by callees\n  // clobbers: r0, r1, lr, N/Z (and C/V as set by callers)\n  // preserved: r4, r5, r6,\
+  \ r7 (note r5 clobbered by callees inside the call; only r7 spans the asm frame)\n"
+details: "Inspects the current map group via r10 -> oToolkit_GameStatePtr -> oGameState_MapGroup.\n- If map_group\
+  \ < INTERNET_MAP_GROUP_START (regular overworld map): queues one block,\n  dword_86C0D20 -> 0x6017200, 0x100 bytes,\
+  \ then calls gfxTransfer_8033DA0(0).\n- Else (Internet map group): queues two blocks, byte_86C1F80 -> 0x6017200\
+  \ (0x340 bytes)\n  and byte_86C1F20 -> byte_30016D0 (0x20 bytes). No follow-up call.\nAll transfers go through\
+  \ QueueEightWordAlignedGFXTransfer; r5 is loaded with a pointer that\nis never used. The function only pushes/pops\
+  \ {r4-r7,lr}; r7 holds the game-state pointer\ncarried from r10 for the duration of the frame.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261012-161706);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    m3'' --file inbox_farm_m_m3.c gfxTransfer_8033978'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function gfxTransfer_8033978
+
+    ./wf verify --function gfxTransfer_8033978 --snapshots build-snapshots'
+  result: 'captured calls: 27 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261012-161706-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function gfxTransfer_8033978
+
+    ./wf verify --function gfxTransfer_8033978 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-161706-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function gfxTransfer_8033978
+
+    ./wf verify --function gfxTransfer_8033978 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161706-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08033978 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp f322961
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What specific banks (sprite tiles, font, palette) live at 0x6017200 vs. the "0x100-byte" small regular-map block?
+- What does gfxTransfer_8033DA0(0) actually do in the non-Internet case (tilemap fill? OBJ update?), and why is
+  it skipped for Internet maps?
+- What is the unused r5 load (eS2011E30) about — leftover debug/stub?
+- Is 0x6017200 a VRAM tile slot, and why is the Internet case larger (0x340) than the regular case (0x100)?
+sources:
+- tools/wf run convert-20261012-161706
+- recomp f322961

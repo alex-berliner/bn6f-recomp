@@ -1,0 +1,105 @@
+name: object_800372A
+address: '0x0800372A'
+kind: function
+status: confirmed
+summary: Registers a freshly allocated battle object into the per-type object slot list, returning the bumped slot
+  position and count pointer to the caller.
+interface: 'void registerObjectInTypeSlot(u32 r5 /* object */, ??? out_r2 /* count_ptr */, ??? out_r3 /* slot_index
+  */);
+
+  '
+details: 'Reads oBattleObject_Type from the object pointed to by r5, takes the low nibble
+
+  (the object''s type, 0..0xF) and uses it as an index into object_PtrPairs_800374C.
+
+  Each entry is a 8-byte pair: a 32-bit slot base pointer (where object pointers are
+
+  stored contiguously as a u32 array) and a 32-bit pointer to the running count byte.
+
+  The current count byte is loaded, the object pointer is written into the slot table
+
+  at slot_base + (count << 2), and the count byte is incremented.
+
+  Returns r2 = the count_ptr (so the caller can read/modify the count) and r3 = the
+
+  slot_index (<<2, the offset within the slot table of the entry just written).
+
+  Touched per-type tables include dword_2039A10/byte_2036778 (type 1),
+
+  dword_203A010/dword_203CA7C (type 2), and byte_203F750/byte_2036830 (type 3);
+
+  types 0 and 4 are zeroed (no table).
+
+  Side effects: mutates the slot table and its count byte for the object''s type.
+
+  Quirks: only the low nibble of Type is used, so it indexes up to 16 type slots,
+
+  but only 3 are populated in object_PtrPairs_800374C.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261012-161706);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    m3'' --file inbox_farm_m_m3.c object_800372A'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_800372A
+
+    ./wf verify --function object_800372A --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 269 out
+    of domain (verify run convert-20261012-161706-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_800372A
+
+    ./wf verify --function object_800372A --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 86 out of domain (verify run convert-20261012-161706-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_800372A
+
+    ./wf verify --function object_800372A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161706-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800372a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp f322961
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which of the eight pairs in object_PtrPairs_800374C correspond to which BattleObject kinds (e.g. panel/state/battler/etc.)?
+- Is `count_ptr` returned in r2 so the caller can decrement on teardown / spill-over, or for some other use?
+- Are types beyond 3 ever used at runtime, given two pairs are dword 0,0?
+sources:
+- tools/wf run convert-20261012-161706
+- recomp f322961

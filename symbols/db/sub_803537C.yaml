@@ -1,0 +1,97 @@
+name: sub_803537C
+address: '0x0803537C'
+kind: function
+status: confirmed
+summary: Re-arms event flag 0x28 when the player enters a map whose group matches an entry in the built-in auto-increment
+  table whose paired flag is currently set.
+interface: 'void sub_803537C(void); // implicit input: r10 = toolkit pointer; no outputs'
+details: 'Reads the current map group from the GameState pointed to by the toolkit (r10), then
+
+  walks a packed table of {map_group:u16, event_flag:u16} pairs at word_80353B8 (terminated
+
+  by a map_group of 0). EVENT_28 is cleared before the scan, so the routine doubles as the
+
+  trigger and the re-arming site: when a table entry matches both the current map group and
+
+  a currently-set paired flag, EVENT_28 is set again. Table entries observed:
+
+  (0x90,0x29),(0x90,0x2A),(0x90,0x2B),(0x91,0x2C),(0x91,0x2D),(0x91,0x2E),(0x93,0x2F),
+
+  (0x93,0x30). Touches oToolkit_GameStatePtr and oGameState_MapGroup; uses the standard
+
+  ClearEventFlagFromImmediate / TestEventFlag / SetEventFlagFromImmediate helpers with
+
+  flag id 0x28. r4-r7 preserved; r0/r1/r3 and flags clobbered.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261012-161706);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    m3'' --file inbox_farm_m_m3.c sub_803537C'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803537C
+
+    ./wf verify --function sub_803537C --snapshots build-snapshots'
+  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-161706-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803537C
+
+    ./wf verify --function sub_803537C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-161706-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803537C
+
+    ./wf verify --function sub_803537C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161706-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0803537c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp f322961
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which script/scenario hooks this routine (e.g., a periodic scene update or map-enter script) to supply r10 with
+  the current toolkit pointer.
+- Whether the paired flags are intentionally cleared elsewhere, since this routine doesn't touch them itself.
+- Exact meaning of "EVENT_28" in the broader event flow — likely a "first-visit" or "trigger reached" flag given
+  the map-group gating.
+sources:
+- tools/wf run convert-20261012-161706
+- recomp f322961

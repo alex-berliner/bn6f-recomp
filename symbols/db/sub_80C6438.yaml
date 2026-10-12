@@ -1,0 +1,68 @@
+name: sub_80C6438
+address: '0x080C6438'
+kind: function
+status: confirmed
+summary: Initializes a battle object as an item pickup (sets active flag, loads sprite 0x80/0x0C/0x13, snaps to
+  panel XYZ with a small upward hop velocity, plays SFX 0xA1) and hands off to its update state.
+interface: 'void sub_80C6438(void);  // uses: r5=object pointer, r10/lr=callers''  ->  r5/r8/r9/r10/r11/r12'
+details: 'Operates on the battle object pointed to by r5. Sets oObjectHeader_Flags |= 0x02 (active flag). Calls
+  sprite_load(0x80, 0x0C, 0x13), then sprite_noShadow(). Clears oBattleObject_CurAnim to 0 and sets oBattleObject_CurAnimCopy
+  to 0xFF (forces an anim restart on next tick). Writes 0x80000 to oBattleObject_ZVelocity (a fixed-point upward
+  hop). Reads oBattleObject_PanelX/PanelY and converts to world XY via object_getCoordinatesForPanels, storing into
+  oBattleObject_X/Y. Sets oBattleObject_Z to 0x1000000 (a fixed height above the panel). Plays SFX 0xA1 (item get
+  jingle). Sets oBattleObject_CurState = CUR_STATE_UPDATE and tail-calls sub_80C647C, which is presumably the per-frame
+  updater for this state. Effectively the "spawn/pop" reaction for a battle object appearing as an item on the field.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261012-161706);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    m3'' --file inbox_farm_m_m3.c sub_80C6438'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C6438
+
+    ./wf verify --function sub_80C6438 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-161706-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C6438
+
+    ./wf verify --function sub_80C6438 --snapshots build-snapshots'
+  result: 29 compared, 0 differed, 4 out of domain (verify run convert-20261012-161706-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C6438
+
+    ./wf verify --function sub_80C6438 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161706-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus2, menus3, story2.'
+  reproduce: grep -l '^080c6438 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp f322961
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31.c
+coverage:
+- menus2
+- menus3
+- story2
+open_questions:
+- Identity of the spawned sprite (sub-sprite 0x80, palette/shape 0x0C, size 0x13?).
+- What sub_80C647C's update does with the upward Z velocity (settle/land animation?).
+- Why CurAnimCopy is preset to 0xFF instead of mirroring CurAnim.
+sources:
+- tools/wf run convert-20261012-161706
+- recomp f322961
