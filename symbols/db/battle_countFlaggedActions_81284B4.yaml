@@ -1,89 +1,81 @@
 name: battle_countFlaggedActions_81284B4
 address: '0x081284B4'
 kind: function
-status: probable
-summary: Walks the current battle action-sequence array and tallies how many sub-entries have their table
-  flag bit (bit 7) set versus clear, returning both counts.
-interface: void battle_countFlaggedActions_81284B4(void) → r0 = flagged_count, r1 = unflagged_count
-details: 'Reads the sequence length from dword_2001140 (SRAM) and the sequence byte array starting at
-  byte_2006530. For each byte in the sequence, uses that byte as an index into the 4-byte-per-entry lookup
-  table at byte_812851C (table + key*4), reads the first byte of the matched entry, and checks bit 7.
-  Increments a counter at [sp] if set, or a counter at [sp+4] if clear. Iterates with an unsigned compare
-  loop (bgt on the remaining count in r4). Returns the two tallies in r0 (flagged) and r1 (unflagged).
-  r4–r7 and lr are pushed/popped; r2 and r3 are clobbered as scratch. No caller-supplied parameters beyond
-  the saved registers.
+status: confirmed
+summary: Tallies battle tag-table entries by bit-7, returning matched and unmatched counts.
+interface: void battle_countTagFlagStates_81284B4(void); /* returns set_count in r0, reset_count in r1; clobbers
+  r2,r3,NZCV; preserves r4-r7 */
+details: 'Reads the loop bound from dword_2001140 (treated as signed by the do-while).
+
+  For each iteration it takes a byte tag index from byte_2006530, scales it by 4 and looks up
+
+  the corresponding entry in the 4-byte-per-entry table at byte_812851C. If entry byte 0 has
+
+  bit 0x80 set the iteration contributes to r0 ("flagged" count); otherwise it contributes
+
+  to r1 ("unflagged" count). The pair is returned in (r0, r1). The function preserves r4-r7
+
+  per the register contract, even though only r4 and r7 are actually used in the body; the
+
+  pushed r5,r6 appear to be cover for caller expectation rather than local state.
+
+  Note: the verified C treats the loop bound as signed and runs at least once (do-while),
+
+  which only matters if dword_2001140 ever holds a non-positive value.
 
   '
 evidence:
 - method: readable-c
-  date: '2026-10-10'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-221358);
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm33_81263D0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 37' --file inbox_farm_37.c
-    sub_81284B4
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c battle_countFlaggedActions_81284B4
 - method: difftest
-  date: '2026-10-10'
+  date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_81284B4
+  reproduce: './wf capture --function battle_countFlaggedActions_81284B4
 
-    ./wf verify --function sub_81284B4 --snapshots build-snapshots'
-  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    165 out of domain (verify run convert-20261010-221358-verify-2)'
+    ./wf verify --function battle_countFlaggedActions_81284B4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 130 out of
+    domain (verify run convert-20261011-224100-verify-5)'
 - method: cpu-oracle
-  date: '2026-10-10'
+  date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_81284B4
+  reproduce: './wf capture --function battle_countFlaggedActions_81284B4
 
-    ./wf verify --function sub_81284B4 --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-221358-verify-2)
+    ./wf verify --function battle_countFlaggedActions_81284B4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-224100-verify-5)
 - method: lockstep
-  date: '2026-10-10'
+  date: '2026-10-11'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_81284B4
+  reproduce: './wf capture --function battle_countFlaggedActions_81284B4
 
-    ./wf verify --function sub_81284B4 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261010-221358-verify-2)
+    ./wf verify --function battle_countFlaggedActions_81284B4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
 - method: coverage
-  date: '2026-10-10'
+  date: '2026-10-11'
   detail: 'Executed by: menus3, story1, story2, story8.'
   reproduce: grep -l '^081284b4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-10'
+- date: '2026-10-11'
   what: readable C replacement in cport/src/game/asm33_81263D0.c
-  where: recomp 74e906c
+  where: recomp 5a14ae2
   tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm33_81263D0.c after review against the assembly (the
-    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
-    that differs from the original: Minor; only one input value, practically unreachable. Loop exit: the
-    asm does `sub r4, #1; bgt loc_81284C4` (SUBS then signed GT using N==V, so it loops while (s32)r4_old
-    > 1, overflow included). The C does `remaining--; } while (remaining > 0);` on an s32. For dword_2001140
-    == 0x80000000: in the asm, SUBS gives 0x7FFFFFFF with V=1, N=0, so GT is false and the function returns
-    after one entry (r0/...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_81284B4 -> battle_countFlaggedActions_81284B4
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33_81263D0.c
 coverage:
 - menus3
 - story1
 - story2
 - story8
+related:
+- sub_81283A0
 open_questions:
-- What does bit 7 of each table entry signify in game terms—subchip used, action locked, a special-type
-  flag?
-- Where is the flagged/unflagged pair consumed by callers (e.g. deciding whether to show a subchip menu
-  or gate an NPC action)?
-- Is byte_2006530 a per-battle subchip sequence, an NPC script step list, or a chatbox action queue?
+- What does bit 0x80 of byte_812851C actually represent in battle terms (e.g. action flagged/queued, condition met,
+  team side)?
+- Is dword_2001140 ever written with a non-positive value, in which case the do-while would still run once?
+- Are the popped r5,r6 genuinely preserved scratch that callers depend on, or vestigial from an earlier revision?
 sources:
-- tools/wf run convert-20261010-221358
-- recomp 74e906c
-previous_names:
-- sub_81284B4
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

@@ -1,0 +1,88 @@
+name: checkOWObjectInteractions_80037f4
+address: '0x080037F4'
+kind: function
+status: confirmed
+summary: Resolves pairwise interactions among overworld object interaction areas registered for the current frame,
+  snapping the player to a "touched" object's coords and clearing the interaction-area list for next frame.
+interface: void resolveOWObjectInteractions_80037f4(void);  /* clobbers r0-r3, NZCV; preserves r5; r4 and r6 returned
+  to caller */
+details: "Iterates the ordered pair set (i, j), i != j, over eOWObjectInteractionAreas (count in eNumOWObjectInteractionAreas),\n\
+  elements of size oOWObjectInteractionArea_Size with fields Unk_08, Unk_0c, Unk_10, X, Y, Z. For each pair:\n \
+  \ 1. Quick-rejects if (outer.Unk_0c & inner.Unk_08) is zero.\n  2. Calls checkOWObjectInteractionAreasOverlap_8003894(outer,\
+  \ inner); skips the pair on false.\n  3. ORs (outer.Unk_0c & inner.Unk_08) into the u32 pointed to by outer.Unk_10\
+  \ (event-flag accumulator).\n  4. If outer.Unk_08 has bit OW_OBJECT_INTERACTION_AREA_FLAG_0x200000, copies inner.X/Y/Z\
+  \ (word16 each)\n     into eOWPlayerObject at offsets oOWPlayerObject_Unk_72, _74, _76 (player snap-to-touch).\n\
+  \  5. ORs (outer.Unk_08 & inner.Unk_0c) into the u32 pointed to by inner.Unk_10 (symmetric flag write).\nOn exit\
+  \ writes 0 to eNumOWObjectInteractionAreas so the area list is empty for the next frame.\nReturned r4 carries\
+  \ the last inner-area base (a pointer into eOWObjectInteractionAreas) and r6 the\nouter loop index; r5 is preserved\
+  \ across the call. The pair overlap is recomputed only when\nthe cheap mask test passes, so it is really a tagged-area\
+  \ interaction pass rather than a broad sweep.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c checkOWObjectInteractions_80037f4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function checkOWObjectInteractions_80037f4
+
+    ./wf verify --function checkOWObjectInteractions_80037f4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 144 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function checkOWObjectInteractions_80037f4
+
+    ./wf verify --function checkOWObjectInteractions_80037f4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function checkOWObjectInteractions_80037f4
+
+    ./wf verify --function checkOWObjectInteractions_80037f4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080037f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Semantics of Unk_08 / Unk_0c masks and Unk_10 *-pointer event-flag accumulator (which object/struct it lives on).
+- Meaning of OW_OBJECT_INTERACTION_AREA_FLAG_0x200000 beyond "snap player to the other area's X/Y/Z".
+- Why r4 is preserved across the call (last matched inner base) and r6 (i+1 at end of outer loop) is meaningful
+  to the caller.
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

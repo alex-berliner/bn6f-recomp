@@ -1,0 +1,83 @@
+name: sub_81297DC
+address: '0x081297DC'
+kind: function
+status: hypothesis
+summary: Battle-state dispatcher that reads a phase/handler index from r5+3, jumps through the off_81297F4 table
+  to handle the corresponding action, then posts battle message 0x12 via sub_812B25C.
+interface: 'void sub_81297DC(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) -> u32 r5, u32 r8, u32 r9, u32 r10, u32 r11,
+  u32 r12. Clobbers: n, z, c, v, r0, r1, r2, r3, r4, r6, r7, lr. Preserves: none.'
+details: 'Pushes lr for the tail call. Loads the base of the handler table at off_81297F4 (= off_81297F4),
+
+  indexes it by the unsigned byte at r5+3 (interpreted as a table slot 0..4), and indirect-calls
+
+  the chosen handler (bx r0) with PC moved to lr so the handler returns to the instruction after
+
+  the bx. The handlers in the table are sub_8129808, sub_812982C, sub_8129870,
+
+  battleObj_setCanceledPose_81298D4 and sub_81298F8; r1 is loaded with the index byte so the
+
+  dispatched handler can see which slot was picked. After the dispatched handler returns, the
+
+  function then calls sub_812B25C with r0 = 0x12 (a fixed battle message id), forwarding the
+
+  live r4/r5/r6 values the handler may have updated, and returns to its caller via pop {pc}.
+
+  The 0x12 literal is the only hard-coded post-handler signal, suggesting slot-specific handlers
+
+  each finish by setting up state and then this dispatcher emits a single standardized follow-up
+
+  battle message. The ''cancelled pose'' handler in slot 3 indicates the index is some kind of
+
+  battle-action / phase selector rather than a pure phase number.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c sub_81297DC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81297DC
+
+    ./wf verify --function sub_81297DC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81297DC
+
+    ./wf verify --function sub_81297DC --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 7 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81297DC
+
+    ./wf verify --function sub_81297DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^081297dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- What does the byte at r5+3 actually represent (action id, phase index, sub-state)?
+- What is the meaning of battle message 0x12 posted after every slot handler?
+- Why are only r5, r8, r9, r10, r11, r12 returned live to the caller (i.e. contract for post-dispatch result)?
+- Does the order of r1 = state_byte matter, since r1 is also passed as argument slot?
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

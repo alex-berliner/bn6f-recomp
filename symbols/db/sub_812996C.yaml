@@ -1,0 +1,79 @@
+name: sub_812996C
+address: '0x0812996C'
+kind: function
+status: confirmed
+summary: Walks a 3-slot pointer table in unk_20251A0; if all entries have a clear byte at offset +7, strips the
+  high bit from every slot, marks the object state byte to 8, calls sub_812B3CC, and clears bit 0 of the object's
+  0x1B status byte.
+interface: void sub_812996C(u32 r4 /*preserved table base*/, u32 r5 obj, u32 r10 /*carry in*/) -> r4=r4, r5=obj,
+  r6=loop offset (0..0xC)
+details: 'Operates on the 3-slot pointer table at unk_20251A0 (three u32s, total 0xC bytes).
+
+  Pass 1: for each slot, masks off bit 31 of the pointer, then reads byte at +7 from
+
+  that pointer; if any is non-zero, returns early with r6 holding the failing slot''s
+
+  byte offset (0, 4, or 8).
+
+  Pass 2: if all three passed, strips bit 31 from each slot''s u32 in place.
+
+  Then writes 8 to obj+3 (a state byte), calls sub_812B3CC(r4=table_base, r5=obj)
+
+  passing the table and object through r4/r5, and clears bit 0 of obj+0x1B.
+
+  r7 is preserved; r10 flows in unused. The flag byte at ptr+7 looks like an
+
+  "in-use"/"valid" sentinel for whatever entities those pointers reference.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c sub_812996C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812996C
+
+    ./wf verify --function sub_812996C --snapshots build-snapshots'
+  result: 'captured calls: 28 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812996C
+
+    ./wf verify --function sub_812996C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812996C
+
+    ./wf verify --function sub_812996C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0812996c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- What unk_20251A0 represents (battle-side entity table? panel? chip/illusion list?)
+- Meaning of bit 31 on each slot pointer (probably a "needs clear"/"dirty" flag)
+- Meaning of byte +7 of each pointed-to struct
+- Meaning of state byte 8 at obj+3 and bit 0 of obj+0x1B
+- What sub_812B3CC actually does with the now-cleared table
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

@@ -1,0 +1,70 @@
+name: t3_0x4_80C53C0
+address: '0x080C53C0'
+kind: function
+status: confirmed
+summary: Per-frame dispatcher that runs a battle object's current state handler from a small jump table, then refreshes
+  its sprite.
+interface: 'void battle_object_updateStateAndSprite_80C53C0(void); /* in: r5 = battle object; out: r5 = battle object
+  (may be moved by state handler); clobbers nz,c/v, r0-r4,r6-r7,r8-r12,lr; trashes: r8-r12 via callees */'
+details: 'Reads the battle object''s state byte at oBattleObject_CurState (r5 + #oBattleObject_CurState),
+
+  loads a 32-bit function pointer from the jump table at off_80C53D8 indexed by that state,
+
+  and tail-calls it via `mov lr, pc; bx r1` (the listed+1 offsets are Thumb-bit tricks). The
+
+  three table entries are sub_80C53FA+1, sub_80C54E0+1, and sub_80C53E4+1, giving three
+
+  per-state handlers. Whatever object pointer the handler returns in r5 is then passed to
+
+  object_updateSprite so the sprite reflects the new state.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c t3_0x4_80C53C0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x4_80C53C0
+
+    ./wf verify --function t3_0x4_80C53C0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x4_80C53C0
+
+    ./wf verify --function t3_0x4_80C53C0 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 31 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x4_80C53C0
+
+    ./wf verify --function t3_0x4_80C53C0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story4, story6.'
+  reproduce: grep -l '^080c53c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- story4
+- story6
+open_questions:
+- What are the three state values (sub_80C53FA / sub_80C54E0 / sub_80C53E4) — e.g. appear, idle, vanish?
+- Which object subsystem (navi, virus, chip, BattleObject) is this the per-frame tick for?
+- 'Why does the function sit at an unusual 0x...C address: caller still keeps it in r5 like a typed `this`/obj pointer.'
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

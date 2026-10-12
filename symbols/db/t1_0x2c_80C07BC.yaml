@@ -1,0 +1,68 @@
+name: t1_0x2c_80C07BC
+address: '0x080C07BC'
+kind: function
+status: confirmed
+summary: Jump-table dispatcher that calls a battle-object update function based on its current state byte.
+interface: "void dispatchBattleObjectState_80C07BC(void /* r5 = battle object */)\n  /* clobbers nzcv, r0-r4, r6,\
+  \ r7, lr */\n  /* outputs: r5, r8, r9, r10, r11, r12 */\n"
+details: 'Thin trampoline (16 bytes). Reads oBattleObject_CurState (a byte field at offset `oBattleObject_CurState`
+  from the r5 object pointer) and uses it as an index into JumpTable80C07CC, which contains three Thumb entries
+  (sub_80C07DC, sub_80C0840, sub_80C0C8C). The chosen handler is invoked by loading its address, setting lr = pc,
+  and bx-ing into it; control comes back via the matching `pop {pc}`.
+
+  Quirks: jump-table entries are stored as `sub_xxx+1` to flip into Thumb mode (the low bit is set). The object
+  pointer in r5 is preserved into the call (callers pass r5 and it appears in the outputs), so each handler receives
+  the same battle-object base pointer. The tr prefix likely denotes the per-state tick/update phase `0x2c`. Naming
+  follows the project''s table-with-1 (phase 0x2c) table-dispatch idiom; sibling tables in the same area presumably
+  serve other phases.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c t1_0x2c_80C07BC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t1_0x2c_80C07BC
+
+    ./wf verify --function t1_0x2c_80C07BC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t1_0x2c_80C07BC
+
+    ./wf verify --function t1_0x2c_80C07BC --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 8 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t1_0x2c_80C07BC
+
+    ./wf verify --function t1_0x2c_80C07BC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c07bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- What the three states (r0=header/0, r1=loop, r2=exit) actually represent in the object lifecycle.
+- Whether r5 is the calling convention's "self" pointer (battle object) or a different struct base.
+- Why r8-r12 are designated as outputs vs. r0-r4/r6-r7 being pure scratch.
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

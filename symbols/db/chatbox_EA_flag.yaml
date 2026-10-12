@@ -1,0 +1,80 @@
+name: chatbox_EA_flag
+address: '0x08041160'
+kind: function
+status: confirmed
+summary: 'Dispatcher for chatbox command 0xEA: selects an event-flag/entry-advance handler by index and executes
+  it, returning success (r0=1).'
+interface: 'void chatbox_EA_flag() /* in: r4 = ptr to chatbox command struct; out: r0 = 1, nz set from r0, all regs
+  clobbered except r5 preserved */'
+details: Reads byte 1 of the command struct at r4 as a handler index (0–10), multiplies by 4 to offset into the
+  jump table at off_8041184, and branches there via bx. Bytes 2 and 3 are assembled into a 16-bit event flag value
+  (low byte in r1, high byte shifted into r0). Before the indirect call, r5 is pushed/popped so the callee's clobbers
+  do not destroy it. After the handler returns, r0 is forced to 1 (command-success signal) and the function returns.
+  The jump table targets include chatbox_setEventFlagAndAdvanceEventCursor_80411B0, chatbox_ClearEntryWaitFlagAndAdvanceEntry_80411BC,
+  chatbox_cmdSetEventFlag_8041218, and six other unnamed handlers. Entry 5 is a NULL placeholder (unreachable in
+  practice). The table uses thumb-mode addresses (+1). Pad bytes 0,0 align the table pointer literal off_8041180.
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c chatbox_EA_flag
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_EA_flag
+
+    ./wf verify --function chatbox_EA_flag --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_EA_flag
+
+    ./wf verify --function chatbox_EA_flag --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_EA_flag
+
+    ./wf verify --function chatbox_EA_flag --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story8, story9.'
+  reproduce: grep -l '^08041160 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- Exact semantics of each of the 10 jump-table targets (which set vs clear flags, which advance cursor vs entry).
+- Why entry 5 in the table is NULL—was there a removed opcode variant or is it a padding artifact?
+- Whether callers ever pass handler indices >10 (undefined behavior) or the table is guaranteed complete for all
+  0xEA usage.
+- What additional data the handlers read from the command struct beyond bytes 1–3.
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

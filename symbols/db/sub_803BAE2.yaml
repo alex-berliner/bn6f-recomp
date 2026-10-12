@@ -1,0 +1,87 @@
+name: sub_803BAE2
+address: '0x0803BAE2'
+kind: function
+status: confirmed
+summary: Advances a battle object's animation-phase counter (byte 0x13) and, during the low phase window [0,0x1F],
+  rewrites the targeted sprite record to either an active {0x25, 0xE6} or idle {0x9F, 0xE5} two-byte state.
+interface: "u32 animStep_803BAE2(u32 table_index /* r0 */, void *obj /* r5 */);\n    // r1 out: 0x3F when outside\
+  \ the window; sub-index when record stays 0xE6;\n    //         record address when rewritten to idle.\n    //\
+  \ clobbers r0, NZCV; preserves r4-r7.\n"
+details: 'Indexes a 2-byte {base_offset, sub_index} table in RAM (dword_803BB28 holds the
+
+  pointer it lives by, and dword_803BB28 is loaded as the base; entry = base +
+
+  (table_index << 1)). Increments obj->phase (byte 0x13) and masks the result by
+
+  0x3F. While masked < 0x20 (i.e. the lower half of the 64-phase cycle) the
+
+  function performs the swap; otherwise it returns 0x3F without writing.
+
+
+  The record addressed is obj + entry.base + (obj[entry.sub_index] << 1). If the
+
+  record''s first byte is 0xE6 the object is treated as still active and the
+
+  record is overwritten with {0x25, 0xE6}. Any other first byte (including the
+
+  new 0x9F value itself) is overwritten with {0x9F, 0xE5}, putting the record
+
+  into the "idle" sprite state. r1 is set to entry.sub_index in the active
+
+  branch and to the record address in the idle branch.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c sub_803BAE2
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803BAE2
+
+    ./wf verify --function sub_803BAE2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 215 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803BAE2
+
+    ./wf verify --function sub_803BAE2 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 72 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803BAE2
+
+    ./wf verify --function sub_803BAE2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803bae2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- Where this routine sits in the per-frame object/battle pipeline (caller). r5 carries the per-object context but
+  the caller uses r0 as a dword_803BB28-relative index, so its caller likely animates more than one sprite/object.
+- The meaning of the 0xE6 sentinel byte and whether it is set by an earlier animation phase of the same object or
+  by a different subsystem.
+- Whether dword_803BB28 is itself a pointer to an array of {u8 base, u8 sub_index} pairs or the first entry's two
+  bytes, and how many entries the table has.
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

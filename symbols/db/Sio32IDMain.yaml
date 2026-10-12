@@ -1,0 +1,91 @@
+name: Sio32IDMain
+address: '0x0814CD70'
+kind: function
+status: confirmed
+summary: 'Multiplayer-link 32-bit ID handshake state machine: drives SIO/RCNT/IME/IE around the SIO interrupt to
+  bring up the link, accept the partner ID, or tear it down.'
+interface: "void Sio32IDMain(void);\n/* inputs: lr (return address); r0..r3, r6, flags are not used.\n   outputs:\
+  \ r0 = result (partner ID word, or 0 on busy/control paths),\n            r12 = the byte_2010CD1 stage byte captured\
+  \ at entry.\n   clobbers: \"r1, r2, r3; preserved: r4, r5, r6, r7; flags clobbered. */\"\n"
+details: "Operates on the IWRAM block at byte_2010CD0, a small SIO-multiplayer\ncontrol struct with offsets:\n \
+  \ +0x0  byte   active flag (set to 1 on first run)\n  +0x1  byte   stage (0=init, 1=handshake, 2=done)\n  +0x2\
+  \  halfword pending-send counter / guard\n  +0x4  halfword mode word (compared against 0x8001 \"full session\"\
+  )\n  +0xa  halfword partner ID / partner slot\nStage 0 (cold init): mark active, set RCNT start (bit 0) on\nSIOControlRegister,\
+  \ bracket a single IE bit-7 write with IME=0 then IME=1,\nadvance the stage byte to 1, then pulse bit 7 into the\
+  \ low byte of\nSIOControlRegister (force a start). Returns 0.\nStage 1 (handshake poll): if a non-zero partner\
+  \ ID has appeared, flip the\nstage byte to 2 and return the partner ID. If active==1 and pending==0,\njust bracket\
+  \ another SIO bit-7 pulse. Otherwise (full session path), tear\ndown by masking IE bit 7, push IME=state, drive\
+  \ RCNT 0->0x1000 (32-bit\nparent clock), ack the SIO IRQ (write 0x80 to the IRQ ack register), set\nRCNT 0x4080\
+  \ (multiplayer control packet), then re-enable IE bit 7 inside a\nfresh IME bracket. Skips teardown if mode==0x8001\
+  \ or pending!=0. Returns 0.\nOther stage: just return the cached partner ID word.\nUses r12 (preserved across\
+  \ the function) as a snapshot of the entry-stage\nbyte, written into IME around every bracket (the byte happens\
+  \ to be 0 on\nthe init path, 1 on the handshake path, etc., so it doubles as the IME\nvalue). r4/r5/r6/r7 are\
+  \ reserved for SIO register pointers and small\nimmediates; r1/r2/r3 are freely clobbered in the read-modify-write\n\
+  sequences.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c Sio32IDMain
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function Sio32IDMain
+
+    ./wf verify --function Sio32IDMain --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function Sio32IDMain
+
+    ./wf verify --function Sio32IDMain --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function Sio32IDMain
+
+    ./wf verify --function Sio32IDMain --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814cd70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- The exact meaning of "mode word" at +0x4 and whether 0x8001 is a sentinel supplied by the caller or written here.
+- Where the partner-ID halfword at +0xa is written by the link IRQ handler that this function presumably feeds.
+- Whether r12 being returned to the caller is a real contract or just a side-effect of using it as the IME scratch.
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

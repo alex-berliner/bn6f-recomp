@@ -1,0 +1,80 @@
+name: t3_0x98_80D8444
+address: '0x080D8444'
+kind: function
+status: confirmed
+summary: Tail-call dispatcher that jumps to a BattleObject handler chosen by BattleObject->CurState via a 3-entry
+  jump table.
+interface: "void battleObject_stateDispatch_80D8444(void);\n  // in:  r5 = BattleObject*\n  // out: r5 r8 r9 r10\
+  \ r11 r12 (per selected handler); r0-r4 r6 r7 clobbered\n  // flags: nz c v clobbered\n"
+details: 'Reads a byte state index from r5+oBattleObject_CurState, scales it as a byte
+
+  offset into the 3-entry jump table at off_80D8458, loads a Thumb handler
+
+  address (already +1 to flag Thumb mode), and tail-calls it via the classic
+
+  "mov lr, pc; bx r1" idiom so the handler returns directly to this function''s
+
+  caller. The three dispatched handlers are sub_80D8464+1 (state 0),
+
+  battleObject_respawn_80D84DE+1 (state 1), and object_genericDestroy+1
+
+  (state 2), matching the standard table_state_t lifecycle
+
+  (init/active/destroy). `push {lr}` / `pop {pc}` is a Thumb2 veneer for a
+
+  function that never actually returns locally.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c t3_0x98_80D8444
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x98_80D8444
+
+    ./wf verify --function t3_0x98_80D8444 --snapshots build-snapshots'
+  result: 'captured calls: 80 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x98_80D8444
+
+    ./wf verify --function t3_0x98_80D8444 --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 12 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x98_80D8444
+
+    ./wf verify --function t3_0x98_80D8444 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story5, story6, story7.'
+  reproduce: grep -l '^080d8444 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story5
+- story6
+- story7
+open_questions:
+- Whether state 2's destroy is the canonical BattleObject teardown or a state-specific one (shares name with the
+  generic object destroyer).
+- Whether additional states exist beyond the three table entries (table appears sized for exactly the three lifecycle
+  states).
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

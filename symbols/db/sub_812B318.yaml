@@ -1,0 +1,68 @@
+name: sub_812B318
+address: '0x0812B318'
+kind: function
+status: hypothesis
+summary: Walks the table at "unk_20251A0", calling sub_811A768 to deallocate unlocked entries until the per-entity
+  counter at "[entity_base+0x1C]" reaches the threshold for the current level in "byte_812B394".
+interface: 'u32 sub_812B318(u32 slot_count /* r0 */, void *entity_base /* r5 */); -> { r0: ok_flag (1=all-ok, 0=an
+  entry was freed), r1: null_count, r2: locked_count, r3: passthrough from sub_811A768 }'
+details: "Increments the 8-bit counter at \"entity_base+0x1C\" by 1 once on entry. Iterates i from 1 to slot_count,\
+  \ indexing the dealloc table at \"unk_20251A0\" by \"(i-1)<<2\". For each 32-bit slot:\n  - 0               ->\
+  \ \"null_count++\"\n  - bit 31 set       -> \"locked_count++\"\n  - bit 31 clear    -> calls \"sub_811A768(-0x10,\
+  \ slot & 0x7FFFFFFF)\"; on r0==0 it zeroes the table entry and clears the success flag.\nLoop terminates early\
+  \ when the per-level bound \"byte_812B394[i]\" (s8-ish threshold, signed cmp) becomes >= the byte at \"[entity_base+0x1C]\"\
+  . Threshold table (8 bytes): 0, 3, 6, 9, 12, -1 (0xFF), 0, 0 - looks like 5 progressively longer work budgets\
+  \ followed by a stop marker.\nThe \"ok\" return (r0=1) means \"no slot was freed this call\"; r0=0 means at least\
+  \ one entry was actually deallocated. r1/r2 summarise table state; r3 is whatever sub_811A768 last left in r3.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c sub_812B318
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812B318
+
+    ./wf verify --function sub_812B318 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 287 out
+    of domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812B318
+
+    ./wf verify --function sub_812B318 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812B318
+
+    ./wf verify --function sub_812B318 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0812b318 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Identity of the table at "unk_20251A0" (dealloc / free-list / handle table?) and the unit it stores (looks like
+  a 31-bit index or pointer plus a "locked" high bit).
+- Meaning of the -0x10 first argument passed to sub_811A768 (tag, opcode, or size class).
+- What "[entity_base+0x1C]" counts and which subsystem writes to it; callers of this function presumably treat it
+  as a phase/tick counter.
+- Whether the 0xFF threshold at "byte_812B394[5]" is a sentinel meaning "process all remaining slots".
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2

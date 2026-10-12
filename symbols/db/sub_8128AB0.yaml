@@ -1,0 +1,73 @@
+name: sub_8128AB0
+address: '0x08128AB0'
+kind: function
+status: hypothesis
+summary: Builds an interleaved two-buffer tile-ID lookup table in the sprite staging area (unk_201C040), filling
+  0x170 halfwords with blank tile 0x7200 and overlaying 0x7201+ tile pairs whose row count is gated by the sprite's
+  row/skip fields.
+interface: void sub_8128AB0(struct sprite *r5 /* in/out, preserved */);
+details: "Operates on a sprite (or similarly-shaped object) at r5; reads:\n  - [r5+0x1E] u16 total_rows (zero short-circuits\
+  \ the entire overlay pass)\n  - [r5+0x24] u16 skip_rows (shifted left by 1)\nComputes `remaining = total_rows\
+  \ - (skip_rows << 1)` on the stack and uses it as a decrementing counter per sub-row pair until exhaustion or\
+  \ 4 outer iterations.\nCalls HalfwordFill(base=unk_201C040, len=0x170 halfwords, value=0x7200) to clear the buffer\
+  \ to a blank tile.\nThen walks the buffer in two interleaved half-rows per outer step, writing paired (u16) tile\
+  \ IDs to two parallel sub-buffers separated by 0x2E halfwords (buf_a = unk_201C040, buf_b = unk_201C040+0x2E),\
+  \ incrementing from 0x7201. Each half-row spans 0x14 bytes (10 u16 pairs); the second half-row starts 6 bytes\
+  \ past the first.\nAfter each outer step both buffer pointers advance by 0x5C (2 × 0x2E) halfwords. The outer\
+  \ loop is a do-while of 4.\nThe interleaved two-buffer layout and per-row tile ID sequence is consistent with\
+  \ the OBJ tile-attribute-pair rendering pattern Mega Man Battle Network uses to produce animated frame counts\
+  \ and palette-varied tiles for a character sprite.\n\nRegister form kept (C call semantics could not work): r5\
+  \ in/out, r5 preserved; clobbers r0 r1 r2 r3 r7 r4 r6; calls HalfwordFill"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (5 attempt(s), run convert-20261011-224100);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 84' --file inbox_farm_84.c sub_8128AB0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8128AB0
+
+    ./wf verify --function sub_8128AB0 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261011-224100-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8128AB0
+
+    ./wf verify --function sub_8128AB0 --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261011-224100-verify-5)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8128AB0
+
+    ./wf verify --function sub_8128AB0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-224100-verify-5)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08128ab0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 5a14ae2
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Which field at [r5+0x1E] is this exactly — frame count, sprite height in 8x8 tiles, or a tilemap row count?
+- Why is [r5+0x24] shifted left by 1 before subtraction (units of half-rows vs rows)?
+- What is the semantic difference between buf_a and buf_b at offset 0x2E halfwords — likely OBJ tile slot vs. shadow/extra-tile
+  buffer, unconfirmed.
+- Does the outer count of 4 relate to chip/character page count or to a 4-frame animation cap?
+- 'Calling-convention work: register form kept because r5 in/out, r5 preserved; clobbers r0 r1 r2 r3 r7 r4 r6; calls
+  HalfwordFill'
+sources:
+- tools/wf run convert-20261011-224100
+- recomp 5a14ae2
