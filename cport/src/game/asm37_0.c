@@ -665,6 +665,13 @@ Next battle_clearIncompatibleChipSlot_813CEA0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813D5DC ── */
+/* sub_813D5DC: tail-call to sub_814692C. */
+Next sub_813D5DC(void) {
+    GUEST_CALL(sub_814692C);
+    RETURN_TO_CALLER();
+}
+
 /* ── test0x200bc50_0x5_813D60C ── */
 /* test0x200bc50_0x5_813D60C:
  * Test the byte at eS200BC50+5 and return it (and the struct address) so
@@ -715,5 +722,23 @@ Next zeroFill_813D960(void) {
     GUEST_CALL(ZeroFillByWord);
 
     ST8(A_eS200BC50 + 7, savedByte);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813DBC0 ── */
+/* sub_813DBC0(r0 = some u16, r1 = some u16, r2 = some u16):
+ * Initialize the "ERE5B" magic tag block at 0x200B1B0 (0x0E?53B1B0):
+ *  +0x0  = "BRE5" tag (0x42523545)
+ *  +0x4  = r2, +0x6 = r1, +0x8 = r0  (halfwords)
+ *  +0xA  = 0x3C
+ * No flags or return value. */
+Next sub_813DBC0(void) {
+    ST16(A_dword_200B1B0 + 8, (u16)R0);
+    ST16(A_dword_200B1B0 + 6, (u16)R1);
+    ST16(A_dword_200B1B0 + 4, (u16)R2);
+    ST32(A_dword_200B1B0, 0x42523545);
+    ST16(A_dword_200B1B0 + 0xA, 0x3C);
+    R0 = 0x3C;
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }

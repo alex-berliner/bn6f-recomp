@@ -70,6 +70,82 @@ Next reqBBS_8140984(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── reqBBS_81409D0 ── */
+/* reqBBS_81409D0: divide the incoming argument by a random byte via BIOS svc 6
+ * (Div, with r0 = denominator, r1 = numerator) and return the remainder in r0.
+ *
+ *   inputs:  r0 = dividend, lr
+ *   outputs: r0 = remainder, r1 = remainder, r2, r3, r6, r7, lr
+ *   clobbers: nz, c, v
+ *   preserved: r6, r7
+ */
+Next reqBBS_81409D0(void) {
+    u32 arg = R0;
+    u32 saved_r6 = R6;
+
+    /* bl GetRNG -- random 32-bit value returned in r0 */
+    GUEST_CALL(GetRNG);
+
+    /* mov r1, #0xff / and r0, r1 -- mask to a 0..255 divisor */
+    R0 = R0 & 0xFFu;
+
+    /* mov r1, r6 -- r1 = original argument (numerator) */
+    R1 = arg;
+
+    /* svc 6: BIOS Div. r0 = denominator (random byte), r1 = numerator (arg).
+     * Returns: r0 = quotient, r1 = remainder. */
+    swi_call(6);
+
+    /* mov r0, r1 -- surface the remainder to the caller */
+    R0 = R1;
+
+    /* Restore caller's r6. The push {r6,lr} / pop {r6,pc} pair originally saved
+     * r6 on entry and restored the same value on exit, so r6 ends up unchanged. */
+    R6 = saved_r6;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_81409E4 ── */
+/* reqBBS_81409E4: trigger-request dispatcher for the overworld player.
+ *
+ * Asks the overworld player's NPC-script array whether a coordinate
+ * trigger fires (e.g. an "on touch" BBS script).
+ *
+ *   inputs:  r10 lr
+ *   outputs: r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 lr
+ *   clobbers: nz c v
+ *   preserved: r4 r5 r6 r7 r8 r9 r12
+ */
+Next reqBBS_81409E4(void) {
+    /* push {lr} — save the caller's return address on the guest stack. */
+    u32 ret_addr = LR;
+    SP -= 4;
+    ST32(SP, ret_addr);
+
+    /* Toolkit -> GameState -> OverworldPlayerObject + 0x1C (NPC.scriptArrayOffset). */
+    R0 = LD32(R10 + oToolkit_GameStatePtr);
+    R0 = LD32(R0  + oGameState_OverworldPlayerObjectPtr);
+    R0 = R0 + 0x1C;
+
+    /* bl checkCoordinateTrigger_8031a7a — leaves its results in R0..R3 etc. */
+    GUEST_CALL(checkCoordinateTrigger_8031a7a);
+
+    /* pop {pc} — restore LR to the caller's return address and return to it. */
+    LR = LD32(SP);
+    SP += 4;
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_setFlag_e17b0f7_8140A00 ── */
+Next reqBBS_setFlag_e17b0f7_8140A00(void) {
+    /* entry 17, byte 0, flag 7: set the corresponding event flag. */
+    R0 = 0x17;
+    R1 = 0;
+    GUEST_CALL(SetEventFlagFromImmediate);
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_setFlags_8140A24 ── */
 /* reqBBS_setFlags_8140A24: mark the request-board (BBS) event flags as set.
  * Sets the 0x40 flags of EVENT_1640 and the 0x10 flags of EVENT_16C0 via

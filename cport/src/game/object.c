@@ -428,6 +428,66 @@ Next battle_getPanelDataPtr_800C6E0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800C6F0 ── */
+/* sub_800C6F0(r0 = object):
+ *   For each panel column 1..3 owned by `object`, look up its panel data.
+ *   If a panel exists and its alliance byte differs from its teammate byte:
+ *     - increment r6 (count of such panels)
+ *     - OR (1 << col) into the bitmask at [sp+0]
+ *     - if the panel's oPanelData_Flags does NOT have any of the bits in 0x00F880080:
+ *         - increment r7 (count of panels also satisfying the flags check)
+ *         - OR (1 << col) into the bitmask at [sp+4]
+ *   Returns:
+ *     r0 = total panel count (r6)
+ *     r1 = flags-clean panel count (r7)
+ *     r2 = bitmask of all counted panels (1..3 bits)
+ *     r3 = bitmask of flags-clean panels (1..3 bits)
+ */
+Next sub_800C6F0(void) {
+    u32 object = R0;
+
+    u32 buf = SP;
+    SP -= 8;
+
+    ST32(SP + 0, 0);  /* bitmask of all counted panels */
+    ST32(SP + 4, 0);  /* bitmask of flags-clean panels */
+
+    u32 total_mask = 0;
+    u32 clean_mask = 0;
+    u32 total = 0;
+    u32 clean = 0;
+
+    for (u32 col = 1; (s32)col <= 3; col++) {
+        R0 = object;
+        R1 = col;
+        GUEST_CALL(object_getPanelDataOffset);
+
+        if (R0 == 0) continue;
+        u32 panel = R0;
+
+        u32 alliance = LD8(panel + oPanelData_Alliance);
+        u32 unk04    = LD8(panel + oPanelData_Unk_04);
+        if (alliance == unk04) continue;
+
+        total++;
+        total_mask |= (1u << col);
+
+        u32 flags = LD32(panel + oPanelData_Flags);
+        if ((flags & 0x00F880080u) != 0) continue;
+
+        clean++;
+        clean_mask |= (1u << col);
+    }
+
+    SP = buf;
+
+    R0 = total;
+    R1 = clean;
+    R2 = total_mask;
+    R3 = clean_mask;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_updatePanels_800C746 ── */
 #define PANEL_TEAMS     6
 #define PANEL_COLS      6
@@ -1346,6 +1406,18 @@ Next object_subtractHP(void) {
 
     ST16(R5 + oBattleObject_HP, newHP);
     R1 = newHP;
+    RETURN_TO_CALLER();
+}
+
+/* ── object_addHP ── */
+Next object_addHP(void) {
+    u32 new_hp = (u32)LD16(R5 + oBattleObject_HP) + R0;
+    u32 max_hp = (u32)LD16(R5 + oBattleObject_MaxHP);
+    SET_FLAGS_CMP(new_hp, max_hp);
+    if ((s32)new_hp > (s32)max_hp)
+        new_hp = max_hp;
+    ST16(R5 + oBattleObject_HP, (u16)new_hp);
+    R1 = new_hp;
     RETURN_TO_CALLER();
 }
 

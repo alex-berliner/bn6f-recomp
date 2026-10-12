@@ -551,6 +551,39 @@ Next MapScriptCutsceneCmd_set_event_flag_range(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCutsceneCmd_write_byte ── */
+/* MapScriptCutsceneCmd_write_byte(r7 = script cursor, lr = return address):
+ *   Read a 16-bit word from the script into r4 (the destination address),
+ *   read a single byte from the script into r4, store the byte at that
+ *   address, advance the cursor past both reads, and return 1 in r0.
+ *   inputs:  r7 lr
+ *   outputs: nz r4 r7
+ *   clobbers: c v r0 r6 lr
+ *   preserved: - */
+Next MapScriptCutsceneCmd_write_byte(void) {
+    /* bl ReadMapScriptWord -- r6 = 1 selects a 16-bit word read, result in r4 */
+    R6 = 1;
+    GUEST_CALL(ReadMapScriptWord);
+
+    /* mov r0, r4 -- destination address for the byte store */
+    R0 = R4;
+
+    /* bl ReadMapScriptByte -- r6 = 5 selects a single byte read, result in r4 */
+    R6 = 5;
+    GUEST_CALL(ReadMapScriptByte);
+
+    /* strb r4, [r0] -- write the byte at the destination address */
+    ST8(R0, R4);
+
+    /* add r7, #6 -- advance the cursor past the word + byte + 3-byte header */
+    R7 += 6;
+
+    /* mov r0, #1 ; pop {pc} */
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── MapScriptCutsceneCmd_write_word ── */
 /* MapScriptCutsceneCmd_write_word (0x08035EDA):
  * Cutscene map-script command "write word". Reads two 32-bit words from the
@@ -675,6 +708,39 @@ Next MapScriptCutsceneCmd_load_gfx_anim(void) {
     R0 = 1;
     SET_FLAGS_NZ(R0);                /* N/Z from the return value */
 
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptCutsceneCmd_load_gfx_anims ── */
+/* MapScriptCutsceneCmd_load_gfx_anims: 08035F3E
+ * Cutscene opcode: load GFX anim scripts into the GFX anim pool.
+ *
+ *   ReadMapScriptWord(r7 = script ptr, r6 = 1)
+ *       -> writes the FFStop32<[GFXAnimScript]> pointer into r4
+ *   LoadGFXAnims(r0 = r4)
+ *   advance r7 by 5 (1 opcode byte + u32 payload)
+ *   return 1 (keep dispatching) with NZ set
+ *
+ * Inputs:  r7  cutscene stream pointer (just past the opcode byte)
+ * Outputs: r1 r2 r4 r5 r7..r12 preserved from caller
+ *          r0 = 1 with NZ set
+ * Clobbers: r0, r3, r6, LR
+ */
+Next MapScriptCutsceneCmd_load_gfx_anims(void) {
+    /* Pull the u32 payload following this opcode into r4. */
+    R6 = 1;
+    GUEST_CALL(ReadMapScriptWord);
+
+    /* Hand the FFStop32<[GFXAnimScript]> pointer off to the loader. */
+    R0 = R4;
+    GUEST_CALL(LoadGFXAnims);
+
+    /* Skip the 1-byte opcode + 4-byte payload in the cutscene stream. */
+    R7 = R7 + 5;
+
+    /* Tell the dispatcher to keep going. */
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -1040,6 +1106,43 @@ Next IsCutsceneScriptNonNull(void) {
 
     R0 = LD32(cutsceneState + oCutsceneState_CutsceneScriptPos);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── cutscene_checkOriginalCutsceneScriptPos_8036F40 ── */
+Next cutscene_checkOriginalCutsceneScriptPos_8036F40(void) {
+    /* Read the cutscene state's saved script pointer and compare it against
+     * the L-Message cutscript sentinel. Result: nz reflects whether r2 == TRUE. */
+    u32 cs   = LD32(R10 + oToolkit_CutsceneStatePtr);
+    u32 prev = LD32(cs + oCutsceneState_originalCutsceneScriptPos_40);
+
+    if (prev == A_CutsceneScriptLMessage_80991F4)
+        R2 = TRUE;
+    else
+        R2 = FALSE;
+
+    SET_FLAGS_NZ(R2);
+    RETURN_TO_CALLER();
+}
+
+/* ── cutscene_checkOriginalCutsceneScriptPos_8036F58 ── */
+/* cutscene_checkOriginalCutsceneScriptPos_8036F58(r10 = toolkit ptr)
+ *
+ * Checks whether the cutscene state's original script position is the
+ * "AskJackOut" script (CutsceneScriptAskJackOut_80988E4).
+ *
+ * Outputs: r2 = TRUE if it matches, FALSE otherwise; NZ flags reflect r2.
+ */
+Next cutscene_checkOriginalCutsceneScriptPos_8036F58(void) {
+    u32 toolkit      = R10;
+    u32 cutscene     = LD32(toolkit + oToolkit_CutsceneStatePtr);
+    u32 origScript   = LD32(cutscene + oCutsceneState_originalCutsceneScriptPos_40);
+    u32 askJackOut   = A_CutsceneScriptAskJackOut_80988E4;
+
+    u32 matches = (origScript == askJackOut) ? TRUE : FALSE;
+
+    R2 = matches;
+    SET_FLAGS_NZ(matches);
     RETURN_TO_CALLER();
 }
 

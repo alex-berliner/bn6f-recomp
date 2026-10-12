@@ -79,6 +79,28 @@ Next chatbox_runScript_202da04(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_runScript_803FD78 ── */
+/* chatbox_runScript_803FD78(archive = *TextScriptArchive, script_idx = u8) -> void
+ *
+ * Runs the chatbox script at archive[script_idx], then seeds chatbox->Unk_68
+ * with the four-halfword next-script jump block from byte_803FD94 so subsequent
+ * ticks fall through to the queued next command.
+ */
+Next chatbox_runScript_803FD78(void) {
+    /* run the script with the incoming archive/script_idx in R0/R1 */
+    GUEST_CALL(chatbox_runScript);
+
+    /* src  = byte_803FD94 (four fixed halfwords in code memory)
+     * dst  = &chatbox->Unk_68, where chatbox = R10->ChatboxPtr
+     * copy 8 bytes (4 halfwords) */
+    R0 = A_byte_803FD94;
+    R1 = LD32(R10 + oToolkit_ChatboxPtr) + oChatbox_Unk_68;
+    R2 = 8;
+    GUEST_CALL(CopyHalfwords);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_runScript_803FD9C ── */
 /* chatbox_runScript_803FD9C(r0 = TextScriptArchive *, r1 = script index):
  *
@@ -774,6 +796,21 @@ Next chatbox_advanceNextState_8040C9C(void) {
 #undef CHATBOX_NEXT_STATE
 #undef CHATBOX_1F1
 #undef CHATBOX_1F2
+
+/* ── chatbox_E5_nop ── */
+/* chatbox_E5_nop(script) -> 2
+ * No-op script opcode (0xE5): advance the script pointer past the opcode byte,
+ * then return 2 so the chatbox driver knows to keep executing.
+ *   inputs:  r4 = script pointer, lr
+ *   outputs: r0 = 2, r4 = script pointer + 1
+ *   clobbers: nz, c, v
+ */
+Next chatbox_E5_nop(void) {
+    R4 = R4 + 1;
+    R0 = 2;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
 
 /* ── chatbox_E6_end ── */
 /* Flag constants for the chatbox E-flag system */
@@ -2182,6 +2219,22 @@ Next chatbox_scriptCmdSetFlags3e80_8042350(void) {
     RETURN_TO_CALLER(); /* pop {pc}: return to the saved LR, unchanged */
 }
 
+/* ── chatbox_8042370 ── */
+/* chatbox_8042370:
+ * Read a 2-byte (sound_id, ???) pair from r4+2, play it as a SE with priority 0x1F,
+ * advance r4 by 4, and return 1 (the entry was consumed). */
+Next chatbox_8042370(void) {
+    u32 sound_id = LD8(R4 + 2);
+    u32 param    = LD8(R4 + 3);
+    R0 = sound_id;
+    R1 = param;
+    R2 = 0x1F;
+    GUEST_CALL(sound_80006A2);
+    R4 += 4;
+    R0 = 1;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_textScriptAction_openShop_80424BC ── */
 /* chatbox_textScriptAction_openShop_80424BC: chatbox text-script action used at shop counters.
  * Sets chatbox flag 0x3E bit 1 (the "close chatbox" mask, FLAGS_3E_UNK_0001
@@ -2350,6 +2403,33 @@ Next chatbox_initFromScriptEntry_80428C0(void) {
     R2 = 0xC * stride;
     R3 = stride;
 
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80428EC ── */
+/* sub_80428EC(r4 = source ptr, r5 = chatbox ptr):
+ * copy cursor index and an adjacent byte from the source into the chatbox,
+ * advance the source pointer by 4, and return 1 in r0. */
+Next sub_80428EC(void) {
+    u8 cursor = LD8(R4 + 2);
+    ST8(R5 + oChatbox_CursorIdx, cursor);
+    ST8(R5 + oChatbox_Unk_1B, LD8(R4 + 3));
+    R4 += 4;
+    R0 = 1;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80428FC ── */
+/* sub_80428FC(r4 = source ptr, r5 = dest struct, lr):
+ *   Copy two bytes from the source at offsets 2 and 3 into
+ *   the destination at offsets 0x84 and 0x88 (32-bit stores),
+ *   advance the source pointer by 4, and return 1 in r0. */
+Next sub_80428FC(void) {
+    ST32(R5 + 0x84, LD8(R4 + 2));
+    ST32(R5 + 0x88, LD8(R4 + 3));
+    R4 += 4;
     R0 = 1;
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();

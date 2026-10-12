@@ -888,6 +888,24 @@ Next NPCCommand_set_layer_priority_override_to_2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── NPCCommand_set_layer_priority_override_to_3 ── */
+/* NPCCommand_set_layer_priority_override_to_3: 0809EF58-0809EF60 THUMB
+ * NPC command: set this NPC's layer-priority override to 3, then advance the script cursor.
+ *   inputs:  r5 = NPC object, r6 = script pointer
+ *   outputs: r6 = script pointer + 1
+ *   clobbers: nz c v r0
+ *   preserved: -
+ */
+Next NPCCommand_set_layer_priority_override_to_3(void) {
+    /* Override the per-NPC layer priority with 3 (front of layer 3). */
+    ST32(R5 + oOverworldNPCObject_LayerPriorityOverride, 3);
+
+    /* Consume this opcode and move to the next one. */
+    R6 = R6 + 1;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── NPCCommand_write_hidden_oam_pieces ── */
 /* NPCCommand_write_hidden_oam_pieces(r5 = NPC object, r6 = script pointer):
  * Script opcode handler: reads a 32-bit operand from the NPC script and stores
@@ -1066,6 +1084,40 @@ Next NPCCommand_play_sound(void) {
 
     SET_FLAGS_ADD(scriptPos, 3);
     R6 = scriptPos + 3;                 /* skip opcode + halfword */
+    RETURN_TO_CALLER();
+}
+
+/* ── NPCCommand_set_animation_force_update ── */
+/* NPCCommand_set_animation_force_update(r5 = NPC object, r6 = script cursor):
+ * Reads the animation index from the script, forces an animation update by writing
+ * the bitwise complement to AnimationSelectUpdate, and advances r6 past the 2-byte
+ * instruction. Returns the advanced script cursor in r6. */
+Next NPCCommand_set_animation_force_update(void) {
+    u8 animation = LD8(R6 + 1);
+    ST8(R5 + oOverworldNPCObject_AnimationSelect, animation);
+    ST8(R5 + oOverworldNPCObject_AnimationSelectUpdate, (u8)~animation);
+    R6 += 2;
+    SET_FLAGS_NZ(R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── NPCCommand_set_transform ── */
+Next NPCCommand_set_transform(void) {
+    /* The NPC command stream stores three scale parameter bytes starting at
+     * r6+1 (r6 itself is the command opcode, skipped). After dispatching them
+     * to sprite_setScaleParameters we advance the script pointer by 4 bytes. */
+    GUEST_CALL(sprite_makeUnscalable);
+    GUEST_CALL(sprite_makeScalable);
+
+    R0 = LD8(R6 + 1);
+    R1 = LD8(R6 + 2);
+    R2 = LD8(R6 + 3);
+    GUEST_CALL(sprite_setScaleParameters);
+
+    /* Original ends with `add r6, #4` which sets nz and c flags. nz is a
+     * clobber here, but c is preserved and must reflect the addition. */
+    SET_FLAGS_ADD(R6, 4);
+    R6 += 4;
     RETURN_TO_CALLER();
 }
 

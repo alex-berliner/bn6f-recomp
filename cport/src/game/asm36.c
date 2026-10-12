@@ -24,6 +24,119 @@ Next chatbox_runScript_803FD9C_on_eTextScript201BA20(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81322B8 ── */
+/* sub_81322B8(r5 = pointer, returns table byte):
+ * Reads r5->offset 0x12 as an index, returns byte_81322C4[index] in R0.
+ * R1 is set to the base address of the lookup table (byte_81322C4). */
+Next sub_81322B8(void) {
+    u32 index = LD8(R5 + 0x12);
+    R1 = A_byte_81322C4;
+    R0 = LD8(R1 + index);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81322C8 ── */
+/* sub_81322C8:
+ *   inputs:  r5
+ *   outputs: r0, r1
+ *   Reads a field of the object pointed to by r5 and looks up a byte in a
+ *   small table; r0 gets the indexed byte and r1 points at the table base. */
+Next sub_81322C8(void) {
+    u8 idx = LD8(R5 + 0x12);
+    R1 = A_byte_81322D4;
+    R0 = LD8(R1 + idx);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81322D8 ── */
+/* sub_81322D8(r5 = object):
+ *   Reads byte at offset 0x12 of the caller's struct (some kind of
+ *   small int / sub-index), then uses it to index into a 4-entry
+ *   constant table at byte_81322E8. Returns the table byte in r0
+ *   and the base address of the table in r1.
+ */
+Next sub_81322D8(void) {
+    u32 index = LD8(R5 + 0x12);
+    R1 = (u32)A_byte_81322E4;
+    R0 = LD8(R1 + index);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8132330 ── */
+/* sub_8132330(r2 = dest, r5 = src):
+ * Copy src[0x13] (an index, treated as u8) into a u16 lookup table entry, written to dest+0xA. */
+Next sub_8132330(void) {
+    u32 index = LD8(R5 + 0x13);
+    u32 lookup = LD16(A_byte_8132340 + (index << 1));
+    ST16(R2 + 0xA, lookup);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8132344 ── */
+/* sub_8132344(r2 = dst field offset 0xA, r5 = struct pointer):
+ * reads byte at r5+0x13, uses it as index (scaled by 2) into table byte_8132354,
+ * and stores the resulting u16 at dst+0xA. */
+Next sub_8132344(void) {
+    const u32 tbl = A_byte_8132354;
+    u32 idx = LD8(R5 + 0x13);
+    u32 entry = LD16(tbl + (idx << 1));
+    ST16(R2 + 0xA, entry);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8132358 ── */
+/* sub_8132358: Look up a halfword from a small table indexed by a byte
+ * field of the object pointed to by r5, and store it at offset 0xA in
+ * the structure pointed to by r2. */
+Next sub_8132358(void) {
+    u32 index = LD8(R5 + 0x13);
+    u32 entry = LD16(A_byte_8132368 + (index << 1));
+    ST16(R2 + 0xA, entry);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813236C ── */
+/* sub_813236C(r2 = dst, r5 = src):
+ * read a u8 from src+0x12, use it as an index into a 2-byte-per-entry table at byte_813237C,
+ * and store the resulting u16 at dst+0xa. */
+Next sub_813236C(void) {
+    u8 index = LD8(R5 + 0x12);
+    u16 value = LD16(A_byte_813237C + (index << 1));
+    ST16(R2 + 0xa, value);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8132380 ── */
+/* sub_8132380(r2 = destination addr, r5 = source struct):
+ *   Read a byte from source+0x12, use it as an index into the lookup table
+ *   at byte_8132390 (each entry is a halfword), and store the resulting
+ *   halfword at destination+0xA. */
+Next sub_8132380(void) {
+    u32 index = LD8(R5 + 0x12);
+    u32 table = A_byte_8132390;
+    u32 value = LD16(table + index * 2);
+    ST16(R2 + 0xA, value);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81325E4 ── */
+/* sub_81325E4(r0 = index): fetch a byte from the lookup table at dword_81325F0. */
+Next sub_81325E4(void) {
+    R1 = A_dword_81325F0;
+    R0 = LD8(R1 + R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81325F4 ── */
+/* sub_81325F4(r0 = index, lr):
+ *   Look up a byte from the table at byte_8132600 indexed by r0.
+ *   Returns the byte in r0. r1 ends up pointing at the table base. */
+Next sub_81325F4(void) {
+    R1 = A_byte_8132600;
+    R0 = LD8(R1 + R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8132614 ── */
 /* sub_8132614: Initialize the menu/state record pointed to by R5.
  * inputs:  R5 = object pointer

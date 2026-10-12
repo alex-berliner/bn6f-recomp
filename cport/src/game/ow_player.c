@@ -556,6 +556,50 @@ Next ow_tryTileInteraction_809DF00(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809DF28 ── */
+/* sub_809DF28(r5 = OWPlayerObject*)
+ *
+ * Overworld player per-frame dispatcher. Inspects the player's current
+ * substate (jumptable index field). Substate 0x10 is the "locked /
+ * skip-this-tick" state: in that case we just return 0. Otherwise we
+ * fall through into the real per-frame handler (sub_809DF36) at
+ * eStruct200ace0 and propagate whatever it returns. R7 is loaded with
+ * the handler address so callers can recognize which path was taken.
+ *
+ *   inputs:  r5
+ *   outputs: r0, r7, c, v
+ *   clobbers: nz
+ */
+Next sub_809DF28(void) {
+    /* Original: push {lr} ... pop {pc}. Preserve lr across the call
+     * so that sub_809DF36's pop {pc} returns to our caller. */
+    u32 saved_lr = LR;
+    SP -= 32;
+    ST32(SP, saved_lr);
+
+    /* Load the handler address into r7; callers branch on it. */
+    R7 = A_eStruct200ace0;
+
+    /* Load jt_index and compare against 0x10 -- sets nz/c/v. */
+    u8 jt_index = LD8(R5 + oOWPlayerObject_JumptableIndex_09);
+    SET_FLAGS_CMP(jt_index, 0x10);
+
+    if (jt_index == 0x10) {
+        /* Locked substate: return 0, leaving c/v as the CMP set them. */
+        R0 = 0;
+        LR = LD32(SP);
+        SP += 32;
+        RETURN_TO_CALLER();
+    }
+
+    /* Not the locked substate: fall through into the real handler.
+     * It returns its own result in r0 and sets c/v itself. */
+    LR = LD32(SP);
+    SP += 32;
+    GUEST_CALL(sub_809DF36);
+    RETURN_TO_CALLER();
+}
+
 /* ── owPlayer_isMoving_809DFA0 ── */
 /* owPlayer_isMoving_809DFA0(r5 = overworld player object):
  * Reports whether the player object is still in motion. The player counts as
