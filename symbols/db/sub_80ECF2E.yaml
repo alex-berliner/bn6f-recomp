@@ -1,0 +1,87 @@
+name: sub_80ECF2E
+address: '0x080ECF2E'
+kind: function
+status: confirmed
+summary: Dispatches to one of two AI attack handlers based on the state byte stored in the AI attack variable block
+  pointed to by r7.
+interface: 'void sub_80ECF2E(void /* r7 = AI attack vars */);
+
+  // inputs: r3, r5, r6, r7 (AI attack vars pointer), r10, lr (return)
+
+  // outputs: r1, r5, r8, r9, r10, r11, r12 (inherited from handler)
+
+  // clobbers: N, Z, C, V flags; r0, r2, r3, r4, r6, r7, lr
+
+  '
+details: 'Reads the 8-bit attack-state byte at oAIAttackVars_Unk_00 within the AI
+
+  attack variable block (offset into the structure pointed to by r7).
+
+  Uses that byte as an index into the 2-entry jump table at off_80ECF40
+
+  (state 0 -> sub_80ECF48, state 1 -> sub_80ECF8E), then performs an
+
+  indirect call via `mov lr, pc; bx r1` (a Thumb-mode dispatcher).
+
+  r0 receives the state byte and r1 the resolved handler address before
+
+  the indirect branch; the chosen handler''s outgoing register footprint
+
+  (r1, r5, r8-r12) becomes this function''s caller-visible output.
+
+  The state byte index is not bounds-checked, so table-size assumptions
+
+  limit the dispatcher''s set of states to two entries.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_80ECF2E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80ECF2E
+
+    ./wf verify --function sub_80ECF2E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80ECF2E
+
+    ./wf verify --function sub_80ECF2E --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80ECF2E
+
+    ./wf verify --function sub_80ECF2E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080ecf2e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- story9
+open_questions:
+- Is oAIAttackVars_Unk_00 truly the attack "state" or some other phase/ mode byte that just happens to be indexed
+  into a 2-entry table here?
+- Where is the AI attack variable block header (structure base) defined?
+- Are additional entries added to off_80ECF40 for higher-numbered states, or is the table intentionally fixed at
+  two handlers?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

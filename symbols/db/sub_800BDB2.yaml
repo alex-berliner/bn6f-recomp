@@ -1,0 +1,64 @@
+name: sub_800BDB2
+address: '0x0800BDB2'
+kind: function
+status: confirmed
+summary: Dispatches to a battle object's per-phase handler based on its current phase byte.
+interface: 'void sub_800BDB2(void) // in: r5 = battle object, r10 = (passed through to handler); out: r5, r8, r9,
+  r10, r11, r12 (handler''s results); flags: handler''s nz/c/v'
+details: "Reads the battle object's current phase from oBattleObject_CurPhase (a single byte\non the object in r5),\
+  \ then indexes into the jump table at off_800BDC4 (three entries,\none word each) to obtain a Thumb handler:\n\
+  \  phase 0 -> sub_800BDD0\n  phase 1 -> sub_800BE0C\n  phase 2 -> sub_800BE2C\nThe dispatch is implemented with\
+  \ `mov lr, pc; bx r1` followed by `pop {pc}`,\nmaking the handler's results the function's outputs and the handler's\
+  \ return\ngoing straight back to sub_800BDB2's caller (effectively a tail call).\nr5 (the object) and r10 (untyped\
+  \ caller value) pass through to the handler.\nClobbers nz/c/v/r0/r1/r2/r3/r4/r6/r7/lr. No registers are preserved.\n\
+  Used as the central per-frame phase step for a battle object; the handler\nis responsible for advancing the phase\
+  \ byte when appropriate.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_800BDB2
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800BDB2
+
+    ./wf verify --function sub_800BDB2 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out of
+    domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800BDB2
+
+    ./wf verify --function sub_800BDB2 --snapshots build-snapshots'
+  result: 27 compared, 0 differed, 12 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800BDB2
+
+    ./wf verify --function sub_800BDB2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^0800bdb2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/object.c
+coverage:
+- story9
+open_questions:
+- Which battle objects use this dispatcher, and how oBattleObject_CurPhase is advanced to phases 0/1/2
+- Whether any object ever reaches a phase index outside 0..2 (the table only has three entries)
+- Exact meaning of the r10 input the handler receives
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

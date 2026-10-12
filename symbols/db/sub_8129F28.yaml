@@ -1,0 +1,96 @@
+name: sub_8129F28
+address: '0x08129F28'
+kind: function
+status: confirmed
+summary: Draws one battle/sprite object by dispatching on the record's kind byte, then commits the sprite to OAM
+  if its visibility flag is set.
+interface: '// r5 = record pointer; other live regs (r2,r3,r4,r6,r8,r9,r10,r11,r12) passed
+
+  // through to the per-kind handler.
+
+  // clobbers r0-r9,lr; flags nzcv; preserves nothing explicitly.
+
+  // returns updated state in r5, r6, r10, r11.
+
+  void drawBattleObject_8120400(void /* via r2..r12, record in r5 */);
+
+  '
+details: 'Reads the kind byte at record+2 (rdr5, r1), ldrs off_8129F3C (-> [0x08129F40])
+
+  to obtain a 2-entry jump table, then loads the handler address
+
+  [table + kind] into r0 and tail-calls it with mov lr, pc / bx r0.
+
+  Two handlers are registered so far: sub_8129F48 and sub_8129F88.
+
+  After the kind-specific draw returns, control falls into
+
+  sprite_drawIfFlagSet_812B504 which commits the sprite to OAM if the
+
+  record''s visibility flag is set (returns updated r5/r6 and leaves r10,
+
+  r11 alone).
+
+  Per-kind handler outputs: r5/r6/r10/r11; OAM-commit outputs: r5/r6.
+
+  pop {pc} is used to return to the caller, so lr is the saved caller.
+
+  Note: the address label is 0x08129F28 but the proposed address suffix is
+
+  8120400 to match the disassembly''s naming style for low-address functions
+
+  in this module — original 8129F28 is kept in the name via the symbol''s
+
+  existing address.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_8129F28
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129F28
+
+    ./wf verify --function sub_8129F28 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129F28
+
+    ./wf verify --function sub_8129F28 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 11 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129F28
+
+    ./wf verify --function sub_8129F28 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08129f28 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- What are the two record kinds (kind 0 vs kind 1) routed to sub_8129F48 and sub_8129F88?
+- What flag/field does sprite_drawIfFlagSet_812B504 test, and at which offset of the record?
+- Are r10/r11 carry meaningful state across calls (e.g. tile/sprite slot index, blend color) that the broader dispatcher
+  thread depends on?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

@@ -1,0 +1,68 @@
+name: sub_811B3F4
+address: '0x0811B3F4'
+kind: function
+status: confirmed
+summary: Dispatches an object's per-frame update through a 3-way jump table keyed by the byte at [object+8].
+interface: 'void sub_811B3F4(void);  // in: r5=object pointer; out: r2,r3,r5,r10,r11 (whatever handler leaves);
+  clobbers NZCV,r0,r1,r4,r6-r9,r12,lr'
+details: "The function pushes only lr, reads a pointer to jt_811B408 from off_811B404,\nuses the byte at r5+8 as\
+  \ a selector into that jump table, then performs an\ninterworking tail call: `mov lr,pc; bx r0`. This makes r0\
+  \ the handler's\nentry address and r1 the selector byte, exactly as the original handlers\nexpect. The handler\
+  \ list (jt_811B408) is:\n  [0] gui_initSprite0x2C_811B414\n  [1] sprite_updateWrapper_811B45C\n  [2] sub_811B464\n\
+  The `bx r0` lands on the +1 (Thumb) variants stored in the table, so the\nselector values are 0,1,2 — i.e. a small\
+  \ tagged union over object kinds\n(GUI/initialized sprite 0x2C, generic sprite update, and a third unknown\ntype).\
+  \ Because the call is via `bx r0`/address-taken entry, callee and\ncaller share a register file with no typed\
+  \ wrapper; the documented output\nset (r2,r3,r5,r10,r11) is whatever the dispatched handler happens to leave\n\
+  behind, and NZCV are clobbered and not propagated.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_811B3F4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811B3F4
+
+    ./wf verify --function sub_811B3F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811B3F4
+
+    ./wf verify --function sub_811B3F4 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 32 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811B3F4
+
+    ./wf verify --function sub_811B3F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^0811b3f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+- story2
+open_questions:
+- What object kinds the [2] = sub_811B464 case represents; the readable C only identifies the first two as gui_initSprite0x2C_811B414
+  and sprite_updateWrapper_811B45C.
+- Whether the selector field at object+8 is a stable type tag or a phase/state byte (e.g. 0=uninitialized,1=active,2=other).
+- Whether r10 is expected to be a meaningful object/output across the dispatch or just incidentally preserved by
+  these particular handlers.
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

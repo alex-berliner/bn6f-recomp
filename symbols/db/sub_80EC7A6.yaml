@@ -1,0 +1,74 @@
+name: sub_80EC7A6
+address: '0x080EC7A6'
+kind: function
+status: confirmed
+summary: Dispatches to one of two AI-attack handlers via a small jump table selected by a byte in the AI's attack-variable
+  block.
+interface: 'void dispatchAIAttackHandler(void) /* inputs: r5 r6 r7 r10 lr; outputs: r1 r5 r8 r9 r10 r11 r12; clobbers
+  NZCV r0 r2 r3 r4 r6 r7 lr */'
+details: 'r7 points at the AI''s attack-variable block. The byte at offset oAIAttackVars_Unk_00
+
+  indexes a two-entry 32-bit jump table at off_80EC7B8 (entries:
+
+  sub_80EC7C0+1, sub_80EC81E+1). The function performs a Thumb-style
+
+  dispatch via `mov lr, pc; bx r1`, so the routine acts as a tail call:
+
+  the handler''s register outputs (r1, r5, r8-r12) are this function''s
+
+  outputs. The surrounding `push {lr}` / `pop {pc}` only saves the return
+
+  address around the dispatch, since r7/r10 are caller-saved across the
+
+  tail call in the original calling convention.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_80EC7A6
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80EC7A6
+
+    ./wf verify --function sub_80EC7A6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80EC7A6
+
+    ./wf verify --function sub_80EC7A6 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 39 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80EC7A6
+
+    ./wf verify --function sub_80EC7A6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story8.'
+  reproduce: grep -l '^080ec7a6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battles2
+- story8
+open_questions:
+- Which two AI-attack behaviors the two table entries correspond to (sub_80EC7C0 vs sub_80EC81E).
+- Meaning of the selector byte and the set of values stored at oAIAttackVars_Unk_00 across the battle scripting.
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

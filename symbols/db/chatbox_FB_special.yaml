@@ -1,0 +1,79 @@
+name: chatbox_FB_special
+address: '0x08042388'
+kind: function
+status: confirmed
+summary: Chatbox script dispatcher for the 0xFB opcode, jumping through a table of handler routines based on the
+  action byte at offset 1 of the current script command.
+interface: void chatbox_FB_special(u32 r4_scriptPtr); /* clobbers all of r0-r12, lr, nz/c/v */
+details: 'Reads the action byte at scriptPtr+1, multiplies it by 4 to index jt_804239C, loads the
+
+  handler address (with thumb bit) into r0, then bx-jumps through it. Returns via pop {pc},
+
+  so control comes back to whatever invoked this step. r4 (the script pointer) is the only
+
+  register preserved on entry; r10/lr are inputs that the dispatcher does not use here.
+
+  All output registers and flags are whatever the dispatched handler leaves behind. The
+
+  jump table is sparse (entries 4, 7, 9, 12 are 0), so unimplemented actions would jump to
+
+  address 0. Entries 5 is chatbox_textScriptAction_openShop_80424BC; the others are
+
+  unnamed chatbox handlers (0,1,2,3,6,8,10,11,13,14,15).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c chatbox_FB_special
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_FB_special
+
+    ./wf verify --function chatbox_FB_special --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_FB_special
+
+    ./wf verify --function chatbox_FB_special --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 13 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_FB_special
+
+    ./wf verify --function chatbox_FB_special --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, story2, story8.'
+  reproduce: grep -l '^08042388 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles1
+- battles2
+- maps
+- story2
+- story8
+open_questions:
+- What is the script command format for 0xFB (the byte at offset 0 vs offset 1, and what other fields follow)?
+- Which higher-level chatbox runner invokes this and what does it expect back from the handler?
+- Which of the unnamed table entries (e.g. chatbox_8042418, chatbox_804244C, chatbox_804247C, chatbox_80424E0, chatbox_804252C,
+  chatbox_8042580, chatbox_80425A0, chatbox_80425C0, chatbox_80425E0, chatbox_80425F0) correspond to which in-game
+  script actions?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

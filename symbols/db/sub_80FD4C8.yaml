@@ -1,0 +1,78 @@
+name: sub_80FD4C8
+address: '0x080FD4C8'
+kind: function
+status: confirmed
+summary: Dispatches an enemy AI attack by indexing a jump table with the attack index stored in the AI state block.
+interface: 'void sub_80FD4C8(void); // in: r7 = AI attack state block; out/clobber: whatever the dispatched handler
+  returns (r1, r5, r8-r12 are caller-visible from the handler, plus nz/c/v and r0,r2,r3,r4,r6,lr); r7 preserved.'
+details: 'Reads the byte at offset oAIAttackVars_Unk_00 of the AI attack state block
+
+  pointed to by r7 and uses it as a 4-byte index into the jump table at
+
+  off_80FD4DC. The selected entry is loaded into r1 and then tail-called via
+
+  `mov lr,pc / bx r1`, so the dispatch is implemented as a register-indirect
+
+  jump (no switch table wrapper exists in the lifter''s output). The tail call
+
+  means r7 is preserved across the dispatched attack routine and the
+
+  function''s own return (`pop {r7,pc}`) simply restores the caller. The
+
+  three currently known table entries all encode a thumb switch bit (+1) and
+
+  point to sub_80FD4E8, sub_80FD548, and sub_80FD574 respectively.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_80FD4C8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD4C8
+
+    ./wf verify --function sub_80FD4C8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD4C8
+
+    ./wf verify --function sub_80FD4C8 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 20 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD4C8
+
+    ./wf verify --function sub_80FD4C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd4c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- What is the full set of attack handlers reachable from this jump table (only 3 entries are shown; the C comment
+  implies it is sized by the attack-index byte range)?
+- Which fields of the AI state block beside oAIAttackVars_Unk_00 do the individual handlers read/write, and how
+  are they reset between attacks?
+- Is off_80FD4DC the per-enemy table or a global/shared table referenced through the AI state block?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

@@ -1,0 +1,67 @@
+name: sub_80E1808
+address: '0x080E1808'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current action (CurAction) through a 5-handler table (dim screen, two generic
+  object routines, the dim-battle handler, undim screen), tail-calling the chosen handler with the caller's live
+  register file intact.
+interface: "void battleObject_dispatchAction_80E1808(u32 r2, u32 r3, u32 r4, void* r5_obj,\n    u32 r6, u32 r7,\
+  \ u32 r10);\n// r0 passed in = r5_obj->CurAction, r1 = handler addr from table\n// returns in r5/r8-r12; clobbers\
+  \ nzcv, r0-r4, r6-r7, lr\n"
+details: "r5 is treated as a \"battle object\" struct; its byte at offset oBattleObject_CurAction is read\nas an\
+  \ index into a 5-entry dispatch table at 0x080E181C:\n  [0] object_dimScreen\n  [1] sub_800BDB2        (generic\
+  \ object routine #1)\n  [2] sub_800BA8A        (generic object routine #2)\n  [3] sub_80E1830        (custom /\
+  \ dim-battle handler)\n  [4] object_undimScreen\nThe selected handler is invoked via `bx r1` with the guest register\
+  \ file left untouched by the\ndispatcher (r0 still = CurAction, r1 still = handler address, r2-r7/r10 passed through),\
+  \ and\nthe handler's results in r5 and r8-r12 flow straight back to the caller's caller, making this\neffectively\
+  \ a tail call through an action table. The two +1 offsets on each table entry are\nthe standard Thumb interworking\
+  \ marker (BX to odd address = Thumb).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_80E1808
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E1808
+
+    ./wf verify --function sub_80E1808 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E1808
+
+    ./wf verify --function sub_80E1808 --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 1 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E1808
+
+    ./wf verify --function sub_80E1808 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080e1808 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- story9
+open_questions:
+- What action IDs do sub_800BDB2 and sub_800BA8A represent (generic object steps between dim/undim)?
+- Is oBattleObject_CurAction a 1-byte field, or is the table effectively indexed by byte-sized action values 0..4
+  only?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

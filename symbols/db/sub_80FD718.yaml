@@ -1,0 +1,78 @@
+name: sub_80FD718
+address: '0x080FD718'
+kind: function
+status: confirmed
+summary: Dispatches the current AI attack-script step (indexed by `AIAttackVars+0x00`) to one of seven thumb handlers.
+interface: 'void aiAttackStepDispatch(void); // sets r0 from r7->field_0x00 and tail-calls handler from off_80FD72C[step]
+
+  // register-form: caller passes r3, r5, r6, r10; handler runs with that and r1=table entry; clobbers r0,r2,r3,r4,r5,r6,r8-r12,lr
+  and nzcv; r7 restored from stack; nothing returned to caller beyond caller-provided regs
+
+  '
+details: 'Pushes {r7,lr}, reads a byte at oAIAttackVars_Unk_00 of the caller''s `AIAttackVars` struct
+
+  (r7 points to it). Loads the corresponding word from the 7-entry table at off_80FD72C
+
+  (entries are `+1` so they target Thumb handlers sub_80FD748, sub_80FD7A8, sub_80FD7D4,
+
+  sub_80FD7F2, sub_80FD822, sub_80FD852, sub_80FD8B0) and tail-calls it via `mov lr,pc; bx r1`.
+
+  Pops {r7,pc} on return, so the saved r7 (the AIAttackVars pointer) is also the restored PC
+
+  of the caller — i.e. the convention is to return by re-entering this trampoline, since
+
+  r7 of the caller is preserved across the handler. All other registers are passthrough to
+
+  and from the handler. Pure dispatcher: no logic of its own.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_80FD718
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD718
+
+    ./wf verify --function sub_80FD718 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD718
+
+    ./wf verify --function sub_80FD718 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 33 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD718
+
+    ./wf verify --function sub_80FD718 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd718 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Is the step byte genuinely an index (0..6) or a raw offset into the table?
+- Where do the seven handlers (sub_80FD748..sub_80FD8B0) live in the attack-script semantics?
+- Does the `pop {r7,pc}` (restoring r7 to the caller) imply callers are themselves reached via r7-based dispatch?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

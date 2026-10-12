@@ -1,0 +1,93 @@
+name: sub_8109CE6
+address: '0x08109CE6'
+kind: function
+status: confirmed
+summary: Dispatches the battle AI's attack step to one of four handlers based on the sub-state byte in the AIAttackVars
+  struct.
+interface: "/* in:  r5 r6 r7 r10 lr\n * out: r1 r5 r8 r9 r10 r11 r12\n * clobbers: N Z C V r0 r2 r3 r4 r6 r7 lr\n\
+  \ * r7 -> AIAttackVars* (sub-state read from +0x00) */\n"
+details: 'Reads the AI attack sub-state byte (oAIAttackVars_Unk_00, offset 0x00)
+
+  from the AIAttackVars struct pointed to by r7, indexes the dispatch
+
+  table at off_8109CF8 (0x00 -> sub_8109D08, 0x04 -> sub_8109D70,
+
+  0x08 -> aiAttackVars_countdownSub_8109D98,
+
+  0x0C -> ai_attackTickDown_timerEndExit_8109DBA), and tail-calls the
+
+  selected handler via `mov lr, pc; bx r1`. Because the dispatch is done
+
+  through `mov lr, pc; bx rN`, the live register file (including r7 and
+
+  r10) is passed straight through to the handler with no save/restore
+
+  and no C-callable wrapper. The selected handler''s outputs in
+
+  r1/r5/r8-r12 are this routine''s outputs to its caller (the
+
+  `pop {pc}` is a `return` rather than a real restore). The function is
+
+  effectively a switch over the four sub-states of the battle AI''s
+
+  attack phase, with no other work.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_8109CE6
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8109CE6
+
+    ./wf verify --function sub_8109CE6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8109CE6
+
+    ./wf verify --function sub_8109CE6 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 19 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8109CE6
+
+    ./wf verify --function sub_8109CE6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, menus2, story2, story5, story6, story8, story9.'
+  reproduce: grep -l '^08109ce6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- story2
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What are the four sub-states (0..3) named in game terms? The handler names hint at "countdown" and "timer end/exit"
+  for 2 and 3, but 0 and 1 (sub_8109D08, sub_8109D70) are still opaque.
+- Which higher-level AI driver calls this and how often (per battle step, per frame, per chip selection)?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

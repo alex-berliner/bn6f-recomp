@@ -1,0 +1,79 @@
+name: timefreezeObjectRunFunction_80E1880
+address: '0x080E1880'
+kind: function
+status: confirmed
+summary: Runs the next phase of a time-frozen battle object, dispatching its per-type handler and snapshotting it
+  if left in the freeze frame.
+interface: 'void timefreezeObjectRunPhase_80E1880(void);
+
+  /* in:  r5 = oBattleObject pointer (live registers r5/lr used as inputs) */
+
+  /* out: r5/r8-r12 returned (handler-dependent); no flags defined */
+
+  /* clobbers: r0-r3, nz c v, lr */
+
+  /* preserves: r4, r6, r7 */
+
+  '
+details: "On the first call for an object (oBattleObject_PhaseInitialized == 0), the function\nlooks up a per-type\
+  \ handler in the jump table at off_802CD5C using\noBattleObject_Unk_19 as the index, then tail-calls it with:\n\
+  \  r0 = oBattleObject_PanelX, r1 = oBattleObject_PanelY,\n  r2 = oBattleObject_Element, r4 = oBattleObject_Params,\n\
+  \  r5 = oBattleObject_RelatedObject1Ptr,\n  r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler + oBattleObject_Unk_32,\n\
+  \  r7 = obj + 0x18 (the object's state block).\nThe call is a register-direct computed tail-call (mov lr,pc /\
+  \ bx r3), with r5\npushed/popped to preserve the object pointer around it.\n\nAfter the handler returns, if oBattleObject_Unk_30\
+  \ (a phase counter) lies in\n[0xDD, 0x118] (i.e. `phase - 0xDD <= 0x3B`), the object's key fields are\nsnapshotted\
+  \ into the global buffer at 0x203C960:\n  +0.0 = oBattleObject_Unk_19 (byte)\n  +0.1 = oBattleObject_Element (byte)\n\
+  \  +0.2 = oBattleObject_Unk_32 (word)\n  +0.4 = oBattleObject_DamageAndStaminaDamageCounterDisabler (dword)\n\
+  \  +0.8 = oBattleObject_Params (dword)\nThis snapshot is the \"freeze frame\" captured while a time-freeze object\
+  \ is\nfrozen.\n\noBattleObject_PhaseInitialized is then set to 4 to mark the handler as having\nbeen run. If oBattleObject_PreventAnim\
+  \ is clear, the object's\noBattleObject_CurPhaseAndPhaseInitialized is set to 0x08 to move it to the next\nphase.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c timefreezeObjectRunFunction_80E1880
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function timefreezeObjectRunFunction_80E1880
+
+    ./wf verify --function timefreezeObjectRunFunction_80E1880 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function timefreezeObjectRunFunction_80E1880
+
+    ./wf verify --function timefreezeObjectRunFunction_80E1880 --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 81 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function timefreezeObjectRunFunction_80E1880
+
+    ./wf verify --function timefreezeObjectRunFunction_80E1880 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080e1880 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- story9
+open_questions:
+- Which object types reach this runner (which entries of the off_802CD5C jump table are time-freeze objects)?
+- Where is the 0x203C960 snapshot consumed (the unfreezing / restoring code)?
+- What is the meaning of the [0xDD, 0x118] window for oBattleObject_Unk_30 that gates the snapshot?
+- What is the layout/size of the object state block at obj + 0x18 passed in r7 to the handler?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

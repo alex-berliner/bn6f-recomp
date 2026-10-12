@@ -1,0 +1,106 @@
+name: start_copyMemory
+address: '0x080001D8'
+kind: function
+status: confirmed
+summary: Copies 'size' bytes from src (r0) to dst (r1) one word at a time, walking backwards from the end.
+interface: 'void copyMemory(u32 src /*r0*/, u32 dst /*r1*/, u32 size /*r2*/); // returns: r2=0, r3=last word copied;
+  flags from final SUBS (r2-4): N=0, Z=1, C=1, V=0'
+details: 'Tight word-wise memmove-style helper used during early init (placed at 0x080001D8 right at the
+
+  ROM start, alongside the IWRAM copy descriptors and GamePakWaitstateControl table). Each
+
+  iteration subtracts 4 from r2, copies [r0+r2] -> [r1+r2], and loops until the result of the
+
+  SUBS is zero (so size is assumed to be a non-zero multiple of 4). Because it walks from high
+
+  offsets downward, it is safe for overlapping regions where dst > src (a backwards memmove
+
+  for word-aligned, size%4==0 buffers). The final SUBS of 4-4 sets the condition flags
+
+  deterministically (Z set, C set, V clear) so callers observe a fixed flag state on return;
+
+  r2 is left at 0 and r3 holds the last word read from src. No scratch registers beyond r2/r3
+
+  are used; the function ends with `bx lr`, so it runs in ARM mode only despite the Thumb-
+
+  looking prologue (address is word-aligned and falls inside the start-of-ROM ARM region).
+
+  Sits adjacent to off_80001EC/off_80001F0/off_80001F4/off_80001F8 pointers (byte_3007F60,
+
+  byte_3007FE0, iStack, byte_3007FFC) and the sub_3005B00 / GamePakWaitstateControl /
+
+  IWRAMRoutinesROMLocation / SetPrimaryToolkitPointers / RandomizeExtraToolkitPointers /
+
+  entryRomInit_800023C / dword_2009930 / dword_200A870 / GeneralLCDStatus_STAT_LYC_ /
+
+  KeyInterruptControl records (up through main_+1), i.e. the GBA startup / IWRAM-copy and
+
+  interrupt-vector setup tables.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/start.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c start_copyMemory
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function start_copyMemory
+
+    ./wf verify --function start_copyMemory --snapshots build-snapshots'
+  result: 'captured calls: 80 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function start_copyMemory
+
+    ./wf verify --function start_copyMemory --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 13 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function start_copyMemory
+
+    ./wf verify --function start_copyMemory --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, fuzz, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080001d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/start.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/start.c
+coverage:
+- battle
+- battles1
+- battles2
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Is the size guaranteed to be a non-zero multiple of 4 at every call site? A size of 0 would underflow r2 to 0xFFFFFFFC
+  and copy 4 GiB.
+- Why expose the final-SUBS flags to callers (N=0, C=1) rather than just returning in a known state? Possibly a
+  calling-convention artifact from the surrounding start-up code that needs SUBS flags live.
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

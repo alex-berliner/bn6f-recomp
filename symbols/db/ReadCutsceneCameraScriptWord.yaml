@@ -1,0 +1,76 @@
+name: ReadCutsceneCameraScriptWord
+address: '0x08037480'
+kind: function
+status: confirmed
+summary: Reads one little-endian 32-bit word out of a cutscene camera script byte stream.
+interface: u32 cutscene_readCameraScriptWord(u32 offset, const u8 *base); // r0=offset, r1=base -> r0=word
+details: 'Pure byte-fetch helper for cutscene/camera script interpretation: computes base+offset
+
+  (r1 + r0) and assembles a 32-bit little-endian word from four LDRB reads at +0..+3,
+
+  shifting and OR-ing each byte into place (byte at offset+0 is the LSB). Returns the
+
+  word in r0. Used by script command decoders (the camera-script/jump-table machinery,
+
+  e.g. CutsceneCommandJumptable handlers) to fetch operands and branch targets from the
+
+  script stream. Quirk: r3 is used as a scratch pointer but is pushed/popped, so r1-r3
+
+  and only the NZCV flags are clobbered; the value read is not bounds-checked against
+
+  the script length.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c ReadCutsceneCameraScriptWord
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ReadCutsceneCameraScriptWord
+
+    ./wf verify --function ReadCutsceneCameraScriptWord --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 204 out of
+    domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ReadCutsceneCameraScriptWord
+
+    ./wf verify --function ReadCutsceneCameraScriptWord --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 65 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ReadCutsceneCameraScriptWord
+
+    ./wf verify --function ReadCutsceneCameraScriptWord --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, menus2, story2, story3, story5, story6, story9, wander.'
+  reproduce: grep -l '^08037480 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- menus2
+- story2
+- story3
+- story5
+- story6
+- story9
+- wander
+open_questions: []
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

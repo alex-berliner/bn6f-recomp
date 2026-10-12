@@ -1,0 +1,76 @@
+name: sub_8129918
+address: '0x08129918'
+kind: function
+status: confirmed
+summary: Text-box command dispatcher; routes by state byte to one of six handlers, then runs sub_812B25C(0x12).
+interface: '/* On entry: r5 = text-box object pointer, r4/r6/r7/r10/lr = caller state */
+
+  /* On exit : r5/r8/r9/r10/r11/r12 = sub_812B25C''s r5/r8/r9/r10/r11/r12 (clobbers r0-r4,r6,r7,lr and NZCV) */
+
+  void textbox_step_8129918(void /* preserved via r5 -> typed wrapper */);
+
+  '
+details: 'Looks at byte 3 of the text-box state object at `r5` (0..20 step of 4: 0x00/0x04/0x08/0x0C/0x10/0x14),
+
+  indexes the jump table at `0x08129930` (six entries, each loaded with the `+1` Thumb-bit trick), and
+
+  tail-dispatches with `mov lr, pc; bx r0` so the handler runs with r0 = its own table slot and r1 =
+
+  the raw state byte, all other guest registers (r2-r7, r10-r12, SP) preserved. After the handler
+
+  returns, calls `sub_812B25C` with r0 = 0x12 and the handler''s modified r4/r5/r6 threaded through,
+
+  and propagates that call''s r5/r8-r12 back to the caller. This is the "0x12" follow-up phase for the
+
+  per-step text-box command interpreter.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_8129918
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129918
+
+    ./wf verify --function sub_8129918 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129918
+
+    ./wf verify --function sub_8129918 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 9 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129918
+
+    ./wf verify --function sub_8129918 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08129918 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Which subsystem owns these text commands (dialogue/event/battle textbox).
+- Role of the fixed follow-up opcode `0x12` (i.e., sub_812B25C's command) after each step.
+- Exact meaning of byte 3 being pre-multiplied by 4 rather than stored as an index.
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

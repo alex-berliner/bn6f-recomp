@@ -1,0 +1,85 @@
+name: sub_812AEE0
+address: '0x0812AEE0'
+kind: function
+status: confirmed
+summary: Per-frame battle object update dispatcher that selects an update handler by the object's type byte and
+  runs it, then chains a shared post-update routine.
+interface: 'void battle_object_updateDispatcher_(void);
+
+  // inputs: r5 = battle object ptr; r6, r10 = caller-set context (passed through unchanged)
+
+  // indirect call: r0 = dispatch table entry for the selected handler, r1 = r5->byte 2 (selector)
+
+  // outputs: r5, r8, r9, r10, r11, r12 = post-update routine (sub_812B26C) results
+
+  // clobbers: nz c v r0 r1 r2 r3 r4 r6 r7 lr; preserved: -
+
+  '
+details: 'Pushes only lr (tail-call style: pops directly into pc). Loads the dispatch base
+
+  (off_812AEF8 -> pointer-to-pointer, so r0 = *(off_812AEF8 + r5->byte2)), then runs
+
+  the handler via `mov lr, pc; bx r0` (Thumb interworking bit set, entry is
+
+  sub_812AEFC+1). After it returns, bl sub_812B26C is the shared post-update step
+
+  that consumes whatever r5/r6 the handler left. r10 passes through the wrapper
+
+  untouched. The selector indexing 0..k selects one of N battle object update
+
+  routines (presumably type-tagged: navi, enemy, chip, panel, etc.) — the table
+
+  layout (entry == handler_address itself) is what lets the entry also be used
+
+  as a small parameter slot for the handler.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_812AEE0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812AEE0
+
+    ./wf verify --function sub_812AEE0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812AEE0
+
+    ./wf verify --function sub_812AEE0 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 1 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812AEE0
+
+    ./wf verify --function sub_812AEE0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0812aee0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Which battle object types live in the table at off_812AEF8 and what each handler does.
+- Whether r6 is an auxiliary object pointer (e.g., battle/field context) or unrelated.
+- Whether the shared post-update sub_812B26C is a frame-coalescing step or a state-machine advance.
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

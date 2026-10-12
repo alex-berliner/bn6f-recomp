@@ -1,0 +1,83 @@
+name: sub_811A500
+address: '0x0811A500'
+kind: function
+status: confirmed
+summary: Dispatches the per-frame update of the "object" in r5 by jumping through a type-indexed table of two handlers
+  (offsets 0 and 1 of the object's type byte).
+interface: 'void object_dispatchUpdate_811A500(/* r5 */ struct Object* obj);
+
+  // reads r5; clobbers r0..r4,r6..r9,r12,lr,NZCV; returns to caller with r5/r10/r11 as
+
+  // the handler''s outputs
+
+  '
+details: 'The function reads the object''s type byte at [r5+7], shifts it left by 2 to get a
+
+  word index, and loads a 32-bit handler address from the two-entry table at off_811A514
+
+  (table itself stored via off_811A510). It then performs `mov lr, pc; bx r0`, which
+
+  transfers control to the handler in Thumb mode (note the +1 in the table entries,
+
+  e.g. `sub_811A51C+1`, `sprite_updatePositionAndClamp_811A57C+1`) with every register
+
+  preserved and PC/LR set so the handler returns directly to this function''s caller.
+
+  The `pop {pc}` then tail-returns. In effect this is a small vtable dispatch: index 0
+
+  goes to sub_811A51C (an as-yet unnamed update), index 1 goes to
+
+  sprite_updatePositionAndClamp_811A57C. Only two entries are present in the table as
+
+  seen here, so only type values 0 and 1 are recognised.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_811A500
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811A500
+
+    ./wf verify --function sub_811A500 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811A500
+
+    ./wf verify --function sub_811A500 --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 1 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811A500
+
+    ./wf verify --function sub_811A500 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0811a500 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+open_questions:
+- Whether the table at off_811A514 really contains only two entries or is a slice of a larger table; the disassembly
+  shows only the first two words.
+- The identity and role of the other handler sub_811A51C (the type-0 update path).
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

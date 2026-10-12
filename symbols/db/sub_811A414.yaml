@@ -1,0 +1,66 @@
+name: sub_811A414
+address: '0x0811A414'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's per-frame state to one of three handlers based on its state byte.
+interface: "/* @r5: battle object base; @r10: caller-saved scratch (passed through)\n   State byte is read from\
+  \ (r5 + 8); used as offset into off_811A428\n   (states stored pre-multiplied by 4).\n   On entry r0 = handler\
+  \ (with Thumb bit set), r1 = raw state byte.\n   Returns r2, r3, r5, r10, r11 from the chosen handler. */\nvoid\
+  \ sub_811A414(u32 r5, u32 r10, void (*handler)(void));\n"
+details: "Pure jump-table dispatcher. off_811A428 is a 3-entry table of Thumb\nhandler pointers (+1 already OR'd\
+  \ in):\n  state 0 -> sub_811A434\n  state 4 -> sub_811A4DC\n  state 8 -> sub_811A5B4\nThe \"mov lr, pc; bx r0\"\
+  \ sequence transfers control to the handler with\nlr = return address pointing at the trailing pop {pc}, so the\
+  \ handler\nreturns directly to the original caller of sub_811A414 — this function\nis effectively a tail-call\
+  \ trampoline. r2/r3/r5/r10/r11 are read back\nfrom whatever the handler leaves in them; r0/r1/r4/r6/r7/r8/r9/r12\
+  \ are\nclobbered and treated as caller-saved. Only r5 (object base) and r10\ncarry meaningful input; lr is the\
+  \ standard link register. No memory\nother than (r5+8) and off_811A428 is touched.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_811A414
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811A414
+
+    ./wf verify --function sub_811A414 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811A414
+
+    ./wf verify --function sub_811A414 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 16 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811A414
+
+    ./wf verify --function sub_811A414 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0811a414 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+open_questions:
+- Which battle system subsystem owns this object and what each of the three states (handlers at sub_811A434, sub_811A4DC,
+  sub_811A5B4) actually does.
+- Whether the state byte values are exactly 0/1/2 (giving offsets 0/4/8) or whether the table has extra reserved
+  slots.
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

@@ -1,0 +1,78 @@
+name: sub_80E1830
+address: '0x080E1830'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's per-phase handler by jumping through a table indexed by CurPhase.
+interface: void sub_80E1830(u32 phase, u32 handler); in r2-r5, lr preserved; out r5, r8-r12; clobbers nzcv, r0,
+  r1, r2, r3, lr
+details: 'Reads byte at "oBattleObject_CurPhase" offset of an object pointed to by r5, then uses
+
+  that byte as an index into the 4-entry jump table at off_80E1844 to fetch a handler
+
+  address. The handler is called via a computed "mov lr, pc; bx r1" sequence, so r2-r5
+
+  (including the object pointer in r5) pass through to the handler, the callee is
+
+  expected to return with r5 updated and r8-r12 as its outputs, and r4, r6, r7 must
+
+  be preserved. On return, control goes straight back to sub_80E1830''s caller via the
+
+  matching pop {r4,r6,r7,pc}. The four table entries resolve to sub_80E1854 (phase 0),
+
+  timefreezeObjectRunFunction_80E1880 (phase 1), sub_80E18DA (phase 2), and
+
+  sub_80E18F8 (phase 3); each is stored with the low bit set to switch via bx. The
+
+  "0,0" word between the pop and the off_80E1840 pointer is just alignment padding.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_80E1830
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E1830
+
+    ./wf verify --function sub_80E1830 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E1830
+
+    ./wf verify --function sub_80E1830 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 33 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E1830
+
+    ./wf verify --function sub_80E1830 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080e1830 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- story9
+open_questions:
+- What is the meaning of each CurPhase value (0-3) for the calling battle object?
+- Do all four handlers share the same r0=phase, r1=handler-entry contract, or is that just the one of timefreezeObjectRunFunction_80E1880
+  already identified?
+- Which battle object types use this dispatcher (battle sprites, chips, viruses)?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

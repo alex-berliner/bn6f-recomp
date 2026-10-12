@@ -1,0 +1,65 @@
+name: sub_814692C
+address: '0x0814692C'
+kind: function
+status: confirmed
+summary: Tail-call trampoline that runs the RFU (wireless) VBlank handler and returns its preserved registers to
+  the caller.
+interface: void rfu_vblankTrampoline_814692C(void); /* uses lr as the return address; returns r4-r12 from rfu_handleVBLANK_81453D4
+  */
+details: 'A four-instruction tail-call wrapper around `rfu_handleVBlank_81453D4`. It pushes lr, calls the RFU VBlank
+  handler, pops the saved return into r0, and `bx r0`s to it so the handler''s r4-r12 propagate out as this function''s
+  outputs. r0-r3, lr and the condition flags are clobbered across the call; the stack is restored to the caller''s
+  level. In the register ABI the SP movement (push/pop) carries the return address, so no general-purpose register
+  is used as a parameter. Effectively a transparent shim that lets the caller treat the RFU VBlank as a no-argument
+  cdecl function returning nine callee-saved registers.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_814692C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_814692C
+
+    ./wf verify --function sub_814692C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_814692C
+
+    ./wf verify --function sub_814692C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_814692C
+
+    ./wf verify --function sub_814692C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0814692c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/libs.c
+coverage:
+- menus3
+open_questions:
+- Why is this trampoline used instead of calling `rfu_handleVBlank_81453D4` directly? (Likely to give the call site
+  a uniform "returns r4-r12" interface without exposing the handler's specific ABI.)
+- Where is this trampoline installed (e.g., as a VBlank IRQ hook or registered callback)?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

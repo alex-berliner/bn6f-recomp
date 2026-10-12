@@ -1,0 +1,69 @@
+name: sub_81287B4
+address: '0x081287B4'
+kind: function
+status: hypothesis
+summary: Dispatches the battle menu/scene step handler chosen by a state byte in the r5 struct, then runs the common
+  HP-update queueing and a per-frame fixup.
+interface: "/* full-register dispatch: caller passes R0..R12 (R5 points to a struct\n * whose byte at offset 2 selects\
+  \ one of three Thumb handlers reachable\n * via the table at 0x081287d0); R5, R8..R12 are returned; R0..R4, R6,\n\
+  \ * R7 and LR are clobbered; NZCV are clobbered. */\nvoid battleSceneStep_81287B4(void);\n"
+details: "Reads the byte at [r5+2], uses it as a 4-byte index into the jump\ntable at 0x081287d0 and tail-calls\
+  \ the selected Thumb entry point\nwith `mov lr, pc; bx r0`, so the chosen handler runs in the caller's\nfull register\
+  \ context (r0..r12). The table currently lists:\n  [0] sceneStep_81287DC      (open the menu / initial step)\n\
+  \  [1] sub_8128800            (process input / transition step)\n  [2] sub_81288BC            (close / cleanup\
+  \ step)\nAfter the handler returns the routine unconditionally calls\nbattle_queueHpUpdate_8128C20 (which consumes\
+  \ the handler's r5 and\nreturns an updated r5 reflecting the newly-queued HP change) and\nthen sub_8128B34 (a\
+  \ small per-step fixup that reads r10 from the\noriginal caller context and returns an updated r5). Only r5, r8,\n\
+  r9, r10, r11, r12 are required to survive to the caller; r0..r4,\nr6, r7 and lr are clobbered, and NZCV are clobbered.\
+  \ The pointer\nin r5 is the battle menu/scene state struct (HP bar, cursor, etc.);\noffset 2 is the step/state\
+  \ byte. Because the handler is reached via\n`bx`, this is effectively a state machine `switch` on `[r5+2]`.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_81287B4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81287B4
+
+    ./wf verify --function sub_81287B4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81287B4
+
+    ./wf verify --function sub_81287B4 --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 11 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81287B4
+
+    ./wf verify --function sub_81287B4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^081287b4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- The readable C header comment calls it "battle menu scene step dispatcher"; whether the three listed handlers
+  cover an open/input/close menu trio, a sub-menu trio, or something else is not confirmed.
+- The exact layout of the r5-pointed struct (which field at +2, what r10 points to for sub_8128B34) is inferred
+  from the contract, not verified.
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43

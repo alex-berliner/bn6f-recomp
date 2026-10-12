@@ -1,0 +1,78 @@
+name: sub_81322E8
+address: '0x081322E8'
+kind: function
+status: confirmed
+summary: Looks up an object's runtime record and dispatches to one of its per-state thunks chosen by an index byte
+  at state+0x0E.
+interface: "void dispatchObjectMethod_81322E8(u32 state /* r5 */);\n  // reads  r5, byte at r5+0x0E (method index)\n\
+  \  // calls  sub_803E8F8 -> u32 record (forwarded to handler in r2)\n  // jumps  to off_8132304[method_index]\
+  \ (BX) with r0=thunk, r1=table_base, r2=record;\n  //       r3..r12 flow through from the caller (sub_803E8F8\
+  \ preserves r1/r2/r5, so r5\n  //       still points at the caller's state block on entry to the handler)\n  //\
+  \ clobbers nz,c,v,r0,r1,lr\n"
+details: 'Tiny dispatcher stub. sub_803E8F8 returns a per-object runtime record (r2). The byte
+
+  at state+0x0E is used as a method index into the 4-entry code table at off_8132304
+
+  (currently a single entry: sub_8132310+1). Control is transferred by `mov lr, pc; bx r0`,
+
+  so the handler runs in the caller''s guest frame and any registers it leaves in
+
+  r2..r12 are what the original caller of this function observes. The function itself
+
+  has no `pop {pc}` return; it relies on the dispatched thunk (or the chain after it)
+
+  to return to the real caller. Effectively a vtable-style dispatch on a per-object
+
+  state block where the table holds Thumb code pointers rather than data addresses.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223115);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 81' --file inbox_farm_81.c sub_81322E8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81322E8
+
+    ./wf verify --function sub_81322E8 --snapshots build-snapshots'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223115-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81322E8
+
+    ./wf verify --function sub_81322E8 --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 6 out of domain (verify run convert-20261011-223115-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81322E8
+
+    ./wf verify --function sub_81322E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223115-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^081322e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp dc5ab43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- menus3
+open_questions:
+- What is the layout of the "state" object that r5 points to (beyond the 0x0E index byte)?
+- What does sub_803E8F8 actually resolve — a vtable, a class record, a sprite/npc handle?
+- Why only one entry in off_8132304 today; are other slots patched in at runtime?
+- Which subsystem owns this dispatcher (sprite, npc, battle entity, generic object)?
+sources:
+- tools/wf run convert-20261011-223115
+- recomp dc5ab43
