@@ -977,10 +977,11 @@ Next replaySpriteFrames_811F24C(void) {
         ST8(R5 + 0xC, count);
     }
 
-    /* Walk the table, replaying each entry via sub_802FE28(lo, hi, 0, 1). */
+    /* Walk the table, replaying each entry via sub_802FE28(lo, hi, 0, 1); the first
+     * entry always (the original tests the count only after a call). */
     u32 tbl = A_dword_811F278;
     u32 idx = 0;
-    while ((s32)idx < (s32)LD8(R5 + 0xC)) {
+    do {
         R0 = LD32(tbl);
         R1 = LD32(tbl + 4);
         R2 = 0;
@@ -989,7 +990,7 @@ Next replaySpriteFrames_811F24C(void) {
 
         tbl += 8;
         idx += 1;
-    }
+    } while ((s32)idx < (s32)LD8(R5 + 0xC));
 
     RETURN_TO_CALLER();
 }

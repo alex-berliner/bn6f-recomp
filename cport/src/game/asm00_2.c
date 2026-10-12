@@ -1353,18 +1353,15 @@ Next dispatchHandlerById_8010D58(void) {
             GUEST_CALL(sub_800F4B2);
             R0 = 0xFFFF;
         } else {
-            /* tail-call the handler selected by id, passing the table
-             * base in r1 and its own address in r0, as the original's
-             * `ldr r0,[r1,r6]; mov lr,pc; bx r0` sequence does */
+            /* call the handler selected by id, passing the table base in
+             * r1 and its own address in r0, as the original's
+             * `ldr r0,[r1,r6]; mov lr,pc; bx r0` sequence does (ids 0-4 are
+             * sub_8010D98..sub_8010DC0; a larger id goes wherever the word
+             * past the table points, as on the GBA) */
+            u32 handler = LD32(A_off_8010D84 + id * 4);
             R1 = A_off_8010D84;
-            R0 = LD32(R1 + id * 4);
-            switch (id) {
-            case 0: GUEST_CALL(sub_8010D98); break;
-            case 1: GUEST_CALL(sub_8010DA2); break;
-            case 2: GUEST_CALL(sub_8010DAC); break;
-            case 3: GUEST_CALL(sub_8010DB6); break;
-            case 4: GUEST_CALL(sub_8010DC0); break;
-            }
+            R0 = handler;
+            GUEST_CALL_ADDR(handler);
             R4 = 0;
         }
     }
