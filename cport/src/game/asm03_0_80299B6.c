@@ -156,6 +156,49 @@ Next battle_getObjectStatusCode_8029AAA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── entity_getActionIndex_8029ADA ── */
+/* entity_getActionIndex_8029ADA: pick an animation/action index for an entity.
+ *
+ * Inputs:  r5 = pointer to the entity struct (reads bytes at offsets 7 and 8).
+ * Outputs: r0 = the chosen action index.
+ *
+ * The entity's state at byte 7 selects a major branch; byte 8 then refines the
+ * choice. Anything that doesn't match a known case falls through to 0. */
+Next entity_getActionIndex_8029ADA(void) {
+    u8 state  = LD8(R5 + 7);
+    u8 detail = LD8(R5 + 8);
+    u32 result;
+
+    switch (state) {
+    case 0:
+        /* state 0 only maps to action 5 when detail == 1, otherwise fall through. */
+        result = (detail == 1) ? 5 : 0;
+        break;
+
+    case 1:
+        if (detail == 2)        result = 0xA;
+        else if (detail < 2)    result = 6;
+        else                    result = 0;
+        break;
+
+    case 0xA:
+        result = 0xF;
+        break;
+
+    default:
+        /* Other primary states: action 7 if detail < 2, otherwise 0. */
+        result = (detail < 2) ? 7 : 0;
+        break;
+    }
+
+    R0 = result;
+    /* Return preserves the flags the last comparison left. The default branch
+     * ends on the "detail < 2" check; every other branch ends on a MOV of a
+     * small positive constant. Set NZ to match the final value returned. */
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleTutorial_first_checkTextStep_8029B1C ── */
 /*
  * First-battle tutorial chatbox trigger (r5 = tutorial work struct):

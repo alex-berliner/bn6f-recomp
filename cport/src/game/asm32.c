@@ -169,6 +169,25 @@ Next ai_attackState_SetupSpecial_8112FBA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81130E4 ── */
+/* sub_81130E4:
+ *   inputs:  r4 r5 r10 lr
+ *   outputs: r1 r5 r8 r9 r10 r11 r12
+ *   clobbers (unused by callers): nz c v r0 r2 r3 r4 r6 r7 lr
+ *   preserved: -
+ *
+ * Trivial two-call tail sequence: call sub_8113114, then call sub_8016B02,
+ * and return to the caller. The original uses a `pop {pc}` to do the
+ * return, but since sub_8016B02 does not consume LR from the stack, the
+ * net effect on guest-visible state is identical to a normal call-return
+ * followed by RETURN_TO_CALLER().
+ */
+Next sub_81130E4(void) {
+    GUEST_CALL(sub_8113114);
+    GUEST_CALL(sub_8016B02);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_packObjStateBitToAttrCode_8113154 ── */
 /* battle_packObjStateBitToAttrCode_8113154(r4 = battle object, r6 = destination byte):
  * Packs the object's state bit at offset 0x16 (bit 0 only) into a small

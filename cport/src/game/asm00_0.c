@@ -1021,6 +1021,24 @@ Next updatePlayerGameState_800107A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8001092 ── */
+/* sub_8001092: Save the current player's real-world coordinates, Z layer, facing
+ * direction and map id into the game state so they can be restored later
+ * (e.g. when returning from Cyberworld to the real world).
+ *   inputs:  r0 = x, r1 = y, r2 = z, r3 = facing direction, r4 = map id
+ *   outputs: -
+ *   preserved: r4 r5 r6 r7
+ */
+Next sub_8001092(void) {
+    u32 *gamestate = (u32 *)LD32(R10 + oToolkit_GameStatePtr);
+    ST32((u32)gamestate + oGameState_SavedRealWorldX, R0);
+    ST32((u32)gamestate + oGameState_SavedRealWorldY, R1);
+    ST32((u32)gamestate + oGameState_SavedRealWorldZ, R2);
+    ST32((u32)gamestate + oGameState_SavedRealWorldFacingDirection, R3);
+    ST32((u32)gamestate + oGameState_SavedRealWorldMapId, R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── GetCurPETNavi ── */
 /* GetCurPETNavi: () -> u8
  * Returns the navi currently active on the PET. As a side effect, r3 is

@@ -695,6 +695,19 @@ Next copyObjAttributesToIWRAM_802FE0C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802FE28 ── */
+/* sub_802FE28(r0..r3 = args for sprite_queueOamEntry, lr = return):
+ *   Thumb trampoline that tail-calls sprite_queueOamEntry in ARM mode while
+ *   passing the same r0..r3 and lr unchanged, so the callee returns directly
+ *   to this function's caller. */
+Next sub_802FE28(void) {
+    /* The original switches to sprite_queueOamEntry's ARM entry (+1 for Thumb
+     * bit) by setting LR = return_pc and BXing there, which makes the callee's
+     * normal `pop {pc}` return straight to sub_802FE28's caller. */
+    GUEST_CALL(sprite_queueOamEntry);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_802FE48 ── */
 /* sub_802FE48: allocate one slot in the allocation bitmap at dword_2009A2C.
  * Scans bits 31..16 from the top down, sets the first clear bit and returns
@@ -1080,6 +1093,33 @@ Next camera_writeUnk03_14_80301b2(void) {
     ST8(camera + 3, R0);
     ST32(camera + oCamera_Unk_14, R1);
 
+    R2 = camera;
+    RETURN_TO_CALLER();
+}
+
+/* ── SetCameraXYZ ── */
+/* SetCameraXYZ(r0 = x, r1 = y, r2 = z, r10 = toolkit):
+ * write the camera position to the camera object held by the toolkit. */
+Next SetCameraXYZ(void) {
+    u32 camera = LD32(R10 + oToolkit_CameraPtr);
+    ST32(camera + 0x30, R0);
+    ST32(camera + 0x34, R1);
+    ST32(camera + 0x38, R2);
+    R3 = camera;
+    RETURN_TO_CALLER();
+}
+
+/* ── camera_initShakeEffect_80302a8 ── */
+/* camera_initShakeEffect_80302a8:
+ *   Triggers a camera shake effect.
+ *   r0 = shake magnitude (stored at oCamera_Unk_0e)
+ *   r1 = shake duration/period (stored at oCamera_Unk_0c)
+ *   Output: r2 holds the camera struct pointer (loaded from r10).
+ */
+Next camera_initShakeEffect_80302a8(void) {
+    u32 camera = LD32(R10 + oToolkit_CameraPtr);
+    ST16(camera + oCamera_Unk_0e, R0);
+    ST16(camera + oCamera_Unk_0c, R1);
     R2 = camera;
     RETURN_TO_CALLER();
 }
@@ -2599,6 +2639,29 @@ Next sub_8031C94(void) {
     R5 = 2;
     GUEST_CALL(sub_80315B8);
 
+    GUEST_CALL(sub_8031B7C);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8031CAC ── */
+/* sub_8031CAC(r0, r5):
+ * Compute the relative position to the battle target, run a half-plane test against
+ * a point, then perform sub_8031B7C. Acts as a thin wrapper that prepares the
+ * arguments for math_pointCrossHalfPlaneTest_8031594. */
+Next sub_8031CAC(void) {
+    /* Calculate the relative position from r0 toward the current battle target. */
+    GUEST_CALL(battle_calcRelPosToTarget_803172E);
+
+    /* Half-plane test arguments:
+     *   r2 = 0 (unused/zero)
+     *   r4 = 0xE, r3 = 0x10, r5 = 0xE — point/normal used by the test. */
+    R2 = 0;
+    R4 = 0xE;
+    R3 = 0x10;
+    R5 = 0xE;
+
+    GUEST_CALL(math_pointCrossHalfPlaneTest_8031594);
     GUEST_CALL(sub_8031B7C);
 
     RETURN_TO_CALLER();

@@ -42,6 +42,24 @@ Next spawnChargeShotChargeObject_80E0F02(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E0F22 ── */
+/* sub_80E0F22: clear the field at r0+0x64. */
+Next sub_80E0F22(void) {
+    R1 = 0;
+    ST32(R0 + 0x64, R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E0F28 ── */
+/* sub_80E0F28(r0 = object):
+ * Set the object's "active/visible" flag (offset 0x64) to 1.
+ * Returns the flag value (1) in r1 per the caller's contract. */
+Next sub_80E0F28(void) {
+    R1 = 1;
+    ST32(R0 + 0x64, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_setExtraAnimState_80E0F2E ── */
 /* battle_setExtraAnimState_80E0F2E(r0 = selector, r5 = battle object):
  * Reset an object's extra-var timer to 0x15 (r0 == 1) or 8 (otherwise).
@@ -100,6 +118,31 @@ Next sub_80E18DA(void) {
         RETURN_TO_CALLER();
 
     ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0x0C);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E199A ── */
+/* sub_80E199A: maps an attack-bait slot index to a byte offset in the bait table.
+ * inputs:  r0 = slot index
+ * outputs: r0 = byte offset
+ * clobbers: r1, nz, c
+ *
+ * Each entry is 3 bytes. The masked slot is shifted left by 17, then shifted
+ * back right by 16 or 17 depending on bit 15 (the bit LSL #17 shifts out into
+ * the carry flag, which BCC then tests), and the result is multiplied by 3. */
+Next sub_80E199A(void) {
+    u32 slot = R0 & 0x87FF;
+    u32 shifted = slot << 17;
+    /* LSL #17 shifts bit 15 of the source out into carry; BCC uses that to
+     * choose between the LSR #16 and LSR #17 paths. */
+    if (slot & 0x8000) {
+        R0 = (shifted >> 16) * 3;
+    } else {
+        R0 = (shifted >> 17) * 3;
+    }
+    R1 = 3;
+    /* MUL sets NZ from the product; C is preserved from the preceding LSR. */
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 
@@ -172,6 +215,54 @@ Next battle_spawnLinkedObject_80E1A6A(void) {
         ST32(R0 + oBattleObject_ExtraVars, R7);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E1A86 ── */
+/* sub_80E1A86(r0 = object pointer):
+ *   If r0 is non-NULL, set the object's field at offset 8 to 8.
+ *   Returns the written value (8) in r1 if the object existed, otherwise
+ *   leaves r1 unchanged from the caller. */
+Next sub_80E1A86(void) {
+    if (R0 != 0) {
+        R1 = 8;
+        ST32(R0 + 8, R1);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E1B0A ── */
+/* sub_80E1B0A:
+ *   inputs:  r5 lr
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r5
+ *
+ * Frees the given battle object's memory. If the object is currently the
+ * "extra vars" head, clear that head pointer before releasing the memory.
+ */
+Next sub_80E1B0A(void) {
+    u32 extra_vars = LD32(R5 + oBattleObject_ExtraVars);
+
+    if (LD32(extra_vars) == R5) {
+        ST32(extra_vars, 0);
+    }
+
+    R0 = R5;
+    GUEST_CALL(object_freeMemory);
+
+    /* The original does `pop {pc}`, but the function's caller-return is handled
+     * by our convention via RETURN_TO_CALLER(); r5 is preserved by the contract. */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E1B3C ── */
+/* sub_80E1B3C(r0 = object):
+ * If r0 is non-null, write 8 at offset +8 of the object (set its state/value to 8). */
+Next sub_80E1B3C(void) {
+    if (R0 != 0) {
+        ST32(R0 + 8, 8);
+    }
     RETURN_TO_CALLER();
 }
 

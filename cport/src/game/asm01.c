@@ -220,3 +220,14 @@ Next eStruct2038160_clearStruct(void) {
     GUEST_CALL(ZeroFillByWord);
     RETURN_TO_CALLER();
 }
+
+/* ── eStruct2038160_getBattleTerminate01 ── */
+/* eStruct2038160_getBattleTerminate01: read the BattleTerminate01 flag (byte offset 1)
+ * from the global eStruct2038160 struct and return it in r0.
+ *   inputs:  lr
+ *   outputs: r0
+ */
+Next eStruct2038160_getBattleTerminate01(void) {
+    R0 = LD8(A_eStruct2038160 + (A_eStruct2038160_BattleTerminate01 - 0x2038160));
+    RETURN_TO_CALLER();
+}

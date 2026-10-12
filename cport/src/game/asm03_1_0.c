@@ -81,6 +81,22 @@ Next callback_noop_8033A7C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8033A80 ── */
+Next sub_8033A80(void) {
+    /* sub_8033A80: initialize/resume the three rendering sub-systems with argument 0.
+     * Calls sub_8033B80, sub_8033F80 and gfxTransfer_8033DA0 in sequence, each with r0 = 0. */
+    R0 = 0;
+    GUEST_CALL(sub_8033B80);
+
+    R0 = 0;
+    GUEST_CALL(sub_8033F80);
+
+    R0 = 0;
+    GUEST_CALL(gfxTransfer_8033DA0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── onUpdateInRealWorld_8033A96 ── */
 /* onUpdateInRealWorld_8033A96(self: *S2011E30 in r5):
  * Per-frame update while in the real world: clear two per-frame state

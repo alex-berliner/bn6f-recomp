@@ -158,6 +158,85 @@ Next battle_endTurnMarkActed_8017888(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8017A38 ── */
+/* sub_8017A38: Battle object tick.
+ * Decrement the object's Timer field; when it hits zero, branch on a flag
+ * to either clear a "stuck" bitmask and reset CurAction=4, or else run the
+ * full "knock down / recover" cleanup (clear several AI/object flags,
+ * reset animation fields, call sub_8011450, then set CurAction=8).
+ *   inputs:  r5 = object pointer, lr
+ *   outputs: r1 r5 r8 r9 r10 r11 r12
+ *   clobbers: r0 r2 r3 r4 r6 r7 lr, nz c v
+ */
+Next sub_8017A38(void) {
+    u32 timer = LD16(R5 + oBattleObject_Timer);
+    timer -= 1;
+    ST16(R5 + oBattleObject_Timer, timer);
+
+    /* BGE locret — timer still positive, nothing else to do. */
+    if ((s32)timer >= 0)
+        RETURN_TO_CALLER();
+
+    /* Timer expired: peek at object flag 0x800 (bit 11). */
+    GUEST_CALL(object_getFlag);
+    u32 flags = R0;
+    if ((flags & 0x800) != 0) {
+        /* Branch A — just clear the high bit and snap to action 4. */
+        R0 = 0x100000;
+        GUEST_CALL(object_clearFlag);
+        ST8(R5 + oBattleObject_CurAction, 4);
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+        RETURN_TO_CALLER();
+    }
+
+    /* Branch B — full recovery sequence. */
+    R0 = 0x501800;
+    GUEST_CALL(object_clearFlag);
+
+    R0 = 0x1000043F;
+    GUEST_CALL(ClearAIData_Unk_44_Flag);
+
+    R0 = 0x200000;
+    GUEST_CALL(ClearAIDataUnk0x48Flag);
+
+    R0 = 0x10;
+    GUEST_CALL(object_clearFlag2);
+
+    ST8(R5 + oBattleObject_Unk_1f, 0);
+    ST8(R5 + oBattleObject_CurAnim, 0);
+    ST8(R5 + oBattleObject_CurAnimCopy, 0xFF);
+
+    GUEST_CALL(sub_8011450);
+
+    ST8(R5 + oBattleObject_CurAction, 8);
+    ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetVerActorTyAndAIIdx_80182B4 ── */
+/* GetVerActorTyAndAIIdx_80182B4:
+ *   input:  r0 = enemy index (u16)
+ *   output: r0 = pointer into the per-index (version, actor_type, ai_index) table
+ *           v   = overflow flag from the final index arithmetic
+ *   clobbers: nz c r1
+ *
+ * Returns a pointer to a 3-byte record { version, actor_type, ai_index }
+ * for the given enemy index. The table is a flat array of 3-byte entries
+ * addressed by index*3. */
+Next GetVerActorTyAndAIIdx_80182B4(void) {
+    u32 enemy_idx = R0;
+    u32 offset = enemy_idx * 3;
+    u32 result = (u32)A_byte_80182C4 + offset;
+
+    /* Match the original's flag-setting: ADD computes flags on the
+     * (base << 0) + (offset << 0) operation. */
+    SET_FLAGS_ADD(result - offset, offset);
+
+    R1 = 3;
+    R0 = result;
+    RETURN_TO_CALLER();
+}
+
 /* ── getBattleArmPositionMaybe_8018810 ── */
 /* getBattleArmPositionMaybe_8018810(r0 = arm id, r1 = arm index, r2/r3 = battle object):
  * Computes one coordinate pair of an arm/part attachment point on a battle
@@ -219,6 +298,36 @@ Next getIndexedSignedBytePair_8018842(void) {
 
     R0 = (s8)LD8(addr);
     R1 = (s8)LD8(addr + 1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8018886 ── */
+/* sub_8018886(r0 = table_index, r1 = sub_index):
+ * Look up an entry in one of three sprite/animation tables.
+ *
+ * When r0 == 0, r1 is used as an index into a 16-byte mapping table (A_byte_80188B0) to
+ * remap it into a different table index (one of 0, 1, or 2). Otherwise r1 is kept as-is.
+ *
+ * R0 is then used to pick one of three table bases (A_off_80188A0 -> {A_byte_80188C0,
+ * A_byte_801898C, A_byte_80191C8}) and the result pointer is the base plus r1 * 0x44
+ * (each record is 0x44 bytes long).
+ *
+ *   inputs:  r0 r1 lr
+ *   outputs: r0 r3
+ *   clobbers: nz c v r1 r2
+ *   preserved: -
+ */
+Next sub_8018886(void) {
+    /* If table_index == 0, remap sub_index through the lookup table. */
+    if (R0 == 0) {
+        R1 = LD8(A_byte_80188B0 + R1);
+    }
+
+    /* Base pointer for the chosen table, then offset into record r1. */
+    R0 = LD32(A_off_80188A0 + R0);
+    R3 = 0x44;
+    R0 = R0 + R1 * R3;
+
     RETURN_TO_CALLER();
 }
 
@@ -306,6 +415,27 @@ Next object_createCollisionData(void) {
     R1 = 1;
     /* the original ends with `adds r0, r4, #0` before the two stores */
     SET_FLAGS_ADD(slotBase, 0);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_freeCollisionData ── */
+/* object_freeCollisionData(r0 = collision data pointer):
+ * Mark a piece of collision data as disabled and clear its bit in the
+ * engine-wide active-collision bitfield. Safe to call with a NULL pointer. */
+Next object_freeCollisionData(void) {
+    u32 collisionData = R0;
+    if (collisionData == 0)
+        goto done;
+
+    /* Disable this collision data slot. */
+    ST8(collisionData + oCollisionData_Enabled, 0);
+
+    /* Look up the index bit belonging to this slot and clear it. */
+    u32 indexBit = LD32(collisionData + oCollisionData_CollisionIndexBit);
+    u32 bitfield = LD32(A_eActiveCollisionDataBitfield);
+    ST32(A_eActiveCollisionDataBitfield, bitfield & ~indexBit);
+
+done:
     RETURN_TO_CALLER();
 }
 
@@ -658,6 +788,18 @@ Next object_clearFlag2(void) {
 Next object_getFlag2(void) {
     u32 collision = LD32(R5 + oBattleObject_CollisionDataPtr);
     R0 = LD32(collision + oCollisionData_ObjectFlags2);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_setCollisionStatusEffect1 ── */
+/* object_setCollisionStatusEffect1: 0801A258-0801A25E THUMB
+ * Sets the status effect byte on the collision data attached to a battle object.
+ *   inputs:  r0 = status effect base value, r5 = battle object pointer
+ *   outputs: r3 = pointer to the object's collision data
+ *   clobbers/preserved: - */
+Next object_setCollisionStatusEffect1(void) {
+    R3 = LD32(R5 + oBattleObject_CollisionDataPtr);
+    ST8(R3 + oCollisionData_StatusEffectBase, R0);
     RETURN_TO_CALLER();
 }
 

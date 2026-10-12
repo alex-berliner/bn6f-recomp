@@ -242,6 +242,15 @@ Next sprite_tickWithFlagReset_80A4C46(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A4C5C ── */
+/* sub_80A4C5C: tail-call wrapper that frees the current overworld map object
+ * and returns to the caller. The data at byte_80A4C64 immediately follows
+ * this routine in the ROM and is consumed by other functions. */
+Next sub_80A4C5C(void) {
+    GUEST_CALL(FreeOverworldMapObject);
+    RETURN_TO_CALLER();
+}
+
 /* ── npc_stateDispatchStep_80A51C4 ── */
 /* npc_stateDispatchStep_80A51C4(r5 = state struct):
  * Points r7 at a 0x10-byte record in the table at byte_80A4C64, selected by
@@ -546,6 +555,67 @@ Next sub_80A5350(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A5448 ── */
+/* sub_80A5448: initialize a battle cursor / cursor-like sprite.
+ *   r5 = sprite state struct, r10 = ???, lr = return address
+ *   outputs: r2, r5 */
+Next sub_80A5448(void) {
+    u32 sprite_info;
+    u32 data_ptr;
+
+    /* mark sprite state as type 3 */
+    ST8(R5, 3);
+
+    /* fetch the sprite info + animation data pointer */
+    R0 = R5;
+    GUEST_CALL(lookupMapEntryPair_80A54A4);
+    sprite_info = R0;
+    data_ptr = R1;
+
+    /* initial X / Y positions, given as fixed-point halves (h << 16) */
+    ST32(R5 + 0x0C, (u32)LD16(data_ptr) << 16);
+    ST32(R5 + 0x10, (u32)LD16(data_ptr + 2) << 16);
+    ST32(R5 + 0x14, 0);
+
+    /* load the tile graphics for this sprite */
+    R0 = 0x80;
+    R1 = LD8(sprite_info);
+    R2 = LD8(sprite_info + 1);
+    GUEST_CALL(sprite_load);
+
+    /* apply animation 0 (idle / default) */
+    ST8(R5 + 5, LD8(sprite_info + 2));
+    R0 = LD8(R5 + 5);
+    GUEST_CALL(sprite_setAnimation);
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_noShadow);
+
+    /* sprite priority 2 (in front of most background layers) */
+    R0 = 2;
+    GUEST_CALL(sprite_setPriority_8002E14);
+
+    /* palette slot for this sprite */
+    ST8(R5 + 5, LD8(sprite_info + 3));
+    ST8(R5 + 8, 4);
+
+    /* tail call into the per-frame handler */
+    GUEST_CALL(sub_80A5494);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A5494 ── */
+/* sub_80A5494:
+ *   inputs:  r5 lr
+ *   outputs: r2 r5
+ *   clobbers: nz c v r0 r1 r3 lr
+ *   preserved: r4 r5
+ *
+ * Thin trampoline that tail-calls sprite_update. */
+Next sub_80A5494(void) {
+    GUEST_CALL(sprite_update);
+    RETURN_TO_CALLER();
+}
+
 /* ── lookupMapEntryPair_80A54A4 ── */
 /* lookupMapEntryPair_80A54A4(r10 = Toolkit*, r5 = ?):
  * Looks up a per-map entry table for the current map; returns a base pointer and a
@@ -654,6 +724,22 @@ Next sub_80A5588(void) {
 
 update_and_return:
     GUEST_CALL(sprite_update);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A5724 ── */
+/* sub_80A5724: look up two bytes from ROM tables indexed by a one-byte selector at r6+5.
+ *   inputs:  r6 = pointer to some object/struct whose byte at offset 5 is a selector
+ *   outputs: r0 = table_A[selector], r1 = table_B[selector]
+ *   preserved: r4 */
+Next sub_80A5724(void) {
+    u32 selector = LD8(R6 + 5);
+
+    /* dword_80A573C packs four selector bytes (0x18, 0x0C, 0x20, 0x0C) into a u32;
+     * dword_80A5740 packs four more (0x0C, 0x20, 0x0C, 0x20). The code reads them one
+     * byte at a time, indexed by selector. */
+    R0 = LD8((u32)A_dword_80A573C + selector);
+    R1 = LD8((u32)A_dword_80A5740 + selector);
     RETURN_TO_CALLER();
 }
 
@@ -1406,5 +1492,12 @@ Next util_nandByteArray40_80AAB88(void) {
     R1 = lastB;
     R3 = i;             /* ends at 0x28 */
     SET_FLAGS_CMP(i, 0x28);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AAE98 ── */
+/* sub_80AAE98(r0 = index): return &byte_80AAEA8[index * 0x28] (each entry is 0x28 bytes). */
+Next sub_80AAE98(void) {
+    R0 = (u32)R0 * 0x28 + (u32)A_byte_80AAEA8;
     RETURN_TO_CALLER();
 }
