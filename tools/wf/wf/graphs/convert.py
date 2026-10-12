@@ -49,6 +49,10 @@ from wf.types import (BuildFailure, CommitHash, FunctionName, ModelSpec, NotRun,
 PROJECT = "recomp-convert"
 DEFAULT_MODELS = TIERS[Tier.STRONG]
 GIVEN_CANDIDATE = ModelSpec("given candidate")
+# CPU oracle entry states per function when a conversion is installed: 96, not verify's usual 24; the
+# mutation survey (docs/reviews/2026-10-11-mutation-survey.md) found the extra states kill 9% of the bugs
+# the other checks miss, for about 4x the oracle's few seconds per function
+INSTALL_ORACLE_STATES = 96
 ACCEPTED_VERDICTS = (Verdict.PASSED, Verdict.PASSED_WITH_UNCHECKED_FUNCTIONS)
 
 
@@ -379,7 +383,8 @@ def install_and_verify(given: VerifyInput) -> VerifyOutput:
     run_dir.mkdir(parents=True, exist_ok=True)
     functions = tuple(context.function for context in given.contexts if context.entry_of is None)
     state = run_verify_in_full(VerifyState(run_dir=run_dir, functions=functions, snapshots=given.snapshots,
-                                           routes=given.routes, battle_code=given.battle_code, tree=tree), run_id)
+                                           routes=given.routes, battle_code=given.battle_code, tree=tree,
+                                           oracle_states=INSTALL_ORACLE_STATES), run_id)
     assert state.report is not None
     blamed = _blamed_by_build(state.report, laid_out, functions) if group else {}
     if state.report.verdict not in ACCEPTED_VERDICTS:
