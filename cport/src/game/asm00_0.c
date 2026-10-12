@@ -2270,6 +2270,40 @@ Next palette_clearEPalette20097a0_80023A8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── Initialize_eStruct200a6a0 ── */
+/* Initialize_eStruct200a6a0(r0 = param1, r1 = param2, r2 = param3):
+ * Clears the 0x50-byte struct at eStruct200a6a0, stores the three arguments
+ * into its parameter fields at +4/+8/+C, and sets its "in use" byte to 1.
+ * r1..r7 must come out unchanged, so the parameters are saved across the
+ * ZeroFillByWord call (which may clobber the low registers). The flags are
+ * whatever ZeroFillByWord leaves behind. */
+Next Initialize_eStruct200a6a0(void) {
+    /* The callee may clobber the low registers, so keep the parameters aside. */
+    u32 param1 = R0;
+    u32 param2 = R1;
+    u32 param3 = R2;
+    u32 eStruct = A_eStruct200a6a0;
+
+    /* ZeroFillByWord(eStruct, 0x50): clear the whole struct. */
+    R0 = eStruct;
+    R1 = 0x50;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* Reinstall the caller's parameters and mark the struct as active. */
+    ST32(eStruct + 0x4, param1);  /* dword_200A6A4 */
+    ST32(eStruct + 0x8, param2);  /* dword_200A6A8 */
+    ST32(eStruct + 0xC, param3);  /* dword_200A6AC */
+    ST8(eStruct, 1);
+
+    /* Restore the registers the original pops back (r0 is free to clobber,
+     * but match the original's mov r0, #1 anyway). */
+    R0 = 1;
+    R1 = param2;
+    R2 = param3;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── run_eStruct200a6a0_Callback_8002484 ── */
 /* run_eStruct200a6a0_Callback_8002484:
  * If the eStruct200a6a0 block is armed (flag byte at +0 non-zero and a callback

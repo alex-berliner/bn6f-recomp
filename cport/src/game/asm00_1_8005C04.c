@@ -835,6 +835,38 @@ Next fade_tick_80064BE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8006580 ── */
+/* sub_8006580: tear down the transform/cross-over overlay effect.
+ * Frees the two hardware palettes it grabbed (0x14, 0x15), clears its
+ * global state, and restores the render info of the toolkit's current
+ * screen: clears the 0x40 "effect window" bits from the three halfword
+ * fields at +6/+8/+0xA and zeroes the halfword at +2.
+ * Inputs: R5 = effect state object, R10 = toolkit. Outputs: R2 = 0x40. */
+Next sub_8006580(void) {
+    /* Release both hardware palettes used by the transform sprites. */
+    R0 = 0x14;
+    GUEST_CALL(Terminate_ePalette20097a0_Transform);
+    R0 = 0x15;
+    GUEST_CALL(Terminate_ePalette20097a0_Transform);
+
+    /* Clear the effect's global state word and the byte at state+0xD. */
+    ST32(A_dword_20096D0, 0);
+    ST8(R5 + 0xD, 0);
+
+    /* Restore the render info of the screen the toolkit is showing. */
+    u32 renderInfo = LD32(R10 + oToolkit_RenderInfoPtr);
+    const u32 clearBit = ~0x40;
+
+    ST16(renderInfo + 6, LD16(renderInfo + 6) & clearBit);
+    ST16(renderInfo + 8, LD16(renderInfo + 8) & clearBit);
+    ST16(renderInfo + 0xA, LD16(renderInfo + 0xA) & clearBit);
+    ST16(renderInfo + 2, 0);
+
+    /* The original leaves r2 = 0x40 behind for its caller. */
+    R2 = 0x40;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8006910 ── */
 /* sub_8006910: store 0x80 (a "busy/locked" flag) into the byte at 20081B0.
  * Also leaves r0 = 0x80 and r1 = the byte's address, with NZ flags set

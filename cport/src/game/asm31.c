@@ -492,6 +492,34 @@ Next battle_panelObject_tryTargetAndSetPhase_80C0938(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C0956 ── */
+/* sub_80C0956(r5 = battle object):
+ * Runs the short startup delay at the beginning of an object's phase.
+ * On the first call (PhaseInitialized == 0) it plays sound effect 0xBE,
+ * switches to animation 2 and arms a 5-frame timer.
+ * On later calls it counts the timer down; once it expires, it clears the
+ * object's "busy" flag bit and advances to phase 8. */
+Next sub_80C0956(void) {
+    if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
+        /* First entry: start the phase's intro (anim + sound + delay). */
+        ST16(R5 + oBattleObject_CurAnimAndCurAnimCopy, 2);
+        R0 = 0xBE;
+        GUEST_CALL(PlaySoundEffect);
+        ST16(R5 + oBattleObject_Timer, 5);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+    } else {
+        u32 timer = LD16(R5 + oBattleObject_Timer) - 1;
+        ST16(R5 + oBattleObject_Timer, timer);
+        if ((s32)timer > 0)
+            RETURN_TO_CALLER();  /* still waiting */
+
+        /* Timer expired: release the object and move on to phase 8. */
+        ST8(R5 + oObjectHeader_Flags, LD8(R5 + oObjectHeader_Flags) & ~2u);
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 8);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_jumpUpPhase_80C0988 ── */
 /* battleObject_jumpUpPhase_80C0988: Z-axis pop-up animation for a battle object.
  *
@@ -526,6 +554,46 @@ Next battleObject_jumpUpPhase_80C0988(void) {
     }
     ST16(R5 + oBattleObject_Timer, 5);
     GUEST_CALL(sub_80C0DC2);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0A0E ── */
+/* sub_80C0A0E(r5 = battle object):
+ * Phase handler for an object spawning effect 0x26.
+ * On the first run (PhaseInitialized == 0): set a 5-frame timer, spawn the
+ * effect at the object's position (the word at +0x3C is lifted by 0x140000,
+ * which the effect spawner treats as a depth/layer tag), set the object
+ * header's flag 0x2 and advance to phase 4.
+ * On later runs: count the timer down each frame; when it hits zero, switch
+ * the object to action 8 and clear CurPhase/PhaseInitialized. */
+Next sub_80C0A0E(void) {
+    if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
+        /* First entry into this phase: arm the timer and spawn the effect. */
+        ST16(R5 + oBattleObject_Timer, 5);
+
+        u32 pos_x = LD32(R5 + 0x34);
+        u32 pos_y = LD32(R5 + 0x38);
+        u32 pos_z = LD32(R5 + 0x3C) + 0x140000;
+
+        R1 = pos_x;
+        R2 = pos_y;
+        R3 = pos_z;
+        R4 = 0x26; /* effect id */
+        GUEST_CALL(spawn_t1_0x0_EffectObject);
+
+        ST8(R5 + oObjectHeader_Flags, LD8(R5 + oObjectHeader_Flags) | 2);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+    } else {
+        /* Phase already running: wait for the timer to run out. */
+        u32 timer = LD16(R5 + oBattleObject_Timer) - 1;
+        ST16(R5 + oBattleObject_Timer, timer);
+        if ((s32)timer > 0)
+            RETURN_TO_CALLER();
+
+        /* Timer expired: move on to action 8 and reset the phase state. */
+        ST8(R5 + oBattleObject_CurAction, 8);
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    }
     RETURN_TO_CALLER();
 }
 
@@ -643,6 +711,33 @@ Next battleObject_tickHitReact_80C0B90(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C0C04 ── */
+/* sub_80C0C04: phase dispatcher for a battle object.
+ *
+ * Reads the object's current phase (r5 = object pointer) and tail-calls the
+ * matching handler from the two-entry table off_80C0C18:
+ *   phase 0 -> battleObject_tickPhase3_80C0C20
+ *   phase 1 -> sub_80C0C48
+ * The handlers receive the phase in r0 and all other arguments untouched;
+ * whatever they leave in r5/r8-r12 is passed straight through to our caller.
+ */
+Next sub_80C0C04(void) {
+    u32 phase = LD8(R5 + oBattleObject_CurPhase);
+
+    R0 = phase; /* the original loads the phase into r0 before jumping */
+
+    switch (phase) {
+    case 0:
+        GUEST_CALL(battleObject_tickPhase3_80C0C20);
+        break;
+    default:
+        GUEST_CALL(sub_80C0C48);
+        break;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_tickPhase3_80C0C20 ── */
 /* battleObject_tickPhase3_80C0C20: Battle-object phase-3 init/tick.
  *   inputs:  r5 (battle object), lr
@@ -666,6 +761,45 @@ Next battleObject_tickPhase3_80C0C20(void) {
             ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, (u16)4);
         }
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0C48 ── */
+/* sub_80C0C48(r5 = battle object):
+ * First-time init phase of a battle object: derive a parameter from the
+ * object's damage, pass it together with its Unk_0c/Unk_0d bytes to
+ * sub_80CE224 on the related object, then arm a 90-frame timer and mark
+ * the phase as initialized (state 4). On subsequent runs the timer counts
+ * down; when it runs out the object moves to the destroy state.
+ * r6 is only used as scratch for the call arguments and is restored. */
+Next sub_80C0C48(void) {
+    u32 obj = R5;
+    u32 savedR6 = R6;
+
+    if (LD8(obj + oBattleObject_PhaseInitialized) == 0) {
+        /* First run: set the object up, then start the countdown. */
+        R0 = LD16(obj + oBattleObject_Damage);
+        GUEST_CALL(sub_80E199A);
+        u32 derived = R0;
+
+        R0 = LD8(obj + oBattleObject_Unk_0c);
+        R1 = LD8(obj + oBattleObject_Unk_0d);
+        R5 = LD32(obj + oBattleObject_RelatedObject1Ptr);
+        R6 = derived;
+        GUEST_CALL(sub_80CE224);
+        R5 = obj;
+        R6 = savedR6;
+
+        ST16(obj + oBattleObject_Timer, 90);
+        ST8(obj + oBattleObject_PhaseInitialized, 4);
+    } else {
+        /* Countdown running: tick the timer, destroy when it expires. */
+        u32 timer = LD16(obj + oBattleObject_Timer);
+        ST16(obj + oBattleObject_Timer, timer - 1);
+        if ((s32)timer <= 1)
+            ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+    }
+
     RETURN_TO_CALLER();
 }
 
@@ -1922,6 +2056,30 @@ Next battle_object_stepLifetimeDestroyOnHit_80C532E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_spawnDimmingCollisionRegion ── */
+/* object_spawnDimmingCollisionRegion(r0-r3, r4, r6, r7 = spawn arguments):
+ * Spawn a collision region via object_spawnCollisionRegion; if one was created,
+ * set OBJECT_FLAG_UPDATE_DURING_TIMESTOP in its flags so it keeps animating
+ * while time is stopped. Leaves the spawned object pointer (or NULL) in r0.
+ * Flags: CMP r0,#0 runs on every path (so carry is always set); on the
+ * flag-update path, ORR refreshes N/Z from the stored value. */
+Next object_spawnDimmingCollisionRegion(void) {
+    GUEST_CALL(object_spawnCollisionRegion);
+
+    u32 object = R0;
+    SET_FLAGS_CMP(object, 0);
+
+    if (object != 0) {
+        u32 flags = LD8(object + oObjectHeader_Flags) | OBJECT_FLAG_UPDATE_DURING_TIMESTOP;
+        SET_FLAGS_NZ(flags);
+        ST8(object + oObjectHeader_Flags, flags);
+        R1 = flags;
+        R2 = OBJECT_FLAG_UPDATE_DURING_TIMESTOP;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C53E4 ── */
 /* sub_80C53E4(r5 = BattleObject*, lr):
  * On object destruction, if the object's Param3 flag is set, crack the panel
@@ -1945,6 +2103,47 @@ Next sub_80C53E4(void) {
         SP += 4;
         RETURN_TO_CALLER();
     }
+}
+
+/* ── sub_80C54E0 ── */
+/* sub_80C54E0 — collision bookkeeping step for the battle object in R5.
+ *
+ * Drops the object's previous collision data, spawns its hit effect, then
+ * checks whether the battle has ended:
+ *   - battle over: clear the collision region and move the object into the
+ *     destroy state (CUR_STATE_DESTROY), done.
+ *   - otherwise: run the object's per-action collision handler, selected by
+ *     CurAction through the table at off_80C551C (this table has a single
+ *     entry, sub_80C552A), then present the current collision data and
+ *     highlight the panel the object is standing on. */
+Next sub_80C54E0(void) {
+    GUEST_CALL(object_removeCollisionData);
+    GUEST_CALL(object_spawnCollisionEffect);
+    GUEST_CALL(battle_isBattleOver);
+
+    if (R0 != 0) {
+        GUEST_CALL(object_clearCollisionRegion);
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+        RETURN_TO_CALLER();
+    }
+
+    u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
+    if (LD32(collisionData + oCollisionData_FlagsFromCollision) != 0)
+        GUEST_CALL(object_clearCollisionRegion);
+
+    /* Dispatch the CurAction handler through the one-entry table; the
+     * handler sees R0 = CurAction and R1 = the table entry itself. */
+    R0 = LD8(R5 + oBattleObject_CurAction);
+    R1 = LD32(A_off_80C551C + R0);
+    GUEST_CALL(sub_80C552A);
+
+    GUEST_CALL(object_presentCollisionData);
+
+    R0 = LD8(R5 + oBattleObject_PanelX);
+    R1 = LD8(R5 + oBattleObject_PanelY);
+    GUEST_CALL(object_highlightPanel);
+
+    RETURN_TO_CALLER();
 }
 
 /* ── sub_80C5590 ── */
@@ -2046,6 +2245,48 @@ Next sub_80C5D84(void) {
     }
 
     ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C5E44 ── */
+/* sub_80C5E44(r5 = battle object):
+ * Per-frame collision step for a battle object. Removes the object's old
+ * collision data and spawns its contact effect, then either runs the
+ * object's current action handler (and presents the resulting collision
+ * data), or — if the battle has ended — tears the object down.
+ * Outputs: r5, r8-r12 as left by the callees; r4/r7 preserved. */
+Next sub_80C5E44(void) {
+    GUEST_CALL(object_removeCollisionData);
+    GUEST_CALL(object_spawnCollisionEffect);
+
+    /* Flag 0x10 on the object header skips the battle-over check. */
+    u32 flags = LD8(R5 + oObjectHeader_Flags);
+    u32 battleOver = 0;
+    if (!(flags & 0x10)) {
+        GUEST_CALL(battle_isBattleOver);
+        battleOver = R0;
+    }
+
+    if (!(flags & 0x10) && battleOver) {
+        /* Battle is over: drop the object's collision region and mark it
+         * for destruction. */
+        GUEST_CALL(object_clearCollisionRegion);
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+        RETURN_TO_CALLER();
+    }
+
+    /* Dispatch the handler for the object's current action. The handler is
+     * called with r0 = action index and r1 = its own address, and returns
+     * here; afterwards the object's collision data is made present. */
+    u32 action = LD8(R5 + oBattleObject_CurAction);
+    u32 handler = LD32(A_off_80C5E7C + action);
+    R0 = action;
+    R1 = handler;
+    switch (action) {
+    case 0:  GUEST_CALL(sub_80C5E84); break;
+    default: GUEST_CALL(sub_80C5F0C); break;
+    }
+    GUEST_CALL(object_presentCollisionData);
     RETURN_TO_CALLER();
 }
 
@@ -2527,6 +2768,65 @@ Next battle_objectInitFromParamTable_80C6B64(void) {
     R0 = init_object_from_table(R5);
     R4 = saved_r4;
     R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C6C14 ── */
+/* sub_80C6C14 (r5 = battle object): tick for an object standing inside an
+ * active collision effect (grass/fire/swamp panels etc.).
+ *
+ * Removes the object's collision data, spawns the panel's effect, then lets
+ * the object's current action handler react to the collision. If the battle
+ * is already over, or the object is not on a panel that reacts to the
+ * effect, the collision region is cleared and the object is destroyed.
+ *
+ * Preserves r7 (used internally for the object's collision data pointer). */
+Next sub_80C6C14(void) {
+    u32 savedR7 = R7;
+
+    GUEST_CALL(object_removeCollisionData);
+    GUEST_CALL(object_spawnCollisionEffect);
+    GUEST_CALL(battle_isBattleOver);
+
+    if (R0 == 0) {
+        /* Panel parameters of the panel the object stands on. */
+        R0 = LD8(R5 + oBattleObject_PanelX);
+        R1 = LD8(R5 + oBattleObject_PanelY);
+        GUEST_CALL(object_getPanelParameters);
+        R3 = 0x10;
+
+        /* Bit 0x10: the panel type reacts to collision effects. */
+        if ((R0 & 0x10) != 0) {
+            R7 = LD32(R5 + oBattleObject_CollisionDataPtr);
+
+            /* If the collision set any flags, clear the region first. */
+            R0 = LD32(R7 + oCollisionData_FlagsFromCollision);
+            if (R0 != 0)
+                GUEST_CALL(object_clearCollisionRegion);
+
+            /* Run the object's current action handler
+             * (table off_80C6C58: 0 = tick, 1 = dying/despawn). */
+            u32 action = LD8(R5 + oBattleObject_CurAction);
+            R1 = LD32(A_off_80C6C58 + action * 4);
+            if (action == 0)
+                GUEST_CALL(sub_80C6C6A);
+            else
+                GUEST_CALL(battleObject_dyingTickDespawn_80C6CBA);
+
+            GUEST_CALL(object_presentCollisionData);
+            GUEST_CALL(object_highlightCurrentCollisionPanels);
+
+            R7 = savedR7;
+            RETURN_TO_CALLER();
+        }
+    }
+
+    /* Battle over, or the panel doesn't react: tear down the effect and
+     * move the object to the destroy state. */
+    GUEST_CALL(object_clearCollisionRegion);
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+
+    R7 = savedR7;
     RETURN_TO_CALLER();
 }
 

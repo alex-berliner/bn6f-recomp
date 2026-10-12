@@ -2785,3 +2785,37 @@ Next battleObject_updateSprite_8016E64(void) {
     update_battle_object_sprite(R5);
     RETURN_TO_CALLER();
 }
+
+/* ── sub_80170E4 ── */
+/* sub_80170E4: tear down a battle object's active state and move it to phase 4.
+ * r5 = battle object. Clears collision/collision results and AI data, releases
+ * the object's chip slot, resets its held-chip/current-chip fields, reapplies
+ * its sprite flip, then (unless Param2 says otherwise) marks the battle as
+ * possibly over, and finally sets the object's phase to 4. */
+Next sub_80170E4(void) {
+    GUEST_CALL(object_clearCollisionRegion);
+    GUEST_CALL(battle_ClearObjectCollisionResult_801A5E2);
+    GUEST_CALL(battle_resetCollisionState_80101C4);
+    GUEST_CALL(sub_8012EA8);
+    GUEST_CALL(releaseSlotByValue_801DC36);
+
+    /* No chips held; current chip index = -1 (none selected). */
+    ST8(R5 + oBattleObject_ChipsHeld, 0);
+    ST16(R5 + oBattleObject_Chip, 0xFFFF);
+
+    /* Re-apply the object's horizontal flip to its sprite. */
+    GUEST_CALL(object_getFlip);   /* r0 = flip state */
+    GUEST_CALL(sprite_setFlip);
+
+    GUEST_CALL(battle_clearAIDataAndBarrier_801A7F4);
+
+    /* Only check for battle end when Param2 is 0. */
+    if (LD8(R5 + oBattleObject_Param2) == 0)
+        GUEST_CALL(relatedToIsBattleOver_800A11C);
+
+    GUEST_CALL(sub_802EF5C);
+
+    R0 = 4;
+    ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+    RETURN_TO_CALLER();
+}

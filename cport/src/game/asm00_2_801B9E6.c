@@ -1472,6 +1472,49 @@ Next sub_801DC6E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801DD34 ── */
+/* sub_801DD34(r5 = search id):
+ * Scan the four 0x14-byte records at byte_203EB50 and clear the first
+ * record that is active (bit 0 of its flag byte set) and whose id field
+ * at +0x0C matches r5.  Returns r0 = 0 when a record was cleared, or
+ * r0 = 1 when no record matched.  r1 (probe bit), r2 (record pointer)
+ * and r3 (records remaining) are left in the scan's final state. */
+Next sub_801DD34(void) {
+    u32 id = R5;
+    u32 record = A_byte_203EB50;
+    u32 remaining = 4;
+
+    R1 = 1;
+    while (remaining != 0) {
+        R2 = record;
+        R3 = remaining;
+
+        if (LD8(record) & 1) {
+            u32 recId = LD32(record + 0xC);
+            SET_FLAGS_CMP(recId, id);
+            if (recId == id) {
+                /* matched: deactivate the record and report success */
+                ST8(record, 0);
+                R0 = 0;
+                SET_FLAGS_NZ(0);
+                RETURN_TO_CALLER();
+            }
+        }
+
+        record += 0x14;
+        remaining--;
+    }
+
+    /* no record matched */
+    R2 = record;
+    R3 = remaining;
+    R0 = 1;
+    /* c/v as left by the final "sub r3, #1" (1 - 1), then "mov r0, #1" sets N/Z */
+    SET_FLAGS_CMP(1, 1);
+    SET_FLAGS_NZ(1);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_801DDD8 ── */
 /* sub_801DDD8:
  * Runs a fixed two-call sequence:
@@ -2469,6 +2512,41 @@ Next sub_801E8CC(void) {
     }
 
     R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801EA34 ── */
+/* sub_801EA34(r1 = VRAM destination, r4 = four source selectors, one nibble each):
+ * Queues graphics for four tile groups. For each nibble of r4, taken low to
+ * high, the pointer table at off_801FD90 supplies a source address; 0x20 bytes
+ * are queued from there to the current destination, and another 0x20 bytes from
+ * source+0x20 to destination+0x80. After each pair the destination steps back
+ * by 0x20 bytes (one tile), so the four pairs fill descending VRAM positions.
+ * r4 is consumed one nibble at a time; r5/r6 are left untouched. */
+Next sub_801EA34(void) {
+    u32 dest = R1;
+    u32 selector = R4;
+    const u32 sourceTable = A_off_801FD90;
+
+    for (u32 i = 0; i < 4; i++) {
+        u32 src = LD32(sourceTable + (selector & 0xF) * 4);
+
+        /* First 8-word chunk: source table entry -> destination. */
+        R0 = src;
+        R1 = dest;
+        R2 = 0x20;
+        GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+
+        /* Second 8-word chunk: source+0x20 -> destination+0x80. */
+        R0 = src + 0x20;
+        R1 = dest + 0x80;
+        R2 = 0x20;
+        GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+
+        dest -= 0x20;
+        selector >>= 4;
+    }
+
     RETURN_TO_CALLER();
 }
 

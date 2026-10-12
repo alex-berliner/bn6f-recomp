@@ -1509,6 +1509,52 @@ Next initSaveStateBlock_8048F9C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_804900C ── */
+/* sub_804900C: scene shutdown for the area-transition/menu-exit path.
+ *
+ * Tears down the chatbox, blanks the LCD through the render-info layer,
+ * releases all graphics state, then runs the two sub_8049* cleanup steps.
+ * Afterwards it writes the next scene state into the struct at r5:
+ *   - state 0xC (+0x01 = 0) if sub_8049D42 returned zero, or if the
+ *     halfword at [r5+0x22] is nonzero (something still pending),
+ *   - state 0x8 (+0x01 = 0) otherwise.
+ *
+ * Flags/registers handed to the caller: c and v as left by sub_8049CBC,
+ * r3 as left by sub_8049D42. r4-r7 are preserved. */
+Next sub_804900C(void) {
+    /* Close any open chatbox/textarea. */
+    GUEST_CALL(chatbox_8040818);
+
+    /* Blank the display: LCD control value 0x40, then refresh the
+     * render-info layers. */
+    R0 = 0x40;
+    GUEST_CALL(SetRenderInfoLCDControl);
+    GUEST_CALL(renderInfo_8001788);
+    GUEST_CALL(renderInfo_80017A0);
+
+    /* Release palette/DMA slot 0x11 and reset all graphics state. */
+    R0 = 0x11;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+    GUEST_CALL(resetAllGraphicsState_8005F40);
+    GUEST_CALL(sub_803BEC0);
+
+    /* Final cleanup passes; sub_8049CBC leaves c/v for our caller,
+     * sub_8049D42 leaves Z (and r3) which we branch on here. */
+    GUEST_CALL(sub_8049CBC);
+    GUEST_CALL(sub_8049D42);
+
+    if (ZERO_FLAG() || LD16(R5 + 0x22) != 0) {
+        /* Transition requested, or work still pending: state 0xC. */
+        ST8(R5, 0xC);
+    } else {
+        /* Nothing left to do: state 0x8. */
+        ST8(R5, 8);
+    }
+    ST8(R5 + 1, 0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_804971C ── */
 /* sub_804971C: chatbox state dispatch.
  *
@@ -1602,6 +1648,30 @@ Next sub_8049770(void) {
     SET_FLAGS_NZ((u32)R0);
     ST8(R5 + 0x01, R0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80497D0 ── */
+/* sub_80497D0: called while a screen fade is running. If a fade is still in
+ * progress, run the fade-related updates (sub_803BB2C with id 0x14, then
+ * sub_803BB7C with id 0xF) and write 8 to byte [r5+1] (the caller's fade/state
+ * counter). Afterwards, always call battle_moduleInit_803A820 (per-frame fade processor).
+ * Flags and r3/r8-r12 on return come straight from that final call. */
+Next sub_80497D0(void) {
+    /* r5 points to the caller's state struct; the callees may clobber R5
+     * (the original saves it on the stack), so keep the pointer in a local. */
+    u32 state = R5;
+
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        R0 = 0x14;
+        GUEST_CALL(sub_803BB2C);
+        R0 = 0xF;
+        GUEST_CALL(sub_803BB7C);
+        ST8(state + 1, 8);
+    }
+
+    GUEST_CALL(battle_moduleInit_803A820);
     RETURN_TO_CALLER();
 }
 
@@ -1982,6 +2052,31 @@ Next sub_8049D70(void) {
      * next RNG seed used by the rest of the game. */
     GUEST_CALL(GetRNG);
     ST16((u32)A_word_2001800, (u16)R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049DDC ── */
+/* sub_8049DDC(r0 = value for the work block's +0x22 field, r10 = toolkit):
+ * Zeroes the 0x1B0-byte work block at eS200A290, switches the main jumptable
+ * to state 0x4C, and fills in the block's first fields.
+ * r0/r1 are scratch; r5 (used here as the block pointer) is preserved for
+ * the caller, exactly as the original's push/pop does. */
+Next sub_8049DDC(void) {
+    u32 fieldValue = R0;
+
+    u32 block = A_eS200A290;
+    R0 = block;
+    R1 = 0x1B0;
+    GUEST_CALL(ZeroFillByWord);
+
+    /* advance the main state machine to state 0x4C */
+    ST8(LD32(R10 + oToolkit_MainJumptableIndexPtr), 0x4C);
+
+    /* initialise the first fields of the work block */
+    ST16(block + 0x22, fieldValue);
+    ST16(block + 0x24, 8);
+    ST16(block + 0x26, 1);
+
     RETURN_TO_CALLER();
 }
 
@@ -2523,6 +2618,27 @@ static u32 lookup_table_entry(u32 index) {
 /* register form: thin adapter - typed body lives in lookup_table_entry. */
 Next sub_804A24C(void) {
     R0 = lookup_table_entry(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C058 ── */
+/* sub_804C058: tail-dispatcher for an object whose "handler selector" byte
+ * lives at [R5+0x10]. The selector is used as a byte offset into a two-entry
+ * handler table (off_804C06C); the chosen handler is entered with
+ * r0 = its own entry address and r1 = the selector byte, and everything it
+ * leaves behind (notably r2, r8-r12) passes straight through to our caller. */
+Next sub_804C058(void) {
+    u32 selector = LD8(R5 + 0x10);
+    u32 handler  = LD32(A_off_804C06C + selector);
+
+    R0 = handler;
+    R1 = selector;
+
+    if (handler == LD32(A_off_804C06C))
+        GUEST_CALL(sub_804C08C);
+    else if (handler == LD32(A_off_804C06C + 4))
+        GUEST_CALL(chatbox_stepIfGatesOpen_804C11C);
+
     RETURN_TO_CALLER();
 }
 

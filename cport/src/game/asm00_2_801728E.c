@@ -158,6 +158,33 @@ Next battle_endTurnMarkActed_8017888(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80178B6 ── */
+/* sub_80178B6(r5 = battle object):
+ * Trampoline/dispatcher: reads the object's handler selector (oBattleObject_Unk_0d,
+ * which stores a byte offset into the jump table) and tail-calls the matching
+ * handler sub_80178D4 / sub_8017992 / sub_8017A38. The original pushes lr, sets
+ * lr = pc and branches through the table, so the callee returns straight back
+ * to our caller: this is a tail call and the callee's results are ours.
+ * On entry to the handler, r0 holds the selector byte and r1 holds the table
+ * entry (the Thumb handler pointer), exactly as the bx r1 sequence leaves them. */
+Next sub_80178B6(void) {
+    u32 kind = LD8(R5 + oBattleObject_Unk_0d);
+
+    /* r1 at handler entry is the raw jump-table entry, as loaded by `ldr r1, [r1,r0]`. */
+    R0 = kind;
+    R1 = LD32(A_off_80178C8 + kind);
+
+    switch (kind) {
+    case 0: GUEST_CALL(sub_80178D4); break;
+    case 4: GUEST_CALL(sub_8017992); break;
+    case 8: GUEST_CALL(sub_8017A38); break;
+    /* Any other selector would send the original to a garbage address; the game
+     * never stores one, so there is nothing to do here. */
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8017A38 ── */
 /* sub_8017A38: Battle object tick.
  * Decrement the object's Timer field; when it hits zero, branch on a flag

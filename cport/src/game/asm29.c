@@ -1268,6 +1268,89 @@ Next object_initSpriteState3_80AA2F8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80AA394 ── */
+/* sub_80AA394(r5 = work area, r2/r10/r11 = pass-through):
+ * Initialise the CopyBot-related work area: pick its slot based on the
+ * CopyBot event flag, run its two helpers and fill in the default timers.
+ * Callees clobber r4-r7, so they are saved/restored here (push/pop in the
+ * original). */
+Next sub_80AA394(void) {
+    u32 saved_r4 = R4, saved_r6 = R6, saved_r7 = R7;
+    u32 work = R5;
+
+    ST8(work, 3);
+
+    /* Byte at +5: 0 when the CopyBot event flag is set, 2 otherwise.
+     * TestEventFlagFromImmediate takes the flag as the r0/r1 pair. */
+    u32 slot = 0;
+    R0 = 0x17;
+    R1 = 0x29;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (ZERO_FLAG())
+        slot = 2;
+    ST8(work + 5, slot);
+
+    R0 = 0;
+    GUEST_CALL(sub_80AA3C2);
+
+    ST32(work + 0x24, 0x5A);
+    ST32(work + 0x28, 1);
+    ST8(work + 8, 4);
+
+    R0 = 4;
+    GUEST_CALL(sub_80AA402);
+
+    R4 = saved_r4;
+    R6 = saved_r6;
+    R7 = saved_r7;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AA3C2 ── */
+/* sub_80AA3C2(r0 = sprite table index, r5 = overworld object):
+ * (Re)loads the sprite resources for an overworld object and restarts its
+ * animation.  The sprite table at byte_80AA430 holds one 8-byte slot per
+ * index; [obj+5] picks which sprite entry inside that slot to use.
+ * Returns r1 = the fourth byte of the table slot (0xFF if there was no
+ * sprite to load). */
+Next sub_80AA3C2(void) {
+    const u32 table = A_byte_80AA430 + (R0 << 3);
+    const u32 obj = R5;
+
+    /* First byte of the entry is the sprite id; 0xFF means "no sprite". */
+    const u32 entry = table + LD8(obj + 5);
+    const u32 spriteId = LD8(entry);
+
+    if (spriteId == 0xFF) {
+        R1 = spriteId;
+        RETURN_TO_CALLER();
+    }
+
+    R0 = 0x80;                  /* sprite_load(0x80, id, entry[1]) */
+    R1 = spriteId;
+    R2 = LD8(entry + 1);
+    GUEST_CALL(sprite_load);
+
+    /* Pick the animation number from [obj+4]; animation 0x18 runs at full
+     * speed, every other one at half speed. */
+    u32 anim = LD8(obj + 4);
+    if (LD8(entry) != 0x18)
+        anim >>= 1;
+
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_hasShadow);
+
+    R0 = obj + 0xC;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    GUEST_CALL(sprite_setPriority_8002E14);
+
+    R1 = LD8(table + 4);
+    RETURN_TO_CALLER();
+}
+
 /* ── dispatchGameHandlerByIndex_80AA6A4 ── */
 /* Jump-table dispatcher. Picks one of 12 handlers indexed by R0 from
  * JumpTable80AA6B8, then tail-calls it. r2..r12/lr are forwarded to the

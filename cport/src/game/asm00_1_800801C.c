@@ -1671,6 +1671,44 @@ Next battle_bumpTimerAndReloadSubcount_800AE44(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800AE54 ── */
+/* sub_800AE54(r0 = key A, r1 = key B, r2 = list selector):
+ * Search one of the battle state's object-pointer lists for an object whose
+ * bytes 0x12/0x13 match r0/r1. The selector picks an entry of the descriptor
+ * table dword_800AE8C, whose two bytes are {offset into battle state, entry
+ * count}; the list itself is an array of object pointers at that offset.
+ * Returns the matching object, or 0 if none matches. On return r2 holds the
+ * remaining count (0 when nothing was found), r3 the address of the slot
+ * examined last (found: the match itself; not found: one past the end).
+ * r4, r6, r7 are preserved. */
+Next sub_800AE54(void) {
+    u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
+    u32 desc = A_dword_800AE8C + (R2 << 1);
+    u32 slot = battle + LD8(desc);
+    u32 remaining = LD8(desc + 1);
+
+    for (;;) {
+        u32 obj = LD32(slot);
+        if (obj != 0
+                && LD8(obj + 0x12) == R0
+                && LD8(obj + 0x13) == R1) {
+            R0 = obj;
+            R2 = remaining;
+            R3 = slot;
+            break;
+        }
+        slot += 4;
+        remaining -= 1;
+        if (remaining == 0) {
+            R0 = 0;
+            R2 = 0;
+            R3 = slot;
+            break;
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── handleVariableDamageChip_800AEE8 ── */
 /* Per-battler chip records rooted at byte_20349C0: the player's block comes
  * first and the opponent's follows 0x50 bytes later.  Each block starts with

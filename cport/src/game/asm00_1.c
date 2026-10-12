@@ -652,6 +652,17 @@ Next sub_8003C70(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8003E98 ── */
+/* sub_8003E98: invoke the battle-object reset routine in mode 1
+ * (the code following the pop {pc} in the original — a loop zeroing the
+ * SpriteData of every eT1BattleObject slot — is unreachable and omitted).
+ * No outputs; all registers may be clobbered. */
+Next sub_8003E98(void) {
+    R0 = 1;
+    GUEST_CALL(sub_80028C0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8004298 ── */
 /* sub_8004298: invoke sub_80028C0 with argument 3 and return.
  * (The mov r0, #0x30 / ldr r3 bytes after the pop are dead code from a

@@ -535,6 +535,84 @@ Next sub_803B522(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803B674 ── */
+/* sub_803B674(r0 = background descriptor index):
+ * Sets up one of the game's scrollable backgrounds.  Each 8-byte entry of the
+ * ROM table byte_803B6AC describes one background:
+ *
+ *   +0  u16  first parameter for fillOamTileStripes_8001930 (tile-id base/size)
+ *   +2  u8   second parameter for fillOamTileStripes_8001930
+ *   +3  u8   j extent (doubled when passed to CopyBackgroundTiles)
+ *   +4  u8   i extent (doubled when passed to CopyBackgroundTiles)
+ *   +5  u8   j position of the blit inside the 32x32 tile block
+ *   +6  u8   i position of the blit inside the 32x32 tile block
+ *   +7  u8   which 32x32 tile block to blit into
+ *
+ * fillOamTileStripes_8001930 fills the EWRAM buffer unk_2030A00 with the tile-id list for
+ * this background; CopyBackgroundTiles then writes it into the tile block.
+ * r10 also reaches fillOamTileStripes_8001930 and is passed through untouched. */
+Next sub_803B674(void) {
+    u32 savedR4 = R4, savedR5 = R5; /* restored before returning (original push/pop) */
+
+    u32 entry = A_byte_803B6AC + R0 * 8;
+    u32 tileIds = A_unk_2030A00;
+
+    u32 param0 = LD16(entry + 0);
+    u32 param1 = LD8(entry + 2);
+    u32 jSize = LD8(entry + 3);
+    u32 iSize = LD8(entry + 4);
+
+    /* Build the tile-id list for this background in unk_2030A00. */
+    R0 = param0;
+    R1 = param1;
+    R2 = jSize;
+    R3 = iSize;
+    R4 = tileIds;
+    GUEST_CALL(fillOamTileStripes_8001930);
+
+    /* Blit the generated tiles into the requested 32x32 tile block. */
+    R0 = LD8(entry + 5); /* j */
+    R1 = LD8(entry + 6); /* i */
+    R2 = LD8(entry + 7); /* which_tile_block_32x32 */
+    R3 = tileIds;
+    R4 = jSize * 2;
+    R5 = iSize * 2;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    R4 = savedR4;
+    R5 = savedR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803B91C ── */
+/* sub_803B91C(r0 = entry index):
+ * Fetch descriptor #r0 from the 12-byte-stride table at off_803B93C and pass
+ * its fields to sub_8001890:
+ *   r2 = byte at +4, r0 = byte at +5, r1 = byte at +6,
+ *   r4 = byte at +7, r5 = byte at +8, r3 = word at +0.
+ * Flags and r0-r3 come back from that call; r4-r7 are preserved. */
+Next sub_803B91C(void) {
+    u32 entry = A_off_803B93C + R0 * 12;
+
+    /* The original pushes r4-r7 around the call; keep the same guarantee. */
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    R2 = LD8(entry + 4);
+    R0 = LD8(entry + 5);
+    R1 = LD8(entry + 6);
+    R4 = LD8(entry + 7);
+    R5 = LD8(entry + 8);
+    R3 = LD32(entry);
+
+    GUEST_CALL(sub_8001890);
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803BA64 ── */
 /* sub_803BA64(r5 = ???, lr = return address)
  *   args:     none from the caller (sets r0..r3 itself)
@@ -700,6 +778,70 @@ Next sub_803BF70(void) {
     u8 newIdx = idx + 1;
     ST8(obj + offset, newIdx);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803C0F6 ── */
+/* sub_803C0F6(r0 = src, r1 = dest, r2 = count, r5 = offset):
+ * Copy `count` bytes from src+offset to dest+offset, then walk backwards from
+ * the first 0xE6 byte (found at an even offset) in two-byte units, replacing
+ * every unit whose lead byte is 0x00 or 0xE5 with the pair 0xE5 0xE5.
+ * Stops at any other byte value, or once the walk reaches the start of the
+ * copied range. */
+Next sub_803C0F6(void) {
+    u32 dest = R1 + R5;
+
+    R0 = R0 + R5;
+    R1 = dest;
+    GUEST_CALL(CopyBytes); /* CopyBytes(src + offset, dest + offset, count) */
+
+    /* Find the first 0xE6 byte at an even offset from the copy start. */
+    u32 i = 0;
+    while (LD8(dest + i) != 0xE6)
+        i += 2;
+
+    /* Step backwards over two-byte units, padding blank/terminator pairs. */
+    while ((s32)i >= 0) {
+        u32 b = LD8(dest + i);
+        if (b == 0xE6) {
+            i -= 2;
+        } else if (b == 0 || b == 0xE5) {
+            ST8(dest + i, 0xE5);
+            ST8(dest + i + 1, 0xE5);
+            i -= 2;
+        } else {
+            break;
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803C132 ── */
+/* sub_803C132(r0 = entry index, r1 = byte offset, r5 = table base):
+ * Scan the halfword-strided list at r5+r1 until an end marker is hit
+ * (0xE5 or 0xE6).  Returns r0 = number of entries skipped and
+ * r3 = address of the marker entry. */
+Next sub_803C132(void) {
+    u32 addr = R5 + R1;
+    u32 count = 0;
+
+    /* The original also reads a byte at r5+r0 and doubles it into r6,
+     * but never uses the value (r6 is preserved); that load is dead. */
+
+    for (;;) {
+        u8 entry = LD8(addr);
+        if (entry == 0xE5 || entry == 0xE6)
+            break;
+        count++;
+        addr += 2;
+    }
+
+    R3 = addr;
+    R0 = count;
+    /* Thumb "mov r0, r4" is really ADDS r0, r4, #0, which sets the flags:
+     * N/Z from the count, C = 0 (a count never carries), V = 0. */
+    SET_FLAGS_ADD(R0, 0);
     RETURN_TO_CALLER();
 }
 
@@ -928,6 +1070,36 @@ Next keyItems_RemoveFromInventoryAndGive_803CDF8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── TakeItem ── */
+/* TakeItem(r0 = key item slot, r1 = amount to take):
+ * Adjusts the key item count held in the toolkit's key item array by
+ * -r1 and reports the outcome:
+ *   0 = items were taken (count >= amount),
+ *   1 = the slot was already empty,
+ *   2 = not enough items left, count left unchanged.
+ * Returns the result code in r0, and also leaves the key item array
+ * pointer in r2 and the result code in r3. */
+Next TakeItem(void) {
+    u32 keyItems = LD32(R10 + oToolkit_KeyItemsPtr);
+    u32 count = LD8(keyItems + R0);
+    u32 result;
+
+    if (count == 0) {
+        result = 1;                             /* nothing to take */
+    } else if ((s32)count >= (s32)R1) {
+        count -= R1;
+        result = 0;                             /* took the items */
+    } else {
+        result = 2;                             /* insufficient count */
+    }
+
+    ST8(keyItems + R0, count);
+    R2 = keyItems;
+    R3 = result;
+    R0 = result;
+    RETURN_TO_CALLER();
+}
+
 /* ── SetCurNaviHPToFull ── */
 /* SetCurNaviHPToFull: set the current PET navi's HP to its maximum.
  * Leaves r0 = 0 and Z set (N clear), matching the original's final "mov r0, #0". */
@@ -1048,6 +1220,55 @@ Next pet_addCurNaviStat0x3ECapped_803CF3C(void) {
     R5 = r5_in;
     R6 = r6_in;
     R7 = r7_in;
+    RETURN_TO_CALLER();
+}
+
+/* ── GiveZenny ── */
+#define MAX_ZENNY 999999
+
+/* GiveZenny(r0 = amount): add zenny to the (encrypted) player's wallet.
+ * Returns 0 in r0 on success, 1 if the wallet failed its integrity check,
+ * or the post-encryption status: 1 = already had the maximum, 2 = capped
+ * at the maximum. */
+Next GiveZenny(void) {
+    u32 savedR4 = R4; /* r4-r7 are preserved for the caller */
+    u32 amount = R0;
+
+    /* Verify the wallet's checksum; a mismatch means it was tampered with. */
+    GUEST_CALL(encryption_zenny_8006f78);
+    if (!ZERO_FLAG()) {
+        R0 = 1;
+        RETURN_TO_CALLER();
+    }
+
+    u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
+    u32 zenny = LD32(gameState + oGameState_ProtectedZenny);
+    u32 status;
+
+    if (zenny == MAX_ZENNY) {
+        /* Wallet is already full; the amount is refused. */
+        status = 1;
+    } else {
+        zenny += amount;
+        if ((s32)zenny > (s32)MAX_ZENNY) {
+            /* Amount would overflow the wallet; cap it. */
+            status = 2;
+            zenny = MAX_ZENNY;
+        } else {
+            status = 0;
+        }
+    }
+    ST32(gameState + oGameState_ProtectedZenny, zenny);
+
+    /* Re-encrypt the wallet with the new value. */
+    R0 = status;
+    R1 = zenny;
+    R2 = gameState;
+    R3 = status;
+    R4 = MAX_ZENNY;
+    GUEST_CALL(encryption_zenny_8006f54);
+    R4 = savedR4;
+
     RETURN_TO_CALLER();
 }
 

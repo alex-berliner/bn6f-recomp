@@ -160,3 +160,27 @@ Next sub_809AF7C(void) {
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
+
+/* ── tryStartBbsGuiCutscene_809CF2C ── */
+/* tryStartBbsGuiCutscene_809CF2C: try to start the BBS GUI cutscene.
+ * If the player can advance forward and a BBS request is pending, start the
+ * cutscene script byte_809CEB4 with a parameter taken from eReqBBSGui[0xE]
+ * (entry id - 1 + 0x32). r1/r2/r3 are left as StartCutscene leaves them. */
+Next tryStartBbsGuiCutscene_809CF2C(void) {
+    GUEST_CALL(check_playerCanAdvanceForward_8034C36);
+    if (ZERO_FLAG()) /* player cannot advance forward */
+        RETURN_TO_CALLER();
+
+    /* reqBBS_81407D8 is called with r0 still holding the previous result;
+     * it returns non-zero when the request should open the GUI. */
+    GUEST_CALL(reqBBS_81407D8);
+    if (R0 == 0)
+        RETURN_TO_CALLER();
+
+    R0 = A_byte_809CEB4; /* CutsceneScript */
+    R2 = 0xE;
+    R1 = LD8(A_eReqBBSGui + 0xE) - 1 + 0x32;
+    GUEST_CALL(StartCutscene);
+
+    RETURN_TO_CALLER();
+}

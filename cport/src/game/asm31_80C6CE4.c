@@ -170,6 +170,104 @@ Next battleObject_initActionPhase_80C80B8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C8100 ── */
+/* sub_80C8100(r5 = battle object): per-frame collision update for a battle
+ * object. Refreshes the object's collision data, then either tears the object
+ * down (battle over, or the collision data reports a hit) or runs its current
+ * action handler and publishes the resulting collision data.
+ *
+ * Outputs: r5 r8 r9 r10 r11 r12 pass through unchanged. */
+Next sub_80C8100(void) {
+    u32 self = R5;
+
+    /* Drop last frame's collision data, then spawn the impact effect. */
+    GUEST_CALL(object_removeCollisionData);
+    GUEST_CALL(object_spawnCollisionEffect);
+
+    GUEST_CALL(battle_isBattleOver);
+    u32 battleOver = R0;
+
+    /* A pending hit flag in the collision data also tears the object down.
+     * (Only inspected while the battle is still running.) */
+    u32 collisionFlags = 0;
+    if (battleOver == 0) {
+        R1 = LD32(self + oBattleObject_CollisionDataPtr);
+        R0 = LD32(R1 + oCollisionData_FlagsFromCollision);
+        collisionFlags = R0;
+    }
+
+    if (battleOver != 0 || collisionFlags != 0) {
+        /* No usable collision state left: clear the collision region and
+         * advance the object to the destroyed state. */
+        GUEST_CALL(object_clearCollisionRegion);
+        ST32(self + oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+             CUR_STATE_DESTROY);
+        RETURN_TO_CALLER();
+    }
+
+    GUEST_CALL(battle_isTimeStop);
+    if (!ZERO_FLAG()) /* time is stopped: leave the collision data untouched */
+        RETURN_TO_CALLER();
+
+    /* Run the action handler for the object's current action. The handler
+     * table off_80C8140 is indexed by oBattleObject_CurAction and holds the
+     * single entry sub_80C8144; the handler returns straight into the
+     * presentCollisionData tail below. */
+    u32 action = LD8(self + oBattleObject_CurAction);
+    u32 handler = LD32(A_off_80C8140 + action);
+    R0 = action;
+    R1 = handler;
+    GUEST_CALL(sub_80C8144);
+
+    /* Publish the collision data the handler produced. */
+    GUEST_CALL(object_presentCollisionData);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C81A6 ── */
+/* sub_80C81A6(r0 = panel X, r1 = panel Y, r2 = element, r5 = source object,
+ *             r6 = damage / stamina-damage counter value):
+ *
+ * Spawns a battle object of spawn type 0x1F via object_spawnType3, then
+ * initializes it from the caller's context: the panel position, element and
+ * damage counter passed in as arguments, plus the alliance/direction-flip
+ * halfword copied from the source object in r5. Finally sets header flag
+ * 0x10 on the new object (marking it as set up / active).
+ *
+ * If no object could be spawned, nothing is written. Either way the caller's
+ * r5 (and r7) pass through unchanged, and r1 is 0x10 on success or the
+ * original r0 argument on failure. */
+Next sub_80C81A6(void) {
+    u32 panelX = R0;
+    u32 panelY = R1;
+    u32 element = R2;
+    u32 source = R5;
+
+    R0 = 0x1F;
+    GUEST_CALL(object_spawnType3);
+    u32 spawned = R5;
+
+    if (spawned != 0) {
+        ST8(spawned + oBattleObject_PanelX, panelX);
+        ST8(spawned + oBattleObject_PanelY, panelY);
+        ST8(spawned + oBattleObject_Element, element);
+        ST32(spawned + oBattleObject_DamageAndStaminaDamageCounterDisabler, R6);
+
+        u32 alliance = LD16(source + oBattleObject_AllianceAndDirectionFlip);
+        ST16(spawned + oBattleObject_AllianceAndDirectionFlip, alliance);
+
+        ST8(spawned + oObjectHeader_Flags,
+            LD8(spawned + oObjectHeader_Flags) | 0x10);
+        R1 = 0x10;
+    } else {
+        R1 = panelX;
+    }
+
+    R5 = source;
+    RETURN_TO_CALLER();
+}
+
 /* ── t3_0x20_80C81CC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSpritePaused_result;
@@ -268,6 +366,42 @@ Next battleObject_initSpriteAndEnterUpdate_80C81F0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C8232 ── */
+/* sub_80C8232 (r5 = battle object, r10 = context):
+ * Per-frame update for a battle object that follows another object's lead.
+ * If the battle is over, or the related object has moved on from action 0xB,
+ * the object is torn down (state = CUR_STATE_DESTROY). While time is stopped
+ * nothing happens; otherwise the handler for the object's own current action
+ * is run from its dispatch table. */
+static void battle_object_begin_destroy(u32 obj) {
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+}
+
+Next sub_80C8232(void) {
+    GUEST_CALL(battle_isBattleOver);
+    if (R0 != 0) {
+        battle_object_begin_destroy(R5);
+        RETURN_TO_CALLER();
+    }
+
+    u32 related = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+    if (LD8(related + oBattleObject_CurAction) != 0xB) {
+        battle_object_begin_destroy(R5);
+        RETURN_TO_CALLER();
+    }
+
+    GUEST_CALL(battle_isTimeStop);
+    if (!ZERO_FLAG()) /* time stop active: idle this frame */
+        RETURN_TO_CALLER();
+
+    /* Dispatch the current action's handler through the table (its single
+     * entry is battleObject_runPhase4AndDestroy_80C8268); r1 still holds the table entry, as in the original. */
+    R0 = LD8(R5 + oBattleObject_CurAction);
+    R1 = LD32(A_off_80C8264 + R0);
+    GUEST_CALL(battleObject_runPhase4AndDestroy_80C8268);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_runPhase4AndDestroy_80C8268 ── */
 /* battleObject_runPhase4AndDestroy_80C8268: Battle object phase-4 state — seed timer once from Param2,
  * tick it each frame, dispatch Param3 while it lasts, then destroy. */
@@ -333,6 +467,102 @@ Next sub_80C829C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C82A8 ── */
+/* sub_80C82A8(r0 = panel X, r1 = panel Y, r2 = element, r5 = related object,
+ *             r6 = damage/stamina counter disabler value):
+ * Spawns a battle object of spawn type 0x20. If one was allocated, the new
+ * object (returned by object_spawnType3 in r5, moved to r0) is initialised
+ * from the caller's arguments: panel position and element, the related
+ * object pointer and counter-disabler value, the alliance/direction-flip
+ * halfword copied from the related object, and header flag 0x10 ("has
+ * related object"). The spawn result is left in r0 and the flags reflect it
+ * (the original's "mov r0, r5" is an LSLS, which sets N/Z); r5 is restored
+ * to the caller's value. The original's push/pop shuffle means that on the
+ * failure path r1/r2/r3 end as the caller's r0/r1/r2, and on the success
+ * path r2 ends as the new object's header flags with bit 4 set. */
+Next sub_80C82A8(void) {
+    u32 panelX = R0;
+    u32 panelY = R1;
+    u32 element = R2;
+    u32 relatedObject = R5;
+    u32 counterDisabler = R6;
+
+    R0 = 0x20;
+    GUEST_CALL(object_spawnType3);
+    u32 object = R5;
+
+    /* pop {r1-r3,r5}: the caller's r0/r1/r2 land in r1/r2/r3 */
+    R0 = object;
+    R1 = panelX;
+    R2 = panelY;
+    R3 = element;
+    R5 = relatedObject;
+    SET_FLAGS_NZ(object);   /* "mov r0, r5" (lsls r0, r5, #0): N/Z from result */
+
+    if (object != 0) {
+        ST8(object + oBattleObject_PanelX, panelX);
+        ST8(object + oBattleObject_PanelY, panelY);
+        ST8(object + oBattleObject_Element, element);
+        ST32(object + oBattleObject_RelatedObject1Ptr, relatedObject);
+        ST32(object + oBattleObject_DamageAndStaminaDamageCounterDisabler, counterDisabler);
+        u32 alliance = LD16(relatedObject + oBattleObject_AllianceAndDirectionFlip);
+        ST16(object + oBattleObject_AllianceAndDirectionFlip, alliance);
+        R3 = alliance;
+        u32 flags = LD8(object + oObjectHeader_Flags) | 0x10;
+        ST8(object + oObjectHeader_Flags, flags);
+        R2 = flags;
+        R1 = 0x10;
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C82D0 ── */
+/* sub_80C82D0(r5 = battle object):
+ * Steps outward from the object's own panel, one panel at a time in the
+ * direction the object is facing, and invokes sub_80CC9FC once per panel
+ * for the first Param3 panels ahead of it. r5 (the object pointer) comes
+ * back unchanged; r4/r6/r7 are preserved across the whole helper. */
+Next sub_80C82D0(void) {
+    u32 object = R5;
+
+    /* The original saves r4/r6/r7 on entry and restores them on exit,
+     * so the caller's values survive even though the loop body clobbers
+     * them while setting up each sub_80CC9FC call. */
+    u32 savedR4 = R4;
+    u32 savedR6 = R6;
+    u32 savedR7 = R7;
+
+    u32 step = 1;
+    do {
+        /* Ask the object which way "ahead" is (r4 tells it how many
+         * panels out we currently are). */
+        R4 = step;
+        R5 = object;
+        GUEST_CALL(object_getFrontDirection);
+
+        /* Target panel = own panel + front direction * step. */
+        R0 = R0 * step + LD8(object + oBattleObject_PanelX);
+        R1 = LD8(object + oBattleObject_PanelY);
+        R2 = LD8(object + oBattleObject_Element);
+        R6 = LD32(object + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+        /* Packed effect parameters: kind 3, Param2, animation 0xB. */
+        R7 = 3 | (LD8(object + oBattleObject_Param2) << 16) | (0xBu << 24);
+        R4 = 0x4050101;
+        R5 = LD32(object + oBattleObject_RelatedObject1Ptr);
+
+        GUEST_CALL(sub_80CC9FC);
+
+        step++;
+    } while ((s32)step <= (s32)LD8(object + oBattleObject_Param3));
+
+    R4 = savedR4;
+    R5 = object;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_highlightFrontPanels_80C8310 ── */
 /* battleObject_highlightFrontPanels_80C8310(r0 = panel_count, r5 = battle_object):
  *   Highlight the front-facing panels of a battle object, one per step.
@@ -359,6 +589,57 @@ Next battleObject_highlightFrontPanels_80C8310(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C832E ── */
+/* Target list inside a battle object: one 4-byte entry per panel distance
+ * away from the object, filled in by sub_80E1B1E. */
+#define oBattleObject_TargetList 0x60
+
+/* sub_80C832E(r0 = number of panels to scan, r3 = ?, r5 = battle object):
+ * Starting one panel away from the object's own panel, walk up to `count`
+ * panels in the direction object_getFrontDirection reports. Every panel that
+ * is still on the field is handed to sub_80E1B1E, which records it in the
+ * object's target list at obj+0x60+(distance-1)*4. The walk stops at the
+ * first panel off the field. r3 and r5 come out unchanged; r0-r2, lr and the
+ * flags are scratch. */
+Next sub_80C832E(void) {
+    u32 count = R0;
+    u32 savedR4 = R4, savedR6 = R6, savedR7 = R7;
+
+    u32 distance = 1;
+    do {
+        /* Which way the object is facing; used as the per-step displacement. */
+        GUEST_CALL(object_getFrontDirection);
+
+        u32 x = R0 * distance + (u32)LD8(R5 + oBattleObject_PanelX);
+        u32 y = (u32)LD8(R5 + oBattleObject_PanelY);
+
+        R0 = x;
+        R1 = y;
+        GUEST_CALL(object_isValidPanel);
+        if (R0 == 0)
+            break; /* walked off the field: stop scanning */
+
+        /* Record this panel as target entry (distance-1). r4/r6 are still
+         * live registers at this call site, so hand them over as they are. */
+        u32 slot = (distance - 1) * 4;
+        R0 = x;
+        R1 = y;
+        R2 = slot;
+        R4 = distance;
+        R6 = count;
+        R7 = R5 + oBattleObject_TargetList + slot;
+        GUEST_CALL(sub_80E1B1E);
+        R7 = savedR7; /* restore r7 across the call, as the original does */
+
+        distance++;
+    } while ((s32)distance <= (s32)count);
+
+    R4 = savedR4;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_runObjects_80C8368 ── */
 /* battle_runObjects_80C8368(r5 = array of object pointers at base+0x60 stride 4, count 5):
  * For each of the 5 slots, if the pointer is non-NULL, dispatch sub_80E1B3C on it.
@@ -371,6 +652,45 @@ Next battle_runObjects_80C8368(void) {
             GUEST_CALL(sub_80E1B3C);
         }
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── t3_0x28_80C8FFC ── */
+/* t3_0x28_80C8FFC: update step for the type-0x28 battle object.
+ *
+ * Reads the object's current state and runs the matching state handler.
+ * The state byte is stored pre-multiplied by 4, so it indexes the handler
+ * table at off_80C9014 (one word per state) directly:
+ *   state 0  -> sub_80C9024
+ *   state 4  -> sub_80C9074
+ *   state 8  -> sub_80C90DC
+ *   state 12 -> object_genericDestroy
+ * Afterwards it refreshes the object's sprite, exactly as the original's
+ * "mov lr, pc / bx r1" tail into `bl object_updateSprite` does.
+ */
+Next t3_0x28_80C8FFC(void) {
+    u32 state = LD8(R5 + oBattleObject_CurState);
+
+    R0 = state;                 /* handlers receive the state in r0 */
+    switch (state) {
+    case 0:
+        GUEST_CALL(sub_80C9024);
+        break;
+    case 4:
+        GUEST_CALL(sub_80C9074);
+        break;
+    case 8:
+        GUEST_CALL(sub_80C90DC);
+        break;
+    case 12:
+        GUEST_CALL(object_genericDestroy);
+        break;
+    }
+
+    /* the handler's r0 (and the rest of the register file) flows straight
+     * into object_updateSprite, as in the original fall-through */
+    GUEST_CALL(object_updateSprite);
+
     RETURN_TO_CALLER();
 }
 
@@ -560,6 +880,110 @@ fail:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C9184 ── */
+/* sub_80C9184(r0 = panel X, r1 = panel Y, r5 = source object, r6 = damage/
+ * stamina-damage counter disabler): allocate a battle object of size 0x28 via
+ * sub_8003374 (which delivers the new object, or 0, in r5) and, if the
+ * allocation succeeded, initialise it with the given panel position and
+ * damage value, copying the alliance/direction-flip halfword from the source
+ * object. The object pointer and the source pointer are preserved across the
+ * allocator call on the stack.
+ * Outputs: r0 = new object pointer, r5 = source object (unchanged),
+ * r1 = the copied alliance/flip halfword (or the incoming r0 if the pool was
+ * full and nothing was copied). Flags reflect the new object pointer. */
+Next sub_80C9184(void) {
+    u32 panelX = R0;
+    u32 panelY = R1;
+    u32 source = R5;
+    u32 damage = R6;
+
+    R0 = 0x28;                      /* object size for the allocator */
+    GUEST_CALL(sub_8003374);        /* allocated object (or 0) comes back in r5 */
+    u32 newObj = R5;
+    R0 = newObj;
+
+    if (newObj != 0) {
+        ST8(newObj + oBattleObject_PanelX, panelX);
+        ST8(newObj + oBattleObject_PanelY, panelY);
+        ST32(newObj + oBattleObject_DamageAndStaminaDamageCounterDisabler, damage);
+        u32 alliance = LD16(source + oBattleObject_AllianceAndDirectionFlip);
+        ST16(newObj + oBattleObject_AllianceAndDirectionFlip, alliance);
+        R1 = alliance;              /* the load into r1 is the original's last write to it */
+    } else {
+        R1 = panelX;                /* pop {r1,r2,r5} restores r1 = incoming r0 here */
+    }
+
+    R5 = source;
+    SET_FLAGS_NZ(newObj);           /* from "mov r0, r5" (adds), tested by the branch */
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_BDT_update_80c94bc ── */
+/* battle_BDT_update_80c94bc(r5 = battle object):
+ * Per-frame update for a battle object's collision state. Refreshes the
+ * object's collision data, spawns the matching collision effect, then runs
+ * the current action's handler (jump table at off_80C9504, indexed by
+ * CurAction; the handler receives the collision data pointer in r7).
+ * If the battle is over, the collision flags report a hit, or the panel
+ * under the object is no longer valid, the collision region is cleared and
+ * the object moves to the destroy state; otherwise its collision panels are
+ * presented and highlighted.
+ * Note: r4 and r7 are saved/restored around the whole routine, so both come
+ * out unchanged even though r7 is used to pass the collision data pointer. */
+Next battle_BDT_update_80c94bc(void) {
+    u32 self = R5;
+    u32 savedR4 = R4;
+    u32 savedR7 = R7;
+
+    GUEST_CALL(object_removeCollisionData);
+    GUEST_CALL(object_spawnCollisionEffect);
+
+    GUEST_CALL(battle_isBattleOver);
+    if (R0 != 0) /* battle is over */
+        goto teardown;
+
+    {
+        u32 collision = LD32(self + oBattleObject_CollisionDataPtr);
+        u32 hitFlags = LD32(collision + oCollisionData_FlagsFromCollision);
+
+        /* 0xFF800000: flag bits that mean "still colliding" and thus
+         * skip straight to teardown. */
+        if ((hitFlags & 0xFF800000u) != 0)
+            goto teardown;
+
+        {
+            /* Dispatch the handler for the current action. The handler is
+             * looked up by CurAction and gets the collision data in r7. */
+            u32 action = LD8(self + oBattleObject_CurAction);
+
+            R7 = collision;
+            R0 = action;
+            R1 = LD32(A_off_80C9504 + action);
+            GUEST_CALL(battle_BDT_update2_80c950c);
+
+            GUEST_CALL(object_isCurrentPanelValid);
+            if (R0 == 0) /* panel under the object is no longer valid */
+                goto teardown;
+
+            GUEST_CALL(object_presentCollisionData);
+            GUEST_CALL(object_highlightCurrentCollisionPanels);
+
+            R4 = savedR4;
+            R7 = savedR7;
+            RETURN_TO_CALLER();
+        }
+    }
+
+teardown:
+    GUEST_CALL(object_clearCollisionRegion);
+    ST32(self + oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+         CUR_STATE_DESTROY);
+
+    R4 = savedR4;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_BDT_update2_80c950c ── */
 /* battle_BDT_update2_80c950c:
  *   inputs:  r5 lr
@@ -616,6 +1040,98 @@ Next battle_BDT_update2_80c950c(void) {
     ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized,
          CUR_STATE_DESTROY);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── spawnThunderObjectMaybe_80c954c ── */
+/* spawnThunderObjectMaybe_80c954c(r0 = panel X, r1 = panel Y, r2 = element,
+ *                                 r5 = object to copy alliance/direction from,
+ *                                 r6 = damage value, r7 = related object pointer):
+ * Spawns a type-0x2A battle object and initialises its panel position,
+ * element, damage, alliance/direction (copied from the object in r5) and
+ * related-object pointer.
+ *
+ * On return: r0 = new object pointer (0 if the spawn failed), r1/r2 = the
+ * caller's original r0/r1, r3 = the copied alliance/direction halfword (or
+ * the incoming element argument when the spawn failed), r5 = the original
+ * source object, n/z/c/v reflect "adds r0, r5, #0" on the spawned pointer. */
+Next spawnThunderObjectMaybe_80c954c(void) {
+    u32 panelX        = R0;
+    u32 panelY        = R1;
+    u32 element       = R2;
+    u32 sourceObject  = R5;
+    u32 damage        = R6;
+    u32 relatedObject = R7;
+
+    /* Spawn the battle object; the new object pointer comes back in r5. */
+    R0 = 0x2A;
+    GUEST_CALL(object_spawnType3);
+    u32 spawned = R5;
+
+    /* mov r0, r5 (modeled as adds r0, r5, #0): r0 = new object, flags follow. */
+    R0 = spawned;
+    SET_FLAGS_ADD(spawned, 0);
+
+    /* pop {r1-r3,r5}: the caller's original r0/r1/r2 come back in r1/r2/r3. */
+    R1 = panelX;
+    R2 = panelY;
+    R3 = element;
+    R5 = sourceObject;
+
+    if (spawned != 0) {
+        ST8(spawned + oBattleObject_PanelX, panelX);
+        ST8(spawned + oBattleObject_PanelY, panelY);
+        ST8(spawned + oBattleObject_Element, element);
+        ST32(spawned + oBattleObject_DamageAndStaminaDamageCounterDisabler, damage);
+        u32 alliance = LD16(sourceObject + oBattleObject_AllianceAndDirectionFlip);
+        ST16(spawned + oBattleObject_AllianceAndDirectionFlip, alliance);
+        ST32(spawned + oBattleObject_RelatedObject1Ptr, relatedObject);
+        /* the alliance load above leaves its value behind in r3 */
+        R3 = alliance;
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── FindOpponentPanelXYForThunderObject ── */
+/* FindOpponentPanelXYForThunderObject(r5 = thunder object):
+ * Search for a panel occupied by an opponent that the object's thunder
+ * attack can reach, scanning horizontally away from the object. Which
+ * direction is swept first depends on the object's alliance (player/enemy
+ * side) combined with its DirectionFlip flag; if the first sweep finds
+ * nothing, the opposite direction is tried as a fallback.
+ *
+ * The check helpers receive the object in r5 plus a side marker in r4
+ * (0x4000000 for alliance 0, 0x8000000 otherwise) and report the panel they
+ * found in r6 (x) / r7 (y), with r6 == 0 meaning "nothing found".
+ *
+ * Returns r0 = panel x, r1 = panel y (both 0 if no opponent was found).
+ * r4/r6/r7 are scratch for the helpers and are restored before returning. */
+Next FindOpponentPanelXYForThunderObject(void) {
+    u32 savedR4 = R4, savedR6 = R6, savedR7 = R7;
+
+    u32 alliance = LD8(R5 + oBattleObject_Alliance);
+    u32 sideFlag = (alliance == 0) ? A_LCDControl : A__text;
+    u32 flip = LD8(R5 + oBattleObject_DirectionFlip);
+
+    R4 = sideFlag;
+    if ((alliance ^ flip) == 0) {
+        /* Facing "forward" for this side: sweep right first, then left. */
+        GUEST_CALL(CheckIfThunderObjectFindsOpponentByGoingRight);
+        if (R6 == 0)
+            GUEST_CALL(CheckIfThunderObjectFindsOpponentByGoingLeft);
+    } else {
+        /* Sweep left first, then right. */
+        GUEST_CALL(CheckIfThunderObjectFindsOpponentByGoingLeft);
+        if (R6 == 0)
+            GUEST_CALL(CheckIfThunderObjectFindsOpponentByGoingRight);
+    }
+
+    R0 = R6;
+    R1 = R7;
+    R4 = savedR4;
+    R6 = savedR6;
+    R7 = savedR7;
     RETURN_TO_CALLER();
 }
 
@@ -1497,11 +2013,79 @@ Next battleObject_spawnEntry_80CE138(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CE198 ── */
+/* sub_80CE198: per-tick update of a battle object that is dropping toward the
+ * ground. Every 10th tick (timer modulo 10 == 0) it kicks up an effect at its
+ * position with a bit of random jitter on X/Z. Its height (Z16) falls by 3
+ * each tick; once it would drop below 3 it has landed: clear the airborne
+ * flag, switch to action 4 and reset the current phase. */
+Next sub_80CE198(void) {
+    u32 timer = LD16(R5 + oBattleObject_Timer) + 1;
+    ST16(R5 + oBattleObject_Timer, timer);
+
+    /* BIOS Div (swi 6): r0 / r1 -> quotient in r0, remainder in r1.
+     * Remainder 0 means this is every 10th tick of the timer. */
+    R0 = timer;
+    R1 = 10;
+    swi_call(6);
+    if (R1 == 0) {
+        R0 = 0x10;                                 /* effect id */
+        R1 = LD32(R5 + oBattleObject_X);
+        R2 = LD32(R5 + oBattleObject_Y);
+        R3 = LD32(R5 + oBattleObject_Z);
+        /* jitters the X/Z coords in r1/r3, leaves r0/r2 intact */
+        GUEST_CALL(AddRandomVarianceToTwoCoords);
+        R4 = 0x26;
+        GUEST_CALL(spawn_t1_0x0_EffectObject);
+    }
+
+    u32 z = LD16(R5 + oBattleObject_Z16);
+    if ((s32)z >= 3) {
+        ST16(R5 + oBattleObject_Z16, z - 3);       /* still falling */
+    } else {
+        /* landed: clear the airborne flag (bit 1) and hand control to the
+         * next action with a fresh phase */
+        ST8(R5, LD8(R5) & ~0x02);
+        ST8(R5 + oBattleObject_CurAction, 4);
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80CE21C ── */
 /* sub_80CE21C(r5 = object, lr = return address):
  *   Free the object's allocated memory and return to caller. */
 Next sub_80CE21C(void) {
     GUEST_CALL(object_freeMemory);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CE224 ── */
+/* sub_80CE224(r0 = panel X, r1 = panel Y, r5 = owner object, r6 = counter value):
+ * Spawn battle object type 0x4E at the given panel and link it to the owner
+ * object in r5 (same alliance, back-pointer, and a 0x10 header flag).
+ * object_spawnType3 hands back the new object through r5, but this function
+ * must preserve the caller's r5, so restore it before returning. */
+Next sub_80CE224(void) {
+    u32 panelX = R0;
+    u32 panelY = R1;
+    u32 owner = R5;
+    u32 counter = R6;
+
+    R0 = 0x4E;
+    GUEST_CALL(object_spawnType3);
+    u32 spawned = R5;
+
+    if (spawned != 0) {
+        ST8(spawned + oBattleObject_PanelX, panelX);
+        ST8(spawned + oBattleObject_PanelY, panelY);
+        ST32(spawned + oBattleObject_DamageAndStaminaDamageCounterDisabler, counter);
+        ST8(spawned + oBattleObject_Alliance, LD8(owner + oBattleObject_Alliance));
+        ST32(spawned + oBattleObject_RelatedObject1Ptr, owner);
+        ST8(spawned + oObjectHeader_Flags, LD8(spawned + oObjectHeader_Flags) | 0x10);
+    }
+
+    R5 = owner;
     RETURN_TO_CALLER();
 }
 
@@ -1607,6 +2191,43 @@ Next battleObject_respawn_80D84DE(void) {
 /* ── sub_80D8558 ── */
 Next sub_80D8558(void) {
     /* Tail call: return to the address in LR without doing any work. */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80D85F0 ── */
+/* sub_80D85F0(r0 = panel X, r1 = panel Y, r2 = element, r4 = alliance,
+ *             r6 = damage/stamina counter, r7 = extra vars):
+ * Spawn a battle object of type 0x98 via object_spawnType3 (which returns the
+ * new object in r5) and fill in its position, element, alliance and misc
+ * fields. Marks the object header as "in use" (flags |= 0x14).
+ * Returns r0 = the spawned object, or 0 if none was spawned.
+ * r5 (the object register the callee reports through) is handed back to the
+ * caller with its original value restored; r4/r6/r7 pass through untouched. */
+Next sub_80D85F0(void) {
+    u32 panelX    = R0;
+    u32 panelY    = R1;
+    u32 element   = R2;
+    u32 alliance  = R4;
+    u32 damageCtr = R6;
+    u32 extraVars = R7;
+    u32 callerR5  = R5;
+
+    R0 = 0x98;
+    GUEST_CALL(object_spawnType3);
+    u32 object = R5;
+    R5 = callerR5;
+
+    if (object != 0) {
+        ST8(object + oBattleObject_PanelX, panelX);
+        ST8(object + oBattleObject_PanelY, panelY);
+        ST8(object + oBattleObject_Element, element);
+        ST8(object + oBattleObject_Alliance, alliance);
+        ST32(object + oBattleObject_DamageAndStaminaDamageCounterDisabler, damageCtr);
+        ST32(object + oBattleObject_ExtraVars, extraVars);
+        ST8(object + oObjectHeader_Flags, LD8(object + oObjectHeader_Flags) | 0x14);
+    }
+
+    R0 = object;
     RETURN_TO_CALLER();
 }
 
