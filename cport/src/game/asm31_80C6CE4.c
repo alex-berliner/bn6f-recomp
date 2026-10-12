@@ -54,9 +54,10 @@ Next battle_spawnBasicObjectKind0x16_80C6CE4(void) {
  *   1    -> break the panel,
  *   else -> set the panel type directly from r0/r1.
  * All arguments (r0-r2 and the callee-saved r4-r7, r10) are passed through to the
- * chosen handler unchanged; its register results are the caller's results. */
+ * chosen handler unchanged; its register results are the caller's results.
+ * The original compares the whole of r2 (`cmp r2, #0xff`), so 0x103 sets the type. */
 Next battle_objectDispatchPanelChange_80C6CFC(void) {
-    switch ((u8)R2) {
+    switch (R2) {
     case 0xFF:
         /* No-op action: return without touching the panel. */
         break;
