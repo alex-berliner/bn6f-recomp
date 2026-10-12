@@ -39,7 +39,14 @@
 #include <unistd.h>
 
 #include "lifted.h"
-#include "lifted_originals.h"   /* L_NAME, for difftest_pairs.h; only the difftest reads it */
+#include "lifted_originals.h"
+/* Block coverage of the lifted originals (tools/blockcov): a coverage build pre-includes blockcov.h,
+ * which defines these; here they do nothing. */
+#ifndef COV_TRIAL_BEGIN
+#define COV_TRIAL_BEGIN() ((void)0)
+#define COV_LIFTED(on) ((void)0)
+#define COV_TRIAL_END(name, label, t) ((void)0)
+#endif   /* L_NAME, for difftest_pairs.h; only the difftest reads it */
 #include "dispatch.h"
 #include "hostmem.h"
 
@@ -434,7 +441,10 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
         in.ret = in.r[14] & ~1u;     /* what a caller expects back (RETURN_NR leaves it) */
         int fails = *pfails;
         if (getenv("DIFFTEST_ONLY") && atoi(getenv("DIFFTEST_ONLY")) != t) return;
+        COV_TRIAL_BEGIN();
+        COV_LIFTED(1);
         run_child(p->lifted, &in, mem_in, ra, out_a);
+        COV_LIFTED(0);
         run_child(p->hand, &in, mem_in, rb, out_b);
         if (ra->status) { (*pcrashes)++; return; }   /* original faults: input out of domain */
         /* An original that never unwinds coming back elsewhere: the input overwrote its own stack
@@ -482,6 +492,7 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
          * two differ, as on the CPU oracle (tools/oracle_triage.md). Captured calls are real game
          * states, so they stay compared. */
         if (why && !label && ra->misaligned) { (*pcrashes)++; return; }
+        COV_TRIAL_END(p->name, label, t);      /* compared: what the original reached counts */
         if (why) {
             if (fails++ < 5) {
                 fprintf(stderr, "  %s %s %d: %s\n    inputs:", p->name, label ? label : "trial", t, why);
@@ -559,7 +570,10 @@ static int ground_truth(const char *dir) {
         if (getenv("ORACLE_LIFTED"))      /* baseline: the lifted original in place of a hand-written override */
             for (unsigned i = 0; i < sizeof kPairs / sizeof kPairs[0]; i++)
                 if (kPairs[i].hand == fn) { fn = kPairs[i].lifted; break; }
+        COV_TRIAL_BEGIN();
+        COV_LIFTED(1);
         run_child(fn, &in, in_mem, res, out);
+        COV_LIFTED(0);
         const Contract *ct = contract_for(pc);
         if (res->status && ct) { printf("%s: out of domain\n", files[t] + strlen(dir) + 1); continue; }
         if (res->status) { printf("%s: lifted code crashed\n", files[t]); bad++; continue; }
@@ -609,6 +623,7 @@ static int ground_truth(const char *dir) {
         if (diffs) bad++;
         printf("%s: %s (%d differences)\n", files[t] + strlen(dir) + 1,
                mem_diffs ? "MEM" : diffs ? "REG" : "ok", diffs);
+        COV_TRIAL_END("-G", files[t] + strlen(dir) + 1, t);
     }
     printf("%d of %d calls differ from the original\n", bad, nf);
     return bad != 0;
