@@ -209,6 +209,49 @@ Next sub_803A878(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── objectStepTable_803A886 ── */
+/* objectStepTable_803A886(r0 = step-index field, r1 = countdown field, r5 = object base):
+ *   Advance a multi-step table-driven action. If the step index is non-zero,
+ *   tick the countdown and step through the {word, byte} pairs at off_803A910
+ *   (8 bytes per entry). When the countdown expires, advance the index and
+ *   either reload the next countdown from the table or clear both fields if
+ *   the table entry's first word is zero (end of sequence). */
+Next objectStepTable_803A886(void) {
+    u8 index = LD8(R5 + R0);
+    SET_FLAGS_NZ(index);
+
+    if (index != 0) {
+        u8 counter = LD8(R5 + R1);
+        counter -= 1;
+        SET_FLAGS_CMP((u32)counter, 1);
+        ST8(R5 + R1, counter);
+
+        /* Original `bgt` after `sub r2, #1` skips when the 32-bit signed
+         * result > 0. For a zero-extended byte minus 1, only the original
+         * values 0 (result 0xFFFFFFFF) and 1 (result 0) are non-positive;
+         * everything in [2..0xFF] takes the branch. After storing, the
+         * post-decrement counter is therefore 0xFF (was 0) or 0 (was 1)
+         * exactly when the step should advance. */
+        if (counter == 0 || counter == 0xFF) {
+            u8 newIndex = index + 1;
+            ST8(R5 + R0, newIndex);
+
+            u32 slotAddr = A_off_803A910 + ((u32)newIndex << 3);
+            u32 firstWord = LD32(slotAddr);
+            SET_FLAGS_NZ(firstWord);
+
+            if (firstWord == 0) {
+                ST8(R5 + R0, 0);
+                ST8(R5 + R1, 0);
+            } else {
+                ST8(R5 + R1, (u8)LD32(slotAddr + 4));
+            }
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803A8B4 ── */
 /* sub_803A8B4(r0 = i offset, r5 = object):
  * Stamps the object's 2x2 tile graphic onto the background at
@@ -2687,6 +2730,72 @@ Next battle_getLinkStateCode_803F560(void) {
     R6 = out.saved_r6;
     R7 = out.saved_r7;
     SET_FLAGS_ADD(out.value, 0);   /* ADDS value,#0 then TST: N/Z from value, C=V=0 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803F6B0 ── */
+/* sub_803F6B0: Initialize a new link encounter scene.
+ *   inputs:  r0 = scenario index (selects a load function pointer)
+ *            r10 = caller-saved (unused inside)
+ *   outputs: c v r2 r3 r4 r5 r6 r7 (callee preserves r4-r7; we restore r4/r5 here)
+ *   clobbers: nz r0 r1 lr
+ *   preserved: r4 r5 r6 r7
+ *
+ * Wipes a 0x20-byte link struct, runs the crt0 trampoline, resets link state,
+ * configures the comm window, dispatches a scenario-specific loader, sets the
+ * camera dwell, and raises event flag 0x172F. */
+Next sub_803F6B0(void) {
+    u32 scenario = R0;
+
+    /* Stash r4 on the guest stack so the callees below can use r4 freely;
+     * the original push {r4,r5,lr} saves r4/r5 for us. */
+    u32 saved_r4 = R4;
+    SP -= 4;
+    ST32(SP, R4);
+
+    /* Zero the eStruct200F360 link buffer (0x20 halfwords = 0x40 bytes via halfword fill). */
+    R0 = A_eStruct200F360;
+    R1 = 0x20;
+    GUEST_CALL(ZeroFillByHalfword);
+
+    /* Run the crt0 entry trampoline (sets up the heap/env for the scene). */
+    GUEST_CALL(crt0_entry_trampoline_8000288);
+
+    /* Reset link state for a fresh use. */
+    R0 = 0;
+    GUEST_CALL(eLinkState_ResetForNewUse_803DE88);
+    GUEST_CALL(sub_803DEAC);
+
+    /* Configure the comm window: 0x10 / 2 / 4 / 4. */
+    R0 = 0x10;
+    R1 = 2;
+    R2 = 4;
+    R3 = 4;
+    GUEST_CALL(sub_803DCE8);
+
+    /* Dispatch through the scenario table at dword_803F734[scenario]. */
+    R0 = 0;
+    R1 = 0;
+    R2 = A_dword_803F734;
+    R2 = LD32(R2 + (scenario << 2));
+    GUEST_CALL(sub_813DBC0);
+
+    /* Set camera dwell to 0x3C frames. */
+    R0 = A_eLinkState;
+    R1 = 0x3C;
+    ST16(R0 + 0xC, R1);
+
+    /* Raise event flag 0x172F (flag 47 in bank 0x17). */
+    R0 = 0x17;
+    R1 = 0x2F;
+    GUEST_CALL(SetEventFlagFromImmediate);
+
+    /* Restore r4 (r5 is not actually clobbered by the body, but pop it back too). */
+    R4 = LD32(SP);
+    SP += 4;
+
+    /* Original `pop {r4,r5,pc}` returns to LR; we only owned r4 on the stack,
+     * so just return through the real LR. */
     RETURN_TO_CALLER();
 }
 

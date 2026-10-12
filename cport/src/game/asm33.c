@@ -1636,6 +1636,54 @@ Next subchip_initGfx_81243B0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81244EC ── */
+/* sub_81244EC(r5 = entity ptr, r10 = ?):
+ * Per-frame entity update. Loads the active flag at +0xC; if zero, do nothing.
+ * Otherwise packs an effect descriptor and dispatches a render/animation call
+ * (sub_811FAF4), then decrements a timer at +0x12; when it hits zero, calls
+ * sub_8120CC8 to fetch a new (state, duration) pair that is stored at +0xD
+ * and +0x12 respectively. */
+Next sub_81244EC(void) {
+    /* The original pushes {r4, lr} and uses r4 = 0x40000000 as an argument
+     * to sub_811FAF4, then pops r4 back, preserving it for the caller. */
+    u32 saved_r4 = R4;
+    R4 = 0x40000000;
+    u32 saved_lr = LR;
+
+    if (!LD8(R5 + 0xC))
+        goto end;
+
+    /* Effect descriptor: high word = 0x40000 | (field14 * 0x10 + 0x30). */
+    u32 effect_descriptor = 0x40000 | (LD16(R5 + 0x14) * 0x10 + 0x30);
+
+    /* Render/animation dispatch:
+     *   r1 = 0x10002, r2 = state byte (+0xD),
+     *   r3 = byte_8123F34,  r4 = 0x40000000. */
+    R0 = effect_descriptor;
+    R1 = 0x10002;
+    R2 = LD8(R5 + 0xD);
+    R3 = A_byte_8123F34;
+    GUEST_CALL(sub_811FAF4);
+
+    /* Decrement timer at +0x12 and test for zero. */
+    u8 duration = LD8(R5 + 0x12) - 1;
+    ST8(R5 + 0x12, duration);
+    SET_FLAGS_NZ(duration);
+    if (!ZERO_FLAG())
+        goto end;
+
+    /* Timer expired: ask sub_8120CC8 for the next (state, duration) pair. */
+    R1 = A_dword_8123F3C;
+    GUEST_CALL(sub_8120CC8);
+    ST8(R5 + 0xD, R0 & 0xFF);
+    ST8(R5 + 0x12, R1 & 0xFF);
+
+end:
+    R4 = saved_r4;
+    LR = saved_lr;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_812453C ── */
 /* sub_812453C(r5 = text state):
  * Renders the next character of the active text entry into the text-box
@@ -1917,6 +1965,33 @@ Next sub_81247EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8124870 ── */
+Next sub_8124870(void) {
+    u32 score_state = R5;
+    u32 width = LD16(score_state + 0x18);
+    u32 value = LD16(score_state + 0x1A);
+
+    u32 table = 0x3071E0;
+    if ((s32)(value >> 2) >= (s32)width)
+        table = 0x3081E0;
+
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+
+    R0 = 0x201C4B0;
+    R1 = width;
+    R2 = value;
+    R3 = table;
+    R4 = 2;
+    R6 = 3;
+    GUEST_CALL(scoreboard_buildScoreBcdTilemap_8120900);
+
+    R4 = saved_r4;
+    R6 = saved_r6;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── HandleLibraryMenu8124B3C ── */
 /* register form: indirect dispatch through a 3-entry jump table indexed by a byte
  * state variable at [R5+1]; GUEST_CALL requires a static target per case, and the
@@ -2166,6 +2241,96 @@ Next sub_8124C30(void) {
     dispatch_battle_phase(R2, R5, R10);
     R0 = 0;
     SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8124C94 ── */
+Next sub_8124C94(void) {
+    R0 = 0;
+    GUEST_CALL(sub_8126818);
+
+    R0 = 0;
+    R1 = 1;
+    GUEST_CALL(sub_811983C);
+
+    /* Clear the byte at offset 0xD and copy 0x14->0x16 and 0x18->0x1A. */
+    ST8(R5 + 0xD, 0);
+    ST16(R5 + 0x16, LD16(R5 + 0x14));
+    ST16(R5 + 0x1A, LD16(R5 + 0x18));
+
+    /* If a screen fade is in progress, ignore Start/D-Pad so the player
+     * can't interrupt it. */
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        R0 = 0;
+        GUEST_CALL(menu_handleStartAndDpad_8125594);
+    }
+
+    GUEST_CALL(sub_8125444);
+    GUEST_CALL(sub_8125D10);
+    GUEST_CALL(sub_81264F4);
+
+    /* Refresh the two sprites attached to this menu state. */
+    R0 = LD32(R5 + 0x58);
+    R1 = LD16(R5 + 0x12);
+    R2 = 4;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+
+    R0 = LD32(R5 + 0x5C);
+    R1 = LD16(R5 + 0x1C);
+    R2 = 7;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+
+    GUEST_CALL(sub_812674C);
+    GUEST_CALL(sub_81267A8);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8124CE8 ── */
+/* sub_8124CE8: advance the counter at o+0x74 by 2 frames, clamp it at 0x8E
+ * (then mark the state as 0x0C = finished/landed), reset another field to
+ * 0xFFFFFFFF, refresh the sprite's two halfword pairs and run a few
+ * follow-up animations/helper routines. */
+Next sub_8124CE8(void) {
+    u32 r0 = R0;
+    u32 lr = LR;
+
+    R0 = 0;
+    GUEST_CALL(sub_8126818);
+
+    /* Tick the per-sprite counter at o+0x74 down by 2 (note: it actually
+     * decrements, even though the disassembly uses 'sub'). The original
+     * uses 'sub' here; behavior must match exactly. */
+    u32 counter = LD32(R5 + 0x74) - 2;
+    ST32(R5 + 0x74, counter);
+
+    if ((s32)counter <= 0x8E) {
+        ST32(R5 + 0x74, 0x8E);
+        ST8(R5 + 2, 0x0C);
+    }
+
+    ST32(R5 + 0x70, 0xFF);
+    GUEST_CALL(sub_8125444);
+    GUEST_CALL(sub_8125D10);
+    GUEST_CALL(sub_8125D94);
+
+    /* Update sprite frame/duration pair #4 from the live halfwords. */
+    R0 = LD32(R5 + 0x58);
+    R1 = LD16(R5 + 0x12);
+    R2 = 4;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+
+    /* Update sprite frame/duration pair #7; the source halfword is
+     * conditional on the value at o+0x5C being 0x27. */
+    R1 = 0;
+    R0 = LD32(R5 + 0x5C);
+    if (R0 == 0x27) {
+        R1 = LD16(R5 + 0x1C);
+    }
+    R2 = 7;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+
     RETURN_TO_CALLER();
 }
 

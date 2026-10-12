@@ -227,6 +227,39 @@ Next chipPanel_renderChipGfxAndText_8119438(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81195E4 ── */
+/* sub_81195E4(r5 = object pointer, lr = return; r0 preserved)
+ * Clear a TileObj's two tile blocks in vObjectTiles.
+ *
+ * A table (off_8119128) of per-object descriptors is indexed by the
+ * byte at r5+5. Each descriptor's first word is the slot of a shared
+ * "header" tile block, and its word at +8 is the slot of a "body" tile
+ * block. Slot offsets within vObjectTiles are (slot << 5). The two
+ * regions are zero-filled via ZeroFillByEightWords (0xA00 and 0x780
+ * bytes). r0 is preserved across both calls (the assembly pushes/pops
+ * it around the BLs). */
+Next sub_81195E4(void) {
+    u32 entry = R5;
+    u32 saved_r0 = R0;
+
+    u32 desc_ptr  = LD32(A_off_8119128 + (LD8(entry + 5) << 2));
+    u32 hdr_slot  = LD32(desc_ptr);
+    u32 body_slot = LD32(desc_ptr + 8);
+
+    /* Zero the header tile block: (hdr_slot << 5) + vObjectTiles, 0xA00 bytes. */
+    R0 = (hdr_slot << 5) + A_vObjectTiles;
+    R1 = 0xA00;
+    GUEST_CALL(ZeroFillByEightWords);
+
+    /* Zero the body tile block: (body_slot << 5) + vObjectTiles, 0x780 bytes. */
+    R0 = (body_slot << 5) + A_vObjectTiles;
+    R1 = 0x780;
+    GUEST_CALL(ZeroFillByEightWords);
+
+    R0 = saved_r0;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81196F0 ── */
 /* register form: path-dependent condition flag propagation — gate-pass inherits flags
  * from chipPanel_renderChipGfxAndText_8119438 (opaque callee result) while gate-fail sets them from local CMP;

@@ -1383,6 +1383,51 @@ Next getIndexed20ByteTableEntry_80355DE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8035640 ── */
+/* sub_8035640(r10 = some struct ptr)
+ *
+ * Walks a table of { id, event_flag } pairs at byte_8035670. For each entry,
+ * if id != 0 AND id == *(u16*)(r10->field_3c + 4) AND the event flag in
+ * field2 is set, trigger a graphics/animation load via LoadGFXAnims(off_8035688).
+ * An entry with id == 0 terminates the table walk.
+ *
+ * inputs:  r10, lr
+ * outputs: r2 r5 r7 r8 r9 r10 r11 r12
+ * clobbers: nz c v r0 r1 r3 lr
+ * preserved: r4 r5 r6 r7 r8 r9 r12
+ */
+Next sub_8035640(void) {
+    u32 entry = A_byte_8035670;
+    u32 base = LD32(R10 + 0x3C);
+    u16 target = LD16(base + 4);
+
+    for (;;) {
+        u16 id = LD16(entry);
+        SET_FLAGS_NZ(id);
+        if (id == 0)
+            break;
+
+        u16 lookup = LD16(base + 4);
+        SET_FLAGS_CMP(id, lookup);
+        if (id != lookup)
+            goto next_entry;
+
+        R0 = (u32)LD16(entry + 2);
+        GUEST_CALL(TestEventFlag);
+        if (ZERO_FLAG())
+            break;
+
+        R0 = A_off_8035688;
+        GUEST_CALL(LoadGFXAnims);
+        break;
+
+next_entry:
+        entry += 4;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── clearWorkBuffer_2000DC0_80356EC ── */
 /* clearWorkBuffer_2000DC0_80356EC: zero-fill the 0x100-byte work buffer at dword_2000DC0 (word-wise). */
 Next clearWorkBuffer_2000DC0_80356EC(void) {

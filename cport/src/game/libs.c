@@ -723,6 +723,124 @@ Next Sio32IDMain(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── Sio32IDIntr ── */
+/* Sio32IDIntr -- SIO32 multiplayer ID interrupt: examine the data the other
+ * GBA just sent, advance the link-local negotiation state, and put our
+ * outbound word plus the next receive mask into SIODATA0. The parent (slot
+ * 1) additionally waits a bit and re-arms the SIO start bit when its peer
+ * still hasn't finished responding.
+ *
+ *   inputs:  lr
+ *   outputs: nz c v r4 r5
+ *   clobbers: r0 r1 r2 r3
+ *   preserved: r4 r5
+ */
+Next Sio32IDIntr(void) {
+    u32 r4_save = R4;
+    u32 r5_save = R5;
+
+    /* THUMB LSL-by-register: shift count comes from the low 8 bits;
+     * counts >= 32 produce 0. */
+    #define LSLR32(x, n) ((u32)(((n) & 0xFFu) < 32u ? ((x) << ((n) & 31u)) : 0u))
+
+    u32 sio_data0 = LD32(A_SIOData0_Parent__Multi_PlayerMode_);
+    u32 r4 = A_byte_2010CD0;
+    u32 slot_id = LD8(r4);
+
+    /* Non-parent slot isn't the one that starts transfers -- clear START. */
+    if (slot_id != 1) {
+        u32 ctrl = LD16(A_SIOControlRegister);
+        ST16(A_SIOControlRegister, ctrl | 0x80);
+    }
+
+    /* Pull this slot's 16-bit word and the partner's 16-bit word out of the
+     * packed 32-bit SIODATA0 register. */
+    u32 rx_mine = LSLR32(sio_data0, slot_id << 4) >> 16;
+    u32 r5      = LSLR32(sio_data0, (1u - slot_id) << 4) >> 16;
+
+    u32 done_flag = LD16(r4 + 0xA);
+    SET_FLAGS_CMP(done_flag, 0);
+    if (done_flag == 0) {
+        u32 expected_rx = LD16(r4 + 6);
+        SET_FLAGS_CMP(rx_mine, expected_rx);
+        if (rx_mine != expected_rx) {
+            /* Mismatch on this attempt -- store zero (the ldrh/0 result
+             * that's still in r0) into the state counter. */
+            ST16(r4 + 2, done_flag);
+        } else {
+            u32 state = LD16(r4 + 2);
+            SET_FLAGS_CMP(state, 3);
+            if (state > 3) {
+                /* Done with the negotiation dance -- remember what the
+                 * partner last sent us so the caller can see it. */
+                ST16(r4 + 0xA, r5);
+            } else {
+                u32 mask_tx = (u16)~LD16(r4 + 4);
+                SET_FLAGS_CMP(rx_mine, mask_tx);
+                if (rx_mine == mask_tx) {
+                    u32 mask_rx = (u16)~expected_rx;
+                    SET_FLAGS_CMP(r5, mask_rx);
+                    if (r5 == mask_rx) {
+                        ST16(r4 + 2, state + 1);
+                    }
+                }
+            }
+        }
+    }
+
+    /* Schedule the next round's expected partner ID and the receive mask. */
+    u32 state_now = LD16(r4 + 2);
+    SET_FLAGS_CMP(state_now, 3);
+    u32 new_tx;
+    if (state_now <= 3) {
+        new_tx = LD16(A_LibInfoText_aNintendosio32i + (state_now << 1));
+    } else {
+        new_tx = 0x8001;
+    }
+    ST16(r4 + 4, new_tx);
+    ST16(r4 + 6, (u16)~r5);
+
+    /* Repack both 16-bit halves back into SIODATA0. */
+    {
+        u32 sid     = LD8(r4);
+        u32 tx_word = LD16(r4 + 4);
+        u32 rx_word = LD16(r4 + 6);
+        u32 hi = LSLR32(tx_word, (1u - sid) << 4);
+        u32 lo = LSLR32(rx_word, sid << 4);
+        ST32(A_SIOData0_Parent__Multi_PlayerMode_, hi + lo);
+    }
+
+    /* Parent only: settle wait, then re-arm the SIO start bit if the peer
+     * hasn't finished yet. */
+    u32 s = LD8(r4);
+    SET_FLAGS_CMP(s, 1);
+    if (s == 1) {
+        u32 st = LD16(r4 + 2);
+        SET_FLAGS_CMP(st, 0);
+        u32 do_delay = (st != 0);
+        if (!do_delay) {
+            SET_FLAGS_CMP(r5, 0x494E);
+            if (r5 == 0x494E) do_delay = 1;
+        }
+        if (do_delay) {
+            for (u32 i = 0; i <= 0x257u; i++) {}
+            u32 df = LD16(r4 + 0xA);
+            SET_FLAGS_CMP(df, 0);
+            if (df == 0) {
+                u32 ctrl_val = LD16(A_SIOControlRegister);
+                u32 val = ctrl_val | 0x80;
+                SET_FLAGS_NZ(val);
+                ST16(A_SIOControlRegister, val);
+            }
+        }
+    }
+    #undef LSLR32
+
+    R4 = r4_save;
+    R5 = r5_save;
+    RETURN_TO_CALLER();
+}
+
 /* ── SWI_CpuFastSet ── */
 /* SWI_CpuFastSet(r0 = src, r1 = dest, r2 = length | mode):
  * BIOS call 0xC. Copies or fills words in 8-word bursts.

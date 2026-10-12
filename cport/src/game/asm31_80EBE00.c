@@ -2761,6 +2761,30 @@ Next battle_setAIAttackDamage_80FDFE4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FE05C ── */
+/* sub_80FE05C(r0 = index):
+ * Look up two versioned table entries (one for stats/cooldowns and a fixed per-version entry),
+ * then combine them into a single u32: the low half from the first table, the high half from the
+ * second table. Returns the packed value in r0; preserves r4 (input index) and r6 (first result). */
+Next sub_80FE05C(void) {
+    u32 index = R0;
+
+    /* First lookup: per-version stats at byte_80FE090, stride 8 bytes. */
+    R0 = index * 8 + A_byte_80FE090;
+    R2 = 8;
+    GUEST_CALL(battle_aiGetVersionedTableEntry_800FE12);
+    u32 lo = R0;
+
+    /* Second lookup: per-version constants at byte_80FE0B4, stride 8 bytes. */
+    R0 = index * 8 + A_byte_80FE0B4;
+    R2 = 8;
+    GUEST_CALL(battle_aiGetVersionedTableEntry_800FE12);
+
+    /* Pack: high 16 bits from the second table, low 16 bits from the first. */
+    R0 = (R0 << 16) | lo;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiDispatchAttackPhase_80FE0D4 ── */
 /* Register form: pure jump-table trampoline for AI attack-phase dispatch.
  * The only "computation" is an indexed table load followed by a tail-call to one

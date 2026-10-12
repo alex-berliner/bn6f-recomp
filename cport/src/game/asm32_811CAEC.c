@@ -1022,6 +1022,52 @@ Next getCurrentMapBgm_811F290(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811F508 ── */
+/* sub_811F508(r10 = ?, r5 = ?, lr):
+ * Chip/custom-data handler invoked during a frame.
+ * Reads r5->0x10 flag; if zero, dispatches to sub_811FAF4 with a packed arg,
+ * decrements r5->0xB timer, and reloads it via sub_8120CC8 when it hits zero.
+ *
+ * Output: R7 (preserved register, untouched by this function).
+ * Clobbers: R0, R1, R2, R3, LR. */
+Next sub_811F508(void) {
+    if (LD16(R5 + 0x10) != 0) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Build r0 = 0x00100000 | (halfword at r5+0x10, treated as zero-extended).
+     * The original did: mov r0,#0x10; lsl r0,#0x10; ldrh r1,[r5,#0x10]; orr r0,r1 */
+    u32 arg0 = 0x00100000u | (u32)LD16(R5 + 0x10);
+
+    R0 = arg0;
+    R1 = 0;                                /* dword_811F53C */
+    R2 = LD8(R5 + 0xA);                    /* r5->byte_0A */
+    R3 = (u32)A_byte_811EBD0;              /* off_811F540 */
+    /* R4 set for callee; preserved across the call. */
+    u32 saved_r4 = R4;
+    R4 = 0x40000000u;                      /* dword_811F544 */
+
+    GUEST_CALL(sub_811FAF4);
+    /* sub_811FAF4 returns in R0. */
+    u32 result = R0;
+    R4 = saved_r4;
+
+    /* Decrement r5->byte_0B; if non-zero we're done. */
+    u8 timer = LD8(R5 + 0xB) - 1;
+    ST8(R5 + 0xB, timer);
+    if (timer != 0) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Timer expired: store result into r5->byte_0A, then reload timer. */
+    ST8(R5 + 0xA, (u8)result);
+    R1 = (u32)A_byte_811EBDA;              /* off_811F548 */
+    GUEST_CALL(sub_8120CC8);
+    ST8(R5 + 0xB, (u8)R1);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── CopyBackgroundTiles_onNaviSelect_811F54C ── */
 /* Offsets into the navi-select background work struct (arrives in r5). */
 #define BG_SCROLL_TIMER  0xD  /* u8: frames left until the background steps one row */
@@ -1808,6 +1854,65 @@ Next zeroFill_0xA000Words_811FF6C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811FF80 ── */
+/* sub_811FF80(r0 = which_chip)
+ *
+ * Classifies a chip based on its element flags (byte at offset 9 of the chip data):
+ *   - bit 0x10 set: r0 = r2 = 1, r1 = 1
+ *   - bit 0x02 set, chip id > 0x3E7: r0 = r2 = sub_8010C76(which_chip), r1 = 0
+ *   - bit 0x02 set, chip id <= 0x3E7: r0 = r2 = chip_id, r1 = 0
+ *   - neither: r0 = r2 = 5, r1 = 0
+ */
+Next sub_811FF80(void) {
+    u32 which_chip = R0;
+
+    /* push {r3, r4, lr} */
+    u32 saved_r3 = R3;
+    u32 saved_r4 = R4;
+    u32 saved_lr = LR;
+    u32 sp = SP -= 12;
+    ST32(sp,     saved_r3);
+    ST32(sp + 4, saved_r4);
+    ST32(sp + 8, saved_lr);
+
+    R0 = which_chip;
+    GUEST_CALL(getChip8021DA8);
+    u32 chip = R0;
+
+    u32 r2;
+    u8 flags = LD8(chip + 9);
+    if (flags & 0x10) {
+        /* Element 0x10 set */
+        r2 = 1;
+        R1 = 1;
+    } else if (flags & 0x02) {
+        /* Element 0x02 set: clamp chip id at 0x3E7 */
+        u16 chip_id = LD16(chip + 0x1A);
+        if ((s32)chip_id > 0x3E7) {
+            R0 = which_chip;
+            GUEST_CALL(sub_8010C76);
+            r2 = R0;
+        } else {
+            r2 = chip_id;
+        }
+        R1 = 0;
+    } else {
+        /* Neither element flag set */
+        r2 = 5;
+        R1 = 0;
+    }
+
+    R0 = r2;
+
+    /* pop {r3, r4, pc} */
+    sp = SP;
+    R3 = LD32(sp);
+    R4 = LD32(sp + 4);
+    u32 ret = LD32(sp + 8);
+    SP = sp + 12;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81202B4 ── */
 /* sub_81202B4: expand a text string into pairs of font tile indices.
  *
@@ -2075,6 +2180,38 @@ static void build_chip_slot_list(u32 entry_index, u32 entry_base,
  *             r3 = slot_base, r5 = count) -> r7 (unchanged, preserved) */
 Next sub_81203E4(void) {
     build_chip_slot_list(R0, R1, R2, R3, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812053C ── */
+/* sub_812053C:
+ *   Ask sub_81205C0 for a value; if it came back non-negative, build an
+ *   address/flag word (low 0x4000 on, top bits and 0x8000 cleared) and
+ *   hand it to sub_802FE28 together with (0xC + original r1).
+ *   inputs:  r0 r1 r2 lr
+ *   outputs: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r5 r6 r7 */
+Next sub_812053C(void) {
+    /* r4 holds the caller's r1 across the leaf call (preserved register). */
+    u32 saved_r1 = R1;
+
+    /* mov r3, #0 ; bl sub_81205C0 */
+    R3 = 0;
+    GUEST_CALL(sub_81205C0);
+    /* tst r0, r0 : sets N/Z from R0; the original blt reads N (taken when R0 < 0). */
+    SET_FLAGS_NZ(R0 & R0);
+
+    if (!NEGATIVE_FLAG()) {
+        /* bic r0, #0xc0008000 ; ldr r1, =0x4000 ; orr r0, r1 */
+        R0 = (R0 & ~(u32)0xC0008000u) | (u32)0x4000u;
+        /* mov r1, #0xc ; add r1, r1, r4 */
+        R1 = 0xCu + saved_r1;
+        /* mov r2, #0 ; mov r3, #1 ; bl sub_802FE28 */
+        R2 = 0;
+        R3 = 1;
+        GUEST_CALL(sub_802FE28);
+    }
+
     RETURN_TO_CALLER();
 }
 

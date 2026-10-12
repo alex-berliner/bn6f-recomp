@@ -17,6 +17,52 @@ Next bgScroll_ResetScrollCBCounters_8080D90(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8080DA0 ── */
+/* sub_8080DA0: load the BG scroll/GFX-anim/LCD-control data for the current battle field
+ * and, in non-battle mode (i.e. story/custom), preload the death animations.
+ *
+ * Inputs:  r10 = select index into the field tables (passed through from caller)
+ * Outputs: r6, r7, r8, r9, r10, r11, r12 (per the disassembly contract)
+ * Clobbers: nz, c, v, r0..r3, lr
+ */
+Next sub_8080DA0(void) {
+    /* sub_8081308 returns the field index used to look up everything else. */
+    GUEST_CALL(sub_8081308);
+    u32 field = R0;
+
+    /* Scroll callback table for the BG layer: a struct of three function pointers
+     * (offset 0/4/8) followed by an LCD-control OR mask at offset 0xC. */
+    u32 scroll = A_off_8080E34 + (field << 4);
+    R0 = LD32(scroll);
+    R1 = LD32(scroll + 4);
+    R2 = LD32(scroll + 8);
+    GUEST_CALL(SetBGScrollCallbacks);
+
+    /* Apply the OR mask on top of the current LCD control register. */
+    GUEST_CALL(GetRenderInfoLCDControl);
+    R0 = R0 | LD32(scroll + 0xC);
+    GUEST_CALL(SetRenderInfoLCDControl);
+
+    /* BG animation script (one entry per field). */
+    u32 bgAnimTable = A_off_8080F98;
+    R0 = LD32(bgAnimTable + (field << 2));
+    GUEST_CALL(LoadBGAnimData);
+
+    /* Sprite/GFX animation scripts (table indexed by field). */
+    u32 gfxAnimTable = A_off_8081220;
+    R0 = LD32(gfxAnimTable + (field << 2));
+    GUEST_CALL(LoadGFXAnims);
+
+    /* Only the non-battle UI needs them now; the battle scenes have their own. */
+    GUEST_CALL(GetBattleMode);
+    if (R0 != 1) {
+        GUEST_CALL(sub_803537C);
+        GUEST_CALL(battle_loadDeathAnims_8035424);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8081308 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool z, n; } call_TestEventFlag_result;

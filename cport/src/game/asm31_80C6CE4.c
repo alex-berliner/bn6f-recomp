@@ -1738,6 +1738,29 @@ Next sub_80C9774(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C97B4 ── */
+/* sub_80C97B4(r5 = battle object, lr):
+ * On first call (PhaseInitialized == 0): set bit 1 of object flags, copy the
+ * animation byte and timer value from the object's extra-vars init blob, and
+ * mark the phase initialized. Then tick the timer down; when it expires
+ * schedule the object for destruction. */
+Next sub_80C97B4(void) {
+    if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
+        ST8(R5 + oObjectHeader_Flags, LD8(R5 + oObjectHeader_Flags) | 2);
+        u32 init = LD32(R5 + oBattleObject_ExtraVars + 4);
+        ST8(R5 + oBattleObject_CurAnim, LD8(init + 3));
+        ST16(R5 + oBattleObject_Timer, LD8(init + 4));
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+    }
+
+    u32 timer = LD16(R5 + oBattleObject_Timer) - 1;
+    ST16(R5 + oBattleObject_Timer, timer);
+    if ((s32)timer < 0) {
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_spawnLinkedObjectType2B_80C97E0 ── */
 /* register form: calls object_spawnType3 outside this file, which has no typed C interface yet */
 static u32 call_object_spawnType3(u32 type, u32 arg1, u32 arg2, u32 arg3) {
@@ -3903,6 +3926,43 @@ Next t4_0x4_80E0844(void) {
         GUEST_CALL(object_freeMemory);
         break;
     }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E0864 ── */
+/* sub_80E0864: initialize a battle object's sprite/animation state from a
+ * sprite descriptor table indexed by Param1. Sets flag 0x2 on the object
+ * header and arms CUR_STATE_UPDATE. */
+Next sub_80E0864(void) {
+    /* Pick the sprite descriptor: off_80E0804 + Param1 * 4. */
+    u32 desc = A_off_80E0804 + ((u32)LD8(R5 + oBattleObject_Param1) << 2);
+
+    /* Load graphics, then drop the default shadow. */
+    R0 = 0x80;
+    R1 = LD8(desc + 0);
+    R2 = LD8(desc + 1);
+    GUEST_CALL(sprite_load);
+
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_noShadow);
+
+    /* Install the first frame and its palette, then commit. */
+    u32 anim = LD8(desc + 2);
+    ST8(R5 + oBattleObject_CurAnim, anim);
+    ST8(R5 + oBattleObject_CurAnimCopy, anim);
+
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+    GUEST_CALL(sprite_loadAnimationData);
+
+    R0 = LD8(desc + 3);
+    GUEST_CALL(sprite_setPalette);
+    GUEST_CALL(sprite_update);
+
+    /* Mark the object as initialized (flag 0x2) and arm the update state. */
+    ST8(R5 + oObjectHeader_Flags, LD8(R5 + oObjectHeader_Flags) | 0x2);
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
 
     RETURN_TO_CALLER();
 }

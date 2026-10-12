@@ -2715,6 +2715,68 @@ Next camera_initAndActivate_803123E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803128E ── */
+/* sub_803128E(r0 = ?, r5 = ?, r12 = ?, lr):
+ *   If the player-facing pose returned by sub_8031122 lies to the left of a fixed
+ *   reference line (test point (0,0) against line (0x20,0)-(0,0x20)), snap the
+ *   camera to the right pose (sub_80311B6) and pan it by half the right-pose
+ *   delta. Either way, OR 3 into r12 to flag the resolved camera state. */
+Next sub_803128E(void) {
+    /* Save the live inputs across the callees below. */
+    u32 saved_r0 = R0;
+    u32 saved_r1 = R1;
+    u32 saved_r2 = R2;
+    u32 saved_r5 = R5;
+    u32 saved_r12 = R12;
+
+    /* Ask sub_8031122 for the player pose. */
+    GUEST_CALL(sub_8031122);
+
+    /* Test whether the player is on the left side of the line through (0x20,0)-(0,0x20). */
+    R2 = 0;
+    R4 = 0x20;
+    R3 = 0x20;
+    R5 = 0;
+    GUEST_CALL(math_pointLeftOfLineTest_80315DC);
+
+    R3 = 0;
+    SET_FLAGS_CMP(R0, 0);
+    if (!ZERO_FLAG()) {
+        /* Restore the original inputs, then ask sub_80311B6 for the right-side pose. */
+        R0 = saved_r0;
+        R1 = saved_r1;
+        R2 = saved_r2;
+        R5 = saved_r5;
+
+        GUEST_CALL(sub_80311B6);
+
+        /* Compute the right-pose delta from the same line. */
+        R2 = 0;
+        R4 = 0x20;
+        R3 = 0x20;
+        R5 = 0;
+        R6 = 1;
+        GUEST_CALL(sub_8030F7C);
+
+        /* Pan the camera by half that delta. */
+        R0 = R0 >> 1;
+        R1 = R1 >> 1;
+        GUEST_CALL(camera_moveByDelta_80310B0);
+    }
+
+    /* Flag the resolved camera state into r12. */
+    R0 = R12 | 3;
+    SET_FLAGS_NZ(R0);
+    R12 = R0;
+
+    /* Restore the preserved inputs and return. */
+    R0 = saved_r0;
+    R1 = saved_r1;
+    R2 = saved_r2;
+    R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── camera_recenterAndSetCtrlBits_803135E ── */
 /* camera_recenterAndSetCtrlBits_803135E: recenter camera and set bits 0-1 of the r12 control word.
  *

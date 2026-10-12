@@ -2446,6 +2446,41 @@ Next battle_alignRowCheck_81348DC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8134F40 ── */
+/* sub_8134F40(r0 = id, r5 = owner):
+ * Walk a per-actor counter table and, for each active entry whose id
+ * matches the starting r0, bump its hit counter. The bumped counter is
+ * the new comparison key for the rest of the scan, so subsequent matches
+ * use the updated value. Returns 1 if any entry was incremented.
+ *
+ * Table: unk_202A3E0, count at r5+0x28, stride 0x20.
+ *   +0x14: active flag (non-zero = slot in use, ends scan when zero)
+ *   +0x16: per-entry counter (the value we increment)
+ *   +0x1C: id compared against */
+Next sub_8134F40(void) {
+    u32 found = 0;
+    u32 count = LD16(R5 + 0x28);
+    if (count != 0) {
+        const u32 kEntrySize = 0x20;
+        const u32 base = A_unk_202A3E0;
+        const u32 end = base + count * kEntrySize;
+        u32 entry = base;
+        for (; (s32)entry < (s32)end; entry += kEntrySize) {
+            if (LD16(entry + 0x14) == 0) break;          /* inactive slot ends the scan */
+            if (R0 == (u32)LD16(entry + 0x1C)) {
+                /* matched id: bump per-entry counter (+0x16) and keep going
+                 * with the incremented value as the new search key. */
+                u32 bumped = LD16(entry + 0x16) + 1;
+                ST16(entry + 0x16, (u16)bumped);
+                R0 = bumped;
+                found = 1;
+            }
+        }
+    }
+    R0 = found;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8134F78 ── */
 /* sub_8134F78: flag a result in the S2001c04 buffer (both bytes set to 0xFF).
  * r10 = toolkit pointer; returns 0xFF in r1. */
@@ -2456,6 +2491,32 @@ Next sub_8134F78(void) {
     ST8(data + 2, 0xFF);
 
     R1 = 0xFF;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8134F88 ── */
+/* sub_8134F88(r0 = value to match, r5 = battle object):
+ * If the halfword at r5+0x1C matches r0, try to grab struct slot #4 from the
+ * pool. If a struct is returned, set its byte 8 to 8, clear bit 0 of the
+ * long at r5+0x4C, and store 0xFFFF into r5+0x1C (marking it consumed). */
+Next sub_8134F88(void) {
+    if (R0 != (u32)LD16(R5 + 0x1C)) {
+        RETURN_TO_CALLER();
+    }
+
+    R0 = 4;
+    GUEST_CALL(getStructFrom2008450);
+    if (ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    ST8(R1 + 8, 8);
+
+    u32 flags = LD32(R5 + 0x4C);
+    flags &= ~1u;
+    ST32(R5 + 0x4C, flags);
+
+    ST16(R5 + 0x1C, 0xFFFF);
     RETURN_TO_CALLER();
 }
 
@@ -2508,6 +2569,34 @@ Next sub_8134FB0(void) {
         R7 = entryR7;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8135184 ── */
+/* sub_8135184(r0 = chip_id, r5 = object) -> u32:
+ *   Count the number of chips in the player's folder whose chip id matches r0.
+ *   r0 returns the count; r2/r5/r7 are preserved as documented in the contract. */
+Next sub_8135184(void) {
+    u32 chip_id = R0;
+    u32 obj     = R5;
+    u32 folder_base = A_word_202A020;
+    u16 folder_count = LD16(obj + 0x1E);
+    u32 match_count = 0;
+    u32 i = 0;
+
+    do {
+        u32 entry = LD32(folder_base + i * 0x20 + 0x1C);
+        u32 which_chip = (entry << 16) >> 23;
+        R0 = which_chip;
+        GUEST_CALL(getChip8021DA8);
+        const u8* chip = (const u8*)R0;
+        if (LD8((u32)chip + 7) == chip_id) {
+            match_count++;
+        }
+        i++;
+    } while (i < folder_count);
+
+    R0 = match_count;
     RETURN_TO_CALLER();
 }
 

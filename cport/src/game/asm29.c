@@ -1740,6 +1740,64 @@ Next object_initSpriteState3_80AA2F8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80AA322 ── */
+/* sub_80AA322(r5 = sprite object pointer, r10 = ?, lr = return):
+ * Update an overworld NPC sprite object. Decides layer/animation based on
+ * cutscene state, copies overworld coords into the sprite, applies the
+ * layer effect, sets sprite priority, and runs the sprite update.
+ *
+ * Store the chosen mode in the sprite's first byte; mode 1 is the default,
+ * mode 3 is used when both target cutscene script positions have been
+ * reached. r10/r11/r2 outputs come from the final sprite_update call.
+ */
+Next sub_80AA322(void) {
+    /* Default mode = 1; promoted to 3 once the cutscene reaches the two
+     * scripted positions the engine is waiting on. */
+    u32 mode = 1;
+
+    /* sub_81279A8: sets flags based on some readiness/state check. */
+    R0 = 0; /* arguments unused, set R0 defensively */
+    GUEST_CALL(sub_81279A8);
+    if (!ZERO_FLAG()) goto pick_mode_done;
+
+    /* Are we at the originally-recorded cutscene position for byte_8088514? */
+    R0 = (u32)A_byte_8088514;
+    GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F70);
+    if (!ZERO_FLAG()) goto pick_mode_done;
+
+    /* ...and the one for byte_8088708? */
+    R0 = (u32)A_byte_8088708;
+    GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F70);
+    if (!ZERO_FLAG()) goto pick_mode_done;
+
+    mode = 3;
+
+pick_mode_done:
+    ST8(R5, (u8)mode);
+
+    /* Copy the overworld NPC's transform (x, y, layer) into the sprite at
+     * offsets 0x0C, 0x10, 0x14. The base of the OW NPC object array is
+     * eOverworldNPCObjects; the fields used live at +0x24/+0x28/+0x2C. */
+    u32 ow_base = (u32)A_eOverworldNPCObjects;
+    u32 npc_x   = LD32(ow_base + 0x24);
+    u32 npc_y   = LD32(ow_base + 0x28);
+    u32 npc_lay = LD32(ow_base + 0x2C);
+    ST32(R5 + 0x0C, npc_x);
+    ST32(R5 + 0x10, npc_y);
+    ST32(R5 + 0x14, npc_lay);
+
+    /* Apply the layer effect to that copied transform block. */
+    R0 = R5 + 0x0C;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+
+    /* Re-evaluate sprite priority and run the per-frame sprite update; this
+     * is what fills r2/r10/r11 for the caller. */
+    GUEST_CALL(sprite_setPriority_8002E14);
+    GUEST_CALL(sprite_update);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80AA394 ── */
 /* sub_80AA394(r5 = work area, r2/r10/r11 = pass-through):
  * Initialise the CopyBot-related work area: pick its slot based on the

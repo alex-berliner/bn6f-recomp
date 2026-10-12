@@ -68,6 +68,72 @@ Next sprite_chatbox_80026D6(void) {
     RETURN_TO_CALLER();            /* pop {pc} */
 }
 
+/* ── sprite_load ── */
+/* sprite_load:
+ *   inputs:  r0 r1 r2 r5 lr
+ *   outputs: r1 r4 r5
+ *   clobbers: nz c v r0 r2 r3 lr
+ *   preserved: r4 r5
+ *
+ * Loads a sprite for an object. r0 points to sprite data, r1/r2 form a sprite ID,
+ * and r5 points at the object header. Clears the object's "loaded" bit, locates the
+ * sprite via the lookup table (falling back to SpritePointersList and a white-dot
+ * placeholder), then installs it. r1 (the original r0) is stashed in the sprite's
+ * Unk_03 field. */
+Next sprite_load(void) {
+    u32 object_base = R5;
+    u32 r0_in = R0, r1_in = R1, r2_in = R2;
+
+    /* Clear bit 3 (0x8) of the object's flags. */
+    ST8(R5, LD8(R5) & (u8)~8);
+
+    /* Advance R5 past the per-type header (high nibble of TypeAndSpriteOffset). */
+    u8 tso = LD8(object_base + oObjectHeader_TypeAndSpriteOffset);
+    u32 sprite = object_base + ((tso >> 4) << 4);
+    R5 = sprite;
+
+    /* push {r0-r2}, then r0 = (r1 << 8) | r2 for the lookup. */
+    u32 sp = SP - 12; SP = sp;
+    ST32(sp + 0, r0_in);
+    ST32(sp + 4, r1_in);
+    ST32(sp + 8, r2_in);
+    R0 = (r1_in << 8) | r2_in;
+
+    GUEST_CALL(lookupValueForIdInTableAt_200DCA0_8002986);
+    u32 found = R0;
+
+    /* pop {r1-r3} rotates r0->r1, r1->r2, r2->r3. */
+    u32 new_r1 = LD32(sp + 0);  /* = original r0 */
+    u32 new_r2 = LD32(sp + 4);  /* = original r1 */
+    u32 new_r3 = LD32(sp + 8);  /* = original r2 */
+    SP += 12;
+
+    if (found == 0) {
+        /* Fallback: SpritePointersList[r1], then index by r2*4. */
+        u32 list_entry = LD32(A_SpritePointersList + new_r2);
+        new_r3 <<= 2;
+        u32 sprite_data = LD32(list_entry + new_r3);
+        if ((s32)sprite_data < 0) {
+            R0 = A_spriteWhiteDot;
+        } else {
+            R0 = sprite_data;
+        }
+    }
+
+    /* push {r1}; bl sprite_initialize; pop {r1} -- preserve r1 across the call. */
+    R1 = new_r1;
+    GUEST_CALL(sprite_initialize);
+    R1 = new_r1;
+
+    /* Stash the requested id (original r0) into the sprite's Unk_03 field. */
+    R5 = sprite;
+    ST8(R5 + oObjectSprite_Unk_03, (u8)R1);
+
+    /* Restore preserved r5 (r4 is never touched in the register file). */
+    R5 = object_base;
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_initialize ── */
 /* sprite_initialize(r0 = sprite resource id, r5 = sprite object):
  * reset an object's sprite state. Stores r0+4 (the first resource slot

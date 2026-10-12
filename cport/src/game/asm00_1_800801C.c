@@ -47,6 +47,45 @@ Next sub_800801C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800840C ── */
+/* sub_800840C: pre-battle intro step; driven by a small state byte at r5.
+ * On the first call it copies some preloaded graphics to two VRAM buffers and
+ * marks that step done. When the global "intro busy" flag (sub_801483C) clears
+ * it either arms a 4-tick local timer or, once that has elapsed, finds both
+ * players' BattleObjects, runs them through sub_8015A38, and writes 4 into [r5]. */
+Next sub_800840C(void) {
+    u8 phase = LD8(R5 + 3);
+
+    if (phase == 0) {
+        R0 = A_byte_203F558;
+        R1 = A_byte_203F658;
+        GUEST_CALL(sub_80147E4);
+        ST8(R5 + 3, 4);
+    }
+
+    GUEST_CALL(sub_801483C);
+    if (R0 != 0) {
+        RETURN_TO_CALLER();
+    }
+
+    if (LD8(R5 + 2) == 0) {
+        GUEST_CALL(timer_resetAndStart_801482C);
+        ST8(R5 + 2, 4);
+        RETURN_TO_CALLER();
+    }
+
+    R0 = 0;
+    GUEST_CALL(battle_findPlayer);
+    GUEST_CALL(sub_8015A38);
+
+    R0 = 1;
+    GUEST_CALL(battle_findPlayer);
+    GUEST_CALL(sub_8015A38);
+
+    ST32(R5, 4);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objAdvanceStateTimer_8008492 ── */
 /* battle_objAdvanceStateTimer_8008492: advance the per-object battle state byte of the object in r5.
  *
