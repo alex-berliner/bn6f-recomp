@@ -1,0 +1,90 @@
+name: HandleCoordinateInteractionCutscene
+address: '0x08034EF0'
+kind: function
+status: confirmed
+summary: Starts the "object interaction" cutscene (TalkObject script) for the coordinate interaction tile the player
+  is currently standing on, if applicable.
+interface: "void HandleCoordinateInteractionCutscene(u32 toolkit /* r10 */);\n    // outputs: r2 unchanged; clobbers\
+  \ r0/r1/r3, lr, nzcv\n"
+details: "Reads GameState via toolkit->GameStatePtr. Field oGameState_CoordInteractionValue is the\ncurrent tile's\
+  \ interaction tag. 0 means no interaction. Tag layout:\n  - 0x60-0x6F on Graveyard 2 (map group GROUP_GRAVEYARD_IMMORTAL_AREA\
+  \ / map MAP_GRAVEYARD2)\n    are sixteen extra slots mapped onto internet table slots 0x10-0x1F\n    (table off_8034728,\
+  \ internet-indexed: groupIndex = mapGroup - INTERNET_MAP_GROUP_START).\n  - 0xF0-0xFF are the sixteen ordinary\
+  \ per-map slots on every other map. Each is guarded by a\n    one-shot flag at EVENT_16C0+slot (0x16C0..0x16CF);\
+  \ if TestEventFlag says set, the interaction\n    has already fired and the function returns. Slot index = tag\
+  \ - 0xF0.\nTwo index tables:\n  - off_803461C: per-group tables of per-map 16-byte text-index tables for ordinary\
+  \ map groups.\n  - off_8034728: same layout, used both for Graveyard 2's extra slots and for any map group\n \
+  \   >= INTERNET_MAP_GROUP_START (groupIndex = group - INTERNET_MAP_GROUP_START).\nThe final byte lookup is groupTables[groupIndex][mapNumber][slot].\
+  \ 0xFF means \"no entry\";\notherwise that byte is the param for StartCutscene(CutsceneScriptObjectInteract_8098358,\
+  \ param).\nGuarded up-front by IsNotSlipRunningAndNotInCutscene: bail if the player is slipping or already\nin\
+  \ a cutscene. Touches oToolkit_GameStatePtr, oGameState_CoordInteractionValue,\noGameState_MapGroup, oGameState_MapNumber.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261012-161708); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    zai'' --file inbox_farm_m_zai.c HandleCoordinateInteractionCutscene'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function HandleCoordinateInteractionCutscene
+
+    ./wf verify --function HandleCoordinateInteractionCutscene --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-161708-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function HandleCoordinateInteractionCutscene
+
+    ./wf verify --function HandleCoordinateInteractionCutscene --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-161708-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function HandleCoordinateInteractionCutscene
+
+    ./wf verify --function HandleCoordinateInteractionCutscene --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161708-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08034ef0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp f15fb13
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact meaning of each of the 16 ordinary slots per map (0xF0..0xFF) — tag-to-text mapping lives in off_803461C
+  / off_8034728 and was not enumerated here.
+- Why Graveyard 2 hijacks the internet table instead of having its own entry in off_803461C.
+- Whether the EVENT_16C0..16CF one-shots are cleared by the cutscene script itself or by a separate cleanup path.
+sources:
+- tools/wf run convert-20261012-161708
+- recomp f15fb13
