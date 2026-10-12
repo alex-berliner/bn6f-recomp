@@ -322,8 +322,10 @@ bn6f source on 2026-10-10 (`tools/layout.py`, §2 Layout).
   register the function restores as no use of it, so a function that saves an
   argument around a call and reads it after the pop lost that input:
   `GetCurPETNaviStatsByte`'s r1 (its generated wrapper took only r0, and two farm
-  candidates passed no stat index). Fixed on 2026-10-12 (`_restore_reads`): 570
-  functions gained inputs, 104 outputs; regenerate `build-abi/graph.json` after a
+  candidates passed no stat index). Fixed on 2026-10-12 (`_restore_reads`): 519
+  functions gained inputs, 34 outputs (a first version counted callees' saved
+  registers as reads and widened 104 outputs, which failed two NPC commands on r4);
+  regenerate `build-abi/graph.json` after a
   lifter change (the leftover lint and the farm's wrappers read it).
 
 ## 8. Flash cart (paused)

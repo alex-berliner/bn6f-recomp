@@ -237,10 +237,14 @@ class Engine:
         self._dropped: dict[int, int] = {}      # pushes whose save reads _effects dropped: addr -> registers
         self.rw, self.local_w = self._effects()
         self.must_write = self._must_write()
-        if model.pass_through:
-            self._restore_reads()
+        if model.pass_through:     # callees: the lifter's inputs without the registers they save
+            self._restore_reads({e: v & ~a.preserved.get(e, 0) for e, v in a.inputs.items()})
         self.may_write = self._may_write()
         self.inputs = self._inputs()
+        for _ in range(8):         # then this engine's own inputs, until they settle
+            if not (model.pass_through and self._restore_reads(self.inputs)):
+                break
+            self.inputs = self._inputs()
         self.callers, self.entry_live, self.indirect_ret, self.edge_after, self.fully_observed = \
             self._callers(0 if model.ceiling else None)
 
@@ -277,7 +281,7 @@ class Engine:
                 local_w[u.start] = self._unit_writes(u)
         return rw, local_w
 
-    def _restore_reads(self) -> None:
+    def _restore_reads(self, callee_inputs: dict[int, int]) -> bool:
         """A push saves a register only if what the matching pop puts back is not read: a unit that
         pushes r1, calls something that clobbers r1, pops r1 and then indexes with it
         (GetCurPETNaviStatsByte) uses the r1 it was given, so r1 is an input. For each unit whose
@@ -285,8 +289,12 @@ class Engine:
         back (_restoring_pops), and a liveness over the unit (callees: the lifter's inputs, a call
         kills what it overwrites for sure, nothing live at its returns) saying whether that register
         is live right after such a pop; if so, its pushes in that unit read it again. Repeated until
-        nothing changes (a read put back can make an earlier pop's live)."""
+        nothing changes (a read put back can make an earlier pop's live). CALLEE_INPUTS: what a call
+        reads; first the lifter's inputs without the registers a callee saves (the lifter counts every
+        push as a read, which would make a register popped before a call to any function that saves
+        it look used), then this engine's refined inputs. Whether a read was put back."""
         a = self.a
+        added = False
         by_unit: dict[int, list[int]] = {}
         for addr in self._dropped:
             unit = self.unit_of(addr)
@@ -299,7 +307,7 @@ class Engine:
             if not pops:
                 continue
             while True:
-                live_in = self.unit_liveness(u, a.inputs, 0, a.inputs)
+                live_in = self.unit_liveness(u, callee_inputs, 0, callee_inputs)
                 used = 0
                 for addr, restored in pops.items():
                     after = 0
@@ -307,7 +315,7 @@ class Engine:
                         if x[0] in ("fall", "local"):
                             after |= live_in.get(x[1], 0)
                         elif x[0] == "tail":
-                            after |= a.inputs.get(x[1], ALL)
+                            after |= callee_inputs.get(x[1], ALL)
                     used |= after & restored
                 back = [(addr, self._dropped[addr] & used) for addr in pushes if self._dropped[addr] & used]
                 if not back:
@@ -316,6 +324,8 @@ class Engine:
                     r, w = self.rw[addr]
                     self.rw[addr] = (r | regs, w)
                     self._dropped[addr] &= ~regs
+                    added = True
+        return added
 
     def _restoring_pops(self, u: Unit) -> dict[int, int]:
         """The unit's pops (ldmia sp!) and the registers each loads with that register's own entry value,
