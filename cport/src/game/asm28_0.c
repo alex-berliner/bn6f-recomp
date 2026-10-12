@@ -10,12 +10,12 @@
 
 /* ── deliverCutsceneMail_8098BE8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
-typedef struct { u32 r1, r2, r3, r4, r6, r7; bool c, v; } call_addMail_802f238_result;
+typedef struct { u32 r1, r2, r3, r4, r6, r7; } call_addMail_802f238_result;
 /* register form: generated wrapper: addMail_802f238 has no typed C interface yet */
 static inline call_addMail_802f238_result call_addMail_802f238(u32 r0) {
     R0 = r0;
     GUEST_CALL(addMail_802f238);
-    return (call_addMail_802f238_result){ R1, R2, R3, R4, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+    return (call_addMail_802f238_result){ R1, R2, R3, R4, R6, R7 };
 }
 
 /* register form: generated wrapper: ClearEventFlag has no typed C interface yet */

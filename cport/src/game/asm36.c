@@ -982,11 +982,10 @@ static void call_reset_turn_state(void) {
 }
 
 /* register form: calls sub_81353F0 outside this file, which has no typed C interface yet */
-static u32 call_set_substate(u32 state, u32 param) {
+static void call_set_substate(u32 state, u32 param) {
     R0 = state;
     R1 = param;
     GUEST_CALL(sub_81353F0);
-    return R0;
 }
 
 /*
@@ -1060,11 +1059,11 @@ Next sub_81337C4(void) {
 
 /* ── sub_81337E8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
-typedef struct { u32 r1; bool z, n, c, v; } call_submenu_isOpen_81355D8_result;
+typedef struct { bool z, n; } call_submenu_isOpen_81355D8_result;
 /* register form: generated wrapper: submenu_isOpen_81355D8 has no typed C interface yet */
 static inline call_submenu_isOpen_81355D8_result call_submenu_isOpen_81355D8(void) {
     GUEST_CALL(submenu_isOpen_81355D8);
-    return (call_submenu_isOpen_81355D8_result){ R1, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+    return (call_submenu_isOpen_81355D8_result){ ZERO_FLAG(), NEGATIVE_FLAG() };
 }
 
 typedef struct { bool z, n; } call_IsButtonPressed_result_sub_81337E8;
@@ -1198,14 +1197,14 @@ static inline call_sub_81353DC_result call_sub_81353DC(u32 r5) {
     return (call_sub_81353DC_result){ R4, R5, R6, R7 };
 }
 
-typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sub_81353F0_result;
+typedef struct { u32 r2, r3, r4, r5, r6, r7; } call_sub_81353F0_result;
 /* register form: generated wrapper: sub_81353F0 has no typed C interface yet */
 static inline call_sub_81353F0_result call_sub_81353F0(u32 r0, u32 r1, u32 r5) {
     R0 = r0;
     R1 = r1;
     R5 = r5;
     GUEST_CALL(sub_81353F0);
-    return (call_sub_81353F0_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+    return (call_sub_81353F0_result){ R2, R3, R4, R5, R6, R7 };
 }
 
 /* Per-frame update of the submenu scene object.

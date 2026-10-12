@@ -50,11 +50,13 @@ def poke_args(trace: str) -> list[str]:
     base = trace.removesuffix(".trace")
     out = ["--save", base + ".sav"] if os.path.exists(base + ".sav") else []
     if os.path.exists(base + ".poke"):
-        game, spec = open(base + ".poke").read().split(maxsplit=1)
         nm = subprocess.run(["arm-none-eabi-nm", gamepaths.ORIG_ELF], capture_output=True,
                             text=True, check=True).stdout
         pc = next(line.split()[0] for line in nm.splitlines() if line.endswith(" main_awaitFrame"))
-        out += ["--poke-at", f"0x{pc}", game, spec.strip()]
+        for line in open(base + ".poke"):   # "GAME_FRAME ADDR=VALUE/SIZE,...", one game frame per line
+            if line.strip() and not line.startswith("#"):
+                game, spec = line.split(maxsplit=1)   # "GAME_FRAME:LANDED": the original goes by GAME_FRAME
+                out += ["--poke-at", f"0x{pc}", game.split(":")[0], spec.strip()]
     return out
 
 
@@ -87,10 +89,16 @@ def finish(part: str, out: str, trace: str, n_sites: int) -> None:
     os.replace(part, out)
 
 
-def run_route(mgba: str, sites: str, n_sites: int, name: str, frames: int, out_dir: str) -> dict:
+def run_route(mgba: str, sites: str, n_sites: int, name: str, frames: int, out_dir: str, graph: str) -> dict:
     trace = os.path.join(TRACES, name + ".trace")
     out = os.path.join(out_dir, name + ".edges")
     started = time.monotonic()
+    if os.path.isdir(os.path.join(gamepaths.CHECKPOINTS, name)):
+        # a long route with checkpoints (tools/import_route.py): its windows in parallel
+        import import_route
+        import_route.observe(name, trace, frames, 6, profiles=False, edges_out=out, graph=graph)
+        return {"route": name, "edges": sum(1 for line in open(out) if not line.startswith("#")),
+                "seconds": round(time.monotonic() - started), "windows": len(import_route.windows(frames))}
     cmd = [mgba, ORIG, "--quiet", "--frames", "200000", "--bios", BIOS, "--input", trace,
            "--game-frame-addr", GAME_FRAME_ADDR, "--until-game-frame", str(frames),
            "--call-edges", sites, out + ".part", *poke_args(trace)]
@@ -121,7 +129,7 @@ def main() -> None:
         sites = os.path.join(tmp, "sites.txt")
         n_sites = write_sites(args.graph, sites)
         with ThreadPoolExecutor(args.jobs) as pool:
-            results = list(pool.map(lambda n: run_route(args.mgba, sites, n_sites, n, known[n], args.out_dir), names))
+            results = list(pool.map(lambda n: run_route(args.mgba, sites, n_sites, n, known[n], args.out_dir, args.graph), names))
     json.dump({"sites": n_sites, "routes": results}, sys.stdout, indent=1)
     print()
     if any("error" in r for r in results):

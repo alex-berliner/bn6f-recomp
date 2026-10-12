@@ -11,6 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from wf.burr_typed import Finished, Graph, Transition, Workflow
+from wf.routes import LONG_ROUTES
 from wf.tools.capture import capture_calls, routes_executing
 from wf.types import CapturedCalls, FrameCount, FunctionName, Result, Route, SnapshotDir
 
@@ -80,19 +81,23 @@ class AssignOutput(Result):
 
 @workflow.step
 def assign_routes(given: AssignInput) -> AssignOutput:
-    """Give each function a route that runs it: repeatedly take the route that runs the most still unassigned."""
+    """Give each function a route that runs it: repeatedly take the route that runs the most still unassigned.
+    The long routes (replayed in windows) only get what no other route runs."""
     executed = routes_executing(given.functions, given.candidate_routes, given.run_dir)
     by_name = {route.name: route for route in given.candidate_routes}
+    long_names = {route.name for route in LONG_ROUTES}
     left = set(given.functions)
     assignments: list[RouteAssignment] = []
-    while left:
-        best = max(executed, key=lambda name: len(executed[name] & left), default=None)
-        if best is None or not executed[best] & left:
-            break
-        chosen = executed[best] & left
-        assignments.append(RouteAssignment(route=by_name[best],
-                                           functions=tuple(f for f in given.functions if f in chosen)))
-        left -= chosen
+    for tier in ({name: run for name, run in executed.items() if name not in long_names},
+                 {name: run for name, run in executed.items() if name in long_names}):
+        while left:
+            best = max(tier, key=lambda name: len(tier[name] & left), default=None)
+            if best is None or not tier[best] & left:
+                break
+            chosen = tier[best] & left
+            assignments.append(RouteAssignment(route=by_name[best],
+                                               functions=tuple(f for f in given.functions if f in chosen)))
+            left -= chosen
     return AssignOutput(assignments=tuple(assignments))
 
 

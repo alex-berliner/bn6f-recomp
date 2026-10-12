@@ -6,6 +6,8 @@
 # KEEP_INTERRUPTED=1: also keep the entry of calls an interrupt arrived in
 # (no .exit.bin); long functions are nearly always interrupted, and difftest
 # -S and the CPU oracle need only the entry.
+# A route with checkpoints (CHECKPOINTS/ROUTE, tools/import_route.py) starts from the last one at or
+# before G0. SNAP_TAG=TAG: name the calls snap_TAG_N.bin (default: the trace's name).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/tools/common.sh"
@@ -22,11 +24,19 @@ for f in "$@"; do
   NAME[$(printf '%08x' $((16#$a & ~1)))]=$f
 done
 mkdir -p "$RAW/snaps"
+route=$(basename "$TRACE" .trace)
+# A long route has checkpoints (tools/import_route.py): start from the last one at or before G0.
+resume=()
+for st in "$CHECKPOINTS/$route/${route}"_*.state; do
+  [ -e "$st" ] || continue
+  g=${st##*_}; g=$((10#${g%.state}))
+  if [ "$g" -le "$G0" ]; then resume=(--load-state "$st" --resume-game-frame "$g"); fi
+done
 "$MGBA_RUN" "$ORIG" --quiet --frames $(( G1 * 3 )) --bios "$GBA_BIOS" \
-  --input "$TRACE" --game-frame-addr "$GAME_FRAME_ADDR" --profile-game "$G0" "$G1" \
+  --input "$TRACE" --game-frame-addr "$GAME_FRAME_ADDR" "${resume[@]}" --profile-game "$G0" "$G1" \
   ${KEEP_INTERRUPTED:+--snap-keep-interrupted} \
   --snap-funcs "$RAW/funcs.txt" "$RAW/snaps" "$N" $(poke_args "$ORIG" "$TRACE") > /dev/null
-tag=$(basename "$TRACE" .trace)
+tag=${SNAP_TAG:-$route}   # the calls are saved as snap_TAG_N.bin; captures of a route's windows each have their own
 for f in "$RAW"/snaps/snap_*.bin; do
   [ -e "$f" ] || continue
   case "$f" in *.exit.bin) continue ;; esac

@@ -21,3 +21,29 @@ ending save (`NAME.end.sav`), so they form a chain through the game.
 | menus3 | story8.end.sav | Central Area 2, saved again at the end (it also saved mid-route through the wireless features) | PET menu sweep: Key Items (first time), SubChip used from the menu, folder edits (swap, sort, folder/pack moves), Library tabs, Mail, every Network entry up to the cable/Wireless Adapter prompt; NaviCust not available yet | replay exact, port identical (12940 frames; port needed 15039 hardware frames to the original's 13581 here) | 2406 functions alone; 41.5% → 42.6% (51.9% of code bytes); 30 indirect call sites no route had fired |
 | battles2 | menus3.end.sav | stopped at 20k frames; its last in-game save is battles2.end.sav | chip-variety virus battles in Central Area | replay exact, port identical (20600 frames; port 22682 hardware frames to the original's 20860) | 2328 functions alone; 42.6% → 42.6% (+3); 3 new indirect call sites: the battle code these chips use was already covered |
 | story9 | battles2.end.sav | saved at the end | the story continued toward the next navi bosses | replay exact, port identical (38700 frames; port 43061 hardware frames to the original's 39053) | 2523 functions alone; 42.6% → 43.2% (+80; 52.3% of code bytes); 19 new indirect call sites |
+
+## beastsp: a speedrun rebuilt from video (not recorded here)
+
+`beastsp` is not a tools/record session: it is Komari's BeastSP run of BN6 Falzar (YouTube
+`tAicOP_JS4A`) rebuilt frame by frame from the video, from power-on with a blank save, in
+~/Code/vidsync (its `ready/README.md` says how). The video can't show the run's luck, so
+`beastsp.poke` writes it in (RNG seeds, battle setups, rewards, and enemies' HP at 0 where the
+video's battle ends), one line per game frame. It is long, and grows as the sync goes on: 220000
+game frames (about an hour of the 8 h 44 min run) when it came in.
+
+- Bring it in or refresh it: `tools/import_route.py [~/Code/vidsync/ready]`. It copies the trace,
+  .poke and .sav, replays them on the original to the trace's `# end` digest, saves a checkpoint
+  every 10000 game frames in build-checkpoints/beastsp/ (game RAM, never committed), profiles and
+  observes call edges window by window from them (coverage/beastsp.prof, .edges), and sets the
+  length in tools/wf/wf/routes.py. Then `python3 tools/lifter/golden.py update` (the edges changed).
+- `wf capture` replays only the windows that run each function, from their checkpoints.
+- The pokes need mgba_run's repeatable `--poke-at`, its game frame counter unwrapped past 65535
+  and `--resume-game-frame` (the three vidsync patches, in since this route came in).
+- New code: 3993 lifted functions alone, 1004 of them on no other lockstep route, 676 in no
+  profile at all.
+- Check: the replay reaches the trace's `# end` digest (hardware frame 223194) and the vidsync
+  checkpoints byte for byte. The port is identical (3 isolated frames one frame early or caught
+  mid-update) once each write lands by where the original's landed (`G:L` lines) and
+  pet_getCurNaviChainedLookup_800A4E0 was taken out (it chose the regular chip from the wrong
+  folder: the hand dealt at game frame 142918 differed). Lockstep takes about 12 minutes on it
+  (the others take 10 s to 2 min), so it is in routes.py's LONG_ROUTES, which verify leaves out.

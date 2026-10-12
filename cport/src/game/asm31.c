@@ -3165,13 +3165,13 @@ static inline call_object_setCollisionRegion_result call_object_setCollisionRegi
     return (call_object_setCollisionRegion_result){ R1 };
 }
 
-typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; } call_sub_8109794_result;
+typedef struct { u32 r1, r2, r4, r5, r6, r7, r10; } call_sub_8109794_result;
 /* register form: generated wrapper: sub_8109794 has no typed C interface yet */
 static inline call_sub_8109794_result call_sub_8109794(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
     GUEST_CALL(sub_8109794);
-    return (call_sub_8109794_result){ R1, R2, R3, R4, R5, R6, R7, R10 };
+    return (call_sub_8109794_result){ R1, R2, R4, R5, R6, R7, R10 };
 }
 
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_80C5E84;

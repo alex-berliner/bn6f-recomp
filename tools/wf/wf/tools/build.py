@@ -21,7 +21,7 @@ WORKTREES = REPO / "build-wf-worktrees"
 # not in a worktree (submodules, and files git ignores): linked from the main checkout. The ROM build
 # links ../bn6f/bn6f.gba; the tools read the BIOS from roms/ (older commits: gbarecomp/) and run
 # build-tools/mgba_run (tools/paths.env).
-SHARED = ("bn6f", "roms", "gbarecomp", "build-tools", "toolchain")
+SHARED = ("bn6f", "roms", "gbarecomp", "build-tools", "toolchain", "build-checkpoints")
 CCACHE_LOG = STATE_DIR / "ccache.tsv"   # every workflow build: when, where, files compiled, ccache hits
 
 

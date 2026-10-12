@@ -28,8 +28,15 @@ ALL_ROUTES: tuple[Route, ...] = (
 )
 
 
+# Long routes: lockstep passes on them but takes minutes, so verify leaves them out; captures replay
+# them in windows from their checkpoints (tools/import_route.py, which also sets the length).
+LONG_ROUTES: tuple[Route, ...] = (
+    _route("beastsp", 220000),   # BN6F BeastSP speedrun rebuilt from video (tools/traces/SESSIONS.md)
+)
+
+
 def route_named(name: RouteName) -> Route:
-    for route in ALL_ROUTES:
+    for route in ALL_ROUTES + LONG_ROUTES:
         if route.name == name:
             return route
     raise ValueError(f"no recorded route named {name!r}")

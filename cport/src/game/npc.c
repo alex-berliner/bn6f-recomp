@@ -1949,6 +1949,8 @@ static inline call_TestEventFlagFromImmediate_result_sub_809F942 call_TestEventF
 
 typedef struct { u32 r3; } call_clearBattleStateIfEvent1708Pending_809F90C_result;
 /* register form: generated wrapper: clearBattleStateIfEvent1708Pending_809F90C has no typed C interface yet */
+/* leftover unused: clearBattleStateIfEvent1708Pending_809F90C's r3 (it becomes sub_809F942's r3, which no
+   caller reads: its contract's outputs are r4 r6) */
 static inline call_clearBattleStateIfEvent1708Pending_809F90C_result call_clearBattleStateIfEvent1708Pending_809F90C(void) {
     GUEST_CALL(clearBattleStateIfEvent1708Pending_809F90C);
     return (call_clearBattleStateIfEvent1708Pending_809F90C_result){ R3 };

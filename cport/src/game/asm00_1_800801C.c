@@ -1072,35 +1072,6 @@ Next battle_initTypeAndFieldFromSettings_800A2F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── pet_getCurNaviChainedLookup_800A4E0 ── */
-/* pet_getCurNaviChainedLookup_800A4E0:
- * If the battle is in mode 1 (special/extra mode), report 0xFF and stop.
- * Otherwise look up a value for the navi currently equipped on the PET and
- * use it as an offset for a second lookup, returning whatever
- * battle_getNaviStatsByte_800A540 leaves in r0/r1. */
-Next pet_getCurNaviChainedLookup_800A4E0(void) {
-    GUEST_CALL(GetBattleMode);
-    if (R0 == 1) {
-        R0 = 0xFF;
-        RETURN_TO_CALLER();
-    }
-
-    GUEST_CALL(GetCurPETNavi);
-    u32 navi = R0;
-
-    /* First lookup: base value for this navi. */
-    R0 = navi;
-    R1 = 0x2D;
-    GUEST_CALL(battle_getNaviStatsByte_800A540);
-
-    /* Second lookup: same navi, offset by the first result. */
-    R0 = navi;
-    R1 = 0x2E + R0;
-    GUEST_CALL(battle_getNaviStatsByte_800A540);
-
-    RETURN_TO_CALLER();
-}
-
 /* ── pet_getCurNaviStatusPair_800A506 ── */
 /* pet_getCurNaviStatusPair_800A506: read the two status bytes of the navi currently in the PET.
  *
@@ -1195,11 +1166,11 @@ static inline u32 call_GetBattleMode(void) {
     return R0;
 }
 
-typedef struct { u32 r0, r3, r7; } call_GetPositiveSignedRNGSecondary_result;
+typedef struct { u32 r0, r7; } call_GetPositiveSignedRNGSecondary_result;
 /* register form: generated wrapper: GetPositiveSignedRNGSecondary has no typed C interface yet */
 static inline call_GetPositiveSignedRNGSecondary_result call_GetPositiveSignedRNGSecondary(void) {
     GUEST_CALL(GetPositiveSignedRNGSecondary);
-    return (call_GetPositiveSignedRNGSecondary_result){ R0, R3, R7 };
+    return (call_GetPositiveSignedRNGSecondary_result){ R0, R7 };
 }
 
 /* register form: generated wrapper: sub_800A672 has no typed C interface yet */

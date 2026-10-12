@@ -54,7 +54,7 @@ from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
 from wf.tools.models import PromptKind, with_prompt
 from wf.tools.sources import models_for
 from wf.tools.work_queue import CAP, LANES, STOP, Lane, only_one_queue, read_ledger
-from wf.routes import ALL_ROUTES, route_named
+from wf.routes import ALL_ROUTES, LONG_ROUTES, route_named
 from wf.status import all_runs, workflow_of_run
 from wf.types import FunctionName, ModelSpec, Rename, Route, RouteName, SnapshotDir, SymbolName
 
@@ -228,7 +228,8 @@ def start_verify(command: VerifyCommand) -> None:
 def start_capture(command: CaptureCommand) -> None:
     run_id, run_dir = new_run("capture")
     start = CaptureState(run_dir=run_dir, functions=command.functions, snapshots=SnapshotDir(SNAPSHOTS),
-                         candidate_routes=routes_named(command.routes), calls_per_function=command.calls)
+                         candidate_routes=routes_named(command.routes) if command.routes else ALL_ROUTES + LONG_ROUTES,
+                         calls_per_function=command.calls)
     print_json(run_capture(start, run_id))
 
 
