@@ -1,0 +1,97 @@
+name: sub_8011268
+address: '0x08011268'
+kind: function
+status: confirmed
+summary: Dispatches a mode index in r0 to one of 24 handler functions via a jump table
+interface: void dispatchMode_8011268(u32 mode /* r0 */, lr); clobbers r0-r3, r4-r12, nzcv; no preserved regs
+details: 'Tiny thunk that reads a 32-bit function pointer from jump table at 0x0801127C
+
+  indexed by (r0 << 2), then tail-calls it via a "mov lr,pc; bx r0" gadget so
+
+  the handler''s return pops sub_8011268''s saved lr and goes straight back to
+
+  the original caller. Because it tail-calls, the handler''s output registers
+
+  (r4-r12 per the contract) are exposed to the caller as this function''s
+
+  outputs. r2 is hard-set to 0 before the call. Table entries are stored with
+
+  the +1 thumb-bit set; nullsub_42/nullsub_43 are no-op slots, and entries
+
+  sub_80112E0..sub_8011366 are the real handlers. The "+1" in the table
+
+  reflects Thumb addresses; 0x0801127C and the literal "off_801127C" base
+
+  are the table itself, not a pointer to it (off_8011278 just reloads the
+
+  same literal).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_8011268
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8011268
+
+    ./wf verify --function sub_8011268 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 277 out of
+    domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8011268
+
+    ./wf verify --function sub_8011268 --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 13 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8011268
+
+    ./wf verify --function sub_8011268 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08011268 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which subsystem owns this mode index? r0 is a raw 0..23 mode, but no game-side field is named here, so the prefix
+  (battle_, script_, etc.) is not yet justified.
+- Why are several table entries (5 of 24) the same nullsub_43 stub? Worth checking if those mode indices are valid-but-unimplemented
+  on this version (Falzar) vs. Gregar.
+- r2=0 is passed to every handler unconditionally; confirm whether any handler actually consumes it as a meaningful
+  argument or if it is just scratch for the dispatch.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

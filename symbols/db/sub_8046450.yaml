@@ -1,0 +1,102 @@
+name: sub_8046450
+address: '0x08046450'
+kind: function
+status: confirmed
+summary: Dispatches an entity to its per-state handler by indexing a table at dword_8046464 with the entity's byte-1
+  state field.
+interface: "void entity_runStateHandler_8046450(void *entity /* r0 */);\n    input:  r0 = entity pointer\n    output:\
+  \ r0, r3, r8, r10, r11, r12 from the dispatched handler\n    clobbered by dispatcher: r1, r2, r4, r5, r6, r9,\
+  \ lr; flags N/Z reflect state<<2, C clear, V undefined\n    preserved: r3, r7 (pushed/popped across the bx dispatch)\n"
+details: 'Loads the handler-table base dword_8046464 (via off_8046460), reads byte 1
+
+  of the entity as the state index, shifts it left by 2, and fetches a
+
+  function pointer from the table. Dispatches to it via `mov lr, pc; bx r1`
+
+  (Thumb+1 entries are how bx expects Thumb code). The handler receives
+
+  r0 = entity and r3 = state*4 (i.e. the table slot offset), with flags set
+
+  by the lsl (N/Z of the shifted index, C always clear). After the handler
+
+  returns, `pop {r3,r7,pc}` undoes the prologue `push {r3,r7,lr}`, so the
+
+  caller''s r3 and r7 are preserved and lr is consumed.
+
+
+  The giant table dword_8046464 is the global entity-kind-by-state dispatch
+
+  table referenced throughout the game: it covers map/objects/NPCs/entities
+
+  (e.g. npc_StateModeDispatcher_8119364, entity_RunStateHandler_8119E40,
+
+  object_dispatchModeHandler_81178D8, objectStateDispatcher_8117D2C,
+
+  submenu_runModeHandler_811BD64), the battle side
+
+  (battle_runObjectStateHandler_811B1EC, battle_dispatchByClass_811C1AC),
+
+  plus a number of zero entries used as sentinels. Because the handler
+
+  address is read at runtime, the dispatch has to be a real call (mov
+
+  lr,pc / bx); a normal BL would lose the dynamic target.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_8046450
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8046450
+
+    ./wf verify --function sub_8046450 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8046450
+
+    ./wf verify --function sub_8046450 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 11 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8046450
+
+    ./wf verify --function sub_8046450 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^08046450 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- Which state indices correspond to entity kinds whose handler slot is 0 (i.e. entries 0x00, and the 0x0 sentinels
+  scattered through dword_8046464)? Calling one would fault via bx r1; are these indices never used, or is the higher
+  layer expected to guard them?
+- Some flagged handler entries like stateDispatcher_3states_8116E10 and battle_dispatchByClass_811C1AC look like
+  inner dispatchers themselves; is byte 1 actually a packed "kind + state" field, where the top nibble is the kind
+  and the bottom nibble routes within the kind?
+- The `.byte 0x0` padding regions before sub_811C08C (47 bytes), sub_811DC34 (8 bytes), and inside the submenu run
+  block look like null slots the game indexes into; their allowed index ranges need mapping to be safe to rename
+  entry points near them.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

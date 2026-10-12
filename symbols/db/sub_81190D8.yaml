@@ -1,0 +1,65 @@
+name: sub_81190D8
+address: '0x081190D8'
+kind: function
+status: confirmed
+summary: Tail-call stub that forwards the sprite object pointer in r5 to sprite_clearScaleCounterAndMakeUnscalable_804668A,
+  resetting the sprite's scale counter and marking it unscalable.
+interface: void sub_81190D8(u32 sprite /* r5 */); // outputs r2 r3; clobbers r0 r1, lr, NZCV; preserves r4 r5 r6
+  r7
+details: 'Bare push {lr}/pop {pc} wrapper around sprite_clearScaleCounterAndMakeUnscalable_804668A. No body of its
+  own: the parent pushes lr only so it can tail-return after the callee, mirroring the C "reset_sprite_scale" wrapper
+  that simply invokes the generator caller and relies on the C-to-guest register convention (R5 → r5 input) to pass
+  the sprite object pointer through. No struct fields are touched in this function itself; the actual mutation of
+  the sprite''s scale state happens inside the callee.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_81190D8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81190D8
+
+    ./wf verify --function sub_81190D8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81190D8
+
+    ./wf verify --function sub_81190D8 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81190D8
+
+    ./wf verify --function sub_81190D8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, fuzz, maps.'
+  reproduce: grep -l '^081190d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles2
+- fuzz
+- maps
+open_questions:
+- What sprite type/struct the pointer in r5 represents (battle sprite, map sprite, menu sprite) — the function is
+  generic and gives no hint.
+- Whether the preserved r5 visible after the call (per the register contract) reflects the unmodified input pointer
+  or an updated sprite pointer set by the callee.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

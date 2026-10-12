@@ -1,0 +1,109 @@
+name: sub_80058D0
+address: '0x080058D0'
+kind: function
+status: confirmed
+summary: Overworld tick that arms a warp when the player stands on a map warp trigger whose "warp seen" event flag
+  is still clear, dispatching to the cutscene matching the warp's type.
+interface: 'void sub_80058D0(struct Toolkit *toolkit /* r10 */);
+
+  // returns in r5 (preserved), with r1..r12 set up for the dispatched cutscene
+
+  // handler (r1 = JumpTable8005948, r2 = this warp''s data entry, r4 = entry
+
+  // offset, r5 = GameState*); r0 untouched on return; clobbers r0,r1,r2,r3,
+
+  // r4,r6,r7,lr and the N/Z/C/V flags; preserves r5.
+
+  '
+details: "Runs from the overworld dispatcher while oGameState_SubsystemIndex == 4\n(the on-map-update gamestate).\
+  \ Bails out early if any of the following\nhold: !sub_809E462 (other update substate not ready),\n!warp_LoadCurrentAndReadUnk10_8005F28\
+  \ (warp state not free to arm),\nTestPETMenuDataFlag(1) (PET menu data flag set), IsScreenFadeActive,\nor IsCutsceneScriptNonNull.\n\
+  Reads the player's coords from the OverworldPlayerObjectPtr +\noOWPlayerObject_Coords and calls checkCoordinateTrigger_8031a7a\
+  \ to get\na 1..15 warp trigger index (stored in r4 == r1). 0 and >0xF mean \"no\ntrigger\"; r4 < 1 also bails.\n\
+  Indexes EVENT_16F0 + warp_index (a \"warp seen\" event flag) via\nTestEventFlag; only fires when the flag is still\
+  \ clear.\nOn a hit, writes into the block at oToolkit_Warp2011bb0_Ptr ->\n{ oWarp2011bb0_Unk_10 = 1, oWarp2011bb0_WarpIndex\
+  \ = warp_index,\noWarp2011bb0_MapGroupTransitionType = 0 }, looks up\noWarpData_Size * (warp_index - 1) into the\
+  \ block's\noWarp2011bb0_WarpDataPtr, reads oWarpData_warpType_02, and dispatches\nvia JumpTable8005948 with the\
+  \ warp's data entry pointer in r2 and the\nGameState self pointer in r5. The jump table entries (the comment block\n\
+  already names them) are:\n  0 gameState_beginEndingSequence_800596C  (fade to black)\n  1 sub_8005990        \
+  \                    (fade to white)\n  2 map_onMapWarpCutscene_80059B4          (jack out, cross-map fade, jack\
+  \ in, walk)\n  3 startInMapWarpCutscene_80059D0         (jack out, auto scroll, jack in, walk)\n  4 sub_80059EC\
+  \                            (jack out)\n  5 sub_8005A00                            (levbus)\n  6 sub_8005A0C\
+  \                            (underground)\n  7 sub_8005A28                            (fade to black + hardcoded\
+  \ SFX, delay A)\n  8 sub_8005A50                            (fade to black + hardcoded SFX, delay B)\nAll jump\
+  \ targets are called Thumb-style via `mov lr,pc; bx r0` with the\njump table base held in r1 and the per-type\
+  \ data entry pointer in r2.\nr4 (the entry's byte offset within the warp-data array) is set up as\ndescribed but\
+  \ not consumed by this function; the comment on the\nLift-C contract notes it must stay live through callees in\
+  \ case any of\nthem read it.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_80058D0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80058D0
+
+    ./wf verify --function sub_80058D0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80058D0
+
+    ./wf verify --function sub_80058D0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80058D0
+
+    ./wf verify --function sub_80058D0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080058d0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What exact fields are oWarp2011bb0_Unk_10 and oWarp2011bb0_MapGroupTransitionType (the warp-armed sentinel and
+  the transition-type override)?
+- Are the oWarpData_warpType_02 values 0..8 exhaustive for the engine, or do unused entries exist past index 8?
+- Does checkCoordinateTrigger_8031a7a return 0 for "no trigger" and a 1-based index otherwise? The `r4 < 1` (not
+  `<= 0`) guard suggests yes, but it isn't documented.
+- What role, if any, r4 (the entry byte offset) plays after dispatch — none of the presently-named handlers are
+  noted to read it, but the original keeps it live.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

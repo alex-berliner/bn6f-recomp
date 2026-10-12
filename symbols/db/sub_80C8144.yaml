@@ -1,0 +1,83 @@
+name: sub_80C8144
+address: '0x080C8144'
+kind: function
+status: confirmed
+summary: Battle object ticks a countdown and, when it expires, advances one panel in its facing direction; on each
+  tick the current panel stays highlighted, the step dust effect/sound play on a successful step, and stepping off
+  the field self-destructs the object.
+interface: "void sub_80C8144(u32 obj /* r5 */)\n  /* in: r5, lr; out: r1, r5, r10 (preserved); clobbers NZCV r0/r2/r3/r4/r7/lr\
+  \ */\n"
+details: "Operates on a `BattleObject` (r5):\n  - First tick of a phase: if `CurPhase` is 0, latches `CurPhase =\
+  \ 4` and\n    seeds `Timer` (halfword) from the low byte of `Param2`.\n  - Every tick: decrements `Timer` (stores\
+  \ the post-decrement value).\n  - If `Timer > 0` after decrement: calls `object_highlightPanel(PanelX,\n    PanelY)`\
+  \ and returns; the object's panel stays highlighted.\n  - If `Timer == 0`: reads facing direction via `object_getFrontDirection`,\n\
+  \    adds it to `PanelX`, then calls `object_isValidPanel(newX, PanelY)`.\n      * Invalid panel (off the field):\
+  \ `object_clearCollisionRegion(obj)`,\n        then writes `CUR_STATE_DESTROY` to\n        `CurStateActionPhaseAndPhaseInitialized`\
+  \ (the destroy state).\n      * Valid panel: `object_setCoordinatesFromPanels(obj)` commits the\n        world\
+  \ position; `object_updateCollisionPanels(obj)` refreshes\n        collision panels; `Timer` is re-seeded from\
+  \ `Param2`; an effect\n        object is spawned via `spawn_t1_0x0_EffectObject(X, Y,\n        0x00200000, 0)`\
+  \ (layer/priority word = `0x20 << 16`); `PlaySoundEffect`\n        plays sound `0x106` (the `7 + 0xFF` step sound)\
+  \ using the spawn\n        wrapper's r2 scratch as the bank; ends by highlighting the panel\n        just landed\
+  \ on.\nQuirks:\n  - `CurPhase` is checked as the gate, so the latched `CurPhase = 4` value\n    never matches\
+  \ 0 again within this routine — the timer/Param2 loop\n    takes over from the second tick onward.\n  - The countdown\
+  \ uses `Param2`'s low byte as a halfword tick count\n    (`strh` from `ldrb`), giving a 0..255 frames-per-step\
+  \ range.\n  - `object_getFrontDirection` is read with no argument; the C wrapper\n    passes `r5` so the function\
+  \ reads the object from the expected slot.\n  - The off-field branch swallows the dust/sound that the valid-step\
+  \ branch\n    plays — there is no effect or SFX on a failed step.\n  - `r4` is preserved by the explicit `push\
+  \ {r4,lr}`/`pop {r4,pc}` despite\n    several callees clobbering it (notably `spawn_t1_0x0_EffectObject`),\n \
+  \   which the verified C spells out via a saved-r4 workaround.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_80C8144
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C8144
+
+    ./wf verify --function sub_80C8144 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C8144
+
+    ./wf verify --function sub_80C8144 --snapshots build-snapshots'
+  result: 20 compared, 0 differed, 76 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C8144
+
+    ./wf verify --function sub_80C8144 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080c8144 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Why is `CurPhase` latched to 4 specifically — is 4 the "stepping" subphase and the host state handler expects
+  to see this value before doing other work?
+- What is the meaning of the `0x00200000` argument to `spawn_t1_0x0_EffectObject` — z-position / drawing priority
+  / layer id?
+- What is the exact sound bank argument (the wrapper threads `spawn_t1_0x0_EffectObject`'s r2 scratch into `PlaySoundEffect`'s
+  r2); is it really the effect's r2, or a coincidence of the spawn wrapper?
+- Is `CUR_STATE_DESTROY` the canonical self-destruct state for an object that walks off the play field, or is there
+  a dedicated "fell off" state elsewhere?
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

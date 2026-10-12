@@ -1,43 +1,89 @@
 name: object_getPanelDataOffset
 address: '0x0800C90A'
 kind: function
-previous_names: []
 status: confirmed
-summary: Long-call thunk to _object_getPanelDataOffset (out of bl range).
-interface: (r0, r1 = arguments, passed through) -> results of _object_getPanelDataOffset; lr ends as 0x0800C912
-  (the thunk's own pop {pc})
-details: push {lr}; ldr r2, =impl+1; mov lr, pc; bx r2; pop {pc}. Callers see lr = 0x0800C912 afterwards, not their
-  own return address. Two model-written readable versions set lr like that and then returned through it; the host
-  difftest rejected them (return target differs), lockstep could not see it because all 78 callers use bl. Not converted.
-evidence:
-- method: assembly-reading
-  date: '2026-10-08'
-  detail: Read the thunk.
-  refs:
-  - bn6f/asm/object.s:2146
-- method: readable-c
-  date: '2026-10-08'
-  detail: Rejected candidates (GLM-5.3, MiniMax M3) kept in tools/convert/rejected/ (not committed).
-  reproduce: 'make -C cport/host
+summary: 'Thumb interworking trampoline that tail-calls the real implementation `_object_getPanelDataOffset` (loaded
+  via `off_800C914: .word _object_getPanelDataOffset+1`) with the caller''s r0 and r1 forwarded unchanged.'
+interface: void object_getPanelDataOffset(u32 r0, u32 r1) /* r0,r1 in; r0-r3, lr, C, V out; N,Z clobbered */
+details: 'Pure interworking trampoline in the form `push {lr}; ldr r2, =callee+1; mov lr, pc; bx r2; pop {pc}`.
 
-    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -n 2000 object_getPanelDataOffset)'
-  result: 'FAIL: return target differs (2000/2000) with the candidate integrated'
+  The ldr loads the Thumb entry word stored at `off_800C914` (i.e. `_object_getPanelDataOffset+1`)
+
+  into r2, `mov lr, pc` then `bx r2` tail-calls the real routine. When that routine returns
+
+  into the trampoline, `pop {pc}` returns directly to the trampoline''s caller. Net effect is a
+
+  tail call: r0, r1 are forwarded from the caller, and r0-r3, lr plus the C/V condition flags
+
+  produced by the callee are passed back to the caller verbatim; N/Z are clobbered by the `bx`
+
+  flag update. No result is copied back explicitly. No game structures are touched directly here;
+
+  all real work and field access happens in `_object_getPanelDataOffset`.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c object_getPanelDataOffset
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_getPanelDataOffset
+
+    ./wf verify --function object_getPanelDataOffset --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_getPanelDataOffset
+
+    ./wf verify --function object_getPanelDataOffset --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_getPanelDataOffset
+
+    ./wf verify --function object_getPanelDataOffset --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0800c90a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/object.c
 coverage:
 - battle
 - battles1
+- battles2
 - battlesweep
 - chips
 - fuzz
 - maps
 - menus2
+- menus3
 - story2
-related:
-- _object_getPanelDataOffset
-open_questions: []
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the meaning of the two u32 arguments (r0, r1) to the underlying routine (panel/object handle and index,
+  or address and count)?
+- What exactly `_object_getPanelDataOffset` returns in r0-r3 (pointer/size pair, offset, etc.)
 sources:
-- Claude Code sessions 2026-10-07/08 (recomp repo history)
-changes:
-- date: '2026-10-08'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 13c00f01
-  tool: tools/symdoc.py
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

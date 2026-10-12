@@ -1,0 +1,82 @@
+name: sub_8116924
+address: '0x08116924'
+kind: function
+status: confirmed
+summary: Per-frame dispatcher for a pet-menu object, calling one of three state handlers (init/update/other) based
+  on the state byte at object+8.
+interface: 'void sub_8116924(u32 /* r5 */ petMenu_object); // out: r2,r3,r5,r10,r11 from handler; flags from handler'
+details: "Trampoline: pushes only lr, reads the state byte from [r5+8] (the\npet-menu object's state field), uses\
+  \ it as an index into a 3-entry\nhandler table at off_8116938, loads the handler address, sets lr=pc\nand `bx\
+  \ r0` into it. The handler therefore returns directly to\nsub_8116924's caller. Table entries (with Thumb bit\
+  \ set, +1):\n  - 0: petMenu_initSprite_8116944\n  - 1: petMenu_updateObject_81169B0\n  - 2: sub_8116A3C\nThe handler\
+  \ is entered with r0 = its own address (r0 still holds the\ntable entry at the time of `bx r0`) and r1 = the state\
+  \ byte. Its\noutputs r2/r3/r5/r10/r11 and the condition codes are passed\nunfiltered to the caller — there is\
+  \ no typed wrapper, so this is a\nraw jump-table dispatch through a code address. clobbers\nr0/r1/r4/r6/r7/r8/r9/r12\
+  \ are entirely the handler's responsibility.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_8116924
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8116924
+
+    ./wf verify --function sub_8116924 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8116924
+
+    ./wf verify --function sub_8116924 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 18 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8116924
+
+    ./wf verify --function sub_8116924 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08116924 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the lifetime/owner of the pet-menu object pointed to by r5 (is it a per-frame scratch struct, or a long-lived
+  entity created when the pet menu opens)?
+- Is entry 2 (sub_8116A3C) a teardown/exit handler, or another update variant?
+- How the caller's preserved-output contract (r5 must round-trip unchanged) is enforced across the dispatch — likely
+  the caller does not actually depend on r5 surviving, or the handler is documented to leave it alone.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

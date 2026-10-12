@@ -1,0 +1,74 @@
+name: sub_8046356
+address: '0x08046356'
+kind: function
+status: confirmed
+summary: Advances a per-step "column-reveal" bitmap effect (byte_200A220) one column, OR-ing a pixel pattern into
+  12 row-words of a bitmap and bumping its step counter.
+interface: void bitmapRevealStep_8046356(void); /* pushes caller r0, returns caller_r0+1 in r0; clobbers r1,r2,r3,r4,r6,r7;
+  C/V set by the final ADD r0,#1, N/Z forced from r3=1 */
+details: "Operates on a 5-field state block rooted at A_byte_200A220:\n  +0x00 u8   row stride (in bytes)\n  +0x01\
+  \ u8   monotonic step counter (incremented every call)\n  +0x1C u32  packed cursor = stride * 112 * counter  (>>5\
+  \ = word index, &0x1F = bit index)\n  +0x20 u32  base pointer of the bitmap row words\n  +0x38 u32  pixel mask\
+  \ for the column being drawn\n\nPer call: splits the packed cursor into word index and bit offset; forms a mask\
+  \ with its low `bit` bits cleared ((mask >> bit) << bit); ORs that mask into 12 row words spaced `stride` bytes\
+  \ apart. Stores are skipped entirely when bit == 0 (the `tst r6,r6 / ble` path). Then bumps +0x01, and rewrites\
+  \ +0x1C as `stride * 14 * 8 * counter` (= stride * 112 * counter), so the next call lands 7 columns further in\
+  \ (14 bytes = 14*8 bits).\n\nQuirks: the prologue pushes caller r0 and the matching pop+`add r0,#1` just before\
+  \ `mov pc,lr` makes the function appear to \"return caller_r0+1\" even though it has no real return value. r6\
+  \ keeps the bit offset, r7 keeps the literal 14, r4 keeps the new counter for the caller. Used to animate a screen-wide\
+  \ bitmap being revealed one column at a time (common transition graphic).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_8046356
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8046356
+
+    ./wf verify --function sub_8046356 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8046356
+
+    ./wf verify --function sub_8046356 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8046356
+
+    ./wf verify --function sub_8046356 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^08046356 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- Which bitmap (full screen vs. window) and which call site actually invokes this stepper — no caller evidence in
+  this snippet.
+- Why the stores are skipped when bit == 0 (intentional no-op on word boundaries vs. bug preserved from the original).
+- 'Exact dimensions of the bitmap: stride is a byte from A_byte_200A220 and the row count is hard-coded to 12 —
+  probably a 12-row tile-strip or 96-pixel-tall surface.'
+- The factor 14*8 = 112 columns/step is not 32 (one full word per step), so the cursor advances two words per call;
+  whether that 14 stride comes from another state field somewhere or is a fixed constant of this effect is unclear.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

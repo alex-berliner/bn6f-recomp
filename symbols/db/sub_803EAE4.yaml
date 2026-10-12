@@ -1,0 +1,80 @@
+name: sub_803EAE4
+address: '0x0803EAE4'
+kind: function
+status: confirmed
+summary: Dispatches based on the mode byte at the start of "eStruct200BC30" to one of three handlers (mode 0/1/2
+  -> sub_803EB04/sub_803EB14/sub_803EB60), forwarding the handler's full register/flag result to the caller and
+  only restoring r4-r7.
+interface: 'void Next_sub_803EAE4(void /* r4,r5,r6,r7 caller-saved; r0,r1,r2,r3,r8,r9,r10,r11,r12,lr,N,Z,C,V from
+  caller */);
+
+  // Returns whatever the selected handler returns in r0-r3, r8-r12, lr and the flags.
+
+  // On entry: r5 = eStruct200BC30 (reloaded inside), the chosen handler sees r5->mode struct, r1 = off_803EAF8
+  table base, r0 = table[mode]. Only r4-r7 are popped back on exit.
+
+  '
+details: 'Reads a single byte from the start of the global struct eStruct200BC30 (off_803EBF8 -> "eStruct200BC30")
+  and uses it as a byte offset into a 3-entry Thumb-ARM target table at off_803EAF8 (entries: sub_803EB04+1, sub_803EB14+1,
+  sub_803EB60+1). The selected entry is invoked with "mov lr,pc; bx r0" — a Thumb switch with LR=PC — so the handler
+  is entered in Thumb even though this function uses ARM "bx" with Thumb bit set. r1 is left holding the table base
+  off_803EAF8 and r5 is left pointing at eStruct200BC30 for the handler. No bounds check on the mode byte (a value
+  of 3+ would read past the 12-byte table). The trailing "pop {r4-r7,pc}" only restores r4-r7 from the saved set;
+  r0-r3, r8-r12, lr and the NZCV flags flow straight through from the handler, so the handler''s "return value"
+  is literally this function''s return value. Struct touched: eStruct200BC30 byte 0 (mode/state). Table offsets:
+  off_803EAF8 (jump table), off_803EBF8 (eStruct200BC30 pointer). Caller/callee convention quirk: because the target
+  was loaded with thumb bit set, the +1 offsets in the table are required so bx enters ARM — i.e. sub_803EB04/sub_803EB14/sub_803EB60
+  are ARM functions despite the thumb_func_end label on this dispatcher.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_803EAE4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803EAE4
+
+    ./wf verify --function sub_803EAE4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803EAE4
+
+    ./wf verify --function sub_803EAE4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803EAE4
+
+    ./wf verify --function sub_803EAE4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0803eae4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- menus3
+open_questions:
+- What is eStruct200BC30 and which subsystem owns it? (likely an engine/effect struct, given the generic 3-state
+  handler fan-out)
+- What do the three handlers correspond to in game terms (idle/active/cancel, show/update/tick, etc.)?
+- Is the lack of bounds checking intentional (only modes 0-2 ever written) or a latent issue?
+- Does the "r4-r7 caller-saved" contract imply the handlers own and clobber r0-r3, r8-r12, lr and the flags freely?
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

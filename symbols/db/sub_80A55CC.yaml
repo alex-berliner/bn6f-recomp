@@ -1,0 +1,61 @@
+name: sub_80A55CC
+address: '0x080A55CC'
+kind: function
+status: confirmed
+summary: Thin wrapper that frees an overworld map object by index (r5) via FreeOverworldMapObject, forwarding its
+  r2/r5 outputs to the caller.
+interface: 'void freeMapObject_80A55CC(U in: r5 object_index; out: r2, r5; clobbers: nzcv r0 r1 r3 lr)'
+details: 'Single-call tail wrapper: pushes lr, calls FreeOverworldMapObject with r5 as the object identifier, then
+  returns via pop {pc}. All real work lives in FreeOverworldMapObject; this function only forwards the caller''s
+  r5 input and returns the callee''s r2/r5 (r5 preserved through). Used wherever an overworld map object handle
+  needs to be released.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_80A55CC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A55CC
+
+    ./wf verify --function sub_80A55CC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A55CC
+
+    ./wf verify --function sub_80A55CC --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A55CC
+
+    ./wf verify --function sub_80A55CC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story5, story6.'
+  reproduce: grep -l '^080a55cc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm29.c
+coverage:
+- story5
+- story6
+open_questions:
+- What the r2 return value from FreeOverworldMapObject encodes (free-slot index? status code? count?) is not derivable
+  here.
+- Whether the r5 preserved-through semantic implies callers pass an object index they need kept for follow-up calls.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

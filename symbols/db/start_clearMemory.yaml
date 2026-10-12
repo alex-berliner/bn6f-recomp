@@ -1,0 +1,94 @@
+name: start_clearMemory
+address: '0x080001C4'
+kind: function
+status: confirmed
+summary: Zero-fills a word-aligned memory region by walking backwards in 4-byte steps (the "start" helper used during
+  boot/early init).
+interface: void start_clearMemory(u32 dst, u32 byte_count /* r0, r1 */); /* clobbers r1, r2, NZCV; Z set on return
+  */
+details: 'Sits at the very start of ROM (0x080001C4), so it is one of the earliest
+
+  runtime helpers and is reused for any later word-aligned zero fill. The
+
+  loop decrements r1 by 4 each iteration and stores 0 at [r0 + r1], i.e. it
+
+  walks the buffer from end to start. The "straw" pointer that decrements
+
+  first is what makes the backward walk happen with a single register.
+
+  Quirks: byte_count must be a multiple of 4 (no tail handling, no alignment
+
+  fixup); zero-sized input leaves the loop condition C-set/Z-clear on the
+
+  subs, but the bx is taken immediately so callers must not rely on the
+
+  final flags beyond Z being set on the normal-return path. r1 is consumed
+
+  as the running index, and r2 is hard-coded to 0 as the store value.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/start.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c start_clearMemory
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function start_clearMemory
+
+    ./wf verify --function start_clearMemory --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 293 out of
+    domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function start_clearMemory
+
+    ./wf verify --function start_clearMemory --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 19 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function start_clearMemory
+
+    ./wf verify --function start_clearMemory --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, fuzz, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080001c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/start.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/start.c
+coverage:
+- battle
+- battles1
+- battles2
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Is the "start_" prefix meant to indicate it is the first executable code after the ROM header (i.e. jump-from-0x08000000
+  boot code) or is it a generic subsystem tag? Its placement right after the header suggests the former, which would
+  justify keeping some form of "start" in the name.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

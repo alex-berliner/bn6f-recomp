@@ -1,0 +1,97 @@
+name: decompAndCopyMapTiles_8030472
+address: '0x08030472'
+kind: function
+status: confirmed
+summary: Decompresses the current overworld map's BG tilesets and tilemap, installs them in VRAM, and dispatches
+  the map state's post-load callback.
+interface: void loadMapTiles_8030472(void)
+details: "Reads the per-map tile-loading state at A_eMapTilesState200be70, then performs four steps:\n\n1. BG palette:\
+  \ copies 0x1A0 bytes (13 << 5) from\n   (PalettePtr + 4) into the work-RAM palette buffer at A_palette_3001960\n\
+  \   via CopyByEightWords (the +4 skips a 4-byte palette header).\n\n2. Two BG tilesets (BG1 and BG2): for each\
+  \ entry in the tileset list\n   pointed to by oMapTilesState200be70_TilesetPtr, takes the\n   oMapBGTilesetHeader_CompressedDataOffset\
+  \ (a relative offset added\n   to the tileset list base), LZ77-decompresses it into the scratch\n   buffer at\
+  \ A_eDecompBuffer2013A00 via SWI_LZ77UnCompReadNormalWrite8bit,\n   then copies WordCount << 2 bytes from that\
+  \ buffer to\n   oMapBGTilesetHeader_VRAMOffset + 0x06000000 (the BG VRAM base).\n   Loops twice (i = 0..1), stepping\
+  \ by oMapBGTilesetHeader_Size.\n\n3. BG tilemap: copies the plain oMapBGTilemapHeader_Size header of\n   the map's\
+  \ tilemap (via oMapTilesState200be70_MapBGDescriptorPtr ->\n   oMapBGDescriptor_TilemapPtr) into A_eDecompBuffer2013A00\
+  \ with\n   CopyWords, then LZ77-decompresses the tile entries that follow\n   the header (tilemap + oMapBGTilemapHeader_Size)\
+  \ into\n   A_eDecompBuffer2013A00 + oMapBGTilemapHeader_Size via\n   SWI_LZ77UnCompReadNormalWrite8bit.\n\n4.\
+  \ Calls the function pointer stored at oMapTilesState200be70_UnkCallback_1c\n   using a \"mov lr, pc; bx r0\"\
+  \ trick (so the callback sees the caller's\n   return address). On entry to the callback r0 is the callback's\
+  \ own\n   address and r1-r3 are the leftovers of the last LZ77 SWI; r5 holds\n   the state pointer, r6 the tileset\
+  \ list base, and r7 the end of the\n   tileset list (r6/r7 are used as a register-form arg pair).\n\nThe function\
+  \ preserves r4-r7 and r8/r9/r12 across the callback by\nsaving them to the stack on entry and restoring them on\
+  \ exit.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c decompAndCopyMapTiles_8030472
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function decompAndCopyMapTiles_8030472
+
+    ./wf verify --function decompAndCopyMapTiles_8030472 --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function decompAndCopyMapTiles_8030472
+
+    ./wf verify --function decompAndCopyMapTiles_8030472 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function decompAndCopyMapTiles_8030472
+
+    ./wf verify --function decompAndCopyMapTiles_8030472 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08030472 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does the UnkCallback_1c routine actually do (likely applies the tilemap and registers BG layers)? Its signature
+  and purpose are not yet known.
+- Is the +4 skip on the palette pointer a fixed header size, or does it depend on something in the palette data?
+- Does the +4 bytes on the palette source relate to a 16-bit BG mode flag vs 4bpp/8bpp selector? The copy length
+  0x1A0 is 13 palettes (13 * 16 * 2 bytes), which is what a single 256-color BG bank would hold, but two BG tilesets
+  are loaded so it is unclear which bank this is.
+- Why is the first tilemap copy a raw CopyWords rather than an LZ77 decompression? Likely the header is intentionally
+  uncompressed so the game can read parameters (size, mode, etc.) from it before decompressing the rest.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c

@@ -1,0 +1,93 @@
+name: chatbox_8040C44
+address: '0x08040C44'
+kind: function
+status: confirmed
+summary: 'Per-character chatbox dispatcher: classifies the current output byte via the 0x10 control-code mask and
+  steps the text-advance state machine (auto-advance flag + next-state byte at +0x1F0).'
+interface: 'void chatbox_advanceState_8040C44(u32 in_r0, u32 in_r1 /* unused */, u32 r4, u32 r5 /* chatbox state
+  */)
+
+  // returns: in_r0=in_r0, r1=in_r1, r2=0x1F0; r4 preserved; r3 = old [r5+0x1F0] on control path, else left from
+  chatbox_maskFlags_3e call. Final flags: control path CMP([r5+0x1F0],#3); printable path C/V from CMP(r1,0x5D),
+  N/Z from MOV r1,#1.
+
+  '
+details: "Calls chatbox_maskFlags_3e(r0=0x10, r5) to refresh the control-character\nmask state. The pending character\
+  \ class comes from that call's Z and\nreturned r1:\n  * control (Z set; r1 == 0; r1 == 0x25; signed r1 in [0x40,0x59);\n\
+  \    signed r1 >= 0x5D):\n    - CB_ADVANCE (+0x1F2) := 0\n    - old_next := [r5+0x1F0]; if old_next != 3 (still\
+  \ running) then\n      [r5+0x1F0] := (cur == 2 ? 1 : cur); final CMP is on old_next vs 3.\n  * printable (signed\
+  \ r1 < 0x40 excluding 0/0x25, or signed r1 in\n    [0x5A,0x5C]):\n    - CB_ADVANCE := 1; CB_NEXT_STATE := CB_CUR_STATE.\n\
+  Touched struct fields on the chatbox state at r5:\n  +0x1F2 (CB_ADVANCE,  auto-advance flag)\n  +0x1F1 (CB_CUR_STATE,\
+  \ current text-advance state)\n  +0x1F0 (CB_NEXT_STATE, next text-advance state)\nPreserves r0/r1/r4/r5 across\
+  \ the call; r2 ends holding 0x1F0 (the final\nliteral loaded on both paths).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c chatbox_8040C44
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_8040C44
+
+    ./wf verify --function chatbox_8040C44 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261012-115808-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_8040C44
+
+    ./wf verify --function chatbox_8040C44 --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261012-115808-verify-4)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_8040C44
+
+    ./wf verify --function chatbox_8040C44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08040c44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp a2b4e2c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Who calls this and from where in the per-character pipeline - is it the text-output pump, the control-code dispatcher,
+  or the auto-advance ticker?
+- Exact semantics of CB_CUR_STATE (1/2/3 = ?, 3 = "finished") and how 1/2 are typically entered.
+- Why mask 0x10 specifically (vs. other control-code bits handled by chatbox_maskFlags_3e).
+- Significance of the signed-character range windows (0x40-0x58 control, 0x59 boundary, 0x5A-0x5C printable, 0x5D+
+  control) - likely a JP character-set split but worth confirming.
+sources:
+- tools/wf run convert-20261012-115808
+- recomp a2b4e2c
