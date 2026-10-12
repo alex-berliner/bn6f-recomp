@@ -1,0 +1,73 @@
+name: sub_803C0BE
+address: '0x0803C0BE'
+kind: function
+status: hypothesis
+summary: Walks a 2-byte-per-entry list to its first 0xE6 terminator and, if that terminator lies past the used range,
+  rewrites trailing free slots (0x00 or 0xE5 entries) into 0xE5 0xE5 pairs.
+interface: "void sub_803C0BE(u32 countOffset /*r0*/, u32 listOffset /*r1*/,\n                 struct* base /*r5*/,\
+  \ ...);\n/* out: r1 = address of the last 0xE5/0xE5 slot written (or original listOffset\n   if nothing was written);\
+  \ r3 = base + listOffset;\n   flags NZ/C/V set from terminator/entry byte compares; r4-r7 preserved. */\n"
+details: "Operates on a record at r5 that contains:\n  - r5+r0: a single byte giving the entry count\n  - r5+r1:\
+  \ an entry list, two bytes per entry, terminated by the sentinel 0xE6\nFree entries in this list are either 0x00\
+  \ (truly empty) or 0xE5; the function\nnormalises the tail of the list to the 0xE5 0xE5 pair, walking backward\
+  \ from\nthe first 0xE6 terminator only if it lies at or beyond (count*2) bytes into\nthe list. Stops the moment\
+  \ it hits an entry that is neither 0x00 nor 0xE5\n(an occupied slot) or once the byte index underflows below (count*2).\n\
+  Uses 0xE5 as both the free-entry marker and the terminator candidate; the\n0xE6 byte is the real end-of-list marker\
+  \ and is left untouched. r3 is loaded\nas r5+r1 once and reused; r1 is only clobbered on a write (it returns the\n\
+  address of the most recent rewritten slot, otherwise the incoming listOffset).\n\nRegister form, old prompt; queued\
+  \ for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261012-001936);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 24' --file inbox_farm_old_24.c
+    sub_803C0BE
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803C0BE
+
+    ./wf verify --function sub_803C0BE --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 260 out of
+    domain (verify run convert-20261012-001936-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803C0BE
+
+    ./wf verify --function sub_803C0BE --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 38 out of domain (verify run convert-20261012-001936-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803C0BE
+
+    ./wf verify --function sub_803C0BE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-001936-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, maps.'
+  reproduce: grep -l '^0803c0be ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 41fc6dc
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+open_questions:
+- Which record type is addressed by r5 — sprite/animation/script table — and the meaning of 0xE5 vs 0x00 free slots
+  (one may mean "available now", the other "released / pending reclaim").
+- Why the function only acts when the 0xE6 terminator is at or past the used range; whether a higher layer is responsible
+  for appending 0xE6 during grow/realloc and this routine just catches up the trailing free entries to a consistent
+  0xE5/0xE5 form.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-001936
+- recomp 41fc6dc
