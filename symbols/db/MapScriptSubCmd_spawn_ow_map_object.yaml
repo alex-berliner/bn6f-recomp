@@ -1,0 +1,73 @@
+name: MapScriptSubCmd_spawn_ow_map_object
+address: '0x08037E4C'
+kind: function
+status: confirmed
+summary: Map-script subcommand that spawns an overworld map object and stores its pointer in one of the cutscene
+  state's 16 owMapObjectPtrs slots.
+interface: "/* in:  r4 = slot index (low 4 bits), r5 = cutscene state, r7 = script command ptr\n * out: nz, r1/r2\
+  \ (left as SpawnOverworldMapObject left them), r4 = word@+9,\n *      r5 = cutscene state, r7 = command + 0xd\n\
+  \ * clobbers: r0, r3, r6, lr; flags c/v set by `mov r0, #1` (nz)\n * preserved: r5 across the call */\nvoid subcmd_spawnOwMapObject_8037E4C(void);\n"
+details: "- Cuts r4 to 0xF, multiplies by 4, then adds the cutscene-state's\n  `oCutsceneState_owMapObjectPtrs_44`\
+  \ base to get a slot address kept in r6.\n- Reads the command bytes via the script reader helpers:\n    r6/+2\
+  \        byte       object type              (ReadMapScriptByte  -> r0)\n    r6/+3,+5,+7  halfwords  packed into\
+  \ r1/r2/r3 <<16 (ReadMapScriptHalfword x3)\n    r6/+9        word       r4 parameter             (ReadMapScriptWord)\n\
+  - Calls SpawnOverworldMapObject with type in r0, the three halfword args\n  in the top halves of r1/r2/r3, the\
+  \ word param in r4, the slot address\n  in r6, and the script command in r7. The new object's pointer is\n  returned\
+  \ in r5.\n- Stores the r5 pointer back at the slot address, advancing r7 by 0xd\n  (13) so the interpreter skips\
+  \ past this command.\n- Note: the original does `str r5, [r6]` after bl; r5 in the disassembly\n  still holds\
+  \ the new object pointer, not the cutscene state. The\n  readable C restructures this so r5 represents the cutscene\
+  \ state\n  again on return, matching the lifter's reported preserved-register\n  contract.\n- Leaves r1/r2 as\
+  \ whatever SpawnOverworldMapObject last set them; the\n  interpreter does not rely on them here.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261011-233518); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 87' --file inbox_farm_87.c MapScriptSubCmd_spawn_ow_map_object
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 245 out of
+    domain (verify run convert-20261011-233518-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object --snapshots build-snapshots'
+  result: 30 compared, 0 differed, 66 out of domain (verify run convert-20261011-233518-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptSubCmd_spawn_ow_map_object
+
+    ./wf verify --function MapScriptSubCmd_spawn_ow_map_object --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233518-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus2, story4.'
+  reproduce: grep -l '^08037e4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d72e56b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- menus2
+- story4
+open_questions:
+- The exact struct meaning of `oCutsceneState_owMapObjectPtrs_44` (16 entries, one per low-nibble slot) is inferred
+  from the (slot & 0xF)*4 stride; the field is named for offset 0x44 in the cutscene state.
+- SpawnOverworldMapObject's argument meaning (the three halfword args and the trailing word) is not yet documented
+  in this database.
+- r1/r2 on exit carry SpawnOverworldMapObject's r1/r2 verbatim; whether the interpreter ever consumes them from
+  this subcommand is unclear.
+sources:
+- tools/wf run convert-20261011-233518
+- recomp d72e56b

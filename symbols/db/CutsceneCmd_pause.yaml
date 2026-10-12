@@ -1,0 +1,89 @@
+name: CutsceneCmd_pause
+address: '0x080376F4'
+kind: function
+status: confirmed
+summary: Cutscene script opcode that pauses the active script for a configurable number of interpreter ticks.
+interface: void CutsceneCmd_pause(u8 *cutsceneState /* r5 */, u32 scriptPtr /* r7 */, u32 duration /* r4, in/out
+  */)
+details: "Implements the \"pause\" command of the cutscene script interpreter (one of the per-script\n3-byte opcodes).\
+  \ Behavior:\n  * On the first call after a script starts this command it raises\n    CUTSCENE_FLAG_SCRIPT_1_PAUSED\
+  \ for the current script slot\n    (oCutsceneState_WhichCutsceneScript + CUTSCENE_FLAG_SCRIPT_1_PAUSED), then\
+  \ reads\n    the length operand through ReadMapScriptByte: with selector 1 it gets a byte that\n    is either\
+  \ an index into the cutscene state (used as oCutsceneState_*+index) or\n    0xFF, in which case selector 2 fetches\
+  \ the inline immediate following the command.\n    The chosen length is stored as the script's pause timer\n \
+  \   (oCutsceneState_WhichCutsceneScript + oCutsceneState_CutsceneScript1PauseTimer).\n  * On every tick (including\
+  \ the arming tick) it decrements that timer; while it\n    remains >= 0 the cutscene keeps the script paused and\
+  \ the read pointer (r7) is\n    left alone.\n  * When the timer underflows (was 0 before the decrement) it clears\n\
+  \    CUTSCENE_FLAG_SCRIPT_1_PAUSED, advances r7 by 3 to skip the pause command, and\n    returns nz=1 so the interpreter\
+  \ moves to the next opcode; otherwise it returns\n    nz=0 to keep the script halted.\nOutput registers per the\
+  \ contract: r1 = the per-script timer offset, r4 = the duration\nthat was loaded (carried across ticks), r7 =\
+  \ the (possibly advanced) script pointer;\nNZ reflects whether the pause expired.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261011-233518); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 87' --file inbox_farm_87.c CutsceneCmd_pause
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_pause
+
+    ./wf verify --function CutsceneCmd_pause --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 241 out
+    of domain (verify run convert-20261011-233518-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_pause
+
+    ./wf verify --function CutsceneCmd_pause --snapshots build-snapshots'
+  result: 20 compared, 0 differed, 76 out of domain (verify run convert-20261011-233518-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_pause
+
+    ./wf verify --function CutsceneCmd_pause --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233518-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080376f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d72e56b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which cutscene-state field the 0xFF escape actually indexes; the assembly treats any non-0xFF operand byte as
+  a direct offset into the cutscene state (r5+r4) rather than an oCutsceneState_* enum, so the meaning depends on
+  the table of values scripted authors use.
+- The exact layout of oCutsceneState_CutsceneScript1PauseTimer and the matching "script 2" timer for slot 1; the
+  code only ever shows the script-1 variants being touched.
+sources:
+- tools/wf run convert-20261011-233518
+- recomp d72e56b

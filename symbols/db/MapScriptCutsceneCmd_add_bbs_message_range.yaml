@@ -1,0 +1,73 @@
+name: MapScriptCutsceneCmd_add_bbs_message_range
+address: '0x080382BA'
+kind: function
+status: confirmed
+summary: Map-script cutscene opcode handler that queues a consecutive run of BBS (bulletin board) messages onto
+  the pending-board mailbox and advances the script cursor by 4 bytes.
+interface: void mapScriptCutsceneCmd_addBBSMessageRange_80382BA(u32* /* inout r7 */ script_cursor)
+details: "Implements one opcode in the map-script/cutscene byte stream. Layout of the command body pointed to by\
+  \ the script cursor (r7):\n  +0 : opcode byte (this handler)\n  +1 : u16 first message id (little-endian)\n  +3\
+  \ : u8 repeat count\nThe handler reads the u16 first id by calling ReadMapScriptHalfword with r6 = 1, then reads\
+  \ the u8 by calling ReadMapScriptByte with r0 = the halfword just read and r6 = 3 (so the helper can index off\
+  \ the same command). The count value comes back in r4 and the loop start id in r0; it then loops calling reqBBS_addBBSMessage_813e5dc\
+  \ with each id from `start` to `start + count - 1`, incrementing r6 and decrementing r4. The loop uses a do/while\
+  \ tested with `sub r4, #1 / bgt`, so a count of 0 still queues exactly one message and leaves r4 = -1 on exit.\
+  \ After the loop it bumps r7 by 4 (whole command size), sets r0 = 1 (success / opcode handled, preserving NZ for\
+  \ the dispatcher), and returns. r1 and r2 on exit are whatever the final reqBBS_addBBSMessage_813e5dc left in\
+  \ them (not explicitly set here). r3 is preserved across the call.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261011-233518); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 87' --file inbox_farm_87.c MapScriptCutsceneCmd_add_bbs_message_range
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_add_bbs_message_range
+
+    ./wf verify --function MapScriptCutsceneCmd_add_bbs_message_range --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-233518-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_add_bbs_message_range
+
+    ./wf verify --function MapScriptCutsceneCmd_add_bbs_message_range --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 88 out of domain (verify run convert-20261011-233518-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_add_bbs_message_range
+
+    ./wf verify --function MapScriptCutsceneCmd_add_bbs_message_range --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233518-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, menus2, wander.'
+  reproduce: grep -l '^080382ba ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d72e56b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- menus2
+- wander
+related:
+- reqBBS_addBBSMessage_813e5dc
+open_questions:
+- Which specific BBS mailbox / "pending" buffer reqBBS_addBBSMessage_813e5dc appends to, and how the player is expected
+  to retrieve those messages afterwards.
+- Whether the body byte at offset 0 is actually used by this handler or only consumed by the dispatcher that called
+  it; the disassembly only reads offsets 1 and 3.
+- Whether a count of 0 is intentional (one-shot "add this single message" form) or just a quirk of the do-while
+  structure.
+sources:
+- tools/wf run convert-20261011-233518
+- recomp d72e56b

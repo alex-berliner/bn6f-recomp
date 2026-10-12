@@ -1,0 +1,113 @@
+name: CutsceneCmd_move_player_in_facing_direction
+address: '0x08037C44'
+kind: function
+status: confirmed
+summary: Cutscene opcode that glides the overworld player in its current facing direction for a fixed number of
+  frames.
+interface: 'void CutsceneCmd_move_player_in_facing_direction(u32 r5 cutsceneState, u32 r7 scriptPos, u32 r4 carryIn)
+  /* out: r0 in NZ (1=finished/0 wait), r4 = step-table addr 0x8037CB4 while gliding; r1, r2 untouched */'
+details: 'A 5-byte cutscene-script command: glide the overworld player along the
+
+  direction it is currently facing. On the first frame the player''s facing
+
+  is sampled via GetOWPlayerFacingDirection and cutscene flag 8
+
+  (CUTSCENE_FLAG_8) is raised to mark the glide active. A duration is read
+
+  as parameter 1: if it is 0xFF the duration comes from the immediate byte
+
+  in parameter 2, otherwise it is a 1-based offset into the cutscene-state
+
+  struct (ldrb r4, [r5, r4]) and is stored in
+
+  oCutsceneState_OWPlayerCoordSpecialTimer. Every frame the per-frame
+
+  signed speed (parameter 3, a halfword) is multiplied by the (dx, dy)
+
+  pair for the current facing from the 16-byte step table at byte_8037CB4
+
+  (0x10 = full step, 0x08 = diagonal half step, negatives go up/left) and
+
+  added to the player''s special overworld coords via
+
+  owPlayer_offsetS200ace0Coords_809e1fa (third arg hardcoded 0). After
+
+  each frame the duration counter is decremented; while positive the
+
+  command reports "waiting" (r0 = 0). When it reaches zero, cutscene flag
+
+  8 is cleared, r7 is advanced by 5 to skip the entire command and r0 = 1
+
+  reports completion. While idle (no cutscene script running, byte at
+
+  +oCutsceneState_WhichCutsceneScript == 0) the command just returns 0
+
+  without touching anything. Once the glide has started, r4 is
+
+  overwritten with the step-table address 0x8037CB4 so the carry-through value
+
+  no longer means what it meant on entry.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261011-233518); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 87' --file inbox_farm_87.c CutsceneCmd_move_player_in_facing_direction
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_move_player_in_facing_direction
+
+    ./wf verify --function CutsceneCmd_move_player_in_facing_direction --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-233518-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_move_player_in_facing_direction
+
+    ./wf verify --function CutsceneCmd_move_player_in_facing_direction --snapshots build-snapshots'
+  result: 43 compared, 0 differed, 53 out of domain (verify run convert-20261011-233518-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_move_player_in_facing_direction
+
+    ./wf verify --function CutsceneCmd_move_player_in_facing_direction --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233518-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, fuzz, maps, menus2, story1, story2, story3, story4, story5, story8, story9.'
+  reproduce: grep -l '^08037c44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d72e56b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story8
+- story9
+open_questions:
+- Exact semantics of the per-step halfword speed units (the << 8 shift suggests the raw value is a sub-step fraction
+  that gets promoted to a whole-pixel delta per frame).
+- Why an immediate 0xFF byte is the sentinel for "use the next byte" rather than reading the parameter index from
+  a different slot.
+- Whether CUTSCENE_FLAG_8 / oCutsceneState_OWPlayerCoordSpecialTimer have broader uses outside the glide command
+  or are dedicated to it.
+sources:
+- tools/wf run convert-20261011-233518
+- recomp d72e56b

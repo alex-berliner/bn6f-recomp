@@ -1,0 +1,87 @@
+name: StartCutscene
+address: '0x08036E90'
+kind: function
+status: confirmed
+summary: 'Initializes the cutscene state in the Toolkit: wipes it, sets the new cutscene script and its param, parks
+  the three secondary script slots on a dummy script, and installs the cutscene text archive and the default Unk_34
+  table.'
+interface: void StartCutscene(const CutsceneScript *script /* r0 */, u32 param /* r1 */, Toolkit *toolkit /* r10
+  */) -> u32 default_Unk_34_table /* r0 */; r1 preserved; r2/r3/flags from ZeroFillByWord
+details: "Retrieves the CutsceneState pointer from the Toolkit (r10 + oToolkit_CutsceneStatePtr, the global at s_02011C50).\n\
+  Zero-fills the entire CutsceneState struct via ZeroFillByWord(state, oCutsceneState_Size).\nThen lays in the new\
+  \ cutscene:\n  - CutsceneScriptPos and originalCutsceneScriptPos_40 = the incoming script pointer.\n  - Unk_04\
+  \ = the caller-supplied param.\n  - CutsceneScriptPos2 / CutsceneScriptPos3 / CutsceneScriptPos4 = DummyCutsceneScript\
+  \ (the no-op/terminator script the runner falls back to when a slot is idle).\n  - TextArchivePtr = eTextScript202DA04,\
+  \ the cutscene text script archive.\n  - Unk_34 = off_8036EC4, a small table that begins with 0x04000000 (VRAM/DISPCNT-shaped\
+  \ value) followed by a run of zero bytes -- looks like a default display/blending control block.\nReturns off_8036EC4\
+  \ in r0, matching the value just stored at Unk_34, so the caller can pick up the same table without re-reading\
+  \ the state struct.\nr1 is preserved across the ZeroFillByWord call (pushed then popped), as observed in the original.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261011-233518); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 87' --file inbox_farm_87.c StartCutscene
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function StartCutscene
+
+    ./wf verify --function StartCutscene --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-233518-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function StartCutscene
+
+    ./wf verify --function StartCutscene --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-233518-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function StartCutscene
+
+    ./wf verify --function StartCutscene --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233518-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08036e90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d72e56b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What Unk_34 actually controls (its first word 0x04000000 looks DISPCNT-shaped but the rest is zero).
+- What Unk_04 is consumed by inside the cutscene interpreter (param? script index? event id?).
+- Whether the three "secondary script slots" (ptr_20/ptr_24/ptr_28) are the layered/parallel script streams the
+  cutscene VM multiplexes.
+- Why a dummy script is parked in all three idle slots rather than a single sentinel.
+sources:
+- tools/wf run convert-20261011-233518
+- recomp d72e56b

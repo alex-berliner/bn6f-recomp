@@ -1,0 +1,83 @@
+name: MapScriptCutsceneCmd_add_mail_range
+address: '0x08038322'
+kind: function
+status: confirmed
+summary: Cutscene script command that queues a contiguous run of mails into the player's inbox.
+interface: "void scriptCmd_addMailRange(u32 commandArg /* r0, unused but preserved */,\n                       \
+  \     u32 scriptCursor /* r7 */);\n  out: r4 = mailsLeft (clobbered from the run length),\n       r7 = scriptCursor\
+  \ + 4 (advanced past this 4-byte command),\n       r0 = 1 (success status),\n       flags NZ = 1 (N clear, Z clear);\n\
+  \  clobbers r0 r1 r2 r3 r4 r6 r7 v c; preserves nothing.\n"
+details: 'Implemented as MapScriptCutsceneCmd_add_mail_range at 0x08038322. Reads
+
+  two operands from the cutscene/mapscript stream (key 1 via
+
+  ReadMapScriptHalfword, key 3 via ReadMapScriptByte) and queues `runLength`
+
+  mails starting at `mailId` into the inbox by calling addMail_802f238 in a
+
+  loop (id increments, run decrements; loop is do-while, so a zero-length
+
+  argument still queues one mail). Then advances the script cursor by 4 and
+
+  returns 1 to the dispatcher. r0, r1, r2 of the final addMail call are
+
+  discarded. r6 is used to pass the operand selector (1 then 3) to the
+
+  readers, which is why the contract lists r6 as clobbered even though this
+
+  command does not logically use it.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261011-233518); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 87' --file inbox_farm_87.c MapScriptCutsceneCmd_add_mail_range
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_add_mail_range
+
+    ./wf verify --function MapScriptCutsceneCmd_add_mail_range --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-233518-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_add_mail_range
+
+    ./wf verify --function MapScriptCutsceneCmd_add_mail_range --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261011-233518-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_add_mail_range
+
+    ./wf verify --function MapScriptCutsceneCmd_add_mail_range --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233518-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story1, story8, story9.'
+  reproduce: grep -l '^08038322 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d72e56b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- story1
+- story8
+- story9
+open_questions:
+- What does the halfword operand (key 1) represent in the script grammar? It is read but its value is discarded
+  here; presumably it encodes mailbox / folder routing that addMail_802f238 re-reads on its own.
+- Why does addMail need both r0 and r6 set to the mail id?
+- Is the always-queue-one behaviour on a zero run length intentional, or is the script grammar expected to forbid
+  length 0?
+sources:
+- tools/wf run convert-20261011-233518
+- recomp d72e56b

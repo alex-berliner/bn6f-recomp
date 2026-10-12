@@ -1,0 +1,80 @@
+name: reqBBS_addBBSMessage_813e5dc
+address: '0x0813E5DC'
+kind: function
+status: confirmed
+summary: 'Records a BBS (bulletin-board) message: sets its event flag, marks a second mirror flag, and appends its
+  per-board message number into the board''s circular message table.'
+interface: "void reqBBS_addBBSMessage(u32 flag /* r0 */)\n    -> u32 nextWriteIndex /* r0 */, u32* writeIndexBase\
+  \ /* r1 */, u8* boardLog /* r2 */;\n// Preserves r3 and r7; leaves lr at the address returned by the final SetEventFlag\
+  \ tail-call.\n"
+details: "Takes an event flag id `r0` whose address \"8888\" is split into a board and a\nper-board message number\
+  \ using two anchor flag ids:\n  - off_813E6A4 = 0x17a0 : base of the \"first\" BBS message flags (flag 0 lives\
+  \ here).\n  - off_813E6A8 = 0x19a0 : base of the \"second\"/mirror BBS message flag range, 0x200 above the first.\n\
+  Steps:\n  1. Calls SetEventFlag(flag, 2).\n  2. Translates the flag into the mirror range: flag' = (flag - 0x17a0)\
+  \ + 0x19a0, and calls SetEventFlag(flag', 2).\n     This is why subtracting 0x16b0 (=0x19a0-0x17a0) without the\
+  \ second `mov r0,r0` is equivalent; the red `mov r0,r0` is a stack-frame artifact of the lifter, not present in\
+  \ the ROM.\n  3. Computes `board = (flag - 0x17a0) / 64` by `lsr r7,#6` (still using r7, which is preserved by\
+  \ the helper).\n  4. Aligns that to 64 (`lsl r3,r3,#6`) to get the byte offset of this board's slot in the per-board\
+  \ log at byte_2001400.\n  5. Loads the board's next free slot index from unk_2000FC0[board] (index table base\
+  \ 0x2000fc0, scaled by 4 via `lsr r3,#4` after the lsl, i.e. *4).\n  6. Stores the message's per-board number\
+  \ (`r7 & 0x3f`, low 6 bits of flag-0x17a0) into byte_2001400[board*64 + index].\n  7. Writes index+1 back to unk_2000FC0[board].\n\
+  The write index is therefore a monotonic per-board counter that doubles as the\ncapacity/rollover limit; r1/r2\
+  \ returned to the caller expose the index table\nbase and this board's log pointer so the caller can keep appending.\n\
+  Pushes {r3,r7,lr} / pops {r3,r7,pc} so r3 and r7 are preserved across the two\nguest calls to SetEventFlag (which\
+  \ clobbers caller-saved regs); r10 ends up\nholding the post-call lr, exactly matching the original.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261011-233518); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 87' --file inbox_farm_87.c reqBBS_addBBSMessage_813e5dc
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_addBBSMessage_813e5dc
+
+    ./wf verify --function reqBBS_addBBSMessage_813e5dc --snapshots build-snapshots'
+  result: 'captured calls: 39 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-233518-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_addBBSMessage_813e5dc
+
+    ./wf verify --function reqBBS_addBBSMessage_813e5dc --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261011-233518-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_addBBSMessage_813e5dc
+
+    ./wf verify --function reqBBS_addBBSMessage_813e5dc --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233518-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, menus2, wander.'
+  reproduce: grep -l '^0813e5dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp d72e56b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- battle
+- menus2
+- wander
+related:
+- MapScriptCutsceneCmd_add_bbs_message_range
+open_questions:
+- Why are two flags (0x17a0+ and 0x19a0+ ranges) set for one message? Probably one is the "unread" flag and the
+  other the "exists" flag, or one set is per-save vs. networked; no in-file evidence either way.
+- Is the per-board index table at unk_2000FC0 a u16, a u16 with a u16 padding, or a u32? The code does `lsr r3,#4`
+  after `lsl r3,#6`, i.e. *4, so it is treated as 4 bytes wide here. Other producers might disagree.
+- The red `mov r0,r0` between the two SetEventFlag calls is an artifact of the lift, not present in ROM.
+- Board capacity is hard-coded at 64 entries; what happens at index==64 (wrap vs. error) is not visible here.
+sources:
+- tools/wf run convert-20261011-233518
+- recomp d72e56b

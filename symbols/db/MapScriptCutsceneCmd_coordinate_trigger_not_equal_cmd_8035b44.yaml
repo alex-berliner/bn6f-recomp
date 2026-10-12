@@ -1,0 +1,75 @@
+name: MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44
+address: '0x08035B44'
+kind: function
+status: confirmed
+summary: Map-script command opcode handler that branches when the coordinate-trigger value at the player's position
+  (with an in-script Z delta) is not equal to the next script byte.
+interface: void MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44(u32 scriptPc /* r7 */, u32 toolkit
+  /* r10 */, u32 lr /* return addr */); // returns r7 = next script pc, r0 = 1, sets nz; clobbers r0..r4,r11,r12,c,v
+details: "One of the map-script/cutscene command opcode handlers run by the cutscene interpreter.\nBehavior, end-to-end:\n\
+  \  1. Reads a signed byte operand (ReadMapScriptSignedByte, r6=2) which is shifted into the\n     upper halfword\
+  \ and added to the player's third (Z) coordinate word at oGameState\n     player+0x24. The player's three coordinate\
+  \ words at offsets 0x1c (X), 0x20 (Y), 0x24 (Z)\n     are loaded and pushed onto a 12-byte scratch area on the\
+  \ stack as a coordinate triple.\n  2. Calls checkCoordinateTrigger_8031a7a passing that stack buffer; its dual-answer\n\
+  \     convention returns the trigger value in r0 with r1 as a fallback used only when r0==0\n     (mov r0, r1\
+  \ in the false branch of tst r0, r0 / bne).\n  3. Reads the next script byte (ReadMapScriptByte, r6=1) and, if\
+  \ it equals the trigger\n     value, advances r7 by 7 (skip this command). Otherwise reads the following word\n\
+  \     (ReadMapScriptWord, r6=3) and jumps r7 to that absolute script offset.\n  4. Always returns r0=1 (\"keep\
+  \ interpreting the cutscene\") and pops {pc}, so the nz flag\n     in the contract is the side-effect of returning\
+  \ a non-zero status byte.\nNo globals are written; only the caller's r7 (next script pc) is updated. Touched\n\
+  structures: toolkit at oToolkit_GameStatePtr -> oGameState_OverworldPlayerObjectPtr,\nplayer coord triple at +0x1c/+0x20/+0x24.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261011-233518); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 87' --file inbox_farm_87.c MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44
+
+    ./wf verify --function MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-233518-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44
+
+    ./wf verify --function MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 82 out of domain (verify run convert-20261011-233518-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44
+
+    ./wf verify --function MapScriptCutsceneCmd_coordinate_trigger_not_equal_cmd_8035b44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-233518-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, menus2, story5, story6, story7, story9.'
+  reproduce: grep -l '^08035b44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp d72e56b
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- maps
+- menus2
+- story5
+- story6
+- story7
+- story9
+open_questions:
+- Exact semantics of checkCoordinateTrigger_8031a7a's r0/r1 dual return (when r0 means "trigger matched here" vs
+  "no trigger, use this fallback") is not visible here.
+- The r4 <<= 16 fold assumes the signed byte is a Z displacement in world units; whether the same script opcode
+  elsewhere uses the result differently is unknown.
+sources:
+- tools/wf run convert-20261011-233518
+- recomp d72e56b
