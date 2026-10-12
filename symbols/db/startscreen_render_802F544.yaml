@@ -1,0 +1,96 @@
+name: startscreen_render_802F544
+address: '0x0802F544'
+kind: function
+status: confirmed
+summary: Renders one frame of the title/start screen by animating the "Press Start" prompt, dispatching the current
+  start-screen state's handler, and ticking the RNG.
+interface: 'void startscreen_render_802F544(void);
+
+  // inputs : r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 lr
+
+  // outputs: r4 r5 r6 r7 r8 r9 r10 r11 r12
+
+  // clobbers: r0 r1 r2 r3 lr; flags NZ C V
+
+  // preserved: r4 r5 r6 r7 (r4-r7 explicitly restored to caller via pop)
+
+  '
+details: "Per VLM-driven screen, the function is the title/start screen's per-frame\nupdate. It does three things\
+  \ in order:\n  1. Calls startScreen_AnimatePressStart_803E938 to advance the blinking\n     \"Press Start\" text.\
+  \ That callee mutates r2-r4, r6-r12 and the flags,\n     which is why the comment notes r8-r12 \"pass through\"\
+  \ to the caller.\n  2. Reads the state byte at eStartScreen + oStartScreen_JumpTableOff_00\n     and dispatches\
+  \ one of four handlers from jt_802F560 via the\n     \"mov lr, pc; bx r0\" computed-call trick:\n       - state\
+  \ 0: startScreen_initGfx_802F574 (init/startup)\n       - state 1: startscreen_802F60C\n       - state 2: startScreen_RunStateHandler_802F63C\
+  \ (main loop)\n       - state 3: load_game_802F756 (transition into the game)\n     r5 is loaded from off_802F570\
+  \ (=eStartScreen), so it serves as the\n     self pointer handed to each handler.\n  3. Calls GetRNG() to advance\
+  \ the PRNG; this likely drives random\n     effects rendered this frame (e.g. background star twinkles).\nr4-r7\
+  \ are explicitly restored to caller values via the pop {r4-r7, pc}\nepilogue, even though every callee trashes\
+  \ them - so the caller can\nrely on those four registers surviving the call.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c startscreen_render_802F544
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function startscreen_render_802F544
+
+    ./wf verify --function startscreen_render_802F544 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function startscreen_render_802F544
+
+    ./wf verify --function startscreen_render_802F544 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function startscreen_render_802F544
+
+    ./wf verify --function startscreen_render_802F544 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802f544 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does the "jumping state offset" at oStartScreen_JumpTableOff_00 actually represent (full state id, sub-state,
+  init-vs-run count of 4)?
+- Why is r10 listed as an input register from the caller's contract but never explicitly named in the readable C
+  (likely just passes through AnimatePressStart unchanged).
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

@@ -1,0 +1,89 @@
+name: sub_804971C
+address: '0x0804971C'
+kind: function
+status: confirmed
+summary: Dispatches the chatbox state machine by jumping through a per-state thumb vector table using the chatbox
+  state's state byte as the table index.
+interface: "void sub_804971C(void);\n  /* in : r5 = chatbox context; r2, r4-r12, lr are passed through to the\n\
+  \          selected handler.\n   * out: returns to caller via popped lr; leaves in the guest registers\n     \
+  \     whatever the dispatched handler returns in r3, r8-r12 and the\n          c/v flags (r4-r7 are preserved\
+  \ by the callee per ABI, nz are\n          clobbered, r0/r1/r2/lr are clobbered). */\n"
+details: 'The function is a tiny dispatcher for the chatbox subsystem. r5 is the
+
+  chatbox work area; the byte at offset 1 of that struct holds the current
+
+  state. That state byte is used as a *raw byte offset* into a 16-entry
+
+  jump table at off_8049730, each entry holding a Thumb function pointer
+
+  (stored as +1 to set the CH bit before the `bx r0`). It loads the
+
+  handler''s address from `[off_804972C + state]`, then performs a
+
+  cross-mode jump via `mov lr, pc; bx r0`. The handler is therefore
+
+  entered with r0 holding its own code address and r1 holding the state
+
+  byte, while r2 and r4-r12 flow through unchanged from the caller. On
+
+  return, r4-r7 are preserved by the callee per the EABI and the
+
+  callee''s results (r3, r8-r12 and the c/v flag) are what this function
+
+  leaves in the guest state. The push/pop of {r4-r7,lr} is just a tail-
+
+  call frame: on exit the popped lr returns directly to sub_804971C''s
+
+  caller, so it behaves like a `goto` through the selected handler.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_804971C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804971C
+
+    ./wf verify --function sub_804971C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804971C
+
+    ./wf verify --function sub_804971C --snapshots build-snapshots'
+  result: 30 compared, 0 differed, 1 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804971C
+
+    ./wf verify --function sub_804971C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0804971c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- Which chatbox struct field really lives at offset 1, and which offsets/state values correspond to each of the
+  16 handlers (sub_8049770..chatbox_closeFadeHandler_80499CE) listed in off_8049730?
+- Does any caller pre-set r0/r2, or are they only meaningful to the dispatched handler rather than to the dispatcher
+  itself?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

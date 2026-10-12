@@ -1,0 +1,77 @@
+name: sub_80C0B76
+address: '0x080C0B76'
+kind: function
+status: confirmed
+summary: Per-tick dispatcher for a battle object, jumping to the handler for its current CurPhase
+interface: '(void) In: r2 = opaque caller arg, r5 = battle-object pointer; Out: r5, r8, r9, r10, r11, r12 (handler''s
+  results, kept live across the table jump)'
+details: 'Reads oCurPhase on the battle object pointed to by r5, indexes the handler
+
+  table at off_80C0B88 with that phase byte, and tail-calls the entry via
+
+  "mov lr, pc; bx r1". Only phases 0 and 1 have entries in this two-word
+
+  table: battleObject_tickHitReact_80C0B90 and sub_80C0BC2 respectively.
+
+  The handler runs with the guest register state and returns straight to
+
+  this function''s caller (no {pop {pc}} on the way back), so anything it
+
+  leaves in r5 and r8-r12 is what the caller sees. r2 is forwarded
+
+  unchanged into the handler; r0 is loaded with the phase byte, r1 with
+
+  the handler address itself.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_80C0B76
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C0B76
+
+    ./wf verify --function sub_80C0B76 --snapshots build-snapshots'
+  result: 'captured calls: 36 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C0B76
+
+    ./wf verify --function sub_80C0B76 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 8 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C0B76
+
+    ./wf verify --function sub_80C0B76 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0b76 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- Whether the dispatcher is meant to grow past two phases (the table is only two words today, so phase >= 2 would
+  read past it).
+- What off_80C0B84 vs off_80C0B88 are used for - the ldr at 80C0B7C reads the .word at off_80C0B84 which then points
+  to the table; the indirect through off_80C0B84 instead of loading from off_80C0B88 directly may be a relocation/relink
+  convenience rather than a real two-level indirection.
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

@@ -1,0 +1,69 @@
+name: sub_80273A4
+address: '0x080273A4'
+kind: function
+status: confirmed
+summary: Dispatch a battle object's per-frame handler by reading its mode byte and tail-calling the corresponding
+  entry.
+interface: void sub_80273A4(r5=*self, r10=preserved, lr=preserved) -> r2 r3 r5 r6 r8 r9 r10 r11 r12 (handler returns);
+  clobbers nz,c,v r0 r1 r7 lr; r4 preserved.
+details: 'Trampoline on a battle object stored at r5. Loads the handler context word from `[self+0x40]` into r4,
+  the mode byte from `[self+2]` into r0, and looks up the handler pointer in a 5-entry table at off_80273B8 (entries:
+  0 battle_object_SelectHandlerByMode_80273CC, 1 sub_80272D0, 2 chatbox_setState4IfFlag80Clear_8027320, 3 sub_8027332,
+  4 sub_80273E4). Tail-calls the chosen handler with `mov lr,pc; bx r1`, then `pop {r4,pc}` restores the caller''s
+  r4 and returns to the original caller — so any caller-visible r2,r3,r5-r12 and flags come from the dispatched
+  handler. The mode byte is used directly as a byte index into the table without range checking; values outside
+  0..4 still branch through `table+mode` (calls are reproduced via a computed-address helper).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_80273A4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80273A4
+
+    ./wf verify --function sub_80273A4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80273A4
+
+    ./wf verify --function sub_80273A4 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 9 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80273A4
+
+    ./wf verify --function sub_80273A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, menus2.'
+  reproduce: grep -l '^080273a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battlesweep
+- menus2
+open_questions:
+- Is the table exactly 5 long, or does the original allocate more bytes that all happen to map to safe/identical
+  handlers?
+- What is the meaning of `[self+0x40]` (r4 context) for each of the five handlers — state pointer, animation slot,
+  or per-object data?
+- Are r10/lr genuinely passed through, or are they expected to be specific fields whose meanings the callers encode?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

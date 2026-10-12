@@ -1,0 +1,76 @@
+name: sub_802BEB4
+address: '0x0802BEB4'
+kind: function
+status: confirmed
+summary: Trampoline that reads a battle object's type byte and tail-calls the matching per-type handler (input-queue
+  pop, tick countdown, or animation state picker) through the table at A_off_802BEC8.
+interface: "void battle_objectDispatchByType_802BEB4(void /* r5 = object pointer */);\n  reads:   r5 (object base),\
+  \ [r5+3] (type byte), table at A_off_802BEC8\n  writes:  none of its own; output registers r5–r12 plus r0–r4 and\
+  \ flags are\n           whatever the dispatched handler returns\n  status:  nz c v clobbered by the handler; lr\
+  \ pushed/popped, otherwise preserved\n"
+details: "The body is essentially a jump-table dispatcher: it loads the object's type\nbyte from offset 3, indexes\
+  \ the table at A_off_802BEC8 (an array of Thumb\nfunction pointers plus-1 for bx), and bx's into it. Only the\
+  \ r0/r1 mapping\nis preserved for the new target (r0 = type byte, r1 = the freshly loaded\ntable entry), so any\
+  \ arguments the caller wanted to pass must already be in\nthe guest register set. The three known targets are:\n\
+  \  - custMenu_handleInputQueuePop_802BED4\n  - object_countdownTick_802BEFC\n  - battle_pickObjectAnimState_802BF0C\n\
+  suggesting \"battle object\" is the right subsystem prefix. The push {lr} /\npop {pc} pair is a Thumb tr-call\
+  \ trampoline; outputs of the callee are\npassed straight back, so this function does no work of its own.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_802BEB4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802BEB4
+
+    ./wf verify --function sub_802BEB4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802BEB4
+
+    ./wf verify --function sub_802BEB4 --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 18 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802BEB4
+
+    ./wf verify --function sub_802BEB4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802beb4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Where exactly is the object pointer in r5 documented — is offset 3 always a stable "kind/type" byte across all
+  battle object kinds?
+- Are there other dispatch tables following the same A_off_802BEC8 shape that would let us identify sibling structs
+  by their type byte?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

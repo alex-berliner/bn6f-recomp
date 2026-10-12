@@ -1,0 +1,73 @@
+name: t1_0x2d_80C0E04
+address: '0x080C0E04'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current-state byte through a 3-entry handler table (states 0/1/2), threading
+  the caller's r5-r12 live into the handler via bx.
+interface: 'void t1_0x2d_80C0E04(void /* via r5: battleObject, r6-r12 live */)
+
+  in:  r5 = battleObject, r6-r12 (live, passed through unchanged)
+
+  out: r5, r8-r12 (live through to caller)
+
+  clobbers nz c v, r0-r4, r6, r7, lr
+
+  '
+details: "Loads oBattleObject_CurState from the battle object in r5, looks up a handler\npointer in the table at\
+  \ off_80C0E18, and dispatches via the ARM-Thumb \"mov lr, pc;\nbx r1\" idiom (table entries stored as +1 to switch\
+  \ to Thumb).\nTable layout at off_80C0E18:\n  [state 0] -> sub_80C0E24\n  [state 1] -> sub_80C0EE2\n  [state 2]\
+  \ -> object_freeMemory   (terminal state: frees the object)\nOn entry to the handler, r0 holds the state byte\
+  \ and r1 holds the table entry\nitself (the looked-up handler address); r5-r12 are not touched by the dispatcher\n\
+  itself and are observed live by the handler. No physical return — \"pop {pc}\"\nrestores lr from the stacked caller's\
+  \ lr, so the handler returns to whoever\ninvoked this dispatcher via a normal BL.\nQuirks: pure \"mov lr, pc;\
+  \ bx r1\" tail dispatch with no local stack frame; r1\ncarries the handler address (not its first argument) into\
+  \ the callee; uses\noff_80C0E14 as an indirection pointer to off_80C0E18.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c t1_0x2d_80C0E04
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t1_0x2d_80C0E04
+
+    ./wf verify --function t1_0x2d_80C0E04 --snapshots build-snapshots'
+  result: 'captured calls: 20 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t1_0x2d_80C0E04
+
+    ./wf verify --function t1_0x2d_80C0E04 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 31 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t1_0x2d_80C0E04
+
+    ./wf verify --function t1_0x2d_80C0E04 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0e04 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- Whether sub_80C0E24 and sub_80C0EE2 correspond to specific battle object kinds (e.g., buster/shadow/elemental
+  chip object states) or are shared by many battle-object types.
+- Whether CurState values above 2 are ever valid (would index past the table — no guard).
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

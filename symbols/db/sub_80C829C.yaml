@@ -1,0 +1,86 @@
+name: sub_80C829C
+address: '0x080C829C'
+kind: function
+status: confirmed
+summary: Run one frame of battle object logic for the object in r5, then call its generic destructor.
+interface: 'u32 battle_stepAndDestroyObject_80C829C(void);
+
+  // in:  r5 = object pointer (carried over from caller)
+
+  // out: r5 = returned from object_genericDestroy (state left in r5 by the destructor)
+
+  // clobbers: r0-r3, lr, n, z, c, v
+
+  // preserves: r4, r6, r7
+
+  '
+details: 'Thin adapter/stub that forwards the in-register object handle (r5) through two
+
+  sequential calls: battle_runObjects_80C8368 ticks the object''s per-frame logic
+
+  (the standard "run" pass used by the battle object framework, matching the
+
+  sub_80C8244/sub_80C826C/etc. family of battle object helpers), then
+
+  object_genericDestroy is invoked to tear it down. Register-form calls because
+
+  object lifetime in this engine is threaded through r5 rather than a fixed ABI.
+
+  No other object fields are touched directly; everything goes through the two
+
+  callees, and r5 is preserved only as the destructor''s return value rather
+
+  than re-loaded.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_80C829C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C829C
+
+    ./wf verify --function sub_80C829C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C829C
+
+    ./wf verify --function sub_80C829C --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 93 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C829C
+
+    ./wf verify --function sub_80C829C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080c829c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Is this wrapper used for one-shot / spawned-mid-battle objects (effect objects, summons) that need ticking exactly
+  once and immediate release, rather than a normal battle object whose tick+destroy happens in the manager loop?
+- Does battle_runObjects_80C8368 internally skip/destroy the object as a side effect, so the separate genericDestroy
+  call is cleanup rather than a second teardown?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

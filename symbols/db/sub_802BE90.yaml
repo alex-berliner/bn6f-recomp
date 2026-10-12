@@ -1,0 +1,78 @@
+name: sub_802BE90
+address: '0x0802BE90'
+kind: function
+status: confirmed
+summary: Dispatches the battle object in r5 to the per-state handler chosen by [r5+2] via a four-entry jump table
+  at off_802BEA4.
+interface: 'void dispatchBattleObjectState(u32 object /* r5 */);
+
+  // passes through r2, r4, r6, r7, r10 to the handler unchanged;
+
+  // handler''s return lives in r5-r12 (passed back to caller as-is)
+
+  '
+details: "Reads the 1-byte state field at object+2 (r5+2) and uses it as an index into\nthe handler table at off_802BEA4\
+  \ (four Thumb entries, address forced into ARM\nby the +1). Offsets and entries:\n  [0] = sub_802BEB4\n  [1] =\
+  \ dispatchBattleObjectBehavior_802BF4C\n  [2] = sub_802C170\n  [3] = runObjectStateHandler_802C1D4\nActs as an\
+  \ indirect tail-call dispatcher: it pushes lr, loads the handler\naddress, sets lr=pc, and bx's into it, so the\
+  \ handler returns directly to\nthe original caller. Reserves 4 bytes on SP for the duration of the call\nbecause\
+  \ the handlers compute frame-relative addresses. No own output is\nproduced; results in r5-r12 are whatever the\
+  \ selected handler leaves behind.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_802BE90
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802BE90
+
+    ./wf verify --function sub_802BE90 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 294 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802BE90
+
+    ./wf verify --function sub_802BE90 --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 1 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802BE90
+
+    ./wf verify --function sub_802BE90 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802be90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exactly which battle-object struct field lives at offset 2 — the byte is treated as a small state index (0..3)
+  but its mnemonic name (e.g. state / phase / behaviorId) is not visible in this snippet.
+- Whether the four entries are a fixed enum or can grow at runtime.
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

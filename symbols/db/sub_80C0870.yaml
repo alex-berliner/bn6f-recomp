@@ -1,0 +1,76 @@
+name: sub_80C0870
+address: '0x080C0870'
+kind: function
+status: confirmed
+summary: Dispatches to the phase-specific handler for a battle object based on its current phase byte.
+interface: void sub_80C0870(u32 r5 = battleObject); // r5, r8-r12 preserved by handler; r0/r1/flags clobbered
+details: 'Reads the battle object''s `oBattleObject_CurPhase` byte (r5 + that offset) and
+
+  uses it as a direct byte index into the handler table at off_80C0884. The
+
+  current table contains only two entries: phase 0 -> sub_80C088C and phase 4
+
+  -> battleObject_runFirstTurnPhase_80C08EE. The selected handler is invoked
+
+  via `mov lr, pc; bx r1` with r0 carrying the phase byte, so the handler
+
+  returns straight to the original caller of sub_80C0870. The handler is
+
+  expected to leave r5 and r8-r12 untouched (callers'' preserved set), with
+
+  r0, r1, r2-r4, r6, r7, lr and the flags free for scratch. The `pop {pc}`
+
+  here only acts as the handler''s return target; sub_80C0870 itself has no
+
+  return path of its own beyond that.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_80C0870
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C0870
+
+    ./wf verify --function sub_80C0870 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C0870
+
+    ./wf verify --function sub_80C0870 --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 35 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C0870
+
+    ./wf verify --function sub_80C0870 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0870 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- What other phase values (1, 2, 3, 5+) map to, if any — the current table at off_80C0884 only lists phases 0 and
+  4.
+- Whether phases beyond the table can occur at runtime or are reserved / never set on oBattleObject_CurPhase.
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

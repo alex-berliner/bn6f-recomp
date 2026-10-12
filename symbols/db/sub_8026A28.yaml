@@ -1,0 +1,80 @@
+name: sub_8026A28
+address: '0x08026A28'
+kind: function
+status: confirmed
+summary: Dispatches one tick of the eS20364C0 state machine via its jump table
+interface: void sub_8026A28(void); /* uses r5 for the state object; passes state byte in r0 and jump-table entry
+  in r1 to the handler; whatever r0,r2-r4,r6,r8-r12 the handler returns is returned to the caller; r5 is preserved;
+  clobbers r1,r7,lr and flags nzcv */
+details: "Reads the state byte (oS20364C0_JumpOffset00) from the global object at eS20364C0 and\nindexes a 3-entry\
+  \ handler table at off_8026A3C:\n  +0  sub_8026A50\n  +4  custMenuMainMaybe_8026A88 (custom menu main)\n  +8 \
+  \ object_runFrameUpdate_8026A6C\nCalls the selected handler with r5 = eS20364C0 (self), r0 = state byte, r1 =\
+  \ table\nentry (function pointer), using mov lr,pc / bx r1 (thumb switch via GUEST_CALL_ADDR).\nOnly r5 is preserved\
+  \ across the call (push {r5,lr} / pop {r5,pc}); every other\nregister the handler leaves live is propagated to\
+  \ the caller.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_8026A28
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8026A28
+
+    ./wf verify --function sub_8026A28 --snapshots build-snapshots'
+  result: 'captured calls: 80 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8026A28
+
+    ./wf verify --function sub_8026A28 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8026A28
+
+    ./wf verify --function sub_8026A28 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08026a28 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exactly which states live at +0/+4/+8 (init, custom menu step, vsidle frame) is inferred from handler names and
+  not independently confirmed.
+- What writes the state byte (oS20364C0_JumpOffset00) and when this dispatcher is invoked (per sub-event tick, mod?)
+  is unknown from this function alone.
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

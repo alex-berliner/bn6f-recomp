@@ -1,82 +1,82 @@
 name: gfx_renderAnimTileSheet_8001C94
 address: '0x08001C94'
 kind: function
-status: probable
-summary: Renders all 32-byte tile entries of a GFX animation sequence into an EWRAM staging buffer via
-  per-frame dispatch handlers, then queues a DMA transfer of the assembled sheet to the display destination.
-interface: 'void gfx_renderAnimTileSheet(GFXAnimData *animData /*r0*/, /*r4 preserved*/, GFXAnimState
-  *animState /*r7*/);  // outputs: r0-r12 clobbered, NZCV clobbered; r4,r7 preserved'
-details: "Reads the frame descriptor array pointer from animData->ParamNext.\nLooks up a per-slot EWRAM\
-  \ staging buffer base from the table at off_8001AB8,\nindexed by animState->Param3 (animation slot number,\
-  \ *4).\nReads animState->Param0 (sprite-sheet destination base) and\nanimState->Param2 (frame count,\
-  \ each frame = 32 bytes).\n\nIterates over frame_count 16-bit entries. For each entry:\n  - bits 0-9\
-  \ masked and shifted <<5 give a byte offset into the destination tile sheet;\n  - bits 10-11 select\
-  \ a jump-table handler (sub_8001D64, sub_8001D86,\n    sub_8001EAE, sub_8001ED0) that renders one 32-byte\
-  \ tile into the EWRAM\n    staging buffer at the current ewram_ptr;\n  - ewram_ptr advances by 0x20,\
-  \ data pointer advances by 2.\n\nAfter the loop, re-fetches the EWRAM staging base (same slot lookup)\
-  \ and reads\nanimState->Param1 (final DMA destination) and frame_count.\nCalls QueueEightWordAlignedGFXTransfer(src=ewram_base,\
-  \ dest=animState->Param1,\nsize=frame_count<<5) to DMA the assembled tile sheet into VRAM/display.\n\
-  Quirk: pushes r0 before the loop (saving the original animData pointer) and\npops it after, but r0 is\
-  \ immediately overwritten by the second off_8001AB8\nload, so the push/pop of r0 appears vestigial or\
-  \ ABI-protective for the callee.\n"
+status: confirmed
+summary: Renders one frame of an animated GFX tile sheet by decoding each u16 descriptor into an EWRAM scratch buffer
+  and queueing a word-aligned copy to the destination
+interface: "void gfx_renderAnimTileSheet_8001C94(u32 r0 /* *GFXAnimDataNext */,\n                              \
+  \        struct GFXAnimState* r7)\n  -> preserves r4, r7; out c/v from QueueEightWordAlignedGFXTransfer;\n   \
+  \  clobbers r0-r3, r5, r6, r8, r9, r12\n"
+details: 'Walks the frame''s u16 tile descriptor list (length = state->Param2). Each entry
+
+  is split: low 10 bits = tile byte offset in the tile graphics (<<5 = 32-byte tile
+
+  units), top 6 bits = decoder type used as a jump-table index into off_8001CEC
+
+  (4 handlers: sub_8001D64, sub_8001D86, sub_8001EAE, sub_8001ED0). For every
+
+  entry the chosen handler is called via mov lr,pc / bx r0, decoding one 32-byte
+
+  tile into the EWRAM scratch slot selected by state->Param3 through off_8001AB8.
+
+  After the loop, the full scratch sheet is queued to state->Param1 via
+
+  QueueEightWordAlignedGFXTransfer with size state->Param2 * 32. The slot index
+
+  is re-read before the DMA queue, so a handler that mutates state->Param3 will
+
+  change the source pointer. The post-loop compare is signed against the offset
+
+  after the first iteration, so an empty list still runs the body once.
+
+  Touches: GFXAnimState.Param0 (tile graphics base), .Param1 (DMA dest),
+
+  .Param2 (entry count / DMA size), .Param3 (EWRAM scratch slot); EWRAM via
+
+  off_8001AB8; handler jump table at off_8001CEC.
+
+  '
 evidence:
 - method: readable-c
   date: '2026-10-11'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261010-235157);
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm00_0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 43' --file inbox_farm_43.c
-    sub_8001C94
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c gfx_renderAnimTileSheet_8001C94
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8001C94
+  reproduce: './wf capture --function gfx_renderAnimTileSheet_8001C94
 
-    ./wf verify --function sub_8001C94 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    300 out of domain (verify run convert-20261010-235157-verify-2)'
+    ./wf verify --function gfx_renderAnimTileSheet_8001C94 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223249-verify-1)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8001C94
+  reproduce: './wf capture --function gfx_renderAnimTileSheet_8001C94
 
-    ./wf verify --function sub_8001C94 --snapshots build-snapshots'
-  result: 0 compared, 0 differed, 9 out of domain (verify run convert-20261010-235157-verify-2)
+    ./wf verify --function gfx_renderAnimTileSheet_8001C94 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 41 out of domain (verify run convert-20261011-223249-verify-1)
 - method: lockstep
   date: '2026-10-11'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8001C94
+  reproduce: './wf capture --function gfx_renderAnimTileSheet_8001C94
 
-    ./wf verify --function sub_8001C94 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261010-235157-verify-2)
+    ./wf verify --function gfx_renderAnimTileSheet_8001C94 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
 - method: coverage
   date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
-    story2, story4, story5, story6, story7, story8, story9.'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story4, story5, story6, story7, story8, story9.'
   reproduce: grep -l '^08001c94 ' tools/traces/coverage/*.prof
 changes:
 - date: '2026-10-11'
   what: readable C replacement in cport/src/game/asm00_0.c
-  where: recomp fd1e593
-  tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm00_0.c after review against the assembly (the lifted
-    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
-    differs from the original: The asm loop is a do-while: loc_8001CA6 runs the body first and only then
-    tests `ldrb r2,[r7,#oGFXAnimState_Param2]; lsl r2,r2,#1; cmp r1,r2; blt loc_8001CA6`. The C uses `for
-    (u32 i = 0; i < frame_count; i++)`, which runs zero times. When Param2 == 0, the original still decodes
-    frame entry 0 and calls one handler (sub_8001D64/D86/EAE/ED0), which writes 0x20 bytes to ewram slot
-    off_8001AB8[Param3]...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_8001C94 -> gfx_renderAnimTileSheet_8001C94
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_0.c
 coverage:
 - battle
 - battles1
@@ -96,12 +96,12 @@ coverage:
 - story8
 - story9
 open_questions:
-- What distinct tile-rendering modes do the four jump-table handlers (sub_8001D64 / D86 / EAE / ED0) implement
-  (e.g. solid, dither, alpha, special pattern)?
-- Is Param0 the VRAM sprite-sheet base or a CPU-mirror, given Param1 is used for the DMA destination?
-- Why is r0 pushed/popped across the loop if its value is never used afterward?
+- What is the role of the top 6 bits of each descriptor? They index the jump table but the per-type semantics (e.g.
+  flip, palette, VWP) of sub_8001D64 / sub_8001D86 / sub_8001EAE / sub_8001ED0 are unknown.
+- Does the "loop always runs once" behaviour for an empty list matter, or is Param2 == 0 simply never produced by
+  callers?
+- How is the EWRAM scratch region sized? off_8001AB8 is slot-indexed; the total available scratch is not visible
+  from this function alone.
 sources:
-- tools/wf run convert-20261010-235157
-- recomp fd1e593
-previous_names:
-- sub_8001C94
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

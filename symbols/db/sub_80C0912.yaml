@@ -1,0 +1,79 @@
+name: sub_80C0912
+address: '0x080C0912'
+kind: function
+status: confirmed
+summary: Battle-object phase dispatcher — looks up the per-CurPhase handler in a jump table at off_80C0924 and tail-calls
+  it.
+interface: void battleObject_runCurPhase_80C0912(u32 r2_arg, struct BattleObject* r5_obj); returns r5/r8/r9/r10/r11/r12
+  from the handler; clobbers r0-r4,r6-r7, lr and flags nz c v.
+details: 'Reads the object''s CurPhase byte (oBattleObject_CurPhase), uses it to index a 5-entry
+
+  Thumb jump table at off_80C0924, and tail-dispatches to the chosen handler with the
+
+  caller''s r2 forwarded and the object pointer in r5 preserved. On entry to the handler
+
+  r0 holds the CurPhase value and r1 the table entry just jumped through; the handler''s
+
+  surviving r5/r8-r12 outputs become this function''s outputs (no wrapper, so no extra
+
+  stack frame is materialized). The 5 phase handlers it dispatches to are
+
+  battle_panelObject_tryTargetAndSetPhase_80C0938, sub_80C0956,
+
+  battleObject_jumpUpPhase_80C0988, sub_80C09C6, and sub_80C0A0E; the "+1" trick on
+
+  each table entry signals Thumb interworking (BX into Thumb code).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_80C0912
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C0912
+
+    ./wf verify --function sub_80C0912 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C0912
+
+    ./wf verify --function sub_80C0912 --snapshots build-snapshots'
+  result: 23 compared, 0 differed, 29 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C0912
+
+    ./wf verify --function sub_80C0912 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0912 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- Which oBattleObject_CurPhase values map to which of the 5 handlers (the table entries are listed in the source
+  but the phase constants aren't named here).
+- What r2's forwarded meaning is — the dispatcher doesn't itself interpret it, so the meaning depends entirely on
+  which phase is currently active.
+- Whether any phase handler ever changes CurPhase mid-dispatch (the table is indexed once up front), which would
+  mean the handler must defer re-dispatch to its caller.
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

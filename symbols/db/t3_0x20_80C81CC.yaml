@@ -1,0 +1,75 @@
+name: t3_0x20_80C81CC
+address: '0x080C81CC'
+kind: function
+status: confirmed
+summary: 'Per-frame ticker for a battle object: dispatches on its current state byte to one of three handlers (init/enter-update,
+  sub_80C8232, sub_80C829C) and then refreshes its sprite.'
+interface: "void battleObject_t3Tick_80C81CC(void);\n  // in:  r5 = battle object pointer; r10 = caller's preserved\
+  \ value\n  // out: r5, r8, r9, r10, r11, r12 set by the dispatched handler and object_updateSpritePaused\n  //\
+  \ clobbers: r0, r1, r2, r3, r4, r6, r7, lr; flags N, Z, C, V\n"
+details: "Reads the object's state byte at oBattleObject_CurState (offset added to r5), uses it as an\nindex into\
+  \ the 3-entry jump table at off_80C81E4 (= 0x080c81e4, table base off_80C81E4 in\nassembly):\n\n    off_80C81E4[0]\
+  \ = battleObject_initSpriteAndEnterUpdate_80C81F0  (thumb+1)\n    off_80C81E4[1] = sub_80C8232               \
+  \                     (thumb+1)\n    off_80C81E4[2] = sub_80C829C                                    (thumb+1)\n\
+  \nLoads the handler address from r1 = [off_80C81E0, r0_state] (off_80C81E0 just stores\noff_80C81E4), then tail-calls\
+  \ it with lr=pc / bx r1, passing r0=state, r1=handler slot,\nr5=object. The state handlers are also reached through\
+  \ this code address (not named\nwrappers), and the value of r10 in the contract is whatever the outer caller's\
+  \ state\nmachine is keeping across the tick.\n\nAfter the handler returns the object's sprite is refreshed with\
+  \ object_updateSpritePaused(r5).\n\nFunction ends with `pop {pc}` (a tail-pop idiom: the prior `bl object_updateSpritePaused`\n\
+  was the model lifting an inline `pop {pc}`; in raw form this is a single `pop {pc}` that\nreturns to the saved\
+  \ lr). Only three states are listed, so states 3+ would index past the\ntable.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c t3_0x20_80C81CC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x20_80C81CC
+
+    ./wf verify --function t3_0x20_80C81CC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x20_80C81CC
+
+    ./wf verify --function t3_0x20_80C81CC --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 30 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x20_80C81CC
+
+    ./wf verify --function t3_0x20_80C81CC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080c81cc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Which real battle object(s) use this ticker (t3 in the name suggests the third battle-object type / tier, but
+  the mapping to chip, enemy, field, cursor, etc. is not known from this function alone)?
+- What is the meaning of r10 here - is it a per-battle cached pointer (e.g. battle struct / scene state) the caller
+  threads through the tick?
+- What do the two sub-handlers sub_80C8232 and sub_80C829C do - "resting" vs "active" frames, animation frame steps,
+  hitbox refresh, something else?
+- The state byte is used directly as an index, so is the state enum really 0..2 or are higher states handled by
+  another ticker?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

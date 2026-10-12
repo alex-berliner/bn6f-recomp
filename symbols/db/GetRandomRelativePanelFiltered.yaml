@@ -1,0 +1,68 @@
+name: GetRandomRelativePanelFiltered
+address: '0x08015E46'
+kind: function
+status: confirmed
+summary: Picks a random reachable panel relative to a given panel, indexing PanelOffsetListsPointerTable by the
+  caller's panel id.
+interface: u32 getRandomRelativePanelFiltered_8015E46(u32 r0, u32 r1, u32 r2, u32 r3, u32 panel_index, u32 r6) ->
+  r0,r1,r2,r3,r5 + nz/c/v flags preserved across the call
+details: Thin front-end over `_GetRandomRelativePanelFiltered`. The caller's `panel_index` arrives in r4; it is
+  used as a word index into `PanelOffsetListsPointerTable` (each entry is a pointer to a panel-offset list describing
+  which adjacent panels are reachable from a given panel-type/template). The looked-up pointer is moved into r4
+  and forwarded to `_GetRandomRelativePanelFiltered`, which presumably scans that list and returns a chosen offset.
+  r4 and r7 are saved/restored so the caller's r4 survives; everything else (r0-r3, r5, flags nz/c/v) is the implementation's
+  output and is passed straight through. Used during battle/field movement when the game needs to pick a neighboring
+  panel from a rules list filtered by current panel.
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c GetRandomRelativePanelFiltered
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function GetRandomRelativePanelFiltered
+
+    ./wf verify --function GetRandomRelativePanelFiltered --snapshots build-snapshots'
+  result: 'captured calls: 26 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 226 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function GetRandomRelativePanelFiltered
+
+    ./wf verify --function GetRandomRelativePanelFiltered --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 0 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function GetRandomRelativePanelFiltered
+
+    ./wf verify --function GetRandomRelativePanelFiltered --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story4, story6, story9.'
+  reproduce: grep -l '^08015e46 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battlesweep
+- story4
+- story6
+- story9
+open_questions:
+- Which battle/field subsystem consumes the chosen offset (movement selection, enemy AI step, item-throw aim?).
+- Does `_GetRandomRelativePanelFiltered` also interpret r0-r3/r6 (current panel coords, facing, team, RNG context),
+  or are they merely passed through?
+- Meaning of entries in PanelOffsetListsPointerTable (per panel-type? per team? — index space needs checking).
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

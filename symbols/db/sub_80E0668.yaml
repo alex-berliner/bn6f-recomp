@@ -1,0 +1,98 @@
+name: sub_80E0668
+address: '0x080E0668'
+kind: function
+status: confirmed
+summary: Dispatches to the per-phase handler of a battle object based on its current phase byte (phase 0 -> sub_80E0684,
+  phase 1 -> teardown/free).
+interface: "void battle_object_dispatchPhase_80E0668(void);\n  // in:  r5 = battle object pointer, r10 = pass-through\
+  \ value to callee\n  // out: r5, r8, r9, r10, r11, r12 (as returned by the selected phase handler)\n  // trashed:\
+  \ r0-r4, r6, r7, lr; flags NZCV\n"
+details: 'Reads oBattleObject_CurPhase from the battle object in r5 and uses it as an
+
+  index into the two-entry thumb-jump table at off_80E067C. The selected
+
+  entry (already a thumb address with bit 0 set) is loaded into r1, the
+
+  phase byte into r0, and execution is transferred via a manual
+
+  `mov lr, pc; bx r1` followed by `pop {pc}`, so the callee returns
+
+  directly to the caller of sub_80E0668. r5 and r10 are preserved across the
+
+  dispatch so they reach the handler untouched; r0 is set to the phase
+
+  byte and r1 to the handler''s thumb address. Phase 0 runs sub_80E0684
+
+  (the normal phase handler); phase 1 runs
+
+  battle_object_teardownAndFree_80E06E0 (object teardown + free).
+
+  No memory is written by this function itself.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_80E0668
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E0668
+
+    ./wf verify --function sub_80E0668 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E0668
+
+    ./wf verify --function sub_80E0668 --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 22 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E0668
+
+    ./wf verify --function sub_80E0668 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080e0668 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Whether oBattleObject_CurPhase can ever be a value other than 0 or 1 (the table has only two entries; any other
+  value would index out of it).
+- Whether this dispatcher is ever invoked directly from script/AI rather than as part of the per-frame object update
+  chain in r10.
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

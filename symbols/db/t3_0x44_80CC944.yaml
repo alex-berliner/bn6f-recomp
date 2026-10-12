@@ -1,0 +1,74 @@
+name: t3_0x44_80CC944
+address: '0x080CC944'
+kind: function
+status: confirmed
+summary: Dispatches a battle object (task type 3) to one of three state handlers based on its current state byte
+interface: '// Inputs: r5 = battle object pointer
+
+  //         r4, r7, r8, r10, lr = live caller values
+
+  // Outputs: r5, r8-r12 = whatever the selected state handler leaves on the guest register file
+
+  //           (r0-r4, r6, r7, lr clobbered by the dispatched handler)
+
+  void battleObject_stateDispatcher_80CC944(void);
+
+  '
+details: "Reads r5->oBattleObject_CurState and uses it as an index into the jump\ntable at off_80CC958 to tail-call\
+  \ one of:\n    state 0 -> sub_80CC964\n    state 1 -> sub_80CC9AA\n    state 2 -> object_genericDestroy\nThe dispatch\
+  \ is performed with `mov lr, pc; bx r1`, so control returns\ndirectly to the original caller through the trailing\
+  \ `pop {pc}`; this\nroutine itself has no own epilogue work. The chosen handler therefore owns\nall output registers\
+  \ (r5, r8-r12) and they are not touched here.\nIdentified by signature: starts by loading r5's state byte and\
+  \ routing\nthrough a small state-handler table -- the classic pattern for a task-3\nbattle object dispatcher.\
+  \ Offsets touched:\n    oBattleObject_CurState (via r5)\n    off_80CC958 (handler table)\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c t3_0x44_80CC944
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x44_80CC944
+
+    ./wf verify --function t3_0x44_80CC944 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x44_80CC944
+
+    ./wf verify --function t3_0x44_80CC944 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 22 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x44_80CC944
+
+    ./wf verify --function t3_0x44_80CC944 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080cc944 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Is there a canonical name for task type 3 in bn6f (e.g. anim, sprite, hitbox)?
+- Why exactly three states here (init/main/destroy) -- does state 2 imply the object is being freed, and does sub_80CC964
+  / sub_80CC9AA cover all non-destroy states, or only specific ones?
+- What is the full struct layout (other oBattleObject_* offsets used by the two non-destroy handlers)?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

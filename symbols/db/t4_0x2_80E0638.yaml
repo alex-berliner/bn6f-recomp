@@ -1,0 +1,101 @@
+name: t4_0x2_80E0638
+address: '0x080E0638'
+kind: function
+status: confirmed
+summary: Dispatches a battle-object handler by its CurState byte via an indirect tail-call.
+interface: "void battle_dispatchCurState_80E0638(u8 /*in r5*/ battle_obj_aware_state_r5);\n    // in:  r5 = battle\
+  \ object pointer; lr = return\n    // out: r5, r8, r9, r10, r11, r12 (forwarded from the selected handler;\n \
+  \   //      the caller reads these back)\n    // trashes: N, Z, C, V; r0, r1, r2, r3, r4, r6, r7, lr\n"
+details: 'Loads `r0 = battle_obj->oBattleObject_CurState` (the raw state byte),
+
+  indexes a two-entry jump table at `off_80E064C` by that byte (offset =
+
+  byte index × 4), and tail-calls the resulting Thumb function address with
+
+  `mov lr, pc; bx r1`. Because the call is a tail call, the `pop {pc}`
+
+  only fires if the handler ever returns normally; otherwise control goes
+
+  directly back to this routine''s caller, which is how the original
+
+  reaches the post-handler code. Table layout at 0x080E064C is
+
+  `[sub_80E0654+1, sub_80E0668+1]` (Thumb bit set), so state 0 →
+
+  `sub_80E0654` and state 4 → `sub_80E0668`. Any other state value would
+
+  jump to the word that happens to live there, matching the original''s
+
+  unbounded indexing. The handler runs with `r0` = state byte and `r1` =
+
+  the table entry that was loaded (Thumb address), while `r5` continues to
+
+  point at the battle object. This routine forwards whatever the handler
+
+  leaves in `r5`/`r8`-`r12`, so the caller relies on those not being
+
+  clobbered on the way in or out.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c t4_0x2_80E0638
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x2_80E0638
+
+    ./wf verify --function t4_0x2_80E0638 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x2_80E0638
+
+    ./wf verify --function t4_0x2_80E0638 --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 15 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x2_80E0638
+
+    ./wf verify --function t4_0x2_80E0638 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080e0638 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions: []
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

@@ -1,0 +1,61 @@
+name: t3_0x1f_80C8098
+address: '0x080C8098'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current state to its handler (init / tick / destroy).
+interface: "void battleObject_dispatchState_80C8098(void);\n    /* reads: r4 r5 r7 r8 r10 lr; clobbers: nz c v r0\
+  \ r1 r2 r3 r4 r6 r7 lr;\n       outputs left in caller-permitted regs: r5 r8 r9 r10 r11 r12 */\n"
+details: ''
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c t3_0x1f_80C8098
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x1f_80C8098
+
+    ./wf verify --function t3_0x1f_80C8098 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x1f_80C8098
+
+    ./wf verify --function t3_0x1f_80C8098 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 29 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x1f_80C8098
+
+    ./wf verify --function t3_0x1f_80C8098 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080c8098 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- What is the call chain that runs r5-r12-r10-r7-r4 here? It looks like the standard per-frame task entrypoint on
+  Battle Networking's main thread (r5 = object, r8 = scene-used task ptr, r10 = task ptr, r7 = parent/related ptr,
+  r4 = ?), but those identities are not confirmed.
+- Is the state table at off_80C80AC shared across all battle objects (function pointer table per state) or per-object-type
+  (state methods of an OOP-style object)? The C code reads it as a global, but the assembly's only caller may pass
+  a per-object pointer that is just not dereferenced here.
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

@@ -1,0 +1,101 @@
+name: sub_80A5428
+address: '0x080A5428'
+kind: function
+status: confirmed
+summary: Dispatches to an object's per-mode handler chosen by [r5+8], forwarding r5/r10 and returning the handler's
+  r2/r5/r10/r11.
+interface: "void dispatchModeHandler_80A5428(void);\n  // in:  r5 = object pointer (mode byte at +0x8 selects handler),\
+  \ r10 = opaque, lr = return\n  // out: r2, r5, r10, r11 = whatever the selected handler leaves in them\n  // clobbers:\
+  \ r0,r1,r3,r4,r6,r7,r8,r9,r12, lr; flags N,Z,C,V all touched\n"
+details: 'Loads a function pointer from the small jump table at off_80A543C using the
+
+  unsigned byte at [r5+8] as a direct byte-indexed offset (no shift/scale):
+
+  r0 = off_80A5438; r1 = LD8(r5+8); handler = LD32(r0 + r1). The table at
+
+  off_80A543C currently lists three Thumb entries: sub_80A5448, sub_80A5494,
+
+  sub_80A549C, so mode values in practice are 0..2.
+
+
+  Performs an interworking call ("mov lr, pc; bx r0") so each handler entry
+
+  must be stored with the low bit set (Thumb). r1 = mode byte is still live
+
+  on entry, but the contract only commits r5/r10; the handler receives the
+
+  address in r0 and the mode in r1, and is free to use them.
+
+
+  Returns via "pop {pc}" (a tail-return idiom for a single-push leaf). The
+
+  caller''s r2/r5/r10/r11 are read back from the live registers, which is why
+
+  a handler that never touches some of them transparently preserves the
+
+  caller''s values.
+
+
+  The mode byte at [r5+8] implies objects handled here carry their
+
+  current-mode selector at +8; mode indexes into a 32-bit-per-entry dispatch
+
+  table (handler addresses) at "off_80A543C" (variable name in the
+
+  disassembly is the address itself).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_80A5428
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A5428
+
+    ./wf verify --function sub_80A5428 --snapshots build-snapshots'
+  result: 'captured calls: 80 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A5428
+
+    ./wf verify --function sub_80A5428 --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 31 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A5428
+
+    ./wf verify --function sub_80A5428 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, story5, story6, story7.'
+  reproduce: grep -l '^080a5428 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm29.c
+coverage:
+- maps
+- story5
+- story6
+- story7
+open_questions:
+- Which subsystem owns this dispatch (battle, chatbox, menu, scripted scene, etc.)? Without a known caller's name
+  this is hard to pin down.
+- What object type lives in r5 and what does the +8 mode byte represent (state, animation, phase)?
+- Are the three listed handlers (sub_80A5448, sub_80A5494, sub_80A549C) exhaustive, or is the table extended elsewhere?
+- Is r10 meaningful to the handler or merely preserved across the dispatch?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

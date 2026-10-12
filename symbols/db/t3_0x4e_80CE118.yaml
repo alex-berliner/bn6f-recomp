@@ -1,0 +1,75 @@
+name: t3_0x4e_80CE118
+address: '0x080CE118'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current-state byte through a small jump table to the matching state handler.
+interface: void battleObject_dispatchState_80CE118(u32 r2_in, struct BattleObject *r5_obj, u32 r10_in) /* clobbers
+  r0-r4, r6-r7, lr, NZCV; preserves r5, r8-r12; on return r5/r8-r12 carry the handler's results */
+details: 'Reads `oBattleObject_CurState` (a single byte at r5+offset) and uses it to
+
+  index the jump table at off_80CE12C (states 0..2 mapped to
+
+  battleObject_spawnEntry_80CE138, sub_80CE178, sub_80CE21C). The chosen
+
+  handler is entered via `mov lr,pc ; bx r1`, with r0 = the state byte,
+
+  r1 = table base, r2/r5/r10 passed through from the caller, and the
+
+  dispatcher''s `push {lr}` placing the original caller''s return address
+
+  at [SP] where some handlers peek at it. The handler''s results in
+
+  r5/r8-r12 flow out to the dispatcher''s caller unchanged. The literal in
+
+  the table load is `0x80ce128` (pointer to off_80CE12C).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c t3_0x4e_80CE118
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x4e_80CE118
+
+    ./wf verify --function t3_0x4e_80CE118 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x4e_80CE118
+
+    ./wf verify --function t3_0x4e_80CE118 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 11 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x4e_80CE118
+
+    ./wf verify --function t3_0x4e_80CE118 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080ce118 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- story9
+open_questions:
+- Exact meaning of each of the three states (spawn entry, then two follow-ups).
+- Whether r2/r10 carry per-object context or global task data.
+- Whether handlers reuse the pushed LR as a "resume here" sentinel.
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

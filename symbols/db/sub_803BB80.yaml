@@ -1,0 +1,85 @@
+name: sub_803BB80
+address: '0x0803BB80'
+kind: function
+status: confirmed
+summary: Decrements a 32-bit "uses remaining" counter on the object pointed to by r5; returns 0 if a use was consumed,
+  1 if already exhausted.
+interface: '// r5 in: pointer to a struct with a u32 use counter at offset 0x28
+
+  // returns r0: 0 = decremented, 1 = already <= 0 (no write)
+
+  // flags out: C/V from the SUBS r0,#1 on the loaded counter value; N/Z clobbered by the final MOV r0,#0/#1
+
+  void sub_803BB80(void);
+
+  '
+details: 'Reads the 32-bit field at r5+0x28, decrements it in memory only if it was
+
+  strictly positive, and returns 0 to signal success. If the field is 0 or
+
+  negative the memory is left untouched and 1 is returned to signal the
+
+  counter was already exhausted. The struct field is treated as signed for
+
+  the branch (`blt` after `sub r0,#1`), so any negative stored value is
+
+  also "exhausted". r0 is the only caller-visible register besides lr;
+
+  the `mov pc, lr` epilogues use literal return values (#0 / #1) so N/Z
+
+  on exit reflect the return code, while C/V reflect the decrement test.
+
+  Reads and writes: [r5+0x28] (u32, read; conditionally written back as value-1).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c sub_803BB80
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803BB80
+
+    ./wf verify --function sub_803BB80 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803BB80
+
+    ./wf verify --function sub_803BB80 --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 58 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803BB80
+
+    ./wf verify --function sub_803BB80 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803bb80 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- What owner type is r5 here? A field of 0x28 with 32 bits suggests a battle entity, chip, or panel-state struct;
+  the exact definition in this module is not visible.
+- Is the "0 = consumed / 1 = exhausted" convention the one callers expect, or are there call sites that invert it?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c

@@ -1,0 +1,69 @@
+name: cb_8049E04
+address: '0x08049E04'
+kind: function
+status: confirmed
+summary: Dispatches E-Reader chatbox handling by indexing the current phase byte in eS200A290 into a 3-entry jump
+  table to call the matching per-phase handler.
+interface: 'void Next(void /* guest regs */); /* inputs: r2 r4 r10 lr; outputs: r4 r5 r6 r7 r8 r9 r10 r11 r12; clobbers:
+  nz c v r0 r1 r2 r3 lr; preserved: r4 r5 r6 r7 */'
+details: 'Reads the phase byte from eS200A290 (r5 = &phase, r1 = *phase) and uses it to index a fixed 3-entry jump
+  table at off_8049E18 whose entries point to chatbox_initNewScreen_8049E28, sub_8049E5C, and sub_8049E84 (each
+  stored as thumb address +1). Performs an indirect tail call via `ldr r0,[table,phase]; mov lr,pc; bx r0`, so the
+  handler runs with the live guest register file: r0 holds its own table entry word (with thumb bit set), r1 the
+  phase byte, r5 the address of the phase byte, and r2/r4/r10 plus any other caller registers flow through unchanged.
+  The trailing `pop {r4-r7,pc}` restores r4-r7 to their incoming values, meaning they are NOT visible results in
+  spite of the contract listing r4-r7 as outputs (they''re the saved frame). Net register outputs the caller sees
+  are r8-r12 as the handler left them. The address suffix 8049E04 is preserved; the cb_ prefix marks a callback
+  dispatch site in the disassembly.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261011-223249);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 82' --file inbox_farm_82.c cb_8049E04
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function cb_8049E04
+
+    ./wf verify --function cb_8049E04 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223249-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function cb_8049E04
+
+    ./wf verify --function cb_8049E04 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-223249-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function cb_8049E04
+
+    ./wf verify --function cb_8049E04 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223249-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps.'
+  reproduce: grep -l '^08049e04 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 230ec0c
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles2
+- maps
+open_questions:
+- What do the three phase handlers (chatbox_initNewScreen_8049E28, sub_8049E5C, sub_8049E84) actually do per phase;
+  are any of them openable now?
+- Is the phase byte at eS200A290 a small state machine or a single-step counter; what writes it?
+- Why does the contract list r4-r7 as outputs when the trailing pop restores them — is that a contract-analysis
+  artifact?
+sources:
+- tools/wf run convert-20261011-223249
+- recomp 230ec0c
