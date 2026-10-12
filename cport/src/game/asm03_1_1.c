@@ -831,6 +831,51 @@ Next sub_803BF70(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803C0BE ── */
+/* sub_803C0BE(r0 = offset of entry-count byte, r1 = offset of entry list,
+ *              r5 = record base):
+ * Scan the 2-byte-per-entry list at r5+r1 forward to its first 0xE6
+ * terminator. If that terminator lies at or past the entry count stored at
+ * r5+r0 (count is kept in entries, hence the <<1 to get a byte count), walk
+ * backwards from it and rewrite every free slot (a 0x00 or 0xE5 entry) as
+ * the canonical empty pair 0xE5 0xE5, stopping at the first slot holding any
+ * other value or once the count is reached.
+ * Leaves r1 = address of the last slot rewritten (or its incoming value if
+ * nothing was rewritten) and r3 = r5+r1_in; r4-r7 are restored. */
+Next sub_803C0BE(void) {
+    u32 listOffset = R1;
+    u32 list = R5 + listOffset;
+    u32 limit = LD8(R5 + R0) << 1;  /* entry count -> byte count */
+    u32 i = 0;
+    u32 lastWrite = R1;             /* r1 is untouched until the first write */
+
+    /* skip forward to the first 0xE6 terminator entry */
+    while (LD8(list + i) != 0xE6)
+        i += 2;
+
+    /* terminator is beyond the used range: reclaim the free slots behind it */
+    while ((s32)i >= (s32)limit) {
+        u32 entry = LD8(list + i);
+
+        if (entry == 0xE6) {
+            /* already a terminator, just step back over it */
+        } else if (entry == 0x00 || entry == 0xE5) {
+            /* free slot: fill it with the empty-entry pair */
+            lastWrite = list + i;
+            ST8(lastWrite, 0xE5);
+            ST8(lastWrite + 1, 0xE5);
+        } else {
+            /* occupied slot: stop here */
+            break;
+        }
+        i -= 2;
+    }
+
+    R3 = list;
+    R1 = lastWrite;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803C0F6 ── */
 /* sub_803C0F6(r0 = src, r1 = dest, r2 = count, r5 = offset):
  * Copy `count` bytes from src+offset to dest+offset, then walk backwards from
