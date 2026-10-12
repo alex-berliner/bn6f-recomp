@@ -1,0 +1,107 @@
+name: RunCutsceneCameraCommand
+address: '0x08036FBC'
+kind: function
+status: confirmed
+summary: Dispatches the current overworld/cutscene camera command by reading the next opcode from the camera script
+  and tail-calling its handler.
+interface: void runCutsceneCameraCommand_8036FBC(void); /* clobbers r0,r1,r2,r3,r8,r9,r12,lr; preserves r4-r7; NZ
+  reflect handler's r0, CV unchanged */
+details: 'Reads the camera-script pointer from global eCutsceneCameraInfo (offset
+
+  oCutsceneCameraInfo_CutsceneCameraScriptPtr), peeks one command byte at that
+
+  pointer, and dispatches through CutsceneCameraCommandJumptable (19 entries at
+
+  0x00..0x50, every 4 bytes) using a `mov lr,pc; bx r0` tail call. r1 = script
+
+  pointer, r2 = command byte, r5 = camera-info base are passed to the handler.
+
+  After the handler returns, the (possibly advanced) script pointer in r1 is
+
+  stored back into eCutsceneCameraInfo, r4-r7 are restored (the push/pop pair
+
+  exists only to shield the caller''s r4-r7 from handler clobbers), and the
+
+  handler''s r0 is reflected in NZ. The dispatch end (`CutsceneCameraCmd_end`)
+
+  sets r0 = 0 so the caller can detect end-of-script via tst r0,r0.
+
+  Handlers cover camera positioning, scrolling (incl. player, soul-weapons
+
+  cursor, custom 0x24, OW-player-relative), shake init, text script run/wait,
+
+  chatbox wait, generic sub_8001B1C/8001B6C, screen fade set/wait, event
+
+  flag set/clear, sound, music play, and writing camera field 0x03:14.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/deepseek-v4.1-flash+old through the convert workflow (1 attempt(s), run convert-20261011-215930);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 17' --file inbox_farm_old_17.c
+    RunCutsceneCameraCommand
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function RunCutsceneCameraCommand
+
+    ./wf verify --function RunCutsceneCameraCommand --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-215930-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function RunCutsceneCameraCommand
+
+    ./wf verify --function RunCutsceneCameraCommand --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 86 out of domain (verify run convert-20261011-215930-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function RunCutsceneCameraCommand
+
+    ./wf verify --function RunCutsceneCameraCommand --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-215930-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battlesweep, fuzz, maps, menus2, story2, story3, story4, story5, story6,
+    story7, story9, wander.'
+  reproduce: grep -l '^08036fbc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp fe765e7
+  tool: tools/wf convert (hyper/deepseek-v4.1-flash+old)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battle
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story9
+- wander
+open_questions:
+- Why are some handler labels (e.g. sub_8001B1C, sub_8001B6C, sound_cmd_80373fc, the 0x24 auto-scroll) still sub-
+  addresses rather than named cuts?
+- Is the camera-info struct's 0x03:14 written by `write_camera_field_03_14` the BG/screen-shake params, the target
+  pos, or something else?
+- Does any handler return non-zero r0 for an error/abort path, or is non-zero exclusively from handlers that defer
+  (wait/wait_chatbox/wait_screen_fade) so the caller can tell "still running" from "end"?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-215930
+- recomp fe765e7

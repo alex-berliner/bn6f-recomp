@@ -1,0 +1,69 @@
+name: sub_8049FA4
+address: '0x08049FA4'
+kind: function
+status: confirmed
+summary: Top-level dispatcher that runs the current menu/battle substate handler and then refreshes the submenu
+  and battle object.
+interface: void sub_8049FA4(void)
+details: "Reads the active substate id by calling sub_803AFC2(1); when the id is non-zero it\nindexes a small jump\
+  \ table at dword_8049FC8 to invoke the matching handler:\n  1 -> handleExitSubmenu_803AA24 (exit submenu)\n  2\
+  \ -> battleObj_dispatchSubstate_803AA40 (per-frame substate of the battle object)\n  3,4,5 -> sub_803ABF4, sub_803AB6C,\
+  \ sub_803AB94 (other substate handlers, names TBD)\nAfter the handler (or directly when id==0) it calls sub_8049F50\
+  \ then sub_803BC7C\nto refresh the submenu and the battle object respectively. Id 0 falls through with\nno handler\
+  \ call, so the post-handler refresh still runs.\nPreserves r4-r7; clobbers r0-r3, r8-r12, lr and flags; r2/r4/r5/r10/lr\
+  \ are used as\ninputs by callees via the GUEST_CALL ABI. The \"off_8049FC4 = dword_8049FC8\" form\nof the table\
+  \ base is a quirk of the disassembly dump and is not meaningful in\ngame logic.\n\nRegister form, old prompt;\
+  \ queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/deepseek-v4.1-flash+old through the convert workflow (1 attempt(s), run convert-20261011-215930);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 17' --file inbox_farm_old_17.c
+    sub_8049FA4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8049FA4
+
+    ./wf verify --function sub_8049FA4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-215930-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8049FA4
+
+    ./wf verify --function sub_8049FA4 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-215930-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8049FA4
+
+    ./wf verify --function sub_8049FA4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-215930-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps.'
+  reproduce: grep -l '^08049fa4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp fe765e7
+  tool: tools/wf convert (hyper/deepseek-v4.1-flash+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles2
+- maps
+open_questions:
+- Exact in-game role of the substate ids 3, 4 and 5 (sub_803ABF4, sub_803AB6C, sub_803AB94).
+- Where sub_8049FA4 is called from in the battle loop and what "substate" conceptually means here (turn phase? animation?).
+- Why id 0 skips its handler but still triggers the post-refresh calls.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-215930
+- recomp fe765e7

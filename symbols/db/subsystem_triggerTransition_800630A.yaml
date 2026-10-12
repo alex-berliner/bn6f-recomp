@@ -1,0 +1,95 @@
+name: subsystem_triggerTransition_800630A
+address: '0x0800630A'
+kind: function
+status: confirmed
+summary: Per-frame dispatcher that calls the active screen-fade handler for each of the two 0x20-byte screen-fade
+  slots.
+interface: void tickScreenFadeSlots_800630A(void);
+details: 'Iterates over two 0x20-byte slots anchored at the global ''eScreenFade'' (one per fade channel,
+
+  likely the in/out fades of a screen transition). For each slot whose state byte (offset 0)
+
+  equals 1, reads the mode byte (offset 1) and uses it to index a 4-byte function-pointer table
+
+  at off_8005FB4, then tail-calls the selected handler via ''mov lr,pc; bx r0''. The handler is
+
+  entered with r0=handler, r1=1, r2=mode. Inactive slots are skipped by advancing to the next
+
+  0x20-byte entry. No fade state is modified here; this routine is purely a poll-and-dispatch
+
+  used to drive the transition each frame from whatever subsystem owns the fade slots.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/deepseek-v4.1-flash+old through the convert workflow (1 attempt(s), run convert-20261011-215930);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 17' --file inbox_farm_old_17.c
+    subsystem_triggerTransition_800630A
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function subsystem_triggerTransition_800630A
+
+    ./wf verify --function subsystem_triggerTransition_800630A --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 4 out of
+    domain (verify run convert-20261011-215930-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function subsystem_triggerTransition_800630A
+
+    ./wf verify --function subsystem_triggerTransition_800630A --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-215930-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function subsystem_triggerTransition_800630A
+
+    ./wf verify --function subsystem_triggerTransition_800630A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-215930-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0800630a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp fe765e7
+  tool: tools/wf convert (hyper/deepseek-v4.1-flash+old)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which subsystem installs the handler pointers at off_8005FB4 and how many entries it has.
+- What r1=1 means to each handler (e.g. "tick" vs "init" step).
+- Whether the 'eScreenFade' region is also written by the handlers themselves or only by the fade-init code.
+- Why only 2 slots are polled (possibly matching the two screen planes or in/out fades).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-215930
+- recomp fe765e7
