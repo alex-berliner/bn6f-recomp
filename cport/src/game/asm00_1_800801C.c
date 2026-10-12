@@ -47,6 +47,127 @@ Next sub_800801C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800825A ── */
+/* sub_800825A: once-per-frame update of the post-battle wait state.
+ * controller: block with the oEndCtrl_* fields; toolkit: Toolkit holding the
+ * battle and game state pointers. preserved_r4 is the caller's r4, which the
+ * original keeps in a stack slot across the update and pops on return, so the
+ * typed function has to carry it through unchanged.
+ * The first call wraps the finished fight up (flag bookkeeping, outcome copy,
+ * loser jingle, link message); every call ticks the countdown and ends the
+ * wait once the comm side releases the fight and the countdown has run out. */
+
+/* Controller block pointed to by r5 (field offsets as in the disassembly). */
+#define oEndCtrl_Step   3    /* u8:  0 until the end-of-battle wrap-up has run once */
+#define oEndCtrl_Next   4    /* u8:  hand-over state, written when the wait ends */
+#define oEndCtrl_Timer  8    /* s16: frames left before the wait ends */
+
+/* Event-flag batch that is dispatched and then cleared again below. */
+#define END_OF_BATTLE_FLAGS 0xE4C53
+
+/* Helpers for calls whose only interface is the guest ABI (typed wrappers are
+ * not available yet). Each sets the input registers, makes one call and returns
+ * the result the disassembly leaves in r0. */
+static void dispatch_flags(u32 flags) { /* register form: calls dispatch_801DACC, which has no typed C interface yet (noted by the tool) */
+    R0 = flags;
+    GUEST_CALL(dispatch_801DACC);
+}
+static void clear_flag_bits(u32 flags) { /* register form: calls flags_clearBits_eStruct2035280_801BED6, which has no typed C interface yet (noted by the tool) */
+    R0 = flags;
+    GUEST_CALL(flags_clearBits_eStruct2035280_801BED6);
+}
+static u32 get_battle_effects_sub_800825A(void) { /* register form: calls GetBattleEffects, which has no typed C interface yet (noted by the tool) */
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+static void play_music(u32 song) { /* register form: calls PlayMusic, which has no typed C interface yet (noted by the tool) */
+    R0 = song;
+    GUEST_CALL(PlayMusic);
+}
+static u32 battle_get_phase_mode(void) { /* register form: calls battle_getPhaseMode_800A152, which has no typed C interface yet (noted by the tool) */
+    GUEST_CALL(battle_getPhaseMode_800A152);
+    return R0;
+}
+static u32 battle_800A8B2(u32 phase_mode) { /* register form: calls sub_800A8B2, which has no typed C interface yet (noted by the tool) */
+    R0 = phase_mode;
+    GUEST_CALL(sub_800A8B2);
+    return R0;
+}
+static void comm_801E792(u32 value) { /* register form: calls sub_801E792, which has no typed C interface yet (noted by the tool) */
+    R0 = value;
+    GUEST_CALL(sub_801E792);
+}
+static u32 cross_net_battle_ready(void) { /* register form: calls comm_checkCrossNetBattleReady_801E754, which has no typed C interface yet (noted by the tool) */
+    GUEST_CALL(comm_checkCrossNetBattleReady_801E754);
+    return R0;
+}
+static void set_unk02(u32 value) { /* register form: calls eStruct200A008_setUnk02, which has no typed C interface yet (noted by the tool) */
+    R0 = value;
+    GUEST_CALL(eStruct200A008_setUnk02);
+}
+
+/* register form: pulls a pair of bytes from a guest address as a s16 via the
+ * signed halfword load (the original uses "ldrh r0,[r5,r0]; tst r0,r0" on a
+ * value the CPU produced with ldrsh, so the memory must be read with the same
+ * sign extension). */
+static s16 timer_signed(u32 controller) {
+    return (s16)LDS16(controller + oEndCtrl_Timer);
+}
+
+static u32 update_battle_end_wait(u32 controller, u32 toolkit, u32 preserved_r4) {
+    if (LD8(controller + oEndCtrl_Step) == 0) {
+        /* one-time wrap-up of the finished fight */
+        dispatch_flags(END_OF_BATTLE_FLAGS);
+        clear_flag_bits(END_OF_BATTLE_FLAGS);
+
+        /* store the flipped outcome flag (win <-> lose) in the battle state */
+        u32 battle = LD32(toolkit + oToolkit_BattleStatePtr);
+        ST8(battle + oBattleState_Unk_10, LD8(battle + oBattleState_Unk_0d) ^ 1);
+
+        if (get_battle_effects_sub_800825A() & 8)        /* bit 3: the player lost */
+            play_music(SONG_LOSER);
+
+        /* bit 1 shortens the wait from 0x66 to 0x5e frames */
+        u16 wait;
+        if (get_battle_effects_sub_800825A() & 2)
+            wait = 0x5E;
+        else
+            wait = 0x66;
+        ST16(controller + oEndCtrl_Timer, wait);
+
+        /* tell the link layer how the fight ended (phase mode 7 sends a fixed 0x18) */
+        u32 phase_mode = battle_get_phase_mode();
+        u32 link_value = battle_800A8B2(phase_mode);
+        if (phase_mode == 7)
+            link_value = 0x18;
+        comm_801E792(link_value);
+
+        ST8(controller + oEndCtrl_Step, 4);
+    }
+
+    /* tick the countdown one frame */
+    ST16(controller + oEndCtrl_Timer, (u16)(LD16(controller + oEndCtrl_Timer) - 1));
+
+    if (cross_net_battle_ready() != 0)
+        return preserved_r4;                  /* link side still in control: don't end the wait locally */
+
+    if (timer_signed(controller) > 0)
+        return preserved_r4;                  /* countdown not finished yet */
+
+    /* wait is over: hand the controller and the game state to the follow-up */
+    ST8(controller + oEndCtrl_Next, 2);
+    ST8(LD32(toolkit + oToolkit_GameStatePtr) + oGameState_Unk_14, 2);
+    set_unk02(1);
+
+    return preserved_r4;
+}
+
+/* sub_800825A(r5 = controller, r10 = toolkit); r4 leaves as the caller passed it */
+Next sub_800825A(void) {
+    R4 = update_battle_end_wait(R5, R10, R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_800840C ── */
 /* sub_800840C: pre-battle intro step; driven by a small state byte at r5.
  * On the first call it copies some preloaded graphics to two VRAM buffers and

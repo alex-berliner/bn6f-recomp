@@ -2054,6 +2054,35 @@ Next battle_spawnAndInitObject0x33_80CA686(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t3_0x36_80CAB68 ── */
+/* Thumb dispatch table for battle-object state phases at 0x080CAB7C.
+ * Entries are (function+1) indexed by the CurState byte (0, 4, 8). */
+#define BSTATE_TABLE_BASE  0x80CAB7C
+
+/* register form: original ldr r1,[tbl,r0]; bx r1 — load handler address (with
+ * Thumb LSB set) into R1, then dispatch via address (no typed wrapper exists
+ * for these three callees). */
+static void call_state_handler(u32 dispatch_addr) {
+    R1 = dispatch_addr;
+    GUEST_CALL_ADDR(dispatch_addr);
+}
+
+/* Dispatch the per-frame update for a battle object based on its CurState byte.
+ * Reads state from (object_addr + oBattleObject_CurState), looks up the
+ * (Thumb) handler address in the dispatch table, and tail-calls it. */
+static void battle_object_update_state(u32 object_addr) {
+    u32 state = LD8(object_addr + oBattleObject_CurState);
+    u32 dispatch_addr = LD32(BSTATE_TABLE_BASE + state);
+
+    call_state_handler(dispatch_addr);
+}
+
+/* t3_0x36_80CAB68(r5 = battle object) — state-phase dispatcher. */
+Next t3_0x36_80CAB68(void) {
+    battle_object_update_state(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_object_SetStateUpdatePhase_80CAB88 ── */
 /* battle_object_SetStateUpdatePhase_80CAB88(r5 = battle object):
  * Advance the object's state machine: mark the current state as needing its
@@ -3830,6 +3859,70 @@ Next sub_80E0668(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E0684 ── */
+/* register form: relies on battle_orStateFlags5c_8001382 leaving no value the caller uses */
+static void battle_or_state_flags_5c(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(battle_orStateFlags5c_8001382);
+}
+
+/* register form: relies on GetBattleEffects returning its result in r0 (wrapper reads R0) */
+static u32 get_battle_effects_sub_80E0684(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* register form: relies on SetScreenFade leaving r2 and r5 (wrapper returns them) */
+static void set_screen_fade(u32 fade_kind, u32 color) {
+    R0 = fade_kind;
+    R1 = color;
+    GUEST_CALL(SetScreenFade);
+}
+
+/* register form: relies on IsScreenFadeActive returning Z flag based on r0 (caller branches on r0==0) */
+static bool is_screen_fade_active(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return R0 != 0;
+}
+
+/* Decide which screen fade to start based on the current battle state, then poll
+ * for fade completion and bump the BattleObject's phase to 4 when it finishes.
+ * Original uses the toolkit pointer at r10 for the battle state. */
+static void run_phase_init(u32 bo_addr, u32 toolkit_addr) {
+    if (LD8(bo_addr + oBattleObject_PhaseInitialized) != 0)
+        goto poll;
+
+    /* Phase init block: kick the battle into the screen-fade transition. */
+    battle_or_state_flags_5c(0x10);
+    u32 effects = get_battle_effects_sub_80E0684();
+    u32 state_addr = LD32(toolkit_addr + oToolkit_BattleStatePtr);
+
+    u32 fade_kind;
+    if ((effects & 0x400) != 0) {
+        u8 unk_1a = LD8(state_addr + oBattleState_Unk_1a);
+        fade_kind = (unk_1a > 1) ? 8 : 0;
+    } else {
+        u8 mode = LD8(LD32(state_addr + oBattleState_BattleSettings) + 5);
+        fade_kind = (mode >= 2) ? 8 : 0;
+    }
+    set_screen_fade(fade_kind, 0x10);
+
+    ST8(A_byte_2036740, 1);
+    ST8(bo_addr + oBattleObject_PhaseInitialized, 4);
+
+poll:
+    if (is_screen_fade_active())
+        return;
+
+    battle_or_state_flags_5c(1);
+    ST16(bo_addr + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+}
+
+Next sub_80E0684(void) {
+    run_phase_init(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_object_teardownAndFree_80E06E0 ── */
 /* battle_object_teardownAndFree_80E06E0: teardown routine for a battle object.
  * Asks sub_800AA92 (with argument 0) whether cleanup should be skipped;
@@ -3874,6 +3967,28 @@ Next battle_spawnType4ObjectWithActiveFlag_80E06F8(void) {
     R0 = object;                       /* mov r0, r5 */
     R4 = callerR4;                     /* pop {r4,r5,pc} */
     R5 = callerR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── t4_0x3_80E0710 ── */
+/* State dispatch via the jump table at off_80E0724. r5 holds the timefreeze
+ * battle object; the handler is selected by CurState (Begin / sub_80E0730 /
+ * End). The three handlers share this function's contract, so the table
+ * dispatch can be a helper that takes/returns guest state: the trampoline is
+ * too small to express otherwise (the handler pointer is read from a table
+ * indexed by a guest byte, then tail-called through lr/bx). */
+static void timefreeze_dispatch(u32 r3, u32 r4, u32 r5, u32 r6, u32 r7,
+                                u32 r8, u32 r9, u32 r10, u32 r11, u32 r12,
+                                u32 lr) {
+    /* register form: jump table indexed by a guest byte; the only sane way
+     * to read the handler address and tail-call it is through a guest-side
+     * dispatch that preserves every register across the call. */
+    GUEST_CALL_ADDR(LD32(A_off_80E0724 + LD8(r5 + oBattleObject_CurState)));
+}
+
+/* t4_0x3_80E0710 (r5 = battle object): timefreeze state trampoline */
+Next t4_0x3_80E0710(void) {
+    timefreeze_dispatch(R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, LR);
     RETURN_TO_CALLER();
 }
 

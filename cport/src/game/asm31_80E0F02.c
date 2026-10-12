@@ -434,6 +434,30 @@ Next sub_80E199A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t4_0x11_80E19BC ── */
+#define TABLE_80E19CC  0x80E19CCu
+
+/* register form: dispatch via raw code address (THUMB b-table target), called from outside */
+static u32 call_dispatch_target(u32 code_addr, u32 cur_state, u32 table_word, u32 r5) {
+    R5 = r5;
+    R0 = cur_state;
+    R1 = table_word;
+    GUEST_CALL_ADDR(code_addr);
+    return R0;
+}
+
+/* dispatch for CurState byte at R5+oBattleObject_CurState, three-entry table at 0x80E19CC */
+static void dispatch_battle_object_state(u32 battle_obj) {
+    u32 cur_state   = (u32)LD8(battle_obj + oBattleObject_CurState);
+    u32 table_word  = LD32(TABLE_80E19CC + cur_state);
+    call_dispatch_target(table_word, cur_state, table_word, battle_obj);
+}
+
+Next t4_0x11_80E19BC(void) {
+    dispatch_battle_object_state(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectSetTimerFromParam1Table_80E19DC ── */
 /* battle_objectSetTimerFromParam1Table_80E19DC(r5 = battle object):
  * Load the object's next Timer value from a lookup table indexed by its

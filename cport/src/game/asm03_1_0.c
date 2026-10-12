@@ -792,6 +792,282 @@ Next decompJackInAnimationGfx_8034314(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80343B0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r6, r7; } call_QueueWordAlignedGFXTransfer_result;
+/* register form: generated wrapper: QueueWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueWordAlignedGFXTransfer_result call_QueueWordAlignedGFXTransfer(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueWordAlignedGFXTransfer);
+    return (call_QueueWordAlignedGFXTransfer_result){ R6, R7 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7; bool v; } call_CopyBackgroundTiles_result_sub_80343B0;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result_sub_80343B0 call_CopyBackgroundTiles_sub_80343B0(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result_sub_80343B0){ R2, R3, R4, R5, R6, R7, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_entity_runAllUpdateHandlers_80465BC_result;
+/* register form: generated wrapper: entity_runAllUpdateHandlers_80465BC has no typed C interface yet */
+static inline call_entity_runAllUpdateHandlers_80465BC_result call_entity_runAllUpdateHandlers_80465BC(void) {
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+    return (call_entity_runAllUpdateHandlers_80465BC_result){ R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_80465F8_result;
+/* register form: generated wrapper: sub_80465F8 has no typed C interface yet */
+static inline call_sub_80465F8_result call_sub_80465F8(void) {
+    GUEST_CALL(sub_80465F8);
+    return (call_sub_80465F8_result){ R0, R1, R2, R3, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+} UpdateWorldResult;
+
+/* Per-frame advance of the world-map animation table pointed to by state.
+ * state+3 holds the current 8-bit row offset into a 12-byte-per-row table
+ * rooted at off_8034400; state+6 holds a 16-bit frames-remaining counter.
+ * When the counter is still > 1, just decrement it. Otherwise look at the
+ * next row slot: if its first word is non-zero, advance to that row; if
+ * it is zero (end-of-table sentinel), wrap back to row 0 -- but keep the
+ * row pointer on the row that just expired (the original assembly leaves
+ * r3 unchanged in that branch, so the palette queued below comes from the
+ * old row). Then queue that row's palette into VRAM, re-stamp the standard
+ * 32x20 BG tile block, tick every per-frame entity handler, and drain the
+ * queued GFX list. */
+static UpdateWorldResult update_world_map(u32 state, u32 r10_in) {
+    UpdateWorldResult res;
+    /* register form: r4/r6/r7 are preserved by the caller but clobbered
+     * by QueueWordAlignedGFXTransfer, CopyBackgroundTiles,
+     * entity_runAllUpdateHandlers_80465BC, and sub_80465F8, so snapshot
+     * them on entry and restore on exit. */
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+    u32 saved_r7 = R7;
+
+    u32 base = A_off_8034400;
+    u32 row_idx = LD8(state + 3);
+    u32 row_ptr = base + row_idx;
+    u32 frames_left = LD16(state + 6);
+    u32 next_row_ptr;
+
+    if ((s32)frames_left > 1) {
+        /* Same row, one fewer tick on its frame counter. */
+        frames_left -= 1;
+        next_row_ptr = row_ptr;
+    } else {
+        /* Counter elapsed -- peek at the next 12-byte row slot. */
+        u32 next_marker = LD32(row_ptr + 0xC);
+        if (next_marker == 0) {
+            /* End-of-table sentinel: wrap to row 0 for the *next* tick.
+             * The original keeps r3 on the row that just expired, so
+             * the palette queued below still comes from that row. */
+            row_idx = 0;
+            frames_left = LD32(base + (A_dword_8034408 - A_off_8034400));
+            next_row_ptr = row_ptr;
+        } else {
+            /* Step to the next row and pick up its frame count. */
+            row_idx += 0xC;
+            next_row_ptr = base + row_idx;
+            frames_left = LD32(next_row_ptr + 8);
+        }
+    }
+
+    ST8(state + 3, (u8)row_idx);
+    ST16(state + 6, (u16)frames_left);
+
+    /* Queue the chosen row's palette source into palette_3001960. */
+    call_QueueWordAlignedGFXTransfer(LD32(next_row_ptr + 4), A_palette_3001960, 0x20);
+    /* Re-stamp the standard 32x20 background tile block with the world tile IDs. */
+    call_CopyBackgroundTiles_sub_80343B0(0, 0, 1, A_eTileIds2017A04, 0x20, 0x14);
+    /* Tick every per-frame entity update handler. */
+    call_entity_runAllUpdateHandlers_80465BC();
+    /* Drain the queued GFX list; r8/r9/r10/r11/r12 come from here. */
+    call_sub_80465F8_result s = call_sub_80465F8();
+
+    /* Restore the preserved registers we snapshotted at entry. */
+    R4 = saved_r4;
+    R6 = saved_r6;
+    R7 = saved_r7;
+
+    /* r10_in is the caller's R10; the callees that need r10 (CopyBackgroundTiles,
+     * entity_runAllUpdateHandlers_80465BC) read it straight from the guest
+     * register, so this parameter is just along for the ride. */
+    (void)r10_in;
+    res.r5 = state;
+    res.r8 = s.r8;
+    res.r9 = s.r9;
+    res.r10 = s.r10;
+    res.r11 = s.r11;
+    res.r12 = s.r12;
+    return res;
+}
+
+Next sub_80343B0(void) {
+    UpdateWorldResult res = update_world_map(R5, R10);
+    R5 = res.r5;
+    R8 = res.r8;
+    R9 = res.r9;
+    R10 = res.r10;
+    R11 = res.r11;
+    R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── map_8034B4C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_ZeroFillByWord_result;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result call_ZeroFillByWord(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result){ R3 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_playCertainMapMusicBasedOnEventByte_8036e44_result;
+/* register form: generated wrapper: playCertainMapMusicBasedOnEventByte_8036e44 has no typed C interface yet */
+static inline call_playCertainMapMusicBasedOnEventByte_8036e44_result call_playCertainMapMusicBasedOnEventByte_8036e44(void) {
+    GUEST_CALL(playCertainMapMusicBasedOnEventByte_8036e44);
+    return (call_playCertainMapMusicBasedOnEventByte_8036e44_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r5, r6, r7, r10, r11; } call_sub_8035028_result;
+/* register form: generated wrapper: sub_8035028 has no typed C interface yet */
+static inline call_sub_8035028_result call_sub_8035028(void) {
+    GUEST_CALL(sub_8035028);
+    return (call_sub_8035028_result){ R5, R6, R7, R10, R11 };
+}
+
+typedef struct { u32 r5, r6, r7; } call_owPlayer_80350a8_result;
+/* register form: generated wrapper: owPlayer_80350a8 has no typed C interface yet */
+static inline call_owPlayer_80350a8_result call_owPlayer_80350a8(void) {
+    GUEST_CALL(owPlayer_80350a8);
+    return (call_owPlayer_80350a8_result){ R5, R6, R7 };
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_npc_spawnOverworldNPCObjectsForMap_result;
+/* register form: generated wrapper: npc_spawnOverworldNPCObjectsForMap has no typed C interface yet */
+static inline call_npc_spawnOverworldNPCObjectsForMap_result call_npc_spawnOverworldNPCObjectsForMap(u32 r5, u32 r6, u32 r7) {
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(npc_spawnOverworldNPCObjectsForMap);
+    return (call_npc_spawnOverworldNPCObjectsForMap_result){ R2, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: sub_803537C has no typed C interface yet */
+static inline void call_sub_803537C(void) {
+    GUEST_CALL(sub_803537C);
+}
+
+typedef struct { u32 r2, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_80353DA_result;
+/* register form: generated wrapper: sub_80353DA has no typed C interface yet */
+static inline call_sub_80353DA_result call_sub_80353DA(void) {
+    GUEST_CALL(sub_80353DA);
+    return (call_sub_80353DA_result){ R2, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r2, r10, r11; } call_StoreMapScriptsThenRunOnInitMapScript_result;
+/* register form: generated wrapper: StoreMapScriptsThenRunOnInitMapScript has no typed C interface yet */
+static inline call_StoreMapScriptsThenRunOnInitMapScript_result call_StoreMapScriptsThenRunOnInitMapScript(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(StoreMapScriptsThenRunOnInitMapScript);
+    return (call_StoreMapScriptsThenRunOnInitMapScript_result){ R2, R10, R11 };
+}
+
+typedef struct { u32 r10; } call_PlayMapMusic_result;
+/* register form: generated wrapper: PlayMapMusic has no typed C interface yet */
+static inline call_PlayMapMusic_result call_PlayMapMusic(u32 r2) {
+    R2 = r2;
+    GUEST_CALL(PlayMapMusic);
+    return (call_PlayMapMusic_result){ R10 };
+}
+
+// Typed wrappers are generated for the game functions listed below; call them, don't define them.
+
+/* Load and bring up a map: clear the per-map work block, run the music/event
+ * setup helpers and the NPC spawner, run the map's on-init/on-update script
+ * pair for the resolved group, then start the map's music.
+ *
+ * map_group/map_number index the *real-world* table by default; groups past
+ * INTERNET_MAP_GROUP_START index the separate Internet table.
+ *
+ * The original saves r8/r9/r12 across this routine and the saved-back values
+ * come from r2-r4 that it pushes before the first call. But none of the called
+ * functions return r8/r9/r12 in their results, so they must be preserved by the
+ * routine itself: snapshot the guest r8/r9/r12 at entry and restore them on
+ * exit, exactly as the assembly does by hand.
+ */
+static void load_map(u32 map_group, u32 map_number) {
+    /* register form: this routine is literally the assembly, register use is unavoidable. */
+    u32 saved_r8 = R8;
+    u32 saved_r9 = R9;
+    u32 saved_r12 = R12;
+
+    /* Clear the 0x40-byte per-map work block at unk_2011EA0. */
+    call_ZeroFillByWord(A_unk_2011EA0, 0x40);
+
+    /* Bring the music (event-driven), the gamestate module (sub_8035028),
+     * the overworld player (owPlayer_80350a8) and the map's NPCs online. */
+    call_playCertainMapMusicBasedOnEventByte_8036e44();
+    call_sub_8035028();
+    call_owPlayer_80350a8();
+    call_npc_spawnOverworldNPCObjectsForMap(R5, R6, R7);
+
+    /* sub_803537C runs first, then sub_80353DA on the r0/r1 it leaves behind.
+     * Both are typed wrappers; their interface already encodes the leftover
+     * semantics, so just chain them. */
+    call_sub_803537C();
+    call_sub_80353DA();
+
+    /* Pick the script-pointer table for this map group, offset the group down
+     * to 0 if it lives in the Internet range. */
+    u32 script_tables = A_RealWorldMapScriptPointers;
+    if ((s32)map_group >= (s32)INTERNET_MAP_GROUP_START) {
+        script_tables = A_InternetMapScriptPointers;
+        map_group -= INTERNET_MAP_GROUP_START;
+    }
+
+    /* Each group owns a pair of script tables (on-init, on-update), one entry
+     * per map number. Resolve both pointer-to-pointer chains. */
+    u32 group_entry = script_tables + (map_group << 3);
+    u32 on_init_script  = LD32(LD32(group_entry)     + (map_number << 2));
+    u32 on_update_script = LD32(LD32(group_entry + 4) + (map_number << 2));
+
+    /* Store the script pair (which runs on_init for this map) and start music. */
+    call_StoreMapScriptsThenRunOnInitMapScript(on_init_script, on_update_script);
+    call_PlayMapMusic(R2);
+
+    /* Restore the saved high registers exactly as the original's epilogue does. */
+    R8 = saved_r8;
+    R9 = saved_r9;
+    R12 = saved_r12;
+}
+
+/* map_8034B4C(r0 = map_group, r1 = map_number) -> () */
+Next map_8034B4C(void) {
+    load_map(R0, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── check_playerCanAdvanceForward_8034C36 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active_sub_8034C36(void) {

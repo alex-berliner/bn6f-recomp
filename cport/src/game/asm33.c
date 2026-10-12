@@ -8,6 +8,124 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_8123300 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4; } call_sub_8123360_result;
+/* register form: generated wrapper: sub_8123360 has no typed C interface yet */
+static inline call_sub_8123360_result call_sub_8123360(void) {
+    GUEST_CALL(sub_8123360);
+    return (call_sub_8123360_result){ R0, R4 };
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNavi_result;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result call_GetCurPETNavi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result){ R0, R3 };
+}
+
+/* register form: generated wrapper: SWI_LZ77UnCompReadNormalWrite8bit has no typed C interface yet */
+static inline void call_SWI_LZ77UnCompReadNormalWrite8bit(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SWI_LZ77UnCompReadNormalWrite8bit);
+}
+
+typedef struct { u32 r2, r3; } call_CopyBytes_result;
+/* register form: generated wrapper: CopyBytes has no typed C interface yet */
+static inline call_CopyBytes_result call_CopyBytes(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyBytes);
+    return (call_CopyBytes_result){ R2, R3 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_CopyHalfwords_result;
+/* register form: generated wrapper: CopyHalfwords has no typed C interface yet */
+static inline call_CopyHalfwords_result call_CopyHalfwords(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyHalfwords);
+    return (call_CopyHalfwords_result){ R1, R2, R3 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_CopyWords_result;
+/* register form: generated wrapper: CopyWords has no typed C interface yet */
+static inline call_CopyWords_result call_CopyWords(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyWords);
+    return (call_CopyWords_result){ R1, R2, R3 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_CopyByEightWords_result;
+/* register form: generated wrapper: CopyByEightWords has no typed C interface yet */
+static inline call_CopyByEightWords_result call_CopyByEightWords(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyByEightWords);
+    return (call_CopyByEightWords_result){ R1, R2, R3 };
+}
+
+/* Decompress the LZ77 stream referenced by the selected entry of bank_table into out_buf,
+ * then copy (header_word >> 8) - 4 halfwords of payload data from out_buf+4 into dest_buf
+ * using the widest legal copy unit. The bank index is 0x30 by default, or (pet_navi*4)
+ * when sub_8123360 returns non-zero. */
+static void decompress_navi_graphic(u32 bank_table, u32 dest_buf, u32 out_buf) {
+    u32 bank_index;
+    u32 lz_src;
+    u32 header_word;
+    u32 halfword_count;
+
+    if (call_sub_8123360().r0 != 0)
+        bank_index = (u32)call_GetCurPETNavi().r0 << 2;
+    else
+        bank_index = 0x30;
+
+    /* Decompress bank_table[bank_index] -> out_buf. */
+    lz_src = LD32(bank_table + bank_index);
+    call_SWI_LZ77UnCompReadNormalWrite8bit(lz_src, out_buf);
+
+    /* LZ77 header: top 24 bits are the payload length in bytes. Subtract the 4-byte
+     * header itself to get the post-header payload size in bytes. */
+    header_word = LD32(out_buf);
+    halfword_count = (header_word >> 8) - 4;
+
+    /* Dispatch on the low bits so the widest legal copy can be used. The original
+     * tests 1, then 3, then 0x1F: bit 0 set => CopyBytes, bit 1 set => CopyHalfwords,
+     * bits 0-4 set => CopyWords, else CopyByEightWords. */
+    if (halfword_count & 1u) {
+        call_CopyBytes(out_buf + 4, dest_buf, halfword_count);
+    } else if (halfword_count & 2u) {
+        call_CopyHalfwords(out_buf + 4, dest_buf, halfword_count);
+    } else if (halfword_count & 0x1Fu) {
+        call_CopyWords(out_buf + 4, dest_buf, halfword_count);
+    } else {
+        call_CopyByEightWords(out_buf + 4, dest_buf, halfword_count);
+    }
+}
+
+/* sub_8123300(r0 = bank_table, r1 = dest_buf, r2 = out_buf)
+ * Loads/decompresses the current Navi's tile graphic into dest_buf. r1 and r2 are
+ * preserved across every callee, so they pass through unchanged. r4 and r7 are also
+ * preserved (r4 never appears in the body; r7 is a scratch the inner code restores
+ * from the stack). */
+Next sub_8123300(void) {
+    u32 dest_buf = R1;
+    u32 out_buf  = R2;
+
+    decompress_navi_graphic(R0, dest_buf, out_buf);
+
+    /* Forward the preserved values back to the caller. */
+    R1 = dest_buf;
+    R2 = out_buf;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8123360 ── */
 /* sub_8123360: () -> bool (r0)
  *

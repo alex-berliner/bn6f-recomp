@@ -1731,6 +1731,86 @@ Next sub_8133BB4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8133C0C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result call_IsButtonPressed(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool z, n, c, v; } call_PlaySoundEffect_result_sub_8133C0C;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_8133C0C call_PlaySoundEffect_sub_8133C0C(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_8133C0C){ R2, R3, R4, R5, R6, R7, R10, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Toggle a sub-menu on or off in response to START, or B while inside a sub-menu.
+ *
+ * The menu struct at `menu` (r5 on entry) uses:
+ *   +0x03  current menu state byte (0x0C = inside a sub-menu)
+ *   +0x0D  saved previous state, swapped in/out when entering/exiting a sub-menu
+ *   +0x34  u16 sub-menu timer, zeroed when the sub-menu opens
+ *   +0x44  busy flag – blocks the toggle while non-zero
+ *
+ * `sound_extra` is r2 on entry (passed through to PlaySoundEffect).
+ *
+ * Returns the value whose N/Z the adapter writes back: a positive number when
+ * PlaySoundEffect ended with Z clear and N clear, a negative one when N was set,
+ * and 0 for the no-action paths and when PlaySoundEffect ended with Z set.
+ * That exactly reproduces the final N and Z of every original path while leaving
+ * r2/r4/r5/r6/r7/r10 in the registers (PlaySoundEffect's wrapper handles that). */
+static s32 handle_submenu_toggle(u32 menu, u32 sound_extra) {
+    u8 state = LD8(menu + 3);
+    bool proceed;
+
+    /* Start pressed → go straight to the toggle.
+     * Start not pressed → only continue if state == 0x0C and B is pressed. */
+    if (!call_IsButtonPressed(JOYPAD_START).z) {
+        proceed = true;
+    } else if (state == 0x0C && !call_IsButtonPressed(JOYPAD_B).z) {
+        proceed = true;
+    } else {
+        proceed = false;
+    }
+
+    if (!proceed)
+        return 0;
+
+    /* While the menu is busy (locked), the toggle is suppressed. */
+    if ((u8)LD8(menu + 0x44) != 0)
+        return 0;
+
+    if (state == 0x0C) {
+        /* Exit sub-menu: restore the saved previous state. */
+        ST8(menu + 3, (u8)LD8(menu + 0x0D));
+        call_PlaySoundEffect_result_sub_8133C0C snd =
+            call_PlaySoundEffect_sub_8133C0C(SOUND_EXIT_SUBMENU, sound_extra);
+        if (snd.z) return 0;
+        return snd.n ? -1 : 1;
+    }
+
+    /* Enter sub-menu: save current state, switch to 0x0C, reset timer. */
+    ST8(menu + 0x0D, state);
+    ST8(menu + 3, 0x0C);
+    ST16(menu + 0x34, 0);
+    call_PlaySoundEffect_result_sub_8133C0C snd =
+        call_PlaySoundEffect_sub_8133C0C(SOUND_MENU_SELECT, sound_extra);
+    if (snd.z) return 0;
+    return snd.n ? -1 : 1;
+}
+
+/* sub_8133C0C(r2, r5, r10, lr) -> nz r2 r4 r5 r6 r7 r10 */
+Next sub_8133C0C(void) {
+    SET_FLAGS_NZ(handle_submenu_toggle(R5, R2));
+    RETURN_TO_CALLER();
+}
+
 /* ── checkLeftRightInputForFolderEdit_8133E3C ── */
 #define oToolkit_JoypadPtr          4
 #define oJoypad_LowSensitivityHeld  4

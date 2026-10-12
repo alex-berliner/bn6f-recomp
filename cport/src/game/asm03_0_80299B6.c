@@ -2639,6 +2639,179 @@ Next runPendingHandlerForEntryPair_802CEC8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── hiveBlockHappensHere_802CEF4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3; } call_GetAIDataUnk0x48Flag_result;
+/* register form: generated wrapper: GetAIDataUnk0x48Flag has no typed C interface yet */
+static inline call_GetAIDataUnk0x48Flag_result call_GetAIDataUnk0x48Flag(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(GetAIDataUnk0x48Flag);
+    return (call_GetAIDataUnk0x48Flag_result){ R0, R3 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r10; } call_PlaySoundEffect_result_hiveBlockHappensHere_802CEF4;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_hiveBlockHappensHere_802CEF4 call_PlaySoundEffect_hiveBlockHappensHere_802CEF4(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_hiveBlockHappensHere_802CEF4){ R2, R3, R4, R5, R10 };
+}
+
+typedef struct { u32 r0, r1, r2; } call_getTable2036720EntryFields_802CE78_result;
+/* register form: generated wrapper: getTable2036720EntryFields_802CE78 has no typed C interface yet */
+static inline call_getTable2036720EntryFields_802CE78_result call_getTable2036720EntryFields_802CE78(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getTable2036720EntryFields_802CE78);
+    return (call_getTable2036720EntryFields_802CE78_result){ R0, R1, R2 };
+}
+
+typedef struct { u32 r0, r3; } call_GetAIData_Unk_44_Flag_result;
+/* register form: generated wrapper: GetAIData_Unk_44_Flag has no typed C interface yet */
+static inline call_GetAIData_Unk_44_Flag_result call_GetAIData_Unk_44_Flag(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(GetAIData_Unk_44_Flag);
+    return (call_GetAIData_Unk_44_Flag_result){ R0, R3 };
+}
+
+typedef struct { u32 r3; } call_SetAIData_Unk_44_Flag_result;
+/* register form: generated wrapper: SetAIData_Unk_44_Flag has no typed C interface yet */
+static inline call_SetAIData_Unk_44_Flag_result call_SetAIData_Unk_44_Flag(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(SetAIData_Unk_44_Flag);
+    return (call_SetAIData_Unk_44_Flag_result){ R3 };
+}
+
+/* hiveBlockHappensHere_802CEF4
+ * Evaluates a hive/antitarget collision and updates the AI flags/collision
+ * damage buffer on a hive-block outcome. */
+
+#define FLAG_HIVE_UP        0x00200000u
+#define FLAG_HIVE_ACTIVE    0x00000800u
+#define FLAG_AI_44_DONE     0x00008200u
+#define FLAG_HIGH_OBJ_BITS  0xFF800000u
+#define FLAG_HIVE_BROKEN    0x00000200u
+#define FLAG_HIVE_REBUILT   0x00008000u
+#define FLAG_ANTISWORD      0x00000400u
+#define FLAG_SWORD_HIT      0x00002000u
+#define FLAG_HIVE_INTACT    0x00020000u
+#define MASK_OBJ_FLAGS2_CLR 0x000301BEu
+#define MASK_COLL_HIVE_CLR  0x00000040u
+
+#define ALLIANCE_TYPE_HIVE_BB   0xBB
+#define ALLIANCE_TYPE_OTHER     0x157
+#define ALLIANCE_TYPE_ANTISWORD 0xBC
+
+static void clear_collision_damage(u32 c) {
+    u32 panel = c + oCollisionData_PanelDamage1;
+    ST16(panel + 0, 0);
+    ST16(panel + 2, 0);
+    ST16(panel + 4, 0);
+    ST16(panel + 6, 0);
+    ST16(panel + 8, 0);
+    ST16(c + oCollisionData_Unk_8e, 0);
+    ST16(c + oCollisionData_Unk_90, 0);
+    ST16(c + oCollisionData_Unk_92, 0);
+    ST32(c + 0x74, 0);
+    ST8(c + oCollisionData_HitModifierFinal, 0);
+    ST8(c + oCollisionData_StatusEffectFinal, 0);
+    ST16(c + 0xA4, 0);
+    ST16(c + oCollisionData_Unk_1c, 0);
+    ST16(c + oCollisionData_Unk_2a, 0);
+    ST16(c + oCollisionData_Unk_2c, 0);
+    ST32(c + oCollisionData_FlagsFromCollision,
+         LD32(c + oCollisionData_FlagsFromCollision) & ~MASK_COLL_HIVE_CLR);
+    ST32(c + oCollisionData_ObjectFlags2,
+         LD32(c + oCollisionData_ObjectFlags2) & ~MASK_OBJ_FLAGS2_CLR);
+}
+
+static void hive_block(u32 object) {
+    u32 c = LD32(object + oBattleObject_CollisionDataPtr);
+
+    /* --- Hive-up path: riskyhoney panel -- */
+    u32 f48 = call_GetAIDataUnk0x48Flag(object).r0;
+    if ((f48 & FLAG_HIVE_UP) != 0
+        && LD16(c + oCollisionData_PanelDamage2) == 0) {
+        u32 p = c + oCollisionData_PanelDamage1;
+        u32 or_dmg = LD16(p) | LD16(p + 4) | LD16(p + 6) | LD16(p + 8);
+        if (or_dmg != 0) {
+            u32 aidata = LD32(object + oBattleObject_AIDataPtr) + 0xA0;
+            ST32(aidata + oAIAttackVars_Unk_30, 1);
+            (void)call_PlaySoundEffect_hiveBlockHappensHere_802CEF4(0x6E, or_dmg);
+            clear_collision_damage(c);
+            return;
+        }
+        clear_collision_damage(c);
+        return;
+    }
+
+    /* --- Table-driven hive path --- */
+    u32 alliance = LD8(object + oBattleObject_Alliance);
+    u32 entry = call_getTable2036720EntryFields_802CE78(alliance).r0;
+
+    u32 hive_type;
+    u32 threshold;
+    if (entry == ALLIANCE_TYPE_HIVE_BB || entry == ALLIANCE_TYPE_OTHER) {
+        hive_type = entry;
+        threshold = 0xA;
+    } else {
+        u32 f = call_GetAIDataUnk0x48Flag(object).r0;
+        if ((f & FLAG_HIVE_ACTIVE) != 0) {
+            hive_type = ALLIANCE_TYPE_HIVE_BB;
+            threshold = 1;
+        } else {
+            /* Not a hive type and not active: check AntiSword */
+            if (entry != ALLIANCE_TYPE_ANTISWORD)
+                return;
+            u32 f44 = call_GetAIData_Unk_44_Flag(object).r0;
+            if ((f44 & FLAG_ANTISWORD) != 0) {
+                clear_collision_damage(c);
+                return;
+            }
+            u32 col_flags = LD32(c + oCollisionData_FlagsFromCollision);
+            if ((col_flags & FLAG_SWORD_HIT) == 0)
+                return;
+            if ((col_flags & FLAG_HIVE_INTACT) != 0)
+                return;
+            (void)call_SetAIData_Unk_44_Flag(FLAG_ANTISWORD, object);
+            clear_collision_damage(c);
+            return;
+        }
+    }
+
+    /* --- Shared hive-broken logic --- */
+    u32 f44 = call_GetAIData_Unk_44_Flag(object).r0;
+    if ((f44 & FLAG_AI_44_DONE) != 0) {
+        clear_collision_damage(c);
+        return;
+    }
+    u32 col_flags = LD32(c + oCollisionData_FlagsFromCollision);
+    if ((col_flags & FLAG_HIGH_OBJ_BITS) == 0)
+        return;
+
+    u32 dmg_base = c + 0x82;
+    u32 sum = LD16(dmg_base) + LD16(dmg_base + 2) + LD16(dmg_base + 4)
+            + LD16(dmg_base + 6) + LD16(dmg_base + 8);
+
+    if ((s32)sum >= (s32)threshold) {
+        u32 flag = (hive_type == ALLIANCE_TYPE_HIVE_BB)
+                   ? FLAG_HIVE_BROKEN : FLAG_HIVE_REBUILT;
+        (void)call_SetAIData_Unk_44_Flag(flag, object);
+        clear_collision_damage(c);
+        return;
+    }
+    if (threshold == 1) {
+        clear_collision_damage(c);
+        return;
+    }
+}
+
+Next hiveBlockHappensHere_802CEF4(void) {
+    hive_block(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_handleImpact_802CFF8 ── */
 /* Returns true if the battle object has the 0x40 bit set in its collision
  * data field at offset 0x76 (the "shockwave / impact" trigger flag). */

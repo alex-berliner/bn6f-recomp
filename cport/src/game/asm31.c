@@ -666,6 +666,94 @@ Next sub_80C0870(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C088C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_spawn_t1_0x0_EffectObject_result;
+/* register form: generated wrapper: spawn_t1_0x0_EffectObject has no typed C interface yet */
+static inline call_spawn_t1_0x0_EffectObject_result call_spawn_t1_0x0_EffectObject(u32 r1, u32 r2, u32 r3, u32 r4) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    return (call_spawn_t1_0x0_EffectObject_result){ R1, R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_80C088C;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_80C088C call_PlaySoundEffect_sub_80C088C(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_80C088C){ R1, R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80C088C: drive one phase of a battle object's flashing intro effect.
+ *   - First visit (PhaseInitialized == 0): spawn the effect configured by the three
+ *     words at object+0x34 (with +0x140000 added to the third, a coordinate bias),
+ *     play the phase sound, reset the tick timer and mark the phase initialized.
+ *   - Later visits: set the hide flag, count down the animation length stored in
+ *     Unk_19 by 2 per tick, clearing the hide flag on odd ticks to make the object
+ *     flash, and once it runs out lock the hide flag, clear the counter and finish
+ *     the phase by writing 4 into the cur-phase/initialized halfword.
+ */
+static void advance_battle_object_phase(u32 object) {
+    if (!LD8(object + oBattleObject_PhaseInitialized)) {
+        /* Phase start: spawn the effect, sound it off, reset timer, mark initialized. */
+        u32 effect_type  = LD32(object + 0x34);
+        u32 effect_param = LD32(object + 0x38);
+        u32 effect_coord = LD32(object + 0x3C) + 0x00140000;
+
+        /* spawn_t1_0x0_EffectObject takes r1..r4. r0 is loaded with 0x34+r5 but
+         * is the address of the args: the caller's r0 already holds that pointer
+         * value, and we passed it to spawn through r1 (effect_type). The original
+         * leaves r1..r7/NZCV whatever the callee leaves; only the caller's r2 is
+         * then reused as the second argument to PlaySoundEffect. */
+        call_spawn_t1_0x0_EffectObject_result spawn_result =
+            call_spawn_t1_0x0_EffectObject(effect_type, effect_param, effect_coord, 0x26);
+
+        ST8(object + oBattleObject_Unk_19, 0x1F);
+        /* PlaySoundEffect: r0 = sound id, r2 = bank/voice; r2 is whatever the
+         * effect spawner left behind, which the wrapper preserves for us. */
+        call_PlaySoundEffect_sub_80C088C(0x94, spawn_result.r2);
+        ST16(object + oBattleObject_Timer, 0);
+        ST8(object + oBattleObject_PhaseInitialized, 4);
+        return;
+    }
+
+    /* Phase already running: flashing hide animation. */
+    {
+        u32 flags = LD8(object + oObjectHeader_Flags);
+        ST8(object + oObjectHeader_Flags, flags | 0x02);
+
+        u32 tick = LD16(object + oBattleObject_Timer) + 1;
+        ST16(object + oBattleObject_Timer, tick);
+        if (tick & 1) {
+            /* odd tick: clear the hide bit again */
+            flags = LD8(object + oObjectHeader_Flags);
+            ST8(object + oObjectHeader_Flags, flags & ~0x02);
+        }
+    }
+
+    {
+        s32 frames_left = (s32)LD8(object + oBattleObject_Unk_19) - 2;
+        ST8(object + oBattleObject_Unk_19, (u8)frames_left);
+        if (frames_left > 0)
+            return;
+
+        /* Animation over: keep the object hidden and complete the phase. */
+        ST8(object + oObjectHeader_Flags, LD8(object + oObjectHeader_Flags) | 0x02);
+        ST8(object + oBattleObject_Unk_19, 0);
+        ST16(object + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+    }
+}
+
+/* sub_80C088C(r5 = battle object) -> r5, r10 unchanged */
+Next sub_80C088C(void) {
+    advance_battle_object_phase(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C0912 ── */
 /* sub_80C0912 -- phase dispatcher for one battle object (r5).
  *

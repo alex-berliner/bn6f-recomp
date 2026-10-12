@@ -35,6 +35,118 @@ Next clearBattleObjectLinkedLists_800318C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── RunBattleObjectLogic ── */
+/* The battle-paused gate and the time-stop gate select which objects continue updating.
+ * PAUSE_UPDATE (0x4) is predefined. The disassembly's `tst r4, #0x10` while in time-stop is the
+ * "update while time is stopped" flag. */
+#define OBJECT_FLAG_UPDATE_WHILE_TIME_STOPPED 0x10
+
+/* register form: object_Clear3RAMBytes_800371A is a leaf defined elsewhere with no typed C
+ * interface yet. It is called once per frame to reset the per-frame object scratch area. */
+static void clear_object_scratch_bytes(void) {
+    GUEST_CALL(object_Clear3RAMBytes_800371A);
+}
+
+/* register form: battle_isTimeStop has no typed C interface yet; it returns its answer in Z
+ * (Z set = time is flowing). */
+static bool battle_is_time_stopped(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return !ZERO_FLAG();
+}
+
+/* register form: object_800372A has no typed C interface yet; it takes the object core in r5.
+ * r5 is saved and restored because the original keeps the caller's r5 across its call. */
+static void run_object_post_update(u32 objectCore) {
+    u32 savedR5 = R5;
+    R5 = objectCore;
+    GUEST_CALL(object_800372A);
+    R5 = savedR5;
+}
+
+/* register form: the per-object update routine is reached at run time via a 2-level
+ * jumptable in ROM, so there is no fixed symbol for GUEST_CALL. The original does
+ * `push {r7}; mov lr, pc; bx r0; pop {r7}`. The pushed r7 must be live again on return,
+ * and r4..r7 / LR must be preserved across the call exactly as the original's push/pop
+ * does, so the adapter sets LR to the return site and the dispatch returns to it. */
+static void call_object_update_routine(u32 updateRoutine, u32 indexTimes4,
+                                       u8 flags, u32 objectCore,
+                                       u32 gameState, u32 node) {
+    u32 savedR0 = R0, savedR1 = R1;
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+    u32 savedLR = LR;
+
+    R0 = updateRoutine;
+    R1 = indexTimes4;
+    R4 = flags;
+    R5 = objectCore;
+    R6 = gameState;
+    R7 = node;
+    /* dispatch returns through LR; setting it to the address of the original `pop {r7}` makes
+     * the guest pop r7 back off the stack, exactly matching the disassembly. */
+    LR = 0x08003200 | 1u;
+    GUEST_CALL_ADDR(updateRoutine);
+
+    R0 = savedR0; R1 = savedR1;
+    R4 = savedR4; R5 = savedR5; R6 = savedR6; R7 = savedR7;
+    LR = savedLR;
+}
+
+/* Run one frame of battle object logic. For each node of eBattleObjectsLinkedListStart walk the
+ * inner linked list until the sentinel. For every non-sentinel node call the routine chosen by
+ * its type and index through the per-type jumptable, then call object_800372A on it. While
+ * the battle is paused (menu open) only objects flagged PAUSE_UPDATE keep updating; while
+ * time is stopped only objects flagged UPDATE_WHILE_TIME_STOPPED do. The original zeroes a
+ * never-read stack slot each frame, which is omitted. */
+static void run_battle_object_logic(u32 toolkit) {
+    clear_object_scratch_bytes();
+
+    u32 node = LD32(A_eBattleObjectsLinkedListStart + oBattleObject_LinkedList_Next);
+    for (;;) {
+        if (node == A_eBattleObjectsLinkedListSentinel_Prev)
+            break;
+
+        ST32(A_eUnkBattleObjectLinkedList, node);
+
+        u32 objectCore = node + 0x10; /* the object's own fields start 0x10 into the node */
+        u8 flags = LD8(objectCore + oBattleObject_Flags);
+        u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+        bool paused = LD8(gameState + oGameState_BattlePaused) != 0;
+
+        /* while paused, only PAUSE_UPDATE objects run; outside pause, all objects are candidates */
+        bool shouldRun = !paused || (flags & OBJECT_FLAG_PAUSE_UPDATE) != 0;
+
+        /* while time is stopped, only objects flagged UPDATE_WHILE_TIME_STOPPED run */
+        if (shouldRun) {
+            bool timeStopped = battle_is_time_stopped();
+            if (!timeStopped || (flags & OBJECT_FLAG_UPDATE_WHILE_TIME_STOPPED) != 0) {
+                /* dispatch: outer index is the low 4 bits of Type, inner index is Index */
+                u8 type = LD8(objectCore + oBattleObject_Type) & 0xF;
+                u32 typeJumptable = LD32(A_RunBattleObjectLogic_BattleObjectFunctionJumptableTable + (u32)type * 4);
+                u32 index = LD8(objectCore + oBattleObject_Index);
+                u32 updateRoutine = LD32(typeJumptable + index * 4);
+                /* the original uses index*4 in the second LDR, and reads index directly with
+                 * LSL #2; reusing index*4 here keeps the dispatch identical */
+                call_object_update_routine(updateRoutine, index * 4,
+                                           flags, objectCore, gameState, node);
+            }
+        }
+
+        run_object_post_update(objectCore);
+
+        /* advance the walk: read the current node's `next` again, matching the original's
+         * `ldr r7, [r7, #oBattleObject_LinkedList_Next]` at the top of the loop body */
+        node = LD32(node + oBattleObject_LinkedList_Next);
+    }
+
+    ST32(A_eUnkBattleObjectLinkedList, 0);
+}
+
+/* RunBattleObjectLogic() -> () */
+Next RunBattleObjectLogic(void) {
+    run_battle_object_logic(R10); /* r10 = toolkit pointer on entry */
+    RETURN_TO_CALLER();
+}
+
 /* ── SpawnBattleObjectCommon ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { bool c, v; } call_ZeroFillByWord_result_SpawnBattleObjectCommon;

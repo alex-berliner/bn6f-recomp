@@ -1096,6 +1096,68 @@ Next pet_menuScreenTick_8126FF0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8127060 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r6, r7; bool c, v; } call_CopyBackgroundTiles_result_sub_8127060;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result_sub_8127060 call_CopyBackgroundTiles_sub_8127060(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result_sub_8127060){ R1, R2, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Bundle of registers the original frame preserves via push/pop. We pass
+ * them through the typed function so the call wrappers (which write r4/r5
+ * as call arguments and let CopyBackgroundTiles clobber them) cannot leak
+ * stale values out past the function. */
+typedef struct { u32 r4; u32 r5; u32 r6; u32 r7; u32 r10; } PreservedRegs;
+
+/* CopyBackgroundTiles on the five slots that make up one row of the folder
+ * list. The first copy draws the 30x20 folder-name banner at absolute
+ * (0,0). The next four are icon strips whose horizontal position is
+ * offset by the column byte (offset 0xD) of the row-descriptor record
+ * that was passed in r5. */
+static PreservedRegs copy_list_row_tiles(u32 r4_in, u32 row_ptr, u32 r6_in, u32 r7_in, u32 r10_in) {
+    (void)r4_in; (void)r6_in; (void)r7_in; (void)r10_in;
+
+    /* Folder-name banner: 30x20 tiles from tile-block 1 at (0,0). */
+    call_CopyBackgroundTiles_sub_8127060(0, 0, 1, A_eTextScript201BA20, 0x1E, 0x14);
+
+    /* Icon strip #1: column + 0x0F, 2x2 tiles. */
+    s8 col = (s8)LDS8(row_ptr + 0xD);
+    call_CopyBackgroundTiles_sub_8127060((u32)(col + 0x0F), 2, 2, A_unk_201CF20, 0x0E, 0x0A);
+
+    /* Icon strip #2: column + 0x22, 2x2 tiles. */
+    col = (s8)LDS8(row_ptr + 0xD);
+    call_CopyBackgroundTiles_sub_8127060((u32)(col + 0x22), 2, 2, A_unk_201D120, 0x0E, 0x0A);
+
+    /* Icon strip #3: column + 0x30, 2x2 tiles (one column narrower). */
+    col = (s8)LDS8(row_ptr + 0xD);
+    call_CopyBackgroundTiles_sub_8127060((u32)(col + 0x30), 2, 2, A_unk_201D320, 0x0D, 0x0A);
+
+    /* Icon strip #4: column + 1, 4x2 tiles (wider). */
+    col = (s8)LDS8(row_ptr + 0xD);
+    call_CopyBackgroundTiles_sub_8127060((u32)(col + 1), 4, 2, A_unk_201D520, 0x0C, 8);
+
+    return (PreservedRegs){ r4_in, row_ptr, r6_in, r7_in, r10_in };
+}
+
+/* sub_8127060(r5 = row-descriptor record, r10) -> r5, r7 preserved */
+Next sub_8127060(void) {
+    PreservedRegs p = copy_list_row_tiles(R4, R5, R6, R7, R10);
+    R4  = p.r4;
+    R5  = p.r5;
+    R6  = p.r6;
+    R7  = p.r7;          /* output: r7 = entry r5 ("mov r7, r5"), untouched otherwise */
+    R10 = p.r10;
+    RETURN_TO_CALLER();
+}
+
 /* ── initTitleScreens_81270D0 ── */
 /* register form: calls getKeyedTableEntry_811FB84 outside this file, which has no typed C interface yet */
 static u32 sub_811FB84_call(u32 src_addr, u32 size) {
