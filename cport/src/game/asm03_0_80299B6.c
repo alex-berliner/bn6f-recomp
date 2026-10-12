@@ -1477,6 +1477,59 @@ Next initShuffledOrderTable42_802C1F0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802C218 ── */
+/* sub_802C218 -- Chip Folder screen opening: redraw the folder window and
+ * advance the screen object to its next state.
+ *
+ * Note: the binary carries a second path (0802C226-0802C27A) that revealed the
+ * window one tile per call while the timer at +0xB was below 42 (= the 7x6
+ * tiles of the window).  The unconditional branch at 0802C224 jumps straight
+ * past its test, so that path is unreachable and is not ported. */
+
+/* chip-folder screen object fields (offsets as in the disassembly) */
+#define oFolderScreen_state  2    /* u16: state/phase id */
+#define oFolderScreen_timer  0xB  /* u8: frame counter/timer */
+
+/* register form: calls chipFolder_ClearTilemapArea_802C59C outside this file, which has no typed C interface yet */
+static void clear_tilemap_area(u32 row_buffer) {
+    R0 = row_buffer;
+    GUEST_CALL(chipFolder_ClearTilemapArea_802C59C);
+}
+
+/* register form: calls blitTileBlockToRowBuffer_802C4B6 outside this file, which has no typed C interface yet */
+static void blit_tile_block(u32 x, u32 y, u32 row_buffer, u32 width, u32 height) {
+    R0 = x;
+    R1 = y;
+    R2 = row_buffer;
+    R3 = width;
+    R4 = height;
+    GUEST_CALL(blitTileBlockToRowBuffer_802C4B6);
+}
+
+/* register form: the tilemap work buffer must live on the guest stack -- its
+ * guest address is handed to the tilemap routines above, which read and write
+ * guest memory through it */
+static u32 chip_folder_screen_open(u32 screen) {
+    SP -= 0x78;               /* saved-lr slot + the original's 0x74-byte frame */
+    u32 frame = SP;           /* the original's r6; callers read it afterwards */
+    u32 row_buffer = frame + 4;
+
+    clear_tilemap_area(row_buffer);
+    blit_tile_block(14, 10, row_buffer, 7, 6);  /* 7x6-tile folder window at tile (14,10) */
+
+    ST16(screen + oFolderScreen_state, 4);      /* switch to the next state */
+    ST8(screen + oFolderScreen_timer, 30);      /* with a 30-frame timer */
+
+    SP += 0x78;
+    return frame;             /* r6 keeps the address of the released frame */
+}
+
+/* sub_802C218(r5 = chip-folder screen object) -> r6 = stack-frame address; r5, r7 unchanged */
+Next sub_802C218(void) {
+    R6 = chip_folder_screen_open(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_advanceFade_802C328 ── */
 /* battle_advanceFade_802C328: 0802C328-0802C348 THUMB, bn6f asm03_0.s:12588 */
 /*   inputs:  r5 lr

@@ -1087,6 +1087,119 @@ Next NPCCommand_play_sound(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── NPCCommand_init_mystery_data ── */
+/* Result of the mystery-data lookup sub_809FC1C, which answers in r0/r1/r2. */
+typedef struct {
+    u32 variant;    /* r0: 0 = nothing to spawn (data already collected), 1..7 = data variant */
+    u32 flag_scale; /* r1: multiplier for one bit of UnkFlags_60 (its source field is always 0) */
+    u32 position;   /* r2: guest pointer to the spawn coordinates, three s16s (x, y, z) */
+} MysteryDataLookup;
+
+/* register form: calls ReadNPCScriptHalfword outside this file, which has no typed C interface yet */
+static u16 read_npc_script_halfword_NPCCommand_init_mystery_data(u32 script_arg) {
+    R0 = script_arg;
+    GUEST_CALL(ReadNPCScriptHalfword);
+    return (u16)R0;
+}
+
+/* register form: calls sub_809FC1C outside this file, which has no typed C interface yet */
+static MysteryDataLookup lookup_mystery_data(u32 mystery_data_id) {
+    R0 = mystery_data_id; /* the original enters with r0 = the halfword just stored in Chatbox_90 */
+    GUEST_CALL(sub_809FC1C);
+    MysteryDataLookup md;
+    md.variant    = R0;
+    md.flag_scale = R1;
+    md.position   = R2;
+    return md;
+}
+
+/* register form: calls sprite_load outside this file, which has no typed C interface yet */
+static void load_sprite(u32 a1, u32 a2, u32 a3) {
+    R0 = a1;
+    R1 = a2;
+    R2 = a3;
+    GUEST_CALL(sprite_load);
+}
+
+/* register form: calls sprite_loadAnimationData outside this file, which has no typed C interface yet */
+static void load_sprite_animation_data(void) {
+    GUEST_CALL(sprite_loadAnimationData);
+}
+
+/* register form: calls FreeOverworldNPCObject outside this file, which has no typed C interface yet */
+static void free_overworld_npc_object(void) {
+    GUEST_CALL(FreeOverworldNPCObject);
+}
+
+/* register form: calls npc_disableScript0x19_809f51e outside this file, which has no typed C interface yet */
+static void disable_npc_script_0x19(void) {
+    GUEST_CALL(npc_disableScript0x19_809f51e);
+}
+
+/* NPC script command "init mystery data": turn the NPC being built into a
+ * mystery data orb, or despawn it outright when that mystery data is gone.
+ * npc    - the OverworldNPCObject (r5)
+ * script - pointer into the NPC script at this command's opcode byte (r6);
+ *          the command is the opcode plus one halfword argument.
+ * Returns the new script pointer (r6): past the argument on success,
+ * unchanged when the data was already collected. r2 (the position pointer
+ * the lookup leaves behind, or whatever the despawn calls leave) and r5 are
+ * never written here, so they end exactly as in the original. */
+static u32 setup_mystery_data_npc(u32 npc, u32 script) {
+    /* Give the NPC a chatbox and make it face the player when talked to. */
+    ST32(npc + oOverworldNPCObject_UnkFlags_60,
+         LD32(npc + oOverworldNPCObject_UnkFlags_60)
+             | OW_NPC_UNK_FLAGS_60_CHATBOX_FLAG_0x400
+             | OW_NPC_UNK_FLAGS_60_CHATBOX_FLAG_0x800
+             | OW_NPC_UNK_FLAGS_60_FACE_PLAYER_WHEN_INTERACTED);
+
+    /* Halfword argument after the opcode = this mystery data's id, kept in Chatbox_90. */
+    u16 mystery_data_id = read_npc_script_halfword_NPCCommand_init_mystery_data(script + 1);
+    ST32(npc + oOverworldNPCObject_Chatbox_90, mystery_data_id);
+
+    MysteryDataLookup md = lookup_mystery_data(mystery_data_id);
+
+    if (md.variant == 0) {
+        /* Already collected: retire this NPC instead of spawning an orb. */
+        ST8(npc + oObjectHeader_Flags, OBJECT_FLAG_ACTIVE);
+        load_sprite(0x80, 0x1C, 0xA0);
+        load_sprite_animation_data();
+        free_overworld_npc_object();
+        disable_npc_script_0x19();
+        return script;
+    }
+
+    /* Pick the orb's palette from the variant (table byte_809F0E4 =
+     * { 0xFF, 0, 0, 2, 2, 1, 3, 0xFF }) and fold in the flag bit the lookup
+     * scales; reload the flags word since the calls above may have touched it. */
+    ST8(npc + oOverworldNPCObject_PaletteIndex, LD8(A_byte_809F0E4 + md.variant));
+    ST32(npc + oOverworldNPCObject_UnkFlags_60,
+         LD32(npc + oOverworldNPCObject_UnkFlags_60) | 0x40 * md.flag_scale);
+
+    /* All mystery data share one text script; the id picks the message. */
+    ST8(npc + oOverworldNPCObject_TextScriptIndex, 0xFF);
+    ST32(npc + oOverworldNPCObject_TextScriptPtr, A_text_873D108);
+
+    /* 16.16 fixed-point spawn coordinates from the three s16s at md.position. */
+    ST32(npc + oOverworldNPCObject_X, LDS16(md.position + 0) << 16);
+    ST32(npc + oOverworldNPCObject_Y, LDS16(md.position + 2) << 16);
+    ST32(npc + oOverworldNPCObject_Z, LDS16(md.position + 4) << 16);
+
+    /* A small orb: tight collision circle with its center at (+2, -2). */
+    ST8(npc + oOverworldNPCObject_CollisionRadius, 4);
+    ST8(npc + oOverworldNPCObject_CenterOffsetX, 2);
+    ST8(npc + oOverworldNPCObject_CenterOffsetY, (u8)-2);
+
+    return script + 3; /* skip the opcode byte and the halfword argument */
+}
+
+/* NPCCommand_init_mystery_data(r5 = npc object, r6 = npc script position) -> r6;
+ * r2 and r5 end exactly as the original leaves them (untouched here). */
+Next NPCCommand_init_mystery_data(void) {
+    R6 = setup_mystery_data_npc(R5, R6);
+    RETURN_TO_CALLER();
+}
+
 /* ── NPCCommand_set_animation_force_update ── */
 /* NPCCommand_set_animation_force_update(r5 = NPC object, r6 = script cursor):
  * Reads the animation index from the script, forces an animation update by writing
