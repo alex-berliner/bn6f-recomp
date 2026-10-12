@@ -1,0 +1,65 @@
+name: sub_8117DC8
+address: '0x08117DC8'
+kind: function
+status: confirmed
+summary: Tail-dispatches to a battle object's mode handler, selected by the mode byte at [r5+5] through the off_8117DDC
+  jump table.
+interface: void sub_8117DC8(u32 r5 /*object*/); // returns the handler's r2/r3/r5/r10/r11; clobbers r0-r1,r4,r6-r9,r12,flags
+details: 'Tiny trampoline: reads the mode byte at [r5+5], shifts it left by 2, loads the corresponding Thumb handler
+  address from the table at off_8117DDC (only one entry, sub_8117DE0, is present here), and calls it with "mov lr,
+  pc; bx r0" followed by "pop {pc}". Because LR is set from PC during a Thumb BX, the return actually goes through
+  the pop, so it behaves as a tail call from the caller''s perspective — outputs r2/r3/r5/r10/r11 are whatever the
+  handler leaves, and handlers returning to that LR also fall into the pop {pc}. The helper must issue the guest
+  call manually at the loaded address (R0=handler entry, R1=shifted index).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by opencode/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-122412);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file inbox_farm_99.c sub_8117DC8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8117DC8
+
+    ./wf verify --function sub_8117DC8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261012-122412-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8117DC8
+
+    ./wf verify --function sub_8117DC8 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 24 out of domain (verify run convert-20261012-122412-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8117DC8
+
+    ./wf verify --function sub_8117DC8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-122412-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, menus3, story2.'
+  reproduce: grep -l '^08117dc8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 420ca99
+  tool: tools/wf convert (opencode/glm-5.3-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- What the mode byte at [r5+5] enumerates for this object type; the table currently has a single entry at off_8117DDC.
+- Full object structure layout around offset 5 (type/mode field of the battle entity).
+sources:
+- tools/wf run convert-20261012-122412
+- recomp 420ca99
