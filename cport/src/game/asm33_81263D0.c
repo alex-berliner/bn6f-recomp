@@ -2392,6 +2392,74 @@ done:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8128B98 ── */
+/* sub_8128B98(r5 = object, r10 = toolkit):
+ *   If the object's flag at +0x1E is zero, do nothing.
+ *   Otherwise, if the current state (positions +D/+E and pair at +20/+22 vs +24/+26) hasn't
+ *   actually changed, do nothing.
+ *   Otherwise look up a script byte in eTextScript201BF00 indexed by (pos_y + pos_y2,
+ *   pos_x). If it's 0x2C, also stash the result of CheckKeyItem at chatbox+0x4C.
+ *   Finally run the script via chatbox_runScript_803FD78 with archive unk_201C1B0.
+ *
+ *   inputs:  r5 r10 lr
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r5 r6 r7
+ */
+Next sub_8128B98(void) {
+    /* If the flag at +0x1E is zero, bail out. */
+    if (LD16(R5 + 0x1E) == 0)
+        RETURN_TO_CALLER();
+
+    /* Compare positions: pos_x (+D) vs prev_pos_x (+E), and the two 16-bit fields
+     * (+24 vs +26) and (+20 vs +22). If all four match, bail out. */
+    u8 curX  = LD8(R5 + 0xD);
+    u8 prevX = LD8(R5 + 0xE);
+    if (curX == prevX) {
+        u16 a24 = LD16(R5 + 0x24);
+        u16 a26 = LD16(R5 + 0x26);
+        if (a24 == a26) {
+            u16 a20 = LD16(R5 + 0x20);
+            u16 a22 = LD16(R5 + 0x22);
+            if (a20 == a22)
+                RETURN_TO_CALLER();
+        }
+    }
+
+    /* Index into eTextScript201BF00:
+     *   idx = (LD16(+24) + LD16(+20)) * 2 + LD8(+D), * 2
+     * i.e. (v24+v20)*4 + curX*2. */
+    u16 v24 = LD16(R5 + 0x24);
+    u16 v20 = LD16(R5 + 0x20);
+    u32 idx = ((u32)(v24 + v20) << 1) + curX;
+    idx = idx << 1;
+    u8 scriptByte = LD8(A_eTextScript201BF00 + idx);
+
+    if (scriptByte == 0x2C) {
+        /* Save scriptByte across the CheckKeyItem call. */
+        u32 saveSP = SP - 4;
+        SP = saveSP;
+        ST32(saveSP, scriptByte);
+
+        R0 = scriptByte;
+        GUEST_CALL(CheckKeyItem);
+
+        SP += 4;
+        u8 saved = (u8)LD32(saveSP);
+
+        u32 cb = LD32(R10 + oToolkit_ChatboxPtr);
+        ST32(cb + 0x4C, R0);
+
+        scriptByte = saved;
+    }
+
+    R0 = A_unk_201C1B0;
+    R1 = scriptByte;
+    GUEST_CALL(chatbox_runScript_803FD78);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── checkTextScriptEnd_8128BF0 ── */
 /* checkTextScriptEnd_8128BF0(r5 = dialogue object):
  *   If the dialogue is still being drawn (state word at +0x1E) and the script
@@ -2897,6 +2965,120 @@ Next scene_runFadePopTick_8129400(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81295D8 ── */
+/* sub_81295D8: per-frame update of the eStruct200BC30 object.
+ * inputs:  r4 r5 r6 r10 lr
+ * outputs: r5 r8 r9 r10 r11 r12
+ * preserved: r6 r7 r8 r9 */
+Next sub_81295D8(void) {
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+    GUEST_CALL(sub_80465F8);
+
+    GUEST_CALL(IsScreenFadeActive);
+    if (ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    GUEST_CALL(eStruct200BC30_getJumpOffset00);
+    /* original: cmp r0, #0; ble loc_8129620 (branch if r0 <= 0, i.e. N or Z) */
+    SET_FLAGS_CMP((s32)R0, 0);
+    if (NEGATIVE_FLAG() || ZERO_FLAG()) {
+        goto intro;
+    }
+
+    /* R0 still holds the positive jump offset; pass it to sub_8049D42 */
+    GUEST_CALL(sub_8049D42);
+    /* original: bne loc_8129620 (branch if return != 0) */
+    if (!ZERO_FLAG()) {
+        goto intro;
+    }
+
+    {
+        /* original: ldrb r1,[r5,#0x1b]; mov r0,#4; tst r0,r1; beq loc_8129610 */
+        u32 r1 = LD8(R5 + 0x1B);
+        u32 r0 = 4;
+        SET_FLAGS_NZ(r0 & r1);
+        if (ZERO_FLAG()) {
+            /* BEQ taken: bit was clear -> run initSaveStateBlock_8048F9C(1), then set the bit */
+            R0 = 1;
+            GUEST_CALL(initSaveStateBlock_8048F9C);
+            /* original: mov r0,#4; ldrb r1,[r5,#0x1b]; orr r1,r0; strb r1,[r5,#0x1b] */
+            r0 = 4;
+            r1 = LD8(R5 + 0x1B) | r0;
+            SET_FLAGS_NZ(r1);
+            ST8(R5 + 0x1B, (u8)r1);
+        } else {
+            /* bit was set -> clear it, write 4 at r5+1, write 0 at r5+2 */
+            /* original: mov r0,#4; ldrb r1,[r5,#0x1b]; bic r1,r0; strb r1,[r5,#0x1b] */
+            r0 = 4;
+            r1 = LD8(R5 + 0x1B) & ~r0;
+            ST8(R5 + 0x1B, (u8)r1);
+            /* original: mov r0,#4; strb r0,[r5,#1] */
+            r0 = 4;
+            ST8(R5 + 1, (u8)r0);
+            /* original: mov r0,#0 (sets nz); strb r0,[r5,#2] */
+            r0 = 0;
+            SET_FLAGS_NZ(r0);
+            ST8(R5 + 2, (u8)r0);
+        }
+    }
+    RETURN_TO_CALLER();
+
+intro:
+    /* original: bl sub_812AFC8 (no R0 set; holds return of the call that led here) */
+    GUEST_CALL(sub_812AFC8);
+    /* original: ldr r0,=byte_812913C; bl loadEntryPairTable_812B1DC */
+    R0 = A_byte_812913C;
+    GUEST_CALL(loadEntryPairTable_812B1DC);
+    /* original: mov r0,#0xe; bl sub_812B2C4 */
+    R0 = 0xE;
+    GUEST_CALL(sub_812B2C4);
+    /* original: mov r0,#4; strb r0,[r5,#2] */
+    R0 = 4;
+    ST8(R5 + 2, (u8)R0);
+    /* original: mov r0,#0; strb r0,[r5,#3]
+     * Important: R0 must be 0 here, because the next instruction is `bl loadEntityJumpOffset00Gfx_812B530`
+     * and the original assembles `mov r0,#0` *before* the strb, leaving R0=0
+     * for the call. ST8 does not modify guest R0, so we keep R0=0 explicitly. */
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    ST8(R5 + 3, (u8)R0);
+    GUEST_CALL(loadEntityJumpOffset00Gfx_812B530);
+    /* original: mov r0,#1; bl chatbox_runScript_803FD9C_on_eTextScript201BA20 */
+    R0 = 1;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+    /* original: mov r0,#0x40; bl chatbox_set_eFlags2009F38 */
+    R0 = 0x40;
+    GUEST_CALL(chatbox_set_eFlags2009F38);
+    /* original: mov r0,#8; mov r1,#0x10; bl SetScreenFade */
+    R0 = 8;
+    R1 = 0x10;
+    GUEST_CALL(SetScreenFade);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812968C ── */
+/* sub_812968C(r5 -> some struct):
+ * If the screen fade is active, clear chatbox flag 0x40 and store 4 at struct+3.
+ * inputs:  r5 lr
+ * outputs: -
+ * clobbers: nz c v r0 r1 r3 lr
+ * preserved: r2 */
+Next sub_812968C(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    if (ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    R0 = 0x40;
+    GUEST_CALL(chatbox_clear_eFlags2009F38);
+    R0 = 4;
+    SET_FLAGS_NZ(R0);
+    ST8(R5 + 3, (u8)R0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81296A0 ── */
 /* sub_81296A0:
  *   inputs:  r4 r5 r10 lr
@@ -2982,6 +3164,85 @@ Next sub_8129758(void) {
         GUEST_CALL(sub_811A610);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812977C ── */
+/* sub_812977C: scan the 3-slot unk_20251A0 array; if any slot has its type byte non-zero
+ * while its flag (bit 31) is clear, return early. Otherwise clear the flag bits of all
+ * slots, write 8 to r5->field_3, call sub_812B3FC, and clear bit 0 of r5->field_0x1b.
+ *
+ * inputs:  r5 r10 lr
+ * outputs: r4 r5 r6
+ * clobbers: nz c v r0 r1 r2 r3 lr
+ * preserved: r7
+ */
+Next sub_812977C(void) {
+    /* r4 is loaded from unk_20251A0 at the start (before any early return), so on
+     * either return path r4 = unk_20251A0. r5 is preserved unchanged. r6 ends as 0xC
+     * on the fall-through path, or as the breaking loop index on the early return. */
+    u32 r5 = R5;
+    u32 r6;
+
+    R4 = A_unk_20251A0;
+
+    /* First pass: look for an "in-use" slot (flag bit 31 clear AND type byte at +7
+     * non-zero). */
+    for (r6 = 0; (s32)r6 < 0xC; r6 += 4) {
+        u32 slot = LD32(R4 + r6);
+        slot &= ~(1u << 31);
+        if (LD8(slot + 7) != 0) {
+            /* Early return. */
+            R5 = r5;
+            R6 = r6;
+            RETURN_TO_CALLER();
+        }
+    }
+
+    /* Second pass: clear the flag bit (bit 31) of every slot. */
+    {
+        u32 r1 = A_unk_20251A0;
+        for (r6 = 0; (s32)r6 < 0xC; r6 += 4) {
+            u32 slot = LD32(r1 + r6);
+            slot &= ~(1u << 31);
+            ST32(r1 + r6, slot);
+        }
+    }
+
+    ST8(r5 + 3, 8);
+    GUEST_CALL(sub_812B3FC);
+
+    {
+        u8 flags = LD8(r5 + 0x1b);
+        flags &= (u8)~1;
+        ST8(r5 + 0x1b, flags);
+    }
+
+    R5 = r5;
+    R6 = r6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81297C0 ── */
+/* sub_81297C0: per-frame "play" / intro / etc. controller
+ *
+ * Called every tick while a cutscene-like state is active. Runs the entity
+ * update pass, runs the queued-effects pass, and if a screen fade is in
+ * progress locks the controller's state to 4 (playing) with sub-state 0.
+ *
+ *   inputs:  r5 = controller state struct ptr, r10 = ?, lr
+ *   outputs: r4 r5 r6 r8 r9 r10 r11 r12
+ *   clobbers: r0 r1 r2 r3 lr, nz c v */
+Next sub_81297C0(void) {
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+    GUEST_CALL(sub_80465F8);
+
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG()) {
+        /* Fade in progress: force the controller into state 4 / sub 0. */
+        ST8(R5 + 1, 4);
+        ST8(R5 + 2, 0);
+    }
     RETURN_TO_CALLER();
 }
 
@@ -3098,6 +3359,15 @@ Next sub_8129948(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129A20 ── */
+Next sub_8129A20(void) {
+    /* Tail-call wrapper: forwards to sub_81298F8 with the same
+     * preserved-register contract (r4/r5/r6/r7), so the call-and-return
+     * is equivalent to invoking the callee directly. */
+    GUEST_CALL(sub_81298F8);
+    RETURN_TO_CALLER();
+}
+
 /* ── decideBattleAction_8129AC8 ── */
 /* decideBattleAction_8129AC8(r5 = entity, lr = return):
  *   Picks a battle-side action for the entity at r5: asks sub_812B318 what
@@ -3125,6 +3395,65 @@ Next decideBattleAction_8129AC8(void) {
         GUEST_CALL(sub_812B218);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129B34 ── */
+/* sub_8129B34: folder-style menu tick.
+ *   inputs:  r5 = menu state struct, r6 = ?, r7 = ?, r10 = toolkit
+ *   outputs: r4 clobbered, r5/r6/r7/r10 preserved
+ *   Clobbers r0-r3, lr and nz/c/v. */
+Next sub_8129B34(void) {
+    /* While the screen is fading, do nothing. */
+    GUEST_CALL(IsScreenFadeActive);
+    if (ZERO_FLAG())
+        RETURN_TO_CALLER();
+
+    /* Joypad-driven cursor movement (up/down). */
+    u32 joypadPtr = LD32(R10 + oToolkit_JoypadPtr);
+    u32 pressed   = LD16(joypadPtr + oJoypad_Pressed);
+    u8  oldIndex  = LD8(R5 + 0x12);
+
+    R0 = pressed;
+    R1 = 2;
+    R2 = 1;
+    R3 = oldIndex;
+    R4 = oldIndex;
+    GUEST_CALL(menu_moveCursorUpDown_811FA22);
+    SET_FLAGS_CMP(R4, R0);
+
+    if (!ZERO_FLAG()) {
+        /* Cursor moved: commit new index and refresh. */
+        ST8(R5 + 0x12, (u8)R0);
+        GUEST_CALL(sub_812B3B4);
+        RETURN_TO_CALLER();
+    }
+
+    /* A button: select. */
+    R0 = JOYPAD_A;
+    GUEST_CALL(IsButtonPressed);
+    if (!ZERO_FLAG()) {
+        R0 = SOUND_MENU_SELECT;
+        GUEST_CALL(PlaySoundEffect);
+        GUEST_CALL(battle_selectTarget_812B414);
+        RETURN_TO_CALLER();
+    }
+
+    /* B button: leave the submenu. */
+    R0 = JOYPAD_B;
+    GUEST_CALL(IsButtonPressed);
+    if (ZERO_FLAG())
+        RETURN_TO_CALLER();
+
+    R0 = SOUND_EXIT_SUBMENU;
+    GUEST_CALL(PlaySoundEffect);
+    ST8(R5 + 0x03, 0x0C);            /* set menu state to "exit" */
+    ST8(R5 + 0x1C, 0);
+    ST8(R5 + 0x1E, 0);
+    u8 flags = LD8(R5 + 0x1B);
+    flags |= 0x01;
+    SET_FLAGS_NZ(flags);
+    ST8(R5 + 0x1B, flags);
     RETURN_TO_CALLER();
 }
 
