@@ -1,0 +1,73 @@
+name: sub_81288E4
+address: '0x081288E4'
+kind: function
+status: confirmed
+summary: 'PET menu close: run two post-menu cleanup updates and, once any screen fade has finished, return to the
+  overworld map.'
+interface: void sub_81288E4(void);  /* r5 in/out pass-through; clobbers r0-r3, lr, N Z C V */
+details: "Likely called as the final frame/step of the PET menu (the blue-phone menu overlay\nthat sits on top of\
+  \ the field map). On each invocation it:\n  1. Calls battleObjectAffineEnqueue_8128B4C -- enqueues an affine (rotation/scale)\n\
+  \     transform update for battle/UI objects, presumably to settle the menu's\n     collapse animation.\n  2.\
+  \ Calls battle_queueHpUpdate_8128C20 -- pushes an HP (HP/HP+ chip panel?) refresh\n     onto the battle/object\
+  \ update queue so any HP bar touched by the menu is\n     redrawn correctly once the menu is gone.\n  3. Calls\
+  \ IsScreenFadeActive; if the fade is still in progress it returns\n     immediately (the menu stays on screen\
+  \ until the fade finishes). Once\n     IsScreenFadeActive reports no fade, it calls pet_menuExitToMap_811F708,\n\
+  \     which tears the menu down and returns control to the map screen.\nr5 is the caller's object/struct pointer\
+  \ and is preserved across the call so the\ndispatch loop can keep using it; the four caller's preserved regs (r4-r7)\
+  \ are\nnot touched.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form\
+  \ C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_81288E4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81288E4
+
+    ./wf verify --function sub_81288E4 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81288E4
+
+    ./wf verify --function sub_81288E4 --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81288E4
+
+    ./wf verify --function sub_81288E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^081288e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Exact ownership of r5 here -- is it the active PET menu state, a battle object, or the player controller? It is
+  only preserved, not dereferenced in this stub.
+- Whether battleObjectAffineEnqueue_8128B4C / battle_queueHpUpdate_8128C20 are strictly needed every frame, or only
+  the frame the menu starts closing.
+- Whether pet_menuExitToMap_811F708 is safe to call while a fade is still running (it appears the IsScreenFadeActive
+  gate is what prevents that).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

@@ -1,0 +1,80 @@
+name: chatbox_80416C4
+address: '0x080416C4'
+kind: function
+status: confirmed
+summary: Iterates a per-map chatbox script table, selecting and running the entry whose map range includes the current
+  map, or skipping empty entries.
+interface: void chatbox_tryRunForCurrentMap_80416C4(u32* r4 /*chatbox entry ptr*/, u32 r10 /*toolkit*/) -> r0=1,
+  r2=maxMap, r3=currentMap, r4=nextEntry; clobbers r1,lr; flags NZ set (NZ=1), C from r4+=6 on skip path
+details: 'Reads a 6-byte chatbox entry table where each record is: [?, minMap, maxMap, scriptInRange, scriptOutOfRange].
+
+  Pulls the live map number via the global game-state pointer (toolkit -> gameState -> mapNumber).
+
+  If currentMap is within [minMap,maxMap] it uses byte +4 as the script id, else byte +5.
+
+  If the selected script byte is 0xFF the entry is skipped by advancing r4 to entry+6 (the next 6-byte
+
+  record); otherwise the script id is passed to chatbox_config_80408D0 to be started.
+
+  Always returns r0=1; r2/r3/r4 are left as documented outputs so the caller can keep iterating and
+
+  knows the current/max map for the last compared entry. The byte at entry+0/+1 is not used here.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    chatbox_80416C4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_80416C4
+
+    ./wf verify --function chatbox_80416C4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_80416C4
+
+    ./wf verify --function chatbox_80416C4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_80416C4
+
+    ./wf verify --function chatbox_80416C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: fuzz, maps, story3, story4, story8.'
+  reproduce: grep -l '^080416c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- fuzz
+- maps
+- story3
+- story4
+- story8
+open_questions:
+- Meaning of entry bytes +0 and +1 (possibly a packed id / flag consumed by the caller).
+- Whether the "skip by advancing r4" semantics implies the caller treats r4 as its own cursor and this function
+  is meant to be inlined in a loop, vs. returning a separate "next" pointer.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

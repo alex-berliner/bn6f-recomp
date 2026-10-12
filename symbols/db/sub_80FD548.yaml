@@ -1,0 +1,81 @@
+name: sub_80FD548
+address: '0x080FD548'
+kind: function
+status: confirmed
+summary: 'AI attack state: when the post-attack timer in `oAIAttackVars_Unk_10` reaches zero, play the recovery
+  animation, commit the object to its future (panelX, panelY), refresh collision panels, and advance the AI state
+  word to its next phase (`oAIAttackVars_Unk_10` = 4, `oAIAttackVars_Unk_00` = 8).'
+interface: "void aiAttack_recoverCommit(r5 = BattleObject* this, r7 = AIAttackVars* vars, lr = return);\n  // clobbers\
+  \ r0, r1, r2, r3, lr, N, Z, C, V\n  // preserves r4, r6\n  // no return value\n"
+details: "Operates on the per-object battle struct (R5) and the per-attack AI vars struct (R7).\nDecrements the\
+  \ halfword at offset `oAIAttackVars_Unk_10` once per call (the\n\"0x0B8010Unk_10\" and \"0x0B8010Unk_00\" offsets\
+  \ denote offsets 0x10 and 0x00\ninside the AI attack vars struct, not the value 8/4 themselves).\nEarly-exits\
+  \ via BGT (greater-than zero, treating the halfword as signed), so the\nfunction only takes effect on the frame\
+  \ the timer transitions to ≤ 0.\nRecovery path:\n  - sets `oBattleObject_CurAnim` = 3 (recovery/slide animation),\n\
+  \  - copies `oBattleObject_FuturePanelX`/`FuturePanelY` into the live\n    `oBattleObject_PanelX`/`PanelY`,\n\
+  \  - calls `object_removePanelReserve`, `object_setCoordinatesFromPanels`,\n    `object_updateCollisionPanels`\
+  \ (r1 is left as whatever\n    `object_updateCollisionPanels` returned on the not-taken path it is\n    unchanged\
+  \ — on the taken path r1 holds the y panel used in the call),\n  - seeds the next AI state by writing 4 into `oAIAttackVars_Unk_10`\
+  \ and 8 into\n    `oAIAttackVars_Unk_00` (4 = frames-until-NextPhase, 8 = next phase/state id).\nThe \"commit\"\
+  \ semantics: the object's planned panel move (FuturePanelX/Y) is\npromoted to its current panel, releasing any\
+  \ prior panel reservation and\nrebuilding the collision grid; this is the follow-through after an AI-driven\n\
+  move or attack decision.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form\
+  \ C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_80FD548
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD548
+
+    ./wf verify --function sub_80FD548 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD548
+
+    ./wf verify --function sub_80FD548 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD548
+
+    ./wf verify --function sub_80FD548 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd548 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- What phases do the values 4 (`Unk_10`) and 8 (`Unk_00`) actually correspond to in the AI attack FSM? (next-phase
+  countdown and state id respectively, but exact meanings unknown.)
+- Why is `r1` listed as an output? The only call that writes to r1 explicitly is none; the "clobbered r1" likely
+  comes from `object_updateCollisionPanels`'s return convention. Verify with caller of `sub_80FD548`.
+- What is `oBattleObject_CurAnim` value 3 — is this animation index consistent across all AI attack types, or does
+  the caller seed it via `oAIAttackVars_Unk_??`?
+- Are `oAIAttackVars_Unk_00` and `oAIAttackVars_Unk_10` actually the "next state" and "counter for the next state",
+  or could they be something else (animation frames, etc.)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

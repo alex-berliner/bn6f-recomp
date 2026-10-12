@@ -1,0 +1,86 @@
+name: sub_8129658
+address: '0x08129658'
+kind: function
+status: confirmed
+summary: Dispatches the battle AI's current sub-state to one of seven handlers, then fires event 0xE.
+interface: "void sub_8129658(void);\n  // uses: r4 r5 r6 r7 r10 in; r5 r8 r9 r10 r11 r12 out\n  // clobbers: r0\
+  \ r1 r2 r3 r4 r6 r7 lr, flags nz c v\n"
+details: 'Reads the battle-AI object''s current state byte at r5+3 (already pre-shifted
+
+  by 4: legal values 0x00, 0x04, 0x08, 0x0C, 0x10, 0x14, 0x18) and uses it as
+
+  a raw byte index into the handler table at off_8129670 (no LSL applied by
+
+  the `ldr r0,[r0,r1]`). Each entry is a Thumb handler address stored with
+
+  the +1 bit set, jumped to via `mov lr,pc; bx r0`. Handlers receive
+
+  r0 = their own table pointer and r1 = the state id, and return control
+
+  back to this dispatcher. After the handler returns, sub_812B25C is called
+
+  with r0 = 0xE (battle event id 0xE) — the standard "post-state event"
+
+  pattern for this AI family. The seven handlers cover the seven known
+
+  AI sub-states (sub_812968C, sub_81296A0, sub_81296D8,
+
+  battle_object_advanceState3_8129738, sub_8129758, sub_812977C,
+
+  sub_81297C0).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_8129658
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129658
+
+    ./wf verify --function sub_8129658 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129658
+
+    ./wf verify --function sub_8129658 --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 2 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129658
+
+    ./wf verify --function sub_8129658 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08129658 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Exact meaning of each of the seven states (offsets 0x00/0x04/.../0x18).
+- What battle event 0xE in sub_812B25C does for the AI in particular.
+- The `off_812966C` indirection to `off_8129670` is a level of indirection that may be a relocation/relink hook
+  rather than runtime data.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

@@ -1,0 +1,78 @@
+name: sub_80E1332
+address: '0x080E1332'
+kind: function
+status: hypothesis
+summary: Tail-call wrapper that forwards its arguments to sub_80C0F52 and returns whatever sub_80C0F52 returns.
+interface: 'void sub_80E1332(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4); // returns: flags c/v set by sub_80C0F52,
+  all callee-saved regs preserved; r0 clobbered, r1-r4 forwarded as outputs'
+details: 'Implements a pure tail call: pushes LR, branches into sub_80C0F52, and the callee''s normal epilogue pops
+  LR straight into PC. There is no local stack frame and no register shuffling here, so every register contract
+  (r0-r4 in, c/v plus the standard caller-saved set out) is dictated entirely by the callee sub_80C0F52. The presence
+  of an "object_spawnType4" / "str [r0,#0x4c]" / "strb r2, [r0,#7]" / "ldrh r2, [r1,#0x16]" snippet after the tail-call
+  block (which the readable C represents as a separate sibling function) suggests this address sits next to a sibling
+  routine that spawns an object of type 0xc, stores the r1 pointer at offset 0x4c and r2 byte at offset 7 on the
+  spawned object, and copies the parent entity''s halfword at offset 0x16 into the child''s offset 0x16. Because
+  that sibling appears as a distinct routine adjacent to the tail, sub_80E1332 itself should be understood strictly
+  as the tail-call passthrough.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_80E1332
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E1332
+
+    ./wf verify --function sub_80E1332 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E1332
+
+    ./wf verify --function sub_80E1332 --snapshots build-snapshots'
+  result: 23 compared, 0 differed, 73 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E1332
+
+    ./wf verify --function sub_80E1332 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080e1332 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- story9
+related:
+- sub_80E1854
+- sub_80E18F8
+open_questions:
+- Is sub_80C0F52 a state dispatcher or per-frame update whose return via LR returns control to the caller of sub_80E1332,
+  or is the tail-call semantics intended for a thunk with a specific game meaning (e.g., delegating an entity activation
+  or NPC setup step)?
+- 'What is the relationship between this tail-call wrapper and the sibling code at the same address that calls object_spawnType4
+  and writes offsets 0x4c/7/0x16: are they alternatives chosen by caller (e.g., guard flag), or is the assembly
+  listing interleaving two distinct subroutines that share the tail?'
+- Are the r1-r4 values passed in by callers actually meaningful to the callee, or is this a routine whose real inputs
+  are only r0 (entity/state pointer) with the rest incidental?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

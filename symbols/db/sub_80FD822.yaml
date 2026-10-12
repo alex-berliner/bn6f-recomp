@@ -1,0 +1,83 @@
+name: sub_80FD822
+address: '0x080FD822'
+kind: function
+status: confirmed
+summary: 'Per-frame AI tick: on the first call starts a charging attack (animation + 30-frame countdown), then fires
+  the attack every 8 frames and resets when the timer expires.'
+interface: void aiChargeTick_80FD822(BattleObject* r5, AIAttackVars* r7); // clobbers r0,r1,r2,r3,lr; preserves
+  r4,r6
+details: 'Walks the r7 "AIAttackVars" block on a r5 BattleObject. First entry seeds
+
+  Unk_01=4 (charged/active phase), sets oBattleObject_CurAnim=7 (the
+
+  charge pose), and arms Unk_10=0x1E as a 30-frame timer. On later frames
+
+  it tests bit 2 of Unk_10 (carry of `lsr #3`) and, when clear, calls
+
+  sub_80FDCA4 with r0 = Unk_0c — the repeated-attack fire path.
+
+  Each frame decrements Unk_10; once it goes non-positive (BGT means
+
+  decrement reaches 0 or below) it writes 0x14 into Unk_00 so the AI state
+
+  machine returns to its "pick a new action" phase. Return address is
+
+  restored via `pop {pc}` (tail-call pop), so lr is consumed.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_80FD822
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD822
+
+    ./wf verify --function sub_80FD822 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 212 out
+    of domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD822
+
+    ./wf verify --function sub_80FD822 --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 74 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD822
+
+    ./wf verify --function sub_80FD822 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd822 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+related:
+- sub_80FDCA4
+open_questions:
+- Meaning of Unk_0c passed to sub_80FDCA4 (attack index? target slot?)
+- Why the 8-frame spacing (every other 4-frame step in the charge pose)?
+- Exact rationale for writing 0x14 to Unk_00 as the "done" sentinel.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

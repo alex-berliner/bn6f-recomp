@@ -1,0 +1,71 @@
+name: sub_812A008
+address: '0x0812A008'
+kind: function
+status: hypothesis
+summary: 'Per-frame e-Link (guest) state handler: redraws the sprite, runs its palette/animation start hook, and
+  on incoming data resets the e-Link state machine to phase 4 / sub-phase 3.'
+interface: void eLinkState_RunFrame_812A008(struct eLinkState *r5 /* work area */, void *r10 /* sprite regs */,
+  lr /* return */); preserves r4..r8, r5, r6; clobbers r0..r3, r12, lr, N Z C V
+details: 'Called in a loop to drive the "e-Link" / guest state machine. It first calls sprite_drawIfFlagSet_812B504
+  (only redraws when the sprite''s own flag is set) and crt0_start_800027C (palette/animation init tied to the sprite).
+  It then polls sub_81465BC, which appears to test whether new e-Link data was just received; on a non-zero return
+  it calls eLinkState_ResetForNewUse_803DE88, writes state 4 into R5+2 (the e-Link state byte) and writes 3 into
+  R5+0x28 (a halfword sub-state / counter). Work area offsets: +0x02 = state, +0x28 = sub-state/counter. The pairing
+  of byte state 4 with halfword 3 suggests a "received new e-Link request" transition. The function reads nothing
+  from its inputs; all state lives in the structure pointed to by r5 and in global state touched by sub_81465BC
+  / eLinkState_ResetForNewUse_803DE88.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_812A008
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812A008
+
+    ./wf verify --function sub_812A008 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 191 out of
+    domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812A008
+
+    ./wf verify --function sub_812A008 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812A008
+
+    ./wf verify --function sub_812A008 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0812a008 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- What sub_81465BC actually checks (incoming-link flag vs. ack) and which global it reads.
+- Meaning of state 4 and sub-state 3 in the e-Link work area (entry, ack, send, exit?).
+- Role of r10 — passed in but not directly used here; may be a sprite-bag pointer consumed by sprite_drawIfFlagSet_812B504.
+- Why state 4 is written as a byte and the sub-state as a halfword at a different offset (different field widths/meanings).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

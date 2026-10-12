@@ -1,0 +1,71 @@
+name: sub_811BD88
+address: '0x0811BD88'
+kind: function
+status: confirmed
+summary: PET-screen sprite state — picks which navi sprite bank to show (selected navi, or stats + optional progress
+  offset) and hands control to its update phase.
+interface: void sub_811BD88(void *petObjState /* r5 */)
+details: "Object state (r5):\n  [r5+0x0] = 1   (state phase marker: state entered)\n  [r5+0xC] = chosen sprite slot\
+  \ (u32)\n  [r5+0x8] = 4   (next handler/dispatch id, consumed by sprite_dispatchObjectUpdate_811BDCC)\nSlot selection\
+  \ logic:\n    * If GetCurPETNavi() != 0 → slot = naviId + 0xB  (the \"selected navi\" bank).\n    * Otherwise\
+  \ base slot = GetCurPETNaviStatsByte(0, 0x17);\n      and if the byte at 0x200AD04 is non-zero AND EVENT_163 has\
+  \ NOT been\n      triggered yet, 0x17 is added to the base slot (the post-event alternate bank).\n  Internally\
+  \ the candidate is built in r4/r0, then stored via ST32 at r5+0xC.\nCalls sub_811BE1C, then arms the object's\
+  \ next update handler by writing 4\nto [r5+0x8] and tail-calling sprite_dispatchObjectUpdate_811BDCC.\nClobbers\
+  \ r0,r1,r2,r3,r6,r7,r8,r9,r10,r11,r12; saves only r4 around the call.\n\nRegister form, old prompt; queued for\
+  \ retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_811BD88
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811BD88
+
+    ./wf verify --function sub_811BD88 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811BD88
+
+    ./wf verify --function sub_811BD88 --snapshots build-snapshots'
+  result: 29 compared, 0 differed, 0 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811BD88
+
+    ./wf verify --function sub_811BD88 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^0811bd88 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+- story2
+open_questions:
+- What is the structure layout of the r5 object (the PET-screen sprite controller)?
+- Which navi IDs map to which sprite slots, and what is the visual difference between the "base" slot (stats byte
+  0x17) and the offset-by-0x17 variant gated by EVENT_163?
+- Does sub_811BE1C perform the actual sprite load/animation start, and what does handler id 4 dispatched via sprite_dispatchObjectUpdate_811BDCC
+  represent?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

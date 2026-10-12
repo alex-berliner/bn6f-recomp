@@ -1,0 +1,73 @@
+name: sub_80FD7F2
+address: '0x080FD7F2'
+kind: function
+status: confirmed
+summary: Ticks one AI attack (init on first call, fires handler every 8 frames until timer expires)
+interface: void sub_80FD7F2(void);  /* r5 = oBattleObject*, r7 = oAIAttackVars*; outputs only r1; clobbers r0 r2
+  r3 lr, flags */
+details: "Operates on a battle object (r5) and its companion AI attack-vars struct (r7).\nFields touched:\n  [r7\
+  \ + oAIAttackVars_Unk_01]  state byte: 0 on entry -> set to 4 (\"attack active\")\n  [r5 + oBattleObject_CurAnim]\
+  \  cleared to 0 when attack starts\n  [r7 + oAIAttackVars_Unk_10]  attack timer; initialised to 10, decremented\
+  \ each call\n  [r7 + oAIAttackVars_Unk_0c]  attack parameter byte passed to the handler\n  [r7 + oAIAttackVars_Unk_00]\
+  \  follow-up delay; set to 0x10 when the timer underflows\nQuirks:\n  - The handler sub_80FDCA4 is invoked only\
+  \ on ticks where (timer & 4) == 0, i.e. every 8th frame\n    while the timer counts down (mask uses the carry\
+  \ flag from `lsr r0,#3`, bcs skips the call).\n  - Timer is a u16 decremented until it hits 0; the `bgt` branch\
+  \ leaves Unk_00 untouched, only the\n  -- wrap sets it to 0x10 (a \"next phase\" / post-attack delay for the AI\
+  \ state machine).\n  - Reads via `ldrb/ldrh` of Unk_01 (checked for 0) make this the standard \"init-then-tick\"\
+  \ idiom\n    seen across the AI attack table.\n\nRegister form, old prompt; queued for retype (the farm's prompt\
+  \ 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_80FD7F2
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD7F2
+
+    ./wf verify --function sub_80FD7F2 --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 212 out
+    of domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD7F2
+
+    ./wf verify --function sub_80FD7F2 --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 81 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD7F2
+
+    ./wf verify --function sub_80FD7F2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd7f2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+related:
+- sub_80FDCA4
+open_questions:
+- Meaning of Unk_01 value 4 vs the other values elsewhere in the AI attack table
+- What sub_80FDCA4 actually does with the Unk_0c byte (parameterised attack action)
+- Whether Unk_00 = 0x10 is consumed by the caller as a wait count or as another state index
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

@@ -1,0 +1,70 @@
+name: object_getPanelsExceptCurrentFiltered
+address: '0x0800CE64'
+kind: function
+status: confirmed
+summary: Scans every field panel and collects those matching required/forbidden attribute bitmasks (excluding the
+  object's own panel) into a caller-supplied list, returning the entry count.
+interface: u32 battle_object_collectMatchingPanelsExceptSelf_800CE64(u32 r5_battleObject, u32 r2_requiredAttrs,
+  u32 r3_forbiddenAttrs, u32 r7_outList)
+details: "Iterates x from 6 down to 1 and y from 3 down to 1, covering the standard 6x3\nbattle field. For each\
+  \ (x,y) it calls object_getPanelParameters to fetch the\npanel's attribute bitmask, then filters it:\n  * skip\
+  \ if (attrs & r3_forbiddenAttrs) != 0\n  * skip if (attrs & r2_requiredAttrs) != r2_requiredAttrs (i.e. any required\n\
+  \    bit missing, including r2 == 0 which trivially matches)\n  * skip if (x,y) equals the object's own panel\
+  \ read from\n    oBattleObject_PanelX / oBattleObject_PanelY at r5\nEach surviving panel is packed as (y << 4)\
+  \ | x and written as a single byte\nto r7_outList[count]. Returns the final count in r0. r4 is used as a scratch\n\
+  that is preserved across the object_getPanelParameters call (pushed/popped\ntogether with r0-r3,r6,r7), so the\
+  \ outer ABI sees r2/r3/r4/r6/r7 preserved\non exit while r0 holds the count and NZ flags reflect the final add.\n\
+  \nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    object_getPanelsExceptCurrentFiltered
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_getPanelsExceptCurrentFiltered
+
+    ./wf verify --function object_getPanelsExceptCurrentFiltered --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 4 out of
+    domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_getPanelsExceptCurrentFiltered
+
+    ./wf verify --function object_getPanelsExceptCurrentFiltered --snapshots build-snapshots'
+  result: 93 compared, 0 differed, 3 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_getPanelsExceptCurrentFiltered
+
+    ./wf verify --function object_getPanelsExceptCurrentFiltered --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story9.'
+  reproduce: grep -l '^0800ce64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/object.c
+coverage:
+- battlesweep
+- story9
+open_questions:
+- Exact meaning of each bit in the panel-attribute bitmask returned by object_getPanelParameters (panel type, broken,
+  etc.) is left as in the original.
+- Whether r7_outList is bounded/caller-allocated (max 18 entries) is not checked here.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

@@ -1,0 +1,81 @@
+name: sub_8129FE0
+address: '0x08129FE0'
+kind: function
+status: confirmed
+summary: Dispatches to one of five mode handlers for an object whose state lives at [r5+2], using a pre-multiplied
+  byte index into a 5-entry jump table.
+interface: 'void objectDispatch_8129FE0(void); // in: r4,r5,r6,r10,lr; out: r5,r6,r10,r11; clobbers r0-r3,r7-r9,r12,nzcv'
+details: 'Tail-calls one of sub_812A008 / sub_812A028 / sub_812A058 / sub_812A14C / sub_812A0CC
+
+  based on the byte at [r5+2] of the caller-supplied object struct, which stores its
+
+  mode already pre-multiplied by 4 so it can be used directly as a byte offset into
+
+  the word table at 0x08129FF4. The "mov lr, pc; bx r0" / "pop {pc}" pair is a
+
+  standard ARM/Thumb tail-call trick: the handler returns to the pop, which then
+
+  returns to this function''s real caller without an extra frame. Inputs r4, r6, r10
+
+  and the returned values r5, r6, r10, r11 are passed through implicitly via the
+
+  guest register file (no save/restore of r4-r11 in this frame). r5 is the object
+
+  pointer.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_8129FE0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129FE0
+
+    ./wf verify --function sub_8129FE0 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 12 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129FE0
+
+    ./wf verify --function sub_8129FE0 --snapshots build-snapshots'
+  result: 23 compared, 0 differed, 9 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129FE0
+
+    ./wf verify --function sub_8129FE0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08129fe0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- What object/subsystem owns this object? r5 is treated as a struct whose byte 2 is a pre-multiplied mode; need
+  a caller trace to identify it (likely a sprite/npc/battle entity given the r4/r6/r10 register usage).
+- What does each of the 5 modes (sub_812A008, sub_812A028, sub_812A058, sub_812A14C, sub_812A0CC) actually do?
+- Why is the mode stored pre-multiplied by 4 rather than as a plain index — is this the same dispatch pattern used
+  by other sub_8129xxx objects, suggesting a wider convention?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

@@ -1,0 +1,71 @@
+name: chatbox_80416F0
+address: '0x080416F0'
+kind: function
+status: confirmed
+summary: Executes one 6-byte chatbox script table entry, selecting a script by current map group, and advances to
+  the next entry if the chosen slot is 0xFF.
+interface: void chatbox_runEntry_80416F0(struct ChatboxScriptEntry* r4, struct ToolKit* r10) -> r0=1; clobbers r1-r3,
+  r4, lr, nzcv
+details: "Reads a 6-byte chatbox script entry whose layout is:\n  +0..1  reserved (offset 0/1)\n  +2     mapLow\
+  \  (u8) inclusive lower bound on current MapGroup\n  +3     mapHigh (u8) inclusive upper bound on current MapGroup\n\
+  \  +4     scriptID_whenInRange  (u8)\n  +5     scriptID_whenOutOfRange (u8)\nPulls the current map group via the\
+  \ toolkit's gameState pointer\n(oToolkit_GameStatePtr -> oGameState_MapGroup). If mapGroup is within\n[mapLow,\
+  \ mapHigh] (both compared as signed bytes via blt/bgt) the in-range\nslot (+4) is used; otherwise the out-of-range\
+  \ slot (+5) is used. If the\nselected scriptID is 0xFF the entry is treated as empty: r4 is advanced by\n6 bytes\
+  \ (to the next entry in the table) and no chatbox is shown. Otherwise\nchatbox_config_80408D0 is called with r0=0,\
+  \ r1=scriptID. r2/r3 are left\nholding mapHigh/mapGroup respectively, matching the original register\nliveness\
+  \ across the call. Always returns 1 in r0.\n\nRegister form, old prompt; queued for retype (the farm's prompt\
+  \ 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    chatbox_80416F0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_80416F0
+
+    ./wf verify --function chatbox_80416F0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_80416F0
+
+    ./wf verify --function chatbox_80416F0 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_80416F0
+
+    ./wf verify --function chatbox_80416F0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story8.'
+  reproduce: grep -l '^080416f0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- story8
+open_questions:
+- Meaning of bytes +0 and +1 of each entry is not used here.
+- Whether the table is null-terminated or sized externally (advances by a fixed 6 on 0xFF, so the caller must know
+  the end).
+- Exact meaning of r0=0 passed to chatbox_config_80408D0.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

@@ -1,0 +1,68 @@
+name: sub_80FD664
+address: '0x080FD664'
+kind: function
+status: confirmed
+summary: 'AI attack vars tick: when the AI attack timer (Unk_10) hits zero, clear flag 0x40 on the object, set the
+  currently-moving flag, and reset Unk_00 to 0xC.'
+interface: void sub_80FD664(void);  /* r7 = AI attack vars object; clobbers r0,r1,r2,lr and nz c v flags */
+details: "Reads `oAIAttackVars_Unk_10` as a u16, decrements it, and stores it back. While\nthe result is > 0 (tested\
+  \ on the zero-extended halfword), the routine returns\nimmediately. When the timer reaches 0:\n    - Calls object_clearFlag(0x40)\
+  \ to drop bit 0x40 on the object.\n    - Calls object_setFlag1(1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) (i.e.\
+  \ 1 << 19).\n    - Sets `oAIAttackVars_Unk_00` back to 0xC.\nThe two halves (timer tick + state transition) make\
+  \ this look like the per-frame\nstate timeout of an AI attack controller object: it lets the move play out for\n\
+  a counted number of frames, then snaps the object into its moving/post-attack\nstate with the cooldown/follow-up\
+  \ timer Unk_00 = 0xC.\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form\
+  \ C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    sub_80FD664
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD664
+
+    ./wf verify --function sub_80FD664 --snapshots build-snapshots'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD664
+
+    ./wf verify --function sub_80FD664 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD664
+
+    ./wf verify --function sub_80FD664 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd664 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- What state machine phase is `Unk_00 = 0xC`? (Likely "attack finished / cooldown" but unverified.)
+- What does flag 0x40 on the object represent (e.g. "attack in progress")? Comment-only.
+- Is `oAIAttackVars_Unk_10` actually a frame timer, or some other countdown unit?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b

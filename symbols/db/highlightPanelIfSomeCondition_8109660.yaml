@@ -1,0 +1,83 @@
+name: highlightPanelIfSomeCondition_8109660
+address: '0x08109660'
+kind: function
+status: hypothesis
+summary: For each (dx,dy) entry in a panel-offset list, highlights the panel at (baseX + dx*sideSign, baseY + dy)
+  when the coordinates fall on the 6x3 battle grid.
+interface: void highlightPanelIfSomeCondition_8109660(s32 baseX /* r0 */, s32 baseY /* r1 */, u32 listIndex /* r2
+  */, u32 side /* r3, +1 or -1 */); preserves r4-r7; NZ/C/V set per final dx compare (dx == 0x7F)
+details: 'Indexed table fetch: ldr r4, [r4, r2<<2] where r4 holds PanelOffsetListsPointerTable (off_81096A0) and
+  r2 selects one of several s8 (dx, dy) panel-offset lists.
+
+  Each list is terminated by an entry whose dx byte equals 0x7F (signed); the loop runs until that sentinel is read.
+
+  Horizontal mirroring: r3 (side) is converted to an x direction via xDir = 1 - 2*side, so callers flip the line
+  to face left/right without supplying a separate list.
+
+  Panel coords computed: panelX = dx * xDir + baseX; panelY = dy + baseY.
+
+  Bound check is the 6x3 battle grid: panelX in [1..6], panelY in [1..3]. Only on-grid panels call object_highlightPanel;
+  off-grid entries are silently skipped (falls through to loc_8109698).
+
+  Side effects: invokes object_highlightPanel(R0=panelX, R1=panelY) once per in-bounds list entry. Tail of list
+  returns with the 0x7F sentinel still in r0; preserved registers r4-r7.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261011-232534);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 21' --file inbox_farm_old_21.c
+    highlightPanelIfSomeCondition_8109660
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function highlightPanelIfSomeCondition_8109660
+
+    ./wf verify --function highlightPanelIfSomeCondition_8109660 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 247 out
+    of domain (verify run convert-20261011-232534-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function highlightPanelIfSomeCondition_8109660
+
+    ./wf verify --function highlightPanelIfSomeCondition_8109660 --snapshots build-snapshots'
+  result: 36 compared, 0 differed, 2 out of domain (verify run convert-20261011-232534-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function highlightPanelIfSomeCondition_8109660
+
+    ./wf verify --function highlightPanelIfSomeCondition_8109660 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-232534-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, chips, story4, story6.'
+  reproduce: grep -l '^08109660 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 0ac624b
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- chips
+- story4
+- story6
+open_questions:
+- Which of the entries in PanelOffsetListsPointerTable correspond to attack lines, spread rows, column effects,
+  etc. — naming relies on the table contents not shown here.
+- Whether 1-based panel indices here align with the 6-column-wide grid used by other battle subsystems.
+- Whether the function is reused for highlighting one's own panels, an opponent's row, or both (the side parameter
+  suggests direction, but caller context is unknown).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-232534
+- recomp 0ac624b
