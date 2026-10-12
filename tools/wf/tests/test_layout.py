@@ -163,3 +163,20 @@ def test_a_neighbours_macro_with_another_value_than_the_headers_is_renamed_apart
 def test_macro_values_compare_integer_constants_by_value() -> None:
     assert layout.macro_value("8") == layout.macro_value("0x8u") == layout.macro_value("(010) /* eight */")
     assert layout.macro_value("oFoo + 1") == "oFoo + 1" != layout.macro_value("9")
+
+
+def test_a_neighbours_macro_undefined_again_is_not_shared(monkeypatch: pytest.MonkeyPatch) -> None:
+    from wf.tools import install
+    monkeypatch.setattr(layout, "header_macros", lambda: {"SPEED": "4"})
+    monkeypatch.setattr(install, "_header_text", lambda: {"SPEED": "0x4u"})
+    laid = plan({"inbox_1.c": "x\n\n/* ── objA ── */\n#define SPEED 4\nNext objA(void) {\n    R0 = SPEED;\n}\n"
+                              "#undef SPEED\n"}).files["object.c"]
+    assert laid is not None
+    group = "x\n\n/* ── objB ── */\nNext objB(void) {\n    R0 = SPEED;\n}\n"
+    conflicts = plan({"object.c": laid, "inbox_2.c": group}).conflicts
+    assert conflicts
+
+    renamed = install.renamed_apart(group, conflicts)
+
+    assert "#define SPEED_objB 0x4u\n" in renamed
+    assert not plan({"object.c": laid, "inbox_2.c": renamed}).conflicts

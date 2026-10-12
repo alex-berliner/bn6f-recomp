@@ -24,8 +24,9 @@ A part must be self-contained where it lands (a problem stops the layout):
     that defines a macro it takes from the shared headers). Two parts that break this only by order
     are cut apart with a split address in tools/layout.txt. A neighbour's macro that defines a name of
     the shared headers with the same value (`#define CUR_STATE_DESTROY 8` beside bn6f_syms.h's 0x8u) is
-    shared: the part sees what it would see without it. One with another value is renamed apart in the
-    part that uses it (tools/wf install.renamed_apart).
+    shared: the part sees what it would see without it. One with another value, or that the neighbour
+    `#undef`s again (which takes the headers' definition away too), is renamed apart in the part that
+    uses it, which gets the headers' definition under its own name (tools/wf install.renamed_apart).
 These are the identifier-level rules tools/stamps.py's body hash follows, so a layout that passes them
 moves no function's stamp.
 
@@ -375,10 +376,14 @@ def header_macros(headers: str = HEADERS) -> dict[str, str | None]:
 
 
 def shares_header_macro(part: Part, name: str) -> bool:
-    """Whether every definition of macro NAME in PART has the value the shared headers give it."""
+    """Whether every definition of macro NAME in PART has the value the shared headers give it, and the
+    part leaves it defined (a part that ends with `#undef NAME` takes the headers' NAME from every part
+    after it too)."""
     want = header_macros().get(name)
     found = [m for m in DEFINE.finditer(part.text) if m[1] == name]
-    return want is not None and bool(found) and all(not m[2] and macro_value(m[3]) == want for m in found)
+    undone = re.search(rf"^[ \t]*#[ \t]*undef[ \t]+{re.escape(name)}\b", part.text, re.M)
+    return (want is not None and bool(found) and not undone
+            and all(not m[2] and macro_value(m[3]) == want for m in found))
 
 
 def part_problems(dest: str, parts: list[Part]) -> list[Conflict]:
