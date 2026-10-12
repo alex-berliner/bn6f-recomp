@@ -176,6 +176,7 @@ _DEFINED = (
     re.compile(r"^typedef\b[^;{]*?\b(\w+)\s*;", re.M),
     re.compile(r"^(?:typedef\s+)?(?:struct|union|enum)\s+(\w+)\s*\{", re.M),
     re.compile(r"^}\s*(\w+)\s*;", re.M),
+    re.compile(r"^typedef\s+(?:struct|union|enum)\s*(?:\w+\s*)?\{[^{}\n]*\}\s*(\w+)\s*;", re.M),   # one line: a wrapper's result
 )
 _ENUM_BODY = re.compile(r"\benum\b[^{;]*\{([^}]*)\}", re.S)
 _IDENT = re.compile(r"\b[A-Za-z_]\w*\b")
