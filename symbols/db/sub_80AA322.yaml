@@ -1,0 +1,75 @@
+name: sub_80AA322
+address: '0x080AA322'
+kind: function
+status: confirmed
+summary: Per-frame update for an overworld NPC sprite bound to a cutscene; picks mode 1 or 3 based on cutscene readiness,
+  copies the NPC transform into the sprite, applies the layer effect, then runs priority + sprite update.
+interface: void sub_80AA322(struct SpriteObj* r5 /* sprite to update */, ??? r10 /* caller-saved scratch */); returns
+  nothing; r2/r10/r11 are clobbered outputs of sprite_update (r5 + 0x0C block is the position buffer; mode byte
+  stored at r5[0]).
+details: "Picks a 1-byte mode (default 1, promoted to 3) by:\n  - calling sub_81279A8 (must return Z set),\n  -\
+  \ then cutscene_checkOriginalCutsceneScriptPos_8036F70 on byte_8088514,\n  - then cutscene_checkOriginalCutsceneScriptPos_8036F70\
+  \ on byte_8088708.\nIf all three return Z, mode = 3; otherwise mode = 1. The chosen mode is stored as a byte at\
+  \ r5[0] (the sprite's mode/animation slot).\nThen copies three 32-bit words from the overworld NPC table eOverworldNPCObjects\
+  \ at offsets +0x24/+0x28/+0x2C (likely X, Y, layer/flags) into the sprite buffer at r5+0x0C/+0x10/+0x14.\nCalls\
+  \ applyLayerEffectToOWObject_8035694 on r5+0x0C to convert the OW coords into sprite-space.\nCalls sprite_setPriority_8002E14\
+  \ and sprite_update; the latter is what produces the r2/r10/r11 outputs the caller relies on.\nPreserves r4-r9\
+  \ and r12; r0/r1/r3 are scratch. Uses lr to pop into pc (tail via pop {r4-r7,pc}).\n\nRegister form, old prompt;\
+  \ queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261012-121941);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 28' --file inbox_farm_old_28.c
+    sub_80AA322
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AA322
+
+    ./wf verify --function sub_80AA322 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121941-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AA322
+
+    ./wf verify --function sub_80AA322 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 84 out of domain (verify run convert-20261012-121941-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AA322
+
+    ./wf verify --function sub_80AA322 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121941-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, story1, story2, story8.'
+  reproduce: grep -l '^080aa322 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp efe7331
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm29.c
+coverage:
+- maps
+- story1
+- story2
+- story8
+open_questions:
+- What is r10 on entry? It is preserved for the caller and not touched here, but the contract lists it as input.
+- Exact meaning of byte_8088514 and byte_8088708 (per-cutscene position counters / script-relative cursor indices).
+- 'Layout of the sprite object at r5: bytes [0] = mode, +0x0C..+0x14 = position buffer; what other fields follow?'
+- Field meaning of eOverworldNPCObjects+0x24/0x28/0x2C (X, Y, layer/height?).
+- What sub_81279A8 actually checks (game-state ready flag, fade done, etc.).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121941
+- recomp efe7331

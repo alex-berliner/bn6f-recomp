@@ -1,0 +1,92 @@
+name: sprite_load
+address: '0x080026E4'
+kind: function
+status: confirmed
+summary: Loads a sprite into an object, clearing its loaded-flag bit and falling back to a placeholder when not
+  found.
+interface: 'void sprite_load(void *spriteData, u16 spriteId, u8 subIndex, void *objectHeader); /* returns via r4/r5
+  preserved, r1 holds original spriteData */ /* in:  r0 spriteData, r1 spriteId, r2 subIndex, r5 objectHeader out:
+  r1 = original r0 (spriteData), r4/r5 preserved clobbers: N Z C V, r0 r2 r3 lr */'
+details: 'Resolves the object''s per-type sprite slot by reading oObjectHeader_TypeAndSpriteOffset''s high nibble
+  as a stride and adding it to the object base (R5) to get the sprite header pointer. Clears bit 3 (0x8) of oObjectHeader_Flags
+  to mark the object as not-yet-loaded. Looks up the sprite data by packing r1:r2 into a single id ((r1<<8)|r2)
+  via lookupValueForIdInTableAt_200DCA0_8002986. If the lookup misses, falls back to SpritePointersList[r1] then
+  index [r2*4] (signed word, high bit indicates a placeholder pointer -- in this case spriteWhiteDot). Calls sprite_initialize
+  with the resolved sprite pointer and then writes the original r0 (spriteData) into oObjectSprite_Unk_03 of the
+  sprite header.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261012-121941);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/sprite.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 28' --file inbox_farm_old_28.c
+    sprite_load
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sprite_load
+
+    ./wf verify --function sprite_load --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261012-121941-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sprite_load
+
+    ./wf verify --function sprite_load --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 91 out of domain (verify run convert-20261012-121941-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sprite_load
+
+    ./wf verify --function sprite_load --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121941-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080026e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/sprite.c
+  where: recomp efe7331
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/sprite.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+related:
+- sub_80E0864
+open_questions:
+- What exactly is the original r0 (spriteData / 'romSpriteTiles' pointer) used for later via Unk_03?
+- Why does the lookup also have a SpritePointersList[r1] fallback with r2 used as a sub-index, and what populates
+  SpritePointersList?
+- Is the cleared flag bit 3 specifically a 'sprite-loaded' bit, or does it have other meanings in oObjectHeader_Flags?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121941
+- recomp efe7331

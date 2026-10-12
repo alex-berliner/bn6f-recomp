@@ -1,0 +1,89 @@
+name: sub_80E0864
+address: '0x080E0864'
+kind: function
+status: confirmed
+summary: Initialize a battle object's sprite/animation by indexing a per-object sprite descriptor table with the
+  object's Param1 field, then mark the object as initialized and arm CUR_STATE_UPDATE.
+interface: 'void sub_80E0864(void);
+
+  /* r5 is the battle object pointer (preserved across the call). Clobbers r0-r3, lr, N Z C V. */
+
+  '
+details: "Reads the battle object's Param1 field (offset oBattleObject_Param1) and uses it as an index\ninto the\
+  \ table at A_off_80E0804, where each entry is a 4-byte sprite descriptor:\n  +0 tile id (u8) -> sprite_load arg\
+  \ R1\n  +1 palette slot (u8) -> sprite_load arg R2\n  +2 initial animation id (u8)\n  +3 palette id (u8)\nCalls\
+  \ sprite_load with tile/palette id and R0 = 0x80 (graphics destination slot), then\nsprite_loadAnimationData,\
+  \ sprite_noShadow, writes the animation id into both CurAnim and\nCurAnimCopy, calls sprite_setAnimation, sprite_loadAnimationData\
+  \ again, sprite_setPalette\nwith the palette id, and sprite_update. Finally sets bit 0x1 of oObjectHeader_Flags\
+  \ (OR with\n0x2) and stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized,\nmoving\
+  \ the object's state machine into its update phase.\n\nRegister form, old prompt; queued for retype (the farm's\
+  \ prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261012-121941);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 28' --file inbox_farm_old_28.c
+    sub_80E0864
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E0864
+
+    ./wf verify --function sub_80E0864 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 273 out
+    of domain (verify run convert-20261012-121941-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E0864
+
+    ./wf verify --function sub_80E0864 --snapshots build-snapshots'
+  result: 32 compared, 0 differed, 61 out of domain (verify run convert-20261012-121941-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E0864
+
+    ./wf verify --function sub_80E0864 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121941-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080e0864 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp efe7331
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+related:
+- sprite_load
+open_questions:
+- What is the meaning of R0 = 0x80 passed to sprite_load (sprite slot / destination buffer)?
+- Is the descriptor table at A_off_80E0804 shared across multiple battle object types, or scoped to a particular
+  object class?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121941
+- recomp efe7331

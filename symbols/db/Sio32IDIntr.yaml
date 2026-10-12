@@ -1,0 +1,93 @@
+name: Sio32IDIntr
+address: '0x0814CE64'
+kind: function
+status: confirmed
+summary: 'SIO32 multiplayer link interrupt: advance ID-exchange handshake and reload SIODATA0 with the next expected
+  partner ID and RX mask; parent re-arms the start bit after a settle delay.'
+interface: 'void Sio32IDIntr(void);  // inputs: lr; outputs: nz,c,v,r4,r5; clobbers: r0,r1,r2,r3; preserves: r4,r5'
+details: "Operates on the GBA SIO32 (multiplayer) registers and a small RAM state\nblock anchored at byte_2010CD0\
+  \ (r4). Field offsets used:\n  +0   : u8 slot id (0..3) -- which half of SIODATA0 is \"ours\"\n  +2   : u16 handshake\
+  \ state counter\n  +4   : u16 our outgoing 16-bit word (next ID/mask to send)\n  +6   : u16 expected incoming\
+  \ 16-bit word (this-turn partner mask)\n  +0xA : u16 \"done\" latch (last partner value when handshake completes)\n\
+  \nAlgorithm each interrupt:\n  1. Non-parent slot: write SIOControlRegister |= 0x80 to drop the START\n     bit\
+  \ (it owns transfer initiation, not us).\n  2. Unpack SIODATA0: r1 = our half, r5 = partner half, indexed by slot<<4.\n\
+  \     (LSL-by-register is used, so large shifts yield 0.)\n  3. If done_flag == 0:\n       - If partner value\
+  \ != expected_rx, reset state counter to 0.\n       - Else if state > 3, mark done by storing the partner value.\n\
+  \       - Else (state in 0..3) require our incoming to equal ~mask_tx AND\n         partner to equal ~expected_rx\
+  \ to advance state to state+1.\n  4. Pick next_outgoing from LibInfoText_aNintendosio32i[state] for\n     state<=3,\
+  \ else 0x8001; store complement of r5 as the new expected\n     partner mask.\n  5. Repack the two 16-bit halves\
+  \ into SIOData0_Parent__Multi_PlayerMode_\n     (TX shifted to our slot's position, RX shifted to partner's slot).\n\
+  \  6. Parent (slot==1) path: optionally busy-wait up to ~0x257 ticks if\n     state==0 or partner sent \"NI\"\
+  \ (0x494E), then if done_flag is still\n     0, set SIOControlRegister bit 0x80 to re-arm the START bit.\n\nRegister\
+  \ form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261012-121941);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 28' --file inbox_farm_old_28.c
+    Sio32IDIntr
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function Sio32IDIntr
+
+    ./wf verify --function Sio32IDIntr --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261012-121941-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function Sio32IDIntr
+
+    ./wf verify --function Sio32IDIntr --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121941-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function Sio32IDIntr
+
+    ./wf verify --function Sio32IDIntr --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121941-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814ce64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp efe7331
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What does byte_2010CD0 + 8 (untouched by this code) hold? Looks like there is a sibling field between +6 and +0xA.
+- Is LibInfoText_aNintendosio32i actually the sequence of IDs sent during the ID-exchange phase, or a generic LibInfo
+  string table reused here?
+- The role of the 0x494E ("NI") sentinel in the parent gate -- peer "not identified yet"?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121941
+- recomp efe7331

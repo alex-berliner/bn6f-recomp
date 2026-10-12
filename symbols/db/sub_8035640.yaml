@@ -1,0 +1,83 @@
+name: sub_8035640
+address: '0x08035640'
+kind: function
+status: hypothesis
+summary: Scans an id/event-flag table; if the current target id matches an entry whose flag is set, loads a GFX+animations
+  bundle.
+interface: void sub_8035640(u32* someStruct, ...); // r10 = ptr to a struct whose +0x3c points to a {u16 id, ...}
+  blob; r2,r5,r7-r12 out; flags NZ/C/V clobbered
+details: 'Walks the table at byte_8035670 which is an array of {u16 id, u16 event_flag} pairs terminated
+
+  by an entry with id == 0. For each entry it compares the entry id against *(u16*)(r10+0x3c+4)
+
+  (r7 is loaded from r10+0x3c, so the comparison is actually against the u16 at offset 4 of that
+
+  pointed-to object). When an id matches and TestEventFlag(entry.event_flag) returns nonzero, it
+
+  calls LoadGFXAnims(off_8035688) once and then returns. Used to conditionally preload character/
+
+  sprite graphics when a particular game event has been triggered.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261012-121941);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 28' --file inbox_farm_old_28.c
+    sub_8035640
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8035640
+
+    ./wf verify --function sub_8035640 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261012-121941-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8035640
+
+    ./wf verify --function sub_8035640 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121941-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8035640
+
+    ./wf verify --function sub_8035640 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121941-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: fuzz, maps, story3, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08035640 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp efe7331
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- fuzz
+- maps
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the type/owner of the struct at r10+0x3c? Likely a battle participant or chip/state block.
+- Is off_8035688 a single anim bank or a table of banks? The routine only ever passes its base.
+- How many entries does the table at byte_8035670 have, and which flag(s) gate the in-game sprites (e.g. style-change
+  Navi, Mega/Regal forms)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121941
+- recomp efe7331

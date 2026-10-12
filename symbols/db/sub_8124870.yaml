@@ -1,0 +1,79 @@
+name: sub_8124870
+address: '0x08124870'
+kind: function
+status: hypothesis
+summary: Picks one of two BCD-digit tile tables for the scoreboard based on the current vs. half value, then rebuilds
+  the scoreboard's BCD tilemap.
+interface: 'void scoreboard_drawCurrent_8124870(struct ScoreState* r5 /* scoreboard state, fields: +0x18 width,
+  +0x1A value */);
+
+  '
+details: 'Reads the scoreboard state object passed in R5: +0x18 is the current score width (digits), +0x1A is the
+  current BCD score value. Compares (value >> 2) against width; if the quartered value is at or above the width,
+  selects the "high" digit tile table at 0x3081E0, otherwise the default at 0x3071E0. Hardcodes R4=2 (column?) and
+  R6=3 (row?) as extra args, plus R0=unk_201C4B0 (tilemap buffer), then tail-calls scoreboard_buildScoreBcdTilemap_8120900
+  which actually lays the BCD digit tiles into the BG map. Function essentially chooses which of two prebuilt BCD→tile-index
+  lookup tables to feed the tilemap builder depending on how full the score is. R5 (state pointer) is the only meaningful
+  in/out.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261012-121941);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 28' --file inbox_farm_old_28.c
+    sub_8124870
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8124870
+
+    ./wf verify --function sub_8124870 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121941-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8124870
+
+    ./wf verify --function sub_8124870 --snapshots build-snapshots'
+  result: 46 compared, 0 differed, 50 out of domain (verify run convert-20261012-121941-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8124870
+
+    ./wf verify --function sub_8124870 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121941-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^08124870 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp efe7331
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+open_questions:
+- Which screen/scene invokes it (no callers given); likely the rank/score overlay drawn from a script/state machine.
+- Exact meaning of the +0x18 width and +0x1A value fields (BCD digit count vs. raw score?).
+- Why two tile tables at 0x3071E0 vs 0x3081E0 — probably a "before/after overflow" or zero-padding variant.
+- The trailing byte tables (byte_812489C..byte_8124B1C) sit right after this function but aren't referenced by it;
+  they likely belong to other nearby scoreboard helpers.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121941
+- recomp efe7331

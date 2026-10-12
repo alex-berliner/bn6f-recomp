@@ -1,0 +1,86 @@
+name: sub_811F508
+address: '0x0811F508'
+kind: function
+status: confirmed
+summary: 'Per-frame tick for a chip-use/custom-data controller: on flag, dispatches to sub_811FAF4 then reloads
+  a per-instance timer via sub_8120CC8 when it expires.'
+interface: 'void sub_811F508(void); /* inputs: r5,r10,lr; outputs: r7; clobbers nzcv,r0-r3,lr; preserves r4-r7 */'
+details: "Reads a halfword flag at r5+0x10; if non-zero, returns immediately.\nBuilds r0 = 0x00100000 | (u16)r5+0x10\
+  \ and calls sub_811FAF4 with:\n  R0 = 0x00100000 | r5->halfword_10,\n  R1 = 0 (dword_811F53C),\n  R2 = r5->byte_0A,\n\
+  \  R3 = byte_811EBD0,\n  R4 = 0x40000000 (dword_811F544) -- caller-preserved scratch slot for the callee.\nDecrements\
+  \ the u8 timer at r5+0xB; when it underflows to zero, stores sub_811FAF4's\nR0 result into r5->byte_0A, then calls\
+  \ sub_8120CC8(r5, A_byte_811EBDA) and stores\nits R1 result back into r5->byte_0B (reloading the timer). r10 is\
+  \ read but not used\nin this routine -- it is callee-saved context for the surrounding state machine.\nThe 0x00100000\
+  \ prefix in arg0 plus the table pointers (byte_811EBD0, byte_811EBDA)\nand the 0x40000000 sentinel strongly suggest\
+  \ an effect/animation state whose frame\nis advanced by sub_811FAF4 and whose period is a separate per-instance\
+  \ table entry.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form\
+  \ C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261012-121941);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 28' --file inbox_farm_old_28.c
+    sub_811F508
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811F508
+
+    ./wf verify --function sub_811F508 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261012-121941-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811F508
+
+    ./wf verify --function sub_811F508 --snapshots build-snapshots'
+  result: 52 compared, 0 differed, 44 out of domain (verify run convert-20261012-121941-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811F508
+
+    ./wf verify --function sub_811F508 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121941-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0811f508 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp efe7331
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of r5->byte_0A (effect/animation index) and r5->byte_0B (period timer).
+- Role of r10 and whether r5 is the entity instance or a controller struct.
+- Whether sub_811FAF4 actually returns the new index in R0, or whether the assignment to byte_0A is just an "applies/finished"
+  sentinel.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121941
+- recomp efe7331
