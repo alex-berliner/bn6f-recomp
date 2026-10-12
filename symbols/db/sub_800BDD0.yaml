@@ -1,0 +1,75 @@
+name: sub_800BDD0
+address: '0x0800BDD0'
+kind: function
+status: hypothesis
+summary: 'Battle-object phase step: when an action slot''s Unk_30 is in the 0xDD..0x118 window and the cross-team
+  table lookup yields 0xBA, run the panel-targeted sub-animation (sub_800B884) and a panel-XY helper (sub_800ABC6)
+  and set phase to 4; otherwise just bump CurAction by 4 and zero the phase field.'
+interface: "void sub_800BDD0(void);          // r5 = battle object base, r10 = ?, lr = return\n                \
+  \                 // clobbers r0,r1,r2,r3,lr and nz,cv; preserves r4,r5,r6,r7,r10\n"
+details: "Operates on a battle object via r5 (oBattleObject_* layout).\n- Reads Unk_30 (u16 at +0x30) and checks\
+  \ whether (Unk_30 - 0xDD) <= 0x3B, i.e. range 0xDD..0x118.\n- On hit, reads Alliance (u8 at +0x.., likely oBattleObject_Alliance),\
+  \ XORs with 1 to get the opposing team's index, and calls getTable2036720EntryFields_802CE78(r0=oppAlli|r0^1,\
+  \ r1=1) to fetch a 0xBA-tagged entry.\n- If the returned field equals 0xBA, it dispatches:\n    * sub_800B884(r0=Alliance,\
+  \ r1=4)  -- likely a panel/animation kicker for the object\n    * sub_800ABC6(r0=PanelX, r1=PanelY) -- panel-XY\
+  \ reaction/animation\n    * and stores 4 into CurPhaseAndPhaseInitialized (u16 at +0x..).\n- Default path stores\
+  \ CurAction+4 back into CurAction (u8) and writes 0 into CurPhaseAndPhaseInitialized.\nNote: in the original asm\
+  \ the xor path passes `r0 = alliance ^ 1`; the readable C comment\nshows `R1 = 0` but the asm pushes `mov r1,\
+  \ #1`, so the second arg to getTable2036720EntryFields\nis 1, not 0.\n\nRegister form, old prompt; queued for\
+  \ retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (1 attempt(s), run convert-20261012-162936);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    m3old'' --file inbox_farm_m_m3old.c sub_800BDD0'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800BDD0
+
+    ./wf verify --function sub_800BDD0 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 178 out of
+    domain (verify run convert-20261012-162936-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800BDD0
+
+    ./wf verify --function sub_800BDD0 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261012-162936-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800BDD0
+
+    ./wf verify --function sub_800BDD0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162936-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^0800bdd0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp 9e6cdc1
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/object.c
+coverage:
+- story9
+open_questions:
+- Exact struct offsets (only oBattleObject_Unk_30, oBattleObject_Alliance, oBattleObject_CurAction, oBattleObject_PanelX/Y,
+  oBattleObject_CurPhaseAndPhaseInitialized are referenced; sizes/alignment of each field not pinned).
+- Meaning of the 0xDD..0x118 window in Unk_30 (action-id slot? animation state index?).
+- Meaning of the table-return 0xBA sentinel returned by getTable2036720EntryFields_802CE78.
+- Whether sub_800B884 and sub_800ABC6 are the panel-cross splash + a pre-fire setup, or unrelated helpers sharing
+  the r5 object.
+- Role of preserved r10 across the call.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-162936
+- recomp 9e6cdc1

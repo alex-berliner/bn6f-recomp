@@ -1,0 +1,74 @@
+name: sub_80E1AB4
+address: '0x080E1AB4'
+kind: function
+status: confirmed
+summary: Initialize a battle object's sprite when it transitions into its action state (set position, load tile/animation
+  0x0E, palette 0, sync flip, mark phase as update).
+interface: void sub_80E1AB4(BattleObject *r5);  // r5 = battle object pointer (in/out, preserved)
+details: "Called as the action-state initialization thunk for a battle object. Sequence:\n  1) Snap the object's\
+  \ sprite position to its current panel coordinates via object_setCoordinatesFromPanels.\n  2) Clear the object's\
+  \ Z16 (oBattleObject_Z16) to 0.\n  3) Load sprite tile data at offset 0x80 with sub-tile args (8, 0xC) via sprite_load,\
+  \ then sprite_loadAnimationData and sprite_noShadow.\n  4) OR= 0x02 into oObjectHeader_Flags (presumably \"initialized/sprite-loaded\"\
+  \ bit).\n  5) Set the current animation to 0x0E in both oBattleObject_CurAnim and the backing oBattleObject_CurAnimCopy\
+  \ slot, then call sprite_setAnimation and sprite_loadAnimationData.\n  6) Apply palette 0 (sprite_setPalette 0),\
+  \ then mirror the object's facing into the sprite via object_getFlip -> sprite_setFlip.\n  7) Write the CUR_STATE_UPDATE\
+  \ marker into oBattleObject_CurStateActionPhaseAndPhaseInitialized so subsequent ticks take the update branch.\n\
+  The CUR_STATE_UPDATE constant name follows the project's enum for battle-object state-action phases.\nTouched\
+  \ fields: oBattleObject_Z16, oObjectHeader_Flags, oBattleObject_CurAnim, oBattleObject_CurAnimCopy, oBattleObject_CurStateActionPhaseAndPhaseInitialized.\n\
+  \nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (1 attempt(s), run convert-20261012-162936);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    m3old'' --file inbox_farm_m_m3old.c sub_80E1AB4'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E1AB4
+
+    ./wf verify --function sub_80E1AB4 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 188 out of
+    domain (verify run convert-20261012-162936-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E1AB4
+
+    ./wf verify --function sub_80E1AB4 --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 65 out of domain (verify run convert-20261012-162936-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E1AB4
+
+    ./wf verify --function sub_80E1AB4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162936-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080e1ab4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 9e6cdc1
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Meaning of oObjectHeader_Flags bit 0x02 (presumably a "has sprite" or "sprite-ready" flag).
+- Which battle objects route through this entry — the hard-coded animation index 0x0E and tile 0x80 suggest a specific
+  object class rather than a generic initializer, so the function may only be used by one kind of actor (and worth
+  confirming in the caller chain).
+- Why both oBattleObject_CurAnim and oBattleObject_CurAnimCopy are seeded with 0x0E (animation playback vs. cached
+  "previous" frame).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-162936
+- recomp 9e6cdc1
