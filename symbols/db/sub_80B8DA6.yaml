@@ -1,0 +1,97 @@
+name: sub_80B8DA6
+address: '0x080B8DA6'
+kind: function
+status: confirmed
+summary: Syncs a secondary object (in r5) to its related primary object's position and sprite state, then either
+  updates the sprite or queues it for destruction.
+interface: "void syncRelatedObjectVisualState_80B8DA6(void);\n    // r5 in/out: secondary battle object\n    //\
+  \ r10 in: caller-saved context (battle scene globals)\n    // lr in: return address\n    // preserves: r4, r5,\
+  \ r7\n"
+details: "Treats r5 as a battle object that mirrors a \"related\" object stored at\noBattleObject_RelatedObject1Ptr\
+  \ (loaded into r4). Copies the 12-byte\nposition block at +0x34 from r4 into r5, then layers per-frame motion\
+  \ on\ntop: XVelocity (+oBattleObject_XVelocity) added to X, ZVelocity\n(+oBattleObject_ZVelocity) added to Z,\
+  \ and (s8)+0xC sign-extended << 16\nsubtracted from both Y and Z (this byte is the height/scale delta used by\n\
+  sprite mirroring logic).\n\nThen mirrors a small set of visual attributes from related to self, in this\norder:\
+  \ color shader, final palette, alpha (with related's mosaic scaling\nparameters), flip. Flag bit 1 from r4's header\
+  \ is propagated into r5's\nheader (bit 1 is first cleared on self to make the copy clean).\n\nAfter mirroring,\
+  \ branches on oBattleObject_ExtraVars[0]:\n  - if 0: clear flag bit 1 on self and write CUR_STATE_DESTROY into\n\
+  \    oBattleObject_CurStateActionPhaseAndPhaseInitialized, then return.\n  - else: skip object_updateSprite when\
+  \ oBattleObject_Param3 is non-zero\n    OR battle_isTimeStop() is true; also skip when battle_isPaused() is\n\
+  \    true. Only when none of those guard conditions hold is object_updateSprite\n    called. Note: the time-stop\
+  \ check is gated behind Param3==0, so a non-zero\n    Param3 short-circuits directly into the paused check.\n\n\
+  Quirks:\n  - The \"preserve r7\" claim in the contract comes from the surrounding\n    state machine; the function\
+  \ itself only pushes {r4,lr}, so r7 is\n    preserved by virtue of not being touched.\n  - oBattleObject_CurStateActionPhaseAndPhaseInitialized\
+  \ is written only on\n    the destroy branch.\n  - Returns via pop {r4,pc}, so the link register is consumed as\
+  \ the\n    return path.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form\
+  \ C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-203743);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 13' --file inbox_farm_old_13.c
+    sub_80B8DA6
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80B8DA6
+
+    ./wf verify --function sub_80B8DA6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-203743-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80B8DA6
+
+    ./wf verify --function sub_80B8DA6 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261011-203743-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80B8DA6
+
+    ./wf verify --function sub_80B8DA6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203743-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080b8da6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp f0437e6
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does oBattleObject_Param3 signify here, and why does a non-zero value bypass the time-stop check and skip
+  sprite updating?
+- Is the 0xC byte a fixed-point scale or a height offset, given it is subtracted from both Y and Z (i.e., scaling
+  rather than Z-axis depth)?
+- Is oBattleObject_ExtraVars[0] a "lifetime/alive" counter, such that 0 triggers destroy even when the visual state
+  was just successfully mirrored?
+- Which state calls this for which object types (chips, enemies, terrain)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203743
+- recomp f0437e6

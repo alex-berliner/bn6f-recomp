@@ -1,0 +1,79 @@
+name: sub_81098C4
+address: '0x081098C4'
+kind: function
+status: confirmed
+summary: Sets a battle object's X/Y velocity to slide it onto the AI's current target panel and computes the frame
+  count until it arrives.
+interface: 'void sub_81098C4(struct BattleObject *obj /* r5 */, struct AIAttackVars *ai /* r7 */);
+
+  '
+details: "Compares the object's current panel coords (oBattleObject_PanelX / oBattleObject_PanelY) against the AI's\
+  \ target panel (oAIAttackVars_Unk_16 / oAIAttackVars_Unk_17). It prefers the Y axis; only if the Y delta is zero\
+  \ does it fall through to the X axis. The selected delta is multiplied by the AI's per-attack speed scalar (oAIAttackVars_Unk_30)\
+  \ and written into the matching velocity slot, while the other axis's velocity is zeroed. If both deltas are zero\
+  \ the function short-circuits, zeroes both velocities, and forces oAIAttackVars_Unk_10 and oAIAttackVars_Unk_12\
+  \ to 1 (signalling \"already on target / fired on land\").\n\nFor the active-axis cases it loads a fixed-point\
+  \ duration (0x18<<16 for Y, 0x28<<16 for X), BIOS-divides it by the speed scalar (swi 6: r0/r1 -> r0 quotient,\
+  \ r1 remainder), and writes:\n  * oAIAttackVars_Unk_10 = quotient   (total frames the slide lasts)\n  * oAIAttackVars_Unk_12\
+  \ = quotient>>1 (half-way / \"about to land\" frame for the caller to fire the hit).\n\nQuirks: the multiply is\
+  \ done as 32x32 -> 32 with MUL; BEQ tests the product to choose the axis. Z is set from MUL and reused. Duration\
+  \ chosen differs per axis (Y uses 0x18, X uses 0x28) so X-axis drives have more headroom; r1 remainder from the\
+  \ divide is also dropped, only the whole-frame count is stored.\n\nRegister form, old prompt; queued for retype\
+  \ (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-203743);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 13' --file inbox_farm_old_13.c
+    sub_81098C4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81098C4
+
+    ./wf verify --function sub_81098C4 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 253 out of
+    domain (verify run convert-20261011-203743-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81098C4
+
+    ./wf verify --function sub_81098C4 --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 80 out of domain (verify run convert-20261011-203743-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81098C4
+
+    ./wf verify --function sub_81098C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203743-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story4, story6, story9.'
+  reproduce: grep -l '^081098c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp f0437e6
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story4
+- story6
+- story9
+related:
+- sub_8109820
+open_questions:
+- Why the Y case uses a shorter base duration (0x18 vs 0x28) when X is the longer axis is not clear from this routine
+  alone.
+- Exact semantics of oAIAttackVars_Unk_10 vs Unk_12 (total frames vs trigger frame) are not provable here.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203743
+- recomp f0437e6

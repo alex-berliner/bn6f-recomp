@@ -1,0 +1,107 @@
+name: sub_80E07E0
+address: '0x080E07E0'
+kind: function
+status: confirmed
+summary: Spawns a type-3 child BattleObject inheriting the caller's panel coordinates, element, alliance/direction,
+  and extra fields from a parent BattleObject passed in r5.
+interface: '// r0-r3 = panelX, panelY, element (byte each) for the new object
+
+  // r4,r5 = parent object pointer / scratch (r5 is the parent; r4 preserved)
+
+  // r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler value to copy
+
+  // r7 = oBattleObject_Unk_30 value to copy
+
+  // returns: r0 = spawned object pointer (or 0 if spawn failed)
+
+  // clobbers: r0,r1,r2,r3, NZCV
+
+  '
+details: 'Saves r0..r2 and r5 on the stack, then calls object_spawnType4 with
+
+  r0=3 to allocate a new type-3 BattleObject. The original places r0=r5
+
+  right after the call (i.e. before popping), then unpacks the saved
+
+  registers back into r1..r3,r5 so the parent''s panelX/panelY/element and
+
+  its oBattleObject_AllianceAndDirectionFlip word are propagated to the
+
+  freshly spawned child. R6 and R7 are copied verbatim into the child''s
+
+  oBattleObject_DamageAndStaminaDamageCounterDisabler and oBattleObject_Unk_30
+
+  fields. If the spawn fails (r0==0), the body is skipped and 0 is returned.
+
+
+  Note: the stack-slot shuffling means that the post-pop r3 holds what was
+
+  saved_r2 (element), so the C semantics for elements rely on this reordering;
+
+  the readable C above has been verified against the original binary.
+
+
+  The literal pool at off_80E0804 (starting at word 0x514) and the trailing
+
+  byte_80E083F data sit immediately after the function and are referenced by
+
+  adjacent code, not by this routine.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-203743);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 13' --file inbox_farm_old_13.c
+    sub_80E07E0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E07E0
+
+    ./wf verify --function sub_80E07E0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-203743-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E07E0
+
+    ./wf verify --function sub_80E07E0 --snapshots build-snapshots'
+  result: 33 compared, 0 differed, 63 out of domain (verify run convert-20261011-203743-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E07E0
+
+    ./wf verify --function sub_80E07E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203743-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus2, menus3, story2.'
+  reproduce: grep -l '^080e07e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp f0437e6
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- menus2
+- menus3
+- story2
+open_questions:
+- Which parent BattleObject subsystem routinely spawns type-3 children this way (e.g. aura / aura-effect / shadow
+  decorations)?
+- What does the spawned type-3 object semantically represent (a copy, a sub-effect, a counter-source, a visual-only
+  mirror)?
+- Is r4 ever meaningful here, or only preserved as part of the parent's context that the caller has already consumed?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203743
+- recomp f0437e6

@@ -1,0 +1,81 @@
+name: sub_80FD852
+address: '0x080FD852'
+kind: function
+status: confirmed
+summary: 'Ticks one frame of an AI attack''s wind-up: on first call arms the counter, plays the caster''s attack
+  anim, spawns the hit via sub_80C82A8, plays the SFX and stores a frame counter; on later calls decrements that
+  counter and advances Unk_00 to 0x18 when it hits zero.'
+interface: void aiAttack_tick_80FD852(u32 r3 /* ignored? */, BattleObject* r5, AIAttackVars* r7, u32 r10 /* caller-owned
+  */)
+details: "Called once per frame from an AI-attack state machine (likely from r10, which the lifter\nnever clobbers\
+  \ here so it is probably an outer attack context pointer).\nFirst-tick path (Unk_01 == 0):\n  * Writes 4 to oAIAttackVars_Unk_01\
+  \ (probably an \"attack armed / in flight\" flag).\n  * object_setCounterTime(0x18) opens a counter window.\n\
+  \  * Sets oBattleObject_CurAnim = 9 on the caster battle object (its attack animation).\n  * Builds a packed descriptor\
+  \ in r4 for sub_80C82A8 (the projectile/hit spawner):\n      bits  0..7  = oAIAttackVars_Unk_03        (element\
+  \ id)\n      bits  8..15 = dword_80FD8AC[Unk_03]       (sub-element; the dword holds 0x50 each so always 0x50)\n\
+  \      bits 16..23 = oAIAttackVars_Unk_0c        (direction)\n    Damage is passed in r6 from oAIAttackVars_Damage.\n\
+  \    sub_80C82A8 is called with r0=PanelX, r1=PanelY, r2=oAIAttackVars_Unk_02.\n  * PlaySoundEffect(0x17E) (the\
+  \ hit SFX; immediate value 0x7F + 0xFF).\n  * Stashes dword_80FD8AC[Unk_03] in oAIAttackVars_Unk_10 as a u16 frame\
+  \ counter.\n  * Leaves r1 pointing at dword_80FD8AC (not meaningful to callers; just a side-effect of the ldr).\n\
+  Recurring path (Unk_01 != 0): --Unk_10 until it underflows past zero, then writes\noAIAttackVars_Unk_00 = 0x18\
+  \ to hand the AI attack state machine off to its next state.\nTouches oAIAttackVars_Unk_01, _Unk_03, _Unk_0c,\
+  \ _Unk_02, _Damage, _Unk_10, _Unk_00 and\noBattleObject_CurAnim, oBattleObject_PanelX, oBattleObject_PanelY.\n\
+  Note: dword_80FD8AC = 0x50505050, so the \"sub-element\" byte is hard-coded to 0x50 regardless\nof Unk_03, and\
+  \ the frame counter always starts at 0x50 — only one arm of the table byte is\nmeaningfully read (the byte index\
+  \ = Unk_03), but the table only has one non-zero entry used.\nPreserves r4/r5/r6/r7/r10 explicitly across the\
+  \ call.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed;\
+  \ tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-203743);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 13' --file inbox_farm_old_13.c
+    sub_80FD852
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD852
+
+    ./wf verify --function sub_80FD852 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out
+    of domain (verify run convert-20261011-203743-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD852
+
+    ./wf verify --function sub_80FD852 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 88 out of domain (verify run convert-20261011-203743-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD852
+
+    ./wf verify --function sub_80FD852 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203743-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd852 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp f0437e6
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- What does oAIAttackVars_Unk_01 == 4 really mean — is it a "has-fired" latch, a sub-state, or a phase index?
+- What is r3 used for (lifter lists it as an input but the asm never reads it)?
+- Is oAIAttackVars_Unk_00 = 0x18 a state-id (next phase) or a counter value re-initialisation?
+- Why is the table at dword_80FD8AC only ever consulted at byte index Unk_03 if all entries are 0x50?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203743
+- recomp f0437e6

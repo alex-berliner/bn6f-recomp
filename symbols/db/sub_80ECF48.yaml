@@ -1,0 +1,86 @@
+name: sub_80ECF48
+address: '0x080ECF48'
+kind: function
+status: confirmed
+summary: Apply the staged AI attack's boost to its damage, set the attack animation, refresh the counter timer,
+  spawn a temporary attack child object, and seed AI bookkeeping fields.
+interface: 'void sub_80ECF48(void); // r3 r5 r7 r10 lr in -> r1 r5 out, r0 r2 r3 lr clobbered, r4 r6 r7 saved
+
+  '
+details: 'Operates on the AI-attack object pointed to by r7, with the parent battle object in r5. Adds
+
+  oAIAttackVars_AttackBoost (u16) into oAIAttackVars_Damage (u32). Calls sub_80ED040 and stores
+
+  the returned byte at oAIAttackVars_Unk_16. Writes 3 into oAIAttackVars_Unk_17, and writes
+
+  animation index 0x0A into the parent''s oBattleObject_CurAnim. Calls object_setDefaultCounterTime
+
+  to reset the hit-counter window. Then pushes r7, loads the parent object id / argument r4=0x1D,
+
+  and runs r7 = R5->oBattleObject_AIDataPtr + 0x68 (per-object scratch passed to the spawner) before
+
+  calling spawn_t1_0x5_tempAttackObject_80B8E30(r3,r4=0x1D,r5=parent,r7=aiScratch,r10=...), which
+
+  manufactures a child attack object (type 1, param 5) reusing the parent''s AI memory region.
+
+  Sets OBJECT_FLAGS_UNK_BIT_22_BIT on the parent via object_setFlag1. Finally stores 9 at
+
+  oAIAttackVars_Unk_0e, 0xFFFFFFFF at oAIAttackVars_Unk_30, and 4 at oAIAttackVars_Unk_00, which
+
+  look like AI state/timer scratch fields that drive subsequent AI phases.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-203743);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 13' --file inbox_farm_old_13.c
+    sub_80ECF48
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80ECF48
+
+    ./wf verify --function sub_80ECF48 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-203743-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80ECF48
+
+    ./wf verify --function sub_80ECF48 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 47 out of domain (verify run convert-20261011-203743-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80ECF48
+
+    ./wf verify --function sub_80ECF48 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203743-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080ecf48 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp f0437e6
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- story9
+open_questions:
+- What sub_80ED040 actually computes (stored at Unk_16).
+- Meaning of the seed values 4, 9, and 0xFFFFFFFF written to Unk_00/Unk_0e/Unk_30.
+- Why r7 is rebuilt as parent->AIDataPtr + 0x68 for the child spawner (shared AI scratch slot).
+- What spawn parameter 0x1D (r4) and the 0x5/t1 child template correspond to in the attack-data table.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203743
+- recomp f0437e6

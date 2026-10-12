@@ -1,0 +1,69 @@
+name: sub_80C0D98
+address: '0x080C0D98'
+kind: function
+status: confirmed
+summary: Spawns a dimming (type 3) collision region attached to the battle object, using its damage/stamina damage
+  counter as the region index.
+interface: void sub_80C0D98(r0 baseX, r1 baseY, r5 battleObject); preserves r5; clobbers r0-r4,r6-r7,lr,nzcv
+details: "Thin wrapper that hard-codes parameters for a \"dimming\" collision region and delegates\nto object_spawnDimmingCollisionRegion.\n\
+  - r2 = 0 (Z coordinate of the region)\n- r3 = 0x14 << 16 (world Y offset 0x140000, i.e. 0x14.0 cells down from\
+  \ the anchor)\n- r4 = 0x04050001 (object/tile + palette attribute for the dimming region sprite)\n- r6 = [r5 +\
+  \ oBattleObject_DamageAndStaminaDamageCounterDisabler] (reused as the\n  collision region ID; interesting because\
+  \ it is the same field that disables the\n  damage/stamina counter, suggesting this region is tied to a counter-style\
+  \ effect\n  such as a \"broken\" / countered hit indicator rather than a generic hitbox)\n- r7 = 3 (region type\
+  \ = dimming)\nThe caller's XY in r0/r1 are passed through to the spawn routine, so this positions\nthe dimming\
+  \ region at the supplied battle coordinates on the object r5. r5 is\npreserved (pushed/popped via lr) so callers\
+  \ can continue to use the battle object.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798,\
+  \ register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-203743);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 13' --file inbox_farm_old_13.c
+    sub_80C0D98
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C0D98
+
+    ./wf verify --function sub_80C0D98 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-203743-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C0D98
+
+    ./wf verify --function sub_80C0D98 --snapshots build-snapshots'
+  result: 35 compared, 0 differed, 61 out of domain (verify run convert-20261011-203743-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C0D98
+
+    ./wf verify --function sub_80C0D98 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203743-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0d98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp f0437e6
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- Which battle actions call this (counter chips, aura effects, status overlays)?
+- What does the dimming region visually look like and how is it consumed by the hit-resolution code given the field
+  name oBattleObject_DamageAndStaminaDamageCounterDisabler?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203743
+- recomp f0437e6

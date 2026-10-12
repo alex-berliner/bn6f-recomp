@@ -1,0 +1,89 @@
+name: sub_80D8464
+address: '0x080D8464'
+kind: function
+status: confirmed
+summary: Initialize a "FlagMan"-style battle object (snap to panel, load sprite/animation, set stats, build hitbox,
+  grant invulnerability) and advance its phase to CUR_STATE_UPDATE.
+interface: 'Next sub_80D8464(void);
+
+  // Inputs:  r5 = oBattleObject*
+
+  // Outputs: r5 preserved (object pointer unchanged)
+
+  // Clobbers nz/c/v, r0-r3, lr
+
+  '
+details: "- Object init routine patterned exactly on the existing FlagMan-style object\n  constructors (compare\
+  \ with the other object_init_* / setup siblings): it\n  snaps the object to its current panel, copies PanelXY\
+  \ into FuturePanelXY,\n  zeros Z, loads sprite slot 0x80 sub 0x10 variant 0, drops the shadow,\n  and sets the\
+  \ \"belongs to player\" bit (oObjectHeader_Flags |= 2).\n- Starts animation 3 on both oBattleObject_CurAnim and\
+  \ the mirrored\n  oBattleObject_CurAnimCopy slot, then calls sprite_setAnimation /\n  sprite_loadAnimationData\
+  \ / sprite_update.\n- Applies sprite_setPalette(0), then decrements oBattleObject_Z16 and\n  oBattleObject_Y16\
+  \ by 1 (rendering offset for layering).\n- Writes the stat sheet: oBattleObject_NameID = 0xD2, oBattleObject_HP\
+  \ = 1,\n  oBattleObject_MaxHP = 1 (matches the FlagMan-style \"1 HP token\" stat\n  pattern seen elsewhere).\n\
+  - Calls object_createCollisionData; if it returns NULL (tst r0,r0; bne),\n  bails via object_freeMemory and returns.\n\
+  - Otherwise calls object_setupCollisionData(0xE, 0xF, 3) (14-panel x / 15-panel\n  y hitbox, 3-frame lifetime),\
+  \ object_presentCollisionData, and\n  object_setFlag1(OBJECT_FLAGS_INVULNERABLE) — i.e. freshly spawned objects\n\
+  \  are invulnerable until their first state update.\n- Stamps CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized\n\
+  \  so the per-frame dispatcher will run the update logic next.\n- 0x80/0x10 / sprite slot, 0xD2 name id, 1/1 HP,\
+  \ and invulnerability on\n  spawn are the \"FlagMan\" tell; the proposed name reflects that without\n  claiming\
+  \ a definitive identity beyond probable.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798,\
+  \ register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-203743);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 13' --file inbox_farm_old_13.c
+    sub_80D8464
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D8464
+
+    ./wf verify --function sub_80D8464 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-203743-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D8464
+
+    ./wf verify --function sub_80D8464 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261011-203743-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D8464
+
+    ./wf verify --function sub_80D8464 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203743-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story5, story6, story7.'
+  reproduce: grep -l '^080d8464 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp f0437e6
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story5
+- story6
+- story7
+open_questions:
+- Exact sprite/animation assets behind slot 0x80, sub 0x10 and anim 3 — used by multiple flag-style objects; only
+  the name id 0xD2 distinguishes this one.
+- Why a 14x15 panel hitbox for a 1-HP object — likely a panel-wide area trigger (e.g. flag/goal zone) rather than
+  a contact hitbox; needs caller/usage confirmation.
+- The "decrement Z16 and Y16 by 1" step is unusual; may be compensating for a specific sprite baseline rather than
+  a general convention.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203743
+- recomp f0437e6
