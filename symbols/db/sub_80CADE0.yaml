@@ -1,0 +1,76 @@
+name: sub_80CADE0
+address: '0x080CADE0'
+kind: function
+status: confirmed
+summary: 'Per-frame collision-update step for a battle object: clears/respawns its collision data, then either destroys
+  the object (battle over or collision flags set), freezes it during time stop, or runs its current action''s movement
+  handler.'
+interface: void battle_objectUpdateCollision_80CADE0(BattleObject* obj /* r5 */); callers pass the object in r5
+  (plus r4/r7/r8/r10 live context), and the routine clobbers r0-r4, r6, r7 and flags while r5/r8-r12 survive to
+  the caller.
+details: "Battle-object step routine operating on the object pointer in r5. Sequence:\n1. object_removeCollisionData\
+  \ removes the object's old collision data, then\n   object_spawnCollisionEffect spawns whatever effect is tied\
+  \ to that collision.\n2. If battle_isBattleOver says the battle ended, or the collision data's\n   oCollisionData_FlagsFromCollision\
+  \ field is nonzero (the object was hit/collided),\n   it calls object_clearCollisionRegion, writes CUR_STATE_DESTROY\
+  \ into\n   oBattleObject_CurStateActionPhaseAndPhaseInitialized, and returns.\n3. Otherwise, if battle_isTimeStop\
+  \ signals time stop (the bne relies on flags left by\n   the callee), it skips movement and just calls object_presentCollisionData\
+  \ so the\n   collision data stays visible for this frame.\n4. Otherwise it dispatches through the two-entry table\
+  \ at off_80CAE20 indexed by\n   oBattleObject_CurAction: action 0 -> sub_80CAE28, action 1 ->\n   battle_applyXMoveAndCheckDestroy_80CAE94.\
+  \ The dispatch sets lr = 0x080CAE0A before\n   the bx, so both handlers return straight into the object_presentCollisionData\
+  \ call.\nThe jump table has only two entries, so any CurAction value other than 0 also lands on\nbattle_applyXMoveAndCheckDestroy_80CAE94\
+  \ (a value >= 2 would read past the table).\n\nRegister form, old prompt; queued for retype (the farm's prompt\
+  \ 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261012-161712);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    glmold'' --file inbox_farm_m_glmold.c sub_80CADE0'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CADE0
+
+    ./wf verify --function sub_80CADE0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-161712-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CADE0
+
+    ./wf verify --function sub_80CADE0 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 86 out of domain (verify run convert-20261012-161712-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CADE0
+
+    ./wf verify --function sub_80CADE0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161712-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080cade0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp e719346
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- Which concrete values oCollisionData_FlagsFromCollision can take (any nonzero flag forces the destroy path).
+- Whether CurAction is guaranteed to be 0 or 1 when this step runs; larger indices would read past off_80CAE20.
+- What sub_80CAE28 (action 0 handler) does in game terms.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-161712
+- recomp e719346

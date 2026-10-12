@@ -1,0 +1,80 @@
+name: sub_80C6964
+address: '0x080C6964'
+kind: function
+status: confirmed
+summary: 'Spawn-time initialization for a battle object: places it on its panel, points ExtraVars at its 6-byte
+  type record, sets its movement direction, and sets up collision data (ID 0x3D) before switching to the update
+  state.'
+interface: 'void battle_objectInitSpawnCollision_80C6964(BattleObject* r5, /* r8, r10 passed through untouched */
+  void); out: r5, r8 preserved'
+details: 'Takes the battle object in r5. Reads PanelX/PanelY, converts them to pixel coordinates via object_getCoordinatesForPanels,
+  and stores them in X/Y. Sets ExtraVars to byte_80C68D4 + Param1*6, i.e. a pointer to this object''s 6-byte per-type
+  record selected by Param1 (the callees object_getFrontDirection, object_createCollisionData, object_setupCollisionData
+  and object_presentCollisionData are invoked with r7 pointing at that record). Stores object_getFrontDirection()
+  into XVelocity, so the object moves toward whatever is in front of it. Allocates collision data via object_createCollisionData;
+  on failure (returns 0) the object is immediately freed with object_freeMemory and the function returns. On success
+  it calls object_setupCollisionData with collision ID 0x3D, element 5 (r2), and 0 (r3); zeroes oCollisionData_PrimaryElement
+  in the freshly allocated CollisionDataPtr, then presents the collision data via object_presentCollisionData. Finally
+  writes CUR_STATE_UPDATE into CurStateActionPhaseAndPhaseInitialized so the per-frame update state takes over.
+  r8 and r10 are caller state passed through untouched (the register contract reports them as both inputs and outputs
+  for r8); r7 is saved/restored. Clobbers r0-r3, lr and flags.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261012-161712);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    glmold'' --file inbox_farm_m_glmold.c sub_80C6964'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C6964
+
+    ./wf verify --function sub_80C6964 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-161712-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C6964
+
+    ./wf verify --function sub_80C6964 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261012-161712-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C6964
+
+    ./wf verify --function sub_80C6964 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161712-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, story2, story6, story7.'
+  reproduce: grep -l '^080c6964 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp e719346
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- story2
+- story6
+- story7
+open_questions:
+- What object type(s) use this init (Param1 indexes into byte_80C68D4, 6 bytes per entry) and what collision ID
+  0x3D with element 5 represents in game terms
+- Whether byte_80C68D4's 6-byte records are sprite/animation descriptors or AI parameters
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-161712
+- recomp e719346

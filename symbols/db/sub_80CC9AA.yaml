@@ -1,0 +1,79 @@
+name: sub_80CC9AA
+address: '0x080CC9AA'
+kind: function
+status: confirmed
+summary: 'Per-step cleanup for a battle object that just collided: tears down live collision data, decrements the
+  collision linger timer, and switches the object to its destroy state when the battle ends, an opposing collision
+  flag appears, the related object stops its action, or the timer runs out.'
+interface: "void sub_80CC9AA(void);\n  // inputs:  r4 r5 r7 r8 r10 lr (r5 = battle object, oBattleObject_*)\n  //\
+  \ outputs: r5 r8 (preserved through the call)\n  // clobbers: nz c v r0 r1 r2 r3 lr\n  // preserved: r4 r6 r7\n"
+details: "- Reads oBattleObject_CollisionDataPtr -> oCollisionData_FlagsFromCollision and indexes\n  A_byte_80CC9F4\
+  \ (an 8-entry table at 0x80CC9F4 holding the values\n  \"0x0, 0x0, 0x80, 0x5, 0x0, 0x0, 0x80, 0xA\") by the object's\
+  \ oBattleObject_Alliance\n  multiplied by 4 to detect whether the collision was against the object's side.\n-\
+  \ Cross-checks oBattleObject_RelatedObject1Ptr->oBattleObject_CurAction against\n  oBattleObject_ExtraVars + 0xC;\
+  \ if the related object moved off that action the\n  collision is considered stale and the object is destroyed.\n\
+  - Otherwise decrements oBattleObject_Timer (u16) by 1, keeps\n  object_presentCollisionData active while it stays\
+  \ positive, and drops into\n  object_clearCollisionRegion + CUR_STATE_DESTROY via\n  oBattleObject_CurStateActionPhaseAndPhaseInitialized\
+  \ when any exit condition fires\n  (battle over, mask match, related-action mismatch, or timer <= 0).\n- Note\
+  \ the unconditional `bl object_removeCollisionData; bl object_spawnCollisionEffect`\n  pair at entry is part of\
+  \ the standard collision-step bookkeeping even on the destroy\n  branch.\n\nRegister form, old prompt; queued\
+  \ for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261012-161712);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    glmold'' --file inbox_farm_m_glmold.c sub_80CC9AA'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CC9AA
+
+    ./wf verify --function sub_80CC9AA --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-161712-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CC9AA
+
+    ./wf verify --function sub_80CC9AA --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 94 out of domain (verify run convert-20261012-161712-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CC9AA
+
+    ./wf verify --function sub_80CC9AA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161712-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080cc9aa ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp e719346
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- What is the per-alliance mask table at byte_80CC9F4 really encoding? Only alliances 2 and 3 have nonzero entries
+  (0x80, 0x05 and 0x80, 0x0A); is this a faction hit-flags bitfield, a damage-type list, or something else (chip/element
+  cross-reference)?
+- What does oBattleObject_ExtraVars + 0xC store - just the action code of the related object, or a packed handle
+  (action id plus lane / hit id)?
+- Why does the timer branch re-load expectedAction into r1 just to forward it to object_presentCollisionData; is
+  there a second argument slot the helper reads off r1 silently (lo- or hi-half of the original u32)?
+- Is CUR_STATE_DESTROY here the same as the generic destroy state used elsewhere, or a collision-specific destroy
+  phase that a later handler reuses?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-161712
+- recomp e719346

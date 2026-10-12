@@ -1,0 +1,78 @@
+name: sub_80CAB90
+address: '0x080CAB90'
+kind: function
+status: confirmed
+summary: Per-frame state-machine step for a battle object; tears the object down when the battle is over, otherwise
+  dispatches its current action to an action handler.
+interface: void battle_objectStepStateFrame_80CAB90(BattleObject* obj /* r5 */, void* ctx /* r10 */); destroys obj
+  (sets CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY) if the battle is over; r5/r8-r12 and flags are
+  clobbered on return per the caller contract
+details: 'Runs one update tick for a battle object passed in r5. First calls battle_isBattleOver; if the battle
+  has ended, it writes CUR_STATE_DESTROY into obj->CurStateActionPhaseAndPhaseInitialized (a packed state/phase/phase-initialized
+  field), which makes the object destroy itself. If the battle is still running, it loads obj->RelatedObject1Ptr
+  and checks that object''s CurAction: actions 0xA and 0xB are terminal (e.g. custom/victory/defeat style end-of-battle
+  actions) and the update is skipped. It then calls battle_isTimeStop and skips the update while the battle clock
+  is frozen. Otherwise it reads this object''s own CurAction and uses it as an index into the two-entry handler
+  table off_80CABC8 (action 0 -> sub_80CABD0, action 1 -> sub_80CAC00), calling the handler via bl with lr manually
+  set to the following instruction so the handler can return through the pop {pc}. The handler is invoked with r0
+  = action id and r1 = table entry (quirk of the original code); it inherits r5 (the object) and r10 (caller context).
+  This looks like a generic wrapper object whose whole behavior is defined by the two action handlers, likely an
+  enemy/chip-spawned entity controller.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261012-161712);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    glmold'' --file inbox_farm_m_glmold.c sub_80CAB90'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CAB90
+
+    ./wf verify --function sub_80CAB90 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-161712-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CAB90
+
+    ./wf verify --function sub_80CAB90 --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 29 out of domain (verify run convert-20261012-161712-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CAB90
+
+    ./wf verify --function sub_80CAB90 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161712-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080cab90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp e719346
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- what battle object type owns this wrapper (r5's concrete struct and which entity spawns it)
+- what actions 0 and 1 mean for this object (contents of sub_80CABD0 / sub_80CAC00)
+- what the related object with terminal actions 0xA/0xB is (likely a boss or master controller)
+- why r10 is part of the input contract (passed context from callers to the action handlers)
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-161712
+- recomp e719346
