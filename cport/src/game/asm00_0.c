@@ -1251,6 +1251,33 @@ Next GetMaxAndCurHPForCurPETNavi_80010D4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80010EC ── */
+/* sub_80010EC(r0 = which_navi, r1 = requested value):
+ * Store the PET navi's stat 0x40, clamped to the current value of stat 0x42
+ * (that stat acts as the cap). r4-r7 are preserved; the clamped value only
+ * goes to the setter via r2. */
+Next sub_80010EC(void) {
+    u32 navi = R0;
+    u32 value = R1;
+
+    /* read the cap from stat 0x42 */
+    R0 = navi;
+    R1 = 0x42;
+    GUEST_CALL(GetCurPETNaviStatsHword);
+
+    /* value = min(value, cap), signed */
+    if ((s32)value > (s32)R0)
+        value = R0;
+
+    /* store the clamped value into stat 0x40 */
+    R0 = navi;
+    R1 = 0x40;
+    R2 = value;
+    GUEST_CALL(SetCurPETNaviStatsHword);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8001172 ── */
 /* sub_8001172(r0 = value, r10 = toolkit):
  * Store the byte value into the game state at offset 9 (field after
@@ -1830,6 +1857,46 @@ Next bgmap_WriteTileIdAtBlock_800187C(void) {
     R1 = base + R0;
 
     ST16(R1, R3);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8001890 ── */
+/* sub_8001890: copy a rectangle of 16-bit tile ids into one of the BG tile-id
+ * buffers pointed to by the toolkit.
+ *   r0 = x offset in tiles, r1 = y offset in tiles, r2 = BG block index
+ *        (each block is 0x800 bytes), r3 = source tile ids,
+ *        r4 = width in tiles, r5 = row count.
+ * One row is always copied (the row count is only tested at the bottom of the
+ * loop), so r5 == 0 still writes a single row.
+ * On return: r0 = r0 << 1, r1 = destination pointer just past the last row,
+ * r2 = 0, r3 = one past the last source halfword; flags reflect cmp r5, #0
+ * on the exhausted row counter. */
+Next sub_8001890(void) {
+    u32 src = R3;
+    u32 width = R4;
+    s32 rowsLeft = (s32)R5;
+
+    u32 rowPtr = LD32(R10 + oToolkit_iBGTileIdBlocks_Ptr)
+        + (R2 << 11)   /* 0x800 bytes per BG block */
+        + (R0 << 1)    /* 2 bytes per tile id */
+        + (R1 << 6);   /* 0x40 bytes (32 tiles) per tile-map row */
+
+    do {
+        u32 dst = rowPtr;
+        for (u32 col = 0; (s32)col < (s32)width; col++) {
+            ST16(dst, LD16(src));
+            src += 2;
+            dst += 2;
+        }
+        rowPtr += 0x40;   /* step to the next row of the tile map */
+        rowsLeft--;
+    } while (rowsLeft > 0);
+
+    R0 <<= 1;
+    R1 = rowPtr;
+    R2 = 0;
+    R3 = src;
+    SET_FLAGS_CMP(rowsLeft, 0);
     RETURN_TO_CALLER();
 }
 

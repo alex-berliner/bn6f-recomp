@@ -1788,6 +1788,58 @@ Next sub_8134F78(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8134FB0 ── */
+/* sub_8134FB0(r0 = member id, r5 = object struct):
+ * Walk the two tracked member slots of the struct at r5 (their field offsets
+ * live in the table at off_8135018).  For each slot whose stored word equals
+ * the member id in r0, clear that slot's flag bits (mask from the table at
+ * byte_8135030) in the status word at r5+0x4C.  Note that the original loads
+ * the mask into r0 itself, so once a slot has matched, any later slot is
+ * compared against that mask rather than the original member id.  Afterwards,
+ * unless both status bits 0x60 are still set, call sub_8134FE0 to update the
+ * struct.
+ *
+ * r2 ends as the last table entry (or whatever sub_8134FE0 leaves when the
+ * call is made).  r4-r7 are pushed on entry and popped on exit, so the loop's
+ * writes to r7 are discarded: r4-r7 all end at their entry values. */
+Next sub_8134FB0(void) {
+    u32 memberId = R0;
+    u32 self     = R5;
+    u32 entryR4  = R4, entryR6 = R6, entryR7 = R7;
+    u32 slotOffset = 0;
+
+    for (u32 i = 0; i < 8; i += 4) {
+        slotOffset = LD32(A_off_8135018 + i);
+        if (memberId == LD32(self + slotOffset)) {
+            /* The mask load goes into r0, clobbering the member id for any
+             * remaining slot comparisons. */
+            memberId = LD32(A_byte_8135030 + i);
+            ST32(self + 0x4C, LD32(self + 0x4C) & ~memberId);
+        }
+    }
+
+    /* After the loop r2 holds the last table entry; r7's copy of it is
+     * thrown away by the final pop. */
+    R2 = slotOffset;
+
+    u32 status = LD32(self + 0x4C) & 0x60;
+    if (status != 0x60) {
+        /* Register state the original enters sub_8134FE0 with:
+         * r0 = status & 0x60, r1 = 0x60, r2/r7 = last table entry,
+         * r4 = loop counter left at 8. */
+        R0 = status;
+        R1 = 0x60;
+        R4 = 8;
+        R7 = slotOffset;
+        GUEST_CALL(sub_8134FE0);
+        /* pop {r4-r7,pc} restores the entry values (r2 keeps the callee's). */
+        R4 = entryR4;
+        R7 = entryR7;
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8135244 ── */
 /* sub_8135244(r5 = timer object):
  * Two-frame countdown. Tick the primary timer at +0x2A each call while it is

@@ -531,6 +531,28 @@ Next sub_80A5268(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A52E4 ── */
+/* sub_80A52E4(r5 = object, r7 = object data, r10 = context):
+ * Called once per frame for a sprite-driven object. If the current animation
+ * frame reports the "end of animation" marker (bit 0x80 of the frame
+ * parameters), raise the event whose id is stored at [r7,#2] and mark the
+ * object as finished (0x10 at [r5,#8]). Then advance the sprite animation.
+ * Returns r2/r5 as left by sprite_update. */
+Next sub_80A52E4(void) {
+    GUEST_CALL(sprite_getFrameParameters);
+
+    if (R0 & 0x80) {
+        /* Animation reached its final frame: signal the waiting event
+           and flag the object as done. */
+        R0 = LD16(R7 + 2);
+        GUEST_CALL(SetEventFlag);
+        ST8(R5 + 8, 0x10);
+    }
+
+    GUEST_CALL(sprite_update);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80A5350 ── */
 /* sub_80A5350: thin wrapper that calls FreeOverworldMapObject and pops PC.
  * Register contract:

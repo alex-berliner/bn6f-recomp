@@ -2265,6 +2265,54 @@ Next loadConstArgsAndPairTable_80288D0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802899C ── */
+/* sub_802899C(r5 = battle object, r10 = toolkit):
+ * While a battle effect is active (battleState+0x17 != 0), stream this
+ * object's graphics to the hardware:
+ *   - [r5+0x40] selects the source: its low 3 bits are a bank id, and when
+ *     the bank is 0 one of two 0x200-byte graphics blocks at dword_86E1238
+ *     (chosen by bit 3) is queued into VRAM at 0x6016CC0.
+ *   - a FIFO record is then pushed for the cartridge-side handler either way.
+ * r4/r5 (and r6/r7) end unchanged; r0-r3 and the flags are whatever
+ * fifo_pushRecord16_8009FF8 leaves behind, or the state-test result on the
+ * early exit. */
+Next sub_802899C(void) {
+    u32 savedR4 = R4;
+    u32 savedR5 = R5;
+
+    u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+    u32 effectState = LD8(battleState + 0x17);
+    SET_FLAGS_CMP(effectState, 0);
+    if (effectState == 0) {
+        R0 = effectState;
+        RETURN_TO_CALLER();
+    }
+
+    u32 bankSelect = LD32(R5 + 0x40);
+    u32 gfxBank = bankSelect & 7;
+    /* the original holds these intermediate values in r4/r5 across the calls */
+    R4 = gfxBank;
+    R5 = bankSelect;
+
+    if (gfxBank == 0) {
+        u32 srcOffset = (bankSelect & 8) << 6; /* 0 or 0x200 */
+        R0 = A_dword_86E1238 + srcOffset;
+        R1 = 0x6016CC0;
+        R2 = 0x200;
+        GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    }
+
+    R0 = 0x80020064;
+    R1 = 0xB766;
+    R2 = 1;
+    R3 = 0;
+    GUEST_CALL(fifo_pushRecord16_8009FF8);
+
+    R4 = savedR4;
+    R5 = savedR5;
+    RETURN_TO_CALLER();
+}
+
 /* ── custMenuPressOK_8028D3A ── */
 /* custMenuPressOK_8028D3A: "OK" pressed in the custom screen menu.
  * r5 = menu state struct (oS20364C0_*). Runs the pre-OK bookkeeping calls,

@@ -1668,6 +1668,51 @@ Next object_calculateFinalDamage1(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_calculateFinalDamage2 ── */
+/* object_calculateFinalDamage2(r5 = battle object):
+ * Recomputes an object's pending collision damage. The collision data block
+ * keeps a running total at +0x80 followed by five pending damage entries at
+ * +0x82..+0x8B. Each entry is updated (and the sum of the updated entries is
+ * stored into the total): while the object stands on a type-5 (holy) panel,
+ * every entry is halved, rounding up ((damage + 1) >> 1); otherwise the
+ * entries are re-summed unchanged.
+ *
+ * Register contract: outputs v, r2, r3; preserved r4. On return r2 holds the
+ * last entry processed, r3 = collisionData + 0x80, r0 = the new total and
+ * r1 = 0 (the exhausted loop counter); the flags are those of the original's
+ * final `add r3, #0x80`. */
+Next object_calculateFinalDamage2(void) {
+    u32 object = R5;
+    u32 collData = LD32(object + oBattleObject_CollisionDataPtr);
+
+    /* Look up the panel the object stands on; type 5 (holy) halves damage. */
+    R0 = LD8(object + oBattleObject_PanelX);
+    R1 = LD8(object + oBattleObject_PanelY);
+    GUEST_CALL(object_getPanelDataOffset);
+    u32 halve = (LD8(R0 + oPanelData_Type) == 5) ? 1u : 0u;
+
+    u32 sum = 0;
+    u32 lastEntry = 0;
+    u32 entryPtr = collData + 0x82;
+    for (u32 i = 5; i != 0; i--) {
+        /* The +1 before the shift makes the halving round up. */
+        u32 entry = (LD16(entryPtr) + halve) >> halve;
+        ST16(entryPtr, entry);
+        sum += entry;
+        lastEntry = entry;
+        entryPtr += 2;
+    }
+
+    ST16(collData + 0x80, sum);
+
+    R0 = sum;
+    R1 = 0;         /* loop counter ran down to zero */
+    R2 = lastEntry;
+    R3 = collData + 0x80;
+    SET_FLAGS_ADD(collData, 0x80);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_getFlip ── */
 /* object_getFlip(r5 = battle object):
  * Returns the object's horizontal orientation: its alliance bit (player/enemy

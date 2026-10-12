@@ -1365,6 +1365,28 @@ Next sub_80FD664(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FD682 ── */
+/* sub_80FD682: step one AI attack object's cooldown timer.
+ * r5 = battle object, r7 = its AI attack variables.
+ * When the state byte is still zero, enter the waiting state: set state 4,
+ * reset the object's current animation and arm a 30-frame countdown.
+ * Otherwise count the timer down; once it expires (reaches 0 or wraps),
+ * store 0x10 into the halfword at offset 0 to advance to the next state. */
+Next sub_80FD682(void) {
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R5 + oBattleObject_CurAnim, 0);
+        ST16(R7 + oAIAttackVars_Unk_10, 0x1E);
+    } else {
+        u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+        timer -= 1;
+        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        if ((s32)timer <= 0)
+            ST16(R7 + oAIAttackVars_Unk_00, 0x10);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FD6F4 ── */
 /* sub_80FD6F4(r5 = battle object ptr, r7 = attack vars ptr):
  * AI attack behaviour: on first call, snapshot a timer from oAIAttackVars_Unk_18 and start

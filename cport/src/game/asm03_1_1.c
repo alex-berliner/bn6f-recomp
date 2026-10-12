@@ -209,6 +209,96 @@ Next sub_803A878(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803A8B4 ── */
+/* sub_803A8B4(r0 = i offset, r5 = object):
+ * Stamps the object's 2x2 tile graphic onto the background at
+ * (j = 1, i = 1 + r0).  The byte at obj+0x1E selects the entry in the
+ * tile-id table (entries are 8 bytes apart, first word is the pointer) and
+ * the flag byte at obj+2 selects which of the two tables is used.
+ * Returns with r0-r3 and the flags exactly as CopyBackgroundTiles left them;
+ * r4-r7 are preserved.  (r10 is accepted from callers but never read.) */
+Next sub_803A8B4(void) {
+    /* The original pushes r4-r7 and pops them before returning, so the
+     * caller's copies of those registers must survive this function. */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    u32 i_offset = R0;
+    u32 obj = R5;
+
+    /* Set up the object's step state (step 0x1E, parameter 0x1C).
+     * It also sees the caller's r0 in r4, so mirror that. */
+    R0 = 0x1E;
+    R1 = 0x1C;
+    R4 = i_offset;
+    GUEST_CALL(objectStepTable_803A886);
+
+    /* Pick the tile-id table for this object's facing/variant, then the
+     * entry selected by the object's tile-set byte. */
+    u32 table = A_off_803A960;
+    if (LD8(obj + 2) != 0)
+        table = A_off_803A910;
+
+    R6 = LD8(obj + 0x1E);
+    R6 <<= 3;                                   /* 8 bytes per table entry */
+    u32 tile_ids = LD32(table + R6);
+
+    R0 = 1;                                     /* j */
+    R1 = 1 + i_offset;                          /* i */
+    R2 = 0;                                     /* which tile block 32x32 */
+    R3 = tile_ids;                              /* tile ids */
+    R4 = 2;                                     /* j size */
+    R5 = 2;                                     /* i size */
+    GUEST_CALL(CopyBackgroundTiles);
+
+    /* Restore the callee-saved registers the original pops. */
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A8E2 ── */
+/* sub_803A8E2: redraw the 2x2-tile background patch belonging to an object.
+ * r5 points to the object. First its step animation is advanced, then the
+ * four background tile ids making up its patch are picked from a table and
+ * copied into the background layer with CopyBackgroundTiles.
+ *
+ * There are two pattern tables: the object's flag at offset +2 selects
+ * between the normal layout and the one with two of the corner tiles
+ * swapped. Each table entry is 8 bytes: { pointer to four u16 tile ids,
+ * unused word }, and the object's current step (byte at +0x1F, filled in
+ * by objectStepTable_803A886) indexes the table. */
+Next sub_803A8E2(void) {
+    /* This function clobbers r4/r5 as argument scratch for CopyBackgroundTiles,
+     * but its caller expects them (and r6/r7) back untouched. */
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    /* Advance the object's step animation; this also refreshes the step
+     * index at obj+0x1F that we read below. */
+    R0 = 0x1F;
+    R1 = 0x1D;
+    GUEST_CALL(objectStepTable_803A886);
+
+    u32 patternTable = (LD8(R5 + 2) != 0) ? A_off_803A910 : A_off_803A960;
+    u32 tileIds = LD32(patternTable + (LD8(R5 + 0x1F) << 3));
+
+    /* Copy one 2x2 group of tiles at (j=1, i=4) of tile block 0. */
+    R0 = 1;             /* j */
+    R1 = 4;             /* i */
+    R2 = 0;             /* which_tile_block_32x32 */
+    R3 = tileIds;       /* tile_ids */
+    R4 = 2;             /* j_size */
+    R5 = 2;             /* i_size */
+    GUEST_CALL(CopyBackgroundTiles);
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── handleExitSubmenu_803AA24 ── */
 /* handleExitSubmenu_803AA24: Exit-submenu handler.
  * - inputs:  r2, r5, lr
@@ -1393,6 +1483,73 @@ static u32 protected_zenny_or_zero(u32 zenny, u32 arg1, u32 toolkit) {
 /* protectedZennyOrZero_803D06C(r0 = zenny, r1 = arg1, r10 = toolkit) -> r0 = protected zenny or 0 */
 Next protectedZennyOrZero_803D06C(void) {
     R0 = protected_zenny_or_zero(R0, R1, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── GiveBugfrags ── */
+/* GiveBugfrags(r0 = amount):
+ * Credit BugFrags to the tamper-protected counter in the game state.
+ * The counter saturates at 9999 and is re-encrypted after the update.
+ * Returns a status code (also passed to the re-encryption helper):
+ *   0 = added normally, 1 = counter already at the cap,
+ *   2 = amount clamped at the cap.
+ * If the counter's integrity check fails, returns 1 without touching it.
+ *
+ * Like the original (push/pop {r4-r7}), r4-r7 must come out unchanged,
+ * even though r4 is temporarily loaded with the cap for the helper call. */
+#define BUGFRAGS_COUNTER_MAX 0x270Fu /* dword_803D0B0: cap of 9999 frags */
+
+Next GiveBugfrags(void) {
+    u32 amount = R0;
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    /* Verify the protected counter's checksum before modifying it;
+     * a nonzero result means the counter was tampered with. */
+    GUEST_CALL(encryption_bugfrags_8006fd0);
+    if (!ZERO_FLAG()) {
+        R0 = 1;
+        R4 = savedR4;
+        R5 = savedR5;
+        R6 = savedR6;
+        R7 = savedR7;
+        RETURN_TO_CALLER();
+    }
+
+    u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
+    u32 count = LD32(gameState + oGameState_ProtectedBugfrags);
+    u32 status;
+
+    if (count == BUGFRAGS_COUNTER_MAX) {
+        /* Already full: keep the counter as-is. */
+        status = 1;
+    } else {
+        count += amount;
+        if ((s32)count > (s32)BUGFRAGS_COUNTER_MAX) {
+            /* Overflow: clamp the counter at the cap. */
+            status = 2;
+            count = BUGFRAGS_COUNTER_MAX;
+        } else {
+            status = 0;
+        }
+    }
+
+    ST32(gameState + oGameState_ProtectedBugfrags, count);
+
+    /* Re-encrypt the counter; the status code is encrypted alongside it,
+     * so pass it in r0. r1-r3 carry the updated counter/state/status,
+     * and r4 holds the cap the helper compares against. */
+    R1 = count;
+    R2 = gameState;
+    R3 = status;
+    R4 = BUGFRAGS_COUNTER_MAX;
+    R0 = status;
+    GUEST_CALL(encryption_bugfrags_8006fac);
+
+    /* Restore the saved registers, as the original's pop {r4-r7,pc} does. */
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
     RETURN_TO_CALLER();
 }
 

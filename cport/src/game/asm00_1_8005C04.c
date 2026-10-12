@@ -1634,6 +1634,74 @@ Next battle_SpawnEnemyObjects_8007358(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── SpawnBattleObjectUsingBattleEntityConfig_8007368 ── */
+/* SpawnBattleObjectUsingBattleEntityConfig_8007368(r0 = EnemySetup list):
+ * Walks the battle entity setup list (one 4-byte entry per object to spawn,
+ * terminated by an entry whose kind byte is 0xF0) and spawns each battle
+ * object through the handler selected by the entry's kind. Afterwards it
+ * snapshots the current halfword at oBattleState_Unk_04_05 into
+ * oBattleState_Unk_12_13 and copies the alive-actor words over the battle
+ * actor slots.
+ *
+ * Register notes: the dispatch loop keeps the entry pointer in r6 itself, so
+ * a handler that repoints r6 (as spawnEnemy_80073E2 does) changes where the
+ * next entry is read from; `add r6, #4` advances whatever the handler left.
+ * Handlers are entered with r0 = the table byte offset (kind >> 2, values
+ * 0x00..0x28), r1 = their own address as loaded from the dispatch table
+ * (Thumb bit set, as sub_80074C8 expects) and r6 = the entry pointer, and
+ * they inherit r4/r5/r7/r10. Everything they leave in r5/r8-r12 flows
+ * straight through to our caller; r6 itself is preserved. */
+Next SpawnBattleObjectUsingBattleEntityConfig_8007368(void) {
+    u32 callerR6 = R6;
+    R6 = R0;
+
+    for (;;) {
+        /* Kind is masked with 0xF0: the low nibble is ignored, 0xF0 marks the
+         * end of the list (the last valid kind, 0xA0, is 0x28 * 4). */
+        u32 kind = LD8(R6) & 0xF0;
+        if (kind == 0xF0)
+            break;
+
+        /* kind >> 2 is used both as the byte offset into the dispatch table
+         * and as the dispatch index the handlers receive in r0. */
+        u32 index = kind >> 2;
+
+        R0 = index;
+        R1 = LD32(A_off_80073A0 + index);
+
+        switch (index) {
+        case 0x00: GUEST_CALL(spawnMegaMan_80073CC);     break; /* the player */
+        case 0x04: GUEST_CALL(spawnEnemy_80073E2);       break;
+        case 0x08: GUEST_CALL(spawnMysteryData_8007424); break;
+        case 0x0C: GUEST_CALL(spawnRock_8007450);        break;
+        case 0x10: GUEST_CALL(nullsub_40);               break;
+        case 0x14: GUEST_CALL(nullsub_41);               break;
+        case 0x18: GUEST_CALL(sub_80074C8);              break;
+        case 0x1C: GUEST_CALL(sub_80074DE);              break;
+        case 0x20: GUEST_CALL(spawnRockCube_80074FA);    break;
+        case 0x24: GUEST_CALL(spawnGuardian_800751C);    break;
+        case 0x28: GUEST_CALL(spawnMetalCube_800748A);   break;
+        default:   break; /* kinds 0xB0-0xE0 never occur in practice */
+        }
+
+        R6 += 4;
+    }
+
+    /* Carry the current value of Unk_04_05 over to Unk_12_13 for the newly
+     * spawned battle actors. */
+    ST16(R5 + oBattleState_Unk_12_13, LD16(R5 + oBattleState_Unk_04_05));
+
+    /* Copy the 8 alive-actor words over the battle actor array. */
+    u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+    R0 = battleState + oBattleState_AliveBattleActors;
+    R1 = battleState + oBattleState_BattleActors;
+    R2 = 0x20;
+    GUEST_CALL(CopyWords);
+
+    R6 = callerR6;
+    RETURN_TO_CALLER();
+}
+
 /* ── spawnMegaMan_80073CC ── */
 /* spawnMegaMan_80073CC(r6 = *EnemySetup):
  * Spawn Mega Man (via battle_spawnNaviOnPanel_800753C) at the panel encoded in the setup's

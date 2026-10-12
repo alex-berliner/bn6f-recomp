@@ -126,6 +126,43 @@ Next object_spawnType3(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8003374 ── */
+/* sub_8003374(r0..r4 = spawn context words):
+ * Spawn a battle object of type 3, passing it a five-word context block that
+ * is built on the stack from the incoming r0-r4. Returns the new object in r5
+ * (NULL if the spawn failed, in which case the object list is left alone).
+ * r4/r6/r7 come back unchanged, as callers expect. */
+Next sub_8003374(void) {
+    u32 savedR7 = R7;
+
+    /* Reserve the same frame the original builds:
+     * [ r0 ][ r1 ][ r2 ][ r3 ][ r4 ][ saved r7 ][ saved lr ] */
+    SP -= 0x1C;
+    ST32(SP + 0x00, R0);
+    ST32(SP + 0x04, R1);
+    ST32(SP + 0x08, R2);
+    ST32(SP + 0x0C, R3);
+    ST32(SP + 0x10, R4);
+    ST32(SP + 0x14, savedR7);
+    ST32(SP + 0x18, LR);
+
+    /* Spawn the object: type 3, context block just above the saved registers.
+     * (stmia r7! leaves r7 pointing one word past the block, and the callee
+     * sees that value.) */
+    R7 = SP + 0x14;
+    R0 = 3;
+    R1 = SP;
+    GUEST_CALL(SpawnBattleObjectCommon);
+
+    /* On success, link the new object (r5) into the battle object list. */
+    if (R5 != 0)
+        GUEST_CALL(UpdateBattleObjectLinkedList);
+
+    R7 = savedR7;
+    SP += 0x1C;
+    RETURN_TO_CALLER();
+}
+
 /* ── object_spawnType4 ── */
 /* object_spawnType4(r0-r4 = spawn parameters):
  * Spawns a type-4 battle object. The five parameter words are copied into a

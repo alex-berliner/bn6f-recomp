@@ -1493,6 +1493,24 @@ Next sub_8011268(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8011420 ── */
+/* sub_8011420(r0 = value, r1 = value): dispatch on r0.
+ * If r0 is zero, forward r1 to sub_8011268; otherwise forward r0
+ * (with r0 = 2 as a selector) to sub_8010DF6. */
+Next sub_8011420(void) {
+    if (R0 == 0) {
+        u32 value = R1;
+        R0 = value;
+        GUEST_CALL(sub_8011268);
+    } else {
+        u32 value = R0;
+        R0 = 2;
+        R1 = value;
+        GUEST_CALL(sub_8010DF6);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_43 ── */
 /* nullsub_43: empty stub, called by the game and immediately returns. */
 Next nullsub_43(void) {

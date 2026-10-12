@@ -2626,6 +2626,32 @@ Next battleObject_respawn_80D84DE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80D852C ── */
+/* sub_80D852C (r5 = battle object): called when a custom-open object should
+ * start acting on its own.
+ * - If the battle is in a state where objects may act (battle_getFlags bit 0),
+ *   clear the "wait" flag (bit 2), set the "active" flag (bit 1), and restart
+ *   the object at action 8 / phase 0.
+ * - Otherwise just call the empty stub.
+ * Leaves r1 = 2 on the acting path, r1 = 1 on the stub path. */
+Next sub_80D852C(void) {
+    GUEST_CALL(battle_getFlags);
+    if (R0 & 1) {
+        u32 flags = LD8(R5) & ~4u;      /* oObjectHeader_Flags: clear bit 2 */
+        ST8(R5, flags);
+        flags = LD8(R5) | 2u;           /* set bit 1 */
+        ST8(R5, flags);
+        R1 = 2;
+
+        ST8(R5 + oBattleObject_CurAction, 8);
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    } else {
+        R1 = 1;
+        GUEST_CALL(nullsub_10);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80D8558 ── */
 Next sub_80D8558(void) {
     /* Tail call: return to the address in LR without doing any work. */
@@ -2913,6 +2939,53 @@ Next t3_0xd3_80DFE40(void) {
 
     GUEST_CALL(object_updateSprite);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80DFE64 ── */
+/* sub_80DFE64 (r5 = battle object):
+ * Finish setting up a battle object: snap it to its panel coordinates, copy
+ * Param2 into its timer, then build and publish its collision data. If the
+ * collision data cannot be created the object is freed instead. On success
+ * the object's state advances to CUR_STATE_UPDATE.
+ * Preserves r4-r7 (r7 is only used as scratch by the original) and leaves
+ * r5/r8 as they came in. */
+Next sub_80DFE64(void) {
+    u32 obj = R5;
+
+    /* Place the object on its panels and (re)start its timer from Param2. */
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    ST16(obj + oBattleObject_Timer, (u16)LD8(obj + oBattleObject_Param2));
+
+    /* Build the collision data; a null result means the object is invalid
+     * and must be released. */
+    GUEST_CALL(object_createCollisionData);
+    if (R0 == 0) {
+        GUEST_CALL(object_freeMemory);
+        RETURN_TO_CALLER();
+    }
+
+    /* Map Param3 to the collision shape id: 0 -> 3, 1 -> 1, else 0. */
+    u32 shape;
+    switch (LD8(obj + oBattleObject_Param3)) {
+    case 0:  shape = 3; break;
+    case 1:  shape = 1; break;
+    default: shape = 0; break;
+    }
+
+    /* Set up the collision box (10 wide, 5 tall) with no hit effect. */
+    R1 = 0xA;
+    R2 = 5;
+    R3 = shape;
+    GUEST_CALL(object_setupCollisionData);
+
+    R0 = 0;
+    GUEST_CALL(object_setCollisionHitEffect);
+    GUEST_CALL(object_clearCollisionRegion);
+    GUEST_CALL(object_presentCollisionData);
+
+    /* Hand the object over to its regular update handler. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
     RETURN_TO_CALLER();
 }
 

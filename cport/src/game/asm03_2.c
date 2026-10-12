@@ -2001,6 +2001,33 @@ Next sub_80497D0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80497EE ── */
+/* sub_80497EE (r5 = state object, r10 = caller context):
+ * Checks flag 0x80 of eFlags2009F38. If it is clear, asks sub_803BB80
+ * (entered with r0 still holding the flag-test result); if that reports
+ * non-zero, the object's state byte at [r5+1] is set to 0xC. Finally
+ * battle_moduleInit_803A820 always runs, receiving in r0 the value the original carries
+ * along: 0x80 when nothing was written, 0xC after the state write.
+ * r3, r8-r12 and the c/v flags are left exactly as battle_moduleInit_803A820 left them. */
+Next sub_80497EE(void) {
+    u32 r0Value = 0x80;         /* what the original keeps in r0 */
+
+    R0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+
+    if (ZERO_FLAG()) {          /* flag 0x80 not set -> check further */
+        GUEST_CALL(sub_803BB80);
+        if (!ZERO_FLAG()) {     /* sub_803BB80 returned non-zero */
+            r0Value = 0xC;
+            ST8(R5 + 1, 0xC);
+        }
+    }
+
+    R0 = r0Value;
+    GUEST_CALL(battle_moduleInit_803A820);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8049808 ── */
 /* sub_8049808(r2, r4, r5, r10, lr): jump-table dispatcher.
  *   Calls sub_803AFC2(0); if it returns nonzero, the result indexes a small Thumb
@@ -2097,6 +2124,43 @@ Next sub_80498D4(void) {
     u32 addend_a = 0x7FFFFFFF * (c + v) - 0x3FFFFFFF * (c * v);
     u32 addend_b = 0x80000001 * c + 0x7FFFFFFF * v - 0x40000001 * (c * v);
     SET_FLAGS_ADD(addend_a, addend_b);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80498F8 ── */
+/* sub_80498F8: step the chip-select state machine once.
+ *
+ * sub_803AFC2 reports the active chip-select state in R0. State 0 means no
+ * submenu is active (its zero flag is set), so only the default processing
+ * runs: sub_803A7EC followed by sub_803BC7C(0). Any other state selects a
+ * handler from the ROM table at dword_804991C; the handler is entered with
+ * R0 = its own table entry (Thumb address) and R1 = table base, and on
+ * return the same default processing runs. */
+Next sub_80498F8(void) {
+    R0 = 0;
+    GUEST_CALL(sub_803AFC2);
+
+    if (!ZERO_FLAG()) {
+        u32 state = R0;
+        u32 handler = LD32(A_dword_804991C + state * 4);
+
+        R1 = A_dword_804991C;   /* table base, as the original passes it */
+        R0 = handler;           /* the callee sees its own table entry in R0 */
+
+        switch (state) {
+        case 1: GUEST_CALL(sub_803AD04);                    break;
+        case 2: GUEST_CALL(chipSelect_dispatchState_803AD20); break;
+        case 3: GUEST_CALL(sub_803AED8);                    break;
+        case 4: GUEST_CALL(sub_803AE50);                    break;
+        case 5: GUEST_CALL(sub_803AE78);                    break;
+        }
+    }
+
+    /* default step, on both paths */
+    GUEST_CALL(sub_803A7EC);
+    R0 = 0;
+    GUEST_CALL(sub_803BC7C);
+
     RETURN_TO_CALLER();
 }
 

@@ -37,6 +37,43 @@ Next chatbox_resetPrinterState_801FE00(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801FE24 ── */
+/* sub_801FE24: (re)start the standard battle-effect overlay (object id 0x10).
+ * If battle effects are already active the overlay is restarted with
+ * parameter 0; otherwise the link state slot 0 is reset for a new use and
+ * the overlay is started with parameter 5. When the overlay has been
+ * started, the "overlay active" byte at eStruct203F7D8 is set to 1. */
+Next sub_801FE24(void) {
+    GUEST_CALL(GetBattleEffects);
+    u32 effects = R0;
+
+    if (effects & 8) {
+        /* Battle effects already in use: restart the overlay with mode 0. */
+        R0 = 0x10;
+        R1 = 0;
+        R2 = 2;
+        R3 = 0;
+        GUEST_CALL(sub_803DCE8);
+    } else {
+        GUEST_CALL(notZero_eByte200AD04);
+        if (ZERO_FLAG())
+            RETURN_TO_CALLER();
+
+        /* Overlay is free: reset link state slot 0, then start it with mode 5. */
+        R0 = 0;
+        GUEST_CALL(eLinkState_ResetForNewUse_803DE88);
+
+        R0 = 0x10;
+        R1 = 0;
+        R2 = 2;
+        R3 = 5;
+        GUEST_CALL(sub_803DCE8);
+    }
+
+    ST8(A_eStruct203F7D8, 1);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_801FE5E ── */
 /* sub_801FE5E: read the byte at eStruct203F7D8.
  * Returns r0 = that byte, r3 = the struct's address. */

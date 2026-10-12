@@ -4351,6 +4351,46 @@ Next sub_8129F28(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129F48 ── */
+/* sub_8129F48(r5 = e-Link work area):
+ * Prepare the e-Link hardware/session for a new use. Goes through the CRT0
+ * entry trampoline, marks the work area as state 4, resets the link state
+ * machine, registers the transfer buffers (0x2000 bytes tagged 0x42523545),
+ * runs the init helpers, and finally jumps into the e-Link main routine.
+ * r5/r6/r10/r11 are outputs as left by the callees. */
+Next sub_8129F48(void) {
+    /* enter via the CRT0 trampoline first */
+    GUEST_CALL(crt0_entry_trampoline_8000288);
+
+    /* mark the work area: state byte = 4 */
+    R0 = 4;
+    ST8(R5 + 2, R0);
+
+    GUEST_CALL(eLinkState_ResetForNewUse_803DE88);
+    GUEST_CALL(sub_803DEAC);
+
+    /* set up the link transfer: 0x10 units, mode 3/2, index 0 */
+    R0 = 0x10;
+    R1 = 3;
+    R2 = 2;
+    R3 = 0;
+    GUEST_CALL(sub_803DCE8);
+
+    GUEST_CALL(sub_803EF60);
+    GUEST_CALL(sub_803EA78);
+
+    /* attach the receive buffer: tag 0x42523545 ("ERUB"), 0x2000 bytes, base 0 */
+    R0 = 0x42523545;
+    R1 = 0x2000;
+    R2 = 0;
+    GUEST_CALL(sub_803DCD8);
+
+    /* hand control to the e-Link main routine */
+    GUEST_CALL(sub_81322E8);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8129FE0 ── */
 /* sub_8129FE0: dispatch to the current mode handler of the object whose
  * struct pointer arrives in r5.

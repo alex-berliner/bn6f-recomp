@@ -304,6 +304,35 @@ Next sub_8029D80(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── countUnmaskedEventFlags_8029EC8 ── */
+/* countUnmaskedEventFlags_8029EC8:
+ * Counts how many of the five event flags listed in the table at byte_8029F4C
+ * are currently set AND not masked out in the state word pointed to by
+ * dword_20349A0 (bit 5 + index, i.e. bits 5..9 for indices 0..4).
+ * A flag counts only if it is set and its mask bit is still clear.
+ * Returns the count in r0. */
+Next countUnmaskedEventFlags_8029EC8(void) {
+    u32 count = 0;
+
+    for (u32 i = 0; i < 5; i++) {
+        u32 flag = LD32(A_byte_8029F4C + i * 4);
+
+        /* TestEventFlag sets Z=1 when the flag is clear. */
+        R0 = flag;
+        GUEST_CALL(TestEventFlag);
+        if (ZERO_FLAG())
+            continue; /* flag not set: doesn't count */
+
+        u32 maskBits = LD32(LD32(A_dword_20349A0));
+        u32 maskBit = (1u << i) << 5;
+        if ((maskBits & maskBit) == 0)
+            count++; /* set and not yet masked out */
+    }
+
+    R0 = count;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8029EF8 ── */
 /* sub_8029EF8: Build the list of selectable candidates into the caller's work area.
  *
@@ -3177,5 +3206,64 @@ Next eventFlags_ClearRangeAt2C8_802F0F4(void) {
     R1 = 0x16;
     GUEST_CALL(ZeroFillByHalfword);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── addMail_802f238 ── */
+/* addMail_802f238(r0 = mail id):
+ * Records a newly received mail. Sets the mail's event flag and its
+ * companion flag (id + 0x80), then inserts the mail's inbox slot id
+ * (mail id - 0x1CA0) at the front of the inbox entry list (byte_2006530),
+ * shifting every existing entry up one slot, and increments the inbox
+ * entry count (dword_2001140).
+ *
+ * On return: r0 = final write index (count minus copies performed),
+ * r1 = final read index after its last decrement (0x1CA0 if the inbox was
+ * empty), r2 = inbox list address, r3 = last byte copied (whatever the
+ * second SetEventFlag left behind when the inbox was empty), c/v from the
+ * `count + 1` increment. r4/r6/r7 are preserved. */
+Next addMail_802f238(void) {
+    u32 mailId = R0;
+
+    R0 = mailId;
+    GUEST_CALL(SetEventFlag);           /* "mail received" flag */
+    R0 = mailId + 0x80;
+    GUEST_CALL(SetEventFlag);           /* companion flag for the same mail */
+
+    u32 slot     = mailId - 0x1CA0;     /* inbox slot index of this mail */
+    u32 list     = A_byte_2006530;      /* inbox entries, newest first */
+    u32 countPtr = A_dword_2001140;     /* number of entries in the inbox */
+
+    u32 count = LD32(countPtr);
+    u32 dst   = count;                  /* r0: index written to */
+    if (count != 0) {
+        /* Make room at slot 0: copy each entry one slot up, starting from
+         * the back. The original copies first and steps the read index down
+         * afterwards, looping back while the *old* index is >= 1 signed
+         * (sub r1, #1; bge), so it always copies at least once — even when
+         * count's signed value is negative. */
+        u32 src = count - 1;            /* r1: index read from */
+        for (;;) {
+            u32 entry = LD8(list + src);
+            ST8(list + dst, entry);
+            dst--;
+            R3 = entry;
+            s32 prev = (s32)src;
+            src--;
+            if (prev < 1)
+                break;                  /* sub r1,#1; bge fails */
+        }
+        R1 = src;
+    } else {
+        R1 = 0x1CA0;
+    }
+
+    ST8(list, (u8)slot);                /* the new mail goes to the front */
+    u32 newCount = count + 1;
+    ST32(countPtr, newCount);
+    SET_FLAGS_ADD(count, 1);            /* flags come from the count increment */
+
+    R0 = dst;
+    R2 = list;
     RETURN_TO_CALLER();
 }

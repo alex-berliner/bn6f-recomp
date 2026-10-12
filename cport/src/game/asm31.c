@@ -2575,6 +2575,28 @@ Next sub_80C5E44(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C5F0C ── */
+/* sub_80C5F0C(r5 = battle object):
+ * Per-frame update for an object in its destruction sequence. On the first
+ * invocation (phase 0) it advances the phase and drops the object's collision
+ * region so it no longer interacts. Afterwards it checks the current sprite
+ * frame's parameters: when the end-of-animation flag (bit 0x80) is set, the
+ * object's state is switched to CUR_STATE_DESTROY. Always returns r1 = 0x80. */
+Next sub_80C5F0C(void) {
+    if (LD8(R5 + oBattleObject_CurPhase) == 0) {
+        ST8(R5 + oBattleObject_CurPhase, 1);
+        GUEST_CALL(object_clearCollisionRegion);
+    }
+
+    GUEST_CALL(sprite_getFrameParameters);
+    R1 = 0x80;
+
+    if (R0 & R1)
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C5F2C ── */
 /* sub_80C5F2C(r0 = panel X, r1 = panel Y, r2 = element, r5 = source battle object,
  *             r6 = damage/stamina counter disabler value):

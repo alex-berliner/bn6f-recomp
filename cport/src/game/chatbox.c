@@ -1871,6 +1871,42 @@ Next chatbox_EF_checkflag(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_8041694 ── */
+/* chatbox_8041694 — "show textbox" chatbox script command (r4 = command stream).
+ *
+ * Bytes +2/+3 hold a 16-bit event flag number and byte +4 a flag count;
+ * TestEventFlagRange reports (via its zero flag) whether the flag test fails.
+ * Depending on the result, the text script id is read from offset +5 (test
+ * passed) or +6 (test failed).  A script id of 0xFF means "no textbox": the
+ * command is simply skipped by advancing r4 past all 7 bytes.  Otherwise the
+ * id is handed to the chatbox configuration routine, which also receives
+ * TestEventFlagRange's return value as its (unused) first argument.
+ * Always returns 1 in r0. */
+Next chatbox_8041694(void) {
+    u32 flagId    = LD8(R4 + 2) | (LD8(R4 + 3) << 8);
+    u32 flagCount = LD8(R4 + 4);
+
+    R0 = flagId;
+    R2 = flagCount;
+    GUEST_CALL(TestEventFlagRange);
+
+    /* flags clear -> id at +6, flags set (bne taken) -> id at +5 */
+    R2 = ZERO_FLAG() ? 6 : 5;
+
+    u8 scriptID = LD8(R4 + R2);
+    if (scriptID == 0xFF) {
+        /* nothing to show: skip this 7-byte command */
+        R4 += 7;
+    } else {
+        R1 = scriptID;
+        /* R0 still holds TestEventFlagRange's result; the callee ignores it */
+        GUEST_CALL(chatbox_config_80408D0);
+    }
+
+    R0 = 1;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_80416C4 ── */
 /* chatbox_80416C4(r4 = chatbox entry, r10 = toolkit):
  * Checks the current map number against the entry's map range (bytes +2 = min,
@@ -1947,6 +1983,38 @@ Next chatbox_80416F0(void) {
         R4 = entry;
     }
 
+    R0 = 1;
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_804171C ── */
+/* chatbox_804171C(r4 = pointer to a chatbox script command):
+ * Conditional script step. The command stores a u16 event flag at [r4+2]
+ * and two script IDs: the one at [r4+4] runs when the flag is set, the one
+ * at [r4+5] when it is clear. An ID of 0xFF means "nothing to run", in
+ * which case r4 is advanced by 6 (the size of this command) instead.
+ * Always returns r0 = 1. */
+Next chatbox_804171C(void) {
+    u32 script = R4;
+    u16 eventFlag = LD8(script + 2) | (LD8(script + 3) << 8);
+
+    /* TestEventFlag reports the flag state through the Z flag
+     * (Z clear = flag set) and leaves its r0 untouched for the callee below. */
+    R0 = eventFlag;
+    GUEST_CALL(TestEventFlag);
+
+    u32 scriptOffset = ZERO_FLAG() ? 5 : 4;
+    R2 = scriptOffset;
+    R1 = LD8(script + scriptOffset);
+
+    if (R1 == 0xFF) {
+        /* Nothing to run: skip past this command. */
+        R4 = script + 6;
+    } else {
+        /* chatbox_config_80408D0(notUsed r0, scriptID r1); r0 still holds
+         * whatever TestEventFlag left there, exactly as in the original. */
+        GUEST_CALL(chatbox_config_80408D0);
+    }
     R0 = 1;
     RETURN_TO_CALLER();
 }
