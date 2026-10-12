@@ -4049,6 +4049,105 @@ Next sub_8129A20(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129A98 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B25C_result_sub_8129A98;
+/* register form: generated wrapper: sub_812B25C has no typed C interface yet */
+static inline call_sub_812B25C_result_sub_8129A98 call_sub_812B25C_sub_8129A98(u32 r0, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_812B25C);
+    return (call_sub_812B25C_result_sub_8129A98){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* ------------------------------------------------------------------ */
+/* sub_8129A98 — one step of the opponent's battle-menu state machine. */
+/*                                                                     */
+/* The battle object's phase byte (obj+3) selects one of six AI step   */
+/* routines from the dispatch table at off_8129AB0.  The chosen routine */
+/* runs with the caller's context in r4-r7/r10 and may update r4/r5    */
+/* (e.g. sub_8129B34 hands back a new object pointer and state).  The  */
+/* shared follow-up sub_812B25C is then called with command 0x12 and   */
+/* those updated registers; its results are what the callers observe.  */
+/* ------------------------------------------------------------------ */
+
+/* Dispatch table: phase byte -> Thumb routine address (bit 0 set).
+ * 0 decideBattleAction_8129AC8, 1 sub_8129AF0, 2 sub_8129B34,
+ * 3 chipSelectInit_8129B90,     4 sub_8129BB0, 5 sub_8129BDC. */
+#define AI_STEP_TABLE A_off_8129AB0
+
+/* r4/r5/r6 as a phase handler leaves them for the follow-up call. */
+typedef struct { u32 r4, r5, r6; } PhaseHandlerResult;
+
+/* Runs the AI step routine selected by the phase byte.
+ * The original reaches it with `mov lr, pc; bx r0`, so the guest registers
+ * must hold exactly what the original holds at that branch: r0 = handler
+ * address, r1 = phase byte, r2/r3 left as the caller of sub_8129A98 had
+ * them, and the context in r4-r7/r10.  Returns the handler's r4/r5/r6,
+ * which the follow-up call must see.
+ * register form: indirect call through the jump table at off_8129AB0. */
+static PhaseHandlerResult run_phase_handler(u32 handler, u32 phase,
+                                            u32 r4, u32 r5, u32 r6,
+                                            u32 r7, u32 r10) {
+    R0 = handler;
+    R1 = phase;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R10 = r10;
+    GUEST_CALL_ADDR(handler);
+    PhaseHandlerResult left = { R4, R5, R6 };
+    return left;
+}
+
+/* Result registers the callers of sub_8129A98 observe. */
+typedef struct {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+} AiStepResult;
+
+/* One full AI-menu step: dispatch on the phase byte, then the shared
+ * follow-up call with command 0x12 on whatever context the handler left. */
+static AiStepResult battle_ai_step(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) {
+    AiStepResult out;
+
+    u32 phase = LD8(r5 + 3);
+    u32 handler = LD32(AI_STEP_TABLE + phase);
+    PhaseHandlerResult left = run_phase_handler(handler, phase,
+                                                r4, r5, r6, r7, r10);
+
+    /* sub_812B25C also reads r10 as it stands after the handler, exactly
+     * like the original's bl. */
+    call_sub_812B25C_result_sub_8129A98 after = call_sub_812B25C_sub_8129A98(0x12, left.r4, left.r5, left.r6);
+
+    out.r5  = after.r5;
+    out.r8  = after.r8;
+    out.r9  = after.r9;
+    out.r10 = after.r10;
+    out.r11 = after.r11;
+    out.r12 = after.r12;
+    return out;
+}
+
+/* sub_8129A98(r4, r5, r6, r7, r10) -> r5 r8 r9 r10 r11 r12 */
+Next sub_8129A98(void) {
+    AiStepResult out = battle_ai_step(R4, R5, R6, R7, R10);
+    R5 = out.r5;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── decideBattleAction_8129AC8 ── */
 /* decideBattleAction_8129AC8(r5 = entity, lr = return):
  *   Picks a battle-side action for the entity at r5: asks sub_812B318 what
@@ -4171,6 +4270,93 @@ Next chipSelectInit_8129B90(void) {
         SET_FLAGS_NZ(0);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129C28 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B25C_result_sub_8129C28;
+/* register form: generated wrapper: sub_812B25C has no typed C interface yet */
+static inline call_sub_812B25C_result_sub_8129C28 call_sub_812B25C_sub_8129C28(u32 r0, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_812B25C);
+    return (call_sub_812B25C_result_sub_8129C28){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8129C28 — one step of a state machine.
+ * The state byte at [r5+3] selects a handler from the table at off_8129C40.
+ * The handler runs with r0 = its own (Thumb) address and r1 = the state index.
+ * When it returns, sub_812B25C(0x13) is called with the handler's leftover
+ * r4/r5/r6, and that call's register results are the results of the step. */
+
+/* The dispatch handlers' leftover r4/r5/r6, which feed the follow-up call. */
+typedef struct {
+    u32 r4;
+    u32 r5;
+    u32 r6;
+} HandlerRegs;
+
+/* register form: indirect call through a code address (mov lr, pc; bx r0);
+ * the handler addresses only exist in the table at off_8129C40, so no
+ * generated wrapper covers them. Runs the Thumb handler at `handler` and
+ * reads back the guest r4/r5/r6 it leaves behind. */
+static HandlerRegs run_state_handler_sub_8129C28(u32 handler, u32 index) {
+    HandlerRegs left;
+    R0 = handler;
+    R1 = index;
+    GUEST_CALL_ADDR(handler);
+    left.r4 = R4;
+    left.r5 = R5;
+    left.r6 = R6;
+    return left;
+}
+
+/* Output registers of the whole step that callers observe. */
+typedef struct {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+} StepResult;
+
+/* Typed body of sub_8129C28. r7 and r10 are only listed so their entry
+ * values stay live: this function never touches the guest registers it
+ * does not write, so they flow through untouched (r10 reaches
+ * sub_812B25C unchanged, as the original requires). */
+static StepResult sub_8129C28_step(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) {
+    StepResult out;
+
+    /* Dispatch on the current state. */
+    u32 index = LD8(r5 + 3);
+    u32 handler = LD32(A_off_8129C40 + index);
+    HandlerRegs left = run_state_handler_sub_8129C28(handler, index);
+
+    /* Tail work: sub_812B25C(0x13) with the handler's register state. */
+    call_sub_812B25C_result_sub_8129C28 tail =
+        call_sub_812B25C_sub_8129C28(0x13, left.r4, left.r5, left.r6);
+
+    out.r5 = tail.r5;
+    out.r8 = tail.r8;
+    out.r9 = tail.r9;
+    out.r10 = tail.r10;
+    out.r11 = tail.r11;
+    out.r12 = tail.r12;
+    return out;
+}
+
+Next sub_8129C28(void) {
+    StepResult out = sub_8129C28_step(R4, R5, R6, R7, R10);
+    R5 = out.r5;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
     RETURN_TO_CALLER();
 }
 
@@ -5057,6 +5243,49 @@ Next sub_812B430(void) {
     R6 = save_r6;
     R7 = save_r7;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B4AC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r6, r7; bool c, v; } call_call_sub_3005EBA_result;
+/* register form: generated wrapper: call_sub_3005EBA has no typed C interface yet */
+static inline call_call_sub_3005EBA_result call_call_sub_3005EBA(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(call_sub_3005EBA);
+    return (call_call_sub_3005EBA_result){ R1, R2, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* The window-enqueue routine trashes r4-r7 even though this function must
+ * preserve them, so their entry values round-trip through the adapter. */
+struct sub_812B4AC_kept {
+    u32 r4, r5, r6, r7;
+};
+
+/* Queue the two text windows of the submenu:
+ * window 0x10 is 4 columns by 2 rows and window 0x11 is 6 columns by 2 rows,
+ * both placed at column 0x0A on row 2. */
+static struct sub_812B4AC_kept open_submenu_windows(u32 r4, u32 r5, u32 r6, u32 r7) {
+    call_call_sub_3005EBA(0x10, 4, 2, 0, 0xA, 2);
+    call_call_sub_3005EBA(0x11, 6, 2, 0, 0xA, 2);
+    struct sub_812B4AC_kept kept = { r4, r5, r6, r7 };
+    return kept;
+}
+
+/* sub_812B4AC: open the submenu's two windows, then return to the caller.
+ * r4-r7 are preserved by the original (it saves and restores them around the
+ * calls), so the adapter hands them in and writes the unchanged values back. */
+Next sub_812B4AC(void) {
+    struct sub_812B4AC_kept kept = open_submenu_windows(R4, R5, R6, R7);
+    R4 = kept.r4;
+    R5 = kept.r5;
+    R6 = kept.r6;
+    R7 = kept.r7;
     RETURN_TO_CALLER();
 }
 

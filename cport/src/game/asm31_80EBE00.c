@@ -1012,6 +1012,103 @@ Next battle_EndRelatedObject2Anim_80F06CE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80F2330 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSprite_result_sub_80F2330;
+/* register form: generated wrapper: object_updateSprite has no typed C interface yet */
+static inline call_object_updateSprite_result_sub_80F2330 call_object_updateSprite_sub_80F2330(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSprite);
+    return (call_object_updateSprite_result_sub_80F2330){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Battle object per-state update: dispatch to the handler selected by the
+ * object's CurState byte, then run the shared sprite update on the object. */
+
+/* Register values the CurState handler leaves behind that the rest of this
+ * function (and its callers) go on to use. */
+typedef struct {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+} AfterStateHandler;
+
+/* register form: the per-state handler is reached through the jump table at
+ * off_80F2348 with the original's `mov lr, pc; bx r1` idiom, so no generated
+ * wrapper covers it. The handler runs with the registers exactly as the
+ * original leaves them at the bx: r0 = CurState, r1 = table entry (still live
+ * in r1), r5 = battle object, r2-r4/r6-r12 = the caller's values. It may
+ * clobber anything; the r5 it leaves feeds object_updateSprite and its
+ * r8-r12 are this function's outputs, so they are read back here. */
+static AfterStateHandler call_curState_handler(u32 state, u32 handler)
+{
+    AfterStateHandler left;
+
+    R0 = state;   /* CurState byte, as the original passes it */
+    R1 = handler; /* the table entry is still live in r1 at the bx */
+    GUEST_CALL_ADDR(handler);
+
+    left.r5 = R5;
+    left.r8 = R8;
+    left.r9 = R9;
+    left.r10 = R10;
+    left.r11 = R11;
+    left.r12 = R12;
+    return left;
+}
+
+/* Final register results of one object update. */
+typedef struct {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+} BattleObjectUpdate;
+
+static BattleObjectUpdate battle_object_update_sub_80F2330(u32 object)
+{
+    BattleObjectUpdate out;
+
+    /* CurState indexes the handler table byte-wise, exactly as the
+     * original's `ldrb r0` / `ldr r1, [r1, r0]` does. */
+    u32 state = LD8(object + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80F2348 + state);
+
+    AfterStateHandler left = call_curState_handler(state, handler);
+
+    /* object_updateSprite runs on the object pointer the handler left in
+     * r5; the wrapper leaves r10 as it currently is, i.e. as the handler
+     * left it, matching the original. It preserves r8-r12, so the handler's
+     * values pass straight through to this function's outputs. */
+    call_object_updateSprite_result_sub_80F2330 sprite = call_object_updateSprite_sub_80F2330(left.r5);
+
+    out.r5 = sprite.r5;
+    out.r8 = left.r8;
+    out.r9 = left.r9;
+    out.r10 = left.r10;
+    out.r11 = left.r11;
+    out.r12 = left.r12;
+    return out;
+}
+
+/* sub_80F2330(r4 r5 r6 r7 r8 r9 r10 r11 r12 lr in; r5 r8 r9 r10 r11 r12 out) */
+Next sub_80F2330(void)
+{
+    BattleObjectUpdate out = battle_object_update_sub_80F2330(R5);
+    R5 = out.r5;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_106 ── */
 /* Empty function: just returns to the caller. The typed helper exists only
  * to give the thin adapter something to call without touching registers. */

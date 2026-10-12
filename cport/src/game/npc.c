@@ -1636,6 +1636,67 @@ Next setNPCScript_809F506(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809F5B0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r7; } call_createOWObjectInteractionArea_80037ac_result;
+/* register form: generated wrapper: createOWObjectInteractionArea_80037ac has no typed C interface yet */
+static inline call_createOWObjectInteractionArea_80037ac_result call_createOWObjectInteractionArea_80037ac(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(createOWObjectInteractionArea_80037ac);
+    return (call_createOWObjectInteractionArea_80037ac_result){ R2, R3, R7 };
+}
+
+/* Rebuild this NPC's overworld interaction area around its next position:
+ * NextX/Y/Z plus the signed-byte center offsets, shifted into the upper
+ * 16 bits like all overworld coordinates. Then clear the NPC's Unk_54 slot
+ * (the callee writes through the r6 pointer, so the store must come after).
+ * Skipped entirely when the disable-collision flag is set. On that path r2
+ * passes through unchanged; after the call r2 is the callee's result. The
+ * original restores r5 (push/pop around the call), so r5 always ends as it
+ * came in — the wrapper clobbers the guest R5 register, hence the out-param. */
+static void refresh_npc_interaction_area(u32 npc_ptr, u32 r2_in, u32 *r2_out, u32 *r5_out)
+{
+    u32 flags = LD32(npc_ptr + oOverworldNPCObject_UnkFlags_60);
+    u32 r2 = r2_in;
+
+    if ((flags & OW_NPC_UNK_FLAGS_60_DISABLE_COLLISION) == 0) {
+        s32 center_x = (s8)LD8(npc_ptr + oOverworldNPCObject_CenterOffsetX);
+        s32 center_y = (s8)LD8(npc_ptr + oOverworldNPCObject_CenterOffsetY);
+        s32 center_z = (s8)LD8(npc_ptr + oOverworldNPCObject_CenterOffsetZ);
+
+        u32 x = LD32(npc_ptr + oOverworldNPCObject_NextX) + ((u32)center_x << 16);
+        u32 y = LD32(npc_ptr + oOverworldNPCObject_NextY) + ((u32)center_y << 16);
+        u32 z = LD32(npc_ptr + oOverworldNPCObject_NextZ) + ((u32)center_z << 16);
+
+        r2 = call_createOWObjectInteractionArea_80037ac(
+                 x, y, z,
+                 0x804,
+                 OW_OBJECT_INTERACTION_AREA_FLAG_0x80000,
+                 OW_OBJECT_INTERACTION_AREA_FLAG_0x10000 | OW_OBJECT_INTERACTION_AREA_FLAG_0x40000,
+                 npc_ptr + oOverworldNPCObject_Unk_54).r2;
+    }
+
+    ST32(npc_ptr + oOverworldNPCObject_Unk_54, 0);
+    *r2_out = r2;
+    *r5_out = npc_ptr;
+}
+
+/* sub_809F5B0(r5 = NPC object pointer) -> r2 (call result or pass-through), r5 (unchanged) */
+Next sub_809F5B0(void) {
+    u32 r2_out;
+    u32 r5_out;
+    refresh_npc_interaction_area(R5, R2, &r2_out, &r5_out);
+    R2 = r2_out;
+    R5 = r5_out;
+    RETURN_TO_CALLER();
+}
+
 /* ── npc_beginChatboxState_809F5FC ── */
 /* Offsets not present in game.h; taken from the disassembly. */
 #define oOverworldNPCObject_CurState   8   /* byte  */

@@ -1673,6 +1673,84 @@ Next battle_objectDestroyWhenAnimFrameDone_80C9CC4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C9CDA ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7; } call_object_spawnType3_result;
+/* register form: generated wrapper: object_spawnType3 has no typed C interface yet */
+static inline call_object_spawnType3_result call_object_spawnType3_sub_80C9CDA(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(object_spawnType3);
+    return (call_object_spawnType3_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1; } call_BasicBattleObjectInitialize_result;
+/* register form: generated wrapper: BasicBattleObjectInitialize has no typed C interface yet */
+static inline call_BasicBattleObjectInitialize_result call_BasicBattleObjectInitialize(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(BasicBattleObjectInitialize);
+    return (call_BasicBattleObjectInitialize_result){ R1 };
+}
+
+/* Battle object spawn helper (sub_80C9CDA).
+ *
+ * Spawns a battle object of spawn type 0x2F via object_spawnType3, passing the
+ * caller's r1-r4 through as spawn parameters (r5-r7 are still the caller's
+ * values at that point, exactly as in the original, which only changes r0).
+ *
+ * If the spawn reports success (non-zero object handle in its r5), the object
+ * is finished with BasicBattleObjectInitialize:
+ *   r0 = spawned object, r1/r2 = the caller's original r0/r1,
+ *   r3 = 0, r5 = the caller's original r5, r6 = whatever the spawn left in r6.
+ *
+ * The original saves r0-r2/r5 on the stack and pops them back one register
+ * over, so on exit r1 = old r0, r2 = old r1, while r5 comes back unchanged.
+ * r4/r6/r7 stay whatever object_spawnType3 (and, on the init path,
+ * BasicBattleObjectInitialize) left behind, as in the original.
+ */
+typedef struct {
+    u32 r1;
+    u32 r2;
+    u32 r5;
+} SpawnInitResult;
+
+static SpawnInitResult spawn_and_initialize(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5) {
+    SpawnInitResult out;
+
+    call_object_spawnType3_result spawned =
+        call_object_spawnType3_sub_80C9CDA(0x2F, a1, a2, a3, a4);
+
+    if (spawned.r5 == 0) {
+        /* Spawn produced nothing: skip initialization; r1 keeps old r0. */
+        out.r1 = a0;
+    } else {
+        call_BasicBattleObjectInitialize_result init =
+            call_BasicBattleObjectInitialize(spawned.r5, a0, a1, 0, a5, spawned.r6);
+        out.r1 = init.r1;
+    }
+
+    out.r2 = a1;
+    out.r5 = a5;
+    return out;
+}
+
+/* sub_80C9CDA(r0..r4, r6 = spawn/init parameters) -> r1 r2 r5 */
+Next sub_80C9CDA(void) {
+    SpawnInitResult res = spawn_and_initialize(R0, R1, R2, R3, R4, R5);
+    R1 = res.r1;
+    R2 = res.r2;
+    R5 = res.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── t3_0x33_80CA544 ── */
 /* Dispatch a battle object's current state through a three-entry jump table,
  * then update its sprite. The state byte is a direct offset into the table
@@ -1930,6 +2008,60 @@ Next battle_applyElementAttackModIfEnabled_80CAD14(void) {
         /* tst r0, r0: only nz is affected, c/v stay as the caller set them */
         SET_FLAGS_NZ(R0);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── t3_0x38_80CAEF0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSpritePaused_result_t3_0x38_80CAEF0;
+/* register form: generated wrapper: object_updateSpritePaused has no typed C interface yet */
+static inline call_object_updateSpritePaused_result_t3_0x38_80CAEF0 call_object_updateSpritePaused_t3_0x38_80CAEF0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSpritePaused);
+    return (call_object_updateSpritePaused_result_t3_0x38_80CAEF0){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* t3_0x38_80CAEF0 - per-frame dispatcher for a battle object.
+ *
+ * Reads the object's CurState byte and calls the matching handler from the
+ * three-entry table at off_80CAF08:
+ *   0: battle_initShipSprite_80CAF14   (ship sprite init)
+ *   1: sub_80CAF9C                     (paused/idle state)
+ *   2: object_destroyWrapper_80CB078   (destruction)
+ * using the "mov lr,pc; bx r1" idiom, then runs object_updateSpritePaused on
+ * the same object before returning.
+ *
+ * The values callers read afterwards (r5 from the update call, r8-r12 as the
+ * state handler left them, r10 likewise) are left in the guest registers by
+ * the callees themselves, so nothing has to be carried through return values.
+ * object_updateSpritePaused preserves r8-r12, which is why the handler's
+ * copies of them survive to the callers. */
+
+/* register form: the state handler is entered through a code address
+ * ("mov lr,pc; bx r1" onto a table entry), so it must be invoked with
+ * GUEST_CALL_ADDR. It receives the state byte in r0 and its own table entry
+ * in r1; the helper reports the object pointer it leaves in r5, which the
+ * following object_updateSpritePaused call needs. */
+static u32 run_state_handler_t3_0x38_80CAEF0(u32 handler, u32 state) {
+    R0 = state;
+    R1 = handler;
+    GUEST_CALL_ADDR(handler);
+    return R5;
+}
+
+/* Dispatch on the object's CurState, then run the shared sprite update. */
+static void battle_object_state_update(u32 object) {
+    u32 state = LD8(object + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80CAF08 + state);
+
+    u32 r5 = run_state_handler_t3_0x38_80CAEF0(handler, state);
+    call_object_updateSpritePaused_t3_0x38_80CAEF0(r5);
+}
+
+/* r5 = battle object, r10 = passes through to the state handler untouched.
+ * All outputs (r5 r8 r9 r10 r11 r12) are whatever the callees left behind. */
+Next t3_0x38_80CAEF0(void) {
+    battle_object_state_update(R5);
     RETURN_TO_CALLER();
 }
 
@@ -2427,6 +2559,53 @@ Next battleObject_spawnEntry_80CE138(void) {
 
     GUEST_CALL(sub_80CE178);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CE178 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSprite_result_sub_80CE178;
+/* register form: generated wrapper: object_updateSprite has no typed C interface yet */
+static inline call_object_updateSprite_result_sub_80CE178 call_object_updateSprite_sub_80CE178(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSprite);
+    return (call_object_updateSprite_result_sub_80CE178){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80CE178 - per-frame action step for one battle object (r5).
+ *
+ * Dispatches the handler selected by the object's current action
+ * (CurAction indexes the two-entry table off_80CE190) with the object in
+ * r5 and the caller's r2 passed straight through, then refreshes the
+ * object's sprite animation. r5 and r8-r12 end up as the handler and
+ * object_updateSprite leave them, so nothing is returned explicitly. */
+
+/* register form: the action handler is only reachable through the jump
+ * table off_80CE190, so it must be invoked by its runtime address; r0-r2
+ * carry the action, the table entry and the caller's r2 into the handler,
+ * and the (possibly updated) object pointer is read back from r5. */
+static u32 dispatch_action_handler(u32 action, u32 handler, u32 context) {
+    R0 = action;
+    R1 = handler;
+    R2 = context;
+    GUEST_CALL_ADDR(handler);
+    return R5;
+}
+
+static void run_action_then_update_sprite(u32 object, u32 context) {
+    u32 action = LD8(object + oBattleObject_CurAction);
+
+    /* Thumb LDR with a register offset does not scale it: CurAction is
+     * used directly as the byte offset into the table. */
+    u32 handler = LD32(A_off_80CE190 + action);
+
+    object = dispatch_action_handler(action, handler, context);
+
+    call_object_updateSprite_sub_80CE178(object);
+}
+
+Next sub_80CE178(void) {
+    run_action_then_update_sprite(R5, R2);
     RETURN_TO_CALLER();
 }
 

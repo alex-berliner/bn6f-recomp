@@ -1020,6 +1020,44 @@ Next battle_objectUpdate_8133400(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81337C4 ── */
+/* Folder-edit menu state dispatcher (0x081337C4).
+ *
+ * The original is a trampoline: it reads the current menu state from byte
+ * [r5+3], picks one of four handler entry points from a jump table at
+ * off_81337D8, and tail-calls it ("mov lr,pc; bx r0" followed by "pop {pc}",
+ * so the handler ultimately returns straight to this function's caller).
+ * Everything except r0/r1 (and the flags) flows through to the handler
+ * untouched; the handler's final r5/r8-r12 are this function's results.
+ */
+
+/* register form: indirect call through a jump table address (the original's
+ * "mov lr,pc; bx r0"); the handler must run with SP four bytes below the
+ * entry SP and the caller's return address stored there, exactly as the
+ * original's "push {lr}" leaves it, since the handler runs in that window. */
+static u32 call_state_step(u32 target, u32 step, u32 return_addr) {
+    SP -= 4;
+    ST32(SP, return_addr);      /* the original's push {lr} */
+    R0 = target;                /* the handler sees the table word in r0 ... */
+    R1 = step;                  /* ... and the state byte in r1 */
+    GUEST_CALL_ADDR(target);
+    SP += 4;                    /* the original's pop {pc} discards the slot */
+    return R0;
+}
+
+/* Pick the handler for the current folder-edit state and call it. */
+static u32 folder_edit_dispatch(u32 state_ptr, u32 return_addr) {
+    u32 step = LD8(state_ptr + 3);            /* current menu state */
+    u32 target = LD32(A_off_81337D8 + step);  /* Thumb entry point (+1) */
+    return call_state_step(target, step, return_addr);
+}
+
+/* sub_81337C4(r2 r4 r5 r6 r7 r8 r10 lr) -> r5 r8 r9 r10 r11 r12 (flags clobbered) */
+Next sub_81337C4(void) {
+    R0 = folder_edit_dispatch(R5, LR);
+    RETURN_TO_CALLER();
+}
+
 /* ── folderEdit_step_813388C ── */
 /* register form: calls sub_8133BB4 outside this file, which has no typed C interface yet */
 static bool guard_8133BB4_passed(void) {

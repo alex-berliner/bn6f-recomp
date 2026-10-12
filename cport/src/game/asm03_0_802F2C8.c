@@ -2624,6 +2624,128 @@ Next sub_80313FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8031420 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sub_8031136 has no typed C interface yet */
+static inline u32 call_sub_8031136(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_8031136);
+    return R0;
+}
+
+typedef struct { u32 r0, r4, r6, r7, r8, r9; } call_sub_8030E14_result;
+/* register form: generated wrapper: sub_8030E14 has no typed C interface yet */
+static inline call_sub_8030E14_result call_sub_8030E14(u32 r0, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_8030E14);
+    return (call_sub_8030E14_result){ R0, R4, R6, R7, R8, R9 };
+}
+
+typedef struct { u32 r3, r4, r6; bool v; } call_camera_moveByDelta_80310B0_result;
+/* register form: generated wrapper: camera_moveByDelta_80310B0 has no typed C interface yet */
+static inline call_camera_moveByDelta_80310B0_result call_camera_moveByDelta_80310B0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(camera_moveByDelta_80310B0);
+    return (call_camera_moveByDelta_80310B0_result){ R3, R4, R6, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r4, r6, r7, r8, r9; } call_sub_8030F04_result;
+/* register form: generated wrapper: sub_8030F04 has no typed C interface yet */
+static inline call_sub_8030F04_result call_sub_8030F04(u32 r0, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_8030F04);
+    return (call_sub_8030F04_result){ R1, R4, R6, R7, R8, R9 };
+}
+
+/* Camera edge-scroll driver (sub_8031420).
+ *
+ * Scrolls the camera off the edge of one map and into the next, in two passes.
+ * Each pass re-anchors the camera with sub_8031136, asks for a scroll delta
+ * (sub_8030E14 for the first pass, sub_8030F04 for the second), applies it
+ * with camera_moveByDelta_80310B0, and folds the move's status flag (r3) into
+ * the caller's r12 accumulator: bit 0 from the first pass, bit 1 from the
+ * second. If the first move reports status 1 the routine returns immediately
+ * and skips the second pass.
+ *
+ * r0/r1/r2/r5 are preserved across the whole routine (the original saves and
+ * pops them); r3 ends up holding the last move's status flag. r4/r6 and the
+ * condition flags are scratch.
+ */
+
+/* Everything the routine leaves behind: r0/r1/r2/r5 unchanged from entry,
+ * r3 = status of the last camera move, r12 = accumulated status bits. */
+typedef struct {
+    u32 r0;
+    u32 r1;
+    u32 r2;
+    u32 r3;
+    u32 r5;
+    u32 r12;
+} EdgeScrollResult;
+
+static EdgeScrollResult camera_edge_scroll(u32 r0, u32 r1, u32 r2, u32 r5, u32 r12)
+{
+    EdgeScrollResult out;
+
+    /* Pass 1: re-anchor, then request a scroll with extents
+     * (x = -1, y = -1, width 0x20, height 0, layer 0) and apply it. */
+    u32 anchor = call_sub_8031136(r0, r5);
+    call_sub_8030E14_result delta0 =
+        call_sub_8030E14(anchor, (u32)-1, (u32)-1, 0x20, 0, 0);
+    call_camera_moveByDelta_80310B0_result move0 =
+        call_camera_moveByDelta_80310B0(delta0.r0, 0);
+
+    r12 |= move0.r3;
+
+    out.r0 = r0;
+    out.r1 = r1;
+    out.r2 = r2;
+    out.r5 = r5;
+    out.r3 = move0.r3;
+    out.r12 = r12;
+
+    /* Status 1 after the first move: the scroll is complete, stop here. */
+    if (move0.r3 == 1)
+        return out;
+
+    /* Pass 2: re-anchor again, then request the opposite scroll
+     * (x = 0x20, y = 0, width -1, height -1, layer 0) and apply it. */
+    anchor = call_sub_8031136(r0, r5);
+    call_sub_8030F04_result delta1 =
+        call_sub_8030F04(anchor, 0x20, 0, (u32)-1, (u32)-1, 0);
+    call_camera_moveByDelta_80310B0_result move1 =
+        call_camera_moveByDelta_80310B0(0, delta1.r1);
+
+    out.r3 = move1.r3;
+    out.r12 = r12 | (move1.r3 << 1);
+    return out;
+}
+
+/* sub_8031420(r0, r5 = camera anchor, r12 = status accumulator)
+ *   -> r0 r1 r2 r5 unchanged, r3 = last move status, r12 = accumulated bits */
+Next sub_8031420(void) {
+    EdgeScrollResult out = camera_edge_scroll(R0, R1, R2, R5, R12);
+    R0 = out.r0;
+    R1 = out.r1;
+    R2 = out.r2;
+    R3 = out.r3;
+    R5 = out.r5;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── math_pointCrossHalfPlaneTest_8031594 ── */
 /* math_pointCrossHalfPlaneTest_8031594(r0 = pointer to a {x, y} point, r2..r5 = edge coordinates):
  * Half-plane test used for polygon/hit-area rasterization. The point pointed

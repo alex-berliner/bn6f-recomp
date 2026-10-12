@@ -1778,6 +1778,96 @@ Next battle_loadFolderChipGfx_8120390(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81203E4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_ZeroFillByWord_result;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result call_ZeroFillByWord(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result){ R3 };
+}
+
+typedef struct { u32 r0; } call_getChip8021DA8_result_sub_81203E4;
+/* register form: generated wrapper: getChip8021DA8 has no typed C interface yet */
+static inline call_getChip8021DA8_result_sub_81203E4 call_getChip8021DA8_sub_81203E4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getChip8021DA8);
+    return (call_getChip8021DA8_result_sub_81203E4){ R0 };
+}
+
+/* register form: generated wrapper: sub_811FF54 has no typed C interface yet */
+static inline u32 call_sub_811FF54(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_811FF54);
+    return R0;
+}
+
+/* sub_81203E4 -- build a packed chip-slot list.
+ *
+ * Zero-fills 0x38 bytes at the output list, then walks `count` consecutive
+ * 0x20-byte entries of the table starting at entry_base + entry_index * 0x20.
+ * For each entry, the halfword at +0x1C shifted right by 7 tells whether a
+ * chip occupies the slot:
+ *   - set:    look the chip up, map its id byte through sub_811FF54 to a
+ *             slot number, and store two words built from packed 16-bit
+ *             halves (slot_base + slot*4, +1, then +0x20002, +0x20003)
+ *             at out_list + 8*i and out_list + 8*i + 4;
+ *   - clear:  store two zero words there.
+ *
+ * The loop is a do-while: the original only tests the counter at the bottom
+ * (cmp/blt), so the body always executes at least once, even when the count
+ * is zero or negative. r4 is bumped by 0x80 per iteration but never read;
+ * r4-r7 are pushed/popped, so the only architectural output is r7, which
+ * comes back unchanged.
+ */
+
+#define SLOT_ENTRY_SIZE     0x20    /* bytes per entry in the source table */
+#define SLOT_LIST_SIZE      0x38    /* bytes zero-filled in the output list */
+#define SLOT_STATUS_OFFSET  0x1C    /* status halfword within an entry */
+#define CHIP_ID_OFFSET      6       /* id byte within the chip data record */
+#define SLOT_ADDR_SPACING   0x20002 /* constant added to the second word */
+
+static void build_chip_slot_list(u32 entry_index, u32 entry_base,
+                                 u32 out_list, u32 slot_base, u32 count)
+{
+    call_ZeroFillByWord(out_list, SLOT_LIST_SIZE);
+
+    u32 entry = entry_base + entry_index * SLOT_ENTRY_SIZE;
+    u32 out   = out_list;
+    s32 i     = 0;
+
+    do {
+        u32 present = (u32)LD16(entry + SLOT_STATUS_OFFSET) >> 7;
+
+        u32 word_lo, word_hi;
+        if (present != 0) {
+            u32 chip = call_getChip8021DA8_sub_81203E4(present).r0;
+            u32 slot = call_sub_811FF54(LD8(chip + CHIP_ID_OFFSET));
+            u32 addr = slot_base + slot * 4;
+            word_lo = addr | ((addr + 1) << 16);
+            word_hi = word_lo + SLOT_ADDR_SPACING;
+        } else {
+            word_lo = 0;
+            word_hi = 0;
+        }
+        ST32(out, word_lo);
+        ST32(out + 4, word_hi);
+
+        entry += SLOT_ENTRY_SIZE;
+        out += 8;               /* r7 gains 4 and the index gains 4: 8 per slot */
+        i++;
+    } while (i < (s32)count);
+}
+
+/* sub_81203E4(r0 = entry_index, r1 = entry_base, r2 = out_list,
+ *             r3 = slot_base, r5 = count) -> r7 (unchanged, preserved) */
+Next sub_81203E4(void) {
+    build_chip_slot_list(R0, R1, R2, R3, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── countEventFlagChips_81207F8 ── */
 /* Register layout for the event-flag table (per iteration):
  *   [0] base flag 1, [2] base flag 2, [4] base flag 3, [6] entry count */
@@ -2074,6 +2164,48 @@ Next gfx_fillTilemapConsecutiveBanded_8120C94(void) {
     } while ((s32)band < (s32)bands);
 
     SET_FLAGS_CMP(band, bands);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8120CC8 ── */
+/* Read one byte out of a text/data buffer at the given index. A 0xFF byte
+ * marks the end of the data: when the caller's index lands on it, the read
+ * wraps around to the buffer's first byte and the index reported back to the
+ * caller becomes 0; otherwise the requested index passes through untouched.
+ * r2/r3 come out as copies of the buffer pointer and index (the original's
+ * "mov r2, r1 / mov r3, r0"). */
+typedef struct {
+    u32 byte;   /* value that ends up in r1 */
+    u32 index;  /* value that ends up in r0 */
+    u32 tested; /* first byte read; the operand of the original's cmp r1, #0xFF */
+} text_byte_result;
+
+static text_byte_result read_text_byte(u32 index, u32 buf) {
+    text_byte_result res;
+    u32 first = LD8(buf + index);
+
+    res.tested = first;
+    if (first == 0xFF) {
+        res.byte = LD8(buf + 0); /* wrap around to the start of the buffer */
+        res.index = 0;
+    } else {
+        res.byte = first;
+        res.index = index;
+    }
+    return res;
+}
+
+/* sub_8120CC8(r0 = index, r1 = buffer) ->
+ *   r0 = index (0 when the slot held the 0xFF end marker), r1 = byte read,
+ *   r2 = buffer, r3 = index; C/V as the original's cmp r1, #0xFF leaves them
+ *   (C set iff the first byte read was 0xFF, V clear). */
+Next sub_8120CC8(void) {
+    R2 = R1;
+    R3 = R0;
+    text_byte_result res = read_text_byte(R0, R1);
+    R0 = res.index;
+    R1 = res.byte;
+    SET_FLAGS_CMP(res.tested, 0xFF);
     RETURN_TO_CALLER();
 }
 

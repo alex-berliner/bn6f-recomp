@@ -2031,6 +2031,114 @@ Next textWindow_openDialog_802C5B0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802C6EC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r7; } call_memory_bcdConvert_result;
+/* register form: generated wrapper: memory_bcdConvert has no typed C interface yet */
+static inline call_memory_bcdConvert_result call_memory_bcdConvert(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(memory_bcdConvert);
+    return (call_memory_bcdConvert_result){ R0, R2, R3, R4, R7 };
+}
+
+typedef struct { u32 r0; } call_countHexDigits_8000C5C_result;
+/* register form: generated wrapper: countHexDigits_8000C5C has no typed C interface yet */
+static inline call_countHexDigits_8000C5C_result call_countHexDigits_8000C5C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(countHexDigits_8000C5C);
+    return (call_countHexDigits_8000C5C_result){ R0 };
+}
+
+typedef struct { u32 r2, r7; } call_blitTileBlockToRowBuffer_802C4B6_result;
+/* register form: generated wrapper: blitTileBlockToRowBuffer_802C4B6 has no typed C interface yet */
+static inline call_blitTileBlockToRowBuffer_802C4B6_result call_blitTileBlockToRowBuffer_802C4B6(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(blitTileBlockToRowBuffer_802C4B6);
+    return (call_blitTileBlockToRowBuffer_802C4B6_result){ R2, R7 };
+}
+
+#define NUMBER_TILE_BANK 0x90A0u   /* first tile index of the digit glyphs */
+#define MAX_DRAWN_VALUE  0xB       /* values above this are clamped to 11 */
+
+/*
+ * Render a small number as tile glyphs and blit it into the row buffer.
+ *
+ * A scratch row is built on the guest stack (SP lowered by 0x1C):
+ *   +0x00..+0x13  five u16 tile slots, each duplicated at +0x0A
+ *   +0x14         the clamped value (spill slot, as in the original)
+ * The slots are pre-filled with a blank tile pair, then digit glyphs are
+ * written right-to-left over them.  Values >= 11 draw a single glyph taken
+ * from a tile bank shifted 0x1000 indices further in; smaller values are
+ * converted to packed BCD first and drawn digit by digit.
+ */
+static void draw_value_as_tiles(u32 value, u32 entry_r4) {
+    /* register form: the scratch row must live at the guest SP because
+     * blitTileBlockToRowBuffer is handed that exact stack address (r2 = sp),
+     * so SP is lowered and restored around the build instead of using a
+     * plain C array. */
+    SP -= 0x1C;
+
+    u32 clamped = ((s32)value > (s32)MAX_DRAWN_VALUE) ? MAX_DRAWN_VALUE : value;
+    ST32(SP + 0x14, clamped);
+
+    /* Pre-fill every slot, both copies, with a blank tile pair. */
+    u32 blank = NUMBER_TILE_BANK + 0x14;
+    u32 slot = SP;
+    for (s32 i = 0; i < 5; i++) {
+        ST16(slot, blank);
+        ST16(slot + 0xA, blank + 1);
+        slot += 2;
+    }
+
+    u32 bank;
+    u32 digits;
+    s32 digit_count;
+    if ((s32)clamped >= (s32)MAX_DRAWN_VALUE) {
+        /* 11: a single glyph from the bank 0x1000 tile indices further in. */
+        bank = NUMBER_TILE_BANK + (1u << 12);
+        digits = MAX_DRAWN_VALUE;
+        digit_count = 1;
+    } else {
+        digits = call_memory_bcdConvert(clamped).r0;      /* packed BCD value */
+        digit_count = (s32)call_countHexDigits_8000C5C(digits).r0;
+        bank = NUMBER_TILE_BANK;
+    }
+
+    /* Write the digit glyphs right-to-left; each slot's second copy gets
+     * the following tile (glyph + 1). */
+    u32 dst = SP + 8;
+    do {
+        u32 glyph = (digits & 0xF) * 2 + bank;
+        ST16(dst, glyph);
+        ST16(dst + 0xA, glyph + 1);
+        digits >>= 4;
+        dst -= 2;
+        digit_count--;
+    } while (digit_count > 0);
+
+    /* Blit the finished row: 16x6 area, five tile pairs, 2 rows apart. */
+    call_blitTileBlockToRowBuffer_802C4B6(0x10, 6, SP, 5, 2);
+
+    SP += 0x1C;
+    /* register form: the blit wrapper passes r4 = 2 as an argument and the
+     * callee keeps it, so the guest's r4 is left at 2, while the original
+     * pops its saved r4 back over it.  No wrapper returns r4, so typed C
+     * has no way to obtain and restore the entry value. */
+    R4 = entry_r4;
+}
+
+/* sub_802C6EC(r0 = value to draw)
+ * r4-r6 are callee-saved (the original pushes/pops them); r7 ends as the
+ * blit helper leaves it. */
+Next sub_802C6EC(void) {
+    draw_value_as_tiles(R0, R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── queue_popHalfword_802C8D4 ── */
 /* queue_popHalfword_802C8D4(r5 = queue state): pop the next halfword from an in-struct queue.
  * Layout at r5: +0xC = read index, +0xD = entry count, +0x14 = halfword entries.

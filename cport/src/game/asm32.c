@@ -2153,6 +2153,83 @@ Next sprite_initGuiSlotA_8117BE8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8117C4C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_sprite_update_result_sub_8117C4C;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_sub_8117C4C call_sprite_update_sub_8117C4C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_sub_8117C4C){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8117C4C: run the sprite's current sub-state handler, then the shared
+ * sprite_update. The sub-state byte at [r5+9] selects a Thumb handler from
+ * the table at 08117C64; the handler is entered with r0 = handler address,
+ * r1 = sub-state index and r5 = sprite. It may change r5, r10 and r11, which
+ * the following sprite_update call (r5) and this function's caller (r10/r11)
+ * still see. */
+
+/* Jump table of Thumb handler addresses (off_8117C60 holds this address). */
+#define SUB_STATE_TABLE A_off_8117C64
+
+/* State the sub-state handler leaves behind that later code still needs:
+ * the sprite pointer for sprite_update, and the callee-saved r10/r11 that
+ * sub_8117C4C passes through to its caller untouched. */
+struct handler_exit_state {
+    u32 sprite;   /* r5 after the handler */
+    u32 r10;
+    u32 r11;
+};
+
+/* Register form: the handler is reached through a code address (mov lr, pc;
+ * bx r0 in the original), which no generated wrapper covers. It runs with
+ * exactly the entry state the original builds, and the registers it leaves
+ * behind are read back out afterwards for the sprite_update call and the
+ * caller of sub_8117C4C. */
+static struct handler_exit_state run_sub_state_handler(u32 sprite) {
+    u32 index = LD8(sprite + 9);
+    u32 handler = LD32(SUB_STATE_TABLE + index);
+    R0 = handler;
+    R1 = index;
+    R5 = sprite;
+    GUEST_CALL_ADDR(handler);
+    struct handler_exit_state state = { R5, R10, R11 };
+    return state;
+}
+
+/* Everything sub_8117C4C leaves in its output registers. */
+struct sub_state_result {
+    u32 r2;
+    u32 r3;
+    u32 r5;
+    u32 r10;
+    u32 r11;
+};
+
+/* Dispatch the sub-state handler, then run the shared sprite_update on the
+ * sprite pointer the handler left in r5; sprite_update supplies the r2/r3/r5
+ * the caller sees, while r10/r11 come straight from the handler. */
+static struct sub_state_result sprite_state_tick(u32 sprite) {
+    struct handler_exit_state after_handler = run_sub_state_handler(sprite);
+    call_sprite_update_result_sub_8117C4C updated = call_sprite_update_sub_8117C4C(after_handler.sprite);
+    struct sub_state_result result = {
+        updated.r2, updated.r3, updated.r5, after_handler.r10, after_handler.r11
+    };
+    return result;
+}
+
+/* sub_8117C4C(r5 = sprite) -> r2 r3 r5 r10 r11 (flags are clobbered) */
+Next sub_8117C4C(void) {
+    struct sub_state_result result = sprite_state_tick(R5);
+    R2 = result.r2;
+    R3 = result.r3;
+    R5 = result.r5;
+    R10 = result.r10;
+    R11 = result.r11;
+    RETURN_TO_CALLER();
+}
+
 /* ── entity_setLookupEntryStateFromFlag_8117D10 ── */
 /* entity_setLookupEntryStateFromFlag_8117D10(r0 = flag, r1 = entity):
  * Look up the entity in the table at 0x2008450; if an entry exists for it,

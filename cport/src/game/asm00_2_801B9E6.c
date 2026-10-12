@@ -279,6 +279,150 @@ Next RemoveBattleObjectPanelReserves(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_updateSprite ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_battle_isPaused_result;
+/* register form: generated wrapper: battle_isPaused has no typed C interface yet */
+static inline call_battle_isPaused_result call_battle_isPaused(void) {
+    GUEST_CALL(battle_isPaused);
+    return (call_battle_isPaused_result){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1; bool z, n; } call_battle_isTimeStop_result;
+/* register form: generated wrapper: battle_isTimeStop has no typed C interface yet */
+static inline call_battle_isTimeStop_result call_battle_isTimeStop(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return (call_battle_isTimeStop_result){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r4, r5; } call_sprite_loadAnimationData_result;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result call_sprite_loadAnimationData(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result){ R4, R5 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_sprite_update_result_object_updateSprite;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_object_updateSprite call_sprite_update_object_updateSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_object_updateSprite){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Header-flag bits tested by object_updateSprite. */
+#define OBJFLAG_UPDATE_ENABLE  0x01u /* clear: object does not tick its sprite */
+#define OBJFLAG_NO_SPRITE_TICK 0x08u /* set: skip the sprite update entirely */
+#define OBJFLAG_SKIP_TIMESTOP  0x10u /* set: keep ticking even while time is stopped */
+
+/* Encode an N/Z pair as a value for SET_FLAGS_NZ (result 0 -> Z set, bit 31 -> N set). */
+static u32 zn_operand(bool zero, bool negative) {
+    if (zero) return 0u;
+    if (negative) return 0x80000000u;
+    return 1u;
+}
+
+/* What the adapter must write back: r0/r1 and the N/Z operand.
+ * C and V are deliberately never set here: on every exit path the original
+ * leaves them as the last called routine (battle_isPaused, battle_isTimeStop
+ * or sprite_update) did, and the wrapper calls already left exactly that
+ * state behind. Thumb TST (all the in-function tests) preserves C/V too. */
+struct updateSprite_out {
+    u32 r0;
+    u32 r1;
+    u32 zn_operand;
+};
+
+/* Tick one battle object's sprite: reload its animation if it changed, then
+ * advance it, unless the battle state forbids updates this frame. */
+static struct updateSprite_out update_object_sprite(u32 obj) {
+    struct updateSprite_out out;
+
+    call_battle_isPaused_result paused = call_battle_isPaused();
+    if (!paused.z) {                       /* bne -> battle paused, nothing to do */
+        out.r0 = paused.r0;
+        out.r1 = paused.r1;
+        out.zn_operand = zn_operand(paused.z, paused.n);
+        return out;
+    }
+
+    u32 flags = LD8(obj + oObjectHeader_Flags);
+
+    if ((flags & OBJFLAG_UPDATE_ENABLE) == 0) {      /* tst flags,#1 / beq */
+        out.r0 = flags;
+        out.r1 = OBJFLAG_UPDATE_ENABLE;
+        out.zn_operand = flags & OBJFLAG_UPDATE_ENABLE;
+        return out;
+    }
+    if ((flags & OBJFLAG_NO_SPRITE_TICK) != 0) {     /* tst flags,#8 / bne */
+        out.r0 = flags;
+        out.r1 = OBJFLAG_NO_SPRITE_TICK;
+        out.zn_operand = flags & OBJFLAG_NO_SPRITE_TICK;
+        return out;
+    }
+
+    /* Value the original still holds in its tail register here:
+     * 0x10 if the time-stop check was skipped, else battle_isTimeStop's. */
+    u32 tailValue;
+    if ((flags & OBJFLAG_SKIP_TIMESTOP) == 0) {      /* tst flags,#0x10 falls through */
+        call_battle_isTimeStop_result stopped = call_battle_isTimeStop();
+        if (!stopped.z) {                            /* bne -> time stopped, leave as is */
+            out.r0 = stopped.r0;
+            out.r1 = stopped.r1;
+            out.zn_operand = zn_operand(stopped.z, stopped.n);
+            return out;
+        }
+        tailValue = stopped.r1;
+    } else {
+        tailValue = OBJFLAG_SKIP_TIMESTOP;           /* mov tail,#0x10 stays live */
+    }
+
+    /* With collision data linked, a nonzero PreventAnim byte blocks the reload. */
+    if (LD32(obj + oBattleObject_CollisionDataPtr) != 0) {
+        u32 preventAnim = LD8(obj + oBattleObject_PreventAnim);
+        if (preventAnim != 0) {                      /* tst preventAnim / bne */
+            out.r0 = preventAnim;
+            out.r1 = tailValue;
+            out.zn_operand = preventAnim;            /* byte value: N=0, Z=0 */
+            return out;
+        }
+    }
+
+    /* Restart the animation only when the loaded one is not the current one. */
+    u32 curAnim = LD8(obj + oBattleObject_CurAnim);
+    if (curAnim != LD8(obj + oBattleObject_CurAnimCopy)) {
+        call_sprite_setAnimation(curAnim, obj);
+        call_sprite_loadAnimationData(obj);
+        ST8(obj + oBattleObject_CurAnimCopy, LD8(obj + oBattleObject_CurAnim));
+    }
+
+    /* Advance the sprite; the callee defines r0-r5 and all four flags. */
+    call_sprite_update_result_object_updateSprite tick = call_sprite_update_object_updateSprite(obj);
+    out.r0 = tick.r0;
+    out.r1 = tick.r1;
+    out.zn_operand = zn_operand(tick.z, tick.n);
+    return out;
+}
+
+/* object_updateSprite(r5 = battle object, r10 = battle state) ->
+ * r0 r1 r2 r3 r4 r5 nz c v. r2-r5 and C/V are not written: like the original,
+ * they are simply what the last executed callee left behind. */
+Next object_updateSprite(void) {
+    struct updateSprite_out out = update_object_sprite(R5);
+    R0 = out.r0;
+    R1 = out.r1;
+    SET_FLAGS_NZ(out.zn_operand);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_updateSpriteTimestop ── */
 /* object_updateSpriteTimestop (r5 = battle object header, r4/r10 unused inputs):
  * advance one battle object's sprite animation. Nothing happens while the

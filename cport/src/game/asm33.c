@@ -1078,6 +1078,95 @@ Next sub_8123D54(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8123D98 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4, r5, r6, r7; } call_sub_811FAF4_result;
+/* register form: generated wrapper: sub_811FAF4 has no typed C interface yet */
+static inline call_sub_811FAF4_result call_sub_811FAF4(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(sub_811FAF4);
+    return (call_sub_811FAF4_result){ R0, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r1; bool v; } call_sub_8120CC8_result;
+/* register form: generated wrapper: sub_8120CC8 has no typed C interface yet */
+static inline call_sub_8120CC8_result call_sub_8120CC8_sub_8123D98(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_8120CC8);
+    return (call_sub_8120CC8_result){ R0, R1, OVERFLOW_FLAG() };
+}
+
+/* sub_8123D98 - refresh one battle-object spawn slot.
+ *
+ * Register roles on entry:
+ *   r0 = page      : high 16 bits of the descriptor word for sub_811FAF4
+ *   r1 = offset    : low 16 bits base of that descriptor
+ *   r2 = table_idx : index into a u16 weight table kept inside the object
+ *                    array; 0 means "no table shift"
+ *   r3 = slot_off  : offset of the slot byte within the object array (r5)
+ *   r4 = fwd_r3    : forwarded as r3 to sub_811FAF4
+ *   r5 = base      : object array pointer
+ *   r6 = fwd_r4    : forwarded as r4 to sub_811FAF4
+ *
+ * The slot byte is laid out as (tier << 4) | kind. The kind nibble is
+ * produced by sub_811FAF4 (with an immediate sub_8120CC8 refill stored into
+ * the slot when the old tier was 1), the tier nibble is the old tier minus
+ * one. The original preserves r4 with push/pop, so this helper returns it
+ * for the adapter to restore - the sub_811FAF4 wrapper leaves its own
+ * argument in the machine R4. */
+static u32 refresh_spawn_slot(u32 page, u32 offset, u32 table_idx, u32 slot_off,
+                              u32 fwd_r3, u32 base, u32 fwd_r4) {
+    /* Descriptor = (page << 16) | (offset + 16 * weight_table[table_idx]),
+       where the weight entry lives in the object array itself and counts
+       as 0 when table_idx is 0. */
+    u32 stride = (table_idx != 0u) ? (u32)LD16(base + table_idx) : 0u;
+    u32 desc = (page << 16) | (offset + stride * 0x10u);
+
+    /* Current slot byte: low nibble picks the object, high nibble is the tier. */
+    u32 slot_byte = LD8(base + slot_off);
+    u32 tier = slot_byte >> 4;
+
+    call_sub_811FAF4_result lookup =
+        call_sub_811FAF4(desc, 0x20005u, slot_byte & 0xFu, fwd_r3, fwd_r4);
+
+    u32 new_tier;
+    if (tier == 1u) {
+        /* Tier 1 is exhausted: ask sub_8120CC8 for the follow-up entry and
+           store it into the slot right away. r1 afterwards is whatever
+           sub_8120CC8 leaves there, and feeds the tier field below. */
+        call_sub_8120CC8_result refill =
+            call_sub_8120CC8_sub_8123D98(lookup.r0, A_dword_81233D4);
+        ST8(base + slot_off, refill.r0);
+        new_tier = refill.r1 << 4;
+    } else {
+        new_tier = (tier - 1u) << 4;
+    }
+
+    /* Re-read the (possibly refilled) slot byte and put the new tier nibble
+       on top of its low nibble. */
+    u32 merged = (LD8(base + slot_off) & 0xFu) | new_tier;
+    ST8(base + slot_off, merged);
+
+    return fwd_r3; /* the caller's r4, passed through unchanged */
+}
+
+/* sub_8123D98(r0 page, r1 offset, r2 table_idx, r3 slot_off,
+ *             r4 fwd_r3, r5 base, r6 fwd_r4) -> no outputs
+ *
+ * The sub_811FAF4 wrapper overwrites the machine R4 with its fifth argument,
+ * but this function must preserve the caller's r4 (the original's pop {r4}).
+ * So R4 is read as an argument before the call and written back afterwards
+ * with the value the typed function returns. */
+Next sub_8123D98(void) {
+    R4 = refresh_spawn_slot(R0, R1, R2, R3, R4, R5, R6);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8123E08 ── */
 /* sub_8123E08(r5 = state pointer):
  * Checks bit 0x20 of the status byte unk_20018EC[*(u8*)(r5 + 0xC)].
@@ -2230,6 +2319,63 @@ Next initRefs_buildAndDecompressTable_8125280(void) {
     R0 = A_byte_8125368;
     GUEST_CALL(decompAndCopyData);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81254FC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r8, r9, r10, r11, r12; } call_renderTextGfx_8045F8C_result;
+/* register form: generated wrapper: renderTextGfx_8045F8C has no typed C interface yet */
+static inline call_renderTextGfx_8045F8C_result call_renderTextGfx_8045F8C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(renderTextGfx_8045F8C);
+    return (call_renderTextGfx_8045F8C_result){ R2, R8, R9, R10, R11, R12 };
+}
+
+/* Draw the five pre-rendered text-graphic strips of the name/label box.
+ *
+ * Every strip is drawn with the same font buffer (unk_201CC20), glyph
+ * width 9, one row, palette data dword_86B7AE0 and layer 0; only the
+ * character index, the source glyph buffer and the VRAM destination
+ * change.  The original draws them in the order 0, 1, 2, 5, 3 into
+ * consecutive 0x400-byte VRAM slots. */
+static call_renderTextGfx_8045F8C_result render_text_strips(void) {
+    call_renderTextGfx_8045F8C_result last;
+
+    /* strip 0 -> VRAM 0x06009000 */
+    last = call_renderTextGfx_8045F8C(A_unk_201CC20, 0, A_unk_2018A00,  0x6009000, 9, 1, A_dword_86B7AE0, 0);
+    /* strip 1 -> VRAM 0x06009400 */
+    last = call_renderTextGfx_8045F8C(A_unk_201CC20, 1, A_unk_2018E00,  0x6009400, 9, 1, A_dword_86B7AE0, 0);
+    /* strip 2 -> VRAM 0x06009800 */
+    last = call_renderTextGfx_8045F8C(A_unk_201CC20, 2, A_unk_2019200,  0x6009800, 9, 1, A_dword_86B7AE0, 0);
+    /* strip 5 -> VRAM 0x06009C00 */
+    last = call_renderTextGfx_8045F8C(A_unk_201CC20, 5, A_unk_2019600,  0x6009C00, 9, 1, A_dword_86B7AE0, 0);
+    /* strip 3 -> VRAM 0x0600A000 */
+    last = call_renderTextGfx_8045F8C(A_unk_201CC20, 3, A_byte_2019A00, 0x600A000, 9, 1, A_dword_86B7AE0, 0);
+
+    return last;
+}
+
+/* sub_81254FC: renders all five text strips.
+ * The original pushes r4-r7 and pops them after the calls, so the caller's
+ * r4-r7 come out unchanged; the renderTextGfx wrapper, however, leaves its
+ * arguments (r6/r7) and its own scratch (r4/r5) behind in those registers,
+ * so they are saved here and restored after the calls.
+ * Outputs: r8-r12 are the register results of the final renderTextGfx call,
+ * r5 is the caller's value (restored). r10 is read by the wrapper as on
+ * entry and returned by it unchanged. */
+Next sub_81254FC(void) {
+    u32 r4_in = R4, r5_in = R5, r6_in = R6, r7_in = R7;
+    call_renderTextGfx_8045F8C_result res = render_text_strips();
+    R4 = r4_in, R5 = r5_in, R6 = r6_in, R7 = r7_in;
+    R8 = res.r8, R9 = res.r9, R10 = res.r10, R11 = res.r11, R12 = res.r12;
     RETURN_TO_CALLER();
 }
 

@@ -1647,3 +1647,106 @@ Next sub_8012AFA(void) {
     R0 = pwr_atk_chip_ready(R0, R1, R5);
     RETURN_TO_CALLER();
 }
+
+/* ── battle_chipMatchesHpFullRestoreAiBranch_8012B4E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r6; } call_GetBattleNaviStatsByte_AllianceFromBattleObject_result;
+/* register form: generated wrapper: GetBattleNaviStatsByte_AllianceFromBattleObject has no typed C interface yet */
+static inline call_GetBattleNaviStatsByte_AllianceFromBattleObject_result call_GetBattleNaviStatsByte_AllianceFromBattleObject(u32 r1, u32 r5) {
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return (call_GetBattleNaviStatsByte_AllianceFromBattleObject_result){ R0, R6 };
+}
+
+typedef struct { u32 r0; } call_getChip8021DA8_result_battle_chipMatchesHpFullRestoreAiBranch_8012B4E;
+/* register form: generated wrapper: getChip8021DA8 has no typed C interface yet */
+static inline call_getChip8021DA8_result_battle_chipMatchesHpFullRestoreAiBranch_8012B4E call_getChip8021DA8_battle_chipMatchesHpFullRestoreAiBranch_8012B4E(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getChip8021DA8);
+    return (call_getChip8021DA8_result_battle_chipMatchesHpFullRestoreAiBranch_8012B4E){ R0 };
+}
+
+/* Result of the "HP full restore" AI branch test: the values the original
+ * leaves in r0 (0 = no match, 1 = match), r2 and r6. */
+typedef struct {
+    u32 r0;
+    u32 r2;
+    u32 r6;
+} ChipFullRestoreAiResult;
+
+/* Decide whether the chip in slot chip_id qualifies for the HP-full-restore
+ * AI branch.  battle_object is the acting battle object; skip_ai_state_check
+ * (incoming r1) counts as a match without testing the AI's power-attack
+ * state.  r6 is only passed through (the original saves/restores it around
+ * the stat lookups), and r2 is left untouched on the early-out paths but
+ * holds the tst scratch value (2, then 1) on the paths that inspect the
+ * chip data. */
+static ChipFullRestoreAiResult chip_matches_hp_full_restore_ai_branch(
+    u32 chip_id, u32 skip_ai_state_check, u32 battle_object, u32 in_r2, u32 in_r6)
+{
+    ChipFullRestoreAiResult out;
+    out.r6 = in_r6;
+
+    /* The branch only applies for certain values of the navi stats byte,
+     * read first at 0x29 and then at 0x2C. */
+    u32 stats = call_GetBattleNaviStatsByte_AllianceFromBattleObject(0x29, battle_object).r0;
+    if (stats != 6) {
+        stats = call_GetBattleNaviStatsByte_AllianceFromBattleObject(0x2C, battle_object).r0;
+        if (stats != 6 && stats != 0x12) {
+            out.r0 = 0;
+            out.r2 = in_r2;         /* early out: r2 never modified */
+            return out;
+        }
+    }
+
+    /* The chip itself must have the "regular attack" flag pair and kind 2. */
+    u32 chip = call_getChip8021DA8_battle_chipMatchesHpFullRestoreAiBranch_8012B4E(chip_id).r0;
+    u32 chip_flags = LD8(chip + 9);
+    if ((chip_flags & 2) == 0) {    /* tst with #2 failed -> r2 still 2 */
+        out.r0 = 0;
+        out.r2 = 2;
+        return out;
+    }
+    if ((chip_flags & 1) != 0) {    /* tst with #1 succeeded -> r2 now 1 */
+        out.r0 = 0;
+        out.r2 = 1;
+        return out;
+    }
+    if (LD8(chip + 4) != 2) {
+        out.r0 = 0;
+        out.r2 = 1;
+        return out;
+    }
+
+    /* A non-zero incoming r1 is a match without the AI state check. */
+    if (skip_ai_state_check != 0) {
+        out.r0 = 1;
+        out.r2 = 1;
+        return out;
+    }
+
+    /* Otherwise match only while the AI is holding a charged power attack
+     * on the right button. */
+    u32 ai = LD32(battle_object + oBattleObject_AIDataPtr);
+    out.r2 = 1;
+    if (LD8(ai + oAIData_PwrAtkState) != 2) {
+        out.r0 = 0;
+        return out;
+    }
+    if (LD8(ai + oAIData_PwrAtkButton) != 1) {
+        out.r0 = 0;
+        return out;
+    }
+    out.r0 = 1;
+    return out;
+}
+
+Next battle_chipMatchesHpFullRestoreAiBranch_8012B4E(void) {
+    ChipFullRestoreAiResult out =
+        chip_matches_hp_full_restore_ai_branch(R0, R1, R5, R2, R6);
+    R0 = out.r0;
+    R2 = out.r2;
+    R6 = out.r6;
+    RETURN_TO_CALLER();
+}

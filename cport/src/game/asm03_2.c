@@ -2127,6 +2127,48 @@ Next sub_80498D4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80498E4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n; } call_chatbox_mask_eFlags2009F38_result;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result call_chatbox_mask_eFlags2009F38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r8, r9, r10, r11, r12; bool z, n, c, v; } call_battle_moduleInit_803A820_result_sub_80498E4;
+/* register form: generated wrapper: battle_moduleInit_803A820 has no typed C interface yet */
+static inline call_battle_moduleInit_803A820_result_sub_80498E4 call_battle_moduleInit_803A820_sub_80498E4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_moduleInit_803A820);
+    return (call_battle_moduleInit_803A820_result_sub_80498E4){ R0, R1, R2, R3, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80498E4: battle module init hook.
+ *
+ * If bit 0x80 of the chatbox eFlags word (eFlags2009F38) is clear, mark the
+ * module struct at [r5+1] with the "waiting for chatbox" byte 0x28, then run
+ * the shared battle module initializer, which produces all the outputs
+ * (r3, r8-r12, c, v) that callers of this routine see. */
+static void init_battle_module(u32 modulePtr) {
+    /* chatbox_mask_eFlags2009F38: Z set when the tested bit is clear */
+    call_chatbox_mask_eFlags2009F38_result mask =
+        call_chatbox_mask_eFlags2009F38(0x80);
+
+    if (mask.z) {                       /* bit 0x80 not set: store the marker */
+        ST8(modulePtr + 1, 0x28);
+    }
+
+    /* Shared initializer; leaves r3, r8-r12 and c/v as its callers expect. */
+    call_battle_moduleInit_803A820_sub_80498E4(modulePtr);
+}
+
+Next sub_80498E4(void) {
+    init_battle_module(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80498F8 ── */
 /* sub_80498F8: step the chip-select state machine once.
  *
