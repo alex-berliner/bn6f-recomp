@@ -1,0 +1,72 @@
+name: sub_80CAF9C
+address: '0x080CAF9C'
+kind: function
+status: confirmed
+summary: Per-frame tick for a battle object; marks it for destruction if the battle ended, skips if time is stopped,
+  otherwise dispatches its current action handler via a jump table.
+interface: void battle_objectNextTick(Object* obj /*r5*/)
+details: 'r5 holds the battle-object pointer. First calls battle_isBattleOver; if the result is non-zero the object''s
+  combined state/phase field (oBattleObject_CurStateActionPhaseAndPhaseInitialized) is overwritten with CUR_STATE_DESTROY
+  and the function returns. Otherwise calls battle_isTimeStop; if the Z flag is set (time stopped) the function
+  returns without processing. If neither gate trips, the object''s byte field oBattleObject_CurAction is read and
+  used as an index into a jump table at off_80CAFC4. The table currently contains a single entry (action 0 → sub_80CAFC8+1,
+  thumb address). The dispatch uses the classic "mov lr, pc / bx r1" idiom so the callee returns directly to this
+  function''s caller. r10 is carried in as context (likely the battle-system pointer used by the callee) and the
+  callee may set r8–r12 on return. The function itself preserves r5 across the two guest calls.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (1 attempt(s), run convert-20261012-161714);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    qwenold'' --file inbox_farm_m_qwenold.c sub_80CAF9C'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CAF9C
+
+    ./wf verify --function sub_80CAF9C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-161714-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CAF9C
+
+    ./wf verify --function sub_80CAF9C --snapshots build-snapshots'
+  result: 27 compared, 0 differed, 16 out of domain (verify run convert-20261012-161714-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CAF9C
+
+    ./wf verify --function sub_80CAF9C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161714-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080caf9c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 8c0c041
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- Is the single-entry jump table complete for all object types, or do other object classes share this tick with
+  more actions defined elsewhere?
+- What is the role of r10 on entry—battle-system context or something else?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-161714
+- recomp 8c0c041
