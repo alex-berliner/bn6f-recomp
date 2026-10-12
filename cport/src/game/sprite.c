@@ -539,6 +539,42 @@ Next sprite_getFinalPalette(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sprite_clearFinalPalette ── */
+/* Clear the palette high-nibble from a sprite's final-palette byte.
+ * The sprite is located at header + (type_nibble << 4); its byte at +0x15
+ * is masked to the low nibble only.
+ *
+ * Flag sources (last-wins per flag):
+ *   BIC Rd,Rm → N, Z   (masked byte, 0–15)
+ *   Thumb ADD Rdn,Rm  → C, V preserved from   shifted + header  */
+typedef struct {
+    u32 sprite_ptr; /* computed sprite address (→ r3) */
+    u8  masked;     /* low-nibble result             (→ N, Z)  */
+    u8  shifted;    /* (type_nibble << 4)           (→ C, V)  */
+} SpritePaletteInfo;
+
+static SpritePaletteInfo clear_final_palette(u32 header) {
+    u32 type_and_off = LD8(header + oObjectHeader_TypeAndSpriteOffset);
+    u8  shifted      = (u8)((type_and_off >> 4) << 4); /* same as & 0xF0 */
+    u32 sprite       = header + shifted;
+
+    u8 masked = (u8)LD8(sprite + oObjectSprite_Unk_15) & 0x0F;
+    ST8(sprite + oObjectSprite_Unk_15, masked);
+
+    return (SpritePaletteInfo){ .sprite_ptr = sprite, .masked = masked, .shifted = shifted };
+}
+
+/* sprite_clearFinalPalette(r5 = object header ptr)
+ * → r1 = 0xF0, r3 = sprite ptr;  N,Z from BIC(masked);  C,V from Thumb ADD(shifted,header) */
+Next sprite_clearFinalPalette(void) {
+    SpritePaletteInfo info = clear_final_palette(R5);
+    R1 = 0xF0;
+    R3 = info.sprite_ptr;
+    SET_FLAGS_ADD(info.shifted, R5);   /* C, V from the header+offset addition */
+    SET_FLAGS_NZ(info.masked);          /* N, Z from the BIC result (overwrites ADD's N, Z) */
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_getFrameParameters ── */
 /* sprite_getFrameParameters(r5 = object header):
  * Reads the sprite parameters of the object's current animation frame.

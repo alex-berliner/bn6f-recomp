@@ -1869,6 +1869,58 @@ Next owPlayer_80350a8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── npc_spawnOverworldNPCObjectsForMap ── */
+/* register form: calls TestEventFlagFromImmediate outside this file, which has no typed C interface yet */
+static bool event_flag_1721_set(void) {
+    R0 = 0x17;  /* EVENT_1721 >> 8 */
+    R1 = 0x21;  /* EVENT_1721 & 0xFF */
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return !ZERO_FLAG();  /* Z set if flag is clear */
+}
+
+/* register form: calls npc_freeAllObjectsThenSpawnObjectsFromList outside this file, which has no typed C interface yet */
+static void spawn_npc_object_list(u32 script_ptr, u32 map_num_x4, u32 area_array, u32 game_state) {
+    R0 = script_ptr;
+    R1 = map_num_x4;
+    R2 = area_array;
+    R3 = game_state;
+    GUEST_CALL(npc_freeAllObjectsThenSpawnObjectsFromList);
+}
+
+/* Spawn overworld NPC objects for the current map, unless EVENT_1721 is set.
+ * Indexes into the per-group NPC list table (real-world or internet) using
+ * MapGroup and MapNumber from the game state, then delegates to the spawn routine. */
+static void npc_spawn_overworld_npc_objects(u32 toolkit) {
+    if (event_flag_1721_set())
+        return;
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 map_group  = LD8(game_state + oGameState_MapGroup);
+    u32 map_number = LD8(game_state + oGameState_MapNumber);
+
+    u32 npc_list_base;
+    if (map_group >= INTERNET_MAP_GROUP_START) {
+        npc_list_base = A_NPCList_maps80;
+        map_group -= INTERNET_MAP_GROUP_START;
+    } else {
+        npc_list_base = A_NPCList_maps00;
+    }
+
+    u32 area_array = LD32(npc_list_base + (map_group << 2));
+    u32 map_num_x4 = map_number << 2;
+    u32 script_ptr = LD32(area_array + map_num_x4);
+
+    /* The callee reads R0-R3; mirror what the original assembly had in those
+     * registers at the point of the bl. */
+    spawn_npc_object_list(script_ptr, map_num_x4, area_array, game_state);
+}
+
+/* npc_spawnOverworldNPCObjectsForMap(r10 = toolkit ptr) -> r0-r3 from callees */
+Next npc_spawnOverworldNPCObjectsForMap(void) {
+    npc_spawn_overworld_npc_objects(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── enableGhostNavi_80351C8 ── */
 /* register form: calls TestEventFlag outside this file, which has no typed C interface yet */
 static bool test_event_flag(u16 flag) {
@@ -2203,6 +2255,55 @@ Next getIndexed20ByteTableEntry_80355DE(void) {
     R1 = A_byte_80984C8;            /* table base address */
     R0 = R1 + R2;                   /* address of the requested entry */
     SET_FLAGS_ADD(R1, R2);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80355EC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: SetNaviStatsByte has no typed C interface yet */
+static inline void call_SetNaviStatsByte(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(SetNaviStatsByte);
+}
+
+/* Update the "real-world map" flag (byte 0x22) in Navi 0's stats.
+ * Walks a packed u16 table of special map IDs terminated by 0xFFFF.
+ * If the current map ID is found in the table, the flag is set to 1;
+ * otherwise it is cleared to 0. */
+static void update_navi_stats_real_world(u32 toolkit) {
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u8 map_group_byte = LD8(game_state + oGameState_MapGroup);
+    u32 map_id = LD16(game_state + oGameState_MapGroup);
+
+    /* High-byte of MapGroup >= 0x80 means we are in a real-world map;
+     * use the saved real-world map ID instead of the live halfword. */
+    if (map_group_byte >= 0x80)
+        map_id = LD32(game_state + oGameState_SavedRealWorldMapId);
+
+    /* Scan the u16 table (entry size 2 bytes, sentinel 0xFFFF). */
+    u32 entry = A_word_803562C;
+    for (;;) {
+        u8 low_byte = LD8(entry);
+        if (low_byte == 0xFF) {
+            /* Sentinel reached – no match found. */
+            call_SetNaviStatsByte(0, 0x22, 0);
+            return;
+        }
+        u32 table_value = LD16(entry);
+        if (table_value == map_id) {
+            /* Map ID present in table – set the real-world flag. */
+            call_SetNaviStatsByte(0, 0x22, 1);
+            return;
+        }
+        entry += 2;
+    }
+}
+
+/* sub_80355EC(r10 = toolkit ptr) -> preserved r4-r7; clobbers r0-r3, lr, flags */
+Next sub_80355EC(void) {
+    update_navi_stats_real_world(R10);
     RETURN_TO_CALLER();
 }
 

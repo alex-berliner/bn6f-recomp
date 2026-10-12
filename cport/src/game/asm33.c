@@ -867,6 +867,140 @@ Next pet_menu_runFrame_81237BC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81237E0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2; bool v; } call_sub_8120CC8_result_sub_81237E0;
+/* register form: generated wrapper: sub_8120CC8 has no typed C interface yet */
+static inline call_sub_8120CC8_result_sub_81237E0 call_sub_8120CC8_sub_81237E0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_8120CC8);
+    return (call_sub_8120CC8_result_sub_81237E0){ R0, R1, R2, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNavi_result_sub_81237E0;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result_sub_81237E0 call_GetCurPETNavi_sub_81237E0(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result_sub_81237E0){ R0, R3 };
+}
+
+typedef struct { u32 r2, r3; } call_zeroFillVRAM_result;
+/* register form: generated wrapper: zeroFillVRAM has no typed C interface yet */
+static inline call_zeroFillVRAM_result call_zeroFillVRAM_sub_81237E0(void) {
+    GUEST_CALL(zeroFillVRAM);
+    return (call_zeroFillVRAM_result){ R2, R3 };
+}
+
+/* register form: generated wrapper: ZeroFill_byte_3001960 has no typed C interface yet */
+static inline void call_ZeroFill_byte_3001960(void) {
+    GUEST_CALL(ZeroFill_byte_3001960);
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNaviStatsByte_result;
+/* register form: generated wrapper: GetCurPETNaviStatsByte has no typed C interface yet */
+static inline call_GetCurPETNaviStatsByte_result call_GetCurPETNaviStatsByte(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (call_GetCurPETNaviStatsByte_result){ R0, R3 };
+}
+
+/* register form: generated wrapper: ZeroFillGFX30025c0 has no typed C interface yet */
+static inline void call_ZeroFillGFX30025c0(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+typedef struct { u32 r2; } call_toolkit_applyOverlayPalette_80015FC_result;
+/* register form: generated wrapper: toolkit_applyOverlayPalette_80015FC has no typed C interface yet */
+static inline call_toolkit_applyOverlayPalette_80015FC_result call_toolkit_applyOverlayPalette_80015FC(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+    return (call_toolkit_applyOverlayPalette_80015FC_result){ R2 };
+}
+
+typedef struct { u32 r5; } call_SetScreenFade_result;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result call_SetScreenFade_sub_81237E0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result){ R5 };
+}
+
+/* Initialise the battle-object state at `obj`.  When `flag` is non-zero
+ * (first entry into the battle), the video memory, the 0x3001960 byte
+ * buffer and the navi HP snapshot are also wiped. */
+static void init_battle_object(u32 flag, u32 battle_state_ptr,
+                               u32 obj, u32 toolkit) {
+    bool clear_mem = flag != 0;
+
+    /* Zero every timer / sub-state halfword in the object. */
+    ST16(obj + 0x20, 0);
+    ST16(obj + 0x22, 0);
+    ST16(obj + 0x24, 0);
+    ST16(obj + 0x26, 0);
+    ST16(obj + 0x2A, 0);
+    ST16(obj + 0x2C, 0);
+    ST16(obj + 0x2E, 0);
+    ST16(obj + 0x30, 0);
+    ST16(obj + 0x34, 0);
+    ST16(obj + 0x36, 0);
+    ST16(obj + 0x38, 0);
+    ST16(obj + 0x3A, 0);
+
+    /* Save the battle-state pointer and zero the remaining small fields. */
+    ST32(obj + 0x4C, battle_state_ptr);
+    ST8(obj + 0x10, 0);
+    ST8(obj + 0x11, 0);
+    ST16(obj + 0x18, 0);
+
+    /* Encode the navi sprite-index byte from the battle-graphics lookup. */
+    call_sub_8120CC8_result_sub_81237E0 lookup = call_sub_8120CC8_sub_81237E0(0, A_dword_81233D4);
+    ST8(obj + 0x12, (u8)(lookup.r0 | (lookup.r1 << 4)));
+
+    /* Record the currently-selected PET navi id. */
+    call_GetCurPETNavi_result_sub_81237E0 navi = call_GetCurPETNavi_sub_81237E0();
+    ST8(obj + 0x14, (u8)navi.r0);
+
+    if (clear_mem) {
+        /* First entry: wipe VRAM, the byte scratch buffer, and the HP byte. */
+        call_zeroFillVRAM_sub_81237E0();
+        call_ZeroFill_byte_3001960();
+        call_GetCurPETNaviStatsByte_result stats =
+            call_GetCurPETNaviStatsByte(LD8(obj + 0x14), 0x2D);   /* r1 = 0x2D: the stat index */
+        ST8(obj + 0x0C, (u8)stats.r0);
+    }
+
+    /* Clear the graphics buffer and re-apply the overlay palette. */
+    call_ZeroFillGFX30025c0();
+    call_toolkit_applyOverlayPalette_80015FC(0x10);
+
+    /* Configure the render-info block: BG mode and zero the scanline fields. */
+    u32 render = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render + 0x00, 0x1F40);
+    ST16(render + 0x10, 0);
+    ST16(render + 0x12, 0);
+    ST16(render + 0x14, 0);
+    ST16(render + 0x16, 0);
+    ST16(render + 0x18, 0);
+    ST16(render + 0x1A, 0);
+
+    /* Enter the active battle state and begin the 8-frame fade. */
+    ST8(obj + 0x01, 4);
+    call_SetScreenFade_sub_81237E0(8, 0x10);
+    ST8(obj + 0x02, 0);
+}
+
+/* sub_81237E0 – set up a battle-object.
+ * r0 = first-init flag, r1 = battle-state ptr, r5 = object, r10 = toolkit.
+ * Preserves r4, r5; sets r7 = toolkit. */
+Next sub_81237E0(void) {
+    init_battle_object(R0, R1, R5, R10);
+    R7 = R10;
+    RETURN_TO_CALLER();
+}
+
 /* ── chipFolder_initGfx_812386C ── */
 /* Register form: calls getKeyedTableEntry_811FB84 outside this file, which has no typed C interface yet */
 static u32 resolve_decomp_pointer(u32 source, u32 size) {

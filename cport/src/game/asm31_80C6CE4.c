@@ -2028,6 +2028,181 @@ Next t3_0x33_80CA544(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CA61A ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r4, r5, r6, r7; bool c, v; } call_object_removeCollisionData_result;
+/* register form: generated wrapper: object_removeCollisionData has no typed C interface yet */
+static inline call_object_removeCollisionData_result call_object_removeCollisionData(u32 r4, u32 r5, u32 r7) {
+    R4 = r4;
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(object_removeCollisionData);
+    return (call_object_removeCollisionData_result){ R2, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7; bool c, v; } call_object_spawnCollisionEffect_result;
+/* register form: generated wrapper: object_spawnCollisionEffect has no typed C interface yet */
+static inline call_object_spawnCollisionEffect_result call_object_spawnCollisionEffect(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_spawnCollisionEffect);
+    return (call_object_spawnCollisionEffect_result){ R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getCoordinatesForPanels_result;
+/* register form: generated wrapper: object_getCoordinatesForPanels has no typed C interface yet */
+static inline call_object_getCoordinatesForPanels_result call_object_getCoordinatesForPanels(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_getCoordinatesForPanels);
+    return (call_object_getCoordinatesForPanels_result){ R0 };
+}
+
+typedef struct { u32 r0, r3; } call_IsR2BetweenR0AndR1_result;
+/* register form: generated wrapper: IsR2BetweenR0AndR1 has no typed C interface yet */
+static inline call_IsR2BetweenR0AndR1_result call_IsR2BetweenR0AndR1(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(IsR2BetweenR0AndR1);
+    return (call_IsR2BetweenR0AndR1_result){ R0, R3 };
+}
+
+typedef struct { u32 r5, r6; } call_object_setPanelsFromCoordinates_result_sub_80CA61A;
+/* register form: generated wrapper: object_setPanelsFromCoordinates has no typed C interface yet */
+static inline call_object_setPanelsFromCoordinates_result_sub_80CA61A call_object_setPanelsFromCoordinates_sub_80CA61A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setPanelsFromCoordinates);
+    return (call_object_setPanelsFromCoordinates_result_sub_80CA61A){ R5, R6 };
+}
+
+typedef struct { u32 r2, r3, r4, r6; } call_object_updateCollisionPanels_result_sub_80CA61A;
+/* register form: generated wrapper: object_updateCollisionPanels has no typed C interface yet */
+static inline call_object_updateCollisionPanels_result_sub_80CA61A call_object_updateCollisionPanels_sub_80CA61A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateCollisionPanels);
+    return (call_object_updateCollisionPanels_result_sub_80CA61A){ R2, R3, R4, R6 };
+}
+
+typedef struct { u32 r0, r1; bool c, v; } call_object_isCurrentPanelValid_result_sub_80CA61A;
+/* register form: generated wrapper: object_isCurrentPanelValid has no typed C interface yet */
+static inline call_object_isCurrentPanelValid_result_sub_80CA61A call_object_isCurrentPanelValid_sub_80CA61A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_isCurrentPanelValid);
+    return (call_object_isCurrentPanelValid_result_sub_80CA61A){ R0, R1, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1; } call_object_clearCollisionRegion_result_sub_80CA61A;
+/* register form: generated wrapper: object_clearCollisionRegion has no typed C interface yet */
+static inline call_object_clearCollisionRegion_result_sub_80CA61A call_object_clearCollisionRegion_sub_80CA61A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_clearCollisionRegion);
+    return (call_object_clearCollisionRegion_result_sub_80CA61A){ R1 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5, r7, r8; bool z, n, c, v; } call_object_presentCollisionData_result;
+/* register form: generated wrapper: object_presentCollisionData has no typed C interface yet */
+static inline call_object_presentCollisionData_result call_object_presentCollisionData(u32 r1, u32 r5, u32 r8) {
+    R1 = r1;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(object_presentCollisionData);
+    return (call_object_presentCollisionData_result){ R0, R1, R2, R3, R5, R7, R8, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Per-tick collision update for a battle object: bounce or land,
+ * destroy when contact is lost, then present the collision data. */
+
+/* Refresh panel coords, update, and check validity.
+ * Returns true if the current panel is still valid; sets *out_r1 to the r1
+ * value left by object_isCurrentPanelValid for the presentCollisionData call. */
+static bool revalidate_panel(u32 r5, u32 *out_r1) {
+    call_object_setPanelsFromCoordinates_sub_80CA61A(r5);
+    call_object_updateCollisionPanels_sub_80CA61A(r5);
+    call_object_isCurrentPanelValid_result_sub_80CA61A valid = call_object_isCurrentPanelValid_sub_80CA61A(r5);
+    *out_r1 = valid.r1;
+    return valid.r0 != 0;
+}
+
+/* sub_80CA61A: collision tick for the battle object at r5.
+ * Returns the r5 (unchanged, preserved) and r8 (updated by presentCollisionData). */
+typedef struct { u32 r5; u32 r8; } sub_80CA61A_result;
+
+static sub_80CA61A_result sub_80CA61A_impl(u32 r4, u32 r5, u32 r7, u32 r8) {
+    call_object_removeCollisionData(r4, r5, r7);
+    call_object_spawnCollisionEffect(r5);
+
+    /* Is the object still in contact? */
+    u32 col_data = LD32(r5 + oBattleObject_CollisionDataPtr);
+    u32 col_flags = LD32(col_data + oCollisionData_FlagsFromCollision);
+
+    u32 r1_for_present = 0;
+    bool do_destroy = false;
+
+    if (col_flags != 0) {
+        do_destroy = true;
+    } else {
+        u32 z = LD32(r5 + oBattleObject_Z);
+
+        if ((s32)(z >> 16) < (s32)0x14) {
+            /* Still rising below the height threshold: integrate vertical velocity. */
+            u32 z_vel = LD32(r5 + oBattleObject_ZVelocity);
+            ST32(r5 + oBattleObject_Z, z_vel + z);
+            r1_for_present = z;
+        } else {
+            /* At or above threshold: resolve the landing position. */
+            u32 px = LD8(r5 + oBattleObject_PanelX);
+            u32 py = LD8(r5 + oBattleObject_PanelY);
+            u32 coord = call_object_getCoordinatesForPanels(px, py).r0;
+
+            u32 old_x = LD32(r5 + oBattleObject_X);
+            u32 x_vel = LD32(r5 + oBattleObject_XVelocity);
+            u32 new_x = x_vel + old_x;
+            ST32(r5 + oBattleObject_X, new_x);
+
+            if (call_IsR2BetweenR0AndR1(new_x, old_x, coord).r0 == 0) {
+                /* Not yet reached target: refresh panels and test validity. */
+                do_destroy = !revalidate_panel(r5, &r1_for_present);
+            } else {
+                /* Landed: consume one bounce counter (32-bit signed check for bgt). */
+                s32 param1 = (s32)LD8(r5 + oBattleObject_Param1);
+                param1 -= 1;
+                ST8(r5 + oBattleObject_Param1, (u8)param1);
+                if (param1 > 0) {
+                    /* More bounces remain: refresh panels. */
+                    do_destroy = !revalidate_panel(r5, &r1_for_present);
+                } else {
+                    /* Bounce counter exhausted. */
+                    do_destroy = true;
+                }
+            }
+        }
+    }
+
+    if (do_destroy) {
+        /* Clear the collision-active flag and switch to the destroy phase. */
+        u8 hdr = LD8(r5 + oObjectHeader_Flags);
+        ST8(r5 + oObjectHeader_Flags, hdr & ~2);
+        r1_for_present = call_object_clearCollisionRegion_sub_80CA61A(r5).r1;
+        ST32(r5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+    }
+
+    call_object_presentCollisionData_result pres =
+        call_object_presentCollisionData(r1_for_present, r5, r8);
+
+    sub_80CA61A_result result;
+    result.r5 = r5;
+    result.r8 = pres.r8;
+    return result;
+}
+
+/* Adapter: inputs r4 r5 r7 r8; outputs r5 r8. */
+Next sub_80CA61A(void) {
+    sub_80CA61A_result res = sub_80CA61A_impl(R4, R5, R7, R8);
+    R5 = res.r5;
+    R8 = res.r8;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_spawnAndInitObject0x33_80CA686 ── */
 /* battle_spawnAndInitObject0x33_80CA686: spawn a battle object of type 0x33 and hand it the caller's
  * arguments. The new object pointer comes back from object_spawnType3 in r5;

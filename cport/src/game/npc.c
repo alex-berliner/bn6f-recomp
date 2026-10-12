@@ -1200,6 +1200,47 @@ Next NPCCommand_init_mystery_data(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── NPCCommand_wait_anim_frame ── */
+/* register form: npc_disableScript0x19_809f51e reads the NPC object implicitly from R5 */
+static u32 npc_disable_script(u32 npc_obj) {
+    R5 = npc_obj;
+    GUEST_CALL(npc_disableScript0x19_809f51e);
+    return R0;
+}
+
+struct WaitAnimResult {
+    u32 r0;           /* return value from npc_disable_script */
+    u32 cmd_ptr;      /* advanced past the 2-byte command */
+};
+
+/* Set the NPC object to wait a specified number of animation frames.
+ * Reads the frame count from the command stream, stores it in the NPC's
+ * wait-anim-field slot, sets the action, clears a movement sub-flag,
+ * and disables script 0x19 on the NPC. */
+static struct WaitAnimResult wait_anim_frame(u32 npc_obj, u32 cmd_ptr) {
+    struct WaitAnimResult res;
+    u32 frame = LD8(cmd_ptr + 1);
+
+    ST32(npc_obj + oOverworldNPCObject_Unk_80, frame);
+    ST8(npc_obj + oOverworldNPCObject_CurAction, MOVEMENT_FLAG_WAIT_ANIM_FRAME);
+    ST16(npc_obj + oOverworldNPCObject_MovementFlag_0a_Unk_0b, 0);
+
+    res.r0 = npc_disable_script(npc_obj);
+    res.cmd_ptr = cmd_ptr + 2;
+    return res;
+}
+
+/* NPCCommand_wait_anim_frame(r5 = NPC object, r6 = command stream) -> r0, r6, r7 */
+Next NPCCommand_wait_anim_frame(void) {
+    u32 old_cmd = R6;
+    struct WaitAnimResult res = wait_anim_frame(R5, old_cmd);
+    R0 = res.r0;
+    R6 = res.cmd_ptr;
+    R7 = oOverworldNPCObject_Unk_80;
+    SET_FLAGS_ADD(old_cmd, 2);
+    RETURN_TO_CALLER();
+}
+
 /* ── NPCCommand_set_animation_force_update ── */
 /* NPCCommand_set_animation_force_update(r5 = NPC object, r6 = script cursor):
  * Reads the animation index from the script, forces an animation update by writing

@@ -871,6 +871,153 @@ Next battle_objectUpdatePosAndRunAction_80E3BEA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E3C14 ── */
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E3C14 0x8u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool c, v; } call_object_isCurrentPanelValid_result_sub_80E3C14;
+/* register form: generated wrapper: object_isCurrentPanelValid has no typed C interface yet */
+static inline call_object_isCurrentPanelValid_result_sub_80E3C14 call_object_isCurrentPanelValid_sub_80E3C14(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_isCurrentPanelValid);
+    return (call_object_isCurrentPanelValid_result_sub_80E3C14){ R0, R1, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3; } call_GetAllianceDependentPanelParamArgs_result;
+/* register form: generated wrapper: GetAllianceDependentPanelParamArgs has no typed C interface yet */
+static inline call_GetAllianceDependentPanelParamArgs_result call_GetAllianceDependentPanelParamArgs(u32 r3, u32 r5) {
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(GetAllianceDependentPanelParamArgs);
+    return (call_GetAllianceDependentPanelParamArgs_result){ R2, R3 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; } call_object_checkPanelParameters_result;
+/* register form: generated wrapper: object_checkPanelParameters has no typed C interface yet */
+static inline call_object_checkPanelParameters_result call_object_checkPanelParameters(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(object_checkPanelParameters);
+    return (call_object_checkPanelParameters_result){ R0, R1, R2, R3, R4, R5 };
+}
+
+typedef struct { u32 r2, r3, r5, r6; } call_object_setPanelsFromCoordinates_result_sub_80E3C14;
+/* register form: generated wrapper: object_setPanelsFromCoordinates has no typed C interface yet */
+static inline call_object_setPanelsFromCoordinates_result_sub_80E3C14 call_object_setPanelsFromCoordinates_sub_80E3C14(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setPanelsFromCoordinates);
+    return (call_object_setPanelsFromCoordinates_result_sub_80E3C14){ R2, R3, R5, R6 };
+}
+
+typedef struct { u32 r1, r2; bool c, v; } call_object_setCoordinatesFromPanels_result;
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline call_object_setCoordinatesFromPanels_result call_object_setCoordinatesFromPanels(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    return (call_object_setCoordinatesFromPanels_result){ R1, R2, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+#define CUR_STATE_DESTROY_sub_80E3C14 8
+
+/* Walk-step AI tick: validate panel, probe ahead, advance or bounce. */
+static void battle_walk_step(u32 obj) {
+    /* Check whether the object is standing on a valid panel */
+    call_object_isCurrentPanelValid_result_sub_80E3C14 panel = call_object_isCurrentPanelValid_sub_80E3C14(obj);
+
+    if (panel.r0 == 0) {
+        /* Invalid: detach related object, destroy self */
+        u32 rel = LD32(obj + oBattleObject_RelatedObject1Ptr);
+        ST32(rel + oBattleObject_ObjectHeader, 0);
+        ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E3C14,
+             CUR_STATE_DESTROY_sub_80E3C14);
+        return;
+    }
+
+    /* Related object must still be alive */
+    u32 rel = LD32(obj + oBattleObject_RelatedObject1Ptr);
+    if (LD32(rel + oBattleObject_ObjectHeader) == 0) {
+        ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E3C14,
+             CUR_STATE_DESTROY_sub_80E3C14);
+        return;
+    }
+
+    /* If phase != 0 we are mid-walk: skip initialization, go to movement */
+    bool go_movement = true;
+
+    if (LD8(obj + oBattleObject_CurPhase) == 0) {
+        /* Phase 0: begin a new walk step */
+        go_movement = false;
+        ST8(obj + oBattleObject_CurPhase, 1);
+        ST16(obj + oBattleObject_Timer, LD16(obj + oBattleObject_Timer2));
+
+        /* ExtraVars[2] != 0 triggers a special action instead of walking */
+        if (LD32(obj + (oBattleObject_ExtraVars + 8)) != 0) {
+            ST8(obj + oBattleObject_CurAction, 4);
+            ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+            return;
+        }
+
+        /* Determine target panel one step ahead in X-velocity direction */
+        s32 vx = (s32)LD32(obj + oBattleObject_XVelocity);
+        u32 step_dir = (vx < 0) ? 0xFFFFFFFFu : 1u;
+        u32 next_x = (u8)LD8(obj + oBattleObject_PanelX) + step_dir;
+        u32 next_y = (u8)LD8(obj + oBattleObject_PanelY);
+
+        call_GetAllianceDependentPanelParamArgs_result args =
+            call_GetAllianceDependentPanelParamArgs(A_byte_80E3CB4, obj);
+
+        call_object_checkPanelParameters_result check =
+            call_object_checkPanelParameters(next_x, next_y, args.r2, args.r3);
+
+        if (check.r0 != 0) {
+            /* Panel not walkable: proceed with movement anyway */
+            go_movement = true;
+        } else {
+            /* Panel is walkable */
+            if (LD8(obj + oBattleObject_Param2) != 0)
+                return;
+
+            /* Bounce: reverse horizontal velocity, reset phase */
+            ST32(obj + oBattleObject_XVelocity,
+                 (u32)(-(s32)LD32(obj + oBattleObject_XVelocity)));
+            ST8(obj + oBattleObject_CurPhase, 0);
+            return;
+        }
+    }
+
+    if (!go_movement)
+        return;
+
+    /* Movement: advance X by velocity and recompute panel position */
+    u32 new_x = (s32)LD32(obj + oBattleObject_X)
+              + (s32)LD32(obj + oBattleObject_XVelocity);
+    ST32(obj + oBattleObject_X, new_x);
+    call_object_setPanelsFromCoordinates_sub_80E3C14(obj);
+
+    /* Write panel coordinates to the pointer stored in ExtraVars[1] */
+    u32 xy_ptr = LD32(obj + (oBattleObject_ExtraVars + 4));
+    ST16(xy_ptr, LD16(obj + oBattleObject_PanelXY));
+
+    /* Decrement walk timer; if still positive the walk continues next frame */
+    u32 timer_val = LD16(obj + oBattleObject_Timer);
+    u32 decremented = timer_val - 1;  /* 32-bit wrap for the SUBS+bgt test */
+    ST16(obj + oBattleObject_Timer, decremented);
+
+    if ((s32)decremented > 0)
+        return;
+
+    /* Timer expired: snap coordinates to panel, end walk phase */
+    call_object_setCoordinatesFromPanels(obj);
+    ST8(obj + oBattleObject_CurPhase, 0);
+}
+
+/* sub_80E3C14(r5 = obj) -> preserved r5 */
+Next sub_80E3C14(void) {
+    battle_walk_step(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80E3D1A ── */
 /* sub_80E3D1A(r0 = x, r1 = y, r5 = battle object):
  * Convert (x, y) to a panel position, read the panel's parameter bits, and

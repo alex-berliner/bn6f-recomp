@@ -207,6 +207,163 @@ Next object_dimScreen(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_drawChipName ── */
+#define CHIP_FLAG_MASK    0x10000u
+#define CHIP_SOUND_EFFECT 0x173u
+
+/* register form: calls sub_800B884 outside this file, which has no typed C interface yet */
+static void alliance_set_state(u32 alliance, u32 state) {
+    R0 = alliance;
+    R1 = state;
+    GUEST_CALL(sub_800B884);
+}
+
+/* register form: calls sub_800B892 outside this file, which has no typed C interface yet */
+static u32 alliance_phase_query(u32 value) {
+    R0 = value;
+    GUEST_CALL(sub_800B892);
+    return R0;
+}
+
+/* register form: calls flags_clearBits_eStruct2035280_801BED6 outside this file,
+ * which has no typed C interface yet */
+static void chip_flags_clear(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(flags_clearBits_eStruct2035280_801BED6);
+}
+
+/* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
+static void event_dispatch(u32 flags) {
+    R0 = flags;
+    GUEST_CALL(dispatch_801DACC);
+}
+
+/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
+static u32 chip_data_ptr(u32 chip_idx) {
+    R0 = chip_idx;
+    GUEST_CALL(getChip8021DA8);
+    return R0;
+}
+
+/* register form: calls battle_networkInvert outside this file, which has no typed C interface yet */
+static u32 network_invert(u32 alliance) {
+    R0 = alliance;
+    GUEST_CALL(battle_networkInvert);
+    return R0;
+}
+
+/* register form: calls sub_801E792 outside this file, which has no typed C interface yet */
+static void chip_display_write(u32 display_type, u32 damage, u32 extra, u32 chip_idx) {
+    R0 = display_type;
+    R1 = damage;
+    R2 = extra;
+    R3 = chip_idx;
+    GUEST_CALL(sub_801E792);
+}
+
+/* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */
+static void play_chip_sound(u32 sfx) {
+    R0 = sfx;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+/* register form: calls comm_checkCrossNetBattleReady_801E754 outside this file,
+ * which has no typed C interface yet */
+static u32 cross_net_ready(void) {
+    GUEST_CALL(comm_checkCrossNetBattleReady_801E754);
+    return R0;
+}
+
+/* register form: calls sub_800B8C2 outside this file, which has no typed C interface yet */
+static u32 alliance_ready_check(u32 alliance) {
+    R0 = alliance;
+    GUEST_CALL(sub_800B8C2);
+    return R0;
+}
+
+/* register form: calls byte_203CF00_getEntryPtr_800BF5C outside this file,
+ * which has no typed C interface yet */
+static u32 alliance_entry_ptr(u32 alliance) {
+    R0 = alliance;
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
+    return R0;
+}
+
+/* First visit: set alliance to state 2, then if the opposing alliance is in state 0 or 3,
+ * clear the chip-display flag, dispatch the event, look up chip damage, and write the
+ * chip-name banner. Finally mark PhaseInitialized so this runs only once per battle object. */
+static void draw_chip_name(u32 obj) {
+    alliance_set_state(LD8(obj + oBattleObject_Alliance), 2);
+
+    u32 opp_state = alliance_phase_query(LD8(obj + oBattleObject_Alliance) ^ 1);
+    if (opp_state != 3 && opp_state != 0)
+        return;
+
+    chip_flags_clear(CHIP_FLAG_MASK);
+    event_dispatch(CHIP_FLAG_MASK);
+
+    u32 chip_idx = LD16(obj + oBattleObject_Unk_30);
+    u32 data = chip_data_ptr(chip_idx);
+
+    u32 damage = 0;
+    u32 extra = 0;
+    /* ChipData+9 bit 1 set means this chip has damage to display */
+    if ((LD8(data + 9) >> 1) & 1) {
+        damage = LD16(obj + oBattleObject_Damage);
+        extra  = LD16(obj + oBattleObject_Unk_32);
+    }
+
+    /* Network battle uses a different banner ID than normal */
+    u32 is_network = network_invert(LD8(obj + oBattleObject_Alliance));
+    chip_display_write(is_network ? 0x50 : 0x4C, damage, extra, chip_idx);
+
+    play_chip_sound(CHIP_SOUND_EFFECT);
+    ST8(obj + oBattleObject_PhaseInitialized, 4);
+}
+
+/* Already initialized: if cross-net not ready, check alliance readiness and
+ * advance CurAction by 4 or 8 depending on whether the opposing slot is idle. */
+static void advance_chip_name_phase(u32 obj) {
+    if (cross_net_ready() != 0)
+        return;
+
+    /* If the alliance itself is not ready (sub_800B8C2 == 0), peek at the opposing
+     * alliance's phase: only when it is 0 or 5 do we fall through to the BA56 path;
+     * otherwise set our own state to 3 and return without touching CurAction. */
+    if (alliance_ready_check(LD8(obj + oBattleObject_Alliance)) == 0) {
+        u32 opp = alliance_phase_query(LD8(obj + oBattleObject_Alliance) ^ 1);
+        if (opp != 0 && opp != 5) {
+            alliance_set_state(LD8(obj + oBattleObject_Alliance), 3);
+            return;
+        }
+    }
+
+    /* BA56: set alliance to state 4 and advance CurAction */
+    alliance_set_state(LD8(obj + oBattleObject_Alliance), 4);
+
+    u32 entry = alliance_entry_ptr(LD8(obj + oBattleObject_Alliance));
+    u32 step = 4;
+    if (LD8(entry + 2) == 0 && LD16(LD32(entry + 0xC) + 0x24) == 0)
+        step = 8;
+
+    ST8(obj + oBattleObject_CurAction, (u8)(LD8(obj + oBattleObject_CurAction) + step));
+    ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+}
+
+static void chip_name_dispatch(u32 obj) {
+    if (LD8(obj + oBattleObject_PhaseInitialized) == 0)
+        draw_chip_name(obj);
+    else
+        advance_chip_name_phase(obj);
+}
+
+/* register form: the function has no meaningful return value; all register outputs
+ * come from the GUEST_CALLs inside the helpers above. */
+Next object_drawChipName(void) {
+    chip_name_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_800BDB2 ── */
 /* sub_800BDB2 — battle object phase dispatcher.
  *

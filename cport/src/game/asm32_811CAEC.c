@@ -2254,6 +2254,67 @@ Next sub_812053C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8120618 ── */
+/* Decode one 0x20-byte panel: if the activity flag (bits 7+ of the u16 at +0x1C) is set
+ * and the low halfword of the u32 at +0x14 is nonzero, clamp the high halfword to 0x63,
+ * divide by 10 to get tens/ones, offset each by src_base, and pack into two consecutive
+ * words at dst.  Otherwise store two zeros. */
+static void convert_panel(u32 panel_addr, u32 src_base, u32 dst) {
+    u16 flags = LD16(panel_addr + 0x1C);
+    if ((u32)flags >> 7 == 0) {
+        ST32(dst, 0);
+        ST32(dst + 4, 0);
+        return;
+    }
+
+    u32 field = LD32(panel_addr + 0x14);
+    if ((u16)field == 0) {
+        ST32(dst, 0);
+        ST32(dst + 4, 0);
+        return;
+    }
+
+    u32 high = field >> 16;
+    if (high > 0x63)
+        high = 0x63;
+
+    /* Equivalent to SVC 6 (unsigned div by 10): quotient = tens digit, remainder = ones */
+    u32 quotient  = high / 10;
+    u32 remainder = high % 10;
+
+    /* Low 16 bits: src_base when quotient==0, else src_base + (quotient+1)*2 */
+    u32 low_bits  = (quotient == 0) ? src_base
+                                    : src_base + (quotient + 1) * 2;
+    /* High 16 bits: src_base + (remainder+1)*2 */
+    u32 high_bits = src_base + (remainder + 1) * 2;
+
+    u32 packed = (high_bits << 16) | low_bits;
+    ST32(dst, packed);
+    ST32(dst + 4, packed + 0x10001);
+}
+
+/* Decode `count` 0x20-byte panels starting at index `first` in the table at `table_base`.
+ * Output is two u32 words per panel at `dst` (stride 8).  The loop is do-while: it
+ * executes at least once even when count is zero or negative (as signed). */
+static void decode_panels(u32 first, u32 table_base, u32 dst,
+                          u32 src_base, u32 count) {
+    u32 panel = first * 0x20 + table_base;
+    u32 i = 0;
+    do {
+        convert_panel(panel, src_base, dst);
+        panel += 0x20;
+        dst   += 8;
+        i++;
+    } while ((s32)i < (s32)count);
+}
+
+/* sub_8120618(r0 = first panel index, r1 = table base, r2 = output buffer,
+ *             r3 = tile source base, r5 = panel count) */
+Next sub_8120618(void) {
+    decode_panels(R0, R1, R2, R3, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_812068C ── */
 /* sub_812068C(r0 = value, r1 = row, r2 = arg2, r3 = arg3):
  * Queries sub_81205C0 for a packed position; if one is found (result >= 0),
