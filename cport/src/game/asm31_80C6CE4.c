@@ -918,6 +918,52 @@ Next sub_80C9184(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_BDT_main_80c93cc ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSprite_result;
+/* register form: generated wrapper: object_updateSprite has no typed C interface yet */
+static inline call_object_updateSprite_result call_object_updateSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSprite);
+    return (call_object_updateSprite_result){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* battle_BDT_main_80c93cc — one step of the "battle BDT" object's state machine.
+ *
+ * The original reads oBattleObject_CurState from the battle object in r5, picks
+ * a handler (init / update / destroy) from the table right after the function
+ * body, calls it through the table with `mov lr, pc; bx r1` (r0 = state byte,
+ * r1 = handler address), and then calls object_updateSprite with the object
+ * still in r5 to refresh its sprites. */
+
+/* register form: the state handler is reached through the state table with
+ * `mov lr, pc; bx r1`, which no generated wrapper covers. The helper performs
+ * that one indirect call, entering it exactly as the original does:
+ * r0 = state byte, r1 = handler address from the table. */
+static void call_battle_BDT_state_handler(u32 state, u32 handler) {
+    R0 = state;
+    R1 = handler;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Typed body: r5 holds the battle object pointer on entry and is handed to
+ * object_updateSprite afterwards (the state handler leaves it intact).
+ * r5 as the original leaves it is the output of object_updateSprite, which
+ * the generated wrapper already leaves in place. */
+static void battle_BDT_main_step(u32 object) {
+    u32 state = LD8(object + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80C93E4 + state);
+
+    call_battle_BDT_state_handler(state, handler);
+    call_object_updateSprite(object);
+}
+
+/* battle_BDT_main_80c93cc(r5 = battle object) -> r5 r8 r9 r10 r11 r12 */
+Next battle_BDT_main_80c93cc(void) {
+    battle_BDT_main_step(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_BDT_update_80c94bc ── */
 /* battle_BDT_update_80c94bc(r5 = battle object):
  * Per-frame update for a battle object's collision state. Refreshes the
