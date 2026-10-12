@@ -3076,6 +3076,30 @@ Next sub_8117D4C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8117DC8 ── */
+/* Dispatch the battle-object's mode handler: the jump table at off_8117DDC is
+ * indexed by (byte at [r5+5] << 2); its entry is the handler's Thumb address.
+ * The call is a tail call, so r2/r3/r5/r10/r11 are whatever the handler leaves. */
+
+/* register form: no generated wrapper covers this call — the target address is
+ * loaded from the jump table (mov lr, pc; bx r0), so the helper must place R0
+ * and R1 itself and GUEST_CALL_ADDR the loaded address. */
+static void call_mode_handler(u32 object_ptr)
+{
+    u32 mode    = LD8(object_ptr + 5);
+    u32 index   = mode << 2;                 /* shift the mode byte, as the lsl does */
+    u32 handler = LD32(A_off_8117DDC + index);
+
+    R0 = handler;                            /* callee sees the entry (bx r0) in r0 */
+    R1 = index;                              /* and the shifted mode byte in r1 */
+    GUEST_CALL_ADDR(handler);
+}
+
+Next sub_8117DC8(void) {
+    call_mode_handler(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_refreshObjectSprite_8117E20 ── */
 /* battle_refreshObjectSprite_8117E20: per-frame sprite refresh for a battle object.
  * r5 = object struct, r7+0xD = the object's current state byte.
