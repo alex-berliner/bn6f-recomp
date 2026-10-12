@@ -1,0 +1,92 @@
+name: sprite_clearFinalPalette
+address: '0x08002DD8'
+kind: function
+status: confirmed
+summary: Clears the high nibble of an object's sprite final-palette byte, leaving only the low nibble.
+interface: 'void sprite_clearFinalPalette(u32 objectHeader /* r5 */); returns: r1 = 0xf0, r3 = sprite pointer; flags:
+  N,Z from BIC of masked byte (0..0xF), C,V preserved from header+offset ADD'
+details: 'Takes an object header pointer in r5. Reads the type/sprite-offset byte at +oObjectHeader_TypeAndSpriteOffset,
+
+  keeps its top nibble (type << 4) and adds it to the header to locate the sprite struct (r3).
+
+  Reads the byte at +oObjectSprite_Unk_15 from that sprite, masks off the top nibble with 0xF0 BIC,
+
+  and stores the low nibble back. The high nibble of that byte is treated as a "final palette" index
+
+  that this function resets (clear), leaving the low nibble (some other attribute) untouched.
+
+  Quirk: only the top nibble of the type byte is used as the sprite offset (bottom nibble ignored),
+
+  which is how the object header points to one of up to 16 sprites stacked after it.
+
+  The "oObjectSprite_Unk_15" field''s purpose is not fully known; based on this function the high nibble
+
+  is palette-related (the "final" palette assignment).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261012-162938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/sprite.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    qwen'' --file inbox_farm_m_qwen.c sprite_clearFinalPalette'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sprite_clearFinalPalette
+
+    ./wf verify --function sprite_clearFinalPalette --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
+    of domain (verify run convert-20261012-162938-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sprite_clearFinalPalette
+
+    ./wf verify --function sprite_clearFinalPalette --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261012-162938-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sprite_clearFinalPalette
+
+    ./wf verify --function sprite_clearFinalPalette --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162938-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08002dd8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/sprite.c
+  where: recomp 103684c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/sprite.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does the low nibble of oObjectSprite_Unk_15 represent (kept across this call)?
+- What does the low nibble of the type/sprite-offset byte select?
+- Why is r1 forced to 0xf0 on exit — a constant for the caller, or coincidental?
+sources:
+- tools/wf run convert-20261012-162938
+- recomp 103684c

@@ -1,0 +1,70 @@
+name: NPCCommand_wait_anim_frame
+address: '0x0809F0EC'
+kind: function
+status: confirmed
+summary: Overworld NPC script command that makes an NPC idle until a specified number of animation frames elapse.
+interface: void NPCCommand_wait_anim_frame(u32* r5 /*npc_obj*/, const u8* r6 /*cmd_stream*/) -> r0 (npc_disable_script
+  result), r6 (cmd_stream+2); clobbers nz,cv r0,r7,lr
+details: "Opcode handler dispatched by the overworld NPC script interpreter. Reads the second byte\nof the 2-byte\
+  \ command (r6+1) as an unsigned frame count, then:\n  * stores the count at oOverworldNPCObject_Unk_80 on the\
+  \ NPC object (R5),\n  * sets the NPC's current action byte to MOVEMENT_FLAG_WAIT_ANIM_FRAME,\n  * clears the 16-bit\
+  \ sub-flag at oOverworldNPCObject_MovementFlag_0a_Unk_0b to 0,\n  * calls npc_disableScript0x19_809f51e to disable\
+  \ script 0x19 on this NPC.\nAdvances the script pointer by 2 bytes and returns the disable-script result in R0.\n\
+  R7 is loaded with the offset of the wait-frame field (oOverworldNPCObject_Unk_80) so the\ninterpreter can address\
+  \ it later.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261012-162938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    qwen'' --file inbox_farm_m_qwen.c NPCCommand_wait_anim_frame'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function NPCCommand_wait_anim_frame
+
+    ./wf verify --function NPCCommand_wait_anim_frame --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 255 out of
+    domain (verify run convert-20261012-162938-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function NPCCommand_wait_anim_frame
+
+    ./wf verify --function NPCCommand_wait_anim_frame --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 83 out of domain (verify run convert-20261012-162938-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function NPCCommand_wait_anim_frame
+
+    ./wf verify --function NPCCommand_wait_anim_frame --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162938-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus2, story2, story4, story5, story6, story7.'
+  reproduce: grep -l '^0809f0ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp 103684c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/npc.c
+coverage:
+- menus2
+- story2
+- story4
+- story5
+- story6
+- story7
+open_questions:
+- How is the wait consumed? Does the NPC's update tick decrement the field at 0x80 and only clear the action when
+  it hits zero?
+- What is script 0x19 used for, and is the "disable" call here resetting vs. just turning it off for this wait?
+- What is oOverworldNPCObject_MovementFlag_0a_Unk_0b tracking (high/low byte semantics)?
+sources:
+- tools/wf run convert-20261012-162938
+- recomp 103684c

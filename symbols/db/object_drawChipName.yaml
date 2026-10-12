@@ -1,0 +1,84 @@
+name: object_drawChipName
+address: '0x0800B9B0'
+kind: function
+status: confirmed
+summary: Draws the chip-name banner for a battle object on its first visit, then advances the object's action phase
+  once the alliance is ready.
+interface: 'void object_drawChipName(u32 obj /* r5 */); /* inputs: r4 r5 r6 r7 r10 lr; outputs: r5 r8 r9 r10 r11
+  r12; clobbers NZCV r0-r4 lr; preserves r5-r7 */'
+details: 'Dispatches two phases based on oBattleObject_PhaseInitialized.
+
+  First-call (phase 0): sets own alliance state to 2 via sub_800B884, then queries the opposing alliance''s phase
+  via sub_800B892; only continues when it equals 3 or 0. Clears bit 0x10000 of an event/state flags word (eStruct2035280),
+  re-dispatches the same bit via dispatch_801DACC, looks up chip data with getChip8021DA8 using oBattleObject_Unk_30,
+  and if bit 1 of ChipData+9 is set pulls damage (oBattleObject_Damage) and extra (oBattleObject_Unk_32) for the
+  chip. Calls sub_801E792 with banner id 0x4C (normal) or 0x50 (network-inverted via battle_networkInvert), then
+  plays sound 0x173, and finally sets oBattleObject_PhaseInitialized to 4.
+
+  Subsequent-call (phase != 0): bails if cross_net_ready (sub_801E754) is set; otherwise if the local alliance isn''t
+  ready (sub_800B8C2 == 0) checks the opposing phase and either sets own state to 3 and returns (opposing phase
+  not 0 or 5), or sets state to 4 and looks at the alliance entry (byte_203CF00_getEntryPtr_800BF5C). When entry+2
+  is 0 and entry+0xC->+0x24 is 0, CurAction is bumped by 8; otherwise by 4. oBattleObject_CurPhaseAndPhaseInitialized
+  is then cleared to 0.
+
+  Quirks: the chip-flag mask and dispatch use the same 0x10000 value; banner id switches on battle_networkInvert;
+  sound 0x173 is hardcoded; the "step 8 vs step 4" branching depends on two nested zero checks inside the alliance
+  entry.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261012-162938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/object.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    qwen'' --file inbox_farm_m_qwen.c object_drawChipName'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_drawChipName
+
+    ./wf verify --function object_drawChipName --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 211 out
+    of domain (verify run convert-20261012-162938-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_drawChipName
+
+    ./wf verify --function object_drawChipName --snapshots build-snapshots'
+  result: 29 compared, 0 differed, 67 out of domain (verify run convert-20261012-162938-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_drawChipName
+
+    ./wf verify --function object_drawChipName --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162938-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: chips, menus2, menus3, story2.'
+  reproduce: grep -l '^0800b9b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp 103684c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/object.c
+coverage:
+- chips
+- menus2
+- menus3
+- story2
+open_questions:
+- Meaning of bit 1 of ChipData+9 (why it gates loading damage/extra).
+- Why 0x4C vs 0x50 for the chip-name banner id and whether network_invert is the right call here.
+- Semantics of the oBattleObject_Unk_30/_32 fields used as chip idx and "extra".
+- Whether "alliance_entry_ptr -> +2 / +0xC->+0x24" is a player/character busy flag used to decide between +8 and
+  +4 action step.
+- Exact meaning of the 0x10000 chip-flag event dispatched through dispatch_801DACC.
+sources:
+- tools/wf run convert-20261012-162938
+- recomp 103684c

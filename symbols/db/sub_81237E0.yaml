@@ -1,0 +1,115 @@
+name: sub_81237E0
+address: '0x081237E0'
+kind: function
+status: confirmed
+summary: Initialises a PETNavi battle object on entry to a battle, optionally wiping VRAM/GFX buffers and HP on
+  first entry, then starting an 8-frame fade-in.
+interface: void battle_initNaviObject(u32 first_entry_flag /* r0 */, u32 battle_state_ptr /* r1 */, u32 navi_obj
+  /* r5 */, u32 toolkit /* r10 */);  // r7 = toolkit, r4/r5 preserved
+details: 'Saves the first-entry flag in r4. Zeroes twelve halfword timer/sub-state
+
+  fields at navi_obj+0x20..0x3A (step 2 bytes) and navi_obj+0x18 (halfword),
+
+  plus two bytes at 0x10/0x11. Stores the battle-state pointer at +0x4C.
+
+  Calls sub_8120CC8(0, dword_81233D4) to fetch a graphics/sprite lookup,
+
+  shifts its r1 left by 4, ORs into r0, and stores the packed byte at +0x12
+
+  (navi sprite index). Calls GetCurPETNavi() to record the selected PET navi
+
+  id at +0x14.
+
+  If the first-entry flag is non-zero (r4 != 0): calls zeroFillVRAM(),
+
+  ZeroFill_byte_3001960(), and GetCurPETNaviStatsByte(navi_id, 0x2D) to
+
+  snapshot the navi''s HP (stat index 0x2D) into +0x0C.
+
+  Regardless of flag: calls ZeroFillGFX30025c0() to clear the graphics
+
+  buffer at 0x30025C0, then toolkit_applyOverlayPalette_80015FC(0x10) to
+
+  set up the overlay palette. Writes 0x1F40 to the render-info word at
+
+  toolkit+oToolkit_RenderInfoPtr+0 (sets BG mode / display control), zeroes
+
+  six halfwords at +0x10..+0x1A (scanline counters). Sets navi_obj+0x01 = 4
+
+  (active battle state code) and +0x02 = 0. Calls SetScreenFade(8, 0x10)
+
+  to begin an 8-frame fade-to-black-in sequence. Assigns r7 = r10 (toolkit
+
+  pointer) so the caller can use it directly after return.
+
+  Called with r0/r1 as inputs; reads r5 (object base) and r10 (toolkit)
+
+  throughout; writes r7 on exit. r4 is pushed/popped so it is transparent
+
+  to the caller; r5 is never modified.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261012-162938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    qwen'' --file inbox_farm_m_qwen.c sub_81237E0'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81237E0
+
+    ./wf verify --function sub_81237E0 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-162938-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81237E0
+
+    ./wf verify --function sub_81237E0 --snapshots build-snapshots'
+  result: 37 compared, 0 differed, 59 out of domain (verify run convert-20261012-162938-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81237E0
+
+    ./wf verify --function sub_81237E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162938-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081237e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 103684c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What is the exact structure layout of the navi object (r5)? Offsets 0x0C (HP), 0x12 (sprite), 0x14 (navi id),
+  0x01 (state), 0x4C (battle-state ptr) are clear but others remain unnamed.
+- 'dword_81233D4 passed to sub_8120CC8: what table or descriptor does it point to and how does it relate to the
+  navi''s battle graphics?'
+- 'The render-info value 0x1F40: is this a specific BG control register combo for the navi sprite layer?'
+- Stat index 0x2D is assumed to be HP; confirm against the PETNavi stat table.
+- What differentiates re-entry (flag=0) from first entry (flag!=0) in the callers—transitioning between waves vs.
+  starting a fresh battle?
+sources:
+- tools/wf run convert-20261012-162938
+- recomp 103684c

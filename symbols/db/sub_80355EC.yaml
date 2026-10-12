@@ -1,0 +1,82 @@
+name: sub_80355EC
+address: '0x080355EC'
+kind: function
+status: confirmed
+summary: Sets or clears the real-world-map indicator (stat byte 0x22) on Navi 0 by scanning a table of special map
+  IDs.
+interface: void navi_updateRealWorldMapFlag_80355EC(void /*r10 = toolkit_ptr*/);
+details: Reads the current map ID from GameState (MapGroup halfword; falls back to SavedRealWorldMapId when the
+  high byte of MapGroup is >= 0x80, indicating a real-world area). Walks a packed u16 lookup table at word_803562C
+  (stride 2, sentinel detected when the low byte equals 0xFF). If the current map ID matches any entry, calls SetNaviStatsByte(0,
+  0x22, 1) to raise the real-world flag; otherwise calls SetNaviStatsByte(0, 0x22, 0) to clear it. The table holds
+  roughly ten map IDs (0x0000, 0x0001, two dynamic slots via byte_2030003, 0x0303, 0x0004, 0x0005, 0x0105, 0x0006)
+  followed by the 0xFFFF terminator. Only Navi index 0 is touched; no other Navi stats are modified.
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261012-162938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    qwen'' --file inbox_farm_m_qwen.c sub_80355EC'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80355EC
+
+    ./wf verify --function sub_80355EC --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-162938-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80355EC
+
+    ./wf verify --function sub_80355EC --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-162938-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80355EC
+
+    ./wf verify --function sub_80355EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162938-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080355ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 103684c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What game feature consumes Navi 0 stat byte 0x22 (real-world-map indicator)?
+- Why is only Navi 0 given this flag rather than the active Navi?
+- What are the two entries sourced from byte_2030003 (dynamic RAM) and when are they written?
+sources:
+- tools/wf run convert-20261012-162938
+- recomp 103684c

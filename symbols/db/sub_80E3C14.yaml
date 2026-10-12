@@ -1,0 +1,112 @@
+name: sub_80E3C14
+address: '0x080E3C14'
+kind: function
+status: confirmed
+summary: Battle object per-tick handler that walks one panel step in its X-velocity direction, bouncing off unwalkable
+  panels, snapping to the panel grid when the timer expires.
+interface: void sub_80E3C14(u32 obj /* r5 */) /* preserves r4 r5 r6; clobbers r0-r3, lr, nzcv; may set CurStateActionPhaseAndPhaseInitialized
+  to "0:8" (destroy) and CurPhase to 0 */
+details: 'Operates on a battle object (oBattleObject_*) passed in r5.
+
+  First sanity-checks the current panel via object_isCurrentPanelValid; if invalid
+
+  clears the related object1''s oBattleObject_ObjectHeader and transitions self to
+
+  CUR_STATE_DESTROY ("0:8"). Also destroys self if the related object1 has a null
+
+  object header.
+
+  On phase 0 (new step) it seeds Timer from Timer2; if ExtraVars[2] (offset
+
+  oBattleObject_ExtraVars+8) is non-zero it switches CurAction to 4 and
+
+  reinitializes CurPhaseAndPhaseInitialized to 0 (i.e. performs a special
+
+  action instead of walking). Otherwise it computes the next panel from the
+
+  sign of XVelocity (±1 in X) and calls GetAllianceDependentPanelParamArgs
+
+  with the table at byte_80E3CB4 (= 0x20, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+
+  0x00, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00, 0x00) and the object, then
+
+  object_checkPanelParameters on (nextX, nextY, args.r2, args.r3). When the
+
+  panel is not walkable the object proceeds to move anyway; when walkable
+
+  and Param2 is 0 it negates XVelocity (bounces) and resets CurPhase to 0.
+
+  Mid-walk (phase != 0) it advances X by XVelocity, calls
+
+  object_setPanelsFromCoordinates, copies the resulting PanelXY into the
+
+  u16 pointed to by ExtraVars[1] (offset oBattleObject_ExtraVars+4),
+
+  decrements Timer, and on expiry calls object_setCoordinatesFromPanels and
+
+  clears CurPhase.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261012-162938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    qwen'' --file inbox_farm_m_qwen.c sub_80E3C14'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E3C14
+
+    ./wf verify --function sub_80E3C14 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-162938-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E3C14
+
+    ./wf verify --function sub_80E3C14 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261012-162938-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E3C14
+
+    ./wf verify --function sub_80E3C14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162938-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, battlesweep, fuzz, menus3, story2, story4, story5, story8, story9.'
+  reproduce: grep -l '^080e3c14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 103684c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battles2
+- battlesweep
+- fuzz
+- menus3
+- story2
+- story4
+- story5
+- story8
+- story9
+open_questions:
+- Identity of the caller object class (likely an enemy/Navi step-AI used by patrolling or chasing routines) — not
+  derivable from this function alone.
+- Meaning of the byte_80E3CB4 parameter table for GetAllianceDependentPanelParamArgs (likely alliance-aware walkability
+  / movement-cost mask).
+- Exact semantics of CurAction = 4 and the special-action path triggered by ExtraVars[2] != 0 (probably a custom
+  attack/anim rather than a plain step).
+- Why the bounce path is gated on Param2 == 0 (Param2 likely toggles whether the object should reverse on contact
+  versus proceed through).
+sources:
+- tools/wf run convert-20261012-162938
+- recomp 103684c

@@ -1,0 +1,86 @@
+name: npc_spawnOverworldNPCObjectsForMap
+address: '0x08035134'
+kind: function
+status: confirmed
+summary: Spawn overworld NPC objects for the current map based on MapGroup/MapNumber, unless EVENT_1721 is set.
+interface: 'void npc_spawnOverworldNPCObjectsForMap(void); // r10 = toolkit ptr; output via callee: r0-r3 returned
+  through; clobbers r0-r3; preserves r4-r7'
+details: 'Tests EVENT_1721 via TestEventFlagFromImmediate; if set, returns immediately (early-out path). Otherwise
+  reads GameState pointer from oToolkit_GameStatePtr, then oGameState_MapGroup (byte) and oGameState_MapNumber (byte).
+  Branches on MapGroup vs. INTERNET_MAP_GROUP_START: real-world map groups use NPCList_maps00 (REAL_WORLD_NUM_GROUPS
+  rows), internet groups use NPCList_maps80 (INTERNET_NUM_GROUPS rows) with MapGroup re-based by subtracting INTERNET_MAP_GROUP_START.
+  Indexes the group row by MapGroup*4, then the MapNumber row by MapNumber*4, to fetch a pointer to a per-map NPCScript
+  array. Delegates the actual spawn to npc_freeAllObjectsThenSpawnObjectsFromList, passing the script pointer (r0)
+  and the map/layer indices in r1-r3. Callee performs the free + spawn work.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261012-162938);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    qwen'' --file inbox_farm_m_qwen.c npc_spawnOverworldNPCObjectsForMap'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function npc_spawnOverworldNPCObjectsForMap
+
+    ./wf verify --function npc_spawnOverworldNPCObjectsForMap --snapshots build-snapshots'
+  result: 'captured calls: 27 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-162938-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function npc_spawnOverworldNPCObjectsForMap
+
+    ./wf verify --function npc_spawnOverworldNPCObjectsForMap --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-162938-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function npc_spawnOverworldNPCObjectsForMap
+
+    ./wf verify --function npc_spawnOverworldNPCObjectsForMap --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-162938-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08035134 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 103684c
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact contents/semantics of EVENT_1721 (likely a "skip NPC spawn" debug/story flag — possibly a debug room flag).
+- 'Layout of NPCList_maps00 vs. NPCList_maps80: NPCList_maps00 is a flat [*const [*const [*const NPCScript]]] array,
+  while NPCList_maps80 entries are Nullable<...> — suggests internet-area rows may be absent/empty.'
+- Why r4-r7 are preserved in the contract despite not being used inside this routine (likely so the callee's uses
+  of r4-r7 don't leak; verified by the contract).
+- Whether the internet branch's subtraction matches the size of NPCList_maps80 vs. overall arrangement.
+sources:
+- tools/wf run convert-20261012-162938
+- recomp 103684c
