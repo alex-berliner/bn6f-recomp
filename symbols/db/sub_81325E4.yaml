@@ -1,0 +1,65 @@
+name: sub_81325E4
+address: '0x081325E4'
+kind: function
+status: hypothesis
+summary: Returns the byte at dword_81325F0[r0], a small 3-byte lookup table (data at 0x081325f0 = 0x100C08).
+interface: uint8_t sub_81325E4(uint32_t index /* r0 */); // returns byte in r0, scratch in r1; no flag effects beyond
+  index -> R0
+details: 'Loads the address of the constant dword_81325F0 into r1 via the pool entry off_81325EC, then reads a single
+  byte at [r1 + r0] and returns it. The table holds 3 bytes (0x08, 0x0C, 0x10) per the 24-bit literal at 0x081325f0,
+  so valid r0 values are 0..2. Looks like a simple index-to-value mapping used by callers; the meaning of the returned
+  byte is determined by the callers (e.g. chip damage offset or similar scaling). No other side effects, no flag
+  usage.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-205830);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 16' --file inbox_farm_old_16.c
+    sub_81325E4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81325E4
+
+    ./wf verify --function sub_81325E4 --snapshots build-snapshots'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 181 out
+    of domain (verify run convert-20261011-205830-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81325E4
+
+    ./wf verify --function sub_81325E4 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261011-205830-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81325E4
+
+    ./wf verify --function sub_81325E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205830-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^081325e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 1b62f8a
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm36.c
+coverage:
+- menus3
+open_questions:
+- What the returned byte is used for by callers (damage/scaling? other lookup?).
+- Whether r0 is always passed in the 0..2 range or could be out of range.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205830
+- recomp 1b62f8a

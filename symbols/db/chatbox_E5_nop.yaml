@@ -1,0 +1,83 @@
+name: chatbox_E5_nop
+address: '0x08040E90'
+kind: function
+status: confirmed
+summary: No-op chatbox script opcode 0xE5 that advances the script pointer and returns 2 to keep the chatbox driver
+  running.
+interface: uint32_t chatbox_E5_nop(uint8_t *script /* r4 */)
+details: 'Handles script byte 0xE5 for the chatbox text/script interpreter. It is a deliberate
+
+  no-op: it skips the opcode byte itself by incrementing the script pointer (r4) by 1
+
+  and returns the constant value 2 in r0. The return value is the same value other
+
+  script opcodes use to signal "continue script execution" to the chatbox state machine.
+
+  No other registers or memory are touched; r0 is clobbered, r4 (the script pointer)
+
+  is updated in place, and the ARM flags (N, Z, C, V) are set according to r0 = 2
+
+  (so N=0, Z=0, C=1, V=0). The function is one of a family of small `chatbox_XX_<mnemonic>`
+
+  handlers dispatched from the chatbox script runner, each returning 2 to mean
+
+  "advance / keep going" or another value to change driver state.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-205830);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 16' --file inbox_farm_old_16.c
+    chatbox_E5_nop
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_E5_nop
+
+    ./wf verify --function chatbox_E5_nop --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-205830-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_E5_nop
+
+    ./wf verify --function chatbox_E5_nop --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-205830-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_E5_nop
+
+    ./wf verify --function chatbox_E5_nop --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205830-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^08040e90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 1b62f8a
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- The function ignores its r5 input; whether callers actually pass an r5 self/context pointer (the disassembly's
+  signature comment suggests `(&self@r5, char *script@r4)`) or whether r5 is simply undefined at this opcode is
+  unclear from this site alone.
+- Why opcode 0xE5 exists as an explicit no-op (instead of, e.g., 0xFF) is unknown; it may be a padding/marker opcode
+  used by the script compiler or a vestigial branch target.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205830
+- recomp 1b62f8a

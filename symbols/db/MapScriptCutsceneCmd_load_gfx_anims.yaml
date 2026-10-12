@@ -1,0 +1,69 @@
+name: MapScriptCutsceneCmd_load_gfx_anims
+address: '0x08035F3E'
+kind: function
+status: confirmed
+summary: Cutscene stream opcode that loads a bank of GFX anim scripts (FFStop32-terminated array) into the GFX anim
+  pool.
+interface: 'void cutsceneCmd_loadGFXAnims_8035F3E(void); // in: r7=cutscene PC, r6=1; out: r0=1 (NZ), r1/r2/r4/r5/r7..r12
+  preserved; clobbers r0,r3,r6,LR'
+details: 'Reads the u32 payload following the opcode byte from the cutscene byte stream (r7 points just past the
+  opcode; r6=1 selects word fetch). The pointer lands in r4 and is forwarded (via r0=r4) to LoadGFXAnims, which
+  presumably installs each GFXAnimScript in the FFStop32-terminated array into the running GFX anim pool. After
+  the loader returns, the script cursor r7 is advanced by 5 (1 opcode byte + 4-byte u32 payload). Returns r0=1 with
+  NZ flags so the cutscene dispatcher continues walking opcodes. No side effects beyond the loader call and pointer
+  bump.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-205830);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 16' --file inbox_farm_old_16.c
+    MapScriptCutsceneCmd_load_gfx_anims
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_load_gfx_anims
+
+    ./wf verify --function MapScriptCutsceneCmd_load_gfx_anims --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-205830-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_load_gfx_anims
+
+    ./wf verify --function MapScriptCutsceneCmd_load_gfx_anims --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 67 out of domain (verify run convert-20261011-205830-verify-2)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_load_gfx_anims
+
+    ./wf verify --function MapScriptCutsceneCmd_load_gfx_anims --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205830-verify-2)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story4, story7.'
+  reproduce: grep -l '^08035f3e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 1b62f8a
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- story4
+- story7
+open_questions:
+- Exact layout/size of GFXAnimScript and where LoadGFXAnims installs them (sprite vs. map vs. battle pool?).
+- Whether the returned r4 is meaningful to subsequent opcodes or is just a scratch slot used by ReadMapScriptWord.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205830
+- recomp 1b62f8a
