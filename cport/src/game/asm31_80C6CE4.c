@@ -2094,6 +2094,50 @@ Next battle_object_SetStateUpdatePhase_80CAB88(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CAB90 ── */
+/* sub_80CAB90(r5 = battle object):
+ * Per-frame state machine step for a battle object.
+ *
+ * - If the battle is already over, the object is torn down immediately by
+ *   setting its state phase to CUR_STATE_DESTROY.
+ * - Otherwise, the current action of the object's related object is checked:
+ *   actions 0xA and 0xB are terminal and need no per-frame processing.
+ * - If the battle clock is stopped, the update is skipped as well.
+ * - Otherwise the object's own CurAction indexes the handler table
+ *   off_80CABC8 (0 -> sub_80CABD0, 1 -> sub_80CAC00) and that handler is
+ *   invoked with r0 = action id (and r1 = table entry, as in the original).
+ *   Its results are left in r5/r8-r12 for our caller. */
+Next sub_80CAB90(void) {
+    GUEST_CALL(battle_isBattleOver);
+    if (R0 != 0) {
+        /* Battle over: put the object into its destroy state. */
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+        RETURN_TO_CALLER();
+    }
+
+    /* Terminal actions of the related object need no update here. */
+    u32 related = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+    u32 relatedAction = LD8(related + oBattleObject_CurAction);
+    if (relatedAction == 0xB || relatedAction == 0xA)
+        RETURN_TO_CALLER();
+
+    /* Frozen clock: skip the update. */
+    GUEST_CALL(battle_isTimeStop);
+    if (!ZERO_FLAG())
+        RETURN_TO_CALLER();
+
+    /* Dispatch on this object's own action through the handler table. */
+    u32 action = LD8(R5 + oBattleObject_CurAction);
+    u32 handler = LD32(A_off_80CABC8 + action);
+    R0 = action;
+    R1 = handler;
+    if (handler == 0x080CABD1)
+        GUEST_CALL(sub_80CABD0);
+    else if (handler == 0x080CAC01)
+        GUEST_CALL(sub_80CAC00);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectDestroyWithRelated2Unlink_80CAC44 ── */
 /* battle_objectDestroyWithRelated2Unlink_80CAC44: destroy a battle object (r5 = object to destroy).
  * Before destroying it, break the back-link from its related object: if that
@@ -2285,6 +2329,64 @@ Next battle_applyElementAttackModIfEnabled_80CAD14(void) {
         /* tst r0, r0: only nz is affected, c/v stay as the caller set them */
         SET_FLAGS_NZ(R0);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CADE0 ── */
+/* sub_80CADE0:
+ * Collision-update step for a battle object (object in r5).
+ *
+ * Removes the object's old collision data and spawns the associated effect,
+ * then decides what to do next:
+ *   - battle over, or the object's collision flags are set: clear the
+ *     collision region and move the object to the destroy state;
+ *   - time stop active: just keep the collision data presented;
+ *   - otherwise: run the current action's movement handler via the
+ *     two-entry jump table at off_80CAE20, then present the collision data.
+ *
+ * outputs: r5 r8 r9 r10 r11 r12 (everything else is scratch) */
+Next sub_80CADE0(void) {
+    GUEST_CALL(object_removeCollisionData);
+    GUEST_CALL(object_spawnCollisionEffect);
+
+    GUEST_CALL(battle_isBattleOver);
+    u32 battleOver = R0;
+
+    /* A colliding object also takes the destroy path. */
+    u32 collisionFlags = 0;
+    if (battleOver == 0) {
+        u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
+        collisionFlags = LD32(collisionData + oCollisionData_FlagsFromCollision);
+    }
+
+    if (battleOver != 0 || collisionFlags != 0) {
+        GUEST_CALL(object_clearCollisionRegion);
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+        RETURN_TO_CALLER();
+    }
+
+    GUEST_CALL(battle_isTimeStop);
+    if (!ZERO_FLAG()) {
+        /* Time stop: the object keeps its collision data visible this frame. */
+        GUEST_CALL(object_presentCollisionData);
+        RETURN_TO_CALLER();
+    }
+
+    /* Dispatch through the action jump table (off_80CAE20):
+     * action 0 -> sub_80CAE28, action 1 -> battle_applyXMoveAndCheckDestroy.
+     * Both handlers return into the presentCollisionData call below
+     * (the original does this by setting lr = 0x80CAE0A before the bx). */
+    u32 action = LD8(R5 + oBattleObject_CurAction);
+    switch (action) {
+    case 0:
+        GUEST_CALL(sub_80CAE28);
+        break;
+    default:
+        GUEST_CALL(battle_applyXMoveAndCheckDestroy_80CAE94);
+        break;
+    }
+
+    GUEST_CALL(object_presentCollisionData);
     RETURN_TO_CALLER();
 }
 
@@ -2726,6 +2828,67 @@ Next sub_80CC964(void) {
     ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
 
     R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CC9AA ── */
+/* sub_80CC9AA: collision aftermath step for a battle object (r5).
+ *
+ * Removes the object's live collision data and spawns the impact effect,
+ * then decides how the collision sequence ends:
+ *   - battle over, a collision flag matching the object's alliance is set,
+ *     or the related object is no longer performing the recorded action
+ *     -> clear the collision region and switch to the destroy state;
+ *   - otherwise decrement the collision timer; while it is still positive
+ *     keep the collision data presented, otherwise fall into the destroy
+ *     path as well.
+ *
+ * inputs:  r4 r5 r7 r8 r10 lr (r5 = battle object)
+ * outputs: r5 r8 (passed through untouched)
+ * clobbers: nz c v r0 r1 r2 r3 lr
+ * preserved: r4 r5 r6 r7
+ */
+Next sub_80CC9AA(void) {
+    int destroy;
+
+    GUEST_CALL(object_removeCollisionData);
+    GUEST_CALL(object_spawnCollisionEffect);
+
+    GUEST_CALL(battle_isBattleOver);
+    destroy = (R0 != 0);
+
+    if (!destroy) {
+        /* Does the collision flag table list a hit against our alliance? */
+        u32 collisionFlags = LD32(LD32(R5 + oBattleObject_CollisionDataPtr)
+                                  + oCollisionData_FlagsFromCollision);
+        u32 allianceMask = LD32(A_byte_80CC9F4
+                                + ((u32)LD8(R5 + oBattleObject_Alliance) << 2));
+        destroy = (allianceMask & collisionFlags) != 0;
+    }
+
+    if (!destroy) {
+        /* The related object must still be performing the action we recorded. */
+        u32 relatedAction = LD8(LD32(R5 + oBattleObject_RelatedObject1Ptr)
+                                + oBattleObject_CurAction);
+        u32 expectedAction = LD32(R5 + oBattleObject_ExtraVars + 0xC);
+        destroy = relatedAction != expectedAction;
+
+        if (!destroy) {
+            /* Count down the collision timer; keep presenting the collision
+             * data while it is still positive. */
+            u32 timer = (u32)LD16(R5 + oBattleObject_Timer) - 1;
+            ST16(R5 + oBattleObject_Timer, (u16)timer);
+            if ((s32)timer > 0) {
+                R1 = expectedAction; /* read by object_presentCollisionData */
+                GUEST_CALL(object_presentCollisionData);
+                RETURN_TO_CALLER();
+            }
+            destroy = 1;
+        }
+    }
+
+    GUEST_CALL(object_clearCollisionRegion);
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
     RETURN_TO_CALLER();
 }
 

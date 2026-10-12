@@ -3488,6 +3488,60 @@ Next battle_spawnTypeFObjectInitState_80C6548(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C6964 ── */
+/* sub_80C6964 (r5 = battle object, r8/r10 = caller state passed through):
+ * Spawn-time initialization for an object: move it to the pixel position of
+ * its current panel, point ExtraVars at its per-type record in byte_80C68D4,
+ * face it in the direction it advances in, and set up its collision data.
+ * If collision data cannot be allocated the object is freed immediately;
+ * otherwise it is handed collision ID 0x3D and switched to CUR_STATE_UPDATE.
+ * r5 and r8 are left untouched for the caller. */
+Next sub_80C6964(void) {
+    u32 obj = R5;
+    u32 savedR7 = R7; /* the original pushes r7 and restores it on both exits */
+
+    /* Place the object at the pixel coordinates of its panel. */
+    R0 = LD8(obj + oBattleObject_PanelX);
+    R1 = LD8(obj + oBattleObject_PanelY);
+    GUEST_CALL(object_getCoordinatesForPanels);
+    ST32(obj + oBattleObject_X, R0);
+    ST32(obj + oBattleObject_Y, R1);
+
+    /* ExtraVars selects this object's 6-byte record in the type table. */
+    u32 extraVars = A_byte_80C68D4 + LD8(obj + oBattleObject_Param1) * 6;
+    R7 = extraVars; /* the callees below are invoked with r7 pointing at it */
+    ST32(obj + oBattleObject_ExtraVars, extraVars);
+
+    /* The object moves toward whatever is in front of it. */
+    GUEST_CALL(object_getFrontDirection);
+    ST32(obj + oBattleObject_XVelocity, R0);
+
+    /* Allocate collision data; if that fails, free the object and bail out. */
+    GUEST_CALL(object_createCollisionData);
+    if (R0 == 0) {
+        GUEST_CALL(object_freeMemory);
+        R7 = savedR7;
+        RETURN_TO_CALLER();
+    }
+
+    /* R0 still holds the value object_createCollisionData returned. */
+    R1 = 0x3D;
+    R2 = 5;
+    R3 = 0;
+    GUEST_CALL(object_setupCollisionData);
+
+    /* Present the collision data with no primary element selected yet. */
+    R0 = 0;
+    R1 = LD32(obj + oBattleObject_CollisionDataPtr);
+    ST8(R1 + oCollisionData_PrimaryElement, 0);
+    GUEST_CALL(object_presentCollisionData);
+
+    /* Hand control over to the per-frame update state. */
+    R7 = savedR7;
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C69AC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r4, r5, r6, r7; bool c, v; } call_object_removeCollisionData_result;
