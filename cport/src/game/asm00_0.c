@@ -189,6 +189,49 @@ Next sound_dispatchCueHandler_800068A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sound_80006A2 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7; } call_sound_8000808_result;
+/* register form: generated wrapper: sound_8000808 has no typed C interface yet */
+static inline call_sound_8000808_result call_sound_8000808(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sound_8000808);
+    return (call_sound_8000808_result){ R4, R5, R6, R7 };
+}
+
+/* Play a BGM track on one MML channel slot.
+ * Sets the in-game indicator byte, then drives the MML sound engine through
+ * five setup calls (start, attach buffer, reset, commit song, set channel arg). */
+static void play_bgm(u32 song_id, u32 arg1, u32 ch_index, u32 toolkit) {
+    /* Only remember in-range song ids: signed cmp vs 0x25 -> skip when r0 > 0x25. */
+    if ((s32)song_id <= 0x25) {
+        u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+        ST8(game_state + oGameState_BGMusicIndicator, (u8)song_id);
+    }
+
+    /* Resolve this channel slot's data buffer from the ROM address table.
+     * Each slot is a u32 entry selected by ch_index * 4. */
+    u32 ch_offset = ch_index << 2;
+    u32 channel_buf = LD32(A_off_8000704 + ch_offset);
+
+    /* Five MML driver calls; r4-r7 inside the original are just scratch locals for
+     * song_id/arg1/channel_buf, which we keep as C locals so they survive across calls. */
+    call_sound_8000808(song_id,     arg1,    ch_offset, (A_m4a_SongNumStart | 1));
+    call_sound_8000808(channel_buf, arg1,    ch_offset, (A_sub_814EB1C | 1));
+    call_sound_8000808(channel_buf, 0xFF,    0,         (A_sub_814F9AC | 1));
+    call_sound_8000808(song_id,     0xFF,    0,         (A_sub_814E9F0 | 1));
+    call_sound_8000808(channel_buf, arg1,    0,         (A_sub_814EAF0 | 1));
+}
+
+/* sound_80006A2(r0 = song id, r1 = channel arg, r2 = channel index, r10 = toolkit) */
+Next sound_80006A2(void) {
+    play_bgm(R0, R1, R2, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── musicGameState_8000784 ── */
 /* musicGameState_8000784(r0, r2 = sound-driver args, r10 = Toolkit):
  * Forward a music-state request to the sound driver (sound_8000808) with the

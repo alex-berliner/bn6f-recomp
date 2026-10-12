@@ -8,6 +8,77 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── deliverCutsceneMail_8098BE8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r6, r7; bool c, v; } call_addMail_802f238_result;
+/* register form: generated wrapper: addMail_802f238 has no typed C interface yet */
+static inline call_addMail_802f238_result call_addMail_802f238(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(addMail_802f238);
+    return (call_addMail_802f238_result){ R1, R2, R3, R4, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: ClearEventFlag has no typed C interface yet */
+static inline void call_ClearEventFlag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ClearEventFlag);
+}
+
+typedef struct { u32 r1, r3; bool c, v; } call_SetEventFlag_result;
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline call_SetEventFlag_result call_SetEventFlag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+    return (call_SetEventFlag_result){ R1, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+#define CUTSCENE_MAIL_BASE  0x1CA0   /* first inbox mail slot for cutscene deliveries */
+#define CUTSCENE_CLEAR_BASE 0x1D20   /* "mail not seen" event-flag block base */
+#define CUTSCENE_SET_BASE   0x1DA0   /* "mail delivered" event-flag block base */
+
+typedef struct {
+    u32 r1;
+    u32 r2;
+} DeliverMailResult;
+
+/* Deliver a cutscene mail from a script record (r5 + 6 = mail id, r5 + 7 = completion byte).
+ * If mail id is 0xFF, nothing happens; r2 passes through unchanged.
+ * Otherwise addMail queues the message; if the completion byte is set the
+ * "not seen" flag is cleared and the "delivered" flag is set. */
+static DeliverMailResult deliver_cutscene_mail(u32 scriptPtr, u32 initialR2) {
+    DeliverMailResult result;
+    u32 mailId = LD8(scriptPtr + 6);
+
+    if (mailId == 0xFF) {
+        result.r1 = 0xFF;
+        result.r2 = initialR2;
+        return result;
+    }
+
+    call_addMail_802f238_result addResult = call_addMail_802f238(CUTSCENE_MAIL_BASE + mailId);
+    result.r1 = addResult.r1;
+    result.r2 = addResult.r2;
+
+    if (LD8(scriptPtr + 7) == 0)
+        return result;
+
+    call_ClearEventFlag(CUTSCENE_CLEAR_BASE + mailId);
+    call_SetEventFlag_result setResult = call_SetEventFlag(CUTSCENE_SET_BASE + mailId);
+    result.r1 = setResult.r1;
+
+    return result;
+}
+
+/* deliverCutsceneMail_8098BE8(r5 = script record ptr, r10 = toolkit) -> r1 r2, nz */
+Next deliverCutsceneMail_8098BE8(void) {
+    DeliverMailResult r = deliver_cutscene_mail(R5, R2);
+    R0 = 0;
+    R1 = r.r1;
+    R2 = r.r2;
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
 /* ── RunLMessageTextScript ── */
 /* RunLMessageTextScript: at 0x08099218
  *

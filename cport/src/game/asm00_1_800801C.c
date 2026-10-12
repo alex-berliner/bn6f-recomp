@@ -8,6 +8,45 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_800801C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_802DE5C_result;
+/* register form: generated wrapper: sub_802DE5C has no typed C interface yet */
+static inline call_sub_802DE5C_result call_sub_802DE5C(void) {
+    GUEST_CALL(sub_802DE5C);
+    return (call_sub_802DE5C_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* Battle-object state dispatcher: reads the current state byte from the object's
+ * base pointer, jumps to the matching handler in a table of ten, runs the shared
+ * post-processing routine sub_802DE5C, then loads the result byte. */
+
+/* register form: dispatches through the jump table at off_8008038 whose byte-
+ * scaled index comes from the object's state byte; the handler expects R0 and R5
+ * set up before entry, other caller registers pass through. */
+static u32 dispatch_battle_object_state(void) {
+    u32 state_base = A_dword_203CA70;
+    u32 state_byte = LD8(state_base);
+    u32 handler_addr = LD32(A_off_8008038 + state_byte);
+
+    R0 = state_byte;
+    R5 = state_base;
+    GUEST_CALL_ADDR(handler_addr);
+
+    call_sub_802DE5C();
+
+    /* Result byte at object offset +4 (byte_203CA74 – dword_203CA70). */
+    return LD8(state_base + (A_byte_203CA74 - 0x203CA70));
+}
+
+/* sub_800801C: r2 r3 r4 r6 r7 r10 lr (pass-through) -> r0 r2..r12 */
+Next sub_800801C(void) {
+    u32 caller_r5 = R5;          /* preserved via push/pop in the original */
+    R0 = dispatch_battle_object_state();
+    R5 = caller_r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objAdvanceStateTimer_8008492 ── */
 /* battle_objAdvanceStateTimer_8008492: advance the per-object battle state byte of the object in r5.
  *
@@ -969,6 +1008,200 @@ Next battle_getNaviStatsByte_800A540(void) {
         R1 = arg1;
         GUEST_CALL(GetCurPETNaviStatsByte);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── shuffleFolder_800A570 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_getChip8021DA8_result;
+/* register form: generated wrapper: getChip8021DA8 has no typed C interface yet */
+static inline call_getChip8021DA8_result call_getChip8021DA8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getChip8021DA8);
+    return (call_getChip8021DA8_result){ R0 };
+}
+
+typedef struct { u32 r2, r5, r6, r7; } call_ShuffleHwordList_SecondaryRNG_result;
+/* register form: generated wrapper: ShuffleHwordList_SecondaryRNG has no typed C interface yet */
+static inline call_ShuffleHwordList_SecondaryRNG_result call_ShuffleHwordList_SecondaryRNG(u32 r2) {
+    R2 = r2;
+    GUEST_CALL(ShuffleHwordList_SecondaryRNG);
+    return (call_ShuffleHwordList_SecondaryRNG_result){ R2, R5, R6, R7 };
+}
+
+/* register form: generated wrapper: GetBattleMode has no typed C interface yet */
+static inline u32 call_GetBattleMode(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+typedef struct { u32 r0, r3, r7; } call_GetPositiveSignedRNGSecondary_result;
+/* register form: generated wrapper: GetPositiveSignedRNGSecondary has no typed C interface yet */
+static inline call_GetPositiveSignedRNGSecondary_result call_GetPositiveSignedRNGSecondary(void) {
+    GUEST_CALL(GetPositiveSignedRNGSecondary);
+    return (call_GetPositiveSignedRNGSecondary_result){ R0, R3, R7 };
+}
+
+/* register form: generated wrapper: sub_800A672 has no typed C interface yet */
+static inline u32 call_sub_800A672(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sub_800A672);
+    return R0;
+}
+
+typedef struct { u32 r1, r2, r3; bool c; } call_CopyHalfwords_result;
+/* register form: generated wrapper: CopyHalfwords has no typed C interface yet */
+static inline call_CopyHalfwords_result call_CopyHalfwords(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyHalfwords);
+    return (call_CopyHalfwords_result){ R1, R2, R3, CARRY_FLAG() };
+}
+
+/* Shuffle a folder of 30 battle chips: separate into gigas and non-gigas, shuffle each
+ * temporary list, insert gigas at random positions into the non-giga list, optionally
+ * swap a random chip pair into the last two slots, then write the result back. */
+
+#define FOLDER_SIZE        30
+#define GIGA_ELEM_TYPE     2
+#define CHIP_ELEM_TYPE_OFF 7
+#define CHIP_ID_MASK       0x1FF
+
+#define NON_GIGA_BASE      A_dword_2033000
+#define GIGA_BASE          A_word_2033040
+
+#define SKIP_PIN_SHIFT     2       /* bytes to skip when "reg" flag is set */
+#define SKIP_TAG_COUNT     2       /* additional entries skipped for "tag" flag */
+
+#define NORMAL_MOD_OFF     12      /* divisor = count - 12 for non-crossover */
+#define NORMAL_INS_OFF     10      /* insertion base for non-crossover */
+#define CROSSOVER_MOD      11      /* divisor for crossover */
+#define CROSSOVER_INS      8       /* insertion base for crossover */
+#define SWAP_MODULUS       19      /* divisor for the random pair selection */
+
+#define SLOT_LAST_1_OFFSET   0x38  /* offset of slot 28 in the folder (halfword 28) */
+#define SLOT_LAST_2_OFFSET   0x3A  /* offset of slot 29 (halfword 29) */
+#define BATTLESTATE_IDX_OFF  0x45  /* byte storing the chosen pair index */
+
+#define COPY_HALFWORDS_CNT 0x3C    /* 60 halfwords = 120 bytes */
+
+/* register form: DivARM (svc 6) reads dividend/divisor from R0/R1 and leaves
+   the remainder in R1, which swi_call does not expose as a return value */
+static u32 divarm_remainder(u32 dividend, u32 divisor) {
+    R0 = dividend;
+    R1 = divisor;
+    swi_call(6);
+    return R1;
+}
+
+/* register form: ShuffleHwordList_SecondaryRNG reads list pointer from R0 and count
+   from R1, which the generated wrapper (r2-only) does not set */
+static void shuffle_hword_list(u32 list_ptr, u32 count) {
+    R0 = list_ptr;
+    R1 = count;
+    call_ShuffleHwordList_SecondaryRNG(count);
+}
+
+static void shuffle_folder(u32 folder_ptr, u32 reg_flag, u32 tag_flag, u32 toolkit) {
+    u32 non_giga_count = 0;
+    u32 giga_count = 0;
+
+    /* Scan all 30 folder entries, split into non-giga and giga temporary arrays */
+    for (u32 i = 0; i < FOLDER_SIZE; i++) {
+        u16 raw = (u16)LD16(folder_ptr + i * 2);
+        u32 chip_id = raw & CHIP_ID_MASK;
+        u32 chip_data = call_getChip8021DA8(chip_id).r0;
+        u32 elem_type = LD8(chip_data + CHIP_ELEM_TYPE_OFF);
+
+        if (elem_type == GIGA_ELEM_TYPE) {
+            ST16(GIGA_BASE + giga_count * 2, raw);
+            giga_count++;
+        } else {
+            ST16(NON_GIGA_BASE + non_giga_count * 2, raw);
+            non_giga_count++;
+        }
+    }
+
+    /* Shuffle the non-giga list, honoring the reg and tag skip flags */
+    if (non_giga_count != 0) {
+        u32 list_start = NON_GIGA_BASE;
+        u32 shuffle_len = non_giga_count;
+
+        if (reg_flag != 0) {
+            list_start += SKIP_PIN_SHIFT;
+            shuffle_len -= 1;
+        }
+        if (tag_flag != 0) {
+            shuffle_len -= SKIP_TAG_COUNT;
+        }
+
+        shuffle_hword_list(list_start, shuffle_len);
+    }
+
+    /* Shuffle the giga list, then insert each giga at a random position */
+    if (giga_count != 0) {
+        shuffle_hword_list(GIGA_BASE, giga_count);
+
+        u32 battle_mode = call_GetBattleMode();
+        bool is_crossover = (battle_mode == 1);
+
+        for (u32 idx = 0; idx < giga_count; idx++) {
+            u32 rng_val = call_GetPositiveSignedRNGSecondary().r0;
+            u32 insert_pos;
+
+            if (is_crossover) {
+                u32 remainder = divarm_remainder(rng_val, CROSSOVER_MOD);
+                insert_pos = CROSSOVER_INS + remainder;
+            } else {
+                u32 divisor = non_giga_count - NORMAL_MOD_OFF;
+                u32 remainder = divarm_remainder(rng_val, divisor);
+                insert_pos = NORMAL_INS_OFF + remainder;
+            }
+
+            u16 giga_chip = (u16)LD16(GIGA_BASE + idx * 2);
+            non_giga_count = call_sub_800A672(NON_GIGA_BASE, non_giga_count,
+                                               giga_chip, insert_pos);
+        }
+    }
+
+    /* If tag_flag is set, swap a random consecutive pair into the last two slots */
+    if (tag_flag != 0) {
+        u32 rng_val = call_GetPositiveSignedRNGSecondary().r0;
+        u32 remainder = divarm_remainder(rng_val, SWAP_MODULUS);
+        u32 pair_index = remainder + 1;
+
+        /* Record the chosen index in the battle state */
+        u32 battle_state = LD32(toolkit + oToolkit_BattleStatePtr);
+        ST8(battle_state + BATTLESTATE_IDX_OFF, pair_index);
+
+        u32 byte_off = pair_index * 2;
+
+        /* Swap first slot of the pair with slot 28 */
+        u16 tmp = (u16)LD16(NON_GIGA_BASE + SLOT_LAST_1_OFFSET);
+        u16 sel = (u16)LD16(NON_GIGA_BASE + byte_off);
+        ST16(NON_GIGA_BASE + SLOT_LAST_1_OFFSET, sel);
+        ST16(NON_GIGA_BASE + byte_off, tmp);
+
+        /* Swap second slot of the pair with slot 29 */
+        byte_off += 2;
+        u16 tmp2 = (u16)LD16(NON_GIGA_BASE + SLOT_LAST_2_OFFSET);
+        u16 sel2 = (u16)LD16(NON_GIGA_BASE + byte_off);
+        ST16(NON_GIGA_BASE + SLOT_LAST_2_OFFSET, sel2);
+        ST16(NON_GIGA_BASE + byte_off, tmp2);
+    }
+
+    /* Write the final folder back to the caller's original buffer */
+    call_CopyHalfwords(NON_GIGA_BASE, folder_ptr, COPY_HALFWORDS_CNT);
+}
+
+/* shuffleFolder_800A570: r0=folder_ptr, r1=reg, r2=tag, r10=toolkit
+ * Preserved: r4-r7. Clobbers: r0-r3, lr, flags. No output registers. */
+Next shuffleFolder_800A570(void) {
+    shuffle_folder(R0, R1, R2, R10);
     RETURN_TO_CALLER();
 }
 

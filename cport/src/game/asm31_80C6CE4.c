@@ -1140,6 +1140,99 @@ Next spawnThunderObjectMaybe_80c954c(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_BDT_80c956c ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r4, r7; } call_FindOpponentPanelXYForThunderObject_result;
+/* register form: generated wrapper: FindOpponentPanelXYForThunderObject has no typed C interface yet */
+static inline call_FindOpponentPanelXYForThunderObject_result call_FindOpponentPanelXYForThunderObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(FindOpponentPanelXYForThunderObject);
+    return (call_FindOpponentPanelXYForThunderObject_result){ R0, R1, R4, R7 };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result call_object_getFrontDirection(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result){ R0 };
+}
+
+/* Constants from the literal pool at 0x080C95DC–0x080C95E8 */
+#define THUNDER_X_BASE_NORMAL   0xAAAB
+#define THUNDER_X_BASE_POWER    0x10000
+#define THUNDER_Y_BASE_NORMAL   0x6666
+#define THUNDER_Y_BASE_POWER    0x999A
+#define THUNDER_TIMER_NORMAL    0x3C
+#define THUNDER_TIMER_POWER     0x28
+#define THUNDER_POWER_LEVEL     2
+
+/* Decide velocity direction and axis, write velocities + timer to the
+ * thunder BattleObject at `obj`.  Returns Param1 (the value the original
+ * leaves in r2 on exit).  R4 and R7 are written by the
+ * FindOpponentPanelXYForThunderObject wrapper. */
+static u32 thunder_update(u32 obj) {
+    call_FindOpponentPanelXYForThunderObject_result opp =
+        call_FindOpponentPanelXYForThunderObject(obj);
+
+    s32 direction;
+    bool vertical;
+
+    if (opp.r0 == 0) {
+        /* No opponent found – fire in the object's facing direction. */
+        call_object_getFrontDirection_result front =
+            call_object_getFrontDirection(obj);
+        direction = (s32)front.r0;
+        vertical = false;
+    } else {
+        u32 my_y = LD8(obj + oBattleObject_PanelY);
+        u32 my_x = LD8(obj + oBattleObject_PanelX);
+
+        if (opp.r1 == my_y) {
+            /* Same row: horizontal, toward opponent's column. */
+            direction = ((s32)opp.r0 < (s32)my_x) ? -1 : 1;
+            vertical = false;
+        } else if (opp.r0 == my_x) {
+            /* Same column: vertical, toward opponent's row. */
+            direction = ((s32)opp.r1 < (s32)my_y) ? -1 : 1;
+            vertical = true;
+        } else {
+            /* Neither matches: horizontal toward opponent's column. */
+            direction = ((s32)opp.r0 < (s32)my_x) ? -1 : 1;
+            vertical = false;
+        }
+    }
+
+    /* Speed bump when Param1 == 2 (charged / enhanced thunder). */
+    u32 param1 = LD8(obj + oBattleObject_Param1);
+
+    if (vertical) {
+        u32 base = (param1 == THUNDER_POWER_LEVEL)
+                       ? THUNDER_Y_BASE_POWER : THUNDER_Y_BASE_NORMAL;
+        ST32(obj + oBattleObject_YVelocity, direction * (s32)base);
+        ST32(obj + oBattleObject_XVelocity, 0);
+    } else {
+        u32 base = (param1 == THUNDER_POWER_LEVEL)
+                       ? THUNDER_X_BASE_POWER : THUNDER_X_BASE_NORMAL;
+        ST32(obj + oBattleObject_XVelocity, direction * (s32)base);
+        ST32(obj + oBattleObject_YVelocity, 0);
+    }
+
+    /* Active-frame countdown before the object expires. */
+    u32 timer = (param1 == THUNDER_POWER_LEVEL)
+                    ? THUNDER_TIMER_POWER : THUNDER_TIMER_NORMAL;
+    ST16(obj + oBattleObject_Timer, timer);
+
+    /* r2 at exit is always Param1 (re-read at the timer comparison). */
+    return LD8(obj + oBattleObject_Param1);
+}
+
+/* battle_BDT_80c956c(r5 = thunder object, lr) -> r2 = Param1, r4, r7 */
+Next battle_BDT_80c956c(void) {
+    R2 = thunder_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── FindOpponentPanelXYForThunderObject ── */
 /* FindOpponentPanelXYForThunderObject(r5 = thunder object):
  * Search for a panel occupied by an opponent that the object's thunder

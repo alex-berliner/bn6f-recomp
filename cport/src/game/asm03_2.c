@@ -42,6 +42,124 @@ Next renderTextGfx_8045F8C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8046154 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; } call_FillByEightWords_result;
+/* register form: generated wrapper: FillByEightWords has no typed C interface yet */
+static inline call_FillByEightWords_result call_FillByEightWords(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(FillByEightWords);
+    return (call_FillByEightWords_result){ R1 };
+}
+
+typedef struct { u32 r2; } call_ZeroFillByEightWords_result;
+/* register form: generated wrapper: ZeroFillByEightWords has no typed C interface yet */
+static inline call_ZeroFillByEightWords_result call_ZeroFillByEightWords(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByEightWords);
+    return (call_ZeroFillByEightWords_result){ R2 };
+}
+
+typedef struct { u32 r0, r2, r3, r4, r5, r6, r8, r9, r10, r12; } call_sub_80461D0_result;
+/* register form: generated wrapper: sub_80461D0 has no typed C interface yet */
+static inline call_sub_80461D0_result call_sub_80461D0(u32 r1) {
+    R1 = r1;
+    GUEST_CALL(sub_80461D0);
+    return (call_sub_80461D0_result){ R0, R2, R3, R4, R5, R6, R8, R9, R10, R12 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r8, r9, r12; bool z, n, c, v; } call_sub_8046290_result;
+/* register form: generated wrapper: sub_8046290 has no typed C interface yet */
+static inline call_sub_8046290_result call_sub_8046290(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_8046290);
+    return (call_sub_8046290_result){ R0, R1, R2, R3, R8, R9, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Animation opcode stream parser.
+ * Initializes a Toolkit animation-state block, fills/zeroes scratch buffers,
+ * then decodes a byte-coded opcode stream via a jump table or helper calls
+ * until a handler clears the continue flag. A finalizer processes the result.
+ */
+
+/* register form: jump-table handlers and sub_80461D0 read/write R4-R7 through the
+ * register file; there is no typed interface that carries these per-call. */
+static void parse_stream(u32 stream_ptr, u32 toolkit, u32 src, u32 saved_r3,
+                         u32 entry_r4, u32 entry_r5, u32 entry_r6, u32 entry_r7) {
+    /* Fetch the Toolkit's animation-state structure. */
+    u32 state = LD32(toolkit + oToolkit_Unk200a220_Ptr);
+
+    /* Slot index = stream_id << 3, stored as a byte. */
+    u32 slot = entry_r4 << 3;
+
+    /* Initialize the state block for this animation packet. */
+    ST8(state + 0x00, slot);
+    ST8(state + 0x01, 0);
+    ST8(state + 0x02, entry_r5);
+    ST32(state + 0x18, entry_r6);
+    ST32(state + 0x1C, 0);
+    ST32(state + 0x20, src);
+    ST32(state + 0x24, entry_r7);
+    ST32(state + 0x30, 0);
+    ST32(state + 0x34, 0);
+    ST32(state + 0x3C, 0);
+
+    /* Fill scratch: (slot * (bank<<4)) 8-word blocks from the block table. */
+    u32 bank16 = entry_r5 << 4;
+    u32 fill_count = slot * bank16;
+    u32 fill_block = LD32(state + 0x38);
+    call_FillByEightWords(src, fill_count, fill_block);
+    call_ZeroFillByEightWords(entry_r7, R1);
+
+    /* Opcode decode loop.  R3 is the continue flag; handlers modify R0-R7. */
+    u32 r0 = stream_ptr;
+    u32 r3 = 1;
+    u32 r4 = fill_count;
+    u32 r5 = bank16;
+    u32 r6 = stream_ptr;
+    u32 r7 = entry_r7;
+
+    while (r3 != 0) {
+        u32 op = LD8(r0);
+        if ((s32)op >= 0xE5) {
+            /* Long opcode (>= 0xE5): dispatch through jump table at off_80460F4. */
+            u32 idx = (op - 0xE5) << 2;
+            R7 = A_off_80460F4;
+            u32 handler = LD32(R7 + idx);
+            R0 = r0; R1 = op; R3 = r3; R4 = r4; R5 = r5; R6 = r6;
+            GUEST_CALL_ADDR(handler);
+            r0 = R0; r3 = R3; r4 = R4; r5 = R5; r6 = R6; r7 = R7;
+        } else if (op == 0xE4) {
+            /* Two-byte opcode: argument = next byte + 0xE4. */
+            u32 arg = LD8(r0 + 1) + 0xE4;
+            R0 = r0; R3 = r3; R4 = r4; R5 = r5; R6 = r6; R7 = r7;
+            call_sub_80461D0(arg);
+            r0 = R0 + 2; r3 = R3; r4 = R4; r5 = R5; r6 = R6;
+        } else {
+            /* Single-byte opcode (< 0xE4): argument is the opcode itself. */
+            R0 = r0; R3 = r3; R4 = r4; R5 = r5; R6 = r6; R7 = r7;
+            call_sub_80461D0(op);
+            r0 = R0 + 1; r3 = R3; r4 = R4; r5 = R5; r6 = R6;
+        }
+    }
+
+    /* Finalizer: processes the saved third argument (original's pop {r0}; bl sub_8046290). */
+    call_sub_8046290(saved_r3);
+
+    /* Restore callee-saved registers (original's pop {r4-r7}). */
+    R4 = entry_r4; R5 = entry_r5; R6 = entry_r6; R7 = entry_r7;
+}
+
+/* sub_8046154(r0 = stream ptr, r2 = src data, r3 = finalizer arg,
+ *             r4 = stream ID, r5 = bank, r6 = base ptr, r7 = dest buf, r10 = toolkit) */
+Next sub_8046154(void) {
+    parse_stream(R0, R10, R2, R3, R4, R5, R6, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_804634C ── */
 Next sub_804634C(void) {
     /* Tail-call: do the work in sub_8046356, then clear r3 and return.

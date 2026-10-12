@@ -471,6 +471,78 @@ Next projectObjectToScreen_800362C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8003694 ── */
+/* Project a world-space object position through the camera into screen
+ * coordinates and depth, then clip against the visible viewport.
+ *
+ * obj_ptr  : pointer to object (u32 x, u32 y, u32 z at offsets 0, 4, 8)
+ * toolkit  : pointer to the toolkit struct (used to fetch camera pointer)
+ *
+ * Returns screen_x, screen_y, visibility flag, and a depth word.
+ * Flags (nzcv) come from the depth word + 0x60 addition. */
+
+#define VIEWPORT_X_MIN   (-0x20)
+#define VIEWPORT_X_MAX    0x110
+#define VIEWPORT_Y_MIN   (-0x20)
+#define VIEWPORT_Y_MAX    0xE0
+#define SCREEN_X_OFFSET   0x78   /* half-width of the 240-pixel GBA screen */
+#define SCREEN_Y_OFFSET   0x52   /* baseline offset for floor Y */
+#define DEPTH_BIAS        0x800000u
+#define DRAW_Z_OFFSET     0x60
+
+typedef struct {
+    u32 screen_x;
+    u32 screen_y;
+    u32 visible;       /* 1 if inside viewport, 0 otherwise */
+    u32 depth_raw;     /* before +DRAW_Z_OFFSET, for flag setting */
+    u32 depth_final;   /* depth_raw + DRAW_Z_OFFSET */
+} ProjectionResult;
+
+static ProjectionResult project_object_to_screen_sub_8003694(u32 obj_ptr, u32 toolkit_ptr) {
+    u32 camera = LD32(toolkit_ptr + oToolkit_CameraPtr);
+
+    /* World-to-camera offsets */
+    u32 dx = LD32(obj_ptr) - LD32(camera + 0x3C);
+    u32 dy = LD32(obj_ptr + 4) - LD32(camera + 0x40);
+
+    /* Screen X: average of the two offsets, shifted down, then centered */
+    u32 screen_x = (u32)((s32)(dx + dy) >> 16) + SCREEN_X_OFFSET;
+
+    /* Half-difference of Y and X offsets: a depth-like intermediate */
+    u32 half_diff = (u32)((s32)(dy - dx) >> 1);
+
+    /* Depth Z: camera Z biased + 0x800000, plus the half-difference */
+    u32 cam_z = LD32(camera + 0x44);
+    u32 depth_raw = (u32)((s32)(cam_z + DEPTH_BIAS + half_diff) >> 16);
+
+    /* Screen Y: half_diff minus object Z plus camera Z, shifted down */
+    u32 obj_z = LD32(obj_ptr + 8);
+    u32 screen_y = (u32)((s32)(half_diff - obj_z + cam_z) >> 16) + SCREEN_Y_OFFSET;
+
+    /* Clip test against viewport bounds (signed comparisons) */
+    bool inside = (s32)screen_x >= (s32)VIEWPORT_X_MIN && (s32)screen_x < (s32)VIEWPORT_X_MAX &&
+                  (s32)screen_y >= (s32)VIEWPORT_Y_MIN && (s32)screen_y < (s32)VIEWPORT_Y_MAX;
+
+    ProjectionResult res;
+    res.screen_x   = screen_x;
+    res.screen_y   = screen_y;
+    res.visible    = inside ? 1 : 0;
+    res.depth_raw  = depth_raw;
+    res.depth_final = depth_raw + DRAW_Z_OFFSET;
+    return res;
+}
+
+/* sub_8003694(r0 = obj_ptr, r10 = toolkit) -> r0..r3, nzcv */
+Next sub_8003694(void) {
+    ProjectionResult p = project_object_to_screen_sub_8003694(R0, R10);
+    R0 = p.screen_x;
+    R1 = p.screen_y;
+    R2 = p.visible;
+    R3 = p.depth_final;
+    SET_FLAGS_ADD(p.depth_raw, DRAW_Z_OFFSET);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_Clear3RAMBytes_800371A ── */
 /* object_Clear3RAMBytes_800371A:
  * zero out the three single-byte flags used to track object state. */
@@ -797,6 +869,103 @@ Next SpawnOWPlayerObject(void) {
 Next sub_8003C70(void) {
     R0 = 0;
     GUEST_CALL(sub_80028C0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8003E18 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sub_80028C0 has no typed C interface yet */
+static inline void call_sub_80028C0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_80028C0);
+}
+
+/* Sprite update pass over the battle object list.
+ *
+ * byte_2036778: number of object slots to visit.
+ * dword_2039A10: address of an array of object pointers.
+ *
+ * For each object, status byte at offset 0:
+ *   bit 1 set -> fully drawn: project/cull (transform at +0x34), ensure gfx resident,
+ *                 queue frame pieces (piece list at +0x90).
+ *   bit 1 clear -> zero the piece counter (+0x90+0x24); if bit 0 is set, still
+ *                 project/cull so its transform stays up to date.
+ * After the loop, sub_80028C0(1) finalizes the frame.
+ *
+ * Preserves r4-r9, r12 across callee clobbering; r3 left as last callee produces. */
+
+/* --- Helpers for sprite calls through literal-pool addresses --- */
+
+static void call_project_and_cull(u32 transform_ptr, u32 obj) {
+    /* register form: sprite_projectAndCull has no generated wrapper;
+       args passed in R0 and R5 via GUEST_CALL_ADDR */
+    R0 = transform_ptr;
+    R5 = obj;
+    GUEST_CALL_ADDR(A_sprite_projectAndCull + 1);
+}
+
+static void call_ensure_gfx_resident(u32 obj) {
+    /* register form: sprite_ensureGfxResident has no generated wrapper;
+       args passed in R0 and R5 via GUEST_CALL_ADDR */
+    R0 = 1;
+    R5 = obj;
+    GUEST_CALL_ADDR(A_sprite_ensureGfxResident + 1);
+}
+
+static void call_queue_frame_pieces(u32 piece_list) {
+    /* register form: sprite_queueFramePieces has no generated wrapper;
+       args passed in R0, R1 and R5 via GUEST_CALL_ADDR */
+    R0 = 2;
+    R1 = 0x40;
+    R5 = piece_list;
+    GUEST_CALL_ADDR(A_sprite_queueFramePieces + 1);
+}
+
+/* --- Main logic --- */
+
+static void update_sprites(void) {
+    /* register form: caller-preserved r4-r9, r12 must be saved/restored
+       across sprite/sub_80028C0 calls which clobber them */
+    u32 save_r4 = R4, save_r5 = R5, save_r6 = R6, save_r7 = R7;
+    u32 save_r8 = R8, save_r9 = R9, save_r12 = R12;
+
+    s32 remaining = (s32)LD8(A_byte_2036778);
+    u32 slot = A_dword_2039A10;
+
+    while (--remaining >= 0) {
+        u32 obj = LD32(slot);
+        u32 status = LD8(obj);
+        slot += 4;
+
+        if (status & 2) {
+            /* fully visible: project, load gfx, queue sprite pieces */
+            call_project_and_cull(obj + 0x34, obj);
+            call_ensure_gfx_resident(obj);
+            call_queue_frame_pieces(obj + 0x90);
+        } else {
+            /* not drawn: clear queued piece count */
+            ST32(obj + 0x90 + 0x24, 0);
+            /* if bit 0 still set, keep its transform projected/culled */
+            if (status & 1)
+                call_project_and_cull(obj + 0x34, obj);
+        }
+    }
+
+    /* finalize this update pass */
+    call_sub_80028C0(1);
+
+    R4  = save_r4;
+    R5  = save_r5;
+    R6  = save_r6;
+    R7  = save_r7;
+    R8  = save_r8;
+    R9  = save_r9;
+    R12 = save_r12;
+}
+
+/* sub_8003E18 -> (void); clobbers r0-r2, r3, flags, lr; preserves r4-r9, r10-r12 */
+Next sub_8003E18(void) {
+    update_sprites();
     RETURN_TO_CALLER();
 }
 

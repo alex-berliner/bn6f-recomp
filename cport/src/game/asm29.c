@@ -784,6 +784,96 @@ update_and_return:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A5690 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r4; } call_sub_80A5724_result;
+/* register form: generated wrapper: sub_80A5724 has no typed C interface yet */
+static inline call_sub_80A5724_result call_sub_80A5724(u32 r6) {
+    R6 = r6;
+    GUEST_CALL(sub_80A5724);
+    return (call_sub_80A5724_result){ R0, R1, R4 };
+}
+
+/* sub_80A5690: Test whether the camera position (stored at r5+0xC, r5+0x10)
+ * falls within any rectangular region associated with the current map group.
+ * Region tables are indexed by a per-map-group selector. For each region
+ * entry, the center (x-8, y+8) is scaled to 16.16 fixed-point, the axis
+ * distances to the camera are computed, and sub_80A5724 provides a per-axis
+ * radius threshold (also scaled to 16.16). The camera is "inside" that
+ * region if both distances are at most the corresponding thresholds.
+ *
+ * Returns r0 = 1 (inside) or 0 (outside); r2 = the last X threshold
+ * computed (leftover from the region loop). */
+
+struct sub_80A5690_result {
+    u32 r0;   /* 1 = found inside a region, 0 = not found */
+    u32 r2;   /* last scaled X threshold (internal, visible to caller) */
+};
+
+static struct sub_80A5690_result test_camera_in_map_regions(u32 camera, u32 param_r6, u32 toolkit) {
+    /* Determine which region table to use for this map. */
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 regionIndex;
+    if (LD8(gameState + oGameState_MapGroup) == 0x85)
+        regionIndex = 2;
+    else
+        regionIndex = LD8(gameState + 5);
+
+    /* Load the region coordinate table and its entry count. */
+    u32 regionTable = LD32(A_off_80A5714 + regionIndex * 4);
+    u32 entryCount  = LD8(A_dword_80A5720 + regionIndex);
+    ST8(camera + 6, entryCount);
+
+    /* Camera position in 16.16 fixed-point. */
+    s32 camX = (s32)LD32(camera + 0xC);
+    s32 camY = (s32)LD32(camera + 0x10);
+
+    u32 lastThresholdX = 0;
+
+    /* Do-while loop: always executes the body at least once. */
+    for (u32 i = 0; ; i++) {
+        /* Region center scaled to 16.16, with -8/+8 offset baked in. */
+        s32 boxX = ((s32)(s16)LDS16(regionTable + i * 4) - 8) << 16;
+        s32 boxY = ((s32)(s16)LDS16(regionTable + i * 4 + 2) + 8) << 16;
+
+        /* Absolute axis distance from region center to camera. */
+        s32 dx = (boxX >= camX) ? boxX - camX : camX - boxX;
+        s32 dy = (boxY >= camY) ? boxY - camY : camY - boxY;
+
+        /* register form: sub_80A5724 reads its distance parameters from
+         * the guest stack at [SP] and [SP+4]; C has no equivalent way to
+         * place arguments below the frame pointer for a stack-padded callee. */
+        u32 savedSP = SP;
+        SP = savedSP - 8;
+        ST32(SP,     (u32)dx);
+        ST32(SP + 4, (u32)dy);
+        call_sub_80A5724_result thresh = call_sub_80A5724(param_r6);
+        dx = (s32)LD32(SP);
+        dy = (s32)LD32(SP + 4);
+        SP = savedSP;
+
+        /* Scale thresholds to 16.16 and test containment. */
+        u32 scaledX = (thresh.r0) << 16;
+        u32 scaledY = (thresh.r1) << 16;
+        lastThresholdX = scaledX;
+
+        if ((s32)dx <= (s32)scaledX && (s32)dy <= (s32)scaledY)
+            return (struct sub_80A5690_result){1, lastThresholdX};
+
+        /* Advance loop counter; exit when all entries checked. */
+        if (i + 1 >= (s32)entryCount)
+            return (struct sub_80A5690_result){0, lastThresholdX};
+    }
+}
+
+/* sub_80A5690(r5 = camera, r6, r10 = toolkit, lr) -> r0, r2; preserves r5, r6 */
+Next sub_80A5690(void) {
+    struct sub_80A5690_result res = test_camera_in_map_regions(R5, R6, R10);
+    R0 = res.r0;
+    R2 = res.r2;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80A5724 ── */
 /* sub_80A5724: look up two bytes from ROM tables indexed by a one-byte selector at r6+5.
  *   inputs:  r6 = pointer to some object/struct whose byte at offset 5 is a selector

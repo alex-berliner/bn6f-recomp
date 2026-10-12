@@ -669,6 +669,118 @@ Next clearScratchBuffer_2034F60_8019FA4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_setupCollisionData ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r3; } call_object_getTableEntry_801A0BA_result;
+/* register form: generated wrapper: object_getTableEntry_801A0BA has no typed C interface yet */
+static inline call_object_getTableEntry_801A0BA_result call_object_getTableEntry_801A0BA(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_getTableEntry_801A0BA);
+    return (call_object_getTableEntry_801A0BA_result){ R0, R1, R3 };
+}
+
+typedef struct { u32 r0; } call_battle_isTimeStop_result;
+/* register form: generated wrapper: battle_isTimeStop has no typed C interface yet */
+static inline call_battle_isTimeStop_result call_battle_isTimeStop(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return (call_battle_isTimeStop_result){ R0 };
+}
+
+typedef struct { u32 r0, r1, r3, r6; bool z, n, c, v; } call_sub_8019F44_result;
+/* register form: generated wrapper: sub_8019F44 has no typed C interface yet */
+static inline call_sub_8019F44_result call_sub_8019F44(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(sub_8019F44);
+    return (call_sub_8019F44_result){ R0, R1, R3, R6, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Fill the collision-data struct for a battle object, resolve self/target collision
+ * type flags from the table, and finalize via sub_8019F44. */
+typedef struct {
+    u32 r0;  /* sub_8019F44 exit r0 */
+    u32 r1;  /* sub_8019F44 exit r1 */
+    u64 r6;  /* sub_8019F44 exit r6 */
+} CollisionSetupResult;
+
+static CollisionSetupResult setup_collision_data(u32 out_ptr, u32 parent_ptr,
+                                                 u32 table_self, u32 table_target,
+                                                 u32 hit_modifier) {
+    /* Copy parent object pointer */
+    ST32(out_ptr + oCollisionData_ParentObjectPtr, parent_ptr);
+
+    /* Store hit modifier base */
+    ST8(out_ptr + oCollisionData_HitModifierBase, (u8)hit_modifier);
+
+    /* Split element byte into primary (low nibble) and secondary (high nibble) */
+    u32 element = LD8(parent_ptr + oBattleObject_Element);
+    ST8(out_ptr + oCollisionData_PrimaryElement,   (u8)(element & 0x0F));
+    ST8(out_ptr + oCollisionData_SecondaryElement, (u8)(element & 0xF0));
+
+    /* Copy alliance/direction-flip field */
+    ST16(out_ptr + oCollisionData_AllianceAndDirectionFlip,
+         LD16(parent_ptr + oBattleObject_AllianceAndDirectionFlip));
+
+    /* Copy panel X/Y */
+    ST16(out_ptr + oCollisionData_PanelXY,
+         LD16(parent_ptr + oBattleObject_PanelXY));
+
+    /* Region is always 1 */
+    ST8(out_ptr + oCollisionData_Region, 1);
+
+    /* Stamina damage counter / disabler (low byte of 16-bit field) */
+    ST8(out_ptr + oCollisionData_StaminaDamageCounterDisabler,
+        (u8)LD16(parent_ptr + oBattleObject_StaminaDamageCounterDisabler));
+
+    /* Self damage */
+    ST16(out_ptr + oCollisionData_SelfDamage,
+         LD16(parent_ptr + oBattleObject_Damage));
+
+    /* Self collision-type flags: lookup by alliance + table_self */
+    u8 alliance = (u8)LD8(parent_ptr + oBattleObject_Alliance);
+    call_object_getTableEntry_801A0BA_result self_entry =
+        call_object_getTableEntry_801A0BA(alliance, table_self);
+    ST32(out_ptr + oCollisionData_SelfCollisionTypeFlags, self_entry.r0);
+
+    /* If time stop is active, OR in the frozen bit (bit 16) */
+    call_battle_isTimeStop_result ts = call_battle_isTimeStop();
+    if (ts.r0 != 0) {
+        u32 flags = LD32(out_ptr + oCollisionData_SelfCollisionTypeFlags);
+        ST32(out_ptr + oCollisionData_SelfCollisionTypeFlags, flags | (1u << 16));
+    }
+
+    /* Target collision-type flags: lookup by alliance + table_target */
+    call_object_getTableEntry_801A0BA_result target_entry =
+        call_object_getTableEntry_801A0BA(alliance, table_target);
+    ST32(out_ptr + oCollisionData_TargetCollisionTypeFlags, target_entry.r0);
+
+    /* Finalize: sub_8019F44(collision_ptr, r1 from target lookup, parent_ptr) */
+    call_sub_8019F44_result fin =
+        call_sub_8019F44(out_ptr, target_entry.r1, parent_ptr);
+
+    CollisionSetupResult result;
+    result.r0 = fin.r0;
+    result.r1 = fin.r1;
+    result.r6 = fin.r6;
+    return result;
+}
+
+Next object_setupCollisionData(void) {
+    CollisionSetupResult res = setup_collision_data(
+        R0,    /* out_ptr: collision data struct to fill */
+        R5,    /* parent_ptr: source battle object */
+        R1,    /* table_self: self collision-type table index */
+        R2,    /* table_target: target collision-type table index */
+        R3);   /* hit_modifier: stored as 8-bit */
+
+    R0 = res.r0;
+    R1 = res.r1;
+    R6 = (u32)res.r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── object_removeCollisionData ── */
 /* object_removeCollisionData (0x0801A00E):
  * THUMB trampoline into the ARM helper _object_removeCollisionData.
@@ -1569,6 +1681,386 @@ Next battle_clearAIDataAndBarrier_801A7F4(void) {
     ST32(aiData + oAIData_Unk_60, 0);
     ST8(collision + 6, 0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801AC6C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool c, v; } call_sprite_clearFinalPalette_result;
+/* register form: generated wrapper: sprite_clearFinalPalette has no typed C interface yet */
+static inline call_sprite_clearFinalPalette_result call_sprite_clearFinalPalette(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_clearFinalPalette);
+    return (call_sprite_clearFinalPalette_result){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: battle_getFlags has no typed C interface yet */
+static inline u32 call_battle_getFlags(void) {
+    GUEST_CALL(battle_getFlags);
+    return R0;
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7; bool c, v; } call_object_removeCollisionData_result;
+/* register form: generated wrapper: object_removeCollisionData has no typed C interface yet */
+static inline call_object_removeCollisionData_result call_object_removeCollisionData(u32 r4, u32 r5, u32 r7) {
+    R4 = r4;
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(object_removeCollisionData);
+    return (call_object_removeCollisionData_result){ R2, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r3; } call_battle_isBattleOver_result;
+/* register form: generated wrapper: battle_isBattleOver has no typed C interface yet */
+static inline call_battle_isBattleOver_result call_battle_isBattleOver(void) {
+    GUEST_CALL(battle_isBattleOver);
+    return (call_battle_isBattleOver_result){ R0, R3 };
+}
+
+/* register form: generated wrapper: object_getFlag has no typed C interface yet */
+static inline u32 call_object_getFlag(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+typedef struct { u32 r2, r4, r6; } call_sub_801A802_result;
+/* register form: generated wrapper: sub_801A802 has no typed C interface yet */
+static inline call_sub_801A802_result call_sub_801A802(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_801A802);
+    return (call_sub_801A802_result){ R2, R4, R6 };
+}
+
+typedef struct { u32 r2, r7; } call_sub_801A186_result;
+/* register form: generated wrapper: sub_801A186 has no typed C interface yet */
+static inline call_sub_801A186_result call_sub_801A186(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_801A186);
+    return (call_sub_801A186_result){ R2, R7 };
+}
+
+typedef struct { u32 r2, r4, r7; } call_sub_801A36A_result;
+/* register form: generated wrapper: sub_801A36A has no typed C interface yet */
+static inline call_sub_801A36A_result call_sub_801A36A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_801A36A);
+    return (call_sub_801A36A_result){ R2, R4, R7 };
+}
+
+typedef struct { u32 r6; } call_battle_tickAiSelfDrain_8010230_result;
+/* register form: generated wrapper: battle_tickAiSelfDrain_8010230 has no typed C interface yet */
+static inline call_battle_tickAiSelfDrain_8010230_result call_battle_tickAiSelfDrain_8010230(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_tickAiSelfDrain_8010230);
+    return (call_battle_tickAiSelfDrain_8010230_result){ R6 };
+}
+
+typedef struct { u32 r5, r6, r7, r10; } call_battleObject_handleImpact_802CFF8_result;
+/* register form: generated wrapper: battleObject_handleImpact_802CFF8 has no typed C interface yet */
+static inline call_battleObject_handleImpact_802CFF8_result call_battleObject_handleImpact_802CFF8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_handleImpact_802CFF8);
+    return (call_battleObject_handleImpact_802CFF8_result){ R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r5, r6, r7, r10; } call_hiveBlockHappensHere_802CEF4_result;
+/* register form: generated wrapper: hiveBlockHappensHere_802CEF4 has no typed C interface yet */
+static inline call_hiveBlockHappensHere_802CEF4_result call_hiveBlockHappensHere_802CEF4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(hiveBlockHappensHere_802CEF4);
+    return (call_hiveBlockHappensHere_802CEF4_result){ R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r6, r7; } call_battle_incrementAllianceStatOnCollisionHit_801A6B4_result;
+/* register form: generated wrapper: battle_incrementAllianceStatOnCollisionHit_801A6B4 has no typed C interface yet */
+static inline call_battle_incrementAllianceStatOnCollisionHit_801A6B4_result call_battle_incrementAllianceStatOnCollisionHit_801A6B4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_incrementAllianceStatOnCollisionHit_801A6B4);
+    return (call_battle_incrementAllianceStatOnCollisionHit_801A6B4_result){ R6, R7 };
+}
+
+typedef struct { u32 r6, r7; } call_battle_buffTwoStatsPlus2OnEventF6_801A720_result;
+/* register form: generated wrapper: battle_buffTwoStatsPlus2OnEventF6_801A720 has no typed C interface yet */
+static inline call_battle_buffTwoStatsPlus2OnEventF6_801A720_result call_battle_buffTwoStatsPlus2OnEventF6_801A720(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_buffTwoStatsPlus2OnEventF6_801A720);
+    return (call_battle_buffTwoStatsPlus2OnEventF6_801A720_result){ R6, R7 };
+}
+
+typedef struct { u32 r5, r7, r8, r9, r10, r11, r12; } call_sub_80139F6_result;
+/* register form: generated wrapper: sub_80139F6 has no typed C interface yet */
+static inline call_sub_80139F6_result call_sub_80139F6(u32 r5, u32 r6, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(sub_80139F6);
+    return (call_sub_80139F6_result){ R5, R7, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: sub_801AEB0 has no typed C interface yet */
+static inline void call_sub_801AEB0(u32 r5, u32 r7) {
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(sub_801AEB0);
+}
+
+/* register form: generated wrapper: battle_applyFlattenHitStatus_800EB26 has no typed C interface yet */
+static inline void call_battle_applyFlattenHitStatus_800EB26(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_applyFlattenHitStatus_800EB26);
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_handlePanelDamage_8013F1E_result;
+/* register form: generated wrapper: handlePanelDamage_8013F1E has no typed C interface yet */
+static inline call_handlePanelDamage_8013F1E_result call_handlePanelDamage_8013F1E(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(handlePanelDamage_8013F1E);
+    return (call_handlePanelDamage_8013F1E_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r0, r6; } call_GetBattleNaviStatsByte_AllianceFromBattleObject_result;
+/* register form: generated wrapper: GetBattleNaviStatsByte_AllianceFromBattleObject has no typed C interface yet */
+static inline call_GetBattleNaviStatsByte_AllianceFromBattleObject_result call_GetBattleNaviStatsByte_AllianceFromBattleObject(u32 r1, u32 r5) {
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return (call_GetBattleNaviStatsByte_AllianceFromBattleObject_result){ R0, R6 };
+}
+
+/* register form: generated wrapper: battleObject_applyStatusEffect_801A554 has no typed C interface yet */
+static inline void call_battleObject_applyStatusEffect_801A554(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_applyStatusEffect_801A554);
+}
+
+/* register form: generated wrapper: sub_801A2CC has no typed C interface yet */
+static inline void call_sub_801A2CC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_801A2CC);
+}
+
+typedef struct { u32 r5, r10; } call_sub_801A324_result;
+/* register form: generated wrapper: sub_801A324 has no typed C interface yet */
+static inline call_sub_801A324_result call_sub_801A324(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_801A324);
+    return (call_sub_801A324_result){ R5, R10 };
+}
+
+typedef struct { u32 r2, r6; bool c, v; } call_object_calculateFinalDamage1_result;
+/* register form: generated wrapper: object_calculateFinalDamage1 has no typed C interface yet */
+static inline call_object_calculateFinalDamage1_result call_object_calculateFinalDamage1(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_calculateFinalDamage1);
+    return (call_object_calculateFinalDamage1_result){ R2, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { bool c, v; } call_sub_801A420_result;
+/* register form: generated wrapper: sub_801A420 has no typed C interface yet */
+static inline call_sub_801A420_result call_sub_801A420(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_801A420);
+    return (call_sub_801A420_result){ CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: battle_runObjectAI_80143FC has no typed C interface yet */
+static inline void call_battle_runObjectAI_80143FC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_runObjectAI_80143FC);
+}
+
+typedef struct { u32 r2; } call_sub_80142DC_result;
+/* register form: generated wrapper: sub_80142DC has no typed C interface yet */
+static inline call_sub_80142DC_result call_sub_80142DC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80142DC);
+    return (call_sub_80142DC_result){ R2 };
+}
+
+typedef struct { u32 r3; } call_battle_objectClearPendingHitIfCollisionProcessed_8010198_result;
+/* register form: generated wrapper: battle_objectClearPendingHitIfCollisionProcessed_8010198 has no typed C interface yet */
+static inline call_battle_objectClearPendingHitIfCollisionProcessed_8010198_result call_battle_objectClearPendingHitIfCollisionProcessed_8010198(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_objectClearPendingHitIfCollisionProcessed_8010198);
+    return (call_battle_objectClearPendingHitIfCollisionProcessed_8010198_result){ R3 };
+}
+
+typedef struct { u32 r3; } call_battle_clearInvisFlashTimer_801A648_result;
+/* register form: generated wrapper: battle_clearInvisFlashTimer_801A648 has no typed C interface yet */
+static inline call_battle_clearInvisFlashTimer_801A648_result call_battle_clearInvisFlashTimer_801A648(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_clearInvisFlashTimer_801A648);
+    return (call_battle_clearInvisFlashTimer_801A648_result){ R3 };
+}
+
+typedef struct { u32 r2, r3, r5, r6, r10; bool v; } call_object_spawnHiteffect_result;
+/* register form: generated wrapper: object_spawnHiteffect has no typed C interface yet */
+static inline call_object_spawnHiteffect_result call_object_spawnHiteffect(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(object_spawnHiteffect);
+    return (call_object_spawnHiteffect_result){ R2, R3, R5, R6, R10, OVERFLOW_FLAG() };
+}
+
+/* sub_801AC6C: per-frame collision resolution for the active battle object.
+ *
+ * Runs the full hit-response pipeline: clears the sprite palette, loads the
+ * collision-data pointer, gates on battle flags / battle-over / object-ignore-
+ * collision flag, then applies impact handlers, stat buffs, panel damage, a
+ * status-effect guard, final damage, AI tick, and hit-effect spawn.
+ *
+ * r4 and r7 are internal scratch (pushed/popped in the original) – callers
+ * see them unchanged, so the adapter saves and restores them.
+ */
+
+typedef struct {
+    u32 r5, r8, r9, r10, r11, r12;
+} CollisionOutputs;
+
+static CollisionOutputs handle_collision(u32 r4, u32 r5, u32 r6,
+                                         u32 r8, u32 r9, u32 r10,
+                                         u32 r11, u32 r12) {
+    CollisionOutputs out = { r5, r8, r9, r10, r11, r12 };
+
+    /* Refresh the sprite's palette cache. */
+    call_sprite_clearFinalPalette(r5);
+
+    /* Grab the collision-data pointer (local scratch in r7). */
+    u32 r7 = LD32(r5 + oBattleObject_CollisionDataPtr);
+
+    /* Gate 1: bit 0 of the global battle flags must be set. */
+    u32 flags = call_battle_getFlags();
+    if (!(flags & 1u))
+        return out;
+
+    /* Remove the collision record (updates r5; r6/r7 are scratch). */
+    call_object_removeCollisionData_result rm =
+        call_object_removeCollisionData(r4, r5, r7);
+    out.r5 = rm.r5;
+    r6 = rm.r6;
+    r7 = rm.r7;
+
+    /* Gate 2: bail if the battle just ended. */
+    call_battle_isBattleOver_result over = call_battle_isBattleOver();
+    if (over.r0 != 0)
+        return out;
+
+    /* Gate 3: skip if the object's ignore-collision flag (bit 8) is set. */
+    u32 obj_flag = call_object_getFlag(out.r5);
+    if (obj_flag & (1u << 8))
+        return out;
+
+    /* --- Impact / buff / stat pipeline (r7 is local scratch throughout) --- */
+
+    call_sub_801A802_result h1 = call_sub_801A802(out.r5);
+    r6 = h1.r6;
+
+    call_sub_801A186_result h2 = call_sub_801A186(out.r5);
+    r7 = h2.r7;
+
+    call_sub_801A36A_result h3 = call_sub_801A36A(out.r5);
+    r7 = h3.r7;
+
+    call_battle_tickAiSelfDrain_8010230_result h4 =
+        call_battle_tickAiSelfDrain_8010230(out.r5);
+    r6 = h4.r6;
+
+    /* Impact and hive-block handlers (r5, r10 change). */
+    call_battleObject_handleImpact_802CFF8_result h5 =
+        call_battleObject_handleImpact_802CFF8(out.r5);
+    out.r5 = h5.r5; r6 = h5.r6; r7 = h5.r7; out.r10 = h5.r10;
+
+    call_hiveBlockHappensHere_802CEF4_result h6 =
+        call_hiveBlockHappensHere_802CEF4(out.r5);
+    out.r5 = h6.r5; r6 = h6.r6; r7 = h6.r7; out.r10 = h6.r10;
+
+    /* Alliance-stat increment and +2 buff on event F6. */
+    call_battle_incrementAllianceStatOnCollisionHit_801A6B4_result h7 =
+        call_battle_incrementAllianceStatOnCollisionHit_801A6B4(out.r5);
+    r6 = h7.r6; r7 = h7.r7;
+
+    call_battle_buffTwoStatsPlus2OnEventF6_801A720_result h8 =
+        call_battle_buffTwoStatsPlus2OnEventF6_801A720(out.r5);
+    r6 = h8.r6; r7 = h8.r7;
+
+    /* Sub-screen collision / stat-update. */
+    call_sub_80139F6_result h9 = call_sub_80139F6(
+        out.r5, r6, r7, out.r8, out.r9, out.r11, out.r12);
+    out.r5 = h9.r5; r7 = h9.r7;
+    out.r8 = h9.r8; out.r9 = h9.r9; out.r10 = h9.r10;
+    out.r11 = h9.r11; out.r12 = h9.r12;
+
+    call_sub_801AEB0(out.r5, r7);
+    call_battle_applyFlattenHitStatus_800EB26(out.r5);
+
+    /* Panel-damage handler (r7 becomes dead after this point). */
+    call_handlePanelDamage_8013F1E_result h10 =
+        call_handlePanelDamage_8013F1E(out.r5);
+    out.r5 = h10.r5; out.r8 = h10.r8; out.r9 = h10.r9;
+    out.r10 = h10.r10; out.r11 = h10.r11; out.r12 = h10.r12;
+
+    /* --- Status-effect guard: check three Navi-stat bytes to decide
+     *     whether the object is immune / not status-vulnerable. --- */
+    bool apply_status = true;
+
+    call_GetBattleNaviStatsByte_AllianceFromBattleObject_result s1 =
+        call_GetBattleNaviStatsByte_AllianceFromBattleObject(0x29u, out.r5);
+    if (s1.r0 == 7u) {
+        apply_status = false;
+    } else {
+        call_GetBattleNaviStatsByte_AllianceFromBattleObject_result s2 =
+            call_GetBattleNaviStatsByte_AllianceFromBattleObject(0x2Cu, out.r5);
+        if (s2.r0 == 7u || s2.r0 == 0x13u) {
+            apply_status = false;
+        } else {
+            call_GetBattleNaviStatsByte_AllianceFromBattleObject_result s3 =
+                call_GetBattleNaviStatsByte_AllianceFromBattleObject(0x52u, out.r5);
+            if (s3.r0 != 0u)
+                apply_status = false;
+        }
+    }
+    if (apply_status)
+        call_battleObject_applyStatusEffect_801A554(out.r5);
+
+    /* --- Final damage / AI / hit-effect tail --- */
+    call_sub_801A2CC(out.r5);
+
+    call_sub_801A324_result h11 = call_sub_801A324(out.r5);
+    out.r5 = h11.r5; out.r10 = h11.r10;
+
+    call_object_calculateFinalDamage1_result dmg =
+        call_object_calculateFinalDamage1(out.r5);
+    u32 r2 = dmg.r2;
+
+    call_sub_801A420(out.r5);
+    call_battle_runObjectAI_80143FC(out.r5);
+
+    call_sub_80142DC_result h12 = call_sub_80142DC(out.r5);
+    r2 = h12.r2;
+
+    call_battle_objectClearPendingHitIfCollisionProcessed_8010198(out.r5);
+    call_battle_clearInvisFlashTimer_801A648(out.r5);
+
+    /* Spawn the hit-effect sprite; r5 and r10 are our outputs. */
+    call_object_spawnHiteffect_result hit =
+        call_object_spawnHiteffect(r2, out.r5);
+    out.r5 = hit.r5; out.r10 = hit.r10;
+
+    return out;
+}
+
+Next sub_801AC6C(void) {
+    u32 saved_r4 = R4, saved_r7 = R7;
+    CollisionOutputs res = handle_collision(
+        saved_r4, R5, R6, R8, R9, R10, R11, R12);
+    R5 = res.r5, R8 = res.r8, R9 = res.r9;
+    R10 = res.r10, R11 = res.r11, R12 = res.r12;
+    R4 = saved_r4, R7 = saved_r7;
     RETURN_TO_CALLER();
 }
 
