@@ -4523,6 +4523,28 @@ Next sub_812AEE0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_812AEFC ── */
+/* sub_812AEFC: chatbox input/mask handling.
+ * Calls chatbox_mask_eFlags2009F38 to test two eFlags. If eFlag 0x80 is clear, OR
+ * if eFlag 0x8 is set, calls sub_8132614. Otherwise returns without calling it. */
+Next sub_812AEFC(void) {
+    /* Test eFlag 0x80. */
+    R0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    if (ZERO_FLAG()) {
+        /* eFlag 0x80 clear: run sub_8132614. */
+        GUEST_CALL(sub_8132614);
+    } else {
+        /* eFlag 0x80 set: test eFlag 0x8. If set, return; else run sub_8132614. */
+        R0 = 8;
+        GUEST_CALL(chatbox_mask_eFlags2009F38);
+        if (!ZERO_FLAG()) {
+            GUEST_CALL(sub_8132614);
+        }
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── scene_loadAndStartCutscene_812AF18 ── */
 /* scene_loadAndStartCutscene_812AF18: set up a scene — run its init routine, decompress and copy its
  * asset reference table, then load its graphics/text/sprite resources and start
@@ -4830,6 +4852,84 @@ Next sub_812B318(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_812B39C ── */
+/* sub_812B39C: show a chatbox line for this object's current text variant.
+ *   r5 -> object; r10 = caller context (unused here).
+ *   Picks one of the eTextScript201BA20 scripts indexed by the object's
+ *   byte at offset 0x12, then runs it through the chatbox runner. */
+Next sub_812B39C(void) {
+    u8 index = LD8(R5 + 0x12);
+    u32 script_base = A_dword_812B3B0;
+    u8 variant = LD8(script_base + index);
+
+    R0 = variant;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B3B4 ── */
+/* sub_812B3B4(r5 = struct*, r4 r10 = ignored, lr = ignored):
+ *   Look up a byte from a jump-table-like blob using the low byte of r5->0x12,
+ *   then run it as a chatbox script on eTextScript201BA20.
+ *   inputs:  r4 r5 r10 lr
+ *   outputs: c v r2 r3 r4 r5 r6 lr
+ *   clobbers (free for us): nz r0 r1
+ *   preserved: r6 r7 */
+Next sub_812B3B4(void) {
+    /* Jump table: dword_812B3C8 is just the address 0x00000D0C,
+     * but the original treats it as a label used by the disassembler. */
+    u32 table = A_dword_812B3C8;
+    /* Index = low byte of the field at offset 0x12 in the struct r5 points to. */
+    u32 index = LD8(R5 + 0x12);
+    /* Read the script index from the table, then run it. */
+    u32 script = LD8(table + index);
+    R0 = script;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B3CC ── */
+/* sub_812B3CC(r5 = battle object, [r5+0x12] = message id)
+ * Looks up a script index from a small table at dword_812B3E0 and runs
+ * the chatbox script dispatcher. */
+Next sub_812B3CC(void) {
+    u8 msg_id = LD8(R5 + 0x12);
+    R0 = msg_id;
+    R1 = A_dword_812B3E0;
+    R0 = LD8(R1 + R0);
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B3E4 ── */
+Next sub_812B3E4(void) {
+    /* Fetch a one-byte index from r5+0x13, use it to look up a byte in the
+     * table at dword_812B3F8, then feed that byte to the chatbox script
+     * runner for eTextScript201BA20. */
+    u8 idx = LD8(R5 + 0x13);
+    u8 byte = LD8((u32)A_dword_812B3F8 + idx);
+
+    R0 = byte;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B3FC ── */
+Next sub_812B3FC(void) {
+    /* Read the small index field out of the r5 struct (offset 0xE),
+     * use it to pick one byte from the dword_812B410 table, and feed
+     * that byte to the chatbox script runner on eTextScript201BA20. */
+    u8 index = LD8(R5 + 0xE);
+    u8 arg = LD8(A_dword_812B410 + index);
+
+    R0 = arg;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_selectTarget_812B414 ── */
 /* battle_selectTarget_812B414(r5 = battle object, r10 = ?, lr = return address):
  * mark the battle object as the active target, clear its counters, flag it
@@ -4850,6 +4950,72 @@ Next battle_selectTarget_812B414(void) {
     /* Run chatbox script index 0x23 (the "selection" dialogue line). */
     R0 = 0x23;
     GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B430 ── */
+/* sub_812B430: Render two title-screen style text GFX panels and copy two
+ * tile blocks in the background. The source "panel" pointer arrives in
+ * r10 and contains pointers to two sub-structs at offsets 0x38 and 0x40,
+ * the latter holding the tile dimensions that get copied onto the former.
+ *
+ * r4-r7 are callee-scratch here (the assembly pushes/pops them so the
+ * helpers can clobber them), so we just save and restore them to preserve
+ * the caller's values. */
+Next sub_812B430(void) {
+    u32 save_r4 = R4;
+    u32 save_r5 = R5;
+    u32 save_r6 = R6;
+    u32 save_r7 = R7;
+
+    /* First text render: eTextScript201BA20 into VRAM 0x06007200,
+     * slot 0x20. */
+    R0 = A_eTextScript201BA20;
+    R1 = 0x20;
+    R2 = A_byte_2017A00;
+    R3 = 0x06007200;
+    R4 = 0xA;
+    R5 = 1;
+    R6 = A_dword_86B7AE0;
+    R7 = 0;
+    GUEST_CALL(renderTextGfx_8045F8C);
+
+    /* Copy the source panel's (0x40)->width/height into the dest's
+     * (0x38)->width/height slots. */
+    {
+        u32 src    = LD32(R10 + 0x40);
+        u32 width  = LD16(src + 0x8);
+        u32 height = LD16(src + 0xA);
+        u32 dst    = LD32(R10 + 0x38);
+        ST32(dst + 0x8, width);
+        ST32(dst + 0xC, height);
+    }
+
+    /* Second text render: eTextScript201BA20 into VRAM 0x06007480,
+     * slot 0x21. */
+    R0 = A_eTextScript201BA20;
+    R1 = 0x21;
+    R2 = A_unk_2017C80;
+    R3 = 0x06007480;
+    R4 = 0xA;
+    R5 = 1;
+    R6 = A_dword_86B7AE0;
+    R7 = 0;
+    GUEST_CALL(renderTextGfx_8045F8C);
+
+    /* Copy two 2x2-tile blocks of tile-id tables onto the background. */
+    R0 = 0x10; R1 = 4; R2 = 2; R3 = A_byte_8129188; R4 = 0xA; R5 = 2;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    R0 = 0x11; R1 = 6; R2 = 2; R3 = A_byte_81291B0; R4 = 0xA; R5 = 2;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    /* Restore r4-r7 so the caller sees them unchanged. */
+    R4 = save_r4;
+    R5 = save_r5;
+    R6 = save_r6;
+    R7 = save_r7;
 
     RETURN_TO_CALLER();
 }
