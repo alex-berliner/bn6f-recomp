@@ -1,0 +1,89 @@
+name: chatbox_F2_clearmsgbox
+address: '0x08041BD8'
+kind: function
+status: confirmed
+summary: Text-script opcode F2 handler — clears the currently-printing message, resets the chatbox print state,
+  and resumes the text script at the next opcode.
+interface: 'void chatbox_op_F2_clearMsgBox(u32 r4_scriptPtr, u32 r5_chatbox); flags: NZ set (r0=1)'
+details: "Handler for text-script opcode 0xF2 (\"clear message box\").\n- Sets event flag 0x200 via chatbox_set_eFlags2009F38.\n\
+  - If oChatbox_TextScriptPrintSpeed is nonzero, mirrors it into the 3E flag word by\n  setting FLAGS_3E_UNK_0001\
+  \ and clearing FLAGS_3E_UNK_0040.\n- Clears FLAGS_3E_UNK_0400 and FLAGS_3E_UNK_0800 (text-finished / wait-for-input\
+  \ bits).\n- Advances the text-script pointer (oChatbox_CurrTextScriptPtr) past this opcode.\n- Zeros the print\
+  \ state: oChatbox_TextScriptState_04=0, oChatbox_Unk_64=0,\n  oChatbox_Unk_12=0, oChatbox_CurrLine=0, oChatbox_Unk_17=0,\n\
+  \  oChatbox_Unk_3D=0, oChatbox_Unk_80=0, oChatbox_Unk_78=4,\n  oChatbox_JumpTableOffset_11=1, oChatbox_Unk_74=1.\n\
+  - Copies the current TextScriptCharIdx into oChatbox_Unk_94, then calls\n  chatbox_resetAndClearBuffers_8045F60\
+  \ (passes that char index and a pointer to\n  the newly-stored byte at oChatbox_Unk_94).\n- Zeroes two halfword\
+  \ scratch fields whose offsets are taken from the table at\n  off_8041C48 (entries 0x1D4 and 0x1D6).\nReturns\
+  \ r0=1 (NZ) to indicate the opcode was handled.\nr5 (chatbox) is preserved; r1/r2 leak the table pointer/offset\
+  \ to callers.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261012-161704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    glm'' --file inbox_farm_m_glm.c chatbox_F2_clearmsgbox'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_F2_clearmsgbox
+
+    ./wf verify --function chatbox_F2_clearmsgbox --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 171 out
+    of domain (verify run convert-20261012-161704-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_F2_clearmsgbox
+
+    ./wf verify --function chatbox_F2_clearmsgbox --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261012-161704-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_F2_clearmsgbox
+
+    ./wf verify --function chatbox_F2_clearmsgbox --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161704-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08041bd8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp a9f64f7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact identities of FLAGS_3E_UNK_0400/0800 (likely "text finished"/"await input") and the role of flag 0x200.
+- The two halfword fields at offsets 0x1D4 and 0x1D6 (purpose unknown; size of chatbox struct implies it is huge
+  or these may be combined into one word elsewhere).
+- Whether chatbox_set_eFlags2009F38 is an event-bit set or a chatbox-state set; only the 0x200 bit is referenced
+  here.
+sources:
+- tools/wf run convert-20261012-161704
+- recomp a9f64f7

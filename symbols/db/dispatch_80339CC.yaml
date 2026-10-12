@@ -1,0 +1,101 @@
+name: dispatch_80339CC
+address: '0x080339CC'
+kind: function
+status: confirmed
+summary: 'PET menu scene dispatcher: runs the current sub-handler of the singleton scene state eS2011E30 every tick,
+  picking between a real-world and an internet jump table based on the current map group, and choosing between paired
+  entries in the real-world table via the CopyBot / PetNavi event flags.'
+interface: void dispatch_80339CC(u32 toolkit /* r10 */); // r4-r7 preserved by push/pop; r2,r3,r8-r12 and NZCV pass
+  through from the last callee (bails out early if TestPETMenuDataFlag(1) returns 0)
+details: "Singleton scene state at eS2011E30 (loaded via `ldr r5, off_8033A78`) carries a 1-byte state index at\
+  \ `oS2011E30_Idx_04` that selects which scene handler runs this tick.\nSkips the entire tick when `TestPETMenuDataFlag(1)`\
+  \ returns non-zero (uses r0=1, branches on Z flag).\nReads the current map group from `toolkit->GameStatePtr->MapGroup`\
+  \ (offset `oToolkit_GameStatePtr` then `oGameState_MapGroup`); once it reaches `INTERNET_MAP_GROUP_START` the\
+  \ scene is in internet mode and uses `JumpTableInternet8033A4C` directly (state byte times 8 = slot, so states\
+  \ map 1:1 to entries 0,1,2…).\nIn the real-world branch states 1..n have two slots each: the table entry just\
+  \ above and just below `state*8`. With state==0 the dispatcher uses slot 0 (entry 0) and never tests the flags.\
+  \ Otherwise it tests:\n  - `TestEventFlagFromImmediate(0x17, 0x29)` => EVENT_COPYBOT_ACTIVE, picks the lower entry\
+  \ (slot = state*8 - 4)\n  - `TestEventFlagFromImmediate(0x17, 0x1D)` => EVENT_PET_NAVI_ACTIVE, picks the higher\
+  \ entry (slot = state*8); if neither flag is set it falls through to the CopyBot (lower) entry.\nThe 11-entry\
+  \ jump tables (`JumpTable8033A1C`, `JumpTableInternet8033A4C`) pair real-world and internet variants of each handler;\
+  \ some real-world entries 0x1C/0x20/0x28 are duplicates of `onUpdateInRealWorld_8033A96`, and the corresponding\
+  \ internet entries 0x1C/0x20/0x28 are duplicates of `onUpdateInInternet_8033B1E`, suggesting they re-export the\
+  \ default handlers.\nBoth tables `bx` through r0 (handler address loaded with Thumb bit set), passing r5 = self\
+  \ = `eS2011E30`; the prologue/epilogue `push {r4-r7,lr}` / `pop {r4-r7,pc}` shields the caller's r4-r7 from the\
+  \ handler callees (which treat r5 as a transient parameter).\nPer-frame call is responsible for updating the state\
+  \ index `oS2011E30_Idx_04` itself; this function only dispatches.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261012-161704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    glm'' --file inbox_farm_m_glm.c dispatch_80339CC'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function dispatch_80339CC
+
+    ./wf verify --function dispatch_80339CC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 153 out
+    of domain (verify run convert-20261012-161704-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function dispatch_80339CC
+
+    ./wf verify --function dispatch_80339CC --snapshots build-snapshots'
+  result: 56 compared, 0 differed, 0 out of domain (verify run convert-20261012-161704-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function dispatch_80339CC
+
+    ./wf verify --function dispatch_80339CC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161704-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080339cc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp a9f64f7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which caller installs r10 = toolkit here (the parent per-frame tick)?
+- What are the meanings of real-world states 0..6 handled by `callback_noop_8033A7C`, `sub_8033A80`, `onUpdateInRealWorld_8033A96`,
+  `sub_8033AB0`, `battle_resetState_8033AC4`, `sub_8033ADC`, `sub_8033AF0`?
+- Why are entries 0x1C/0x20/0x28 and 0x24 in both tables duplicates of the default handler rather than unique handlers?
+- What is `oToolkit_GameStatePtr` and `oGameState_MapGroup` (which toolkit object is this — battle, overworld, scene
+  dispatcher)?
+- What does `TestPETMenuDataFlag(1)` represent (probably a 'PET menu data ready / allow scene to tick' check)?
+- Are the EVENT_COPYBOT_ACTIVE / EVENT_PET_NAVI_ACTIVE bank/index pairs `0:17 / 1:0x29` and `0:17 / 1:0x1D`, and
+  what is the exact flag id mapping for `EVENT_COPYBOT_ACTIVE` and `EVENT_PET_NAVI_ACTIVE`?
+sources:
+- tools/wf run convert-20261012-161704
+- recomp a9f64f7

@@ -1,0 +1,76 @@
+name: ho_jackIn_80341B6
+address: '0x080341B6'
+kind: function
+status: confirmed
+summary: 'Jack-in cutscene step dispatcher: branches on map group (real-world vs internet) and the current step
+  byte in byte_2011A40 to call one of six handlers, restoring the caller''s r4-r7.'
+interface: void ho_jackIn_80341B6(u32 toolkit /* r10 */, u32 r4, u32 r5, u32 r6, u32 r7 /* preserved across call
+  */, u32 r8, u32 r9, u32 r11, u32 r12 /* clobbered in transit */); /* uses lr */
+details: "Reads the game-state pointer through oToolkit_GameStatePtr, then peeks oGameState_MapGroup.\nCompares\
+  \ mapGroup against INTERNET_MAP_GROUP_START (signed) to pick one of two jump tables:\n  * off_80341DC (real-world\
+  \ groups): stepByte 0 -> transmission_BeginTransmissionScene_80341F8,\n    4 -> ho_8034218, 8 -> map_setupEnterMapAfterWarp_803423C.\n\
+  \  * off_80341E8 (internet groups): stepByte 0 -> sub_80342DC, 4 -> sub_80342E4,\n    8 -> map_beginEnterMapOnWarpStep4_80342EC.\n\
+  stepByte is the current jack-in phase index stored as a byte at byte_2011A40, used as a word\noffset (0/4/8) into\
+  \ the chosen table. The selected handler is invoked via `bx r0` with\nr1=stepByte, r2=gameStatePtr, r5=&byte_2011A40,\
+  \ and the cmp flags from the map-group test;\nr0-r3 and flags flow back to it. The function restores the caller's\
+  \ r4-r7 with pop {r4-r7,pc}.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261012-161704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: './wf convert --subsystem ''functions from the model farm: free-stack reinstalls and layout fixes,
+    glm'' --file inbox_farm_m_glm.c ho_jackIn_80341B6'
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ho_jackIn_80341B6
+
+    ./wf verify --function ho_jackIn_80341B6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-161704-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ho_jackIn_80341B6
+
+    ./wf verify --function ho_jackIn_80341B6 --snapshots build-snapshots'
+  result: 81 compared, 0 differed, 0 out of domain (verify run convert-20261012-161704-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ho_jackIn_80341B6
+
+    ./wf verify --function ho_jackIn_80341B6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-161704-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, menus2, story1, story2, story4, story5, story7, story8, story9.'
+  reproduce: grep -l '^080341b6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp a9f64f7
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story7
+- story8
+- story9
+open_questions:
+- Who is the sole caller of ho_jackIn_80341B6, and is it a vblank/HBlank/hook-style trampoline or called once per
+  jack-in phase?
+- Does byte_2011A40 store the phase as a byte 0..3 (the disassembly reads it as a byte but indexes by 4) or as a
+  word already?
+- Exact semantics of the six handler entry points and how they advance byte_2011A40 are not analyzed here.
+sources:
+- tools/wf run convert-20261012-161704
+- recomp a9f64f7
