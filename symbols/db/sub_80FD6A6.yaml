@@ -1,0 +1,81 @@
+name: sub_80FD6A6
+address: '0x080FD6A6'
+kind: function
+status: confirmed
+summary: Battle AI attack step machine — winds up the attack then launches a hit at the panel in front of the object.
+interface: void sub_80FD6A6(u32 r1, u32 r3 /*ctx?*/, BattleObject* r5, AIAttackVars* r7) -> r1, r5
+details: 'Operates on a battle object''s AI attack variables (r7 -> AIAttackVars) and the object itself (r5).
+
+  On first call (Unk_01 == 0): initializes windup — sets Unk_01 = 4, sets oBattleObject_CurAnim = 5,
+
+  calls object_setCounterTime(0x12), sets Unk_10 = 0x18 (windup ticks).
+
+  On subsequent calls while Unk_10 > 0: decrements Unk_10 and returns.
+
+  On expiry (Unk_10 reaches 0): reads Unk_03 (direction index 0..3), looks up high-nibble
+
+  from the 4-entry table A_byte_80FD6F0 = {0xE,0xC,0xA,0x8} (so attack IDs become
+
+  (table[idx]<<8) | idx, i.e. 0x0E00|idx .. 0x0800|idx), calls object_getFrontDirection to
+
+  compute the front-panel coordinate, then calls sub_80C81A6(targetX, targetY, Unk_02, r3,
+
+  attack_id, Unk_Damage) to spawn the hit, and finally sets Unk_00 = 0x14 (recovery state).
+
+  Note: Unk_02 carries the attack element/type; Unk_Damage carries the damage amount.
+
+  Preserves r4, r6.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80FD6A6
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD6A6
+
+    ./wf verify --function sub_80FD6A6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD6A6
+
+    ./wf verify --function sub_80FD6A6 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 89 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD6A6
+
+    ./wf verify --function sub_80FD6A6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd6a6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Meaning of r3 passed into sub_80C81A6 (likely a battle/field context pointer).
+- Exact mapping between Unk_03 index and the four facing directions the table encodes.
+- Purpose of Unk_01 = 4 (a sub-phase marker consumed by sibling state functions?).
+- Whether Unk_00 = 0x14 is "recovery duration" (ticks) or another phase tag, given the field is otherwise treated
+  as a counter elsewhere.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

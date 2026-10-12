@@ -1,0 +1,76 @@
+name: sub_80FD4E8
+address: '0x080FD4E8'
+kind: function
+status: confirmed
+summary: 'AI attack-move step for a battle object: queries per-alliance movement target, commits future panel on
+  success, otherwise writes fail timers.'
+interface: void sub_80FD4E8(u32 /* r5 */ battleObject, u32 /* r7 */ aiAttackVars) /* clobbers r0-r4,r6-r12,lr; flags
+  NZCV */
+details: "Called with the battle object in r5 and its AI attack-state vars in r7.\n1. Calls object_canMove(battleObject);\
+  \ if it returns Z set, jumps to fail.\n2. Reads battleObject->oBattleObject_Alliance (u8), index = alliance<<3\
+  \ into byte_80FD538\n   to fetch two u32 descriptors (a2, a3) -- alliance-specific target-search arguments.\n\
+  3. Reads function pointer from aiAttackVars + 0x28 and an argument from aiAttackVars + 0x2c;\n   performs an indirect\
+  \ call via \"mov lr,pc; bx r1\". Result (r0,r1) = (panelX, panelY).\n4. On r0==0 (no path/no target found), writes\
+  \ fail timers and returns.\n5. On success:\n     - battleObject->oBattleObject_FuturePanelX = (u8)r0\n     - battleObject->oBattleObject_FuturePanelY\
+  \ = (u8)r1\n     - calls object_reservePanel(target_panel) to lock the destination\n     - calls object_setFlag1(OBJECT_FLAGS_CANNOT_SLIDE)\
+  \ so the object commits its slide\n     - sets battleObject->oBattleObject_CurAnim = 4 (slide/in-charge anim)\n\
+  \     - aiAttackVars+0x10 (short) = 3   (success/animation timer)\n     - aiAttackVars+0x00 (short) = 4   (next\
+  \ state phase)\nFail path (loc_80FD524) writes:\n     - aiAttackVars+0x18 (short) = 0x50  (cooldown for retrying\
+  \ the step)\n     - aiAttackVars+0x10 (short) = 1     (phase = wait/busy)\n     - aiAttackVars+0x00 (short) =\
+  \ 8     (next state phase = 8, retry path)\nThe byte table at byte_80FD538: 0,0,1,0,0xA0,0,0x88,0xF,0x20,0,1,0,0x80,0,0x88,0xF\n\
+  encodes, per alliance (alliance<<3), two u32 indirect-call arguments.\nNotable: r1 is the only nominally preserved\
+  \ output register; all other outputs\n(r5,r8-r12) are pass-through. r6 is in the caller-saved list but not explicitly\
+  \ written.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80FD4E8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD4E8
+
+    ./wf verify --function sub_80FD4E8 --snapshots build-snapshots'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD4E8
+
+    ./wf verify --function sub_80FD4E8 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 64 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD4E8
+
+    ./wf verify --function sub_80FD4E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd4e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Which alliance corresponds to which index in the byte_80FD538 table -- only an Alliance of 0/1/3/5/etc. is used
+  here, since 2 and 4 are zeroed out.
+- Exact meaning of oAIAttackVars_Unk_00 / _10 / _18 (state-phase, animation timer, retry cooldown) is inferred from
+  how they're written, not from a known field name.
+- The function whose pointer is held at aiAttackVars + 0x28 is the per-alliance target/path-search routine -- its
+  identity is not known from this function alone.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

@@ -1,0 +1,78 @@
+name: sub_80FD748
+address: '0x080FD748'
+kind: function
+status: confirmed
+summary: 'Enemy AI attack helper: if the object can move, ask the alliance''s panel-target routine for a destination,
+  reserve that panel, lock sliding and start the slide anim; otherwise drop the AI flag and exit the attack state.'
+interface: 'void sub_80FD748(struct BattleObject* r5, u32 r6, struct AIAttackVars* r7);
+
+  // uses r5/r6/r7/lr in; clobbers r0,r1,r2,r3,r4,r6,r7,lr; flags NZCV
+
+  '
+details: "On entry the caller has r5 = the battle object, r6 = an AI/context pointer\nand r7 = the per-attack AI\
+  \ vars struct.\n\n1. Calls object_canMove(r5). If it returns 0 (cannot move), clears\n   oAIAttackVars_Unk_1a\
+  \ to 0 and calls object_exitAttackState; the AI\n   gives up the attack for this tick.\n\n2. Otherwise it indexes\
+  \ a small table at byte_80FD798 by the object's\n   alliance byte (oBattleObject_Alliance << 3). Each entry is\
+  \ a pair\n   of u32s used as extra arguments to the target-finder:\n     0x00,0x00, 0x01,0x00, 0x0A,0x00, 0x88,0x0F,\
+  \ 0x20,0x00, 0x01,0x00, 0x80,0x00, 0x88,0x0F\n   (five 8-byte slots, indexed 0..4 by alliance).\n\n3. Reads the\
+  \ target function pointer from oAIAttackVars_Unk_28 and an\n   argument from oAIAttackVars_Unk_2c, then tail-calls\
+  \ (bx r1) the\n   function with r0=Unk_2c, r1=target_fn-as-arg, r2/r3=table pair.\n   The call's r0/r1 return\
+  \ are the chosen future panel X/Y.\n\n4. If the target-finder returned 0 in r0 the AI again bails out\n   (clear\
+  \ Unk_1a + object_exitAttackState). Otherwise it commits the\n   result: writes the panel X/Y to oBattleObject_FuturePanelX/Y,\n\
+  \   calls object_reservePanel(panelX, panelY, obj), then\n   object_setFlag1(OBJECT_FLAGS_CANNOT_SLIDE, obj) to\
+  \ lock sliding.\n\n5. Starts the slide animation: oBattleObject_CurAnim = 4,\n   oAIAttackVars_Unk_10 = 3, oAIAttackVars_Unk_1a\
+  \ = 1,\n   oAIAttackVars_Unk_00 = 4.\n\nStructure fields touched:\n  r5: oBattleObject_Alliance, oBattleObject_FuturePanelX,\n\
+  \      oBattleObject_FuturePanelY, oBattleObject_CurAnim\n  r7: oAIAttackVars_Unk_2c, oAIAttackVars_Unk_28, oAIAttackVars_Unk_10,\n\
+  \      oAIAttackVars_Unk_1a, oAIAttackVars_Unk_00\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80FD748
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD748
+
+    ./wf verify --function sub_80FD748 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD748
+
+    ./wf verify --function sub_80FD748 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 62 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD748
+
+    ./wf verify --function sub_80FD748 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd748 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- What the alliance-indexed table at byte_80FD798 actually means (rank/role arguments? the same slots aren't documented
+  in any header I've seen).
+- What convention oAIAttackVars_Unk_28's "target function" follows (the indirect bx r1 with r2/r3 from the table
+  looks like a generic panel-target resolver, but its exact purpose is unknown).
+- Why "cannot move" and "no panel found" both end in the same exit-attack path with Unk_1a cleared.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

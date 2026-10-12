@@ -1,0 +1,87 @@
+name: sub_802F6B2
+address: '0x0802F6B2'
+kind: function
+status: confirmed
+summary: Per-frame title-screen tick that counts down, plays the title jingle at a fixed value, and on START input
+  fades into the main menu.
+interface: "void sub_802F6B2(u16 timer /* @r5+4 */,\n                 void *menu /* @r2 */,\n                 u32\
+  \ screenCtx /* @r10 */,\n                 void *lr /* return addr */)\n  -> /* out */ r8 r9 r10 r11 r12;\n// clobbers\
+  \ nzcv r0 r1 r2 r3 r7 lr; preserves r4 r5 r6 r8 r9 r12\n"
+details: "Self is the *StartScreen object (in r5). Reads u16 timer at offset 4.\nThree branches keyed off that timer:\n\
+  \  1. timer == 0 → writes 0x10 to the state/jump-table byte at offset 1\n     (handing off to startScreen_RunStateHandler_802F63C\
+  \ which will\n     dispatch state 0x10), and calls SetScreenFade(0xC, 0x10) so the\n     already-black background\
+  \ can fade back in.\n  2. timer decremented to 0x12C → pushes/pops {r0,r5} around\n     sound_dispatchCueHandler_800068A(0x1F,\
+  \ 0x10) to fire the\n     title-screen jingle SFX (cue 0x1F, priority 0x10).\n  3. timer below 0xA0A *and* startScreen_IsTitleAnimationFinished_803E928\n\
+  \     returns 0 (Z set) → calls sub_802FD54 (advances the start-screen\n     state via the 0x01 jump-table byte),\
+  \ then\n     menu_onStartPressBeginTransition_802F7E8 to set up the START-press\n     fade-out, then sub_802F88E\
+  \ as a cleanup/teardown step.\nUntil then, only the decrement and the threshold check run. The >= test\nis signed\
+  \ but operands are non-negative, so the comment matches the\nactually-compared values.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_802F6B2
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802F6B2
+
+    ./wf verify --function sub_802F6B2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802F6B2
+
+    ./wf verify --function sub_802F6B2 --snapshots build-snapshots'
+  result: 37 compared, 0 differed, 59 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802F6B2
+
+    ./wf verify --function sub_802F6B2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802f6b2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Is the byte at offset 1 really a jump-table index/offset, or a state selector? (The name oStartScreen_JumpTableOff_01
+  is the existing disassembly label and is preserved here as-is.)
+- What does sub_802F88E reset/destroy once the animation finishes?
+- Does the title jingle fire only when entering this state from above 0x12C, or also on rewinds/restarts where the
+  timer wraps?
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

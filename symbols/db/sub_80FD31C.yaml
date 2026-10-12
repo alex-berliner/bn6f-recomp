@@ -1,0 +1,82 @@
+name: sub_80FD31C
+address: '0x080FD31C'
+kind: function
+status: confirmed
+summary: Scans BattleState's Unk_a0 object slot array for a live 0xD2-type enemy attack on the opposing player's
+  row whose horizontal offset (multiplied by the player's facing direction) equals 1 — returns 1 if the player is
+  directly threatened by such an attack, 0 otherwise.
+interface: bool sub_80FD31C(u32 player_obj /* r5 */, u32 toolkit /* r10 */); /* returns r0 = 0|1; clobbers r1,r2,r3,lr;
+  flags NZcV; preserves r4,r5,r6 */
+details: "- Inputs come in via the callee-saved registers r5 (player's BattleObject*) and r10 (Toolkit*), consistent\
+  \ with the standard battle-frame leaf signature; r5/r6 are preserved across the call so the caller can keep using\
+  \ them.\n- Reads oBattleObject_Alliance from the player object and XORs it with 1 to pick the opposing side, then\
+  \ calls battle_findPlayer(alliance) to fetch the opposing player's BattleObject*; pulls that object's panel X/Y\
+  \ (offsets oBattleObject_PanelX / oBattleObject_PanelY) into a stack frame of two words.\n- Walks BattleState->Unk_a0\
+  \ (accessed via oToolkit_BattleStatePtr + oBattleState_Unk_a0), 7 entries of 4 bytes (index 0..0x1C step 4); each\
+  \ entry is a non-null BattleObject* when live.\n- For each live entry, requires:\n    * halfword at +0x28 equals\
+  \ 0xD2 (attack object type filter),\n    * byte at +0x13 (panel row) equals enemy_panel_y (must share the player's\
+  \ row),\n    * (enemy_panel_x - obj[+0x12]) * object_getEnemyDirection(player_obj) == 1, i.e. the attack sits\
+  \ one panel away on the side toward which the player is facing.\n- Sub-call sequence: battle_findPlayer once,\
+  \ then a single object_getEnemyDirection per loop iteration (passing the player's BattleObject via R5).\n- Quirks:\
+  \ the offset 0x12 is named here only by its raw index (not aliased in the header dump); loop bound \"ble 0x1C\"\
+  \ is the inclusive 7-slot scan (0,4,8,...,0x1C); dx is computed as plain subtraction so it's effectively an unsigned\
+  \ distance wrapping in 8-bit, but the equality test with 1 only succeeds when the geometry is one panel over in\
+  \ the player's facing direction.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80FD31C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FD31C
+
+    ./wf verify --function sub_80FD31C --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FD31C
+
+    ./wf verify --function sub_80FD31C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FD31C
+
+    ./wf verify --function sub_80FD31C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080fd31c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Identity of the 0xD2 attack object type and what +0x12/+0x13 represent on it (panel X / panel row) — no struct
+  alias confirmed in the datil; only raw offsets are documented.
+- Whether object_getEnemyDirection here is meant in the "player-facing-direction" sense used by the readable (giving
+  +1/-1) or a different enemy-targeting variant; the readable's use of it matched the disassembly but the precise
+  semantic (player facing vs. enemy facing vs. attack facing) is inferred from the bool result and is not independently
+  verified.
+- Caller chain and what r0==1 triggers (likely an AI/decision gate for the opposing side's BattleObject whose pointer
+  lives in r5); the original game's callsite is not shown.
+- Why only the player's row (panel Y match) is enforced and not a column match — possibly because the loop's spatial
+  check is done entirely via the dx*dir product equalling 1, leaving a column match implicit in the 0x12 vs enemy_panel_x
+  relationship already checked by the product.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

@@ -1,0 +1,90 @@
+name: TryUpdateEachOWPlayerObject_8003BA2
+address: '0x08003BA2'
+kind: function
+status: confirmed
+summary: Per-frame dispatcher that walks every slot in the overworld player-object table and calls each active object's
+  update routine through a jump table, gating non-pause-update objects while battle is paused.
+interface: void battle_updateEachOWPlayerObject_8003BA2(/* R8 = pass-through to callees */, /* R9 = saved/restored
+  only */, /* R10 = toolkit ptr */, /* R11 = pass-through */, /* R12 = pass-through to callees */) -> void
+details: 'Loads the contiguous eOWPlayerObject … eOWPlayerObjectEnd array and the off_8003B48 jump-table base. For
+  each slot of size oOWPlayerObject_Size: reads the OBJECT_FLAG_ACTIVE bit in the header flags byte; if set, checks
+  gameState->BattlePaused and skips the slot unless OBJECT_FLAG_PAUSE_UPDATE is also set. Otherwise fetches the
+  1-byte routine id at object+0x1, shifts it left by 2 to index into the word table, and dispatches via bx into
+  the callee. The callee register-file convention is R0=funcPtr, R1=tableOffset, R4=caller-R8 (alliance/misc ptr),
+  R5=current object ptr, R6=caller-R12 (misc ptr), R7=gameState ptr. R4/R6 are parked before the loop and survive
+  through GUEST_CALL; R5 advances each iteration. All callee-saved regs and the caller''s R8/R9/R12 are restored
+  on return (push/pop of r4-r6 plus mov pairs). R10 (toolkit) and R11 are passed through to callees unmodified by
+  this function but may be clobbered by them per the register contract (outputs list R10/R11).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c TryUpdateEachOWPlayerObject_8003BA2
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function TryUpdateEachOWPlayerObject_8003BA2
+
+    ./wf verify --function TryUpdateEachOWPlayerObject_8003BA2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 162 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function TryUpdateEachOWPlayerObject_8003BA2
+
+    ./wf verify --function TryUpdateEachOWPlayerObject_8003BA2 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function TryUpdateEachOWPlayerObject_8003BA2
+
+    ./wf verify --function TryUpdateEachOWPlayerObject_8003BA2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08003ba2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What concrete objects populate eOWPlayerObject (allies on the overworld field, NavCust battle entities, player-character
+  sprites)? Field offsets beyond +0x1 (routine id) and +0x0 (flags) are unexamined here.
+- Which update routines live in off_8003B48 and what distinct behaviours do they implement (movement, interaction,
+  dialogue, state-machine stepping)?
+- Is OBJECT_FLAG_PAUSE_UPDATE used by any object other than the player avatar, or does it specifically keep the
+  NavCust visible during an in-battle pause?
+- R9 is saved and restored but never read inside the loop body—does a callee consume it via the guest register file,
+  or is it vestigial from an earlier caller contract?
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

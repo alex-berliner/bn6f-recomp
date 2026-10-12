@@ -1,0 +1,81 @@
+name: sub_801486C
+address: '0x0801486C'
+kind: function
+status: confirmed
+summary: Steps the action timer in two BattleObject slots, triggers beast-out when eligible, and reports whether
+  either slot holds a pending (type-assigned-but-idle) entry.
+interface: void battle_stepSlotsAndCheckBeastGate_801486C(BattleSlot *slotA /* r6 */, BattleSlot *slotB /* r7 */,
+  u32 *result /* r5 */)
+details: 'Each slot is read as: byte[0] = type/entry marker (0xFF = empty), byte[4] = action-running flag (0xFF
+  = idle), dword[8] = object pointer. For a slot whose action is running (byte[4] != 0xFF) the function calls sub_802DCDE
+  to tick the action, then queries canBattleObjectBeastOut on the object pointer; if the gate returns Z clear it
+  calls sub_8015994 to initiate the beast-out. For a slot that is idle but carries a type (byte[4] == 0xFF, byte[0]
+  != 0xFF) it sets an internal has_pending flag. For a fully empty slot (both 0xFF) it only queries the beast-out
+  gate. The same three-branch logic is applied identically to slotB. Finally it writes 4 to *result when any pending
+  transition was detected, or 8 otherwise. r10 and lr are taken as inputs (part of the caller''s register context)
+  but are not used in the function body.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_801486C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801486C
+
+    ./wf verify --function sub_801486C --snapshots build-snapshots'
+  result: 'captured calls: 29 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801486C
+
+    ./wf verify --function sub_801486C --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801486C
+
+    ./wf verify --function sub_801486C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0801486c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly sub_802DCDE does to the running action (tick a timer, advance a state machine step, or both)?
+- What sub_8015994 initiates beyond 'beast-out' (animation, status change, damage calc)?
+- Are the result values 4 and 8 enum members of a caller-visible state (e.g. pending vs idle)? What consumes them?
+- Is r10 ever read by callees down the chain, making its input role significant here?
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

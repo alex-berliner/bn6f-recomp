@@ -1,0 +1,79 @@
+name: sub_802F81C
+address: '0x0802F81C'
+kind: function
+status: confirmed
+summary: Handles menu navigation inputs (Start to exit, L/R to cycle selection index) for a small in-game menu.
+interface: void sub_802F81C(u32 toolkit_ptr /* r10 */, u8 *menu_state /* r5 */, u32 arg2 /* r2 */);
+details: "Reads joypad state through the toolkit's joypad pointer. Two menu_state\nbytes matter: byte 8 = current\
+  \ selection index, byte 9 = item count.\n- On Start/Select (pressed & 0x09): if a screen fade is already running,\n\
+  \  do nothing; otherwise call musicGameState_8000784, play SE 0x9D, set\n  menu_state[1] = 0x10 (a \"return to\
+  \ overworld\" flag), and kick off a\n  screen fade (type 0xC, speed 0x10).\n- On L (held & 0x40): decrement byte\
+  \ 8 with wrap (0 -> count-1); play\n  SOUND_UNK_66 on actual change.\n- On R (held & 0x80): increment byte 8 with\
+  \ wrap (count -> 0); play\n  SOUND_UNK_66 on actual change.\nOther buttons are ignored. L/R use the \"Held\" field\
+  \ rather than\n\"Pressed\", so the menu scrolls continuously while the shoulder is held.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_802F81C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802F81C
+
+    ./wf verify --function sub_802F81C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802F81C
+
+    ./wf verify --function sub_802F81C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802F81C
+
+    ./wf verify --function sub_802F81C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802f81c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Where this menu sits in the overworld UI (the fade+overworld return ritual suggests it's a transient sub-menu,
+  but the owner of the menu_state struct is unidentified).
+- Whether menu_state[1] == 0x10 is consumed by the caller's main state machine to actually leave the screen.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

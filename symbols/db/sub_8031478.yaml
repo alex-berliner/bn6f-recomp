@@ -1,0 +1,104 @@
+name: sub_8031478
+address: '0x08031478'
+kind: function
+status: confirmed
+summary: 'Two-axis camera scroll during battle transitions: horizontal pass with object nudge, then optional vertical
+  pass; accumulates scroll-state bits in r12.'
+interface: void battle_camScrollTwoPass_8031478(u32 r0, u32 r5, u32 *r12_inout); /* returns modified r3, r12; preserves
+  r0-r2, r5 */
+details: 'Pass 1: calls sub_8031176 (battle-object setup), then sub_8030E8C with a 0x20-step
+
+  delta (r2=0x20, r3=0x20, r4=0, r5=0x20, r6=0) to shift battle sprites/objects,
+
+  then camera_moveByDelta_80310B0 with dy=0 for a horizontal nudge. The resulting
+
+  horizontal delta is ORed into r12 (bit 0).
+
+
+  Early-exit guard: if the horizontal delta equals exactly 1 (camera already at target
+
+  in one step), the function returns without a vertical pass.
+
+
+  Pass 2: calls sub_8031136 (reverse object setup), then sub_8030F04 with deltas
+
+  (r4=-1, r5=-1, r3=0, r2=0x20, r6=0) to undo/reverse the object shift, then
+
+  camera_moveByDelta_80310B0 with dx=0 for a vertical nudge. The vertical delta is
+
+  shifted left by 1 and ORed into r12 (bit 1).
+
+
+  r0, r1, r2, r5 are saved/restored across the entire sequence (pushed before the
+
+  first call, popped at each exit). r12 is both an input (initial mask from caller)
+
+  and an output (accumulated scroll bits). The 0x20 step size and the -1 reverse
+
+  deltas suggest frame-count or sub-pixel units for battle camera panning.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_8031478
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8031478
+
+    ./wf verify --function sub_8031478 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8031478
+
+    ./wf verify --function sub_8031478 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8031478
+
+    ./wf verify --function sub_8031478 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6,
+    story8, story9.'
+  reproduce: grep -l '^08031478 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What exactly do sub_8031176 / sub_8031136 adjust—individual battle sprites, or a camera-anchored object list?
+- Is the early-exit on r3==1 purely an optimization (camera already settled) or does it skip a game-logic side effect?
+- Who owns the r12 mask downstream—does a transition controller test individual bits to decide when the scroll is
+  complete?
+- 'Confirm units: is 0x20 a fixed 32-frame duration, a pixel step, or a tile offset?'
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

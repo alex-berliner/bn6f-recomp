@@ -1,0 +1,85 @@
+name: sub_80293F8
+address: '0x080293F8'
+kind: function
+status: confirmed
+summary: Walks the player's selected-chip list and resets each active chip's in-flight state (clears firing flag,
+  writes -1 sentinel to hit counter, decrements battle-state active-chip count).
+interface: void custom_resetSelectedChipState_80293F8(u32 r5 /* chip-select HUD base (oS20364C0) */, u32 r10 /*
+  toolkit base (oToolkit_BattleStatePtr) */)
+details: "Reads oS20364C0_NumChipsSelected (byte at +0x20364C0) as a loop count; iterates starting at\nchip-select\
+  \ HUD offset 0x48, one byte per entry. For each entry:\n  1. Calls getLocOfActiveChips_8027E1C with the chip ID\
+  \ to obtain its chip record pointer.\n  2. If the record's type byte (offset +0) is 2 (linked chip), checks GetBattleMode()==1;\n\
+  \     if not standard mode, skips the entry. Otherwise re-resolves through the link ID at +4.\n  3. If the final\
+  \ record's type byte is 0 (active chip):\n     a. Reads the firing/in-flight flag at record+4 bit 0; if set, zeroes\
+  \ battleState+0x17\n        (the global \"chip currently in flight\" byte).\n     b. Loads the hit-counter pointer\
+  \ at record+8 and stores 0xFFFF (−1 as a u16) to it,\n        marking the chip as never-fired.\n     c. Reads\
+  \ battleState+0x44 (active-chip enabled flag); if nonzero, decrements\n        battleState+0x45 (active-chip count).\n\
+  r7 is preloaded to (0−1) = 0xFFFF as the halfword sentinel for the hit counter.\nThe loop advances idx by 1 and\
+  \ decrements count by 1 each iteration.\nOutputs r1, r2, r3 are the last loop-iteration values (not meaningful\
+  \ to callers).\nr4, r6, r7 are saved/restored across the call.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80293F8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80293F8
+
+    ./wf verify --function sub_80293F8 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 237 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80293F8
+
+    ./wf verify --function sub_80293F8 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 72 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80293F8
+
+    ./wf verify --function sub_80293F8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080293f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly does battleState+0x17 represent (single firing chip slot ID? a global ready flag?).
+- Is 0x44 a boolean 'chips are active this turn' and 0x45 a parallel 'chips still in flight' counter?
+- The skip path for linked chips in non-standard mode does not decrement count explicitly in the asm (it falls through
+  to locret via the cmp/bne at +0x452, then the loop tail still runs). Confirm the C 'continue' faithfully mirrors
+  that.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

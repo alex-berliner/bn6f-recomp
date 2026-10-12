@@ -1,0 +1,75 @@
+name: sub_80C69AC
+address: '0x080C69AC'
+kind: function
+status: confirmed
+summary: 'Per-tick update for a battle object: manages collision data lifecycle, detects landing on a panel, dispatches
+  movement or phase handler via jump table, and destroys the object if it moves off a valid panel.'
+interface: void battle_object_stepTick(u32 r4, BattleObject *obj /* r5 */, u32 r7, u32 r8, u32 r10) -> r5, r8, r9,
+  r10, r11, r12 modified; r7 preserved
+details: 'Called each battle frame for every active object. Sequence: (1) object_removeCollisionData clears last-frame
+  collision bookkeeping; (2) object_spawnCollisionEffect re-creates the visual hit effect; (3) reads obj->CollisionDataPtr,
+  checks CollisionData->FlagsFromCollision (contact flag); if contact occurred and the LANDED flag (bit 8, 0x100)
+  is not yet set on the object, sets it via object_setFlag1, transitions CurAction to 4 (landed), and resets CurPhaseAndPhaseInitialized
+  to 0; (4) jump-table dispatch on obj->CurAction: index 0 calls battle_stepObjectXByVelocityAndDestroyIfInvalidPanel_80C6A08
+  (advance x by velocity, destroy if panel invalid), index 1 calls battle_object_dispatchPhaseHandler_80C6A34 (run
+  the current phase''s handler); (5) object_presentCollisionData commits the updated collision rectangle; (6) destroy
+  path (reached via bx from the movement handler when the panel is invalid): calls object_clearCollisionRegion,
+  clears bit 2 of the byte at obj+0 (active/valid flag), writes 8 to obj+8 (death/inactive tag), then returns. Quirk:
+  the jump-table callee may branch to 0x80C69E8 within this function''s range instead of returning to 0x80C69E2,
+  so C cannot model the full control flow.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80C69AC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C69AC
+
+    ./wf verify --function sub_80C69AC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C69AC
+
+    ./wf verify --function sub_80C69AC --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 32 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C69AC
+
+    ./wf verify --function sub_80C69AC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, story2, story6, story7.'
+  reproduce: grep -l '^080c69ac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- story2
+- story6
+- story7
+open_questions:
+- What does the value 8 at obj+8 signify exactly (death tag, state enum, pool return index)?
+- Is CurAction 4 always a terminal 'landed' state, or does the phase handler (index 1) later advance it?
+- The jump table only has two entries; are higher CurAction values (2,3,4) handled elsewhere or is table overrun
+  UB?
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

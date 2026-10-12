@@ -1,0 +1,97 @@
+name: SpawnBattleObjectCommon
+address: '0x08003278'
+kind: function
+status: confirmed
+summary: Allocates a battle object from the per-type pool, initializes its header from a caller-supplied stack record,
+  and returns the object pointer or NULL if the pool is full.
+interface: /* SpawnBattleObjectCommon(u8 obj_type /*r0*/, *const u32 init_record /*r1*/) -> BattleObject* /*r5*/;
+  also returns init fields in r0-r4; NZ clobbered */
+details: 'Masks obj_type to 4 bits (0-15) to index a 16-byte-wide descriptor table at dword_80032D0.
+
+  Each descriptor holds: active-bitfield pointer, linked-list base, pool-end address, stride (full object size),
+  user-data size, and a default sub-type byte.
+
+  Scans the 32-bit active bitfield from bit 31 downward looking for an inactive slot.
+
+  If the pool is exhausted the slot search wraps and r5 is set to 0 (NULL) and the function returns immediately
+  without copying init data.
+
+  On success: marks the bit active, advances past the 16-byte linked-list header to the object body,
+
+  zero-fills the user-data region via ZeroFillByWord (skipping the first word, the linked-list next/prev pointer),
+
+  writes the descriptor''s default sub-type byte at object offset 0,
+
+  then ldmia''s 5 words from the caller''s stack pointer (r1) into the object: index (byte at oBattleObject_Index),
+  X, Y, Z, Params.
+
+  Visible pool types in the table: T1 (32 objects, subtype 0x19), T3 (subtype 0x09), T4 (subtype 0x19); type 0 and
+  type 2 rows are zeroed out.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c SpawnBattleObjectCommon
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function SpawnBattleObjectCommon
+
+    ./wf verify --function SpawnBattleObjectCommon --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 273 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function SpawnBattleObjectCommon
+
+    ./wf verify --function SpawnBattleObjectCommon --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function SpawnBattleObjectCommon
+
+    ./wf verify --function SpawnBattleObjectCommon --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08003278 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What distinguishes T1, T3, T4 pools in gameplay (NPC vs projectile vs custom chip?)
+- Does the 16-byte linked-list header at offset 0-0x0F store prev/next/parent pointers, or is it a different structure?
+- The first four descriptor entries (type 0) are all zeros—does calling with obj_type 0 always yield NULL, or is
+  there a guard upstream?
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

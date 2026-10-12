@@ -1,0 +1,74 @@
+name: sub_80C96C8
+address: '0x080C96C8'
+kind: function
+status: confirmed
+summary: Initializes a spinning-shuriken battle object from a template entry indexed by Param2, loads sprite/anim/palette,
+  plays spawn SFX, freezes velocity to current position, then transitions to the per-frame update state.
+interface: void battle_spawnShuriken_80C96C8(u32 r5 /*BattleObject*/, u32 r10 /*context*/); outputs r5 r8 r9 r10
+  r11 r12 via sub_80C9726; clobbers r0-r4 r6 lr flags; preserves r7
+details: 'Reads oBattleObject_Param2 (byte) and multiplies by 6 to index into the 6-byte template table byte_80C9664;
+  stores the resulting pointer in oBattleObject_ExtraVars+4 for later frames. Template fields: [0]=char-base, [1]=screen-base,
+  [2]=starting anim index, [5]=palette index. Calls sprite_load with VRAM block 0x80, sprite_loadAnimationData,
+  sprite_noShadow. Sets flag bit 1 (drawn) on oObjectHeader_Flags. Writes template byte 2 to oBattleObject_CurAnim
+  and 0xFF to oBattleObject_CurAnimCopy to force a reload. Applies palette from template byte 5 via sprite_setPalette.
+  Derives panel state (object_setPanelsFromCoordinates) and mirrors object flip onto the sprite (object_getFlip
+  -> sprite_setFlip). Plays sound effect 0xA0 (spawn SFX). Pins oBattleObject_XVelocity/Y/ZVelocity to the current
+  X/Y/Z so the object does not drift on entry. Sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE,
+  then tail-calls sub_80C9726 (the per-frame shuriken sub-state machine) whose register outputs (r5 r8 r9 r10 r11
+  r12) become this function''s outputs.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80C96C8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C96C8
+
+    ./wf verify --function sub_80C96C8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C96C8
+
+    ./wf verify --function sub_80C96C8 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 50 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C96C8
+
+    ./wf verify --function sub_80C96C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, story8, story9.'
+  reproduce: grep -l '^080c96c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles1
+- battles2
+- story8
+- story9
+open_questions:
+- What is the exact visual identity of template entries in byte_80C9664 — all shuriken variants or a wider family?
+- Why is velocity pinned to position (rather than zeroed) — is this a coordinate-space trick where position doubles
+  as a target?
+- What does sub_80C9726 do per-frame (spin, travel, hit detection)?
+- Sound effect 0xA0 — confirm it is the shuriken-throw SFX by cross-referencing the sound ID table.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

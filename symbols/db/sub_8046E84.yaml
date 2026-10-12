@@ -1,0 +1,66 @@
+name: sub_8046E84
+address: '0x08046E84'
+kind: function
+status: confirmed
+summary: Per-chatbox-tick handler that processes B-button cancel, busy-prompt scripts, and default exit scripts.
+interface: void chatbox_tickBAndExit_8046E84(ChatboxState* r5, Toolkit* r10); /* r5 = chatbox state ptr; r10 = toolkit
+  (preserved as r10,r11 out) */
+details: Called once per tick for an active chatbox object (r5). First calls sub_8047134 (likely toolkit/scene refresh),
+  then reads the pressed buttons from the toolkit's joypad pointer. If B (bit 1, value 2) is pressed, plays SOUND_UNSELECT_68
+  and falls through to the default-exit path. Otherwise, checks chatbox flag 0x20 via chatbox_mask_eFlags2009F38;
+  if set (chatbox is mid-prompt), queries chatbox_GetState_8045F4C. A non-idle state triggers chatbox_runScript
+  with script index 1 (confirmation/busy prompt) and sets the chatbox state byte to 8. The default-exit path (B
+  pressed, or idle-prompt) sets flag 0x40 via chatbox_set_eFlags2009F38, runs chatbox_runScript with script index
+  3 (goodbye/closing dialogue), and sets state byte to 0xC. Script archive pointer is read from [r5 + 0x24]. State
+  and flags are stored directly into the r5 structure.
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_8046E84
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8046E84
+
+    ./wf verify --function sub_8046E84 --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8046E84
+
+    ./wf verify --function sub_8046E84 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8046E84
+
+    ./wf verify --function sub_8046E84 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^08046e84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- What exactly does sub_8047134 do as a pre-tick setup call?
+- What is the semantic difference between chatbox state 8 (confirmation) and 0xC (exit) in the broader state machine?
+- Is flag 0x40 a permanent dismissal or cleared elsewhere on the next open?
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

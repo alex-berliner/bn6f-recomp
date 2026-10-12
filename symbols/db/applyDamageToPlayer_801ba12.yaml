@@ -1,0 +1,94 @@
+name: applyDamageToPlayer_801ba12
+address: '0x0801BA12'
+kind: function
+status: confirmed
+summary: Applies pending collision damage to the player battle object, clamping it for the undershirt/shield flag,
+  playing the hurt SFX (or its dark-network variant), flashing the sprite white if alive, subtracting the collision
+  HP-bar value, and handling death flags (AI alliance side vs normal object).
+interface: "void applyDamageToPlayer_801ba12(u32 player /* r5 */, u32 collision /* r6 */, u32 r10_val);\n/* inputs:\
+  \  r5=player BattleObject*, r6=collision data*, r10 unused-and-preserved, lr=return\n   outputs: r2 r4 r5 r6 r7\
+  \ r10 (preserved per contract)\n   clobbers: N Z C V, r0 r1 r3, lr */\n"
+details: "Reads oCollisionData_FinalDamage (u16) from the collision object (r6).\nIf nonzero:\n  - Adds the damage\
+  \ value to the AI total-damage tally via battle_aiAddTotalDamageTaken_8010548.\n  - If the target's oBattleObject_HP\
+  \ > 1, checks object_getFlag for shield bit 0x40000; if set and the damage would be lethal, clamps damage to HP-1\
+  \ (undershirt survival).\n  - Calls object_subtractHP with the (possibly clamped) damage; uses its r1 return as\
+  \ the \"still alive\" test.\n  - Picks the hurt SFX: default 0x6D. If unpackVerActorTyAndAIIdx_800F29C of the\
+  \ NameID returns a version type of 2 (network-related) and battle_networkInvert of the oBattleObject_Alliance\
+  \ yields a zero result, swaps to SFX 0x6B (dark-network hurt sound).\n  - PlaySoundEffect with the chosen SFX\
+  \ ID (r2 carries an unpack/invert side-effect into it).\n  - If HP remained nonzero after the first subtract:\
+  \ calls sprite_forceWhitePalette(player), then subtracts the collision object's HP-bar field at offset 0x8C from\
+  \ the player HP (a secondary, separate damage source from the collision object).\n  - If HP is now zero (either\
+  \ from the first subtract or after the bar subtract): checks battle_isAllianceActiveAndAiFlag0x4000_802DD2A; on\
+  \ the AI/alliance branch sets AI flag 0x08000000 via SetAIData_Unk_44_Flag, otherwise calls object_setFlag2(1,\
+  \ player) as the standard death flag.\n  - Always finishes by calling sub_801A200(player) (post-damage hook).\n\
+  If FinalDamage was zero, falls through directly to the 0x8C HP-bar subtraction + death/flag path + sub_801A200,\
+  \ skipping the SFX, white-flash, shield-clamp, and AI tally steps.\nTouched fields: collision + oCollisionData_FinalDamage,\
+  \ collision + 0x8C; player + oBattleObject_HP, oBattleObject_NameID, oBattleObject_Alliance, plus object_getFlag\
+  \ bit 0x40000 (shield/undershirt), AI flag 0x08000000 (unconscious/DEL), object flag2 bit 1 (death).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c applyDamageToPlayer_801ba12
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function applyDamageToPlayer_801ba12
+
+    ./wf verify --function applyDamageToPlayer_801ba12 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function applyDamageToPlayer_801ba12
+
+    ./wf verify --function applyDamageToPlayer_801ba12 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function applyDamageToPlayer_801ba12
+
+    ./wf verify --function applyDamageToPlayer_801ba12 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0801ba12 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact semantics of object flag bit 0x40000 (the "undershirt"/navi-shield effect named in the source comment).
+- 'Identity of SFX 0x6D vs 0x6B: which is the standard hurt and which is the dark-network hurt.'
+- What sub_801A200 does as the post-damage tail hook.
+- Whether the 0x8C HP-bar subtraction is a per-frame chip damage that should always apply, even when FinalDamage
+  was zero, or a guard for objects without a pending hit.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

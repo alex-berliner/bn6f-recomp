@@ -1,0 +1,73 @@
+name: sub_80ECA50
+address: '0x080ECA50'
+kind: function
+status: confirmed
+summary: 'AI buster-shot attack state machine: starts the fire animation on first tick, then on the next tick plays
+  the buster impact sound and spawns a damage projectile forward, finally signalling completion after 4 timer ticks.'
+interface: void sub_80ECA50(u32 r1_in, u32 r2_in, u32 r5_battleObj, u32 r7_aiAttackVars, u32 r8_in, u32 r9_in, u32
+  r10_in) -> r1 r5 r7 r8 r9 r10; clobbers NZCV r0 r2 r3 r4 r6 lr
+details: "Operates on a battle object's AI attack-vars block (r7) plus the battle object itself (r5).\nState machine\
+  \ driven by oAIAttackVars_Unk_01 and oAIAttackVars_Unk_10:\n  * Unk_01 == 0 (first call): sets animation #0xE\
+  \ via object_setAnimation, calls sub_80EB562\n    and object_setDefaultCounterTime, marks Unk_01 = 4, and seeds\
+  \ the frame timer\n    oAIAttackVars_Unk_10 = 0.\n  * Unk_10 == 1 (second tick): plays SOUND_BUSTER_6A, then calls\
+  \ sub_80C9184 to spawn the\n    buster shot. sub_80C9184 is given:\n      - X = object_getFrontDirection() + oBattleObject_PanelX\n\
+  \      - r1 = oBattleObject_PanelY\n      - r2 = oAIAttackVars_Unk_02\n      - r3 = 0\n      - r4 = oAIAttackVars_Unk_0c\
+  \ (a pointer/object id from the attack vars)\n      - r6 = oAIAttackVars_Damage + oAIAttackVars_AttackBoost\n\
+  \    so it fires a damage projectile straight ahead from the current panel, scaled by the\n    AI's AttackBoost.\n\
+  \  * Other ticks: pass-through, no side effects beyond the timer advance.\nAfter the body, increments oAIAttackVars_Unk_10;\
+  \ when it exceeds 4, writes 4 into\noAIAttackVars_Unk_00 which the parent state machine presumably reads to mark\
+  \ the attack\nas finished and advance to the next phase.\nReads/writes: oAIAttackVars_Unk_00, _Unk_01, _Unk_02,\
+  \ _Unk_0c, _Unk_10, _AttackBoost,\n_Damage on the AI attack-vars struct; oBattleObject_PanelX, oBattleObject_PanelY\
+  \ on the\nbattle object (r5).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80ECA50
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80ECA50
+
+    ./wf verify --function sub_80ECA50 --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80ECA50
+
+    ./wf verify --function sub_80ECA50 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 82 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80ECA50
+
+    ./wf verify --function sub_80ECA50 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, story5, story6, story9.'
+  reproduce: grep -l '^080eca50 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battles2
+- story5
+- story6
+- story9
+open_questions:
+- Exact meaning of oAIAttackVars_Unk_00 (likely a "phase done" sentinel consumed by the parent AI dispatcher).
+- What sub_80EB562 and sub_80C9184 do (likely buster-shot projectile setup and spawn).
+- Why Unk_01 is set to 4 rather than 1 (probably an animation/state index the parent reads).
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

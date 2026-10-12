@@ -1,0 +1,85 @@
+name: sub_801CF3C
+address: '0x0801CF3C'
+kind: function
+status: confirmed
+summary: Issues 5 DMA tile-map fills (incrementing row addresses) and optionally 1 BG-map fill, driven by a parameter
+  block at r7.
+interface: 'void dmaFillMapTiles_801CF3C(u32 r7_paramBlock); /* outputs: r1=fill_count, r2=0, r3=0; preserves r4-r7
+  */'
+details: 'Reads a parameter block at r7 with fields: byte 2 (tile column hi), byte 3 (tile column lo), byte 4 (BG-map
+  column hi), byte 5 (BG-map column lo), byte 6 (fill control, shifted into bits 31:25 of the source address), byte
+  8 (BG-map fill flag). Builds a DMA source address as 0x80004100 | (col_hi<<16) | col_lo | (ctrl<<25). Loops five
+  times calling sub_802FE28(addr, count, 0, 0) with addr advancing by 0x200000 and count advancing by 8 each iteration
+  (starting count 0xB370). If byte 8 equals 1, additionally builds a BG-map source at 0x40000100 | (bgcol_hi<<16)
+  | bgcol_lo | (ctrl<<25) and calls sub_802FE28 once with count 0xB570B398 (note: loaded via 32-bit LDR from a .hword
+  label, upper halfword 0xB570 leaks from adjacent data). Leaves r1 at the final fill count, r2 and r3 zeroed, all
+  flags clobbered.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_801CF3C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801CF3C
+
+    ./wf verify --function sub_801CF3C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 204 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801CF3C
+
+    ./wf verify --function sub_801CF3C --snapshots build-snapshots'
+  result: 54 compared, 0 differed, 42 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801CF3C
+
+    ./wf verify --function sub_801CF3C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0801cf3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact semantics of the control byte at r7+6 (bits 31:25 of DMA source address) — is it a DMA transfer-size or
+  FIFO channel selector?
+- Why the BG-map count is 0xB570B398 loaded as a single 32-bit value from a halfword label (upper half 0xB570 appears
+  to be adjacent tile-fill data leaking into the load).
+- 'Caller context: which game state (overworld tile scroll? battle background setup?) triggers this multi-row tile
+  fill.'
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

@@ -1,0 +1,92 @@
+name: sub_803BC7C
+address: '0x0803BC7C'
+kind: function
+status: confirmed
+summary: Draws the left/right half-tiles of a per-element overlay frame and advances the column counter (wraps at
+  0x18).
+interface: 'void sub_803BC7C(u32 style, void *overlayState);  // r0=style flag, r5->overlay block; out: r0=new column
+  index, NZCV from final CMP'
+details: 'r5 points to a per-element overlay state block: offset 0x08 holds the current base
+
+  frame index (u8), offset 0x0A holds a column/row index (u8) used both as the lookup
+
+  into the per-row table at byte_803BCE4 and as the in-block counter advanced each call.
+
+  The function reads byte_803BD18[frame*4..frame*4+3] as a 4-byte tile descriptor
+
+  (palette0, tileId_lo, tileId_hi, terminator) and ORs 0x9000 (VRAM BG tile-data
+
+  attribute base) with the descriptor''s first two bytes to form the left-half tile
+
+  attribute. The third byte (bits 16-23) is added to that attribute to form the
+
+  right-half tile attribute. Both tiles are submitted through sub_802FE28, a tile
+
+  blit routine, with the column offset from byte_803BCE4[row*2] (+0 for the left
+
+  tile, +2 for the right). When r0 (style) is non-zero AND frame >= 0x3C, the
+
+  frame is offset by +5 (an "extended" variant of the animation, gated by a
+
+  style/phase flag). After blitting, the column index is incremented and wrapped
+
+  to 0 when it reaches 0x18, so the index is modulo 24.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_803BC7C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803BC7C
+
+    ./wf verify --function sub_803BC7C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 203 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803BC7C
+
+    ./wf verify --function sub_803BC7C --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803BC7C
+
+    ./wf verify --function sub_803BC7C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803bc7c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- What game object owns the r5 overlay block (element icon strip, battle chip select cursor, status effect strip,
+  or something else)? Without a caller listing the exact subsystem, the proposed name keeps a generic overlay prefix.
+- The meaning of the r0 style flag (which variant chooses the +5 frame offset when frame >= 0x3C) is not visible
+  from this function alone.
+- sub_802FE28's typed interface is not yet known; it's only known to take (u32 tileAttr, u16 colOrDest, u32 zero,
+  u32 zero).
+- byte_803BD18's last 10 entries (0xB7,0x38 / 0x48 / 0x58 / 0x68 row group) appear to be a second descriptor pattern;
+  whether they represent a different style/phase versus the leading 0x05/0x15/0x25/0x35/0x45 row group is unclear
+  from this function alone.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

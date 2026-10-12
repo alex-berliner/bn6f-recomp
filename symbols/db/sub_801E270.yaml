@@ -1,0 +1,84 @@
+name: sub_801E270
+address: '0x0801E270'
+kind: function
+status: confirmed
+summary: 'Window panel update: dispatches any pending open request, refreshes timer/visible state, and renders script
+  text into the window''s VRAM tiles.'
+interface: 'void sub_801E270(u32 r10, u32 lr);
+
+  // returns: r0 = final dispatch_801DA48 result, r2/r5/r7/r8/r9/r10/r11/r12 also clobbered
+
+  // clobbers: nz,c,v, r1, r3, lr; preserves: r4, r5, r6, r7
+
+  '
+details: "Operates on the global eStruct2035280 engine state.\n- Reads state dword at +0x40; if bit 0x100 is set,\
+  \ checks visible flag\n  byte at +0xC: if 0, early-return (panel already dismissed); otherwise\n  dispatches 0x100\
+  \ via dispatch_801DACC to clear the pending open.\n- Always (on the non-early path) sets byte_203528B (+0xB) =\
+  \ 0x3C\n  (60-frame timer) and byte_203528C (+0xC) = 1 (visible).\n- Calls renderTextGfx_8045F8C with:\n    r0\
+  \ = TextScript86F0374 (source script)\n    r1 = 0xE (render kind)\n    r2 = byte_203C4E0 (glyph buffer)\n    r3\
+  \ = 0x6009560 (VRAM tile destination)\n    r4 = 0x11 (palette index)\n    r5 = 1 (row count)\n    r6 = dword_86B7AE0\
+  \ (tile pattern source)\n    r7 = 0 (BG0 layer)\n- Sets engine request bit 0x100 via eStruct2035280_SetRequestBits_801BECC.\n\
+  - Dispatches 0x100 via dispatch_801DA48; its returned r0 becomes the\n  function's r0.\nCalled from the main loop\
+  \ (r10+lr inputs match main-loop caller pattern).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_801E270
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801E270
+
+    ./wf verify --function sub_801E270 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801E270
+
+    ./wf verify --function sub_801E270 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801E270
+
+    ./wf verify --function sub_801E270 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, menus2, story2, story4, story5, story6, story7, story8,
+    story9.'
+  reproduce: grep -l '^0801e270 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which "window" this represents (battle, menu, chat?) — script 86F0374 and palette 0x11 would identify the exact
+  panel.
+- Meaning of render kind 0xE in renderTextGfx_8045F8C.
+- Why the early bail-out skips re-rendering when visible was just cleared.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

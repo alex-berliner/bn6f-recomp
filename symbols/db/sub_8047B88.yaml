@@ -1,0 +1,74 @@
+name: sub_8047B88
+address: '0x08047B88'
+kind: function
+status: confirmed
+summary: Builds the filtered, deduplicated list of purchasable items for the active shop context (regular shop or
+  PET-navi shop) into the shared display buffer at 0x2019A00 and returns the valid slot count.
+interface: u32 shop_buildFilteredList_8047B88(u32 modeData /* r0 */, u32 modeContext /* r5, deref at +0x1c */, u32
+  toolkit /* r10 */) -> u32 count /* r0 */; r4-r7 preserved; nzc flags clobbered
+details: "Zero-fills 128 bytes (16 × 8-byte item slots) at byte_2019A00, then branches on mode\n(field 0 of the\
+  \ structure at r5+0x1c):\n\n• Regular shop (mode != 2): source list = toolkit[oToolkit_ShopDataPtr] +\n  modeData[oModeData_ItemBase],\
+  \ length modeData[oModeData_ItemCount]. For each\n  8-byte entry {type u8, stock u8, num u16, category u8, flag\
+  \ u8, extra u16}:\n  skip if type==0 or stock==0; skip if (type,num,category) duplicates the last\n  accepted\
+  \ entry; skip if sub_8047CB0(type,num) rejects it; additionally skip\n  type 1 num 0x70 when the player has an\
+  \ active PET navi (GetCurPETNavi != 0).\n  Survivors are copied into the buffer sequentially. Final pass counts\
+  \ entries\n  whose stock byte is non-zero.\n\n• PET-navi shop (mode == 2): source list = byte_201AE00. For each\
+  \ entry: skip if\n  sub_8047CA8(num) rejects it; copy 8 bytes into the buffer. If the entry's num\n  equals the\
+  \ target passed in r4 (saved as r3) and stock != 0xFF, decrement stock\n  in both source and output (a \"consume\
+  \ one\" side effect). Final pass counts\n  entries whose num halfword is non-zero.\n\nOutput buffer layout (0x2019A00):\
+  \ 16 slots × 8 bytes:\n  +0 type(u8) +1 stock(u8) +2 num(u16) +4 category(u8) +5 flag(u8) +6 extra(u16)\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_8047B88
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8047B88
+
+    ./wf verify --function sub_8047B88 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8047B88
+
+    ./wf verify --function sub_8047B88 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 37 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8047B88
+
+    ./wf verify --function sub_8047B88 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^08047b88 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- What exactly does sub_8047CB0 filter out in the regular path (availability, event lock, etc.)?
+- 'What does sub_8047CA8 gate in the PET-navi path (navi level requirement, shop inventory)? '
+- The stock decrement for the target item in the PET-navi path—is this a purchase confirmation or a 'preview' that
+  is later rolled back?
+- Item type 1 / num 0x70 suppressed when a PET navi is present—what is this item (a conflicting navi chip?)
+- The register contract lists r4/r5/r6 as outputs despite the function preserving them via push/pop; confirm whether
+  any caller actually reads them.
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

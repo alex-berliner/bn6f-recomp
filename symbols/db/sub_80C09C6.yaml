@@ -1,0 +1,76 @@
+name: sub_80C09C6
+address: '0x080C09C6'
+kind: function
+status: confirmed
+summary: 'Per-frame bounce updater for a battle object: flips Z velocity, snaps to a stored panel on first tick,
+  integrates Z height each frame, snaps to ground and sets phase = 0x10 when landing, and otherwise ticks a phase
+  timer that drives sub_80C0DC2.'
+interface: void object_updateBounce(u32 obj /* r5 in/out */); // r5 preserved across call (sub_80C0DC2 may swap
+  to a different object pointer)
+details: "Battle object is passed in r5. Uses oBattleObject_PhaseInitialized (byte), oBattleObject_ZVelocity (32-bit\
+  \ fixed), oBattleObject_Z (32-bit fixed), oBattleObject_Param3 (u16), oBattleObject_PanelXY (u16), oBattleObject_Timer\
+  \ (u16), and oBattleObject_CurPhaseAndPhaseInitialized (u16).\nOn entry, if PhaseInitialized == 0 (first time\
+  \ this bounce state runs):\n  - Timer := 1\n  - ZVelocity := -ZVelocity (vertical bounce)\n  - PanelXY := Param3\
+  \ (recalls the panel the bounce was queued from)\n  - calls object_setCoordinatesFromPanels(obj) to recenter the\
+  \ object on that panel\n  - PhaseInitialized := 4 (so subsequent ticks fall into the integrator instead of re-initializing)\n\
+  Otherwise (already initialized), adds ZVelocity into Z. The check \"still in the air\" is `((value>>0x10) ASR)\
+  \ > 0` using N/V from the ADD and Z from the ASR: a positive integer Z means airborne, zero or negative means\
+  \ landed.\nWhen landed: Z := 0, low byte of CurPhaseAndPhaseInitialized := 0x10 (phase done flag), and returns\
+  \ without ticking the timer.\nWhen still airborne: decrements Timer. While > 0, returns. When it hits zero, Timer\
+  \ := 3 and calls sub_80C0DC2(obj), which appears to be the next bounce sub-phase; r5 is taken from sub_80C0DC2's\
+  \ return because it may move the object to a different slot (the C version documents this).\nQuirks: The \"0x10\"\
+  \ written to CurPhaseAndPhaseInitialized writes a u16; combined with the existing high byte (the current phase\
+  \ index), this looks like setting a \"phase complete / landed\" sub-flag in the low byte. The timer wrap to 3\
+  \ before calling sub_80C0DC2 is the cadence of the bounce animation steps.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_80C09C6
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C09C6
+
+    ./wf verify --function sub_80C09C6 --snapshots build-snapshots'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C09C6
+
+    ./wf verify --function sub_80C09C6 --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 68 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C09C6
+
+    ./wf verify --function sub_80C09C6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c09c6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- What does the "0x10" written into CurPhaseAndPhaseInitialized actually mean in the high-level phase FSM? (looks
+  like a "completed" sub-flag in the low byte, but the bit layout isn't documented here)
+- Is Param3 the panel coordinate, or just one component of it? It's a single u16 being stored into PanelXY, suggesting
+  Param3 already encodes both X/Y or only X (need to check object_setCoordinatesFromPanels)
+- Which caller passes r5 here (a generic per-object phase dispatcher like the rest of this table)?
+- What does sub_80C0DC2 do, and is its r5-out always the same object or sometimes a swapped/recycled one?
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f

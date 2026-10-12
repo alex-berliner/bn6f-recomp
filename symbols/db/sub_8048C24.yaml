@@ -1,0 +1,72 @@
+name: sub_8048C24
+address: '0x08048C24'
+kind: function
+status: confirmed
+summary: Iterates a shop's item table and returns 1 if any active entry is a navi-gated unique item that is currently
+  unavailable (no PET-navi equipped, wrong kind, or real price when a sentinel is expected).
+interface: int shop_checkUniqueItemLocked(u32 shopIndex /*r0*/, u32 toolkit /*r10*/) -> r0=locked(1)/clear(0), r2=entry
+  ptr, r3=last flag byte
+details: "Uses r0 as an index into a global shop-descriptor table at dword_8046B98\n(stride 0x10). Each descriptor\
+  \ holds a data-offset (+8) and a slot count (+C).\nThe toolkit pointer in r10 supplies ShopDataPtr (oToolkit_ShopDataPtr);\n\
+  adding the descriptor offset yields the base of the shop's item array.\nEach item entry is 8 bytes: byte 0 = kind\
+  \ (1 = \"unique\"/navi-gated),\nbyte 1 = availability flag, u16 at +2 = price (0x70 = sentinel meaning\n\"no purchasable\
+  \ cost / display-only\").\nFor every entry whose flag byte is non-zero:\n  - Calls GetCurPETNavi; if it returns\
+  \ 0 (no PET-navi equipped) → locked (r0=1).\n  - If kind byte != 1 (not a unique entry) → locked (r0=1).\n  -\
+  \ If price != 0x70 → locked (r0=1).\n  - If price == 0x70 the entry is considered valid and iteration continues.\n\
+  Entries with a zero flag byte are silently skipped.\nIf all entries pass, returns 0. r2 is left pointing at the\
+  \ current (or past-last)\nentry; r3 holds the last flag byte read. The loop uses a signed (blt)\ncomparison of\
+  \ counter vs slot-count so a count of 0 still executes the body once.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261012-121225);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 95' --file inbox_farm_95.c sub_8048C24
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8048C24
+
+    ./wf verify --function sub_8048C24 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121225-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8048C24
+
+    ./wf verify --function sub_8048C24 --snapshots build-snapshots'
+  result: 34 compared, 0 differed, 62 out of domain (verify run convert-20261012-121225-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8048C24
+
+    ./wf verify --function sub_8048C24 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121225-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, fuzz, story2.'
+  reproduce: grep -l '^08048c24 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp e46017f
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- story2
+open_questions:
+- Why does a unique item with a real (non-sentinel) price while a navi IS active also count as locked? Is 0x70 a
+  'free-with-navi' tag and any other price means the item should not be displayed?
+- What do callers do with the returned entry pointer in r2 / flag in r3? Likely used to highlight or hide the specific
+  shop slot.
+- Is the 0x70 sentinel shared with other shop-item kind values, or specific to navi-gated items?
+sources:
+- tools/wf run convert-20261012-121225
+- recomp e46017f
