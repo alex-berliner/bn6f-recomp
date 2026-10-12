@@ -7,7 +7,9 @@
  *
  * For each trial both versions run (in forked children, 0.2 s timeout) from
  * the same randomised guest RAM and registers (out of domain when the original
- * faults, or returns elsewhere though it never unwinds); all guest memory, cpu.ret, SP
+ * faults, or returns elsewhere though it never unwinds, and, when the two differ, when the
+ * original made a misaligned load or its own stack frame took part: stack_bound); each
+ * function's inputs are seeded from its name (seed_for); all guest memory, cpu.ret, SP
  * and what the function's register contract compares must match: every r0-r12
  * it does not leave free and the flags callers read (the lifter's refined
  * contract, in difftest_pairs.h), or the function's compare= line in
@@ -175,10 +177,20 @@ static const Cfg *cfg_for(const char *name) {
     return NULL;
 }
 
-static u64 g_rng;
+static u64 g_rng, g_seed = 0x9E3779B97F4A7C15ull;
 static u32 rnd(void) {
     g_rng ^= g_rng << 13; g_rng ^= g_rng >> 7; g_rng ^= g_rng << 17;
     return (u32)(g_rng >> 16);
+}
+
+/* Each function's inputs come from a stream of its own, seeded from the run's seed (-s) and its
+ * name, so they do not depend on which other functions a run (or a verify shard) tests before it:
+ * an install or a take-out elsewhere leaves every other function's random trials as they were. */
+static void seed_for(const char *name) {
+    u64 h = 0xCBF29CE484222325ull;                  /* FNV-1a */
+    for (const char *c = name; *c; c++) h = (h ^ (u8)*c) * 0x100000001B3ull;
+    g_rng = (g_seed ^ h) | 1;
+    for (int i = 0; i < 8; i++) (void)rnd();        /* mix the seed in */
 }
 
 static u32 random_value(void) {
@@ -198,6 +210,7 @@ typedef struct {
     Cpu cpu;
     int status;          /* 0 ok, 1 crashed/timeout */
     u32 misaligned;      /* misaligned halfword/word loads the run made (cpu.h g_flat_misaligned) */
+    u32 min_sp;          /* the lowest SP its memory accesses saw (cpu.h g_flat_min_sp) */
 } Result;
 
 static size_t snapshot_size(void) {
@@ -266,10 +279,12 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
         load_mem(mem_in);
         cpu = *in;
         g_flat_misaligned = 0;
+        g_flat_min_sp = in->r[13];
         run(f);
         res->cpu = cpu;
         res->status = 0;
         res->misaligned = g_flat_misaligned;
+        res->min_sp = g_flat_min_sp;
         save_mem(mem_out);
         return;
     }
@@ -298,10 +313,12 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
         }
         cpu = *in;
         g_flat_misaligned = 0;
+        g_flat_min_sp = in->r[13];
         run(f);
         res->cpu = cpu;
         res->status = 0;
         res->misaligned = g_flat_misaligned;
+        res->min_sp = g_flat_min_sp;
         save_mem(mem_out);
         _exit(0);
     }
@@ -312,6 +329,74 @@ static void run_child(GuestFn f, const Cpu *in, const u8 *mem_in, Result *res, u
         memset(&res->cpu, 0, sizeof res->cpu);
         memcpy(mem_out, mem_in, snapshot_size());
     }
+}
+
+/* Offset of a guest address in a snapshot buffer (save_mem's layout), or (size_t)-1. */
+static size_t snap_offset(u32 addr) {
+    size_t off = 0;
+    for (unsigned r = 0; r < g_region_count; r++) {
+        if (addr - g_regions[r].base < g_regions[r].size) return off + (addr - g_regions[r].base);
+        off += g_regions[r].size;
+    }
+    return (size_t)-1;
+}
+
+/* The free-stack rule of the CPU oracle (tools/oracle.py `explained`), for random inputs: the
+ * original's own stack frames are guest memory, the port's readable frames are not, so a random
+ * pointer or count that runs into the guest stack (a destination below SP with a huge count, a walk
+ * that meets the pushed registers) makes the original stop on, or read, what its own pushes put
+ * there. Such an input is out of the port's domain. Two ways to see one, both on the original
+ * alone: an input register points into the free stack below SP (the oracle's rule as it stands), or
+ * the original's run changes when only its stack moves. For the second, the original runs again
+ * with its stack at the top of EWRAM (its stack arguments, the 0x100 bytes above SP, copied along),
+ * where a walk through IWRAM cannot meet it (one that finds a pushed register finds it wherever the
+ * frame is, so a move within IWRAM would not show it); its return target, SP change, contract
+ * registers and memory must stay the same, its own frames (from the lowest SP its accesses saw up
+ * to its SP) and the moved stack arguments (compared with the first run's) left out. A difference
+ * means its own frame took part in the result. A random EWRAM walk that would reach the moved frame
+ * runs off the end of EWRAM in the first run, which is out of domain already. */
+#define STACK_ARGS 0x100u
+#define MOVED_SP (0x02040000u - STACK_ARGS)
+static int stack_bound(const Pair *p, const Cfg *c, const Cpu *in, const u8 *mem_in, size_t n,
+                       const Result *ra, const u8 *out_a) {
+    u32 sp0 = in->r[13];
+    for (int r = 0; r < 13; r++)
+        if (in->r[r] >= sp0 - STACK_SCRATCH && in->r[r] < sp0) return 1;
+    static u8 *mem_alt, *out_alt;
+    static Result *rc;
+    if (!mem_alt) {
+        mem_alt = malloc(n);
+        out_alt = mmap(NULL, n, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+        rc = mmap(NULL, sizeof *rc, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    }
+    u32 sp1 = MOVED_SP;
+    size_t args0 = snap_offset(sp0), args1 = snap_offset(sp1), end0 = snap_offset(sp0 + STACK_ARGS - 1);
+    if (args0 == (size_t)-1 || args1 == (size_t)-1 || end0 == (size_t)-1) return 0;
+    memcpy(mem_alt, mem_in, n);
+    memcpy(mem_alt + args1, mem_in + args0, STACK_ARGS);
+    Cpu moved = *in;
+    moved.r[13] = sp1;
+    run_child(p->lifted, &moved, mem_alt, rc, out_alt);
+    if (rc->status || rc->cpu.ret != ra->cpu.ret || rc->cpu.r[13] - sp1 != ra->cpu.r[13] - sp0) return 1;
+    for (int r = 0; r < 13; r++)
+        if ((c->compare_mask >> r & 1) && rc->cpu.r[r] != ra->cpu.r[r]) return 1;
+    if (memcmp(out_alt + args1, out_a + args0, STACK_ARGS)) return 1;
+    memcpy(out_alt + args1, out_a + args1, STACK_ARGS);
+    const u32 frames[2][2] = { { ra->min_sp, sp0 }, { rc->min_sp, sp1 } };
+    for (int f = 0; f < 2; f++) {
+        u32 base = frames[f][1] & 0xFF000000u, lo = frames[f][0] < base ? base : frames[f][0];
+        size_t a = snap_offset(lo), b = snap_offset(frames[f][1]);
+        if (lo < frames[f][1] && a != (size_t)-1 && b != (size_t)-1) memcpy(out_alt + a, out_a + a, b - a);
+    }
+    if (g_hwtick) {
+        size_t io = g_regions[0].size + g_regions[1].size;
+        memcpy(out_alt + io, out_a + io, 8);
+    }
+    for (int k = 0; k < c->nignore; k++) {
+        size_t off = snap_offset(c->ignore_addr[k]);
+        if (off != (size_t)-1) memcpy(out_alt + off, out_a + off, c->ignore_len[k]);
+    }
+    return memcmp(out_alt, out_a, n) != 0;
 }
 
 static const char *g_snap_dir;
@@ -374,6 +459,7 @@ static int test_pair(const Pair *p, int trials) {
     }
     const Cfg *c = &cfg;
     g_hwtick = c->hwtick;
+    seed_for(p->name);
     size_t n = snapshot_size();
     u8 *mem_in = malloc(n);
     u8 *out_a = mmap(NULL, n, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -492,6 +578,7 @@ static void check_trial(const Pair *p, const Cfg *c, int t, const Cpu *inp, cons
          * two differ, as on the CPU oracle (tools/oracle_triage.md). Captured calls are real game
          * states, so they stay compared. */
         if (why && !label && ra->misaligned) { (*pcrashes)++; return; }
+        if (why && !label && stack_bound(p, c, &in, mem_in, n, ra, out_a)) { (*pcrashes)++; return; }
         COV_TRIAL_END(p->name, label, t);      /* compared: what the original reached counts */
         if (why) {
             if (fails++ < 5) {
@@ -633,11 +720,10 @@ int main(int argc, char **argv) {
     int trials = 200;
     const char *cand_lib = NULL, *cand_regs = "";
     int cand_flags = 0;
-    g_rng = 0x9E3779B97F4A7C15ull;
     int first = 1;
     for (; first < argc && argv[first][0] == '-'; first++) {
         if (!strcmp(argv[first], "-n")) trials = atoi(argv[++first]);
-        else if (!strcmp(argv[first], "-s")) g_rng = strtoull(argv[++first], 0, 0) | 1;
+        else if (!strcmp(argv[first], "-s")) g_seed = strtoull(argv[++first], 0, 0);
         else if (!strcmp(argv[first], "-S")) g_snap_dir = argv[++first];
         else if (!strcmp(argv[first], "-m")) g_mutations = atoi(argv[++first]);
         else if (!strcmp(argv[first], "-G")) g_truth_dir = argv[++first];

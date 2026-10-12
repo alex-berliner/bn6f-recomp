@@ -2,6 +2,7 @@
 take it out again: the file under cport/src/game, and its difftest.cfg lines
 between markers. A farm group's file is an inbox (tools/layout.py): its
 functions go to the files of their bn6f sources, and the file goes."""
+import functools
 import re
 import subprocess
 from pathlib import Path
@@ -75,10 +76,18 @@ def lay_out_group(file_name: str, tree: Path = REPO) -> tuple[Path, ...]:
 def renamed_apart(code: str, conflicts: list[layout.Conflict]) -> str:
     """CODE (an assembled farm group) with each name a conflict is about renamed, in the group's own part
     that defines it, to NAME_FUNCTION: the part then neither clashes with a neighbour's definition nor lends
-    its own to a neighbour. A conflict where the group's part only reads a neighbour's name stays."""
+    its own to a neighbour. A group's part that reads a macro of the shared headers that a neighbour before
+    it defines with another value (one with the same value is shared: tools/layout.py) gets the header's
+    definition under its own name, NAME_FUNCTION, so it compiles to what was tested. Any other conflict
+    where the group's part only reads a neighbour's name stays."""
     marks = {match[1]: match for match in re.finditer(r"^/\* ── (\w+) ── \*/$", code, re.M)}
     for conflict in conflicts:
         owner = next((owner for owner in conflict.definers if owner in marks), None)
+        user = conflict.blame[0] if conflict.blame else None
+        header = layout.header_macros().get(conflict.name) if conflict.name else None
+        define = ""
+        if owner is None and user in marks and header is not None and conflict.name in _header_text():
+            owner, define = user, f"#define {conflict.name}_{user} {_header_text()[conflict.name]}\n"
         if owner is None or not conflict.name:
             continue
         start = marks[owner].start()
@@ -86,9 +95,24 @@ def renamed_apart(code: str, conflicts: list[layout.Conflict]) -> str:
         end = min(later, default=len(code))
         part = re.sub(rf"\b{re.escape(conflict.name)}\b", f"{conflict.name}_{owner}", code[start:end])
         part = part.replace(f"/* ── {owner}_{owner} ── */", f"/* ── {owner} ── */")   # (a part named like its name)
+        if define:
+            line_end = part.index("\n") + 1
+            part = part[:line_end] + define + part[line_end:]
         code = code[:start] + part + code[end:]
         marks = {match[1]: match for match in re.finditer(r"^/\* ── (\w+) ── \*/$", code, re.M)}
     return code
+
+
+@functools.cache
+def _header_text() -> dict[str, str]:
+    """The replacement text of each object-like macro of the shared headers defined once (comments out)."""
+    seen: dict[str, list[str]] = {}
+    for header in sorted(Path(layout.HEADERS).glob("*.h")):
+        for match in layout.DEFINE.finditer(header.read_text(errors="replace")):
+            if not match[2]:
+                text = re.sub(r"/\*.*?\*/|//.*$", "", match[3]).strip()
+                seen.setdefault(match[1], []).append(text)
+    return {name: texts[0] for name, texts in seen.items() if len(set(texts)) == 1 and texts[0]}
 
 
 def layout_conflicts(file_name: str, code: CandidateFile, functions: tuple[FunctionName, ...],
@@ -97,8 +121,13 @@ def layout_conflicts(file_name: str, code: CandidateFile, functions: tuple[Funct
     twice in one file, or a part that would see a neighbour's definition), with why."""
     files = layout.read_game(game_dir=str(_game_dir(tree)))
     files[file_name] = code
+    conflicts = layout.plan(files, inbox=(file_name,)).conflicts
+    renamed = renamed_apart(code, conflicts)     # what lay_out_group settles at install is no conflict
+    if renamed != code:
+        files[file_name] = renamed
+        conflicts = layout.plan(files, inbox=(file_name,)).conflicts
     out: dict[FunctionName, str] = {}
-    for conflict in layout.plan(files, inbox=(file_name,)).conflicts:
+    for conflict in conflicts:
         blamed = next((owner for owner in conflict.blame if owner in functions), None)
         if blamed is not None:
             _ = out.setdefault(FunctionName(blamed), conflict.text)

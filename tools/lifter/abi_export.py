@@ -234,8 +234,11 @@ class Engine:
         self.order = {u.start: sorted(u.insns, reverse=True) for u in a.p.units}
         self.sites = observed_targets(a, edges) if model.edges and edges else {}
         self.plan = edge_plan(a, edges) if model.edges and edges else []
+        self._dropped: dict[int, int] = {}      # pushes whose save reads _effects dropped: addr -> registers
         self.rw, self.local_w = self._effects()
         self.must_write = self._must_write()
+        if model.pass_through:
+            self._restore_reads()
         self.may_write = self._may_write()
         self.inputs = self._inputs()
         self.callers, self.entry_live, self.indirect_ret, self.edge_after, self.fully_observed = \
@@ -265,11 +268,142 @@ class Engine:
                     w = (w & ~REGS) | (must if ins.cond == "al" else 0)
                     has_swi = True
                 if saved:
-                    r &= ~self._save_reads(u, addr, ins, saved)
+                    dropped = self._save_reads(u, addr, ins, saved)
+                    if dropped & r:
+                        self._dropped[addr] = dropped & r
+                    r &= ~dropped
                 rw[addr] = (r, w)
             if has_swi:
                 local_w[u.start] = self._unit_writes(u)
         return rw, local_w
+
+    def _restore_reads(self) -> None:
+        """A push saves a register only if what the matching pop puts back is not read: a unit that
+        pushes r1, calls something that clobbers r1, pops r1 and then indexes with it
+        (GetCurPETNaviStatsByte) uses the r1 it was given, so r1 is an input. For each unit whose
+        pushes _effects stopped counting as reads: the pops that put a register's own entry value
+        back (_restoring_pops), and a liveness over the unit (callees: the lifter's inputs, a call
+        kills what it overwrites for sure, nothing live at its returns) saying whether that register
+        is live right after such a pop; if so, its pushes in that unit read it again. Repeated until
+        nothing changes (a read put back can make an earlier pop's live)."""
+        a = self.a
+        by_unit: dict[int, list[int]] = {}
+        for addr in self._dropped:
+            unit = self.unit_of(addr)
+            if unit is not None:
+                by_unit.setdefault(unit.start, []).append(addr)
+        for start, pushes in by_unit.items():
+            u = self.unit_of(start)
+            assert u is not None
+            pops = self._restoring_pops(u)
+            if not pops:
+                continue
+            while True:
+                live_in = self.unit_liveness(u, a.inputs, 0, a.inputs)
+                used = 0
+                for addr, restored in pops.items():
+                    after = 0
+                    for x in a.effects[start][addr]:
+                        if x[0] in ("fall", "local"):
+                            after |= live_in.get(x[1], 0)
+                        elif x[0] == "tail":
+                            after |= a.inputs.get(x[1], ALL)
+                    used |= after & restored
+                back = [(addr, self._dropped[addr] & used) for addr in pushes if self._dropped[addr] & used]
+                if not back:
+                    break
+                for addr, regs in back:
+                    r, w = self.rw[addr]
+                    self.rw[addr] = (r | regs, w)
+                    self._dropped[addr] &= ~regs
+
+    def _restoring_pops(self, u: Unit) -> dict[int, int]:
+        """The unit's pops (ldmia sp!) and the registers each loads with that register's own entry value,
+        by symbolic stack tracking from each entry (lift.py's unit_preserved, without its return
+        bookkeeping): a value is a register's entry value, or unknown."""
+        a = self.a
+        eff = a.effects[u.start]
+        out: dict[int, int] = {}
+        Stack = dict[int, "int | None"]
+        State = tuple[tuple["int | None", ...], "int | None", Stack]
+
+        def merge(x: State, y: State) -> State:
+            regs = tuple(p if p == q else None for p, q in zip(x[0], y[0]))
+            if x[1] != y[1] or x[1] is None:
+                return (regs, None, {})
+            return (regs, x[1], {k: v for k, v in x[2].items() if y[2].get(k) == v})
+
+        for e in u.entries:
+            states: dict[int, State] = {e: (tuple(range(15)), 0, {})}
+            work = [e]
+            steps = 0
+            while work and steps < 20000:
+                steps += 1
+                addr = work.pop()
+                ins = u.insns[addr]
+                regs, spo, stack = list(states[addr][0]), states[addr][1], dict(states[addr][2])
+                k = ins.kind
+                o = ins.op2
+                if k == "block" and ins.rn == 13 and ins.wb and ins.cond == "al" and spo is not None \
+                        and (ins.load and ins.mode == "ia" or not ins.load and ins.mode == "db"):
+                    n = len(ins.regs)
+                    if ins.load:
+                        mask = 0
+                        for i, r in enumerate(ins.regs):
+                            if r < 13 and stack.get(spo + 4 * i) == r:
+                                mask |= RB(r)
+                            if r < 15:
+                                regs[r] = stack.get(spo + 4 * i)
+                        if mask:
+                            out[addr] = out.get(addr, 0) | mask
+                        spo += 4 * n
+                    else:
+                        spo -= 4 * n
+                        for i, r in enumerate(ins.regs):
+                            stack[spo + 4 * i] = regs[r] if r < 15 else None
+                elif k == "dp" and ins.rd == 13 and ins.cond == "al":
+                    if ins.rn == 13 and o is not None and o.is_imm and ins.op in ("add", "sub") and spo is not None:
+                        spo += o.imm if ins.op == "add" else -o.imm
+                    else:
+                        spo, stack = None, {}
+                elif k == "mem" and ins.rn == 13 and ins.cond == "al" and o is not None and o.is_imm and ins.pre \
+                        and not ins.wb and spo is not None and ins.width == 4:
+                    off = spo + (o.imm if ins.up else -o.imm)
+                    if ins.load:
+                        if ins.rd < 15:
+                            regs[ins.rd] = stack.get(off)
+                    else:
+                        stack[off] = regs[ins.rd] if ins.rd < 15 else None
+                elif k == "dp" and ins.op == "mov" and ins.cond == "al" and o is not None and not o.is_imm \
+                        and o.rs is None and o.amount == 0 and o.shift == "lsl" and ins.rd < 15 and o.rm < 15:
+                    regs[ins.rd] = regs[o.rm]
+                else:
+                    w = reg_effects(ins if ins.cond == "al" else ins.__class__(**{**ins.__dict__, "cond": "al"}))[1]
+                    if k == "swi":
+                        w |= RB(0) | RB(1) | RB(2) | RB(3)
+                    for n in range(15):
+                        if n != 13 and w & RB(n):
+                            regs[n] = None
+                    if k in ("mem", "block") and ins.rn == 13 and (ins.wb or (k == "mem" and not ins.pre)):
+                        spo, stack = None, {}
+                for x in eff[addr]:
+                    if x[0] in ("fall", "local"):
+                        nxt, st = x[1], (tuple(regs), spo, stack)
+                    elif x[0] == "call" and x[2] in u.insns:
+                        keep = (a.preserved.get(x[1], 0) if x[1] is not None else 0) & ~RB(14)
+                        nxt = x[2]
+                        st = (tuple(regs[n] if n == 13 or keep & RB(n) else None for n in range(15)), spo, stack)
+                    else:
+                        continue
+                    if nxt not in states:
+                        states[nxt] = st
+                        work.append(nxt)
+                    else:
+                        m = merge(states[nxt], st)
+                        if m != states[nxt]:
+                            states[nxt] = m
+                            work.append(nxt)
+        return out
 
     @staticmethod
     def _reads_own_frame(u: Unit) -> bool:

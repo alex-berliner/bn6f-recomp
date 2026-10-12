@@ -116,6 +116,21 @@ def draft_entry(model: ModelSpec, candidate: Path, tag: str) -> Draft:
     return Draft(function=function, path=None, problem=problem, seconds=round(time.monotonic() - started, 1))
 
 
+def draft_missing(model: ModelSpec, functions: tuple[FunctionName, ...], tag: str, jobs: int = 8) -> tuple[Draft, ...]:
+    """Draft the entries the model's accepted candidates of FUNCTIONS have none of yet (what `wf drafts`
+    does), so installing a farm group does not drop a candidate only for lacking one. The drafts made."""
+    from concurrent.futures import ThreadPoolExecutor
+    import contextvars
+    from wf.tools.models import base_model
+    candidates = undrafted(model, functions)
+    if not candidates:
+        return ()
+    with ThreadPoolExecutor(max_workers=max(1, min(jobs, len(candidates)))) as pool:
+        runs = [pool.submit(contextvars.copy_context().run, draft_entry, base_model(model), candidate, tag)
+                for candidate in candidates]
+        return tuple(run.result() for run in runs)
+
+
 def candidate_from_farm(functions: tuple[FunctionName, ...], model: ModelSpec, subsystem: str,
                         file_name: str, taken: Mapping[FunctionName, frozenset[str]] | None = None) -> FileReply:
     """The model's accepted candidates of `functions` as one file, with their drafted entries. TAKEN: per

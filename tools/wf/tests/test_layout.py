@@ -4,6 +4,7 @@ those files; a part must be self-contained where it lands; symbols/db follows th
 from pathlib import Path
 from typing import cast
 
+import pytest
 import yaml
 
 import wf.repo  # noqa: F401  # pyright: ignore[reportUnusedImport]  # puts tools/ on the path
@@ -131,3 +132,34 @@ def test_a_group_part_reading_a_neighbours_macro_cannot_be_renamed_apart() -> No
     conflicts = plan({"object.c": laid, "inbox_2.c": group}).conflicts
 
     assert renamed_apart(group, conflicts) == group and conflicts
+
+
+def test_a_neighbours_macro_with_the_headers_value_is_shared(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(layout, "header_macros", lambda: {"SPEED": "4"})
+    laid = plan({"inbox_1.c": "x\n\n/* ── objA ── */\n#define SPEED (0x4u)\nNext objA(void) {\n    R0 = SPEED;\n}\n"}).files["object.c"]
+    assert laid is not None
+    group = "x\n\n/* ── objB ── */\nNext objB(void) {\n    R0 = SPEED;\n}\n"
+
+    assert not plan({"object.c": laid, "inbox_2.c": group}).conflicts
+
+
+def test_a_neighbours_macro_with_another_value_than_the_headers_is_renamed_apart_in_the_reader(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    from wf.tools import install
+    monkeypatch.setattr(layout, "header_macros", lambda: {"SPEED": "4"})
+    monkeypatch.setattr(install, "_header_text", lambda: {"SPEED": "0x4u"})
+    laid = plan({"inbox_1.c": "x\n\n/* ── objA ── */\n#define SPEED 5\nNext objA(void) {\n    R0 = SPEED;\n}\n"}).files["object.c"]
+    assert laid is not None
+    group = "x\n\n/* ── objB ── */\nNext objB(void) {\n    R0 = SPEED;\n}\n"
+    conflicts = plan({"object.c": laid, "inbox_2.c": group}).conflicts
+    assert conflicts
+
+    renamed = install.renamed_apart(group, conflicts)
+
+    assert "/* ── objB ── */\n#define SPEED_objB 0x4u\n" in renamed and "R0 = SPEED_objB;" in renamed
+    assert not plan({"object.c": laid, "inbox_2.c": renamed}).conflicts
+
+
+def test_macro_values_compare_integer_constants_by_value() -> None:
+    assert layout.macro_value("8") == layout.macro_value("0x8u") == layout.macro_value("(010) /* eight */")
+    assert layout.macro_value("oFoo + 1") == "oFoo + 1" != layout.macro_value("9")

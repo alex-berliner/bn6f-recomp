@@ -67,33 +67,47 @@ extern Cpu cpu;
  * on which the original made one and the port differs as out of the port's domain, as the CPU
  * oracle does (typed C reads the type it declares; the game makes no such load on a real path). */
 __attribute__((weak)) volatile u32 g_flat_misaligned;
+/* The lowest SP any memory access of a run saw: where its stack frames reached (the difftest's
+ * free-stack rule, stack_bound, leaves the original's frames out when it moves its stack). */
+__attribute__((weak)) u32 g_flat_min_sp;
+static inline void flat_sp(void) {
+    if (cpu.r[13] < g_flat_min_sp) g_flat_min_sp = cpu.r[13];
+}
 static inline u32 flat_ld32(u32 a) {
     u32 v = *(volatile u32 *)(uintptr_t)(a & ~3u), s = (a & 3) * 8;
+    flat_sp();
     if (s) g_flat_misaligned++;
     return s ? (v >> s) | (v << (32 - s)) : v;
 }
 static inline u32 flat_ld16(u32 a) {
     u32 v = *(volatile u16 *)(uintptr_t)(a & ~1u);
+    flat_sp();
     if (a & 1) g_flat_misaligned++;
     return (a & 1) ? (v >> 8) | (v << 24) : v;
 }
+static inline u32 flat_ld8(u32 a) { flat_sp(); return *(volatile u8 *)(uintptr_t)a; }
+static inline u32 flat_lds16(u32 a) {
+    flat_sp();
+    return (a & 1) ? (u32)(s32)*(volatile s8 *)(uintptr_t)a : (u32)(s32)*(volatile s16 *)(uintptr_t)a;
+}
+static inline u32 flat_lds8(u32 a) { flat_sp(); return (u32)(s32)*(volatile s8 *)(uintptr_t)a; }
 #define LD32(a)  flat_ld32((u32)(a))
 #define LD16(a)  flat_ld16((u32)(a))
-#define LD8(a)   ((u32)*(volatile u8 *)(uintptr_t)(u32)(a))
-#define LDS16(a) (((u32)(a) & 1) ? (u32)(s32)*(volatile s8 *)(uintptr_t)(u32)(a) \
-                                 : (u32)(s32)*(volatile s16 *)(uintptr_t)(u32)(a))
-#define LDS8(a)  ((u32)(s32)*(volatile s8 *)(uintptr_t)(u32)(a))
+#define LD8(a)   flat_ld8((u32)(a))
+#define LDS16(a) flat_lds16((u32)(a))
+#define LDS8(a)  flat_lds8((u32)(a))
 /* A store to cartridge ROM (0x08000000-0x0DFFFFFF) faults here: host/memmap.c
  * maps the ROM read-only and nothing above it. The GBA ignores such a store,
  * but neither the original nor the port makes one on any recorded route
  * (checked 2026-10-10 by counting mGBA's cartridge-store log over all of
  * them), so in a test build it is a bug: the difftest reports it as a crash. */
-#define ST32(a, v) do { u32 fa_ = (u32)(a); *(volatile u32 *)(uintptr_t)(fa_ & ~3u) = (u32)(v); } while (0)
-#define ST16(a, v) do { u32 fa_ = (u32)(a); *(volatile u16 *)(uintptr_t)(fa_ & ~1u) = (u16)(v); } while (0)
+#define ST32(a, v) do { u32 fa_ = (u32)(a); flat_sp(); *(volatile u32 *)(uintptr_t)(fa_ & ~3u) = (u32)(v); } while (0)
+#define ST16(a, v) do { u32 fa_ = (u32)(a); flat_sp(); *(volatile u16 *)(uintptr_t)(fa_ & ~1u) = (u16)(v); } while (0)
 /* Byte stores to video memory, as the GBA does them: palette RAM and BG
  * VRAM store the byte to both halves of its halfword, OBJ VRAM (tile modes)
  * and OAM ignore them. */
 static inline void flat_st8(u32 a, u32 v) {
+    flat_sp();
     if (a >= 0x05000000u && a < 0x08000000u) {
         if (a >= 0x06010000u)
             return;

@@ -10,7 +10,8 @@ to the model (3 attempts per model, then the next model). A group of farm
 candidates goes the same way, except that failing functions are taken out of
 it (they stay in the farm's pool) instead of going to a model, and its file is an
 inbox: each function goes to the file of its bn6f source (tools/layout.py), where
-the verify builds and the commit puts it. A group of the farm's old-prompt candidates
+the verify builds and the commit puts it; a candidate accepted before the farm drafted
+symbols/db entries gets its entry drafted first (`wf drafts`' step). A group of the farm's old-prompt candidates
 (`--farm-model MODEL+old`) may keep register-form code: the register check is shown at
 review but does not stop it, and its commit queues each function with register-level
 code for retype (tools/abi/retype_queue.tsv) and raises the lint baseline by exactly

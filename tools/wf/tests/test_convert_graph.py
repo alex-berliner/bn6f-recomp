@@ -557,6 +557,7 @@ def install(world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, regis
         "run_record": run_record, "tokens_for": tokens_for, "restore_game_files": restore_game_files,
         "lay_out_group": lay_out_group, "layout_conflicts": layout_conflicts, "placed": placed,
         "names_taken": names_taken,
+        "draft_missing": lambda model, functions, tag: (),  # pyright: ignore[reportUnknownLambdaType]
     }
     if convert.leftover_reads is real_leftover_reads:   # (a test may have put its own in first)
         fakes["leftover_reads"] = leftover_reads

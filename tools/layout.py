@@ -22,7 +22,10 @@ A part must be self-contained where it lands (a problem stops the layout):
   - no part uses a name another part of its file defines, unless it defines it itself: it would see the
     neighbour's definition (a macro counts from its `#define` on, so a part may come before a neighbour
     that defines a macro it takes from the shared headers). Two parts that break this only by order
-    are cut apart with a split address in tools/layout.txt.
+    are cut apart with a split address in tools/layout.txt. A neighbour's macro that defines a name of
+    the shared headers with the same value (`#define CUR_STATE_DESTROY 8` beside bn6f_syms.h's 0x8u) is
+    shared: the part sees what it would see without it. One with another value is renamed apart in the
+    part that uses it (tools/wf install.renamed_apart).
 These are the identifier-level rules tools/stamps.py's body hash follows, so a layout that passes them
 moves no function's stamp.
 
@@ -337,6 +340,47 @@ def plan(files: Mapping[str, str], inbox: Iterable[str] = (), b: Bn6f | None = N
     return out
 
 
+HEADERS = os.path.join(ROOT, "cport", "include")
+DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(\w+)(\(?)(.*)$", re.M)
+
+
+def macro_value(text: str) -> str:
+    """A macro's replacement text, compared by value: comments, spacing and outer parentheses go, and an
+    integer constant is its value (`8`, `0x8u` and `(0x08)` are one value)."""
+    value = re.sub(r"/\*.*?\*/|//.*$", "", text).strip()
+    while value.startswith("(") and value.endswith(")") and value.count("(") == 1:
+        value = value[1:-1].strip()
+    number = re.fullmatch(r"(0[xX][0-9a-fA-F]+|0[0-7]*|[1-9][0-9]*)[uUlL]*", value)
+    if number:
+        digits = number[1]
+        return str(int(digits, 16) if digits[:2] in ("0x", "0X") else int(digits, 8) if digits[0] == "0" else int(digits))
+    return " ".join(value.split())
+
+
+@functools.cache
+def header_macros(headers: str = HEADERS) -> dict[str, str | None]:
+    """Object-like macros the port's shared headers define: name -> macro_value (None: defined with
+    different values, or as a function-like macro)."""
+    out: dict[str, str | None] = {}
+    if not os.path.isdir(headers):
+        return out
+    for name in sorted(os.listdir(headers)):
+        if not name.endswith(".h"):
+            continue
+        with open(os.path.join(headers, name), errors="replace") as f:
+            for m in DEFINE.finditer(f.read()):
+                value = None if m[2] else macro_value(m[3])
+                out[m[1]] = value if out.get(m[1], value) == value else None
+    return out
+
+
+def shares_header_macro(part: Part, name: str) -> bool:
+    """Whether every definition of macro NAME in PART has the value the shared headers give it."""
+    want = header_macros().get(name)
+    found = [m for m in DEFINE.finditer(part.text) if m[1] == name]
+    return want is not None and bool(found) and all(not m[2] and macro_value(m[3]) == want for m in found)
+
+
 def part_problems(dest: str, parts: list[Part]) -> list[Conflict]:
     """The rules of the module docstring, for one file's parts in their order. A macro counts from its
     `#define` on (as for the compiler, and tools/stamps.py's body hash), other names everywhere."""
@@ -352,7 +396,8 @@ def part_problems(dest: str, parts: list[Part]) -> list[Conflict]:
                                 n, tuple(parts[i].owner for i in which)))
     for i, part in enumerate(parts):
         for n in sorted((part.uses - part.defines) & definers.keys()):
-            seen = [parts[j].owner for j in definers[n] if j != i and (j < i or n not in parts[j].macros)]
+            seen = [parts[j].owner for j in definers[n] if j != i and (j < i or n not in parts[j].macros)
+                    and not (n in parts[j].macros and shares_header_macro(parts[j], n))]
             if seen:
                 out.append(Conflict(f"{GAME}/{dest}: {part.owner} uses {n}, which the part of {', '.join(seen)} defines"
                                     f"{' before it' if n in parts[definers[n][0]].macros else ''} (it would see a "

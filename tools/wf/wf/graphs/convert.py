@@ -8,7 +8,8 @@ to the model (3 attempts per model, then the next model). A group of farm
 candidates goes the same way, except that failing functions are taken out of
 it (they stay in the farm's pool) instead of going to a model, and its file is an
 inbox: each function goes to the file of its bn6f source (tools/layout.py), where
-the verify builds and the commit puts it. A group of the farm's old-prompt candidates
+the verify builds and the commit puts it; a candidate accepted before the farm drafted
+symbols/db entries gets its entry drafted first (`wf drafts`' step). A group of the farm's old-prompt candidates
 (`--farm-model MODEL+old`) may keep register-form code: the register check is shown at
 review but does not stop it, and its commit queues each function with register-level
 code for retype (tools/abi/retype_queue.tsv) and raises the lint baseline by exactly
@@ -31,7 +32,7 @@ from wf.graphs.verify import Verdict, VerifyReport, VerifyState, run_verify_in_f
 from wf.routes import ALL_ROUTES
 from wf.repo import REPO, SNAPSHOTS
 from wf.tools.build import build_host_difftest, committed_tree, remove_tree
-from wf.tools.drafts import candidate_from_farm, function_at_line
+from wf.tools.drafts import candidate_from_farm, draft_missing, function_at_line
 from wf.tools.evidence import FunctionChecks, Provenance, renames, write_entries
 from wf.tools.git import commit_or_restore
 from wf.tools.locks import MAIN_TREE, held
@@ -273,8 +274,14 @@ def ask_model_for_file_step(given: AskInput) -> AskOutput:
         return AskOutput(attempts=(attempt,))
     if not given.attempts and given.farm_model is not None:
         functions = tuple(context.function for context in given.contexts)
+        # a candidate the farm accepted before it drafted entries gets its entry now (`wf drafts`)
+        drafted = draft_missing(given.farm_model, functions, f"{current_run_id()} drafts")
         reply = candidate_from_farm(functions, given.farm_model, given.subsystem, given.file_name,
                                     names_taken(functions))
+        failed = [f"{draft.function}: {draft.problem}" for draft in drafted if draft.path is None]
+        if failed:
+            reply = reply.model_copy(update={"notes": (*reply.notes, ToolMessage(
+                "drafting its symbols/db entry at install failed: " + "; ".join(failed)))})
         return AskOutput(attempts=(Attempt(number=number, model=given.farm_model, given=True, reply=reply),))
     models = _with_rounds_left(given.models, given.attempts, given.rounds)
     prompt = subsystem_prompt(given.subsystem, given.file_name, given.contexts)
@@ -780,7 +787,8 @@ def failing_functions(attempt: Attempt) -> dict[FunctionName, str]:
                 failing[FunctionName(leftover[1])] = f"leftover read: {leftover[2]}"[:300]
             undrafted = re.match(r"no ```yaml entry for: (.*)", line)
             for function in undrafted[1].split(", ") if undrafted else ():
-                failing[FunctionName(function)] = "no drafted symbols/db entry yet"
+                failing[FunctionName(function)] = ("no drafted symbols/db entry: drafting it at install failed "
+                                                   "(see the attempt's notes)")
     return failing
 
 
