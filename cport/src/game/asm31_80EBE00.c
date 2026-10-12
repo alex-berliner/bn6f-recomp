@@ -293,6 +293,169 @@ Next battle_aiWindRackAttackStep_80EBFF4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80EC350 ── */
+/* sub_80EC350(r5 = battle object ptr, r7 = AIAttackVars ptr)
+ * AI attack handler: computes the attack outcome via sub_80E192C, and if the
+ * opposing alliance slot is empty, optionally invokes sub_800BF16 to trigger
+ * an extra effect, then exits the attack state.
+ *
+ * inputs:  r5 r7 r10 lr
+ * outputs: r1 r5 r10
+ * clobbers: r0 r2 r3 r7 lr + nz/c/v
+ * preserved: r4 r6 r10
+ */
+Next sub_80EC350(void) {
+    /* The function follows the standard ARM push/pop idiom used throughout
+     * the original: {r4,r6,lr} on the stack, then {r7} on top. We only need
+     * the {r7} push because the outer {r4,r6,lr} lives at SP+0..+11 and is
+     * consumed by RETURN_TO_CALLER() automatically; however the original
+     * expects R4 and R6 to be restored from the stack at function exit, so
+     * we must save them ourselves. */
+    u32 sp = SP - 12;
+    SP = sp;
+    ST32(sp + 0, R4);
+    ST32(sp + 4, R6);
+    ST32(sp + 8, LR);
+
+    SP -= 4;
+    ST32(SP, R7);
+    u32 aiVars = R7;
+
+    u32 unk02  = LD8(aiVars + oAIAttackVars_Unk_02);
+    u32 unk03  = LD8(aiVars + oAIAttackVars_Unk_03);
+    u32 unk0c  = LD32(aiVars + oAIAttackVars_Unk_0c);
+    u32 damage = LD32(aiVars + oAIAttackVars_Damage);
+
+    /* atkBoost (u16) goes into the high half of r7; unk14 (u16) is the low half. */
+    u32 atkBoost = ((u32)LD16(aiVars + oAIAttackVars_AttackBoost)) << 16;
+    u32 unk14    = (u32)LD16(aiVars + oAIAttackVars_Unk_14);
+    u32 atkFlags = unk14 + atkBoost;
+
+    /* sub_80E192C(r0=panelX, r1=panelY, r2=unk02, r3=unk03,
+     *             r4=unk0c, r6=damage, r7=atkFlags) -> packed outcome in r0 */
+    R0 = LD8(R5 + oBattleObject_PanelX);
+    R1 = LD8(R5 + oBattleObject_PanelY);
+    R2 = unk02;
+    R3 = unk03;
+    R4 = unk0c;
+    R6 = damage;
+    R7 = atkFlags;
+    GUEST_CALL(sub_80E192C);
+    u32 result = R0;
+
+    /* Restore r7 = AIAttackVars (clobbered by sub_80E192C). */
+    R7 = LD32(SP);
+    SP += 4;
+
+    /* Save R0 (the result) across the alliance-entry lookup, matching the
+     * original `push {r0}` immediately before the lookup. */
+    SP -= 4;
+    ST32(SP, result);
+
+    R0 = LD8(R5 + oBattleObject_Alliance);
+    GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
+    u32 entry_obj = LD32(R0 + 8);
+    SET_FLAGS_NZ(entry_obj);
+
+    /* Restore the result into R0 (matching the original's `pop {r0}` between
+     * the tst and the bne). The flags above drive the branch. */
+    R0 = LD32(SP);
+    SP += 4;
+
+    if (entry_obj != 0) {
+        /* The slot already has an object; skip the extra-effect call. */
+    } else {
+        /* r1 = 1 if unk14 >= 0x170, else 0. */
+        u32 r1_arg;
+        {
+            u32 cur_unk14 = LD16(R7 + oAIAttackVars_Unk_14);
+            SET_FLAGS_CMP((s32)cur_unk14, 0x170);
+            if (cur_unk14 < 0x170) {
+                r1_arg = 0;
+            } else {
+                r1_arg = 1;
+            }
+        }
+        R0 = LD8(R5 + oBattleObject_Alliance);
+        R1 = r1_arg;
+        R2 = result;
+        GUEST_CALL(sub_800BF16);
+    }
+
+    GUEST_CALL(object_exitAttackState);
+
+    /* Pop {r4,r6,pc}: restore R4 and R6, and return to the saved LR. */
+    R4 = LD32(SP + 0);
+    R6 = LD32(SP + 4);
+    u32 ret_lr = LD32(SP + 8);
+    SP += 12;
+    LR = ret_lr;
+    (void)LR;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80EC7C0 ── */
+/* sub_80EC7C0: AI attack controller — Thunder/Lightning-style attack that
+ * spawns a projectile on its second tick and finishes after four ticks.
+ *   inputs:  r5 (caster battle object), r7 (caster AI attack vars), r10, lr
+ *   outputs: r1, r5, r8, r9
+ */
+Next sub_80EC7C0(void) {
+    /* First call (Unk_01 == 0): set up animation, counter time and flags. */
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        R0 = 0xE;
+        GUEST_CALL(object_setAnimation);
+
+        GUEST_CALL(sub_80EB562);
+
+        GUEST_CALL(object_setDefaultCounterTime);
+
+        R0 = 1u << OBJECT_FLAGS_UNK_BIT_22_BIT;
+        GUEST_CALL(object_setFlag1);
+
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST16(R7 + oAIAttackVars_Unk_10, 0);
+    }
+
+    /* Tick 1: spawn the thunder projectile at the caster's panel, aimed in
+     * their facing direction. R7 is preserved across the spawn call via the
+     * guest stack to match the original's push {r7} / pop {r7}. */
+    if (LD16(R7 + oAIAttackVars_Unk_10) == 1) {
+        u32 buf = SP -= 4;
+        ST32(buf, R7);
+
+        GUEST_CALL(object_getFrontDirection);
+        u32 panelX = LD8(R5 + oBattleObject_PanelX);
+        u32 panelY = LD8(R5 + oBattleObject_PanelY);
+        R0 = R0 + panelX;
+
+        R1 = panelY;
+        R2 = LD8(R7 + oAIAttackVars_Unk_02);
+
+        u32 unk0c    = LD32(R7 + oAIAttackVars_Unk_0c);
+        u32 damage   = LD32(R7 + oAIAttackVars_Damage);
+        u32 atkBoost = LD16(R7 + oAIAttackVars_AttackBoost);
+        R4 = unk0c;
+        R6 = damage + atkBoost;
+        R7 = 0;
+        R3 = 0xA << 16;
+
+        GUEST_CALL(spawnThunderObjectMaybe_80c954c);
+
+        R7 = LD32(SP);
+        SP += 4;
+    }
+
+    /* Advance tick counter and end the attack once it has run for 4 ticks. */
+    u32 tick = LD16(R7 + oAIAttackVars_Unk_10) + 1;
+    ST16(R7 + oAIAttackVars_Unk_10, tick);
+    if ((s32)tick > 4) {
+        ST16(R7 + oAIAttackVars_Unk_00, 4);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80EC81E ── */
 /* sub_80EC81E(r5 = battle object, r7 = AI attack vars):
  * Tick the wind-up timer on the AI attack state. On first entry (when the flag
@@ -469,6 +632,212 @@ Next sub_80ECAA4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80ECF48 ── */
+/* sub_80ECF48:
+ *   inputs:  r3 r5 r7 r10 lr
+ *   outputs: r1 r5
+ *   clobbers: nz c v r0 r2 r3 lr
+ *   preserved: r4 r5 r6 r7
+ *
+ * Fold the AI attack boost into the damage field, then drive the attack
+ * object's animation, refresh the default counter timer, spawn a temporary
+ * attack child object, flag the parent, and stash a few AI bookkeeping
+ * fields.
+ */
+Next sub_80ECF48(void) {
+    u32 saved_r4 = R4;
+
+    /* damage += attackBoost */
+    u32 boost = LD16(R7 + oAIAttackVars_AttackBoost);
+    u32 damage = LD32(R7 + oAIAttackVars_Damage) + boost;
+    ST32(R7 + oAIAttackVars_Damage, damage);
+
+    /* sub_80ED040() -> byte stored at Unk_16 */
+    GUEST_CALL(sub_80ED040);
+    ST8(R7 + oAIAttackVars_Unk_16, (u8)R0);
+
+    ST8(R7 + oAIAttackVars_Unk_17, 3);
+    ST8(R5 + oBattleObject_CurAnim, 0x0A);
+
+    GUEST_CALL(object_setDefaultCounterTime);
+
+    /* spawn_t1_0x5_tempAttackObject_80B8E30(r4 = 0x1D, r5 = parent,
+     *                                       r7 = r5->AIDataPtr + 0x68,
+     *                                       r3/r10 passed through) */
+    {
+        u32 saved_r7 = R7;
+        R4 = 0x1D;
+        R7 = LD32(R5 + oBattleObject_AIDataPtr) + 0x68;
+        GUEST_CALL(spawn_t1_0x5_tempAttackObject_80B8E30);
+        R7 = saved_r7;
+    }
+
+    R0 = (u32)1 << OBJECT_FLAGS_UNK_BIT_22_BIT;
+    GUEST_CALL(object_setFlag1);
+
+    ST8(R7 + oAIAttackVars_Unk_0e, 9);
+    ST32(R7 + oAIAttackVars_Unk_30, (u32)-1);
+    ST16(R7 + oAIAttackVars_Unk_00, 4);
+
+    R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80ECF8E ── */
+/* sub_80ECF8E: AI attack state for a battle object.
+ *   inputs:  r5 = battle object, r6 = scratch, r7 = AI attack vars, lr
+ *   outputs: r1, r5
+ *   clobbers (caller does not read): nz c v r0 r2 r3 r7 lr
+ *   preserved: r4 r5 r6
+ *
+ * Per-frame attack routine: on entry with state==0, primes the AI data and
+ * plays anim 0xD, then sets up per-attack parameters and spawns an effect
+ * object at the target panel. Every frame it decrements a tick counter;
+ * when it expires it bounces the target panel around the battlefield
+ * (flipping direction and consulting sub_80ED040 for a row hint), then
+ * decrements an iteration counter. Once iterations are exhausted, it
+ * tears down the attack state. */
+
+Next sub_80ECF8E(void) {
+    /* r4/r6 are push-saved in the original; restore them so the caller
+     * sees the values it passed in. r5 is never written in this function. */
+    u32 r5 = R5;
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+
+    u32 state = LD8(R7 + oAIAttackVars_Unk_01);
+
+    if (state != 1) {
+        if (state != 2) {
+            /* First entry: poke the AI data sub-struct, set anim 0xD. */
+            u32 aiData = LD32(r5 + oBattleObject_AIDataPtr);
+            u32 unk68  = LD32(aiData + oAIData_Unk_68);
+            ST8(unk68 + 0x10, 1);
+            R0 = 0xD;
+            GUEST_CALL(object_setAnimation);
+        }
+
+        /* ---- Per-attack setup ---- */
+        ST8(R7 + oAIAttackVars_Unk_01, 1);
+        ST16(R7 + oAIAttackVars_Unk_10, 8);
+
+        {
+            u32 param  = (LD32(R7 + oAIAttackVars_Unk_0c) & 0xFFFFu) | 0x10000u;
+            u32 col    = LD8(R7 + oAIAttackVars_Unk_16);
+            u32 row    = LD8(R7 + oAIAttackVars_Unk_17);
+            u32 side   = LD8(R7 + oAIAttackVars_Unk_02);
+            u32 damage = LD32(R7 + oAIAttackVars_Damage);
+
+            R0 = col;  R1 = row;  R2 = side;  R3 = 0;
+            R4 = param;
+            R6 = damage;
+            GUEST_CALL(sub_80C5F2C);
+        }
+
+        {
+            u32 col = LD8(R7 + oAIAttackVars_Unk_16);
+            u32 row = LD8(R7 + oAIAttackVars_Unk_17);
+            R0 = col;  R1 = row;
+            GUEST_CALL(object_getCoordinatesForPanels); /* R0=x, R1=y */
+            /* Original: mov r2, r1 ; mov r1, r0  — save y first. */
+            R2 = R1;
+            R1 = R0;
+            R3 = 0;
+            R4 = 0x2F;
+            GUEST_CALL(spawn_t1_0x0_EffectObject);
+        }
+
+        if (R0 != 0) {
+            /* Spawn succeeded: load the AI attack timer value into R1
+             * (matches the original `ldrb r1`) and write it to the
+             * new effect object. */
+            R1 = LD8(R7 + oAIAttackVars_Unk_0d);
+            ST16(R0 + oBattleObject_Timer, R1);
+        }
+        /* If spawn returned NULL, R1 stays as spawn_t1_0x0_EffectObject left it,
+         * matching the original which skips the ldrb in that case. */
+    }
+    /* state == 1: skip setup entirely, R1 = caller's input value. */
+
+    /* ---- Per-frame timer tick ---- */
+    {
+        u32 orig_timer = LD16(R7 + oAIAttackVars_Unk_10);
+        u32 timer = orig_timer - 1;
+        ST16(R7 + oAIAttackVars_Unk_10, (u16)timer);
+        SET_FLAGS_CMP(orig_timer, 1);  /* `subs r0, r0, #1` */
+
+        if ((s32)timer >= 0) {
+            goto done;  /* bge locret: still ticking */
+        }
+    }
+
+    /* ---- Timer expired: bounce the target panel ---- */
+    {
+        u32 dir = LD32(R7 + oAIAttackVars_Unk_30);
+        u32 row = LD8(R7 + oAIAttackVars_Unk_17);
+        s32 probe = (s32)row + (s32)dir;
+
+        if (probe >= 1 && probe <= 3) {
+            /* Step along the column stays in range: take the step. */
+            u32 new_row = (u32)probe;
+            ST8(R7 + oAIAttackVars_Unk_17, (u8)new_row);
+            R1 = new_row;
+        } else {
+            /* Out of range: flip the column-direction step and ask the
+             * helper which way the row should now nudge. */
+            u32 neg_dir = (u32)(-(s32)dir);
+            ST32(R7 + oAIAttackVars_Unk_30, neg_dir);
+            GUEST_CALL(sub_80ED040);  /* R0 = row hint */
+
+            u32 old_col = LD8(R7 + oAIAttackVars_Unk_16);
+            u32 hint    = R0;
+
+            if (hint == old_col) {
+                /* Helper says same row: bounce straight along the row. */
+                u32 new_row = (u32)((s32)row - (s32)dir);
+                ST8(R7 + oAIAttackVars_Unk_17, (u8)new_row);
+                R1 = new_row;
+            } else {
+                /* Helper gives a different row: nudge toward it. */
+                s32 delta = (hint > old_col) ? 1 : -1;
+                u32 new_col = (u32)((s32)old_col + delta);
+                ST8(R7 + oAIAttackVars_Unk_16, (u8)new_col);
+                R1 = new_col;
+            }
+        }
+    }
+
+    /* ---- Decrement bounce iteration counter ---- */
+    {
+        u32 orig_lives = LD8(R7 + oAIAttackVars_Unk_0e);
+        u32 lives = orig_lives - 1;
+        ST8(R7 + oAIAttackVars_Unk_0e, (u8)lives);
+        SET_FLAGS_CMP(orig_lives, 1);  /* `subs r0, r0, #1` for the beq below */
+
+        if (lives != 0) {
+            /* More iterations left: loop back into the setup phase. */
+            ST8(R7 + oAIAttackVars_Unk_01, 2);
+            /* `mov r0, #2` does not set flags in Thumb; flags stay from SUBS. */
+            goto done;
+        }
+
+        /* Attack finished: drop related-object pointer, clear AI data
+         * sub-struct reference, then exit the attack state. */
+        u32 aiData = LD32(r5 + oBattleObject_AIDataPtr);
+        ST32(r5 + oBattleObject_RelatedObject1Ptr, 0);
+        ST32(aiData + oAIData_Unk_68, 0);
+        R0 = 0;
+        R1 = aiData;
+        GUEST_CALL(object_exitAttackState);
+        /* Flags at return come from object_exitAttackState (matches original). */
+    }
+
+done:
+    R4 = saved_r4;
+    R6 = saved_r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_attack_dispatch_80ED13E ── */
 /* register form: calls sub_80ED154 outside this file, which has no typed C interface yet */
 static void call_attack_type_handler(u32 idx, u32 target, u32 ai_vars,
@@ -531,6 +900,12 @@ static void nullsub_106_impl(void) {
  * preserved: - */
 Next nullsub_106(void) {
     nullsub_106_impl();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD240 ── */
+/* sub_80FD240: no-op trampoline; just returns to LR. */
+Next sub_80FD240(void) {
     RETURN_TO_CALLER();
 }
 
@@ -599,6 +974,16 @@ Next sub_80FD2C0(void) {
         base += 0x3C;
 
     R0 = base;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD2E4 ── */
+/* sub_80FD2E4(r5 = opaque, lr = return address)
+ * Trivial trampoline: load the game's static dword_80FD2F4 (0x5040403) into
+ * r0 and tail-call sub_800FE28, returning its r0 to the caller. */
+Next sub_80FD2E4(void) {
+    R0 = A_dword_80FD2F4;
+    GUEST_CALL(sub_800FE28);
     RETURN_TO_CALLER();
 }
 
@@ -750,6 +1135,80 @@ Next sub_80FD7D4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FD852 ── */
+/* sub_80FD852 (r3 = ?, r5 = battle object, r7 = AI-attack vars, r10 = ?, lr = return):
+ *   Tick the AI attack's wind-up/impact animation.
+ *   On the first call (when Unk_01 == 0) it kicks off the attack: starts
+ *   a counter window, sets the caster animation, spawns the actual hit
+ *   via sub_80C82A8, plays the hit SFX, and stashes a frame counter.
+ *   On every later call it just counts that frame counter down; when it
+ *   reaches zero the wind-up finishes and the attack advances to its
+ *   next state.
+ *   inputs:  r3 r5 r7 r10 lr
+ *   outputs: r1 r5 r10
+ *   clobbers: nz c v r0 r2 r3 lr
+ *   preserved: r4 r5 r6 r7 r10
+ */
+Next sub_80FD852(void) {
+    /* r4 and r6 get clobbered in the first-tick path; original saves/restores
+     * them via push {r4,r6,lr} / pop {r4,r6,pc}, so we record and restore. */
+    u32 saved_R4 = R4;
+    u32 saved_R6 = R6;
+
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        /* First tick — set up the attack. */
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+
+        /* Counter window for the attack. */
+        R0 = 0x18;
+        GUEST_CALL(object_setCounterTime);
+
+        /* Trigger the caster's attack animation. */
+        ST8(R5 + oBattleObject_CurAnim, 9);
+
+        /* Build the packed descriptor (r4) that sub_80C82A8 consumes:
+         *   element-id | (sub-element << 8) | (direction << 16). */
+        R4  = LD8(R7 + oAIAttackVars_Unk_03);
+        R4 |= LD8(A_dword_80FD8AC + LD8(R7 + oAIAttackVars_Unk_03)) << 8;
+        R4 |= LD8(R7 + oAIAttackVars_Unk_0c)            << 16;
+
+        /* Damage value goes in r6 for the callee. */
+        R6 = LD32(R7 + oAIAttackVars_Damage);
+
+        /* Spawn the hit/projectile. */
+        R0 = LD8(R5 + oBattleObject_PanelX);
+        R1 = LD8(R5 + oBattleObject_PanelY);
+        R2 = LD8(R7 + oAIAttackVars_Unk_02);
+        GUEST_CALL(sub_80C82A8);
+
+        /* Hit SFX. */
+        R0 = 0x17E;   /* 0x7F + 0xFF */
+        GUEST_CALL(PlaySoundEffect);
+
+        /* Stash sub-element index as the frame counter ticked by the
+         * else-branch on subsequent calls. */
+        ST16(R7 + oAIAttackVars_Unk_10,
+             LD8(A_dword_80FD8AC + LD8(R7 + oAIAttackVars_Unk_03)));
+
+        /* Asm leaves r1 = &dword_80FD8AC at exit. */
+        R1 = A_dword_80FD8AC;
+    } else {
+        /* Wind-up animation in progress — count down its frames. */
+        u32 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
+        ST16(R7 + oAIAttackVars_Unk_10, (u16)timer);
+        if (!((s32)timer > 0)) {
+            /* Timer reached zero: hand off to the next attack state. */
+            ST16(R7 + oAIAttackVars_Unk_00, 0x18);
+        }
+    }
+
+    /* Restore callee-preserved registers. */
+    R4 = saved_R4;
+    R6 = saved_R6;
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FD8B0 ── */
 /* sub_80FD8B0(r5 = battle object, r6 = ?, r7 = AI attack vars):
  *  If the AI-attack init flag is 0, set it to 4, reset the object's
@@ -770,6 +1229,124 @@ Next sub_80FD8B0(void) {
             GUEST_CALL(object_exitAttackState);
         }
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FDAC4 ── */
+/* sub_80FDAC4: pick a target panel for an object based on its column preferences.
+ * inputs:  r0 (struct ptr), r2 (param2), r3 (param3), r5 (object), lr
+ * outputs: r0 (panelX), r1 (panelY), r5, r6, r7 (must equal inputs)
+ * clobbers: nz, c, v, r2, r3, lr */
+Next sub_80FDAC4(void) {
+    u32 param0 = R0, param2 = R2, param3 = R3;
+    u32 in_r7 = R7;
+    u32 buf = SP - 0x24;
+    SP = buf;
+    ST32(buf + 0x00, R0);
+    ST32(buf + 0x04, R2);
+    ST32(buf + 0x08, R3);
+
+    /* Reserve the object's current column so movement routines see it busy. */
+    R0 = (u32)LD8(R5 + oBattleObject_PanelX);
+    R1 = (u32)LD8(R5 + oBattleObject_PanelY);
+    GUEST_CALL(object_reservePanel);
+
+    /* First pass: pack (row<<4 | col) for each preferred column that
+     * checkPanelParameters accepts. */
+    u32 r4 = 0, r6 = 0;
+    u32 out_x = 0, out_y = 0;
+    bool have_panel = false;
+    for (r4 = 0; r4 < 2; r4++) {
+        u32 alliance = LD8(R5 + oBattleObject_Alliance);
+        u32 col = LD8((u32)A_byte_80FDB80 + alliance * 2 + r4);
+        u32 row_byte = LD8(param0 + 0x13);
+        R0 = col;
+        R1 = row_byte;
+        R2 = param2;
+        R3 = param3;
+        GUEST_CALL(object_checkPanelParameters);
+        if (R0 != 0) {
+            ST8(buf + 0x0C + r6, (u8)((row_byte << 4) | (col & 0xF)));
+            r6++;
+        }
+    }
+
+    if (r6 == 0) {
+        u32 self_x = LD8(R5 + oBattleObject_PanelX);
+        u32 self_y = LD8(R5 + oBattleObject_PanelY);
+        u32 target_row = LD8(param0 + 0x13);
+
+        /* If we're on the requested row already, see whether our X is one of
+         * the preferred columns; if so, "use self" ends the search. */
+        if (self_y == target_row) {
+            for (r4 = 0; r4 < 2; r4++) {
+                u32 alliance = LD8(R5 + oBattleObject_Alliance);
+                u32 c = LD8((u32)A_byte_80FDB80 + alliance * 2 + r4);
+                if (self_x == c) {
+                    out_x = self_x;
+                    out_y = self_y;
+                    have_panel = true;
+                    goto use_panel;
+                }
+            }
+        }
+
+        /* Otherwise ask the column which panel rows it allows. */
+        r6 = 0;
+        for (r4 = 0; r4 < 2; r4++) {
+            u32 alliance = LD8(R5 + oBattleObject_Alliance);
+            u32 col = LD8((u32)A_byte_80FDB80 + alliance * 2 + r4);
+            R0 = col;
+            R2 = param2;
+            R3 = param3;
+            /* Pass the output buffer pointer in R7 as the original does.
+             * The leaf preserves R7, so we must save/restore to honour the
+             * preserved-register contract. */
+            u32 saved_r7 = in_r7;
+            R7 = buf + 0x0C + r6;
+            GUEST_CALL(object_getPanelsInColumnFiltered);
+            in_r7 = saved_r7;
+            r6 += R0;
+        }
+
+        if (r6 == 0) {
+            /* Nothing reachable at all: stay put. */
+            out_x = self_x;
+            out_y = self_y;
+            have_panel = true;
+            goto use_panel;
+        }
+    }
+
+    /* Pick one of the packed candidates uniformly at random.
+     * SVC 6 = SoftDiv: returns quotient in R0, remainder in R1. */
+    GUEST_CALL(GetPositiveSignedRNG);
+    R1 = r6;
+    swi_call(6);
+    {
+        u32 packed = LD8(buf + 0x0C + R1);
+        out_y = packed >> 4;
+        out_x = (packed << 29) >> 29;
+    }
+    have_panel = true;
+
+use_panel:
+    (void)have_panel;
+    /* Release the column we reserved at the top. The original saves r0/r1
+     * across this call with inline push/pop so the chosen panel survives. */
+    {
+        u32 save_x = out_x, save_y = out_y;
+        R0 = (u32)LD8(R5 + oBattleObject_PanelX);
+        R1 = (u32)LD8(R5 + oBattleObject_PanelY);
+        GUEST_CALL(object_removePanelReserve);
+        out_x = save_x;
+        out_y = save_y;
+    }
+
+    R0 = out_x;
+    R1 = out_y;
+    R7 = in_r7;
+    SP = buf + 0x24;
     RETURN_TO_CALLER();
 }
 
@@ -1422,6 +1999,33 @@ Next GetAllianceDependentPanelParamArgs(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8109708 ── */
+/* sub_8109708(r0, r1, r2, r5 = battleObject):
+ *   Loads the alliance byte from the battle object, sets up a panel
+ *   parameter table whose contents depend on that alliance, then asks
+ *   for a random panel relative to (r0, r1) using those parameters.
+ *   r4 and r6 are preserved across the call (they are caller-saved
+ *   in the ABI but the original push/pops them explicitly). */
+Next sub_8109708(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+
+    /* mov r4, r2 -- pass r2 through to GetRandomRelativePanelFiltered */
+    R4 = R2;
+    /* ldrb r6, [r5, #oBattleObject_Alliance] -- alliance of the attacker */
+    R6 = LD8(R5 + oBattleObject_Alliance);
+    /* ldr r3, off_8109780 -> R3 = A_off_8109784 (panel param table) */
+    R3 = A_off_8109784;
+    /* bl GetAllianceDependentPanelParamArgs -- sets up panel reach params */
+    GUEST_CALL(GetAllianceDependentPanelParamArgs);
+    /* bl GetRandomRelativePanelFiltered -- picks a random relative panel */
+    GUEST_CALL(GetRandomRelativePanelFiltered);
+
+    R4 = saved_r4;
+    R6 = saved_r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_pickRandomRowObjectFields_810971A ── */
 /* battle_pickRandomRowObjectFields_810971A: pick a random object from the row selected by the current
  * alliance-dependent panel parameters and split its entry byte into two
@@ -1467,6 +2071,126 @@ Next battle_pickRandomRowObjectFields_810971A(void) {
 
     SP += 16;
     R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8109820 ── */
+/* sub_8109820: AI attack-step handler. If the object can move and the
+ * candidate panel passes the parameter check, store the future panel on
+ * the battle object and reserve it, set the "cannot slide" flag,
+ * dispatch to sub_81098C4 or sub_810990E based on Unk_03, then run
+ * sub_810986E. Otherwise clear Unk_1a and call sub_801171C.
+ *
+ * Inputs:  r5 = battle object ptr, r6 = ?, r7 = AI attack vars ptr
+ * Outputs: standard AAPCS; preserves r4..r7. */
+Next sub_8109820(void) {
+    /* If the object cannot move, bail out to the failure path. */
+    GUEST_CALL(object_canMove);
+    if (ZERO_FLAG()) goto fail;
+
+    /* Load candidate panel coordinates and parameters, then validate. */
+    R0 = LD8(R7 + oAIAttackVars_Unk_16);
+    R1 = LD8(R7 + oAIAttackVars_Unk_17);
+    R2 = LD32(R7 + oAIAttackVars_Unk_34);
+    R3 = LD32(R7 + oAIAttackVars_Unk_38);
+    GUEST_CALL(object_checkPanelParameters);
+    if (R0 == 0) goto fail;
+
+    /* Panel OK: reload X/Y into r0/r1, write them as the future panel on
+     * the battle object, then reserve the panel with those same args. */
+    R0 = LD8(R7 + oAIAttackVars_Unk_16);
+    ST8(R5 + oBattleObject_FuturePanelX, (u8)R0);
+    R1 = LD8(R7 + oAIAttackVars_Unk_17);
+    ST8(R5 + oBattleObject_FuturePanelY, (u8)R1);
+    GUEST_CALL(object_reservePanel);
+
+    R0 = OBJECT_FLAGS_CANNOT_SLIDE;
+    GUEST_CALL(object_setFlag1);
+
+    ST16(R7 + oAIAttackVars_Unk_00, 4);
+
+    if (LD8(R7 + oAIAttackVars_Unk_03) != 0) {
+        GUEST_CALL(sub_81098C4);
+    } else {
+        GUEST_CALL(sub_810990E);
+    }
+    GUEST_CALL(sub_810986E);
+    RETURN_TO_CALLER();
+
+fail:
+    ST8(R7 + oAIAttackVars_Unk_1a, 0);
+    GUEST_CALL(sub_801171C);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81098C4 ── */
+/* sub_81098C4: drive a battle object toward the AI's target panel.
+ *
+ * Reads the AI's current target panel (X from oAIAttackVars_Unk_16,
+ * Y from oAIAttackVars_Unk_17) and the object's current panel,
+ * decides which axis is off (Y first, then X), writes the matching
+ * velocity to the object, and stores the frame/duration pair that
+ * the caller uses to know when to issue the hit.
+ *
+ * Register contract:
+ *   inputs:  r5 (object), r7 (AI vars), lr
+ *   outputs: r2, r3
+ *   clobbers: nz, c, v, r0, r1
+ */
+Next sub_81098C4(void) {
+    u32 obj = R5;
+    u32 ai  = R7;
+
+    /* --- Y axis: AIUnk_17 vs object PanelY --- */
+    s32 dy    = (s32)((u8)LD8(ai + oAIAttackVars_Unk_17))
+              - (s32)((u8)LD8(obj + oBattleObject_PanelY));
+    u32 speed = LD32(ai + oAIAttackVars_Unk_30);
+    u32 yVel  = speed * (u32)dy;
+
+    /* MUL preserves flags, but in the Thumb encoding it's the result
+     * of the multiply that sets NZ; BEQ below tests r1 (the product). */
+    SET_FLAGS_NZ(yVel);
+
+    if (yVel == 0) goto x_axis;
+
+    /* Y is the active axis: drive vertically, no horizontal motion. */
+    ST32(obj + oBattleObject_YVelocity, yVel);
+    ST32(obj + oBattleObject_XVelocity, 0);
+
+    R0 = 0x18 << 16;            /* duration in 16.16 fixed-point */
+    goto divide_speed;
+
+x_axis:
+    /* --- X axis: AIUnk_16 vs object PanelX --- */
+    s32 dx   = (s32)((u8)LD8(ai  + oAIAttackVars_Unk_16))
+             - (s32)((u8)LD8(obj + oBattleObject_PanelX));
+    u32 xVel = speed * (u32)dx;
+    SET_FLAGS_NZ(xVel);
+
+    if (xVel != 0) {
+        /* Drive horizontally, no vertical motion. */
+        ST32(obj + oBattleObject_XVelocity, xVel);
+        ST32(obj + oBattleObject_YVelocity, 0);
+        R0 = 0x28 << 16;        /* longer duration than the Y case */
+        goto divide_speed;
+    }
+
+    /* Both axes already match: zero both velocities, mark as hit. */
+    ST32(obj + oBattleObject_XVelocity, 0);
+    ST32(obj + oBattleObject_YVelocity, 0);
+    ST16(ai + oAIAttackVars_Unk_10, 1);
+    ST16(ai + oAIAttackVars_Unk_12, 1);
+    goto done;
+
+divide_speed:
+    /* BIOS Divide(r0 / r1): num = duration fixed-point, denom = speed.
+     * Quotient in r0, remainder in r1; only r0 (whole frames) is kept. */
+    R1 = speed;
+    swi_call(6);
+    ST16(ai + oAIAttackVars_Unk_10, (u16)R0);
+    ST16(ai + oAIAttackVars_Unk_12, (u16)(R0 >> 1));
+
+done:
     RETURN_TO_CALLER();
 }
 

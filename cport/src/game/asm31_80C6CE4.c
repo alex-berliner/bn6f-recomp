@@ -256,6 +256,135 @@ Next battle_runObjects_80C8368(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C9024 ── */
+/* sub_80C9024: initialize a battle object sprite, collision data and entry state.
+ * Inputs:  r5 = battle object ptr
+ * Outputs: r5, r8 unchanged
+ */
+Next sub_80C9024(void) {
+    /* Load sprite 0x80 (slot 0x14), 5 frames of animation. */
+    R0 = 0x80;
+    R1 = 0x14;
+    R2 = 5;
+    GUEST_CALL(sprite_load);
+
+    /* Set current animation to 0x0B and apply it. */
+    R0 = 0xB;
+    ST8(R5 + oBattleObject_CurAnim, R0);
+    GUEST_CALL(sprite_setAnimation);
+
+    /* Load the animation frame data, drop any shadow, then update the sprite. */
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_noShadow);
+    GUEST_CALL(sprite_update);
+
+    /* Snap the sprite to its panel coordinates and store its facing as X velocity. */
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    GUEST_CALL(object_getFrontDirection);
+    ST32(R5 + oBattleObject_XVelocity, R0);
+
+    /* Element 5 (wind); allocate collision data for the object. */
+    R0 = 5;
+    ST8(R5 + oBattleObject_Element, R0);
+    GUEST_CALL(object_createCollisionData);
+
+    /* If allocation failed, tear the object down and bail out. */
+    SET_FLAGS_NZ(R0);
+    if (R0 == 0) {
+        GUEST_CALL(object_freeMemory);
+        RETURN_TO_CALLER();
+    }
+
+    /* Configure collision (shape 4, size 5, no extra param) and present it. */
+    R1 = 4;
+    R2 = 5;
+    R3 = 0;
+    GUEST_CALL(object_setupCollisionData);
+    GUEST_CALL(object_presentCollisionData);
+
+    /* Mark the object as ready for its update phase. */
+    R0 = CUR_STATE_UPDATE;
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C90DC ── */
+/* sub_80C90DC(r5 = self):
+ * Mirror the related object's motion: copy bit-1 of oObjectHeader_Flags from it,
+ * then if checkBattleOrderMatch_802CE30 permits, look up an indexed (dx,dy) by name, flip the sign
+ * to our facing direction, add it into our 0x34..0x40 slot (loaded from the
+ * related object's same slot) and tick the timer. When the timer reaches zero
+ * (or the gate is closed) clear bit-1, set state=0xC, and let battleObject_DetachFromAllianceSlot_802CDE6
+ * clean up. */
+Next sub_80C90DC(void) {
+    u32 other = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+
+    /* Copy bit 1 of the related object's flags into our own flags. */
+    u32 other_flags = LD8(other + oObjectHeader_Flags);
+    u32 self_flags  = LD8(R5 + oObjectHeader_Flags);
+    self_flags = (self_flags & ~(u32)2) | (other_flags & (u32)2);
+    ST8(R5 + oObjectHeader_Flags, self_flags);
+
+    GUEST_CALL(checkBattleOrderMatch_802CE30);
+    if (ZERO_FLAG()) goto expire;
+
+    /* Look up the related object's name index, then fetch a (dx,dy) pair from
+     * the motion table at index 0x1B. */
+    R0 = LD16(other + oBattleObject_NameID);
+    GUEST_CALL(sub_800F26C);
+    R2 = 0x1B;
+    GUEST_CALL(getIndexedSignedBytePair_8018842);
+
+    /* Sign-extend the two bytes to 32 bits and shift to Q16 so we can scale by
+     * the facing direction without losing precision. */
+    s32 sx = (s32)(s8)R0 << 16;
+    s32 sy = (s32)(s8)R1 << 16;
+
+    /* Multiply the x component by -dir (so the related object's velocity is
+     * mirrored onto us). y is added directly without scaling. */
+    GUEST_CALL(object_getFrontDirection);
+    s32 dir = -((s32)R0);
+    sx = sx * dir;
+
+    /* Load (x, mid, z) from the related object's 0x34 slot, add the scaled
+     * offsets to x and z, then write all three words into our 0x34 slot. */
+    u32 src = other + 0x34;
+    u32 x = LD32(src);
+    u32 m = LD32(src + 4);
+    u32 z = LD32(src + 8);
+    x = x + sx;
+    z = z + sy;
+
+    u32 dst = R5 + 0x34;
+    ST32(dst,     x);
+    ST32(dst + 4, m);
+    ST32(dst + 8, z);
+
+    /* Tick the per-frame timer; bail out (preserving the flags from SUBS) if
+     * it has not reached zero. */
+    {
+        u32 t = LD16(R5 + oBattleObject_Timer);
+        t -= 1;
+        ST16(R5 + oBattleObject_Timer, t);
+        SET_FLAGS_NZ(t);
+    }
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+expire:
+    GUEST_CALL(battleObject_DetachFromAllianceSlot_802CDE6);
+
+    {
+        u32 f = LD8(R5 + oObjectHeader_Flags);
+        f = f & ~(u32)2;
+        ST8(R5 + oObjectHeader_Flags, f);
+    }
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, 0xC);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C913C ── */
 Next sub_80C913C(void) {
     u32 obj = R5;
@@ -1070,6 +1199,62 @@ Next battle_spawnCollisionForObject_80CB0AE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CC9FC ── */
+/* sub_80CC9FC(r0..r3,r6,r7 = fields, r5 = parent battle object):
+ *   spawn a battle sub-object of type 0x44 (linked to parent in r5) and
+ *   copy panel/element/damage/extra-vars/flags over from the parent's setup.
+ *   Returns r3 = parent object's damage/finished flag (unchanged on the early-return path). */
+Next sub_80CC9FC(void) {
+    /* Reserve a 16-byte scratch window matching the original's {r0-r2,r5} push.
+     * The caller-provided r0..r2 are stashed there so object_spawnType3 can
+     * clobber its scratch registers without losing the panel/element seed. */
+    u32 save = SP -= 16;
+    ST32(save,      R0);
+    ST32(save + 4,  R1);
+    ST32(save + 8,  R2);
+    ST32(save + 12, R5);
+
+    R0 = 0x44;
+    GUEST_CALL(object_spawnType3);
+
+    /* The new sub-object pointer lands in R0. Pull the saved seeds back into
+     * r1..r3 (and r5 = parent) the same way the asm pops them. */
+    R0 = R5;                       /* spawn failed -> bail out, r0 = 0 */
+    SET_FLAGS_NZ(R0);
+    R1 = LD32(save);
+    R2 = LD32(save + 4);
+    R3 = LD32(save + 8);
+    R5 = LD32(save + 12);
+    SP = save + 16;
+
+    if (ZERO_FLAG()) RETURN_TO_CALLER();
+
+    /* Copy panel coords + element + parent's damage/state word into the sub-object. */
+    ST8(R0 + oBattleObject_PanelX,                                   (u8)R1);
+    ST8(R0 + oBattleObject_PanelY,                                   (u8)R2);
+    ST8(R0 + oBattleObject_Element,                                  (u8)R3);
+    ST32(R0 + oBattleObject_DamageAndStaminaDamageCounterDisabler, R6);
+
+    /* Unpack the 4 packed bytes in r7 into oBattleObject_ExtraVars[0..3]. */
+    u32 mask = 0xFF;
+    u32 packed = R7;
+    ST32(R0 + oBattleObject_ExtraVars + 0x0, packed & mask);
+    ST32(R0 + oBattleObject_ExtraVars + 0x4, (packed >> 8)  & mask);
+    ST32(R0 + oBattleObject_ExtraVars + 0x8, (packed >> 16) & mask);
+    ST32(R0 + oBattleObject_ExtraVars + 0xC, (packed >> 24) & mask);
+
+    /* Inherit alliance/direction-flip from the parent and link the parent back. */
+    R3 = LD16(R5 + oBattleObject_AllianceAndDirectionFlip);
+    ST16(R0 + oBattleObject_AllianceAndDirectionFlip, (u16)R3);
+    ST32(R0 + oBattleObject_RelatedObject1Ptr, R5);
+
+    /* Set the "has parent / linked" flag (0x10) in the object header. */
+    u32 flags = LD8(R0 + oObjectHeader_Flags);
+    ST8(R0 + oObjectHeader_Flags, (u8)(flags | 0x10));
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_spawnEntry_80CE138 ── */
 /* battleObject_spawnEntry_80CE138: Initialize a battle object sprite, set its flags, load
  * its graphics and animation, place it on the panel grid, and queue
@@ -1102,6 +1287,76 @@ Next battleObject_spawnEntry_80CE138(void) {
     ST32(R5 + 8, CUR_STATE_UPDATE);
 
     GUEST_CALL(sub_80CE178);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CE21C ── */
+/* sub_80CE21C(r5 = object, lr = return address):
+ *   Free the object's allocated memory and return to caller. */
+Next sub_80CE21C(void) {
+    GUEST_CALL(object_freeMemory);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80D8464 ── */
+/* sub_80D8464: Initialize a battle object (FlagMan-type object) by snapping it to its
+ * panel, loading its sprite/animation, setting its stat sheet, building its hitbox and
+ * stamping the current state-action phase. */
+Next sub_80D8464(void) {
+    /* Snap to the object's current panel coordinates. */
+    GUEST_CALL(object_setCoordinatesFromPanels);
+
+    /* Clear Z and copy current panel XY into the "future" panel slot. */
+    ST16(R5 + oBattleObject_Z16, 0);
+    ST16(R5 + oBattleObject_FuturePanelXY, LD16(R5 + oBattleObject_PanelXY));
+
+    /* Load the sprite (slot 0x80, sub 0x10, variant 0) and disable its drop shadow. */
+    R0 = 0x80; R1 = 0x10; R2 = 0;
+    GUEST_CALL(sprite_load);
+    GUEST_CALL(sprite_noShadow);
+
+    /* Mark the object as belonging to the player (flag bit 2). */
+    u8 objFlags = LD8(R5 + oObjectHeader_Flags);
+    ST8(R5 + oObjectHeader_Flags, objFlags | 2);
+
+    /* Kick off animation index 3 on both the live and mirrored slots. */
+    const u8 anim = 3;
+    ST8(R5 + oBattleObject_CurAnim, anim);
+    ST8(R5 + oBattleObject_CurAnimCopy, anim);
+    R0 = anim;
+    GUEST_CALL(sprite_setAnimation);
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_update);
+
+    /* Apply palette 0 and bump Y/Z up by one pixel so the sprite renders on top. */
+    R0 = 0;
+    GUEST_CALL(sprite_setPalette);
+    ST16(R5 + oBattleObject_Z16, (u16)(LD16(R5 + oBattleObject_Z16) - 1));
+    ST16(R5 + oBattleObject_Y16, (u16)(LD16(R5 + oBattleObject_Y16) - 1));
+
+    /* Stat sheet: name 0xD2, HP 1/1. */
+    ST16(R5 + oBattleObject_NameID, 0xD2);
+    const u16 oneHp = 1;
+    ST16(R5 + oBattleObject_HP,    oneHp);
+    ST16(R5 + oBattleObject_MaxHP, oneHp);
+
+    /* Build the object's collision data; bail out (free it) if allocation failed. */
+    GUEST_CALL(object_createCollisionData);
+    if (R0 == 0) {
+        GUEST_CALL(object_freeMemory);
+        RETURN_TO_CALLER();
+    }
+
+    /* 4-panel-wide (0xE / 0xF), 3-frame hitbox, present it and grant invulnerability. */
+    R1 = 0xE; R2 = 0xF; R3 = 3;
+    GUEST_CALL(object_setupCollisionData);
+    GUEST_CALL(object_presentCollisionData);
+    R0 = OBJECT_FLAGS_INVULNERABLE;
+    GUEST_CALL(object_setFlag1);
+
+    /* Phase = state-update. */
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
 
     RETURN_TO_CALLER();
 }
@@ -1140,6 +1395,12 @@ Next battleObject_respawn_80D84DE(void) {
 
     LR = LD32(SP);
     SP += 4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80D8558 ── */
+Next sub_80D8558(void) {
+    /* Tail call: return to the address in LR without doing any work. */
     RETURN_TO_CALLER();
 }
 
@@ -1741,6 +2002,42 @@ Next battle_spawnType4ObjectWithActiveFlag_80E06F8(void) {
     R0 = object;                       /* mov r0, r5 */
     R4 = callerR4;                     /* pop {r4,r5,pc} */
     R5 = callerR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E07E0 ── */
+Next sub_80E07E0(void) {
+    /* Save caller-supplied r0..r2 and r5 across object_spawnType4. */
+    u32 saved_r0 = R0;
+    u32 saved_r1 = R1;
+    u32 saved_r2 = R2;
+    u32 saved_r5 = R5;
+
+    R0 = 3;
+    GUEST_CALL(object_spawnType4);
+
+    /* Original does "mov r0, r5" right after the call (before the pop),
+     * so r0 holds the spawn's return value. */
+    u32 obj = R5;
+    /* Restore r1, r2, r3, r5 from the stack. Note r3 here is loaded from
+     * the slot that held saved_r2 at push time (the original's pop {r1-r3,r5}
+     * followed push {r0-r2,r5}). */
+    R1 = saved_r0;
+    R2 = saved_r1;
+    R3 = saved_r2;
+    R5 = saved_r5;
+
+    if (obj != 0) {
+        ST8(obj + oBattleObject_PanelX, (u8)R1);
+        ST8(obj + oBattleObject_PanelY, (u8)R2);
+        ST8(obj + oBattleObject_Element, (u8)R3);
+        ST32(obj + oBattleObject_RelatedObject1Ptr, saved_r5);
+        u32 alliance = LD16(saved_r5 + oBattleObject_AllianceAndDirectionFlip);
+        ST16(obj + oBattleObject_AllianceAndDirectionFlip, (u16)alliance);
+        ST32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler, R6);
+        ST32(obj + oBattleObject_Unk_30, R7);
+    }
+    R0 = obj;
     RETURN_TO_CALLER();
 }
 

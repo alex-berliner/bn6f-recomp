@@ -199,6 +199,80 @@ Next battle_initNaviSprite_80B8CF8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80B8DA6 ── */
+/* sub_80B8DA6: Sync secondary object (in r5) to its related primary object (in r4):
+ *  - copy position offset (0x34..0x40) from r4 into r5, adding XVelocity/ZVelocity
+ *    and subtracting the 0xC byte signed shifted left 16 from Y/Z.
+ *  - copy bit 1 of related's flags into self's flags (clear bit 1 from r1 mask first).
+ *  - mirror color shader / palette / alpha / flip / mosaic from related into self.
+ *  - then if ExtraVars[0] != 0, run the sprite update unless time is stopped (or
+ *    Param3 set), or unless battle is paused.
+ *  - otherwise clear bit 1 of self flags and queue self for destroy.
+ *  Preserves r4 r5 r7. */
+Next sub_80B8DA6(void) {
+    u32 r4 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+
+    /* Copy position block (3 u32s at offset 0x34) from r4 -> r5,
+     * adding this frame's XVelocity to X and ZVelocity to Z,
+     * and subtracting (signed byte at offset 0xC) << 16 from Y and Z. */
+    u32 src = r4 + 0x34;
+    u32 dst = R5 + 0x34;
+    u32 x = LD32(src);
+    u32 y = LD32(src + 4);
+    u32 z = LD32(src + 8);
+    x += LD32(R5 + oBattleObject_XVelocity);
+    z += LD32(R5 + oBattleObject_ZVelocity);
+    s32 height = (s32)((s8)LD32(R5 + 0xC)) << 16;
+    y -= (u32)height;
+    z -= (u32)height;
+    ST32(dst, x);
+    ST32(dst + 4, y);
+    ST32(dst + 8, z);
+
+    /* Copy bit 1 of related's flags into self's flags. */
+    u8 self_flags = LD8(R5);
+    self_flags &= (u8)~2;
+    self_flags |= (u8)(LD8(r4) & 2);
+    ST8(R5, self_flags);
+
+    /* Mirror visual state from related into self. */
+    R0 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+    GUEST_CALL(sprite_getColorShader);
+    GUEST_CALL(sprite_setColorShader);
+
+    R0 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+    GUEST_CALL(sprite_getFinalPalette);
+    GUEST_CALL(sprite_setFinalPalette);
+
+    R0 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+    GUEST_CALL(sprite_getMosaicScalingParameters);
+    GUEST_CALL(sprite_setAlpha);
+
+    R0 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+    GUEST_CALL(sprite_getFlip);
+    GUEST_CALL(sprite_setFlip);
+
+    /* If ExtraVars[0] == 0, mark for destroy and bail. */
+    if (LD32(LD32(R5 + oBattleObject_ExtraVars)) == 0) {
+        ST8(R5, (u8)(LD8(R5) & (u8)~2));
+        ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+        RETURN_TO_CALLER();
+    }
+
+    /* Otherwise: skip the sprite update if Param3 is set, or if time is stopped.
+     * Skip the sprite update if battle is paused too. */
+    if (LD8(R5 + oBattleObject_Param3) == 0) {
+        GUEST_CALL(battle_isTimeStop);
+        if (!ZERO_FLAG()) RETURN_TO_CALLER();
+    }
+
+    GUEST_CALL(battle_isPaused);
+    if (!ZERO_FLAG()) RETURN_TO_CALLER();
+
+    GUEST_CALL(object_updateSprite);
+    RETURN_TO_CALLER();
+}
+
 /* ── spawn_t1_0x5_tempAttackObject_80B8E30 ── */
 /* register form: calls object_spawnType1 outside this file, which has no typed C interface yet */
 static u32 call_spawn_type1(u32 x, u32 y, u32 z, u32 params, u32 *leftover_r2) {
@@ -449,6 +523,144 @@ Next battleObject_tickPhase3_80C0C20(void) {
             ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, (u16)4);
         }
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0C8C ── */
+/* sub_80C0C8C(r5 = battle object):
+ *   clears a flag at object->ExtraVars.byte4 then frees the object's memory.
+ *   Preserves r5 across the free call so the caller can keep using it. */
+Next sub_80C0C8C(void) {
+    u8 *extra = (u8 *)LD32(R5 + oBattleObject_ExtraVars + 4);
+
+    ST8((u32)extra, 0);
+    GUEST_CALL(object_freeMemory);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0D98 ── */
+/* sub_80C0D98: Spawn a dimming collision region for a battle object.
+ * r0, r1 = base XY / extra args (passed through)
+ * r5     = battle object pointer (preserved across the call)
+ * Spawns a "dimming" collision region (type 3) using the object's damage/stamina
+ * damage counter value as its region index. */
+Next sub_80C0D98(void) {
+    /* Region type 3 = dimming; Z = 0; world Y offset 0x14.0 */
+    R2 = 0;
+    R3 = 0x14 << 16;
+    /* Sprite tile + palette attribute for the dimming region. */
+    R4 = 0x04050001;
+    /* Use the object's damage/stamina counter value as the collision region ID. */
+    R6 = LD32(R5 + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+    R7 = 3;
+    GUEST_CALL(object_spawnDimmingCollisionRegion);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0DB0 ── */
+Next sub_80C0DB0(void) {
+    /* Apply the colour shader to the battle object sprite. The shader index
+     * is computed from the object's Unk_19 field as: idx * 0x421 (i.e.
+     * (idx << 5 + idx) << 5 + idx), selecting one of a packed table. */
+    u32 idx = LD8(R5 + oBattleObject_Unk_19);
+    R0 = ((idx << 5) + idx) << 5;
+    R0 = R0 + idx;
+    GUEST_CALL(sprite_setColorShader);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0DC2 ── */
+/* sub_80C0DC2: apply small random variance to the battle object's position
+ * (X/Y) and spawn a t1/0x0 effect object for it.
+ *   inputs:  r5 lr
+ *   preserved: r5 r6 r7
+ */
+Next sub_80C0DC2(void) {
+    R0 = 0x10;
+    R1 = LD32(R5 + oBattleObject_X);
+    R2 = LD32(R5 + oBattleObject_Y);
+    R3 = LD32(R5 + oBattleObject_Z);
+    GUEST_CALL(AddRandomVarianceToTwoCoords);
+
+    R4 = 0x26;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0EE2 ── */
+/* sub_80C0EE2 — battle object sub-state: on first entry sets up a 4-frame timer
+ * (and pokes a helper on RelatedObject1 when Param4 != 0); once the timer
+ * elapses, clears bit 1 of header flags, fires an effect tied to the related
+ * object's NameID, optionally tears down the related object, and queues this
+ * object for destruction.
+ *
+ * inputs:  R5 (this), R10, LR
+ * outputs: R5, R8, R9, R10, R11, R12
+ * clobbers: nz, c, v, R0-R3, R6, R7, LR
+ * preserved: R4
+ */
+Next sub_80C0EE2(void) {
+    /* First-pass init: runs only when PhaseInitialized == 0. */
+    if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
+        if (LD8(R5 + oBattleObject_Param4) != 0) {
+            u32 related = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+            u32 extra   = LD32(R5 + oBattleObject_ExtraVars);
+            if (extra == 2) {
+                R0 = related;
+                R1 = 0;
+                GUEST_CALL(sub_80E1352);
+            } else {
+                R0 = related;
+                GUEST_CALL(sub_80E146C);
+            }
+        }
+        ST16(R5 + oBattleObject_Timer, 4);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+    }
+
+    /* Tick the timer down; preserve the original's SUBS-style flags
+     * (the bgt below branches on the signed-compare result). */
+    u32 timer = LD16(R5 + oBattleObject_Timer);
+    SET_FLAGS_CMP(timer, 1);   /* SUBS timer, #1 → compare (timer - 1) vs 0 */
+    timer -= 1;
+    ST16(R5 + oBattleObject_Timer, (u16)timer);
+
+    /* Branch on the signed-compare flags: bgt → timer > 0 keeps going. */
+    if (!NEGATIVE_FLAG() && !ZERO_FLAG()) {
+        /* Timer still positive: just run the per-frame sprite/timestop update. */
+        GUEST_CALL(object_updateSpriteTimestop);
+        RETURN_TO_CALLER();
+    }
+
+    /* Timer elapsed: clear bit 1 of the object's header flags. */
+    ST8(R5 + oObjectHeader_Flags, LD8(R5 + oObjectHeader_Flags) & ~(u8)2);
+
+    u32 related = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+
+    /* Trigger an effect based on the related object's NameID. */
+    R0 = LD16(related + oBattleObject_NameID);
+    GUEST_CALL(unpackVerActorTyAndAIIdx_800F29C);
+    R2 = 1;
+    GUEST_CALL(sub_8011044);
+
+    /* If Param4 == 0, also poke the teardown helper on RelatedObject1. */
+    if (LD8(R5 + oBattleObject_Param4) == 0) {
+        u32 extra = LD32(R5 + oBattleObject_ExtraVars);
+        if (extra == 2) {
+            R0 = related;
+            GUEST_CALL(sub_80E13DC);
+        } else {
+            R0 = related;
+            GUEST_CALL(sub_80E14AC);
+        }
+    }
+
+    /* Queue this object for destruction. */
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+
+    GUEST_CALL(object_updateSpriteTimestop);
     RETURN_TO_CALLER();
 }
 
@@ -1530,6 +1742,66 @@ Next battle_object_stepLifetimeDestroyOnHit_80C532E(void) {
     GUEST_CALL(object_freeCollisionData);
     GUEST_CALL(object_freeMemory);
     RETURN_TO_CALLER();
+}
+
+/* ── sub_80C53E4 ── */
+/* sub_80C53E4(r5 = BattleObject*, lr):
+ * On object destruction, if the object's Param3 flag is set, crack the panel
+ * under it (X,Y) before running the generic destruction routine.
+ */
+Next sub_80C53E4(void) {
+    /* push {lr} */ {
+        u32 saved_lr = LR;
+        SP -= 4;
+        ST32(SP, saved_lr);
+
+        if (LD8(R5 + oBattleObject_Param3) != 0) {
+            R0 = LD8(R5 + oBattleObject_PanelX);
+            R1 = LD8(R5 + oBattleObject_PanelY);
+            GUEST_CALL(object_crackPanel);
+        }
+
+        GUEST_CALL(object_genericDestroy);
+
+        LR = LD32(SP);
+        SP += 4;
+        RETURN_TO_CALLER();
+    }
+}
+
+/* ── sub_80C5590 ── */
+/* sub_80C5590(r0, r1, r5 = this, lr = return):
+ *   Spawn/initialize a sibling battle object from `this` (R5), inheriting its
+ *   params, counter/disabler word, extra-vars and element. The newly created
+ *   object has its RelatedObject1Ptr wired to this->RelatedObject1Ptr. The
+ *   caller's R0/R1 are pushed and restored verbatim across the call. */
+Next sub_80C5590(void) {
+    /* Push {r0,r1,lr} so the caller can resume with its original R0/R1. */
+    u32 frame = SP;
+    SP -= 12;
+    ST32(SP,        R0);
+    ST32(SP + 4,    R1);
+    ST32(SP + 8,    LR);
+
+    /* Seed sub_80C5578 with this object's state and ask it to allocate a new
+     * battle object (r3 = 0 means "create new"). */
+    R3 = 0;
+    R4 = LD32(R5 + oBattleObject_Params);
+    R6 = LD32(R5 + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+    R7 = LD32(R5 + oBattleObject_ExtraVars);
+    R2 = LD8(R5 + oBattleObject_Element);
+    GUEST_CALL(sub_80C5578);
+
+    /* Link the new object back to the same RelatedObject1Ptr as this one. */
+    R1 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+    ST32(R0 + oBattleObject_RelatedObject1Ptr, R1);
+
+    /* Pop {r0,r1,pc}: restore caller's R0/R1 and return via saved LR. */
+    R0     = LD32(SP);
+    R1     = LD32(SP + 4);
+    u32 lr = LD32(SP + 8);
+    SP = frame;
+    RETURN_TO(lr);
 }
 
 /* ── t3_0x8_80C5BB0 ── */
