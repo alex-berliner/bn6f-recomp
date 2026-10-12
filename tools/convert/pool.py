@@ -244,13 +244,24 @@ def farm_passed(log: Path) -> bool:
 def read_candidates(current: dict[FunctionName, FunctionName], today: set[FunctionName]) -> Pool:
     """Every candidate per today's name. Files may appear or grow while this reads: a vanished file or
     a half-written last row is skipped. An accepted file a re-test wrote is not a candidate of its own
-    (its code is a failed log row's), so the function still counts as failed when farmed."""
+    (its code is a failed log row's), so the function still counts as failed when farmed. Code a review
+    rejected (tools/convert/rejected/NAME.MODEL.c, with its .review.txt) is no candidate either, wherever it
+    turns up again (its log row, or an accepted file a later re-test wrote), so it is never chosen again."""
     started = time.time()
     found: dict[FunctionName, list[Candidate]] = {}
     busy: set[FunctionName] = set()
     from_retests: set[Path] = set()
+    rejected: set[tuple[str, str, str]] = set()   # (written_as, model, code)
+    for path in sorted(REJECTED_DIR.glob("*.c")):
+        written_as, model = path.stem.split(".", 1)
+        try:
+            rejected.add((written_as, model, path.read_text().strip()))
+        except FileNotFoundError:
+            continue
 
     def add(written_as: str, model: str, code: str, source: str, report: str | None, newness: tuple[float, int]) -> None:
+        if (written_as, model, code.strip()) in rejected:
+            return
         name = FunctionName(written_as)
         found.setdefault(current.get(name, name), []).append(Candidate(
             written_as=name, model=ModelTag(model), code=renamed(code, current, today), source=source,
