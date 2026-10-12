@@ -1,0 +1,91 @@
+name: sub_803C0F6
+address: '0x0803C0F6'
+kind: function
+status: hypothesis
+summary: Copies a chat/text region with an offset and rewrites trailing 0x00/0xE5 two-byte units to 0xE5 0xE5 until
+  the previous 0xE6 marker.
+interface: void sub_803C0F6(u8 *src, u8 *dest, int count, int offset)
+details: 'Copies `count` bytes from (r0 + r5) to (r1 + r5) via CopyBytes, then scans
+
+  the destination starting at (r1 + r5) for the first byte equal to 0xE6
+
+  found at an even index (the loop increments by 2). Once that sentinel is
+
+  found, it walks backwards in two-byte steps and rewrites any unit whose
+
+  lead byte is 0x00 (blank) or 0xE5 (terminator) to the pair 0xE5 0xE5,
+
+  stopping on any other byte value or when the walk underflows past the
+
+  start of the copied region.
+
+  The 0xE6 byte is the chatbox "end of line" / marker in MegaMan Battle
+
+  Network scripts; 0xE5 is the string terminator and 0x00 is a blank pad
+
+  slot, so the routine effectively normalizes trailing padding and partial
+
+  terminators around a 0xE6 control marker after a paste/insert into the
+
+  chat line buffer.
+
+  r5 is treated as an in/out offset and is preserved across the call.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_803C0F6
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803C0F6
+
+    ./wf verify --function sub_803C0F6 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 294 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803C0F6
+
+    ./wf verify --function sub_803C0F6 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 1 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803C0F6
+
+    ./wf verify --function sub_803C0F6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803c0f6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- Why is the forward scan restricted to even indices (i += 2)? It assumes chat-script entries are 2-byte aligned
+  up to the 0xE6 marker.
+- What exactly do 0xE6 and 0xE5 represent in the chat/script encoding (end-of-line vs. terminator vs. control op)?
+- Is the trailing "0xE5 0xE5" rewrite meant to mask leaked blank slots that previously held printable text, or to
+  canonicalize padding?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

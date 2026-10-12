@@ -1,82 +1,67 @@
 name: tryStartBbsGuiCutscene_809CF2C
 address: '0x0809CF2C'
 kind: function
-status: probable
-summary: Starts the BBS GUI cutscene if the global cond-check passes and a BBS request is pending.
-interface: 'void sub_809CF2C(void); // in: none, out: nz/c/v (BEQ branches), preserved r4-r7'
-details: 'Calls sub_8034C36; bails (no-op) if it returns zero. Otherwise calls reqBBS_81407D8
-
-  with r0=0 (some BBS-request query/pop) and bails if zero. When both succeed, reads
-
-  byte at eReqBBSGui + 0xE, transforms it via (byte - 1) + 0x32, and calls
-
-  StartCutscene(A_byte_809CEB4 /* CutsceneScript */, transformed_param, R2=0).
-
-  Likely the world/event side of "player interacted with a BBS terminal while a
-
-  BBS request is queued", kicking off the gui cutscene and embedding the request
-
-  index as the cutscene param.
-
-  '
+status: confirmed
+summary: Conditional entry point that starts the BBS GUI cutscene when the player can advance forward and a BBS
+  request is pending.
+interface: 'void tryStartBbsGuiCutscene_809CF2C(void); // inputs: r10 (caller-saved, preserved by extra push? —
+  actually untouched), lr; outputs/clobbers: r0, r1, r2, r3, NZCV; preserved: r4–r7'
+details: "Guarded launcher for the BBS GUI cutscene. It performs two preconditions before\ncalling StartCutscene:\n\
+  \  1. check_playerCanAdvanceForward_8034C36 — if it returns false (Z set after `beq`),\n     bail out without\
+  \ touching anything else.\n  2. reqBBS_81407D8 — called with r0 still carrying the previous result (the function\n\
+  \     apparently ignores or reuses its input); if it returns 0, bail out.\n\nOn success it starts the cutscene\
+  \ defined by byte_809CEB4 (the script pointer loaded\nvia off_809CF50). The parameter passed to StartCutscene\
+  \ is computed as\n`eReqBBSGui[0xE] - 1 + 0x32`, i.e. an entry-id-based index into the cutscene parameter\ntable.\
+  \ The constant 0xE is loaded from dword_809CF54 and reused as both the byte\noffset into eReqBBSGui (off_809CF58)\
+  \ and a scratch value subtracted/added immediately\nafter the load — a small code-size trick rather than a separate\
+  \ constant. The \"−1 + 0x32\"\nis therefore equivalent to \"+0x31\".\n\nThe function name, callee list, and the\
+  \ eReqBBSGui/eReqBBS naming strongly suggest\nthis lives in the overworld/BBS (message-board) subsystem: the function\
+  \ is the\none that decides whether to trigger the GUI cutscene when the player tries to interact\nwith a BBS terminal.\
+  \ r1/r2/r3 are explicitly listed as outputs because StartCutscene\nis a void-returning leaf that leaves its scratch\
+  \ registers dirty, and the surrounding\ncode does not restore them.\n\nRegister form, old prompt; queued for retype\
+  \ (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
 evidence:
 - method: readable-c
   date: '2026-10-11'
-  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-002359);
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm28_0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 49' --file inbox_farm_49.c
-    sub_809CF2C
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    tryStartBbsGuiCutscene_809CF2C
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_809CF2C
+  reproduce: './wf capture --function tryStartBbsGuiCutscene_809CF2C
 
-    ./wf verify --function sub_809CF2C --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    298 out of domain (verify run convert-20261011-002359-verify-5)'
+    ./wf verify --function tryStartBbsGuiCutscene_809CF2C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-223927-verify-1)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_809CF2C
+  reproduce: './wf capture --function tryStartBbsGuiCutscene_809CF2C
 
-    ./wf verify --function sub_809CF2C --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-002359-verify-5)
+    ./wf verify --function tryStartBbsGuiCutscene_809CF2C --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
 - method: lockstep
   date: '2026-10-11'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_809CF2C
+  reproduce: './wf capture --function tryStartBbsGuiCutscene_809CF2C
 
-    ./wf verify --function sub_809CF2C --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-002359-verify-5)
+    ./wf verify --function tryStartBbsGuiCutscene_809CF2C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
 - method: coverage
   date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1,
-    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
   reproduce: grep -l '^0809cf2c ' tools/traces/coverage/*.prof
 changes:
 - date: '2026-10-11'
   what: readable C replacement in cport/src/game/asm28_0.c
-  where: recomp 52c01c1
-  tool: tools/wf convert (minimax/MiniMax-M3)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm28_0.c after review against the assembly (the lifted
-    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
-    differs from the original: Output register r2 is wrong on the cutscene path. The asm loads `ldr r2,
-    dword_809CF54 // =0xe`, uses it for `ldrb r1,[r1,r2]`, then calls `bl StartCutscene` and returns with
-    `pop {r4-r7,pc}`. StartCutscene never writes r2, and ZeroFillByWord, which it calls, saves and restores
-    r0-r3 (StartCutscene''s contract: preserved r1 r2 r3 r5). So the original returns r2 = 0xE, and the
-    contract lists r2 as a...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_809CF2C -> tryStartBbsGuiCutscene_809CF2C
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm28_0.c
 coverage:
 - battle
 - battles1
@@ -98,13 +83,16 @@ coverage:
 - story9
 - wander
 open_questions:
-- Exact semantics of sub_8034C36 (a "condition" gate; probably gMainStateFlags or similar).
-- 'Exact semantics of reqBBS_81407D8: arg 0 looks like a peek/clear of the latest pending BBS entry rather
-  than an enqueue.'
-- 'Meaning of A_eReqBBSGui[0xE]: likely a request slot/field rather than 0xE itself; the +0x32 looks like
-  an enum remap to a cutscene param.'
+- Which cutscene table byte_809CEB4 belongs to (overworld vs. battle) and what state machine phase it represents;
+  the +0x31 encoding for the parameter suggests it's an indexed entry in a packed cutscene-parameter array and may
+  need cross- referencing with other call sites of StartCutscene with similar "+0x32" formulae.
+- What r10 holds on entry — the contract lists r10 as an input but the body never reads it; possibly the compiler-emitted
+  signature is stale or r10 is a global base the surrounding wrapper restores.
+- Whether reqBBS_81407D8 really should be called with the previous r0 still in r0 (depend on an undocumented side
+  contract) or whether a "r0 = 0" or specific handle setup is expected — the readable C notes this as intentional
+  but unverified.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
 sources:
-- tools/wf run convert-20261011-002359
-- recomp 52c01c1
-previous_names:
-- sub_809CF2C
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

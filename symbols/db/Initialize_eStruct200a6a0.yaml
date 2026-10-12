@@ -1,0 +1,81 @@
+name: Initialize_eStruct200a6a0
+address: '0x08002468'
+kind: function
+status: confirmed
+summary: Zeroes the 0x50-byte IWRAM/Scratch eStruct at 0x200A6A0, stores three caller parameters into its +4/+8/+C
+  slots, and marks it active (byte at +0 = 1).
+interface: void initEStruct200a6a0(u32 param1 /*r0*/, u32 param2 /*r1*/, u32 param3 /*r2*/); /* r1..r7 preserved;
+  r0 returned = 1 */
+details: "Located by address 0x08002468. Operates on the global struct anchored at eStruct200a6a0 (0x200A6A0 in\
+  \ IWRAM).\nLayout touched:\n  [+0x0]  byte    active flag (set to 1)\n  [+0x4]  dword   caller param1 (r0)  ->\
+  \ dword_200A6A4\n  [+0x8]  dword   caller param2 (r1)  -> dword_200A6A8\n  [+0xC]  dword   caller param3 (r2)\
+  \  -> dword_200A6AC\nThe function first pushes {r0-r2} to spill the inputs across the ZeroFillByWord call (which\
+  \ is documented to clobber low registers and flags), then pops them back to write into the struct. ZeroFillByWord\
+  \ is given size 0x50 = 80 bytes, implying the struct is 80 bytes total. Byte at offset +0 (set to 1) is treated\
+  \ as an \"in use / initialized\" flag.\nQuirks:\n  - Despite the push {r0-r2} / pop {r0-r2} dance, the final pop\
+  \ reuses the same stack slots only to access the saved values; nothing is left on the stack at return.\n  - The\
+  \ function ends with `mov r0, #1` even though r0 is in the caller-clobber set per the contract, suggesting callers\
+  \ may read a non-zero status from r0.\n  - Saves lr; clobbers NZ/CV (from ZeroFillByWord). r1..r7 and lr are restored\
+  \ from the push {r4-r7, lr}; this is why the struct stores are deferred until after the ZeroFill call.\n\nRegister\
+  \ form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    Initialize_eStruct200a6a0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function Initialize_eStruct200a6a0
+
+    ./wf verify --function Initialize_eStruct200a6a0 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function Initialize_eStruct200a6a0
+
+    ./wf verify --function Initialize_eStruct200a6a0 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function Initialize_eStruct200a6a0
+
+    ./wf verify --function Initialize_eStruct200a6a0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: maps, story5, story6.'
+  reproduce: grep -l '^08002468 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- maps
+- story5
+- story6
+open_questions:
+- What is the actual semantic meaning of "eStruct200a6a0"? It looks like a scratch/IWRAM control block (possibly
+  an entity/object or a generic scratch struct) but no symbol or comment in the disassembly names its higher-level
+  purpose.
+- 'What do the three parameter slots (+4/+8/+C) represent? Without surrounding context (callers'' names) they could
+  be any triple: a (this, arg, mode), an object pointer plus two flags, an ID plus two data words, etc.'
+- What is the byte at +0 used for beyond "active"? A 1-byte flag suggests a one-shot or enabled bit, but whether
+  it stays =1 forever or gets cleared later is unknown from this function alone.
+- Why is the final `mov r0,
+- Is the struct size exactly 0x50, or only the fields above 0xC are relevant? Unused tail words in the 0x50-byte
+  block are simply zeroed.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

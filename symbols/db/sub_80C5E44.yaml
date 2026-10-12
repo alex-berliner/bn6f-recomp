@@ -1,0 +1,85 @@
+name: sub_80C5E44
+address: '0x080C5E44'
+kind: function
+status: confirmed
+summary: 'Per-frame collision step for a battle object: refreshes its collision data and contact effect, then either
+  dispatches the object''s current action handler or tears it down if the battle has ended.'
+interface: "void sub_80C5E44(void);\n  // implicit in: r4, r5 (battle object), r7, r8, r10, lr\n  // implicit out:\
+  \ r5, r8, r9, r10, r11, r12\n  // clobbers: r0, r1, r2, r3, r6, lr; flags nzcv\n  // preserved: r4, r7\n"
+details: 'Reads r5 as the active battle object. Calls object_removeCollisionData,
+
+  then object_spawnCollisionEffect. Reads the object''s oObjectHeader_Flags
+
+  byte at r5+0x10; bit 0x10 forces the "battle-over" branch to be skipped
+
+  entirely. If bit 0x10 is clear and battle_isBattleOver returns nonzero,
+
+  calls object_clearCollisionRegion, writes CUR_STATE_DESTROY into
+
+  r5+oBattleObject_CurStateActionPhaseAndPhaseInitialized and returns.
+
+  Otherwise indexes oBattleObject_CurAction (r5+...) into the dispatch
+
+  table at off_80C5E7C (currently two entries: sub_80C5E84 and
+
+  sub_80C5F0C, called with r0 = action index, r1 = handler address, via
+
+  a `mov lr,pc; bx r1` tail-call) and finally calls
+
+  object_presentCollisionData before returning.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80C5E44
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C5E44
+
+    ./wf verify --function sub_80C5E44 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C5E44
+
+    ./wf verify --function sub_80C5E44 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C5E44
+
+    ./wf verify --function sub_80C5E44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c5e44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- What is the meaning of oObjectHeader_Flags bit 0x10 (objects that skip the battle-over check, e.g. persistent
+  field-style entities)?
+- How many entries does the action dispatch table at off_80C5E7C grow to in the final ROM (size seen here is 2)?
+- Is r8 (preserved through this frame) a per-frame scratch register for the battle subsystem, or caller-specific?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

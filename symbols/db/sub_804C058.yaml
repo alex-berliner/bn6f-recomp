@@ -1,0 +1,81 @@
+name: sub_804C058
+address: '0x0804C058'
+kind: function
+status: hypothesis
+summary: tail-dispatcher that runs the currently-selected chatbox step handler
+interface: 'void sub_804C058(void); /* in: r5=chatbox object; out/clobber: r0-r3,r8-r12,lzcv; preserved: r4-r7 */'
+details: 'A two-entry handler table at off_804C06C. The "handler selector" byte at
+
+  [r5+0x10] (0..1) indexes it; the chosen Thumb function is tail-called
+
+  (mov lr,pc ; bx r0 ; pop {pc}), so on return control goes straight to
+
+  sub_804C058''s caller. Entry 0 -> sub_804C08C; entry 1 ->
+
+  chatbox_stepIfGatesOpen_804C11C. Only preserved registers across the
+
+  dispatch are r4-r7; r0-r3 and r8-r12 are forwarded from the chosen
+
+  handler to the caller, matching a chatbox-style step/phase pump where
+
+  r5 holds the chatbox state object and [r5+0x10] selects the current
+
+  sub-step. Selector is passed back in r1 to the handler (likely as a
+
+  convenience rather than reloading it).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_804C058
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804C058
+
+    ./wf verify --function sub_804C058 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804C058
+
+    ./wf verify --function sub_804C058 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804C058
+
+    ./wf verify --function sub_804C058 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story5, story6.'
+  reproduce: grep -l '^0804c058 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- story5
+- story6
+open_questions:
+- What exactly does [r5+0x10] represent (sub-phase index, gate counter, etc.)?
+- Are there really only two handlers, or is the table grown elsewhere?
+- What do the forwarded r8-r12 values mean to callers (return struct?)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

@@ -1,0 +1,74 @@
+name: sub_80C82A8
+address: '0x080C82A8'
+kind: function
+status: confirmed
+summary: Allocates a spawn-type-0x20 battle object and wires it to a related object, copying its panel coordinates,
+  element, alliance/direction-flip, and counter-disabler value from caller-supplied registers.
+interface: "u32 sub_80C82A8(u32 r0_panelX, u32 r1_panelY, u32 r2_element,\n                u32 r5_relatedObject,\
+  \ u32 r6_counterDisabler);\n// returns the spawned object pointer in r0 (also preserves caller's r5/r6/r7);\n\
+  // r2/r5/r7 clobbered; N/Z/CV from \"mov r0, r5\" on success\n"
+details: "Spawns a new battle object via object_spawnType3 with spawn type 0x20.\nIf allocation succeeds, the new\
+  \ object has set:\n  PanelX          = caller's r0\n  PanelY          = caller's r1\n  Element         = caller's\
+  \ r2\n  RelatedObject1Ptr = caller's r5 (the source object)\n  DamageAndStaminaDamageCounterDisabler = caller's\
+  \ r6\n  AllianceAndDirectionFlip = copied halfword from caller's r5 (the related object)\n  HeaderFlags bit 0x10\
+  \ (\"has related object\") OR-ed in\nThe push/pop shuffle ensures the caller's r0/r1/r2 are reloaded into\nr1/r2/r3\
+  \ from the stack before the stores, and that r5/r6/r7 are\npreserved across the call (r5 holds the related-object\
+  \ pointer again\nafter the pop). The \"mov r0, r5\" in the original is really an lsls that\nalso updates N/Z flags\
+  \ from the new object pointer. On failure, r1/r2/r3\nend up holding the caller's r0/r1/r2; on success, r1=0x10\
+  \ and r2 holds\nthe updated header flags, r3 holds the copied alliance halfword.\nLikely used to spawn things\
+  \ like damage counters, status effect\nindicators, or sub-objects that attach to a parent battle object.\n\nRegister\
+  \ form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80C82A8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C82A8
+
+    ./wf verify --function sub_80C82A8 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C82A8
+
+    ./wf verify --function sub_80C82A8 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 2 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C82A8
+
+    ./wf verify --function sub_80C82A8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080c82a8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- What concrete object id is allocated for spawn type 0x20? (damage counter? shield? effect indicator?)
+- What does the "DamageAndStaminaDamageCounterDisabler" field semantically disable — the parent's damage/stamina
+  counters, or the new object's?
+- Which bit of oObjectHeader_Flags is 0x10 — exactly "has related object", or also something else like "linked"?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

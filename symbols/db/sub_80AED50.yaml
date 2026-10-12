@@ -1,0 +1,85 @@
+name: sub_80AED50
+address: '0x080AED50'
+kind: function
+status: confirmed
+summary: Resolves an enemy index to a per-version AI data record via a two-level (actor_type → ai_index) table.
+interface: 'u32 resolveEnemyAiRecord_80AED50(u16 enemy_idx); // in: r0 = enemy_idx; out: r0 = AI record pointer,
+  r2 = ai_index*4, r3 = version*0x20'
+details: "Calls GetVerActorTyAndAIIdx_80182B4 to map enemy_idx → { version(u8), actor_type(u8), ai_index(u8) }.\n\
+  Uses the two-level table rooted at off_80AED74:\n  - actor_type * 4 indexes off_80AED74 to pick a sub-table (off_80AED80\
+  \ for actor_type 0;\n    off_80AEE0C for actor_types 1 and 2).\n  - ai_index * 4 indexes that sub-table to pick\
+  \ a record.\n  - version * 0x20 (records are 0x20-byte versioned copies) is added to reach the\n    version-specific\
+  \ record, which is returned in r0.\nThe side outputs r2 = ai_index*4 and r3 = version*0x20 are convenient for\
+  \ the caller\n(likely so the caller can re-derive sub-table offsets without redoing the math).\nTouches global\
+  \ table off_80AED74 and its sub-tables off_80AED80 / off_80AEE0C.\nCaller is expected to pass a valid enemy index;\
+  \ no bounds checks are performed.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798,\
+  \ register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm30_0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80AED50
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AED50
+
+    ./wf verify --function sub_80AED50 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 200 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AED50
+
+    ./wf verify --function sub_80AED50 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 1 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AED50
+
+    ./wf verify --function sub_80AED50 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080aed50 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm30_0.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm30_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the exact structure/contents of the 0x20-byte AI records (off_80AED80 / off_80AEE0C sub-tables)?
+- Why are off_80AEE0C entries reused for both actor_type indices 1 and 2 — does the sub-table include actor_type
+  in its own dispatch?
+- What is the full set of actor_type values (only 0..2 observed here; others presumably invalid)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

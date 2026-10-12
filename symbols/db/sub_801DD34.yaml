@@ -1,0 +1,87 @@
+name: sub_801DD34
+address: '0x0801DD34'
+kind: function
+status: confirmed
+summary: Scans a four-slot table (entries at byte_203EB50) for an active record whose id equals r5, clears its flag
+  byte, and returns success.
+interface: '// r5 = id to match (caller-owned)
+
+  // returns r0: 0 = cleared a matching record; 1 = no match
+
+  // clobbers r1, r2, r3 and N/Z/C/V
+
+  u8 search_handleEndById_801DD34(u32 id /* r5 */);
+
+  '
+details: 'Reads byte_203EB50 as the base of four 0x14-byte records. Iterates r3 from 4 down to 1,
+
+  stepping r2 through the entries. For each record it tests bit 0 of the flag byte (LD8(r2) & 1)
+
+  and, if active, compares the id field at +0x0C to the input id. On a hit it writes 0 to the
+
+  flag byte (deactivating the record) and returns r0 = 0. If all four entries are exhausted, returns
+
+  r0 = 1. r1 is set to 1 and used as the probe bit mask; r2/r3 are left pointing at the first
+
+  post-iteration entry / count after the scan ends. Final NZ / N/Z/C/V are determined by the
+
+  path''s tail instructions (the SUB r3, #1 then MOV r0, #1 in the miss path).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_801DD34
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801DD34
+
+    ./wf verify --function sub_801DD34 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801DD34
+
+    ./wf verify --function sub_801DD34 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801DD34
+
+    ./wf verify --function sub_801DD34 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, chips, story5, story6, story9.'
+  reproduce: grep -l '^0801dd34 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battlesweep
+- chips
+- story5
+- story6
+- story9
+open_questions:
+- Exact identity of byte_203EB50's owning subsystem ("search" subsystem hint from r5 usage is inferred, not confirmed).
+- Meaning of the +0x0C field aside from being the id being matched.
+- Why there are exactly four slots; whether byte_203EB50 is the table head or pointer.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

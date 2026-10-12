@@ -1,0 +1,68 @@
+name: sub_80C0A0E
+address: '0x080C0A0E'
+kind: function
+status: confirmed
+summary: Phase handler that spawns effect 0x26 at the object's position, waits 5 frames, then advances the object
+  to action 8 and clears the phase state.
+interface: "void sub_80C0A0E(struct BattleObject *r5);  // returns void\n  // inputs:  r5 = battle object; lr =\
+  \ return address\n  // outputs: r5 unchanged (preserved)\n  // clobbers: r0-r4, lr, flags (NZCV)\n  // preserves:\
+  \ r5, r6, r7\n"
+details: "Battle-object phase step. On first entry (PhaseInitialized == 0):\n  - Sets oBattleObject_Timer to 5.\n\
+  \  - Lifts the Z word at +0x3C by +0x140000 (treated by the spawner as a\n    depth/layer tag) and gathers X (+0x34),\
+  \ Y (+0x38), Z (+0x3C) for\n    spawn_t1_0x0_EffectObject, passing effect id 0x26 (r4).\n  - Sets oObjectHeader_Flags\
+  \ bit 0x2 (object-visible / drawn flag).\n  - Sets PhaseInitialized = 4 so this block does not re-run.\nOn subsequent\
+  \ frames: decrements oBattleObject_Timer; once it reaches\nzero, sets CurAction = 8 and clears CurPhaseAndPhaseInitialized,\
+  \ kicking\nthe object to action 8 and resetting the phase bookkeeping.\n\nRegister form, old prompt; queued for\
+  \ retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80C0A0E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C0A0E
+
+    ./wf verify --function sub_80C0A0E --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C0A0E
+
+    ./wf verify --function sub_80C0A0E --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 2 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C0A0E
+
+    ./wf verify --function sub_80C0A0E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0a0e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- Which action/ability uses this; what does effect 0x26 look like on screen?
+- Meaning of oObjectHeader_Flags bit 0x2 in this object's lifecycle.
+- Why is the Z word biased by 0x140000 instead of being passed as-is?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

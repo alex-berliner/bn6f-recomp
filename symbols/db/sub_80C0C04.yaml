@@ -1,0 +1,64 @@
+name: sub_80C0C04
+address: '0x080C0C04'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current phase to its phase handler.
+interface: void sub_80C0C04(u32 phase_in_r0) /* reads r5->CurPhase, r5/r8-r12 threaded */
+details: "Reads the battle object's current phase byte at oBattleObject_CurPhase\n(relative to r5) and tail-calls\
+  \ the matching handler from a 2-entry\nThumb-mode function pointer table at off_80C0C18:\n  phase 0 -> sub_80C0C20\
+  \ (battleObject_tickPhase3_80C0C20)\n  phase 1/default -> sub_80C0C48\nThe phase value is loaded into r0 and the\
+  \ handler is invoked via a\nldr/mov lr,pc; bx r1 sequence (Thumb switch idiom), so the caller's\nr2-r5 and lr\
+  \ are consumed as inputs and the handler's r5, r8-r12\nare propagated back to the caller (LR is popped from the\
+  \ stack\nafter the bx tail-call, never returning here).\n\nRegister form, old prompt; queued for retype (the farm's\
+  \ prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80C0C04
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C0C04
+
+    ./wf verify --function sub_80C0C04 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C0C04
+
+    ./wf verify --function sub_80C0C04 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 2 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C0C04
+
+    ./wf verify --function sub_80C0C04 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0c04 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- What state oBattleObject_CurPhase takes and what sub_80C0C20 vs sub_80C0C48 actually do per phase.
+- Whether the table only ever has 2 entries or grows with the object's type.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

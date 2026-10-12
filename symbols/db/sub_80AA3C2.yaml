@@ -1,0 +1,99 @@
+name: sub_80AA3C2
+address: '0x080AA3C2'
+kind: function
+status: confirmed
+summary: (Re)loads the sprite + animation for an overworld object using its 5th-byte sprite-entry index, applies
+  the OW layer effect and priority, returning a 0xFF sentinel in r1 when the slot is unused.
+interface: "void overworldObject_loadSprite_80AA3C2(\n    u8 spriteTableIdx /* r0 */,\n    OverworldObject* obj\
+  \ /* r5 */,\n    u32 unused /* r10 */);\n// returns r1 = byte_80AA430[tableIdx<<3 | obj->spriteEntry] + 4 (0xFF\
+  \ sentinel if no sprite)\n// clobbers: r0,r2,r3,r4,r11,r12,lr,nzcv\n"
+details: 'The function resolves one entry of the 8-byte-per-index sprite table at byte_80AA430
+
+  using (spriteTableIdx << 3) as base and obj->field_5 (one byte at obj+5) as the
+
+  per-sub-entry offset. The first byte of that slot is a sprite ID (0xFF = "no sprite");
+
+  the second byte is the data/cell argument to sprite_load, which is called with
+
+  VRAM bank 0x80.
+
+  The overworld object''s animation index lives at obj+4; if the loaded sprite ID is NOT
+
+  0x18 the animation index is halved (half-speed walk) before being handed to
+
+  sprite_setAnimation. The standard sprite post-load sequence
+
+  sprite_loadAnimationData -> sprite_hasShadow -> applyLayerEffectToOWObject_8035694
+
+  -> sprite_setPriority_8002E14 is then run, then r1 is loaded from byte_80AA430[(idx<<3)+4]
+
+  and that is what the caller will read back (the 0xFF sentinel falls straight out when
+
+  the early-return path is taken).
+
+  Quirks: the animation halving depends on the loaded sprite ID itself (==0x18 means
+
+  "full speed"), which couples sprite selection to walk speed; obj+5 (not obj+0) is the
+
+  sprite-slot index, suggesting an animation-state byte; 0xFF is used as the explicit
+
+  "empty sprite slot" marker rather than 0.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80AA3C2
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AA3C2
+
+    ./wf verify --function sub_80AA3C2 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AA3C2
+
+    ./wf verify --function sub_80AA3C2 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 5 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AA3C2
+
+    ./wf verify --function sub_80AA3C2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story5.'
+  reproduce: grep -l '^080aa3c2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm29.c
+coverage:
+- story5
+related:
+- sub_80AA394
+open_questions:
+- What do bytes at byte_80AA430+2,+3,+4 of each 8-byte entry represent (only +0,+1,+4 are read here)?
+- Is obj->field_5 a sub-sprite index inside a multi-pose slot, or an animation-state byte?
+- Why does sprite ID 0x18 specifically disable the animation-half-speed quirk (special "running" sprite)?
+- Is the unused r10 input (passed by every caller in the contract) a layer/flags bitfield that this function ignores,
+  or is the contract stale?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

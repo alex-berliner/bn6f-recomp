@@ -1,0 +1,70 @@
+name: sub_804900C
+address: '0x0804900C'
+kind: function
+status: confirmed
+summary: Tear down the current scene (close chatbox, blank LCD, release palette and graphics state) and write the
+  next scene state (0xC or 0x8) into the caller's struct.
+interface: 'void sub_804900C(void); // in: r5=scene state struct; out: r3, flags c,v'
+details: "Called as part of a scene/area-transition path. Performs a full graphics-teardown\nsequence in order:\n\
+  \  1. chatbox_8040818 (close any open chatbox/textarea)\n  2. SetRenderInfoLCDControl(0x40) then renderInfo_8001788\
+  \ + renderInfo_80017A0\n     (blank the LCD via the render-info layer)\n  3. toolkit_applyOverlayPalette_80015FC(0x11)\
+  \ (release palette/DMA slot 0x11)\n  4. resetAllGraphicsState_8005F40 (full graphics state reset)\n  5. sub_803BEC0,\
+  \ sub_8049CBC, sub_8049D42 (subsystem cleanups)\n\nThen decides the next scene state and stores it in the r5-pointed\
+  \ struct:\n  byte [r5+0x00] = 0xC and byte [r5+0x01] = 0 if sub_8049D42 returned Z==1\n                   (i.e.\
+  \ its r3==0) OR if halfword [r5+0x22] is nonzero\n                   (work still pending);\n  byte [r5+0x00] =\
+  \ 0x8 and byte [r5+0x01] = 0 otherwise.\n\nThe c/v flags are forwarded to the caller as left by sub_8049CBC, and\
+  \ r3 is\nforwarded as left by sub_8049D42. r4-r7 are preserved.\n\nRegister form, old prompt; queued for retype\
+  \ (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_804900C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804900C
+
+    ./wf verify --function sub_804900C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804900C
+
+    ./wf verify --function sub_804900C --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 1 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804900C
+
+    ./wf verify --function sub_804900C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0804900c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- Meaning of struct fields at offset 0x00 (state), 0x01 (counter/sub-state) and 0x22 (pending-flag halfword) is
+  not localized.
+- Which "scene" or area-transition path this belongs to (world map, battle exit, jack-in, etc.) is not determined.
+- Roles of sub_803BEC0, sub_8049CBC and sub_8049D42 are only known by their port names.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

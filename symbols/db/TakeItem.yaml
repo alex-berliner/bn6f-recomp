@@ -1,0 +1,79 @@
+name: TakeItem
+address: '0x0803CE08'
+kind: function
+status: confirmed
+summary: Removes r1 items from the toolkit's key-item array slot r0, returning a result code (0=taken, 1=empty,
+  2=not enough).
+interface: u32 TakeItem(u32 slotIdx /*r0*/, s32 amount /*r1*/, toolkit* tk /*r10*/) -> u32 result /*r0*/; tk->keyItemsPtr
+  also returned in r2 and r3
+details: 'Operates on the key-item byte array pointed to by oToolkit_KeyItemsPtr within the toolkit
+
+  struct held in r10. Reads the count byte at slot r0, decrements it by r1, and writes the
+
+  result back. Three branches: already zero -> result 1 (no change); sufficient count ->
+
+  result 0 (subtract r1); insufficient count -> result 2 (no change). Returns the result
+
+  code in r0/r3 and the key-items pointer in r2 for the caller''s convenience.
+
+  Quirks: when r1 > count the original byte is left untouched (no clamp to zero); the
+
+  conditional subtract uses a signed comparison. Per the contract, r4-r7 are preserved
+
+  and nz/c/v flags are clobbered.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    TakeItem
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function TakeItem
+
+    ./wf verify --function TakeItem --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function TakeItem
+
+    ./wf verify --function TakeItem --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 4 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function TakeItem
+
+    ./wf verify --function TakeItem --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: fuzz, menus3.'
+  reproduce: grep -l '^0803ce08 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- fuzz
+- menus3
+open_questions:
+- Is r10 always a pointer to the player toolkit, or can this be called from a battle/NPC context that reuses the
+  same oToolkit offset?
+- Does the caller ever pass r1 as a negative value to actually add items via this routine?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

@@ -1,50 +1,28 @@
 name: GiveZenny
 address: '0x0803CFF8'
 kind: function
-status: probable
-summary: Adds zenny to the player's wallet (max 999999), preserving an encrypted/parallel copy.
-interface: '/* r0 = s32 amount (zenny to add), r10 = Toolkit* ptr */
-
-  /* returns r0: 0 = added normally, 1 = already at max or integrity check failed, 2 = clamped to max */
-
-  u32 GiveZenny(u32 amount, u32 toolkit_ptr);
-
-  /* clobbers nz c v; preserves r4-r7 via push/pop */
-
-  '
-details: 'Validates a zenny "encryption"/integrity check by calling encryption_zenny_8006f78; if it
-
-  fails (Z not set after the call) the function returns 1 immediately without touching the
-
-  wallet. Otherwise it reads the current zenny from GameState->ProtectedZenny
-
-  (oToolkit_GameStatePtr -> oGameState_ProtectedZenny). If the wallet is already exactly
-
-  MAX_ZENNY (999999), it returns 1. Otherwise it adds the requested amount; if the result
-
-  exceeds 999999 (signed comparison: `cmp r1, r4 / ble` after sign-extending via signed
-
-  add), it clamps to 999999 and returns 2. The new total is stored back into
-
-  oGameState_ProtectedZenny, then encryption_zenny_8006f54 is invoked with r0 = status,
-
-  r1 = new_zenny, r2 = game_state_ptr, r3 = status, r4 = MAX_ZENNY to refresh the
-
-  encrypted zenny blob (r4 is preserved across that call thanks to the push/pop wrapper).
-
-  The "ProtectedZenny" field on GameState appears to be the in-RAM wallet mirror whose
-
-  encryption is kept in sync by the two encryption_zenny_* helpers.
-
-  '
+status: confirmed
+summary: Adds the given amount of Zenny to the player's wallet (encrypted), capping at 999999 and returning a status
+  code.
+interface: u32 giveZenny_803CFF8(s32 amount /* r0 */);  // returns 0=ok, 1=cheat-detected or already full, 2=overflow
+  capped; clobbers r0-r3, lr; preserves r4-r7; needs r10 = toolkit pointer
+details: "Verifies the encrypted wallet's checksum via encryption_zenny_8006f78; if it fails, returns 1 with no\
+  \ write.\nOtherwise reads the current (encrypted) Zenny from oGameState_ProtectedZenny (reached via oToolkit_GameStatePtr\n\
+  on the toolkit in r10) and compares against the constant 999999:\n  - already == 999999: r3 (status) = 1, no change\
+  \ to amount\n  - else add r0 to current; if the signed result exceeds 999999, clamp to 999999 and r3 (status)\
+  \ = 2\n  - otherwise r3 (status) = 0\nStores the (possibly clamped) value back to oGameState_ProtectedZenny, then\
+  \ re-encrypts the wallet\nvia encryption_zenny_8006f54 passing (status, zenny, gameState, status, 999999) in r0-r4.\
+  \ The two\npaths return through the same pop {r4-r7, pc}; r4-r7 are preserved across the call.\n\nRegister form,\
+  \ old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
 evidence:
 - method: readable-c
   date: '2026-10-11'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (1 attempt(s), run convert-20261011-003940);
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm03_1_1.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 56' --file inbox_farm_56.c GiveZenny
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    GiveZenny
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
@@ -52,21 +30,21 @@ evidence:
 
     ./wf verify --function GiveZenny --snapshots build-snapshots'
   result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
-    domain (verify run convert-20261011-003940-verify-1)'
+    domain (verify run convert-20261011-223927-verify-1)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
   reproduce: './wf capture --function GiveZenny
 
     ./wf verify --function GiveZenny --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-003940-verify-1)
+  result: 4 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
 - method: lockstep
   date: '2026-10-11'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
   reproduce: './wf capture --function GiveZenny
 
     ./wf verify --function GiveZenny --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-003940-verify-1)
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
 - method: coverage
   date: '2026-10-11'
   detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story9.'
@@ -74,20 +52,9 @@ evidence:
 changes:
 - date: '2026-10-11'
   what: readable C replacement in cport/src/game/asm03_1_1.c
-  where: recomp b7f44a3
-  tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm03_1_1.c after review against the assembly (the lifted original
-    runs again); status confirmed -> probable, as the checks that confirmed it ran code that differs from the original:
-    At-max path. The asm `mov r3,#1; cmp r1,r4; beq loc_803D01A` falls into `str r1,[r2,#oGameState_ProtectedZenny];
-    mov r0,r3; bl encryption_zenny_8006f54`. The C instead does `if ((s32)current == (s32)MAX_ZENNY) return 1;`,
-    which skips the ProtectedZenny store and the encryption_zenny_8006f54 call. It also leaves the contract outputs
-    r1/r2/r3 holding the caller''s values (8006f78 preserves r0-r7), wh...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_1_1.c
 coverage:
 - battles1
 - battles2
@@ -99,11 +66,12 @@ coverage:
 - story7
 - story9
 open_questions:
-- What is the exact layout/encoding of the "encrypted zenny" blob that encryption_zenny_8006f78 validates and 8006f54
-  rewrites?
-- Why are both r0 and r3 passed as the status code (and r2 as the game_state pointer) to encryption_zenny_8006f54?
-- The signed `ble` after `add r1, r1, r0` suggests `amount` is treated as signed even though MAX_ZENNY is unsigned;
-  can the caller ever pass a negative amount?
+- The exact encoding of oGameState_ProtectedZenny (encrypted/encoded u32 vs plain) isn't confirmed; the "Protected"
+  prefix and the dedicated encryption_zenny_* pair suggest the field is stored obfuscated.
+- Whether the integrity check failure (return 1) is intentionally overloaded with the "already full" status from
+  the caller's perspective, or if the field could be == 999999 while tampered.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
 sources:
-- tools/wf run convert-20261011-003940
-- recomp b7f44a3
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

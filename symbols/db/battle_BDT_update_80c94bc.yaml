@@ -1,0 +1,81 @@
+name: battle_BDT_update_80c94bc
+address: '0x080C94BC'
+kind: function
+status: confirmed
+summary: Battle-object collision routine tick that refreshes spawns/collision effects, dispatches the current action's
+  handler, and either highlights the active collision panels or tears the object down on battle-end, panel-stop,
+  or collision flags '0xFF800000'.
+interface: 'void battle_BDT_update_80c94bc(void);  // in: r4 preserved across call, r5 = battle object (this), r7
+  = scratch clobbered through call but preserved by this fn, r10 in/clobbered, lr in; out: clobbers r0,r1,r2,r3,r5,r6,r8,r9,r10,r11,r12,
+  lr, NZCV; preserves r4, r7'
+details: "Per-frame update for a battle object driving its collision region. Strips existing collision data via\
+  \ object_removeCollisionData, then regenerates effects via object_spawnCollisionEffect. Bails out to a teardown\
+  \ path (clears the collision region with object_clearCollisionRegion and writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized)\
+  \ when any of these hold:\n  * battle_isBattleOver returns nonzero (battle has ended)\n  * (oBattleObject_CollisionDataPtr\
+  \ -> oCollisionData_FlagsFromCollision) & 0xFF800000 is set — \"still colliding / locked\" bit mask that forces\
+  \ an early-out\nOtherwise loads oBattleObject_CurAction as an index into the jump table at off_80C9504 (single\
+  \ entry battle_BDT_update2_80c950c+1, Thumb+1 dispatch), passing the collision data pointer in r7 and the action\
+  \ index in r0, and tail-calls through it. After the dispatched handler returns, it runs object_isCurrentPanelValid;\
+  \ if invalid, teardown; otherwise object_presentCollisionData + object_highlightCurrentCollisionPanels and return.\
+  \ The asm preserves r4 and r7 across the body even though r7 is reused as the collision pointer (R7 arrives as\
+  \ input per the lifter but is saved/restored around the routine).\n\nRegister form, old prompt; queued for retype\
+  \ (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    battle_BDT_update_80c94bc
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_BDT_update_80c94bc
+
+    ./wf verify --function battle_BDT_update_80c94bc --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_BDT_update_80c94bc
+
+    ./wf verify --function battle_BDT_update_80c94bc --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 8 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_BDT_update_80c94bc
+
+    ./wf verify --function battle_BDT_update_80c94bc --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story8.'
+  reproduce: grep -l '^080c94bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles2
+- story8
+open_questions:
+- The r4 contract claim (r4 as a preserved input across the call) may be a quirk of the lifter's caller analysis
+  rather than a real input; r4 is only pushed/popped here, never explicitly read or written, suggesting it is preserved,
+  not meaningful.
+- Whether 0xFF800000 on oCollisionData_FlagsFromCollision represents a generic "collision already resolved" sentinel
+  or is action-specific — covered by being a teardown shortcut before the action handler runs.
+- off_80C9504 currently has only one entry (battle_BDT_update2_80c950c+1); whether later BN6 patches or other actions
+  share this routine is unknown.
+- The exact semantics of "still colliding" flag mask 0xFF800000 versus a "panel-invalid / on-end" bit semantics
+  — verified by code only.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

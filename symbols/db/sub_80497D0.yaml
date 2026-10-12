@@ -1,0 +1,75 @@
+name: sub_80497D0
+address: '0x080497D0'
+kind: function
+status: confirmed
+summary: Drives the per-frame screen-fade update during battle, finalising the fade counter when a fade is still
+  in progress.
+interface: void sub_80497D0(void);  /* r5 -> caller's fade state struct (byte at +1 is the counter); flags, r3,
+  r8, r9, r10, r11, r12 returned from sub_803A820 */
+details: 'Polls IsScreenFadeActive; while a fade is ongoing, calls sub_803BB2C(0x14)
+
+  and sub_803BB7C(0xF) and stamps 8 into the caller''s state byte at [r5+1] (the
+
+  "fade in progress / completed" counter, since 8 marks the fade done). Then,
+
+  unconditionally, runs sub_803A820 (battle_moduleInit_803A820 - the per-frame
+
+  fade/module processor). All output registers and flags are the verbatim return
+
+  of sub_803A820, since the early branch falls through into it.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80497D0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80497D0
+
+    ./wf verify --function sub_80497D0 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80497D0
+
+    ./wf verify --function sub_80497D0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80497D0
+
+    ./wf verify --function sub_80497D0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^080497d0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- Which battle/UI subsystem owns the struct at r5? Likely a fade controller object, but no direct base-name is exposed
+  here.
+- Why specifically 0x14 and 0xF as the sub_803BB2C / sub_803BB7C ids - they probably index a fade-palette or fade-step
+  table shared with other callers.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

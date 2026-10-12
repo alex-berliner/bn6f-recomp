@@ -1,0 +1,72 @@
+name: FindOpponentPanelXYForThunderObject
+address: '0x080C95EC'
+kind: function
+status: confirmed
+summary: Finds the grid panel of an opponent reachable by a thunder-effect object's horizontal attack sweep, choosing
+  the primary sweep direction based on the object's alliance/side and DirectionFlip flag with the opposite direction
+  as a fallback.
+interface: 'void* r5 /* oBattleObject */ in; uint8_t r5+oBattleObject_Alliance, r5+oBattleObject_DirectionFlip in;
+  int* r6 /* out: panel x */, int* r7 /* out: panel y */ inout (0 = none); clobbers r0, r1, r2, r3, r4 (sides: 0x4000000
+  vs 0x8000000 passed to helpers), lr'
+details: "Reads the object's alliance byte and selects an attack-side mask (0x4000000 when alliance==0, otherwise\
+  \ 0x8000000) that is handed to the helper routines in r4.\nDirection priority is determined by XOR of alliance\
+  \ and DirectionFlip:\n  - (alliance ^ flip) == 0 -> sweep right first, then left\n  - (alliance ^ flip) != 0 ->\
+  \ sweep left first, then right\nEach helper is CheckIfThunderObjectFindsOpponentByGoing{Right,Left}; they report\
+  \ the discovered panel coordinates in r6 (x) / r7 (y), with r6 == 0 signalling \"no opponent found\".\nFunction\
+  \ returns r0 = r6, r1 = r7; r4, r6, r7 are restored to caller-saved values on exit.\nTouched structures: oBattleObject\
+  \ at fields oBattleObject_Alliance and oBattleObject_DirectionFlip.\n\nRegister form, old prompt; queued for retype\
+  \ (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    FindOpponentPanelXYForThunderObject
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function FindOpponentPanelXYForThunderObject
+
+    ./wf verify --function FindOpponentPanelXYForThunderObject --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 181 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function FindOpponentPanelXYForThunderObject
+
+    ./wf verify --function FindOpponentPanelXYForThunderObject --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function FindOpponentPanelXYForThunderObject
+
+    ./wf verify --function FindOpponentPanelXYForThunderObject --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story8.'
+  reproduce: grep -l '^080c95ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles2
+- story8
+open_questions:
+- What exactly the 0x4000000 / 0x8000000 side values represent (likely OAM/affine/OBJ attribute chunks used by the
+  helper routines to identify a "side" of the panel or attack layer); the C uses guessed names A_LCDControl / A__text.
+- Whether the (alliance ^ flip) result intentionally selects a forward-vs-backward strike direction per side in
+  the wider thunder attack system.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

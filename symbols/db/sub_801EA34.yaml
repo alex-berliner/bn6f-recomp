@@ -1,0 +1,75 @@
+name: sub_801EA34
+address: '0x0801EA34'
+kind: function
+status: confirmed
+summary: Queues four pairs of 0x20-byte GFX transfers (a base chunk and a +0x20 chunk to destination+0x80), stepping
+  the destination back by 0x20 each time and indexing the source table off_801FD90 by the low-to-high nibbles of
+  r4.
+interface: void sub_801EA34(u32 r1, u32 r4);  // r1 = current VRAM destination, r4 = packed nibble selector; preserves
+  r5, r6; clobbers nz,c,v and r0,r2,r3,r7,lr
+details: "Per nibble (0..3) of the input selector r4 (consumed via `and r4,#0xf` then `lsr r4,#4`):\n  1. Looks\
+  \ up a source pointer in the table at off_801EA74 (= off_801FD90) using\n     (nibble * 4) as the index; the entry\
+  \ is a 32-bit pointer to a graphics source.\n  2. Queues an 8-word aligned transfer of 0x20 bytes from that source\
+  \ to the current\n     destination (r1) via QueueEightWordAlignedGFXTransfer.\n  3. Queues a second 0x20-byte\
+  \ transfer from source+0x20 to destination+0x80.\n  4. Decrements the destination by 0x20 (one 8-byte tile) so\
+  \ the next pair lands one\n     tile lower in VRAM.\nNet effect: four 2-chunk \"tile slots\" are queued, each\
+  \ occupying a 0x20-byte\ndestination stride, with the chunks laid out as [src+0x00 -> dest] then\n[src+0x20 ->\
+  \ dest+0x80]. This looks like a tile loader for animation frames where\nthe per-frame source is selected by a\
+  \ packed nibble field and VRAM is filled\nfrom high to low. The function preserves r5/r6 (likely a return value\
+  \ and a caller's\nframe pointer) and otherwise freely clobbers the caller-saved set.\n\nRegister form, old prompt;\
+  \ queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_801EA34
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801EA34
+
+    ./wf verify --function sub_801EA34 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 143 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801EA34
+
+    ./wf verify --function sub_801EA34 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 0 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801EA34
+
+    ./wf verify --function sub_801EA34 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: chips, story9.'
+  reproduce: grep -l '^0801ea34 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- chips
+- story9
+open_questions:
+- Which VRAM region / object window r1 points to (kept opaque here; caller-controlled).
+- The semantics of the nibble index into off_801FD90 — likely a per-direction or per-frame graphics variant selector,
+  but the table itself is not examined.
+- Whether the destination is expected to start already aligned so the final "sub r1,#0x20" lands on a 0x20 boundary
+  as intended.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

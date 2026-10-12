@@ -1,0 +1,90 @@
+name: sub_80CE198
+address: '0x080CE198'
+kind: function
+status: confirmed
+summary: 'Per-tick update for a battle object that is dropping toward the ground: spawns dust every 10 ticks at
+  jittered position, lowers height by 3, and on landing clears the airborne flag, switches to action 4, and resets
+  its phase.'
+interface: 'void sub_80CE198(void);  // in: r5 = battle object pointer, lr = return; out: r5 preserved, r0-r4/lr
+  clobbered; flags clobbered (NZCV)'
+details: 'Reads/writes a battle object via the r5 pointer. Increments `oBattleObject_Timer` each call.
+
+  Uses BIOS Div (swi 6) with divisor 10; the remainder in r1 acts as an "every 10 ticks" gate
+
+  (remainder 0 -> spawn). When due, calls `AddRandomVarianceToTwoCoords` to jitter `oBattleObject_X`
+
+  and `oBattleObject_Z`, then spawns an effect with id 0x10 via `spawn_t1_0x0_EffectObject`
+
+  (R4 = 0x26 likely the effect subtype/arg). Each tick decreases `oBattleObject_Z16` by 3; when
+
+  it would fall below 3 (i.e. z-3 < 0 on a signed compare), the object is considered landed:
+
+  clears bit 1 of `oObjectHeader_Flags` (the airborne flag), sets `oBattleObject_CurAction = 4`,
+
+  and zeroes `oBattleObject_CurPhaseAndPhaseInitialized` to start the next action at phase 0.
+
+  The swi 6 remainder check uses r1 == 0, not the quotient, so this is "tick % 10 == 0", not
+
+  "tick / 10 == 0". Inputs to the effect spawn appear to be r0 = effect id (0x10), r1 = jittered
+
+  X, r2 = Y (unmodified), r3 = jittered Z, r4 = 0x26. Typical "object falls and lands" handler,
+
+  e.g. for a meteor / falling rock / item drop in battle.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80CE198
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CE198
+
+    ./wf verify --function sub_80CE198 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 187 out
+    of domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CE198
+
+    ./wf verify --function sub_80CE198 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 7 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CE198
+
+    ./wf verify --function sub_80CE198 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080ce198 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- story9
+open_questions:
+- What is effect id 0x10 (the dust/spark type) and what does the 0x26 argument to spawn_t1_0x0_EffectObject select?
+- What kind of battle object uses action 4 as its "landed/post-fall" state, and which subsystem owns this object?
+- Does the height comparison use signed or unsigned oBattleObject_Z16? The C source casts to s32 but the field's
+  signedness is not explicitly known.
+- Is the r5 register contract stable, or could this function also be entered with a different pointer register (lifter
+  shows only this one caller)?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1

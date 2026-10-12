@@ -1,0 +1,74 @@
+name: sub_80C9184
+address: '0x080C9184'
+kind: function
+status: confirmed
+summary: Allocate a 0x28-byte battle object and initialise it at the given panel with damage and copied alliance/flip
+  from a source object.
+interface: "u32 battle_allocChildObject_80C9184(u8 panelX, u8 panelY, u32 source, u32 damage /* r6 */);\n  // args:\
+  \ r0=panelX, r1=panelY, r5=source object, r6=damage/counter-disabler\n  // returns r0 = new object pointer (0\
+  \ on pool exhaustion), r1 = copied alliance/flip halfword (or unchanged panelX on failure)\n  // preserved: r4,\
+  \ r5, r6, r7\n  // clobbers: r0, r1, r2, r3, lr, NZCV\n"
+details: "Requests a 0x28-byte object from the battle-object pool via sub_8003374\n(size passed in r0, result returned\
+  \ in r5 per that allocator's contract).\nIf the allocator returned non-zero:\n  - oBattleObject_PanelX  is set\
+  \ to the panel X byte (r0)\n  - oBattleObject_PanelY  is set to the panel Y byte (r1)\n  - oBattleObject_DamageAndStaminaDamageCounterDisabler\
+  \ is set to r6\n  - oBattleObject_AllianceAndDirectionFlip is copied as a halfword\n    from the source object's\
+  \ same field\nr1 is left holding that copied halfword so the caller sees the new\nobject's alliance immediately.\
+  \ The push/pop of {r0,r1,r5} is purely to\nsurvive sub_8003374 clobbering those registers; r0 is then reloaded\
+  \ from\nr5 (the allocator's result) before the conditional stores. The branch\non the result of `mov r0, r5` means\
+  \ the Z flag tells the caller whether\nallocation succeeded.\n\nRegister form, old prompt; queued for retype (the\
+  \ farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
+    sub_80C9184
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C9184
+
+    ./wf verify --function sub_80C9184 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-223927-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C9184
+
+    ./wf verify --function sub_80C9184 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 5 out of domain (verify run convert-20261011-223927-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C9184
+
+    ./wf verify --function sub_80C9184 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, story5, story6, story9.'
+  reproduce: grep -l '^080c9184 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 963ede1
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles2
+- story5
+- story6
+- story9
+open_questions:
+- What object type/size-class 0x28 corresponds to (child/effect object?)
+- Whether the returned new object ever needs to be linked into a list by the caller or whether that is implicit.
+- Whether r6's full 32 bits are the damage value or if it is a packed damage + counter-disabler field reused verbatim.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-223927
+- recomp 963ede1
