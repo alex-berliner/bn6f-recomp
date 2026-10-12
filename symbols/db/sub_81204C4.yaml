@@ -1,0 +1,81 @@
+name: sub_81204C4
+address: '0x081204C4'
+kind: function
+status: confirmed
+summary: Iterates a range of 32-byte chip slots, converting each occupied slot's chip type into an 8-byte output
+  entry via sub_8120504, and zeroing entries for empty slots.
+interface: void battle_processChipSlotArray(s32 startIdx /*r0*/, void* chipArrayBase /*r1*/, void* dest /*r2*/,
+  void* extraParam /*r3*/, s32 count /*r5*/); /* writes 8*count bytes at dest; r0-r3,lr clobbered; r4-r7,preserved
+  */
+details: 'Base pointer is computed as r1 + r0*32 (32-byte chip-slot stride). For each of r5 iterations the slot
+  pointer advances by 0x20 and the dest pointer by 8. The 16-bit field at slot+0x1C holds the chip selection; bits[15:7]
+  (tested via lsr 7) are zero for an empty/invalid slot, in which case two u32 zeros are written to dest. When a
+  chip is present the function calls getChip8021DA8(chipSel) and reads the type/category byte at offset +8 of the
+  returned ChipData, then forwards (type, destEntry, extraParam) to sub_8120504 to encode the 8-byte output record.
+  r5 (the count) is saved on the stack because it is a caller-supplied signed value used only as a loop bound. The
+  function is a leaf-ish worker: it allocates no state of its own and purely transforms slot data into a type-code
+  array.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (3 attempt(s), run convert-20261012-122106);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 29' --file inbox_farm_old_29.c
+    sub_81204C4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81204C4
+
+    ./wf verify --function sub_81204C4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 291 out
+    of domain (verify run convert-20261012-122106-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81204C4
+
+    ./wf verify --function sub_81204C4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 39 out of domain (verify run convert-20261012-122106-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81204C4
+
+    ./wf verify --function sub_81204C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-122106-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081204c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp abdf9f1
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What does the 16-bit field at slot+0x1C represent exactly (full chip id, or id+category packed)?
+- What is the purpose of the extra parameter r3 forwarded to sub_8120504—battle context, player reference, or display
+  flag?
+- Is the 8-byte dest record a chip-type + effect-pair used by the battle HUD or the transmission/selection screen?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-122106
+- recomp abdf9f1

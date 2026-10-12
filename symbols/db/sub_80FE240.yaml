@@ -1,0 +1,76 @@
+name: sub_80FE240
+address: '0x080FE240'
+kind: function
+status: confirmed
+summary: Advance the per-attack AI timer by one frame; initialise the attack, optionally wait a gate-flag-controlled
+  delay, then set the trigger field to 4 ('fire now').
+interface: void aiAttackTimerTick(BattleObject* r5, AIAttackVars* r7) — reads/writes fields via r5 and r7; no meaningful
+  register outputs beyond preserving the pointers (contract lists r1/r5/r10 as outputs but the code only uses them
+  as temps or leaves them unchanged).
+details: 'Field oAIAttackVars_Unk_01 acts as a per-attack state flag: 0 = uninitialised, 4 = initialised/active.  On
+  the first tick the routine sets Unk_01 to 4, zeroes Unk_16 and Unk_17, then queries bit 5 (0x20) of the AI-data
+  0x48 gate via GetAIDataUnk0x48Flag.  If the bit is clear the trigger field Unk_00 is written with 4 immediately,
+  causing the outer AI loop to fire the attack on the next iteration.  If the bit is set, ClearAIDataUnk0x48Flag
+  removes the gate, the battle object''s CurAnim (oBattleObject_CurAnim) is set to 7 (an attack-windup animation),
+  sound effect 0xE1 is played, and a 19-frame delay countdown is stored in Unk_10 (word-sized, decremented as a
+  signed value).  On subsequent ticks Unk_10 is decremented; once it reaches 0 or below, Unk_00 is set to 4 to trigger
+  the attack.  Constants touched: 4 (trigger value and state flag), 7 (CurAnim windup), 0xE1 (sound), 0x20 (gate
+  bit), 0x13=19 (initial delay).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (3 attempt(s), run convert-20261012-122106);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 29' --file inbox_farm_old_29.c
+    sub_80FE240
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FE240
+
+    ./wf verify --function sub_80FE240 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261012-122106-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FE240
+
+    ./wf verify --function sub_80FE240 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 87 out of domain (verify run convert-20261012-122106-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FE240
+
+    ./wf verify --function sub_80FE240 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-122106-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080fe240 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp abdf9f1
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- What animation does CurAnim 7 correspond to (windup, charge, generic attack start)?
+- What does sound 0xE1 represent in the SFX table?
+- Are Unk_16 and Unk_17 used elsewhere, or only as scratch fields cleared at init?
+- Does the caller pass a different r7 frame each time, or is this the same AIAttackVars block advanced in-place?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-122106
+- recomp abdf9f1

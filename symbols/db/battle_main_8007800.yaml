@@ -1,0 +1,89 @@
+name: battle_main_8007800
+address: '0x08007800'
+kind: function
+status: confirmed
+summary: 'Per-frame battle tick: runs pre-frame hooks, dispatches to the active state handler via jump table, then
+  increments frame counter and returns state-byte nibbles plus active-effect count to the caller.'
+interface: battle_tick_8007800(void) -> returns (r0 = stateByte@0x0A, r1 = stateByte_loNibble, r2 = stateByte_hiNibble,
+  r3 = activeEffectsCount; flags N/Z from r0, C=0, V from callee); inputs r2 r4 r5 r6 r7 r8 r9 r10 r11 r12 lr; preserves
+  r4 r5
+details: 'Fetches the BattleState pointer from Toolkit (r10 + oToolkit_BattleStatePtr). Reads a byte at oBattleState_Index_00
+  and uses it directly as a table offset into a 6-entry jump table at 0x08007838. Entries: 0x00 -> sub_8007850,
+  0x04 -> battle_update_8007A44, 0x08 -> sub_8007B80, 0x0C -> sub_8007E62, 0x10 -> sub_8007F4E, 0x14 -> removed_8007FEA
+  (stubbed out). After dispatch, increments the u32 counter at oBattleState_Unk_60 (per-frame tick counter), calls
+  GetBattleEffects to get the count of currently active battle effects into r3, and calls battle_getStateByteNibbles_800A832
+  to split the raw state byte into two nibbles (returned in r1/r2 after rearrangement). Finally loads the byte at
+  oBattleState_Unk_0A into r0 and TSTs it to set flags for the caller. Pre-frame hooks sub_801FE6C and sub_8020140
+  run unconditionally before dispatch. The handler for index 0x14 is marked ''removed'' in the ROM.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (3 attempt(s), run convert-20261012-122106);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 29' --file inbox_farm_old_29.c
+    battle_main_8007800
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_main_8007800
+
+    ./wf verify --function battle_main_8007800 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-122106-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_main_8007800
+
+    ./wf verify --function battle_main_8007800 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 79 out of domain (verify run convert-20261012-122106-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_main_8007800
+
+    ./wf verify --function battle_main_8007800 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-122106-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08007800 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp abdf9f1
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What do the two pre-frame hooks (sub_801FE6C, sub_8020140) update?
+- What is oBattleState_Unk_60 (frame counter) used for downstream?
+- What was the removed 0x14 handler doing before it was stubbed?
+- What are the semantic roles of state byte values 0x00/0x04/0x08/0x0C/0x10 (e.g. idle, running, paused, end?)
+- What does GetBattleEffects return exactly—count of active effect structs, or a bitmask?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-122106
+- recomp abdf9f1

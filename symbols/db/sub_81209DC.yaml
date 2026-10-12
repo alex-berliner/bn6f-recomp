@@ -1,0 +1,90 @@
+name: sub_81209DC
+address: '0x081209DC'
+kind: function
+status: confirmed
+summary: Selects a random battle element ID from a category-specific pool and returns a bias modifier byte drawn
+  from a weighted lookup table.
+interface: 'u32 battle_pickElementAndBias_81209DC(u32 category /*r0*/); /* out: r0 = element ID (low byte), r1 =
+  bias value 0..0x13; preserves r6,r7; clobbers r2,r3,lr,NZCV */'
+details: 'Reads a per-category range count from a three-entry ROM table at 0x8120A14 ({0x44, 0x60, 0x44}). Draws
+  a secondary-RNG value, takes it mod the range, and for categories >= 2 adds 0x60 to shift the element ID into
+  a higher band. The low byte of that adjusted value is returned in r0 as the chosen element ID. Then draws a primary-RNG
+  value mod 21 to index a 21-entry bias table at 0x8120A20 (values range 0..0x13 with duplicates at 1, 11, 13 suggesting
+  a non-uniform weight distribution). The bias byte is returned in r1. Out-of-range category indices simply read
+  whatever 32-bit word follows in ROM at that offset. The three categories likely correspond to distinct element
+  pools (e.g. normal, extended, and shifted/high-tier sets) used when generating random battle-field tiles or environmental
+  elements.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (3 attempt(s), run convert-20261012-122106);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 29' --file inbox_farm_old_29.c
+    sub_81209DC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81209DC
+
+    ./wf verify --function sub_81209DC --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261012-122106-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81209DC
+
+    ./wf verify --function sub_81209DC --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 58 out of domain (verify run convert-20261012-122106-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81209DC
+
+    ./wf verify --function sub_81209DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-122106-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^081209dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp abdf9f1
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What game entities use the element IDs returned in r0 (field tiles, obstacles, environmental zones)?
+- What consumer uses the bias value in r1 (weighting for spawn probability, special-property flag, or difficulty
+  tier)?
+- Why do categories 0 and 2 share the same range (0x44) but category 2 adds +0x60 to the result—does this create
+  a gap or overlap in the element ID space?
+- Is the duplicate 11 and 13 in the bias table a deliberate weight bump for two specific biases?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-122106
+- recomp abdf9f1
