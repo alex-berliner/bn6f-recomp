@@ -1,28 +1,45 @@
 name: gfxTransfer_8033DA0
 address: '0x08033DA0'
 kind: function
-status: probable
-summary: Queues a 0x20-byte aligned GFX transfer (to VRAM/OAM at 0x030016D0) for the current PET/Navi sprite, picking
-  the source from a 13-entry table indexed by PET/Navi id with an override driven by event flag 0x163 and eByte200AD04.
-interface: 'void gfxTransfer_8033DA0(u32 tileOffset /* r0 */);  /* preserves r4-r7, clobbers r0-r3, n,z flags; c,v,r2-r7
-  out */ flags clobbered: nz preserved: r4 r5 r6 r7'
-details: "Calls GetCurPETNavi to obtain the current PET/Navi index (0..12, used as a byte index).\nIf event flag\
-  \ 0x163 (EVENT_163) is set AND eByte200AD04 is non-zero, the index is\nforced to 0xC (the last entry of the table),\
-  \ giving an alternate sprite GFX source.\nThe chosen index is multiplied by 4 (lsl #2) and added to a base pointer\
-  \ (off_8033DD4\n-> 0x086C18A0-..) to fetch a u32 ROM source pointer. The caller's r0 (a per-frame or\nper-state\
-  \ tile offset) is then added to this source.\nFinally QueueEightWordAlignedGFXTransfer is invoked with:\n  src\
-  \     = table_src[index] + r0_offset\n  dest    = 0x030016D0 (byte_30016D0, OAM tile buffer)\n  size    = 0x20\
-  \ bytes\nThe 13-entry source table GFX_SRC_TABLE contains entries for navi indices 0..12;\nentries 6..11 duplicate\
-  \ entries 1..6, suggesting palette/style variants for certain\nnavis. The last two entries (index 0xB, 0xC) appear\
-  \ to be special/alt sources used\nwhen event 0x163 is set or for the override index 0xC.\n"
+status: confirmed
+summary: Queues a 32-byte PET navi tileset DMA transfer into the VRAM staging area at 0x30016D0.
+interface: void queuePETNaviTileset_8033DA0(u32 baseAddr /* r0 */);
+details: 'Resolves which tileset to upload by reading GetCurPETNavi (returns an index into
+
+  a pointer table at off_8033DD4 of ROM tileset sources, one per navi/pose). The
+
+  selected entry has the supplied base address added to it before queueing, so
+
+  callers vary the tileset origin by passing different base pointers. The transfer
+
+  is always 0x20 (8 words) to byte_30016D0 via QueueEightWordAlignedGFXTransfer.
+
+
+  If EVENT_163 (flag bank 1, flag 0x63, "EVENT_163") is clear AND the byte at
+
+  0x200AD04 (notZero_eByte200AD04) is non-zero, the index is forced to 0xC,
+
+  pointing at byte_86C1A20. This branch is the only thing that uses r4..r7 besides
+
+  preservation; the chosen index''s pointer is what ends up at r0 for the queue.
+
+
+  Inputs r10/lr are listed in the contract from analysis and not referenced here.
+
+  c and v flags are listed as outputs but this function only sets Z via TestEventFlagFromImmediate/notZero_eByte200AD04;
+  the c/v markings likely come from the queueing helper.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
 evidence:
 - method: readable-c
   date: '2026-10-11'
-  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-004614);
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (1 attempt(s), run convert-20261011-231414);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm03_1_0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 58' --file inbox_farm_58.c gfxTransfer_8033DA0
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 20' --file inbox_farm_old_20.c
+    gfxTransfer_8033DA0
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
@@ -30,21 +47,21 @@ evidence:
 
     ./wf verify --function gfxTransfer_8033DA0 --snapshots build-snapshots'
   result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
-    of domain (verify run convert-20261011-004614-verify-2)'
+    of domain (verify run convert-20261011-231414-verify-1)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
   reproduce: './wf capture --function gfxTransfer_8033DA0
 
     ./wf verify --function gfxTransfer_8033DA0 --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261011-004614-verify-2)
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-231414-verify-1)
 - method: lockstep
   date: '2026-10-11'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
   reproduce: './wf capture --function gfxTransfer_8033DA0
 
     ./wf verify --function gfxTransfer_8033DA0 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-004614-verify-2)
+  result: 16/16 routes identical (verify run convert-20261011-231414-verify-1)
 - method: coverage
   date: '2026-10-11'
   detail: 'Executed by: battle, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, story4, story5,
@@ -53,20 +70,9 @@ evidence:
 changes:
 - date: '2026-10-11'
   what: readable C replacement in cport/src/game/asm03_1_0.c
-  where: recomp 8734ebe
-  tool: tools/wf convert (minimax/MiniMax-M3)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm03_1_0.c after review against the assembly (the lifted original
-    runs again); status confirmed -> probable, as the checks that confirmed it ran code that differs from the original:
-    Event-flag test is inverted. Asm: `movflag EVENT_163; bl TestEventFlagFromImmediate; bne loc_8033DBC` skips
-    the override when the flag is SET. Only when the flag is CLEAR does it call notZero_eByte200AD04 and, if that
-    is nonzero, set r4 = 0xC. C: `if (event_flag_163_set() && eByte200AD04_nonzero()) navi_index = 0xC;` overrides
-    when the flag is SET, and calls notZero_eByte200AD04 on the opposite br...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
+  where: recomp dd11e9d
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm03_1_0.c
 coverage:
 - battle
 - battlesweep
@@ -84,17 +90,15 @@ coverage:
 - story8
 - story9
 - wander
-related:
-- sub_8033C68
 open_questions:
-- Which PET/Navi indices correspond to which entry; the relationship between duplicated entries 1-5 and 6-10 is
-  unclear.
-- Exact meaning of eByte200AD04 (likely a transformation/state flag such as "shiny"/"Soul Unity" variant given its
-  pairing with event 0x163).
-- Whether r0 is a tile index offset or a frame/animation offset (it is added raw to the source pointer so it must
-  be byte-aligned within the 0x20-byte block).
-- GetCurPETNavi, TestEventFlagFromImmediate, notZero_eByte200AD04, and QueueEightWordAlignedGFXTransfer all live
-  outside this file and lack typed interfaces; verify their semantics elsewhere.
+- What event EVENT_163 corresponds to (a story/event flag determining alternate tileset)?
+- What does the byte at 0x200AD04 represent (a per-frame style toggle, a form/un-form flag, or a battle-mode indicator)?
+- What is the meaning of the 0xC override index and the entry at byte_86C1A20 (likely a special/custom navi pose)?
+- Are the two duplicate groups of entries in off_8033DD4 (entries 0..5 vs 6..11) idle vs. active pose variants,
+  or normal vs. transformed forms?
+- Why is r10 listed as an input (unused in this function — likely caller bookkeeping from the lifter).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
 sources:
-- tools/wf run convert-20261011-004614
-- recomp 8734ebe
+- tools/wf run convert-20261011-231414
+- recomp dd11e9d

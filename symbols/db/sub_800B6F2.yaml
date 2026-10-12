@@ -1,0 +1,86 @@
+name: sub_800B6F2
+address: '0x0800B6F2'
+kind: function
+status: confirmed
+summary: In battle, scan the pending-event list from the active side of the battle state and fire any event flags
+  whose entry value is >= 0x100 (mapped to flag index value+0x300), unless battle-effect bits 0x8 or 0x80000 are
+  set.
+interface: "void sub_800B6F2(void)\n  // inputs: r10 = toolkit base (BattleStatePtr derived), lr = return\n  //\
+  \ outputs: r1, r3, r6, r7, lr (return); C, V flags set\n  // clobbers: r0, N, Z\n  // preserved: r4, r6, r7\n"
+details: "Reads BattleStatePtr from the toolkit (oToolkit_BattleStatePtr), then calls\nGetBattleEffects and bails\
+  \ out if bit 3 (0x8) or bit 19 (0x80000) is set —\nthese are \"do not process pending events\" guard bits.\n\n\
+  Otherwise it reads a 1-byte side selector via battle_getStateByte0d_800A7E2\n(battle-state byte at offset 0x0D),\
+  \ XORs it with 1 to choose the \"opposite\"\nside, and uses that index to locate two parallel fields on the battle\n\
+  state struct:\n  - count:  1 byte at statePtr + 4 + side\n  - array:  u16[] at statePtr + 0x4C + 8*side\n\nFor\
+  \ each of the `count` u16 entries in the array, it subtracts 0x100; if\nthe result is non-negative, it calls SetEventFlag\
+  \ with flag index\n(entry - 0x100) + 0x300 (so a stored value of 0x100 sets flag 0x300).\n\nQuirks:\n  - The offset\
+  \ arithmetic `add r1, r0, #4` after `eor r0, #1` selects\n    the count byte, while a separate `(side << 3) +\
+  \ 0x4C` strides into\n    the table — two sides therefore sit 8 bytes apart, with 6 bytes of\n    unknown padding\
+  \ between the count byte and the u16 array base.\n  - Uses `bgt` after a final SUBS, so count==0 also terminates\
+  \ cleanly\n    (1-entry minimum count).\n  - Does not clear or update the pending-event list; it only fires\n\
+  \    flags, presumably the caller handles consumption.\n\nRegister form, old prompt; queued for retype (the farm's\
+  \ prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (1 attempt(s), run convert-20261011-231414);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 20' --file inbox_farm_old_20.c
+    sub_800B6F2
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800B6F2
+
+    ./wf verify --function sub_800B6F2 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-231414-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800B6F2
+
+    ./wf verify --function sub_800B6F2 --snapshots build-snapshots'
+  result: 61 compared, 0 differed, 35 out of domain (verify run convert-20261011-231414-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800B6F2
+
+    ./wf verify --function sub_800B6F2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-231414-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, menus2, menus3, story2, story4, story5, story6, story7,
+    story8, story9.'
+  reproduce: grep -l '^0800b6f2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp dd11e9d
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What produces entries in the pending-event array (and how/when they are cleared)?
+- Why are guard bits 0x8 and 0x80000 special to this scan path?
+- What do the bytes between the count (at side+4) and the array (at 0x4C+8*side) hold?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-231414
+- recomp dd11e9d

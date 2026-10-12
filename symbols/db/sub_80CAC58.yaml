@@ -1,0 +1,78 @@
+name: sub_80CAC58
+address: '0x080CAC58'
+kind: function
+status: confirmed
+summary: Spawns a type-0x36 battle object, links it to a source object (alliance/direction inherited) and a secondary
+  related object with a back-pointer, and marks it active.
+interface: "void sub_80CAC58(u32 extraVars, u32 elemOrMisc, u32 related1Payload, u32 element,\n                \
+  \ u32 sourceObj, u32 relatedObj2Ptr, u32 damageDisabler /*r7*/)\n  -> bool (V cleared), newObj in r2, related1Payload\
+  \ in r3, sourceObj in r5\n  clobbers: r0, r1, N/Z/C\n  preserves: r4, r6, r7, lr\n"
+details: "Allocates a new battle object via object_spawnType3 with type 0x36. The\nasymmetric push {r0-r2,r5} /\
+  \ pop {r1-r3,r5} shifts caller registers so\nthat after the pop: r1=caller.r0 (extraVars), r2=caller.r1, r3=caller.r2\n\
+  (element), r5=source object. If spawn succeeds the new object's fields are\ninitialized:\n  oBattleObject_ExtraVars\
+  \                    <- caller.r0\n  oBattleObject_Element (byte)              <- caller.r2\n  oBattleObject_RelatedObject1Ptr\
+  \             <- source object (r5)\n  oBattleObject_DamageAndStaminaDamageCounterDisabler <- caller.r6\n  oBattleObject_AllianceAndDirectionFlip\
+  \     <- copied (word) from source\n  oBattleObject_RelatedObject2Ptr            <- caller.r7\n  [r7]        \
+  \                               <- back-pointer to new object\n  oObjectHeader_Flags                       |=\
+  \ 0x10 (active/in-battle bit)\nThe new object pointer is returned in r2; r3 returns the inherited\nalliance/direction\
+  \ value; flags V cleared (no overflow on final ADDS).\nUses asymmetric push/pop as a register shuffle trick to\
+  \ preserve caller's\nr0-r2 across the spawn call.\n\nRegister form, old prompt; queued for retype (the farm's\
+  \ prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (1 attempt(s), run convert-20261011-231414);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 20' --file inbox_farm_old_20.c
+    sub_80CAC58
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CAC58
+
+    ./wf verify --function sub_80CAC58 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-231414-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CAC58
+
+    ./wf verify --function sub_80CAC58 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 89 out of domain (verify run convert-20261011-231414-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CAC58
+
+    ./wf verify --function sub_80CAC58 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-231414-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080cac58 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp dd11e9d
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- What kind of battle object is type 0x36 (e.g. effect, projectile, panel)?
+- Semantics of oBattleObject_ExtraVars, oBattleObject_DamageAndStaminaDamageCounterDisabler, and oBattleObject_RelatedObject1Ptr/2
+  in this context (parent vs child, status counters, etc.).
+- Why r6 is stored in DamageAndStaminaDamageCounterDisabler rather than a typical damage field — is this a counter/disabler
+  reuse?
+- 'The "extraVars" field: pointer-sized payload or struct/array of misc vars?'
+- Meaning of the 0x10 bit set in oObjectHeader_Flags (active flag is shared across many object types).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-231414
+- recomp dd11e9d

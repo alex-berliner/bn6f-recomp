@@ -1,0 +1,91 @@
+name: sub_80CC964
+address: '0x080CC964'
+kind: function
+status: confirmed
+summary: Initializes a battle object's collision (placing it on the grid, allocating the collision buffer, configuring
+  geometry/hit effect/damage/optional status, finalizing it) and transitions the object into its CUR_STATE_UPDATE
+  phase.
+interface: "void sub_80CC964(BattleObject *r5);\n  // uses r8, lr. Sets/uses r5 in/out. Clobbers r0-r3 and nzcv.\
+  \ Preserves r4, r5, r6, r7.\n  // Calls BL helpers and ends by setting oBattleObject_CurStateActionPhaseAndPhaseInitialized\n\
+  \  // to CUR_STATE_UPDATE.\n"
+details: 'Reads from r5 (BattleObject) the fields: oBattleObject_Param1 (damage -> stored at
+
+  collision+1), oBattleObject_Param2 (hit effect), oBattleObject_Param3, oBattleObject_Param4
+
+  (collision geometry), oBattleObject_ExtraVars (R3 -> setupCollisionData), oBattleObject_ExtraVars+4
+
+  (status effect id; if non-zero, object_setCollisionStatusEffect1 is invoked), and
+
+  oBattleObject_ExtraVars+8 (lower half -> oBattleObject_Timer).
+
+  Writes: oBattleObject_Z = 0; oBattleObject_CurStateActionPhaseAndPhaseInitialized =
+
+  CUR_STATE_UPDATE; collisionHandle[1] = Param1; Timer set from ExtraVars+8.
+
+  Sequence: object_setCoordinatesFromPanels -> Z=0, object_createCollisionData; if the
+
+  returned handle is NULL it calls object_freeMemory and returns. Otherwise it runs
+
+  object_setupCollisionData(Param4,Param3,ExtraVars) -> object_setCollisionHitEffect(Param2),
+
+  optionally object_setCollisionStatusEffect1(ExtraVars+4), then
+
+  object_presentCollisionData, then writes the timer and the next phase.
+
+  Note: r10 is in the register contract but unused in this routine (callee-preserved leftover).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (1 attempt(s), run convert-20261011-231414);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 20' --file inbox_farm_old_20.c
+    sub_80CC964
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CC964
+
+    ./wf verify --function sub_80CC964 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-231414-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CC964
+
+    ./wf verify --function sub_80CC964 --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 57 out of domain (verify run convert-20261011-231414-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CC964
+
+    ./wf verify --function sub_80CC964 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-231414-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, story7.'
+  reproduce: grep -l '^080cc964 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp dd11e9d
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- story7
+open_questions:
+- Exact meaning of ExtraVars+4 status effect id when non-zero (effect index? flag bit?).
+- What CUR_STATE_UPDATE specifically represents in this object's state machine.
+- Why r10 is listed in the contract but not touched by the body.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-231414
+- recomp dd11e9d

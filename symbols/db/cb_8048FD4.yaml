@@ -1,0 +1,120 @@
+name: cb_8048FD4
+address: '0x08048FD4'
+kind: function
+status: confirmed
+summary: Subsystem tick callback dispatched by the state byte at eS200A290, firing completion event 0xDA arg 2 when
+  the subsystem reports no longer in use.
+interface: 'void subsystemTick_cb_8048FD4(void);
+
+  // clobbers NZCV and r0–r3, r5 (restored), r12, lr
+
+  // preserves r4, r6, r7 (r5 saved/restored around handler dispatch)
+
+  // no explicit inputs; reads global state byte eS200A290
+
+  '
+details: 'Top-level "cb_" tick callback (per its name and signature). Loads a
+
+  pointer to the state struct at eS200A290 into r5, then reads the low
+
+  state byte and uses it (shifted as 0/4/8/12) to index a four-entry
+
+  jump table at off_8048FF4 whose entries are the four subsystem
+
+  handlers sub_804900C / sub_8049058 / sub_8049080 / sub_804971C. The
+
+  selected handler is called with r5 pointing at the eS200A290 struct
+
+  (and r1 = the offset value, r0 = pointer into the jump table slot);
+
+  lr is rewritten for a bx-thunk style call, so handler semantics are
+
+  those of a Thumb-mode function dispatched through the table.
+
+
+  After the handler returns, the routine asks IsCurSubsystemInUse and
+
+  bails out (skipping the completion event) if it returns non-zero. If
+
+  the subsystem has finished it raises the framework completion event
+
+  0xDA with argument 2 via sub_803C59C ("event 0xDA arg 2"), which in
+
+  BN6 is the standard "subsystem finished, tear down" pair (id 0xDA,
+
+  payload byte 2).
+
+
+  r4/r6/r7 are preserved by the push/pop frame; r5 is only "clobbered"
+
+  in the sense that the readable C explicitly saves/restores it around
+
+  the handler dispatch, since r5 was banked to eS200A290 for the handler.
+
+  The hand-written readable notes that the actual ARM-side register
+
+  contract (per the lifter) shows r2/r4/r6/r7/r8/r9/r10/r11/r12 and lr
+
+  as inputs to the thunked handler, which is consistent with the
+
+  parent engine''s handler calling convention rather than something this
+
+  stub itself consumes.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (1 attempt(s), run convert-20261011-231414);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 20' --file inbox_farm_old_20.c
+    cb_8048FD4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function cb_8048FD4
+
+    ./wf verify --function cb_8048FD4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-231414-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function cb_8048FD4
+
+    ./wf verify --function cb_8048FD4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-231414-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function cb_8048FD4
+
+    ./wf verify --function cb_8048FD4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-231414-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08048fd4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp dd11e9d
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- Which subsystem each of the four handler entries (sub_804900C, sub_8049058, sub_8049080, sub_804971C) corresponds
+  to, and which values stored in eS200A290's state byte select which handler.
+- Why the handler at offset 12 (sub_804971C) is roughly an order of magnitude larger than the others and whether
+  it is the "main/active" subsystem.
+- Whether the 0xDA / arg 2 completion pair is a generic "subsystem done" signal shared by all four handlers or specific
+  to one of them.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-231414
+- recomp dd11e9d

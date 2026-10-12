@@ -1,0 +1,69 @@
+name: sub_80C5F2C
+address: '0x080C5F2C'
+kind: function
+status: confirmed
+summary: Spawns a battle object of spawn type 3 subtype 9 at the given panel with the given element, inheriting
+  the source object's alliance and direction-flip.
+interface: "u32 sub_80C5F2C(u32 panel_x, u32 panel_y, u32 element, ..., u32 src_obj /* r5 */, u32 dmg_counter_disabler\
+  \ /* r6 */)\nreturns r0 = new object pointer (0 on failure), r1 = panel_x, r2 = panel_y,\n        r3 = element\
+  \ (failure) or copied alliance/flip word (success), r5 = src_obj,\n        flags: N/Z set from new_obj, C=0, V=0\n"
+details: "Registers r0..r3 and r5/r6 are pushed for the call. Uses object_spawnType3 with\nargument 9 to allocate\
+  \ the new battle object. On success, writes:\n  - panel position (PanelX/PanelY bytes)\n  - element byte\n  -\
+  \ oBattleObject_DamageAndStaminaDamageCounterDisabler (32-bit) from r6\n  - oBattleObject_AllianceAndDirectionFlip\
+  \ (16-bit) copied from the source object r5\nThe \"mov r0, r5\" between the call and the pop doubles as a flag-setting\
+  \ pseudo-add\n(sets N/Z from the pointer, clears C/V) so the subsequent `beq` is a null-pointer\ncheck on the\
+  \ spawned object. On failure, r0 is cleared and the function bails;\nnothing is written.\n\nRegister form, old\
+  \ prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by hyper/qwen3.8-flash+old through the convert workflow (1 attempt(s), run convert-20261011-231414);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 20' --file inbox_farm_old_20.c
+    sub_80C5F2C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C5F2C
+
+    ./wf verify --function sub_80C5F2C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-231414-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C5F2C
+
+    ./wf verify --function sub_80C5F2C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 72 out of domain (verify run convert-20261011-231414-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C5F2C
+
+    ./wf verify --function sub_80C5F2C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-231414-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c5f2c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp dd11e9d
+  tool: tools/wf convert (hyper/qwen3.8-flash+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- What specific damage/stamina counter field is stored in r6 (it is described only as a combined "DamageAndStaminaDamageCounterDisabler"
+  in this struct layout)?
+- What battle-object subtype 9 actually represents (effect, secondary projectile, counter, etc.) — caller context
+  would identify it.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-231414
+- recomp dd11e9d
