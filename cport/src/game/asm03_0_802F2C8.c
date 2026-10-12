@@ -344,6 +344,117 @@ Next startScreen_init_802F668(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802F6B2 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_SetScreenFade_result_sub_802F6B2;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result_sub_802F6B2 call_SetScreenFade_sub_802F6B2(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result_sub_802F6B2){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_sound_dispatchCueHandler_800068A_result;
+/* register form: generated wrapper: sound_dispatchCueHandler_800068A has no typed C interface yet */
+static inline call_sound_dispatchCueHandler_800068A_result call_sound_dispatchCueHandler_800068A(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sound_dispatchCueHandler_800068A);
+    return (call_sound_dispatchCueHandler_800068A_result){ R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { bool z, n; } call_startScreen_IsTitleAnimationFinished_803E928_result;
+/* register form: generated wrapper: startScreen_IsTitleAnimationFinished_803E928 has no typed C interface yet */
+static inline call_startScreen_IsTitleAnimationFinished_803E928_result call_startScreen_IsTitleAnimationFinished_803E928(void) {
+    GUEST_CALL(startScreen_IsTitleAnimationFinished_803E928);
+    return (call_startScreen_IsTitleAnimationFinished_803E928_result){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r5; } call_sub_802FD54_result;
+/* register form: generated wrapper: sub_802FD54 has no typed C interface yet */
+static inline call_sub_802FD54_result call_sub_802FD54(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_802FD54);
+    return (call_sub_802FD54_result){ R5 };
+}
+
+typedef struct { u32 r8, r9, r10, r11, r12; } call_menu_onStartPressBeginTransition_802F7E8_result;
+/* register form: generated wrapper: menu_onStartPressBeginTransition_802F7E8 has no typed C interface yet */
+static inline call_menu_onStartPressBeginTransition_802F7E8_result call_menu_onStartPressBeginTransition_802F7E8(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(menu_onStartPressBeginTransition_802F7E8);
+    return (call_menu_onStartPressBeginTransition_802F7E8_result){ R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: sub_802F88E has no typed C interface yet */
+static inline void call_sub_802F88E(void) {
+    GUEST_CALL(sub_802F88E);
+}
+
+/* Offsets within the StartScreen object */
+#define oStartScreen_Timer           4
+#define oStartScreen_JumpTableOff_01_sub_802F6B2 1
+
+/* Timer value at which the title jingle cue is dispatched */
+#define TIMER_JINGLE_VALUE     0x12C
+
+/* Above this the countdown is treated as "still too early" for the START-press path */
+#define TIMER_ANIM_THRESHOLD   0xA0A
+
+/*
+ * Start-screen per-frame tick.
+ * Decrements the title-screen timer; triggers the fade-out when it expires,
+ * plays the jingle sound cue at a preset countdown value, and once the title
+ * animation finishes, advances the sub-state and begins the menu transition.
+ */
+static void start_screen_tick(u32 self, u32 menu_r2) {
+    u16 timer = LD16(self + oStartScreen_Timer);
+
+    /* Timer expired → switch to fade state and begin the screen fade */
+    if (timer == 0) {
+        ST8(self + oStartScreen_JumpTableOff_01_sub_802F6B2, 0x10);
+        call_SetScreenFade_sub_802F6B2(0xC, 0x10);
+        return;
+    }
+
+    /* Decrement and write back */
+    u32 countdown = (u32)timer - 1;
+    ST16(self + oStartScreen_Timer, countdown);
+
+    /* Exactly at the jingle value → play the title-screen cue */
+    if (countdown == TIMER_JINGLE_VALUE) {
+        /* register form: the original does push {r0,r5} / pop {r0,r5}
+           around sound_dispatchCueHandler to preserve r5 across it */
+        u32 saved_r5 = R5;
+        call_sound_dispatchCueHandler_800068A(0x1F, 0x10);
+        R5 = saved_r5;
+        return;
+    }
+
+    /* If countdown is still above the threshold, nothing to do this frame.
+       The original uses signed comparison (bge) but both operands are
+       non-negative, so cast to s32 matches the semantics exactly. */
+    if ((s32)countdown >= (s32)TIMER_ANIM_THRESHOLD)
+        return;
+
+    /* Check whether the title animation has finished (Z set ⇒ result == 0 ⇒ done) */
+    if (!call_startScreen_IsTitleAnimationFinished_803E928().z)
+        return;
+
+    /* Animation finished: advance state, begin the start-press transition, clean up */
+    u32 self_updated = call_sub_802FD54(self).r5;
+    call_menu_onStartPressBeginTransition_802F7E8(menu_r2, self_updated);
+    call_sub_802F88E();
+}
+
+/* sub_802F6B2 (self: *StartScreen @r5, r2 = menu data, r10, lr) -> r8 r9 r10 r11 r12 */
+Next sub_802F6B2(void) {
+    start_screen_tick(R5, R2);
+    RETURN_TO_CALLER();
+}
+
 /* ── startScreen_UpdateAndRenderFrame_802F704 ── */
 /* startScreen_UpdateAndRenderFrame_802F704(r5 = StartScreen *self):
  * advance the start screen one frame — first update its state,
@@ -488,6 +599,92 @@ Next menu_onStartPressBeginTransition_802F7E8(void) {
         GUEST_CALL(LoadGFXAnim); /* may update r10; callers see the new value */
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802F81C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; bool z, n; } call_IsScreenFadeActive_result;
+/* register form: generated wrapper: IsScreenFadeActive has no typed C interface yet */
+static inline call_IsScreenFadeActive_result call_IsScreenFadeActive(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (call_IsScreenFadeActive_result){ R0, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1, r3, r4, r5, r6, r7, r10; } call_musicGameState_8000784_result;
+/* register form: generated wrapper: musicGameState_8000784 has no typed C interface yet */
+static inline call_musicGameState_8000784_result call_musicGameState_8000784(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(musicGameState_8000784);
+    return (call_musicGameState_8000784_result){ R1, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_sub_802F81C;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_802F81C call_PlaySoundEffect_sub_802F81C(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_802F81C){ R2, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r5; } call_SetScreenFade_result_sub_802F81C;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result_sub_802F81C call_SetScreenFade_sub_802F81C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result_sub_802F81C){ R5 };
+}
+
+/* Navigate a small selection menu with L / R, and trigger the
+ * "exit / start fade" action on Start.  menu_state is the per-menu
+ * data block (byte 8 = current index, byte 9 = item count).           */
+static void menu_handle_navigation(u32 toolkit_ptr, u32 menu_state, u32 r2_arg) {
+    u32 joypad  = LD32(toolkit_ptr + oToolkit_JoypadPtr);
+    u16 pressed = LD16(joypad + oJoypad_Pressed);
+
+    if (pressed & 0x09) {                         /* Start / Select pressed */
+        call_IsScreenFadeActive_result fade = call_IsScreenFadeActive();
+        if (fade.z)
+            return;                               /* skip while a fade is running */
+        call_musicGameState_8000784(fade.r0, r2_arg);
+        call_PlaySoundEffect_sub_802F81C(0x9D, r2_arg);       /* menu-exit jingle */
+        ST8(menu_state + 1, 0x10);                /* flag: return to overworld */
+        call_SetScreenFade_sub_802F81C(0xC, 0x10);            /* fade out */
+        return;
+    }
+
+    u16 held = LD16(joypad + 4);                  /* oJoypad_Held */
+
+    if (held & 0x40) {                            /* L: step index backward */
+        u8 cur   = (u8)LD8(menu_state + 8);
+        u8 count = (u8)LD8(menu_state + 9);
+        u8 next  = (cur != 0)
+                     ? (u8)(cur - 1)
+                     : (u8)(count - 1);           /* wraps to last item */
+        ST8(menu_state + 8, next);
+        if (next != cur)
+            call_PlaySoundEffect_sub_802F81C(SOUND_UNK_66, r2_arg);
+        return;
+    }
+
+    if (held & 0x80) {                            /* R: step index forward */
+        u8 cur   = (u8)LD8(menu_state + 8);
+        u8 count = (u8)LD8(menu_state + 9);
+        u8 next  = ((s32)(cur + 1) < (s32)count)
+                     ? (u8)(cur + 1)
+                     : 0;                         /* wraps to first item */
+        ST8(menu_state + 8, next);
+        if (next != cur)
+            call_PlaySoundEffect_sub_802F81C(SOUND_UNK_66, r2_arg);
+    }
+}
+
+/* sub_802F81C(r2 = arg2, r5 = menu_state, r10 = toolkit) -> r5, r10 preserved */
+Next sub_802F81C(void) {
+    menu_handle_navigation(R10, R5, R2);
     RETURN_TO_CALLER();
 }
 
@@ -2162,6 +2359,80 @@ Next sub_8030E14(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8030F7C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r6, r7; } call_sub_8031048_result;
+/* register form: generated wrapper: sub_8031048 has no typed C interface yet */
+static inline call_sub_8031048_result call_sub_8031048(u32 r2, u32 r3, u32 r6, u32 r7) {
+    R2 = r2;
+    R3 = r3;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(sub_8031048);
+    return (call_sub_8031048_result){ R2, R6, R7 };
+}
+
+/* sub_8030F7C: Segment-edge intersection test.
+ * obj points to a structure holding two edge endpoints:
+ *   edge 0 = (LD32(obj), LD32(obj+4)),  edge 1 = (LD32(obj+0xC), LD32(obj+0x10)).
+ * A segment is defined by two points (xA,yA)→(xB,yB).
+ * Compute signed distance from each endpoint to the separating edge via
+ * sub_8031048.  On failure (no edge separates) return 0 in r0/r1.
+ * mode == 1 tests only edge 0; otherwise both edges must have the right sign. */
+typedef struct {
+    u32 r0, r1, r4, r6, r7, r8, r9;
+} seg_result;
+
+static seg_result seg_intersect(u32 obj, u32 xA, u32 yA, u32 xB, u32 yB,
+                                u32 mode, u32 r9_in)
+{
+    /* Direction vector and 2-D cross product of the segment */
+    u32 dy    = yB - xB;                       /* sub r6, r5, r4 */
+    u32 dx    = xA - yA;                       /* sub r7, r2, r3 */
+    u32 cross = yA * xB - xA * yB;            /* mul/mul/sub r2 */
+
+    /* Dot product of edge-0 normal with the test point (signed compare) */
+    u32 ax = LD32(obj);
+    u32 ay = LD32(obj + 4);
+    s32 dot0 = (s32)(cross + ax * dy + ay * dx);
+
+    if (dot0 <= 0) {
+        /* First edge check fails: r4 retains ay*dx from the mul */
+        seg_result fail = {0, 0, ay * dx, dy, dx, mode, r9_in};
+        return fail;
+    }
+
+    /* If mode != 1, verify edge 1 has opposite sign */
+    if (mode != 1) {
+        u32 bx = LD32(obj + 0xC);
+        u32 by = LD32(obj + 0x10);
+        s32 dot1 = (s32)(cross + bx * dy + by * dx);
+        if (dot1 > 0) {
+            /* Second edge check fails: r4 retains by*dx */
+            seg_result fail = {0, 0, by * dx, dy, dx, mode, r9_in};
+            return fail;
+        }
+    }
+
+    /* Success: intersect with edge 0, then edge 1, via sub_8031048 */
+    u32 s1 = -(ax * dy + cross);
+    call_sub_8031048_result res1 = call_sub_8031048(cross, s1, s1, dx);
+    u32 r8 = res1.r7 - LD32(obj + 4);
+
+    u32 s2 = -(LD32(obj + 4) * dx + res1.r2);
+    call_sub_8031048_result res2 = call_sub_8031048(res1.r2, s2, s2, dy);
+    u32 r9 = res2.r7 - LD32(obj);
+
+    seg_result succ = {r9, r8, r9, res2.r6, res2.r7, r8, r9};
+    return succ;
+}
+
+Next sub_8030F7C(void) {
+    seg_result r = seg_intersect(R0, R2, R3, R4, R5, R6, R9);
+    R0 = r.r0, R1 = r.r1, R4 = r.r4, R6 = r.r6, R7 = r.r7, R8 = r.r8, R9 = r.r9;
+    RETURN_TO_CALLER();
+}
+
 /* ── camera_moveByDelta_80310B0 ── */
 /* camera_moveByDelta_80310B0(r0, r1): shift the camera position by a delta.
  * The deltas in r0/r1 are first shifted left by 14 (coarse units to the
@@ -2774,6 +3045,103 @@ Next sub_8031420(void) {
     R3 = out.r3;
     R5 = out.r5;
     R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8031478 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sub_8031176 has no typed C interface yet */
+static inline u32 call_sub_8031176(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_8031176);
+    return R0;
+}
+
+typedef struct { u32 r0, r4, r6, r7, r8, r9; } call_sub_8030E8C_result;
+/* register form: generated wrapper: sub_8030E8C has no typed C interface yet */
+static inline call_sub_8030E8C_result call_sub_8030E8C(u32 r0, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_8030E8C);
+    return (call_sub_8030E8C_result){ R0, R4, R6, R7, R8, R9 };
+}
+
+typedef struct { u32 r3, r4, r6; bool v; } call_camera_moveByDelta_80310B0_result_sub_8031478;
+/* register form: generated wrapper: camera_moveByDelta_80310B0 has no typed C interface yet */
+static inline call_camera_moveByDelta_80310B0_result_sub_8031478 call_camera_moveByDelta_80310B0_sub_8031478(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(camera_moveByDelta_80310B0);
+    return (call_camera_moveByDelta_80310B0_result_sub_8031478){ R3, R4, R6, OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: sub_8031136 has no typed C interface yet */
+static inline u32 call_sub_8031136_sub_8031478(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_8031136);
+    return R0;
+}
+
+typedef struct { u32 r1, r4, r6, r7, r8, r9; } call_sub_8030F04_result_sub_8031478;
+/* register form: generated wrapper: sub_8030F04 has no typed C interface yet */
+static inline call_sub_8030F04_result_sub_8031478 call_sub_8030F04_sub_8031478(u32 r0, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_8030F04);
+    return (call_sub_8030F04_result_sub_8031478){ R1, R4, R6, R7, R8, R9 };
+}
+
+/* Two-pass camera scroll used during battle transitions.
+ * Pass 1 nudges the camera horizontally; pass 2 (only if horizontal delta != 1)
+ * nudges vertically. r12 accumulates a bitmask of both deltas. */
+
+typedef struct { u32 r3; u32 r12; } cam_scroll_result_t;
+
+static cam_scroll_result_t two_pass_cam_scroll(u32 r0, u32 r5, u32 r12_in) {
+    /* Pass 1: adjust battle objects, then nudge camera horizontally (dy = 0). */
+    u32 r0a = call_sub_8031176(r0, r5);
+    call_sub_8030E8C_result e8c = call_sub_8030E8C(r0a, 0x20, 0x20, 0, 0x20, 0);
+    call_camera_moveByDelta_80310B0_result_sub_8031478 cam1 =
+        call_camera_moveByDelta_80310B0_sub_8031478(e8c.r0, 0);
+
+    /* Fold horizontal delta (shift 0) into the accumulated mask. */
+    u32 r12 = r12_in | cam1.r3;
+
+    /* If the camera shifted by exactly one unit horizontally, skip vertical pass. */
+    if (cam1.r3 == 1)
+        return (cam_scroll_result_t){ .r3 = cam1.r3, .r12 = r12 };
+
+    /* Pass 2: adjust objects in reverse, then nudge camera vertically (dx = 0). */
+    u32 r0b = call_sub_8031136_sub_8031478(r0, r5);
+    call_sub_8030F04_result_sub_8031478 f04 =
+        call_sub_8030F04_sub_8031478(r0b, 0x20, 0, (u32)(0 - 1), (u32)(0 - 1), 0);
+    call_camera_moveByDelta_80310B0_result_sub_8031478 cam2 =
+        call_camera_moveByDelta_80310B0_sub_8031478(0, f04.r1);
+
+    /* Fold vertical delta (shift 1) into the mask. */
+    r12 |= (cam2.r3 << 1);
+
+    return (cam_scroll_result_t){ .r3 = cam2.r3, .r12 = r12 };
+}
+
+/* sub_8031478(r0, r5, r12) -> r0 r1 r2 r3 r5 r12
+ * r0, r1, r2, r5 are preserved (saved/restored via stack in the original).
+ * r3, r12 are computed by the two-pass scroll. */
+Next sub_8031478(void) {
+    /* register form: preserve r0-r2,r5 across wrapper calls that clobber them */
+    u32 s0 = R0, s1 = R1, s2 = R2, s5 = R5;
+    cam_scroll_result_t res = two_pass_cam_scroll(s0, s5, R12);
+    R0 = s0, R1 = s1, R2 = s2, R5 = s5, R3 = res.r3, R12 = res.r12;
     RETURN_TO_CALLER();
 }
 

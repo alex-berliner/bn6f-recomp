@@ -865,6 +865,114 @@ Next dialogueEnd_unlockPlayer_8046E48(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8046E84 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r4, r5, r6, r8, r9, r10, r11, r12; bool c, v; } call_sub_8047134_result;
+/* register form: generated wrapper: sub_8047134 has no typed C interface yet */
+static inline call_sub_8047134_result call_sub_8047134_sub_8046E84(void) {
+    GUEST_CALL(sub_8047134);
+    return (call_sub_8047134_result){ R2, R3, R4, R5, R6, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_8046E84;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_8046E84 call_PlaySoundEffect_sub_8046E84(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_8046E84){ R1, R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_8046E84;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_sub_8046E84 call_chatbox_mask_eFlags2009F38_sub_8046E84(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_sub_8046E84){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1; } call_chatbox_GetState_8045F4C_result;
+/* register form: generated wrapper: chatbox_GetState_8045F4C has no typed C interface yet */
+static inline call_chatbox_GetState_8045F4C_result call_chatbox_GetState_8045F4C(void) {
+    GUEST_CALL(chatbox_GetState_8045F4C);
+    return (call_chatbox_GetState_8045F4C_result){ R0, R1 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_chatbox_runScript_result;
+/* register form: generated wrapper: chatbox_runScript has no typed C interface yet */
+static inline call_chatbox_runScript_result call_chatbox_runScript(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(chatbox_runScript);
+    return (call_chatbox_runScript_result){ R1, R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: chatbox_set_eFlags2009F38 has no typed C interface yet */
+static inline void call_chatbox_set_eFlags2009F38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_set_eFlags2009F38);
+}
+
+/* Chatbox tick logic for sub_8046E84.
+ * Handles B-cancel, busy-prompt (script 1), and default exit (script 3). */
+
+typedef struct {
+    u32 r10;
+    u32 r11;
+} ChatboxTickResult;
+
+/* R5 = chatbox state pointer; toolkit in R10 is read by sub_8047134 via its wrapper.
+ * Dispatches based on B-button press, the 0x20 chatbox flag, and current state. */
+static ChatboxTickResult chatbox_tick(u32 cb) {
+    call_sub_8047134_result setup = call_sub_8047134_sub_8046E84();
+
+    u32 joypad_ptr = LD32(setup.r10 + oToolkit_JoypadPtr);
+    u16 pressed = LD16(joypad_ptr + oJoypad_Pressed);
+
+    bool run_default = false;
+
+    if (pressed & 2) {
+        /* B pressed: play "unselect" SFX, then fall through to default exit path */
+        call_PlaySoundEffect_sub_8046E84(SOUND_UNSELECT_68, setup.r2);
+        run_default = true;
+    } else {
+        call_chatbox_mask_eFlags2009F38_result_sub_8046E84 mask =
+            call_chatbox_mask_eFlags2009F38_sub_8046E84(0x20);
+        if (!mask.z) {
+            /* Flag 0x20 is set – chatbox is mid-prompt; check its state */
+            call_chatbox_GetState_8045F4C_result st =
+                call_chatbox_GetState_8045F4C();
+            if (st.r0 == 0) {
+                /* State idle → default exit */
+                run_default = true;
+            } else {
+                /* Chatbox active → run confirmation script 1, state = 8 */
+                call_chatbox_runScript(LD32(cb + 0x24), 1);
+                ST8(cb, 8);
+            }
+        }
+        /* else: flag 0x20 clear → original jumps to end (nothing to do) */
+    }
+
+    if (run_default) {
+        /* Set 0x40 flag, run good-bye script 3, state = 0xC */
+        call_chatbox_set_eFlags2009F38(0x40);
+        call_chatbox_runScript(LD32(cb + 0x24), 3);
+        ST8(cb, 0xC);
+    }
+
+    ChatboxTickResult out = { setup.r10, setup.r11 };
+    return out;
+}
+
+/* sub_8046E84(r5 = chatbox state ptr, r10 = toolkit, lr) -> r10, r11 */
+Next sub_8046E84(void) {
+    ChatboxTickResult out = chatbox_tick(R5);
+    R10 = out.r10;
+    R11 = out.r11;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_confirmShopPurchase_8046ED2 ── */
 /* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
 static void call_refresh_chatbox(void) {
@@ -1580,6 +1688,188 @@ Next menu_showDialogOnUnselect_8047A80(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8047B88 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2; } call_ZeroFillByWord_result_sub_8047B88;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result_sub_8047B88 call_ZeroFillByWord_sub_8047B88(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result_sub_8047B88){ R1, R2 };
+}
+
+typedef struct { u32 r0; } call_GetCurPETNavi_result_sub_8047B88;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result_sub_8047B88 call_GetCurPETNavi_sub_8047B88(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result_sub_8047B88){ R0 };
+}
+
+#define ITEM_ENTRY_SIZE 8
+#define ITEM_TYPE      0
+#define ITEM_STOCK     1
+#define ITEM_NUM       2
+#define ITEM_CATEGORY  4
+#define ITEM_FLAG      5
+#define ITEM_EXTRA     6
+
+#define oModeData_Mode      0
+#define oModeData_ItemBase  8
+#define oModeData_ItemCount 0xC
+
+#define BYTE_2019A00  0x2019A00U  /* output shop-item buffer (16 slots × 8 bytes) */
+#define BYTE_201AE00  0x201AE00U  /* PET-navi source item list */
+
+/* register form: wrapper call_sub_8047CB0 declares no inputs, but the original
+ * passes r0=type, r1=num through registers that the wrapper does not set. */
+static bool shop_item_filter(u8 item_type, u16 item_num) {
+    R0 = item_type;
+    R1 = item_num;
+    GUEST_CALL(sub_8047CB0);
+    return ZERO_FLAG();
+}
+
+/* register form: wrapper call_sub_8047CA8 declares no inputs, but the original
+ * passes r0=item_num through a register the wrapper does not set. */
+static bool pet_navi_filter(u16 item_num) {
+    R0 = item_num;
+    GUEST_CALL(sub_8047CA8);
+    return ZERO_FLAG();
+}
+
+/* Result of building a shop item list. */
+struct ShopBuildResult {
+    u32 count;  /* number of valid entries written to byte_2019A00 */
+};
+
+/* Regular shop path: scan inventory, deduplicate, filter, copy survivors. */
+static struct ShopBuildResult build_regular_shop_list(u32 mode_data, u32 toolkit_ptr) {
+    u32 item_count = LD32(mode_data + oModeData_ItemCount);
+    u32 src = LD32(mode_data + oModeData_ItemBase)
+            + LD32(toolkit_ptr + oToolkit_ShopDataPtr);
+
+    u32 dest = BYTE_2019A00 - ITEM_ENTRY_SIZE;
+    u32 last_type = 0, last_num = 0, last_category = 0;
+
+    u32 i = 0;
+    do {
+        u8  type     = LD8(src + ITEM_TYPE);
+        u8  stock    = LD8(src + ITEM_STOCK);
+        u16 num      = LD16(src + ITEM_NUM);
+        u8  category = LD8(src + ITEM_CATEGORY);
+
+        bool copy = true;
+
+        if (type == 0 || stock == 0) {
+            copy = false;
+        } else if (type == last_type && num == last_num && category == last_category) {
+            copy = false;
+        } else if (!shop_item_filter(type, num)) {
+            copy = false;
+        } else {
+            u32 pet = call_GetCurPETNavi_sub_8047B88().r0;
+            if (pet != 0 && type == 1 && num == 0x70)
+                copy = false;
+        }
+
+        if (copy) {
+            dest += ITEM_ENTRY_SIZE;
+            ST8(dest + ITEM_TYPE,     LD8(src + ITEM_TYPE));
+            ST8(dest + ITEM_STOCK,    LD8(src + ITEM_STOCK));
+            ST16(dest + ITEM_NUM,     LD16(src + ITEM_NUM));
+            ST8(dest + ITEM_CATEGORY, LD8(src + ITEM_CATEGORY));
+            ST8(dest + ITEM_FLAG,     LD8(src + ITEM_FLAG));
+            ST16(dest + ITEM_EXTRA,   LD16(src + ITEM_EXTRA));
+
+            last_type     = LD8(dest + ITEM_TYPE);
+            last_num      = LD16(dest + ITEM_NUM);
+            last_category = LD8(dest + ITEM_CATEGORY);
+        }
+
+        src += ITEM_ENTRY_SIZE;
+        i++;
+    } while ((s32)i < (s32)item_count);
+
+    /* Count output slots whose stock byte is non-zero */
+    u32 count = 0;
+    u32 ptr = BYTE_2019A00;
+    u32 j = 0;
+    do {
+        if (LD8(ptr + ITEM_STOCK) != 0)
+            count++;
+        ptr += ITEM_ENTRY_SIZE;
+        j++;
+    } while ((s32)j < (s32)item_count);
+
+    return (struct ShopBuildResult){ count };
+}
+
+/* PET-navi path: scan byte_201AE00, filter via sub_8047CA8, copy survivors,
+ * decrement stock for the requested target item. */
+static struct ShopBuildResult build_pet_navi_list(u32 mode_data, u32 target) {
+    u32 item_count = LD32(mode_data + oModeData_ItemCount);
+    u32 src  = BYTE_201AE00;
+    u32 dest = BYTE_2019A00 - ITEM_ENTRY_SIZE;
+
+    u32 i = 0;
+    do {
+        u16 item_num = LD16(src + ITEM_NUM);
+
+        if (pet_navi_filter(item_num)) {
+            dest += ITEM_ENTRY_SIZE;
+            ST8(dest + ITEM_TYPE,     LD8(src + ITEM_TYPE));
+            ST16(dest + ITEM_NUM,     LD16(src + ITEM_NUM));
+            ST8(dest + ITEM_CATEGORY, LD8(src + ITEM_CATEGORY));
+            ST8(dest + ITEM_FLAG,     LD8(src + ITEM_FLAG));
+            ST16(dest + ITEM_EXTRA,   LD16(src + ITEM_EXTRA));
+
+            u8 copied_stock = LD8(src + ITEM_STOCK);
+            ST8(dest + ITEM_STOCK, copied_stock);
+
+            if (LD16(dest + ITEM_NUM) == target && copied_stock != 0xFF) {
+                copied_stock--;
+                ST8(src + ITEM_STOCK,  copied_stock);
+                ST8(dest + ITEM_STOCK, copied_stock);
+            }
+        }
+
+        src += ITEM_ENTRY_SIZE;
+        i++;
+    } while ((s32)i < (s32)item_count);
+
+    /* Count output slots whose item-number halfword is non-zero */
+    u32 count = 0;
+    u32 ptr = BYTE_2019A00;
+    u32 j = 0;
+    do {
+        if (LD16(ptr + ITEM_NUM) != 0)
+            count++;
+        ptr += ITEM_ENTRY_SIZE;
+        j++;
+    } while ((s32)j < (s32)item_count);
+
+    return (struct ShopBuildResult){ count };
+}
+
+/* Master entry: build a filtered shop item list into byte_2019A00. */
+static u32 build_shop_list(u32 target, u32 state_ptr, u32 toolkit_ptr) {
+    call_ZeroFillByWord_sub_8047B88(BYTE_2019A00, 0x80);
+
+    u32 mode_data = LD32(state_ptr + 0x1C);
+
+    if (LD32(mode_data + oModeData_Mode) == 2)
+        return build_pet_navi_list(mode_data, target).count;
+
+    return build_regular_shop_list(mode_data, toolkit_ptr).count;
+}
+
+/* sub_8047B88(r0 = target item num, r5 = state ptr, r10 = toolkit ptr) → r0 = entry count */
+Next sub_8047B88(void) {
+    R0 = build_shop_list(R0, R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── stub_doNothingReturnZero_8047CA0 ── */
 /* stub_doNothingReturnZero_8047CA0: stub that does nothing except return 0 in r0.
  * Sets the flags as `tst r0, r0` with r0 = 0 would (Z set, N clear);
@@ -1676,6 +1966,90 @@ static u32 battle_cell_address(void) {
 /* sub_8047D84() -> r0 (r4-r7 preserved; r1, nz/c/v scratch) */
 Next sub_8047D84(void) {
     R0 = battle_cell_address();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8048C24 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_GetCurPETNavi_result_sub_8048C24;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result_sub_8048C24 call_GetCurPETNavi_sub_8048C24(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result_sub_8048C24){ R0 };
+}
+
+/* Walk a shop's item entries and report whether any "unique" item (kind byte == 1)
+ * with a non-sentinel price is being offered while no PET-navi is active.
+ * Returns 1 in r0 (and leaves r2 = entry pointer, r3 = active-flag) if such an
+ * item is found; returns 0 (with r2 past the last entry, r3 = last flag read) otherwise. */
+
+typedef struct { u32 r0; u32 r2; u32 r3; } ShopCheckResult;
+
+#define SHOP_TABLE_STRIDE   0x10
+#define SHOP_ENTRY_SIZE     8
+#define SHOP_KIND_UNIQUE    1
+#define SHOP_PRICE_SENTINEL 0x70
+
+static ShopCheckResult check_shop_entry(u32 shop_index, u32 toolkit) {
+    /* Locate the per-shop descriptor in the global table at dword_8046B98. */
+    u32 table_base   = A_dword_8046B98;
+    u32 descriptor   = table_base + shop_index * SHOP_TABLE_STRIDE;
+    u32 slot_count   = LD32(descriptor + 0xC);
+    u32 data_offset  = LD32(descriptor + 8);
+
+    /* Shop data lives at a toolkit-relative pointer + an offset from the descriptor. */
+    u32 shop_ptr     = LD32(toolkit + oToolkit_ShopDataPtr);
+    u32 cur          = data_offset + shop_ptr;
+    u32 counter      = 0;
+    u32 flag;
+
+    /* Do-while: the body always executes at least once (matches the assembly
+     * entering loc_8048C3A before the first cmp/blt). */
+    for (;;) {
+        flag = LD8(cur + 1);
+
+        if (flag != 0) {
+            /* Query whether a PET-navi is currently active. */
+            u32 navi = call_GetCurPETNavi_sub_8048C24().r0;
+
+            if (navi == 0) {
+                /* No navi: this is an invalid offering -> return 1. */
+                ShopCheckResult res = { 1, cur, flag };
+                return res;
+            }
+
+            if (LD8(cur) != SHOP_KIND_UNIQUE) {
+                /* Not a "unique" item -> return 1 (unexpected kind). */
+                ShopCheckResult res = { 1, cur, flag };
+                return res;
+            }
+
+            if (LD16(cur + 2) == SHOP_PRICE_SENTINEL) {
+                /* Price is the special sentinel -> skip this slot, advance. */
+            } else {
+                /* Real price on a unique item with navi active -> return 1. */
+                ShopCheckResult res = { 1, cur, flag };
+                return res;
+            }
+        }
+
+        cur     += SHOP_ENTRY_SIZE;
+        counter += 1;
+
+        if ((s32)counter >= (s32)slot_count)
+            break;
+    }
+
+    /* All slots examined without finding a problem. */
+    ShopCheckResult res = { 0, cur, flag };
+    return res;
+}
+
+Next sub_8048C24(void) {
+    ShopCheckResult res = check_shop_entry(R0, R10);
+    R0 = res.r0;
+    R2 = res.r2;
+    R3 = res.r3;
     RETURN_TO_CALLER();
 }
 

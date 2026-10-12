@@ -1290,6 +1290,154 @@ Next battle_countFolderChips_8027D58(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_customGauge_EndTurn_8027D78 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sub_801E71C has no typed C interface yet */
+static inline void call_sub_801E71C_battle_customGauge_EndTurn_8027D78(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_801E71C);
+}
+
+typedef struct { u32 r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_dispatch_801DACC_result_battle_customGauge_EndTurn_8027D78;
+/* register form: generated wrapper: dispatch_801DACC has no typed C interface yet */
+static inline call_dispatch_801DACC_result_battle_customGauge_EndTurn_8027D78 call_dispatch_801DACC_battle_customGauge_EndTurn_8027D78(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(dispatch_801DACC);
+    return (call_dispatch_801DACC_result_battle_customGauge_EndTurn_8027D78){ R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool v; } call_sub_801E0A0_result;
+/* register form: generated wrapper: sub_801E0A0 has no typed C interface yet */
+static inline call_sub_801E0A0_result call_sub_801E0A0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_801E0A0);
+    return (call_sub_801E0A0_result){ R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2; } call_eStruct2035280_SetRequestBits_801BECC_result_battle_customGauge_EndTurn_8027D78;
+/* register form: generated wrapper: eStruct2035280_SetRequestBits_801BECC has no typed C interface yet */
+static inline call_eStruct2035280_SetRequestBits_801BECC_result_battle_customGauge_EndTurn_8027D78 call_eStruct2035280_SetRequestBits_801BECC_battle_customGauge_EndTurn_8027D78(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(eStruct2035280_SetRequestBits_801BECC);
+    return (call_eStruct2035280_SetRequestBits_801BECC_result_battle_customGauge_EndTurn_8027D78){ R1, R2 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_dispatch_801DA48_result_battle_customGauge_EndTurn_8027D78;
+/* register form: generated wrapper: dispatch_801DA48 has no typed C interface yet */
+static inline call_dispatch_801DA48_result_battle_customGauge_EndTurn_8027D78 call_dispatch_801DA48_battle_customGauge_EndTurn_8027D78(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(dispatch_801DA48);
+    return (call_dispatch_801DA48_result_battle_customGauge_EndTurn_8027D78){ R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r3; } call_battle_IsBattleEnding_800A97A_result;
+/* register form: generated wrapper: battle_IsBattleEnding_800A97A has no typed C interface yet */
+static inline call_battle_IsBattleEnding_800A97A_result call_battle_IsBattleEnding_800A97A(void) {
+    GUEST_CALL(battle_IsBattleEnding_800A97A);
+    return (call_battle_IsBattleEnding_800A97A_result){ R0, R3 };
+}
+
+typedef struct { u32 r0, r1, r4; } call_battle_testFlag0x40_800A8F8_result;
+/* register form: generated wrapper: battle_testFlag0x40_800A8F8 has no typed C interface yet */
+static inline call_battle_testFlag0x40_800A8F8_result call_battle_testFlag0x40_800A8F8(void) {
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+    return (call_battle_testFlag0x40_800A8F8_result){ R0, R1, R4 };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_801DF0C_result;
+/* register form: generated wrapper: sub_801DF0C has no typed C interface yet */
+static inline call_sub_801DF0C_result call_sub_801DF0C(void) {
+    GUEST_CALL(sub_801DF0C);
+    return (call_sub_801DF0C_result){ R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: GetBattleMode has no typed C interface yet */
+static inline u32 call_GetBattleMode_battle_customGauge_EndTurn_8027D78(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+typedef struct { u32 r4, r5, r6, r8, r9, r10, r11, r12; } call_sub_801DEEE_result;
+/* register form: generated wrapper: sub_801DEEE has no typed C interface yet */
+static inline call_sub_801DEEE_result call_sub_801DEEE(void) {
+    GUEST_CALL(sub_801DEEE);
+    return (call_sub_801DEEE_result){ R4, R5, R6, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r4, r5, r6, r8, r9, r10, r11, r12; } call_custGauge_Init_801DED0_result;
+/* register form: generated wrapper: custGauge_Init_801DED0 has no typed C interface yet */
+static inline call_custGauge_Init_801DED0_result call_custGauge_Init_801DED0(void) {
+    GUEST_CALL(custGauge_Init_801DED0);
+    return (call_custGauge_Init_801DED0_result){ R4, R5, R6, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: ClearCustGauge has no typed C interface yet */
+static inline void call_ClearCustGauge(void) {
+    GUEST_CALL(ClearCustGauge);
+}
+
+/* Request-bit constants used with dispatch_801DA48 / SetRequestBits pairs. */
+#define REQ_ENDING      0x400u
+#define REQ_CUSTOM      0x20000u
+#define REQ_GAUGE_MODE1 0x20u
+#define REQ_GAUGE_OTHER 0x10u
+
+/* End-of-turn Custom Gauge handler.  Clears the pending-trigger field,
+ * resets the gauge counter, then picks an ending / re-initialisation path
+ * depending on battle state and flag 0x40.  `toolkit` is the r10 value
+ * (Toolkit pointer) that callers pass in. */
+static void custom_gauge_end_turn(u32 toolkit) {
+    /* Zero the pending-trigger halfword in the render-info structure. */
+    u32 render = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render + 0x18, 0);
+
+    call_sub_801E71C_battle_customGauge_EndTurn_8027D78(0);            /* gauge display reset */
+    call_dispatch_801DACC_battle_customGauge_EndTurn_8027D78(0x80);    /* mark end-of-turn request */
+    call_sub_801E0A0(0, 0);         /* clear gauge counter */
+
+    /* Request battle-ending flag 0x400 (SetRequestBits first, then dispatch). */
+    call_eStruct2035280_SetRequestBits_801BECC_battle_customGauge_EndTurn_8027D78(REQ_ENDING);
+    call_dispatch_801DA48_battle_customGauge_EndTurn_8027D78(REQ_ENDING);
+
+    /* Abort if the battle is already ending. */
+    if (!call_battle_IsBattleEnding_800A97A().r0) {
+        u32 bstate = LD32(toolkit + oToolkit_BattleStatePtr);
+        u32 state7 = LD8(bstate + 7);
+
+        if (state7 == 1) {
+            /* Normal ending path (battle-state byte 7 == 1). */
+            if (call_battle_testFlag0x40_800A8F8().r0) {
+                call_sub_801DF0C();               /* flag-set end-of-turn */
+            } else if (call_GetBattleMode_battle_customGauge_EndTurn_8027D78() == 1) {
+                call_sub_801DEEE();               /* mode-1 cleanup */
+            } else {
+                call_custGauge_Init_801DED0();    /* re-initialise gauge */
+            }
+        } else {
+            /* Alternate path (battle-state byte 7 != 1). */
+            if (call_battle_testFlag0x40_800A8F8().r0) {
+                call_dispatch_801DA48_battle_customGauge_EndTurn_8027D78(REQ_CUSTOM);
+                call_eStruct2035280_SetRequestBits_801BECC_battle_customGauge_EndTurn_8027D78(REQ_CUSTOM);
+            } else {
+                call_ClearCustGauge();
+                if (call_GetBattleMode_battle_customGauge_EndTurn_8027D78() == 1) {
+                    call_dispatch_801DA48_battle_customGauge_EndTurn_8027D78(REQ_GAUGE_MODE1);
+                    call_eStruct2035280_SetRequestBits_801BECC_battle_customGauge_EndTurn_8027D78(REQ_GAUGE_MODE1);
+                } else {
+                    call_dispatch_801DA48_battle_customGauge_EndTurn_8027D78(REQ_GAUGE_OTHER);
+                    call_eStruct2035280_SetRequestBits_801BECC_battle_customGauge_EndTurn_8027D78(REQ_GAUGE_OTHER);
+                }
+            }
+        }
+    }
+}
+
+Next battle_customGauge_EndTurn_8027D78(void) {
+    custom_gauge_end_turn(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── resetBattleRecordSlots_8027E90 ── */
 /* Battle mode flag used to select the panel-status branch. */
 enum {
@@ -2819,6 +2967,96 @@ static void process_chip_command_queue(u32 target_obj) {
 /* processChipCommandQueue_8029224(r3 = target object) — no outputs, clobbers r0–r3, flags, lr */
 Next processChipCommandQueue_8029224(void) {
     process_chip_command_queue(R3);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80293F8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_getLocOfActiveChips_8027E1C_result;
+/* register form: generated wrapper: getLocOfActiveChips_8027E1C has no typed C interface yet */
+static inline call_getLocOfActiveChips_8027E1C_result call_getLocOfActiveChips_8027E1C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    return (call_getLocOfActiveChips_8027E1C_result){ R0 };
+}
+
+/* register form: generated wrapper: GetBattleMode has no typed C interface yet */
+static inline u32 call_GetBattleMode_sub_80293F8(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+/* Walk the selected-chip list in the chip-select HUD. For each entry resolve
+ * its chip record; if the chip is ID 2 (linked) and battle mode is active,
+ * follow the link to the underlying record. When the final chip record has
+ * kind 0 (an active chip): clear its in-flight firing flag (if set), write
+ * -1 to its hit counter, and decrement the battle-state active-chip count.
+ * r1/r2/r3 are left at whatever the last loop iteration set them to. */
+typedef struct {
+    u32 r1, r2, r3;
+} ChipWalkResult;
+
+static ChipWalkResult walk_selected_chips(u32 chips_base, u32 toolkit,
+                                           u32 in_r1, u32 in_r2, u32 in_r3) {
+    u32 r1 = in_r1, r2 = in_r2, r3 = in_r3;
+    u32 count = LD8(chips_base + oS20364C0_NumChipsSelected);
+    u32 idx = 0x48;
+    /* r7 = 0 - 1 in the original; stored as halfword -1 to hit counters */
+    u16 const hit_sentinel = (u16)(0 - 1);
+
+    while (count != 0) {
+        u32 chip_id = LD8(chips_base + idx);
+        u32 chip_ptr = call_getLocOfActiveChips_8027E1C(chip_id).r0;
+        r1 = LD8(chip_ptr);
+
+        if (r1 == 2) {
+            /* Linked chip: only follow through in standard battle mode */
+            u32 mode = call_GetBattleMode_sub_80293F8();
+            if (mode != 1) {
+                /* r1 stays 2; skip rest of body */
+                idx = idx + 1;
+                count = count - 1;
+                continue;
+            }
+            chip_ptr = call_getLocOfActiveChips_8027E1C(LD8(chip_ptr + 4)).r0;
+            r1 = LD8(chip_ptr);
+        }
+
+        if (r1 == 0) {
+            /* Active chip found – reset its state */
+            r1 = LD8(chip_ptr + 4);  /* bit-0 = in-flight firing flag */
+            if (r1 & 1) {
+                r2 = LD32(toolkit + oToolkit_BattleStatePtr);
+                ST8(r2 + 0x17, 0);
+            }
+
+            ST16(LD32(chip_ptr + 8), hit_sentinel);
+
+            r2 = LD32(toolkit + oToolkit_BattleStatePtr);
+            r1 = 0x44;
+            r3 = LD8(r2 + r1);
+            if (r3) {
+                r1 = 0x45;
+                r3 = LD8(r2 + r1);
+                r3 = r3 - 1;
+                ST8(r2 + r1, r3);
+            }
+        }
+
+        idx = idx + 1;
+        count = count - 1;
+    }
+
+    ChipWalkResult result = { r1, r2, r3 };
+    return result;
+}
+
+Next sub_80293F8(void) {
+    ChipWalkResult res = walk_selected_chips(R5, R10, R1, R2, R3);
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
+    /* r4, r6, r7 preserved by the original's push/pop – left unchanged */
     RETURN_TO_CALLER();
 }
 

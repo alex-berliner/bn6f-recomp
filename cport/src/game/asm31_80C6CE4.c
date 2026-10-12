@@ -1468,6 +1468,166 @@ found:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C96C8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_sub_80C96C8;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_sub_80C96C8 call_sprite_load_sub_80C96C8(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_sub_80C96C8){ R4, R5 };
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_sub_80C96C8;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_sub_80C96C8 call_sprite_loadAnimationData_sub_80C96C8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_sub_80C96C8){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_sub_80C96C8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r3; } call_sprite_setPalette_result;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result call_sprite_setPalette_sub_80C96C8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result){ R3 };
+}
+
+typedef struct { u32 r2, r3, r5, r6; bool c, v; } call_object_setPanelsFromCoordinates_result;
+/* register form: generated wrapper: object_setPanelsFromCoordinates has no typed C interface yet */
+static inline call_object_setPanelsFromCoordinates_result call_object_setPanelsFromCoordinates(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setPanelsFromCoordinates);
+    return (call_object_setPanelsFromCoordinates_result){ R2, R3, R5, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_sub_80C96C8;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_sub_80C96C8 call_object_getFlip_sub_80C96C8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_sub_80C96C8){ R0 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_sprite_setFlip_result_sub_80C96C8;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_sub_80C96C8 call_sprite_setFlip_sub_80C96C8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_sub_80C96C8){ R1, R2, R3 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_80C96C8;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_80C96C8 call_PlaySoundEffect_sub_80C96C8(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_80C96C8){ R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_sub_80C9726_result;
+/* register form: generated wrapper: sub_80C9726 has no typed C interface yet */
+static inline call_sub_80C9726_result call_sub_80C9726(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80C9726);
+    return (call_sub_80C9726_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+/* Spinning shuriken spawner: selects a 6-byte template from byte_80C9664
+ * indexed by Param2, installs sprite/animation/palette/flip, plays the
+ * spawn sound, pins velocity to the spawn position, then enters the
+ * per-frame sub-state machine (sub_80C9726).  r5 is the BattleObject. */
+
+typedef struct {
+    u32 r5, r8, r9, r10, r11, r12;
+} sub_80C96C8_result;
+
+static sub_80C96C8_result spawn_shuriken(u32 battle_obj) {
+    sub_80C96C8_result out;
+    u32 template;
+    u8 flags;
+    u32 x, y, z;
+    call_sprite_setFlip_result_sub_80C96C8 flip_res;
+    call_sub_80C9726_result sub_res;
+
+    /* Pick the template entry (6 bytes each) from byte_80C9664 via Param2,
+     * stash its base address in ExtraVars slot 1. */
+    template = A_byte_80C9664 + (u32)LD8(battle_obj + oBattleObject_Param2) * 6u;
+    ST32(battle_obj + (oBattleObject_ExtraVars + 4), template);
+
+    /* Load tile data: VRAM block 0x80, char base + screen base from entry. */
+    call_sprite_load_sub_80C96C8(0x80, LD8(template), LD8(template + 1), battle_obj);
+
+    /* Install animation frames and remove the shadow. */
+    call_sprite_loadAnimationData_sub_80C96C8(battle_obj);
+    call_sprite_noShadow_sub_80C96C8(battle_obj);
+
+    /* Force the "drawn" flag on the object header. */
+    flags = LD8(battle_obj);
+    ST8(battle_obj, flags | 2);
+
+    /* Start animation from template byte 2; invalidate the copy (0xFF). */
+    ST8(battle_obj + oBattleObject_CurAnim, LD8(template + 2));
+    ST8(battle_obj + oBattleObject_CurAnimCopy, 0xFF);
+
+    /* Apply the palette index from template byte 5. */
+    call_sprite_setPalette_sub_80C96C8(LD8(template + 5), battle_obj);
+
+    /* Derive panel state from coordinates, then mirror object flip onto sprite. */
+    call_object_setPanelsFromCoordinates(battle_obj);
+    flip_res = call_sprite_setFlip_sub_80C96C8(call_object_getFlip_sub_80C96C8(battle_obj).r0, battle_obj);
+
+    /* Spawn sound (effect 0xA0 on the channel left by sprite_setFlip). */
+    call_PlaySoundEffect_sub_80C96C8(0xA0, flip_res.r2);
+
+    /* Freeze velocity to the spawn position so the object doesn't drift. */
+    x = LD32(battle_obj + oBattleObject_X);
+    y = LD32(battle_obj + oBattleObject_Y);
+    z = LD32(battle_obj + oBattleObject_Z);
+    ST32(battle_obj + oBattleObject_XVelocity, x);
+    ST32(battle_obj + oBattleObject_YVelocity, y);
+    ST32(battle_obj + oBattleObject_ZVelocity, z);
+
+    /* Enter the update phase of the current state action. */
+    ST32(battle_obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+
+    /* Hand off to the per-frame sub-state machine; it sets r5,r8,r9,r10,r11,r12. */
+    sub_res = call_sub_80C9726(battle_obj);
+    out.r5  = sub_res.r5;
+    out.r8  = sub_res.r8;
+    out.r9  = sub_res.r9;
+    out.r10 = sub_res.r10;
+    out.r11 = sub_res.r11;
+    out.r12 = sub_res.r12;
+
+    return out;
+}
+
+/* sub_80C96C8(r5 = battle object, r10/lr = standard) -> r5 r8 r9 r10 r11 r12 */
+Next sub_80C96C8(void) {
+    sub_80C96C8_result out = spawn_shuriken(R5);
+    R5  = out.r5;
+    R8  = out.r8;
+    R9  = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C9726 ── */
 /* sub_80C9726 (r5 = battle object):
  * Runs the handler for the object's current action, then manages the object's

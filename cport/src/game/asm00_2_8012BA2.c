@@ -1538,6 +1538,83 @@ Next timer_resetAndStart_801482C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801486C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3, r5; } call_sub_802DCDE_result;
+/* register form: generated wrapper: sub_802DCDE has no typed C interface yet */
+static inline call_sub_802DCDE_result call_sub_802DCDE(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_802DCDE);
+    return (call_sub_802DCDE_result){ R1, R3, R5 };
+}
+
+typedef struct { u32 r3, r5, r6; bool z, n; } call_canBattleObjectBeastOut_80159C6_result;
+/* register form: generated wrapper: canBattleObjectBeastOut_80159C6 has no typed C interface yet */
+static inline call_canBattleObjectBeastOut_80159C6_result call_canBattleObjectBeastOut_80159C6(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(canBattleObjectBeastOut_80159C6);
+    return (call_canBattleObjectBeastOut_80159C6_result){ R3, R5, R6, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r3, r5; } call_sub_8015994_result;
+/* register form: generated wrapper: sub_8015994 has no typed C interface yet */
+static inline call_sub_8015994_result call_sub_8015994(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_8015994);
+    return (call_sub_8015994_result){ R3, R5 };
+}
+
+/* Check two BattleObject slots (pointed to by r6 and r7) for a pending
+ * transition and step any running action.  Writes 4 to [r5] when either
+ * slot carries a type (offset 0 != 0xFF) without a running action
+ * (offset 4 == 0xFF); otherwise writes 8.  For slots that are running
+ * or fully empty, queries the beast-out gate and, if the gate allows
+ * (Z clear from canBattleObjectBeastOut), calls sub_8015994. */
+
+static void inspect_battle_slots(u32 slot_a, u32 slot_b, u32 result_ptr) {
+    u32 has_pending = 0;
+    call_canBattleObjectBeastOut_80159C6_result beast;
+
+    /* --- first slot --- */
+    if (LD8(slot_a + 4) != 0xFF) {
+        /* action running: step it, then query beast-out */
+        call_sub_802DCDE(LD32(slot_a + 8));
+        beast = call_canBattleObjectBeastOut_80159C6(LD32(slot_a + 8));
+        if (!beast.z)
+            call_sub_8015994(LD32(slot_a + 8));
+    } else if (LD8(slot_a) != 0xFF) {
+        /* type present but no action started: mark pending */
+        has_pending = 1;
+    } else {
+        /* fully empty: only query beast-out */
+        beast = call_canBattleObjectBeastOut_80159C6(LD32(slot_a + 8));
+        if (!beast.z)
+            call_sub_8015994(LD32(slot_a + 8));
+    }
+
+    /* --- second slot --- */
+    if (LD8(slot_b + 4) != 0xFF) {
+        call_sub_802DCDE(LD32(slot_b + 8));
+        beast = call_canBattleObjectBeastOut_80159C6(LD32(slot_b + 8));
+        if (!beast.z)
+            call_sub_8015994(LD32(slot_b + 8));
+    } else if (LD8(slot_b) != 0xFF) {
+        has_pending = 1;
+    } else {
+        beast = call_canBattleObjectBeastOut_80159C6(LD32(slot_b + 8));
+        if (!beast.z)
+            call_sub_8015994(LD32(slot_b + 8));
+    }
+
+    ST32(result_ptr, has_pending ? 4u : 8u);
+}
+
+/* sub_801486C(r5 = result ptr, r6 = slot A, r7 = slot B; r10, lr in) -> writes [r5] */
+Next sub_801486C(void) {
+    inspect_battle_slots(R6, R7, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8015940 ── */
 /* sub_8015940: reset the byte_203CED0 record — the marker byte and the
  * dword_203CED4 flag are both set to 0xFF — then ask battle_preUpdateAndGetPlayerObject_80103EC for a

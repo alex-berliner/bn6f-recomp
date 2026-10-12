@@ -689,6 +689,149 @@ Next sub_80ECA34(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80ECA50 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_setAnimation has no typed C interface yet */
+static inline void call_object_setAnimation(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setAnimation);
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7, r8, r9; } call_sub_80EB562_result;
+/* register form: generated wrapper: sub_80EB562 has no typed C interface yet */
+static inline call_sub_80EB562_result call_sub_80EB562(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80EB562);
+    return (call_sub_80EB562_result){ R3, R4, R5, R6, R7, R8, R9 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_object_setDefaultCounterTime_result;
+/* register form: generated wrapper: object_setDefaultCounterTime has no typed C interface yet */
+static inline call_object_setDefaultCounterTime_result call_object_setDefaultCounterTime(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setDefaultCounterTime);
+    return (call_object_setDefaultCounterTime_result){ R1, R2, R3 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_sub_80ECA50;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_80ECA50 call_PlaySoundEffect_sub_80ECA50(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_80ECA50){ R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_80ECA50;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_sub_80ECA50 call_object_getFrontDirection_sub_80ECA50(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_sub_80ECA50){ R0 };
+}
+
+typedef struct { u32 r1, r5, r7; } call_sub_80C9184_result;
+/* register form: generated wrapper: sub_80C9184 has no typed C interface yet */
+static inline call_sub_80C9184_result call_sub_80C9184(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R6 = r6;
+    GUEST_CALL(sub_80C9184);
+    return (call_sub_80C9184_result){ R1, R5, R7 };
+}
+
+/* sub_80ECA50: AI buster-shot attack sequence.
+ * State machine: on first call it starts the fire animation and seeds a frame timer;
+ * on the next call (timer == 1) it plays the impact sound and spawns the damage
+ * projectile; every call advances the small timer and caps the parent state word. */
+
+struct sub_80ECA50_result {
+    u32 r1, r5, r7, r8, r9, r10;
+};
+
+static struct sub_80ECA50_result buster_shot_attack(u32 r1, u32 r2, u32 r5,
+                                                   u32 r7, u32 r8, u32 r9, u32 r10) {
+    struct sub_80ECA50_result res;
+
+    if (LD8(r7 + oAIAttackVars_Unk_01) == 0) {
+        /* First entry: begin fire animation, init the counter, seed timer to 0. */
+        call_object_setAnimation(0xE, r5);
+
+        call_sub_80EB562_result eb = call_sub_80EB562(r5);
+        r5 = eb.r5;
+        r7 = eb.r7;   /* r7 may differ; every later [r7,#…] uses it */
+
+        call_object_setDefaultCounterTime_result cd =
+            call_object_setDefaultCounterTime(r5);
+
+        ST8(r7 + oAIAttackVars_Unk_01, 4);
+        ST16(r7 + oAIAttackVars_Unk_10, 0);
+
+        res.r1  = cd.r1;
+        res.r5  = r5;
+        res.r7  = r7;
+        res.r8  = eb.r8;
+        res.r9  = eb.r9;
+        res.r10 = r10;
+    } else if (LD16(r7 + oAIAttackVars_Unk_10) == 1) {
+        /* Frame 1 of the timer: fire the buster sound and projectile. */
+        call_PlaySoundEffect_result_sub_80ECA50 ps = call_PlaySoundEffect_sub_80ECA50(SOUND_BUSTER_6A, r2);
+        r5 = ps.r5;
+        r7 = ps.r7;
+
+        call_object_getFrontDirection_result_sub_80ECA50 fd = call_object_getFrontDirection_sub_80ECA50(r5);
+        /* fd.r1 is discarded: sub_80C9184 gets panel-Y instead. */
+
+        u32 unk_0c   = LD32(r7 + oAIAttackVars_Unk_0c);
+        u32 boost    = LD16(r7 + oAIAttackVars_AttackBoost);
+        u32 damage   = LD32(r7 + oAIAttackVars_Damage) + boost;
+        u32 unk_02   = LD8(r7  + oAIAttackVars_Unk_02);
+        u32 panel_x  = LD8(r5  + oBattleObject_PanelX);
+        u32 panel_y  = LD8(r5  + oBattleObject_PanelY);
+
+        call_sub_80C9184_result c91 = call_sub_80C9184(
+            fd.r0 + panel_x, panel_y, unk_02, 0, unk_0c, damage);
+
+        res.r1  = c91.r1;
+        res.r5  = c91.r5;
+        res.r7  = c91.r7;
+        res.r8  = r8;
+        res.r9  = r9;
+        res.r10 = ps.r10;
+    } else {
+        /* Neither init nor projectile frame: everything passes through. */
+        res.r1  = r1;
+        res.r5  = r5;
+        res.r7  = r7;
+        res.r8  = r8;
+        res.r9  = r9;
+        res.r10 = r10;
+    }
+
+    /* Advance the per-attack frame timer; once past 4, signal completion. */
+    u32 t = (u32)((s32)LD16(res.r7 + oAIAttackVars_Unk_10) + 1);
+    ST16(res.r7 + oAIAttackVars_Unk_10, t);
+    if ((s32)t > 4)
+        ST16(res.r7 + oAIAttackVars_Unk_00, 4);
+
+    return res;
+}
+
+Next sub_80ECA50(void) {
+    struct sub_80ECA50_result res = buster_shot_attack(R1, R2, R5, R7, R8, R9, R10);
+    R1  = res.r1;
+    R5  = res.r5;
+    R7  = res.r7;
+    R8  = res.r8;
+    R9  = res.r9;
+    R10 = res.r10;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80ECAA4 ── */
 /* sub_80ECAA4(r5 = battleObject, r6 = ?, r7 = aiAttackVars):
  * Tick an AI attack-state machine step. On entry, the AI attack vars' state byte
@@ -1210,6 +1353,75 @@ Next sub_80FD2E4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FD31C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r5; } call_battle_findPlayer_result;
+/* register form: generated wrapper: battle_findPlayer has no typed C interface yet */
+static inline call_battle_findPlayer_result call_battle_findPlayer(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_findPlayer);
+    return (call_battle_findPlayer_result){ R0, R5 };
+}
+
+typedef struct { u32 r0; } call_object_getEnemyDirection_result;
+/* register form: generated wrapper: object_getEnemyDirection has no typed C interface yet */
+static inline call_object_getEnemyDirection_result call_object_getEnemyDirection(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getEnemyDirection);
+    return (call_object_getEnemyDirection_result){ R0 };
+}
+
+/* Scan the BattleState's Unk_a0 slot array for a live 0xD2-type attack object
+ * on the opposing player's panel row whose horizontal offset, multiplied by
+ * the enemy's facing direction, equals 1 — i.e. the attack points at the player.
+ *
+ * player_obj: the local player's BattleObject* (entry r5)
+ * toolkit:    the Toolkit*          (entry r10)
+ * Returns 1 if such a threat is found, 0 otherwise. */
+static u32 detect_enemy_attack(u32 player_obj, u32 toolkit) {
+    /* battle_findPlayer returns the BattleObject of the opposing alliance. */
+    u32 opp_alliance = LD8(player_obj + oBattleObject_Alliance) ^ 1u;
+    u32 enemy_obj = call_battle_findPlayer(opp_alliance).r0;
+
+    u32 enemy_panel_x = LD8(enemy_obj + oBattleObject_PanelX);
+    u32 enemy_panel_y = LD8(enemy_obj + oBattleObject_PanelY);
+
+    /* Base of the 7-slot (step 4, up to 0x1C) Unk_a0 array in BattleState. */
+    u32 slot_base = LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_Unk_a0;
+
+    for (s32 idx = 0; idx <= 0x1C; idx += 4) {
+        u32 obj = LD32(slot_base + idx);
+        if (obj == 0)
+            continue;
+
+        /* Must be a 0xD2-type attack (halfword at offset 0x28). */
+        if (LD16(obj + 0x28) != 0xD2)
+            continue;
+
+        /* Must be on the same panel row (byte 0x13) as the opposing player. */
+        if (LD8(obj + 0x13) != enemy_panel_y)
+            continue;
+
+        /* Horizontal distance: enemy_x - obj_x (unsigned wrap matches ldrb/sub). */
+        u32 dx = enemy_panel_x - (u32)LD8(obj + 0x12);
+
+        /* Facing direction sign returned for the player's BattleObject. */
+        u32 dir = call_object_getEnemyDirection(player_obj).r0;
+
+        /* dx * dir == 1 ⇒ attack points directly at the enemy's position. */
+        if (dx * dir == 1)
+            return 1;
+    }
+
+    return 0;
+}
+
+/* sub_80FD31C(r5 = player BattleObject*, r10 = Toolkit*) -> r0 = threat flag; r5, r6 preserved */
+Next sub_80FD31C(void) {
+    R0 = detect_enemy_attack(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FD3CC ── */
 /* sub_80FD3CC(r0 = moveIndex, r5 = battleObject):
  * Looks up two versioned damage tables (base and bonus) for the chosen move
@@ -1275,6 +1487,105 @@ static void run_ai_attack(u32 state) {
  * none of them. */
 Next sub_80FD4C8(void) {
     run_ai_attack(R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD4E8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r4; bool z, n, c, v; } call_object_canMove_result_sub_80FD4E8;
+/* register form: generated wrapper: object_canMove has no typed C interface yet */
+static inline call_object_canMove_result_sub_80FD4E8 call_object_canMove_sub_80FD4E8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_canMove);
+    return (call_object_canMove_result_sub_80FD4E8){ R1, R4, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r3; bool c, v; } call_object_reservePanel_result_sub_80FD4E8;
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline call_object_reservePanel_result_sub_80FD4E8 call_object_reservePanel_sub_80FD4E8(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+    return (call_object_reservePanel_result_sub_80FD4E8){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2; } call_object_setFlag1_result_sub_80FD4E8;
+/* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
+static inline call_object_setFlag1_result_sub_80FD4E8 call_object_setFlag1_sub_80FD4E8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setFlag1);
+    return (call_object_setFlag1_result_sub_80FD4E8){ R1, R2 };
+}
+
+/* Indirect call through a guest code address (mov lr, pc; bx rN).
+ * Returns r0 and r1 after the callee completes. */
+typedef struct { u32 r0; u32 r1; } indirect_call_result;
+
+/* register form: indirect call through guest code address (bx rN pattern) */
+static indirect_call_result call_indirect(u32 a0, u32 a1, u32 a2, u32 a3, u32 target) {
+    R0 = a0; R1 = a1; R2 = a2; R3 = a3;
+    GUEST_CALL_ADDR(target);
+    return (indirect_call_result){ R0, R1 };
+}
+
+/* Write the "cannot reach destination" cooldown values into AI attack vars. */
+static void set_fail_timers(u32 ai_vars) {
+    ST16(ai_vars + oAIAttackVars_Unk_18, 0x50);
+    ST16(ai_vars + oAIAttackVars_Unk_10, 1);
+    ST16(ai_vars + oAIAttackVars_Unk_00, 8);
+}
+
+/* Write the "slide animation + success timer" values into object and AI vars. */
+static void set_success_timers(u32 object, u32 ai_vars) {
+    ST8(object + oBattleObject_CurAnim, 4);
+    ST16(ai_vars + oAIAttackVars_Unk_10, 3);
+    ST16(ai_vars + oAIAttackVars_Unk_00, 4);
+}
+
+/* One AI attack-move step for a battle object.
+ * If the object can move, look up its alliance's move-descriptor (two u32's
+ * per alliance at byte_80FD538), indirect-call the alliance's target-search
+ * routine, and on success commit the future panel + reserve + slide flag.
+ * Returns the final value of r1 (the only computed output; other output
+ * registers pass through unchanged). */
+static u32 do_attack_move(u32 object, u32 ai_vars) {
+    call_object_canMove_result_sub_80FD4E8 can_move = call_object_canMove_sub_80FD4E8(object);
+    if (can_move.z) {
+        set_fail_timers(ai_vars);
+        return can_move.r1;
+    }
+
+    /* Fetch the alliance's 8-byte descriptor: two u32 arguments for the indirect call. */
+    u32 alliance = LD8(object + oBattleObject_Alliance);
+    u32 desc = A_byte_80FD538 + (alliance << 3);
+    u32 a2 = LD32(desc);
+    u32 a3 = LD32(desc + 4);
+
+    /* Call the alliance's target-search routine at [ai_vars + oAIAttackVars_Unk_28]. */
+    u32 a0 = LD32(ai_vars + oAIAttackVars_Unk_2c);
+    u32 target = LD32(ai_vars + oAIAttackVars_Unk_28);
+    indirect_call_result move = call_indirect(a0, target, a2, a3, target);
+
+    if (move.r0 == 0) {
+        set_fail_timers(ai_vars);
+        return move.r1;
+    }
+
+    /* Destination found – commit the future panel, reserve it, mark cannot-slide. */
+    ST8(object + oBattleObject_FuturePanelX, move.r0);
+    ST8(object + oBattleObject_FuturePanelY, move.r1);
+    call_object_reservePanel_sub_80FD4E8(move.r0, move.r1, object);
+    call_object_setFlag1_result_sub_80FD4E8 sf = call_object_setFlag1_sub_80FD4E8(OBJECT_FLAGS_CANNOT_SLIDE, object);
+
+    set_success_timers(object, ai_vars);
+    return sf.r1;
+}
+
+/* sub_80FD4E8(r5 = battle object, r7 = AI attack vars) -> r1 */
+Next sub_80FD4E8(void) {
+    R1 = do_attack_move(R5, R7);
     RETURN_TO_CALLER();
 }
 
@@ -1484,6 +1795,101 @@ Next sub_80FD682(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FD6A6 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3; bool c, v; } call_object_setCounterTime_result;
+/* register form: generated wrapper: object_setCounterTime has no typed C interface yet */
+static inline call_object_setCounterTime_result call_object_setCounterTime(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCounterTime);
+    return (call_object_setCounterTime_result){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_80FD6A6;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_sub_80FD6A6 call_object_getFrontDirection_sub_80FD6A6(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_sub_80FD6A6){ R0 };
+}
+
+typedef struct { u32 r1, r5, r7; } call_sub_80C81A6_result;
+/* register form: generated wrapper: sub_80C81A6 has no typed C interface yet */
+static inline call_sub_80C81A6_result call_sub_80C81A6(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R6 = r6;
+    GUEST_CALL(sub_80C81A6);
+    return (call_sub_80C81A6_result){ R1, R5, R7 };
+}
+
+/* AI attack step machine for a battle object.
+ * Path 1 (var01==0): enter windup – set animation 5, arm a 0x18-tick counter.
+ * Path 2 (var10 > 0): count down the windup timer.
+ * Path 3 (timer expired): fire at the panel directly in front of the object. */
+
+/* Direction → attack-ID table (indexed by var03). */
+/* A_byte_80FD6F0 holds {0xE, 0xC, 0xA, 0x8} */
+
+typedef struct { u32 r1, r5; } sub_80FD6A6_result;
+
+static sub_80FD6A6_result ai_attack_step(u32 r1, u32 r3, u32 r5, u32 r7) {
+    /* --- First tick: begin windup --- */
+    if (LD8(r7 + oAIAttackVars_Unk_01) == 0) {
+        ST8(r7 + oAIAttackVars_Unk_01, 4);
+        ST8(r5 + oBattleObject_CurAnim, 5);
+        call_object_setCounterTime_result sc =
+            call_object_setCounterTime(0x12, r5);
+        ST16(r7 + oAIAttackVars_Unk_10, 0x18);
+        return (sub_80FD6A6_result){ sc.r1, r5 };
+    }
+
+    /* --- Subsequent ticks: decrement windup counter --- */
+    u32 remaining = LD16(r7 + oAIAttackVars_Unk_10) - 1;
+    ST16(r7 + oAIAttackVars_Unk_10, remaining);
+    if ((s32)remaining > 0)
+        return (sub_80FD6A6_result){ r1, r5 };
+
+    /* --- Timer expired: fire the attack forward --- */
+    /* Build attack ID: lower byte = direction index, upper byte = table value */
+    u32 dir_idx = LD8(r7 + oAIAttackVars_Unk_03);
+    u32 attack_id = dir_idx | ((u32)LD8(A_byte_80FD6F0 + dir_idx) << 8);
+
+    /* Get the panel offset directly in front of this object */
+    call_object_getFrontDirection_result_sub_80FD6A6 front =
+        call_object_getFrontDirection_sub_80FD6A6(r5);
+
+    u32 target_x = front.r0 + LD8(r5 + oBattleObject_PanelX);
+    u32 target_y = LD8(r5 + oBattleObject_PanelY);
+    u32 atk_type = LD8(r7 + oAIAttackVars_Unk_02);
+    u32 damage   = LD32(r7 + oAIAttackVars_Damage);
+
+    /* Spawn the attack hit at the computed position */
+    call_sub_80C81A6_result fired =
+        call_sub_80C81A6(target_x, target_y, atk_type, r3, attack_id, damage);
+
+    /* Transition to "recovery" state (var00 = 0x14) */
+    ST16(fired.r7 + oAIAttackVars_Unk_00, 0x14);
+
+    return (sub_80FD6A6_result){ fired.r1, fired.r5 };
+}
+
+/* sub_80FD6A6(r1, r3, r5, r7) -> r1, r5  [preserves r4, r6] */
+Next sub_80FD6A6(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+    sub_80FD6A6_result res = ai_attack_step(R1, R3, R5, R7);
+    R1 = res.r1;
+    R5 = res.r5;
+    R4 = saved_r4;
+    R6 = saved_r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FD6F4 ── */
 /* sub_80FD6F4(r5 = battle object ptr, r7 = attack vars ptr):
  * AI attack behaviour: on first call, snapshot a timer from oAIAttackVars_Unk_18 and start
@@ -1552,6 +1958,103 @@ static void dispatch_attack_step(u32 vars, u32 arg_r3, u32 arg_r5,
 
 Next sub_80FD718(void) {
     dispatch_attack_step(R7, R3, R5, R6, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD748 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4; bool z, n; } call_object_canMove_result_sub_80FD748;
+/* register form: generated wrapper: object_canMove has no typed C interface yet */
+static inline call_object_canMove_result_sub_80FD748 call_object_canMove_sub_80FD748(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_canMove);
+    return (call_object_canMove_result_sub_80FD748){ R4, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r3; bool c, v; } call_object_reservePanel_result_sub_80FD748;
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline call_object_reservePanel_result_sub_80FD748 call_object_reservePanel_sub_80FD748(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+    return (call_object_reservePanel_result_sub_80FD748){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2; } call_object_setFlag1_result_sub_80FD748;
+/* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
+static inline call_object_setFlag1_result_sub_80FD748 call_object_setFlag1_sub_80FD748(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setFlag1);
+    return (call_object_setFlag1_result_sub_80FD748){ R1, R2 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r6, r7; bool z, n, c, v; } call_object_exitAttackState_result;
+/* register form: generated wrapper: object_exitAttackState has no typed C interface yet */
+static inline call_object_exitAttackState_result call_object_exitAttackState(u32 r5, u32 r6, u32 r7) {
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(object_exitAttackState);
+    return (call_object_exitAttackState_result){ R0, R1, R2, R3, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: indirect call through the target-finding function stored in AI vars */
+static u32 call_ai_panel_target(u32 arg0, u32 func_addr, u32 arg2, u32 arg3,
+                                u32 *out_panel_y) {
+    R0 = arg0; R1 = func_addr; R2 = arg2; R3 = arg3;
+    GUEST_CALL_ADDR(func_addr);
+    *out_panel_y = R1;
+    return R0;
+}
+
+/* AI attack panel selection for an enemy object.
+ * Query movement ability; if able to move, call the alliance-indexed
+ * target-finder to get a future panel, reserve it, lock sliding and
+ * start the slide animation.  If movement is disallowed or the target
+ * finder returns 0, clear the AI flag and exit the attack state. */
+static void ai_attack_select_panel(u32 obj, u32 r6, u32 ai_vars) {
+    call_object_canMove_result_sub_80FD748 can_move = call_object_canMove_sub_80FD748(obj);
+    if (can_move.z) {
+        ST8(ai_vars + oAIAttackVars_Unk_1a, 0);
+        call_object_exitAttackState(obj, r6, ai_vars);
+        return;
+    }
+
+    /* Alliance byte selects an 8-byte table entry (two u32 args) */
+    u32 alliance = LD8(obj + oBattleObject_Alliance);
+    u32 tbl_base = A_byte_80FD798 + (alliance << 3);
+    u32 arg2 = LD32(tbl_base);
+    u32 arg3 = LD32(tbl_base + 4);
+    u32 arg0 = LD32(ai_vars + oAIAttackVars_Unk_2c);
+    u32 target_fn = LD32(ai_vars + oAIAttackVars_Unk_28);
+
+    u32 panel_y;
+    u32 panel_x = call_ai_panel_target(arg0, target_fn, arg2, arg3, &panel_y);
+
+    if (panel_x == 0) {
+        ST8(ai_vars + oAIAttackVars_Unk_1a, 0);
+        call_object_exitAttackState(obj, r6, ai_vars);
+        return;
+    }
+
+    /* Commit the chosen panel and lock the object into slide state */
+    ST8(obj + oBattleObject_FuturePanelX, panel_x);
+    ST8(obj + oBattleObject_FuturePanelY, panel_y);
+    call_object_reservePanel_sub_80FD748(panel_x, panel_y, obj);
+    call_object_setFlag1_sub_80FD748(OBJECT_FLAGS_CANNOT_SLIDE, obj);
+
+    ST8(obj + oBattleObject_CurAnim, 4);                  /* slide animation */
+    ST16(ai_vars + oAIAttackVars_Unk_10, 3);
+    ST8(ai_vars + oAIAttackVars_Unk_1a, 1);
+    ST16(ai_vars + oAIAttackVars_Unk_00, 4);
+}
+
+/* sub_80FD748(r5 = battle object, r6 = AI arg, r7 = AI attack vars)
+ * -> r1 from last callee; r5/r8-r12 unchanged */
+Next sub_80FD748(void) {
+    ai_attack_select_panel(R5, R6, R7);
     RETURN_TO_CALLER();
 }
 

@@ -45,6 +45,176 @@ Next ho_80A4984(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A49B0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_sub_80A49B0;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_sub_80A49B0 call_sprite_load_sub_80A49B0(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_sub_80A49B0){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_sub_80A49B0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_sub_80A49B0;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_sub_80A49B0 call_sprite_loadAnimationData_sub_80A49B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_sub_80A49B0){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_sub_80A49B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_checkZCoordModifiers_8031612_result;
+/* register form: generated wrapper: checkZCoordModifiers_8031612 has no typed C interface yet */
+static inline call_checkZCoordModifiers_8031612_result call_checkZCoordModifiers_8031612(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(checkZCoordModifiers_8031612);
+    return (call_checkZCoordModifiers_8031612_result){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_applyLayerEffectToOWObject_8035694_result_sub_80A49B0;
+/* register form: generated wrapper: applyLayerEffectToOWObject_8035694 has no typed C interface yet */
+static inline call_applyLayerEffectToOWObject_8035694_result_sub_80A49B0 call_applyLayerEffectToOWObject_8035694_sub_80A49B0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    return (call_applyLayerEffectToOWObject_8035694_result_sub_80A49B0){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1, r2; } call_sprite_setPriority_8002E14_result_sub_80A49B0;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_sub_80A49B0 call_sprite_setPriority_8002E14_sub_80A49B0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_sub_80A49B0){ R1, R2 };
+}
+
+/* register form: generated wrapper: sprite_setUnk0x2c has no typed C interface yet */
+static inline void call_sprite_setUnk0x2c(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_sub_80A49B0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+typedef struct { u32 r2, r5; } call_event_80A4A08_result;
+/* register form: generated wrapper: event_80A4A08 has no typed C interface yet */
+static inline call_event_80A4A08_result call_event_80A4A08(u32 r5, u32 r7) {
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(event_80A4A08);
+    return (call_event_80A4A08_result){ R2, R5 };
+}
+
+/* Configuration block layout (r7), byte offsets for readability: */
+#define CFG_SPRITE_ID      0   /* u8: first sprite resource argument */
+#define CFG_SPRITE_ARG     1   /* u8: second sprite resource argument */
+#define CFG_ANIM_INDEX     2   /* u8: initial animation frame         */
+#define CFG_Z_MOD_FLAG     3   /* u8: 0xFF → apply Z modifiers       */
+#define CFG_UNK0x2C        4   /* u32: value for sprite_setUnk0x2c    */
+#define CFG_PALETTE_INDEX  8   /* u8: sprite palette slot             */
+
+/* Object (r5) field offsets used by this function: */
+#define OBJ_Z_COORD      0x14  /* u32: Z position / height           */
+#define OBJ_Z_SUBSTRUCT  0x0C  /* start of substruct for Z/layer calcs */
+#define OBJ_LAYER        8    /* u8: draw layer                      */
+#define OBJ_SHADOW       7    /* u8: shadow flag                     */
+#define OBJ_FLAGS        6    /* u8: misc flags                      */
+
+/* Initialize a field/battle sprite from the config block at `cfg`:
+ * load the sprite resource, set animation and palette, optionally
+ * apply Z-coordinate modifiers and layer effects, clear shadow flags,
+ * and run the post-init event.  Returns the r2 produced by the event. */
+static u32 init_field_sprite(u32 obj, u32 cfg) {
+    /* Load the sprite (category 0x80, two resource IDs from config). */
+    call_sprite_load_result_sub_80A49B0 sl = call_sprite_load_sub_80A49B0(0x80,
+                                                   LD8(cfg + CFG_SPRITE_ID),
+                                                   LD8(cfg + CFG_SPRITE_ARG),
+                                                   obj);
+    obj = sl.r5;   /* sprite_load may return a different object pointer */
+
+    /* Set the initial animation index from config byte 2. */
+    call_sprite_setAnimation_sub_80A49B0(LD8(cfg + CFG_ANIM_INDEX), obj);
+
+    /* Load animation data; this also updates obj and may return r2. */
+    call_sprite_loadAnimationData_result_sub_80A49B0 la = call_sprite_loadAnimationData_sub_80A49B0(obj);
+    obj = la.r5;
+
+    /* Disable the sprite's shadow rendering. */
+    call_sprite_noShadow_sub_80A49B0(obj);
+
+    u32 r0;
+
+    /* If byte 3 is 0xFF, temporarily adjust the Z coordinate
+     * through the tile/layer-modifier pass. */
+    if (LD8(cfg + CFG_Z_MOD_FLAG) == 0xFF) {
+        u32 saved_z = LD32(obj + OBJ_Z_COORD);
+
+        /* Query the Z modifier for the substruct at obj+0xC. */
+        call_checkZCoordModifiers_8031612_result cz =
+            call_checkZCoordModifiers_8031612(obj + OBJ_Z_SUBSTRUCT);
+        obj = cz.r5;
+        r0  = cz.r0 << 16;
+        ST32(obj + OBJ_Z_COORD, r0);
+
+        /* Apply the layer effect using the modified Z. */
+        call_applyLayerEffectToOWObject_8035694_result_sub_80A49B0 ae =
+            call_applyLayerEffectToOWObject_8035694_sub_80A49B0(obj + OBJ_Z_SUBSTRUCT);
+        obj = ae.r5;
+        ST32(obj + OBJ_Z_COORD, saved_z);  /* restore the real Z */
+
+        r0 = ae.r0;
+    } else {
+        /* No Z adjustment: r0 is just the config byte we compared. */
+        r0 = LD8(cfg + CFG_Z_MOD_FLAG);
+    }
+
+    /* Set sprite priority (obj passed so the callee reads its data). */
+    call_sprite_setPriority_8002E14_sub_80A49B0(r0, obj);
+
+    /* Write the 32-bit field at config offset 4 into object word 0x2C. */
+    call_sprite_setUnk0x2c(LD32(cfg + CFG_UNK0x2C), obj);
+
+    /* Set the palette index from config byte 8. */
+    call_sprite_setPalette_sub_80A49B0(LD8(cfg + CFG_PALETTE_INDEX), obj);
+
+    /* Clear flags and shadow; mark the object's layer. */
+    ST8(obj + OBJ_LAYER,  4);
+    ST8(obj + OBJ_FLAGS,  0);
+    ST8(obj + OBJ_SHADOW, 0);
+
+    /* Fire the post-init event and return its r2. */
+    call_event_80A4A08_result ev = call_event_80A4A08(obj, cfg);
+    return ev.r2;
+}
+
+/* sub_80A49B0(r5 = sprite object, r7 = config block, r10 = [layer ctx]) -> r2 */
+Next sub_80A49B0(void) {
+    R2 = init_field_sprite(R5, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchState4Handler_80A4A98 ── */
 /* register form: calls battle_objectEnterState4LatchTilePos_80A4AB8 outside this file,
  * which has no typed C interface yet */
@@ -734,6 +904,164 @@ Next lookupMapEntryPair_80A54A4(void) {
     R0 = LD32(0x80A54D8 + idx) + sub;
     R1 = LD32(0x80A54E4 + idx) + sub;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A5514 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_sub_80A5514;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_sub_80A5514 call_sprite_load_sub_80A5514(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_sub_80A5514){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_sub_80A5514(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_sub_80A5514;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_sub_80A5514 call_sprite_loadAnimationData_sub_80A5514(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_sub_80A5514){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_sub_80A5514(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_applyLayerEffectToOWObject_8035694_result_sub_80A5514;
+/* register form: generated wrapper: applyLayerEffectToOWObject_8035694 has no typed C interface yet */
+static inline call_applyLayerEffectToOWObject_8035694_result_sub_80A5514 call_applyLayerEffectToOWObject_8035694_sub_80A5514(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    return (call_applyLayerEffectToOWObject_8035694_result_sub_80A5514){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r3; } call_sprite_setPriority_8002E14_result_sub_80A5514;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_sub_80A5514 call_sprite_setPriority_8002E14_sub_80A5514(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_sub_80A5514){ R3 };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_sub_80A5514;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_80A5514 call_PlaySoundEffect_sub_80A5514(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_80A5514){ R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r2, r10, r11; } call_sub_80A5588_result;
+/* register form: generated wrapper: sub_80A5588 has no typed C interface yet */
+static inline call_sub_80A5588_result call_sub_80A5588(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_80A5588);
+    return (call_sub_80A5588_result){ R2, R10, R11 };
+}
+
+/* Spawn/setup an overworld object: assign a sprite (with special id for map group 0x85),
+ * load graphics + animation, apply layer effects and priority, remember position,
+ * play the entry sound (unless the "no-sound" flag is set), then advance sub-state
+ * to 4 and tail-dispatch to the per-state handler sub_80A5588.
+ *
+ * The original's pop restores r4-r7 (including r5, r6), so the caller-visible r5 is
+ * always the input value regardless of what the callees do to it. */
+
+typedef struct {
+    u32 r2;
+    u32 r5;
+    u32 r10;
+    u32 r11;
+} sub_80A5514_result;
+
+static sub_80A5514_result ow_obj_spawn_setup(u32 ow_obj, u32 src_obj, u32 toolkit) {
+    /* State byte -> "spawning" (3). */
+    ST8(ow_obj, 3);
+
+    /* Pick sprite id: map group 0x85 gets 0x4E, all others get 0x0B. */
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 map_group = LD8(game_state + oGameState_MapGroup);
+    u32 sprite_id = (map_group == 0x85) ? 0x4E : 0x0B;
+
+    /* Load the sprite (layer 0x80, tile 0x1C). Returns updated handle in r5. */
+    call_sprite_load_result_sub_80A5514 sl = call_sprite_load_sub_80A5514(0x80, 0x1C, sprite_id, ow_obj);
+    u32 cur_r5 = sl.r5;
+
+    /* Set animation index from the source object's byte 5. */
+    call_sprite_setAnimation_sub_80A5514(LD8(src_obj + 5), cur_r5);
+
+    /* Load animation data (updates handle), then remove the shadow. */
+    call_sprite_loadAnimationData_result_sub_80A5514 lad = call_sprite_loadAnimationData_sub_80A5514(cur_r5);
+    cur_r5 = lad.r5;
+    call_sprite_noShadow_sub_80A5514(cur_r5);
+
+    /* Apply layer effect to the sprite handle at cur_r5+0xC; may rewrite r5, r6, r10. */
+    call_applyLayerEffectToOWObject_8035694_result_sub_80A5514 al =
+        call_applyLayerEffectToOWObject_8035694_sub_80A5514(cur_r5 + 0xC);
+    cur_r5 = al.r5;
+    u32 cur_r6 = al.r6;
+
+    /* Set sprite draw priority (r0 and r5 consumed; no relevant outputs tracked). */
+    call_sprite_setPriority_8002E14_sub_80A5514(al.r0, cur_r5);
+
+    /* Store the current position as the "previous position" pair. */
+    ST32(cur_r5 + 0x24, LD32(cur_r5 + 0x0C));
+    ST32(cur_r5 + 0x28, LD32(cur_r5 + 0x10));
+
+    /* Reset animation frame counters, set state timeout, copy animation index. */
+    ST8(cur_r5 + 5, 0);
+    ST8(cur_r5 + 6, 0);
+    ST32(cur_r5 + 0x2C, 0x12);
+    ST8(cur_r5 + 7, LD8(cur_r6 + 5));
+
+    /* If "no-sound" flag bit 0 is clear, play the generic entry sound (0x17F). */
+    if ((LD8(cur_r5 + 4) & 1) == 0) {
+        call_PlaySoundEffect_result_sub_80A5514 se = call_PlaySoundEffect_sub_80A5514(0x17F, 1);
+        cur_r5 = se.r5;
+        cur_r6 = se.r6;
+        /* For a completely unflagged object, start the source's countdown timer. */
+        if (LD8(cur_r5 + 4) == 0)
+            ST8(cur_r6 + 0xF, 0x0A);
+    }
+
+    /* Advance sub-state to 4. */
+    ST8(cur_r5 + 8, 4);
+
+    /* Tail-dispatch to per-state handler; original pop restores r5. */
+    call_sub_80A5588_result h = call_sub_80A5588(cur_r5, cur_r6);
+
+    sub_80A5514_result res;
+    res.r2 = h.r2;
+    res.r5 = ow_obj;
+    res.r10 = h.r10;
+    res.r11 = h.r11;
+    return res;
+}
+
+/* sub_80A5514(r5 = ow_object, r6 = source_object, r10 = toolkit) -> r2 r5 r10 r11 */
+Next sub_80A5514(void) {
+    sub_80A5514_result res = ow_obj_spawn_setup(R5, R6, R10);
+    R2 = res.r2;
+    R5 = res.r5;
+    R10 = res.r10;
+    R11 = res.r11;
     RETURN_TO_CALLER();
 }
 

@@ -35,6 +35,118 @@ Next clearBattleObjectLinkedLists_800318C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── SpawnBattleObjectCommon ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool c, v; } call_ZeroFillByWord_result_SpawnBattleObjectCommon;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result_SpawnBattleObjectCommon call_ZeroFillByWord_SpawnBattleObjectCommon(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result_SpawnBattleObjectCommon){ CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Descriptor field offsets within the 16-byte type entry at dword_80032D0 */
+#define DESC_ACTIVE_BITFIELD   0x00
+#define DESC_LINKED_LIST       0x04
+#define DESC_LINKED_LIST_END   0x08
+#define DESC_OBJECT_SIZE       0x0c
+#define DESC_USER_SIZE         0x0d
+#define DESC_UNK_0E            0x0e
+
+typedef struct {
+    u32 r0, r1, r2, r3, r5;
+    u32 cmp_a, cmp_b;
+} SpawnResult;
+
+/* Encode an (c, v) pair into operands for SET_FLAGS_CMP so that the resulting
+ * CMP produces the same carry and overflow flags. */
+static void encode_cv_for_cmp(bool c, bool v, u32 *a, u32 *b) {
+    if (c && !v)        { *a = 1;          *b = 0; }
+    else if (!c && !v)  { *a = 0;          *b = 1; }
+    else if (c && v)    { *a = 0x80000000u; *b = 1; }
+    else                { *a = 1;          *b = 0x80000000u; }
+}
+
+static SpawnResult spawn_battle_object(u32 obj_type, u32 ctx_stack) {
+    SpawnResult res;
+
+    u32 type = obj_type & 0xF;
+    u32 desc = (type << 4) + A_dword_80032D0;
+
+    u32 active_addr = LD32(desc + DESC_ACTIVE_BITFIELD);
+    u32 linked_list = LD32(desc + DESC_LINKED_LIST);
+    u32 pool_end    = LD32(desc + DESC_LINKED_LIST_END);
+    u32 stride      = LD8(desc + DESC_OBJECT_SIZE);
+    u32 user_size   = LD8(desc + DESC_USER_SIZE);
+    u32 unk_0e      = LD8(desc + DESC_UNK_0E);
+
+    u32 mask   = 1u << 31;
+    u32 bits   = LD32(active_addr);
+    u32 cursor = linked_list;
+
+    /* Scan the active-object bitfield from MSB to LSB for a free slot. */
+    while (bits & mask) {
+        mask >>= 1;
+        cursor += stride;
+        if (cursor < pool_end)
+            continue;
+        /* Pool exhausted – return NULL object. */
+        res.r0 = type << 4;
+        res.r1 = active_addr;
+        res.r2 = mask;
+        res.r3 = pool_end;
+        res.r5 = 0;
+        /* CMP cursor, pool_end at exit: cursor >= pool_end unsigned (GBA
+         * addresses < 0x08000000), so C=1, V=0. */
+        encode_cv_for_cmp(true, false, &res.cmp_a, &res.cmp_b);
+        return res;
+    }
+
+    /* Mark the slot active and advance past the 16-byte linked-list header. */
+    bits |= mask;
+    ST32(active_addr, bits);
+    cursor += 0x10;   /* object pointer (r5 in the original) */
+
+    /* Zero the user data fields (skip the first word: linked-list pointer). */
+    call_ZeroFillByWord_result_SpawnBattleObjectCommon zfw = call_ZeroFillByWord_SpawnBattleObjectCommon(cursor + 4, user_size);
+    encode_cv_for_cmp(zfw.c, zfw.v, &res.cmp_a, &res.cmp_b);
+
+    /* Write the default sub-type byte at the start of the object. */
+    ST8(cursor, unk_0e);
+
+    /* Copy the 5-word init record from the caller's stack frame. */
+    u32 init0 = LD32(ctx_stack);
+    u32 init1 = LD32(ctx_stack + 4);
+    u32 init2 = LD32(ctx_stack + 8);
+    u32 init3 = LD32(ctx_stack + 12);
+    u32 init4 = LD32(ctx_stack + 16);
+
+    ST8(cursor + oBattleObject_Index,  init0);
+    ST32(cursor + oBattleObject_X,     init1);
+    ST32(cursor + oBattleObject_Y,     init2);
+    ST32(cursor + oBattleObject_Z,     init3);
+    ST32(cursor + oBattleObject_Params, init4);
+
+    res.r0 = init0;
+    res.r1 = init1;
+    res.r2 = init2;
+    res.r3 = init3;
+    res.r5 = cursor;
+    return res;
+}
+
+Next SpawnBattleObjectCommon(void) {
+    SpawnResult res = spawn_battle_object(R0, R1);
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
+    R5 = res.r5;
+    SET_FLAGS_CMP(res.cmp_a, res.cmp_b);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_spawnType1 ── */
 /* object_spawnType1(r0 = obj_idx, r1 = x, r2 = y, r3 = z, r4 = params)
  * -> r5 = spawned BattleObject (0 if the spawn failed).
@@ -898,6 +1010,73 @@ Next SpawnOWPlayerObject(void) {
     R0 = 0;
     R5 = slot;
     SET_FLAGS_NZ(0);   /* same N/Z the free-bit TST leaves behind */
+    RETURN_TO_CALLER();
+}
+
+/* ── TryUpdateEachOWPlayerObject_8003BA2 ── */
+/* Iterate over every OW player object slot (eOWPlayerObject array).
+ * Active slots run their update routine through the off_8003B48 jump table, selected
+ * by the routine-id byte at object+1. While the battle is paused (gameState flag),
+ * only objects carrying OBJECT_FLAG_PAUSE_UPDATE keep updating.
+ *
+ * register form: the routines are dispatched through a jump table (`ldr r0,[table,id*4];
+ * bx r0`) so no typed wrapper exists. They are raw GBA code that reads its arguments
+ * (function ptr, table offset, object pointer, game state ptr, alliance ptr, misc ptr)
+ * directly from R0-R7 of the guest register file. R4/R6 are set once from the caller's
+ * R8/R12 before the loop (matching the prologue's movs) and flow through to callees.
+ * All callee-saved registers and the caller's R8/R9/R12 are restored before returning,
+ * replicating the original's push {r4-r6} … pop sequence. */
+static void try_update_ow_players(u32 toolkit, u32 entryR8, u32 entryR12) {
+    /* Save the registers that the loop and callees will modify */
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+    u32 savedR8 = R8, savedR9 = R9, savedR12 = R12;
+
+    u32 object = A_eOWPlayerObject;
+    u32 tableAddr = A_off_8003B48;
+    u32 endAddr = A_eOWPlayerObjectEnd;
+
+    /* Park the caller's R8/R12 in R4/R6 for the callees (matches `mov r4,r8; mov r6,r12`) */
+    R4 = entryR8;
+    R6 = entryR12;
+
+    while (object < endAddr) {
+        u8 flags = LD8(object + oObjectHeader_Flags);
+
+        if (flags & OBJECT_FLAG_ACTIVE) {
+            u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+            bool paused = (LD8(gameState + oGameState_BattlePaused) != 0);
+
+            /* Skip if battle is paused and object doesn't opt into pause-update */
+            if (!paused || (flags & OBJECT_FLAG_PAUSE_UPDATE)) {
+                u8 routineId = LD8(object + 1);        /* update-routine id at +0x1 */
+                u32 tableOffset = (u32)routineId << 2; /* byte offset into word table */
+                u32 funcPtr = LD32(tableAddr + tableOffset);
+
+                /* Set up callee's register-file arguments */
+                R0 = funcPtr;
+                R1 = tableOffset;
+                R5 = object;
+                R7 = gameState;
+                /* R4, R6 retain their current values (callee-saved pass-through) */
+
+                GUEST_CALL_ADDR(funcPtr);
+            }
+        }
+
+        object += oOWPlayerObject_Size;
+    }
+
+    /* Restore callee-saved registers and the caller's R8/R9/R12 (the original's
+     * pop {r4-r6}; mov r8,r4; mov r9,r5; mov r12,r6; pop {r4-r7,pc}) */
+    R4 = savedR4; R5 = savedR5; R6 = savedR6; R7 = savedR7;
+    R8 = savedR8; R9 = savedR9; R12 = savedR12;
+}
+
+/* TryUpdateEachOWPlayerObject_8003BA2(r8, r9, r10 = toolkit, r11, r12) -> ()
+ * Returns with R8/R9/R12 restored to entry, R4-R7 preserved, R0/R1/R3/LR clobbered,
+ * R2/R10/R11 passed through from callees. */
+Next TryUpdateEachOWPlayerObject_8003BA2(void) {
+    try_update_ow_players(R10, R8, R12);
     RETURN_TO_CALLER();
 }
 

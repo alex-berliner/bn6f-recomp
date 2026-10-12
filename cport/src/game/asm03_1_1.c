@@ -788,6 +788,85 @@ Next sub_803BB80(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803BC7C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7; } call_sub_802FE28_result_sub_803BC7C;
+/* register form: generated wrapper: sub_802FE28 has no typed C interface yet */
+static inline call_sub_802FE28_result_sub_803BC7C call_sub_802FE28_sub_803BC7C(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sub_802FE28);
+    return (call_sub_802FE28_result_sub_803BC7C){ R4, R5, R6, R7 };
+}
+
+/* Result of sub_803BC7C's tile-drawing and counter advance. */
+typedef struct {
+    u32 final;   /* stored row counter (0 when wrapped, next otherwise) */
+    u32 cmp_b;   /* second operand for the flag-setting CMP */
+} BC7C_Result;
+
+/* Draw two half-tiles of the element overlay at the current animation frame,
+ * then advance the column counter (wraps at 0x18).
+ * style (r0): non-zero enables the +5 frame offset once the base frame reaches 0x3C.
+ * state (r5): pointer to per-element overlay block (+0x08 frame, +0x0A column index). */
+static BC7C_Result draw_overlay_tiles(u32 style, u32 state) {
+    u32 frame = (u32)LD8(state + 8);
+
+    /* Extended variant only applies when the style flag is set and
+     * the frame counter has reached 0x3C (signed cmp: frame is u8 so same as unsigned). */
+    if (style != 0 && frame >= 0x3C)
+        frame += 5;
+
+    /* Look up the 4-byte tile descriptor for this frame in the overlay palette table. */
+    u32 desc = (u32)A_byte_803BD18 + frame * 4u;
+
+    /* Build tile attribute: 0x9000 | byte[1] | (byte[0] << 16). */
+    u32 attr = (u32)LD8(desc + 1) | ((u32)LD8(desc) << 16);
+    u32 tile_left = 0x9000u | attr;
+
+    /* Column x-offset from the per-row table, indexed by counter at +0x0A. */
+    u32 row = (u32)LD8(state + 0xA);
+    u32 col = LD16((u32)A_byte_803BCE4 + row * 2u);
+
+    /* Draw the left half-tile. */
+    call_sub_802FE28_sub_803BC7C(tile_left, col, 0, 0);
+
+    /* Draw the right half-tile: byte[2] adds at bits 16-23, column + 2. */
+    u32 tile_right = tile_left + ((u32)LD8(desc + 2) << 16);
+    call_sub_802FE28_sub_803BC7C(tile_right, col + 2u, 0, 0);
+
+    /* Advance the row counter; wrap to 0 at 0x18. */
+    u32 next = row + 1u;
+    u32 final;
+    u32 cmp_b;
+
+    if ((s32)next < (s32)0x18) {
+        /* blt taken: flags stay from CMP(next, 0x18) → N=1, Z=0, C=0, V=0 */
+        final = next;
+        cmp_b = 0x18u;
+    } else {
+        /* blt not taken, then MOV r0, #0 sets N=0 Z=1; C,V from CMP(next,0x18) are 1,0.
+         * Reproduce with CMP(0, 0) → N=0, Z=1, C=1, V=0. */
+        final = 0;
+        cmp_b = 0;
+    }
+    ST8(state + 0xA, final);
+
+    BC7C_Result res = { .final = final, .cmp_b = cmp_b };
+    return res;
+}
+
+/* sub_803BC7C(r0 = style, r5 = overlay state pointer, lr = caller's LR)
+ * → r0 (stored counter), nzcv; r1/r2/r3 and lr left by last call_sub_802FE28_sub_803BC7C. */
+Next sub_803BC7C(void) {
+    BC7C_Result res = draw_overlay_tiles(R0, R5);
+    R0 = res.final;
+    SET_FLAGS_CMP(res.final, res.cmp_b);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803BEC0 ── */
 /* sub_803BEC0: Walk a list of text-script entries and expand each into a
  * stream of 8-byte command records in RAM.

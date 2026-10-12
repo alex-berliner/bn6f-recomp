@@ -79,6 +79,86 @@ Next deliverCutsceneMail_8098BE8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8098E24 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; bool c, v; } call_SetEventFlag_result_sub_8098E24;
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline call_SetEventFlag_result_sub_8098E24 call_SetEventFlag_sub_8098E24(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+    return (call_SetEventFlag_result_sub_8098E24){ R1, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r3; bool c, v; } call_ClearEventFlag_result;
+/* register form: generated wrapper: ClearEventFlag has no typed C interface yet */
+static inline call_ClearEventFlag_result call_ClearEventFlag_sub_8098E24(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ClearEventFlag);
+    return (call_ClearEventFlag_result){ R1, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Apply a per-Navi behaviour entry from the chip table.
+ * Writes the resolved entry pointer into the chip-use record, copies two
+ * overlay bytes, optionally stamps a byte into the battle object's inner
+ * struct, then fires any event-flag set/clear encoded in the entry.
+ *
+ *   chip_use  = chip-use record (r5 on entry)
+ *   toolkit   = battle toolkit pointer (r10 on entry)
+ *   entry     = A_off_8098CFC + 0x1C * byte at chip_use+4
+ *
+ * Returns the r1 and r2 values the original leaves in registers on exit. */
+struct ChipEntryResult {
+    u32 r1;
+    u32 r2;
+};
+
+static struct ChipEntryResult apply_chip_use_entry(u32 chip_use, u32 toolkit) {
+    u8 navi_idx = LD8(chip_use + 4);
+    u32 entry = A_off_8098CFC + 0x1Cu * (u32)navi_idx;
+
+    /* Store resolved entry pointer and two overlay bytes into chip-use record */
+    ST32(chip_use + 0x34, entry);
+    ST8(chip_use + 6, LD8(entry + 0x10));
+    ST8(chip_use + 7, LD8(entry + 0x11));
+
+    /* Battle object inner struct (read through toolkit) */
+    u32 inner = LD32(toolkit + 0x3C);
+
+    /* Propagate optional overlay byte; 0xFF means "do nothing" */
+    u8 overlay = LD8(entry + 0x12);
+    if (overlay != 0xFF) {
+        ST8(inner + 0x16, overlay);
+        ST8(inner + 0x17, 0xFF);
+    }
+
+    /* Fire event-flag set/clear pairs; r1 default is 0xFF */
+    u32 r1_result = 0xFF;
+
+    u16 set_flag = LD16(entry + 0x14);
+    if (set_flag != 0) {
+        call_SetEventFlag_result_sub_8098E24 s = call_SetEventFlag_sub_8098E24(set_flag);
+        r1_result = s.r1;
+    }
+
+    u16 clear_flag = LD16(entry + 0x16);
+    if (clear_flag != 0) {
+        call_ClearEventFlag_result c = call_ClearEventFlag_sub_8098E24(clear_flag);
+        r1_result = c.r1;
+    }
+
+    struct ChipEntryResult out = { r1_result, inner };
+    return out;
+}
+
+/* sub_8098E24(r5 = chip-use record, r10 = toolkit) -> r1, r2, nz */
+Next sub_8098E24(void) {
+    struct ChipEntryResult res = apply_chip_use_entry(R5, R10);
+    R1 = res.r1;
+    R2 = res.r2;
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8098E6C ── */
 /* sub_8098E6C:
  * Copies three settings bytes from a fixed table entry into the work struct

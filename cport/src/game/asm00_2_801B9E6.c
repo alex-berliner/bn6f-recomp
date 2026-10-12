@@ -81,6 +81,216 @@ Next RunAIAttack(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── applyDamageToPlayer_801ba12 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4; } call_battle_aiAddTotalDamageTaken_8010548_result;
+/* register form: generated wrapper: battle_aiAddTotalDamageTaken_8010548 has no typed C interface yet */
+static inline call_battle_aiAddTotalDamageTaken_8010548_result call_battle_aiAddTotalDamageTaken_8010548(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(battle_aiAddTotalDamageTaken_8010548);
+    return (call_battle_aiAddTotalDamageTaken_8010548_result){ R4 };
+}
+
+/* register form: generated wrapper: object_getFlag has no typed C interface yet */
+static inline u32 call_object_getFlag_applyDamageToPlayer_801ba12(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+typedef struct { u32 r1, r4; bool c, v; } call_object_subtractHP_result;
+/* register form: generated wrapper: object_subtractHP has no typed C interface yet */
+static inline call_object_subtractHP_result call_object_subtractHP(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_subtractHP);
+    return (call_object_subtractHP_result){ R1, R4, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2; } call_unpackVerActorTyAndAIIdx_800F29C_result;
+/* register form: generated wrapper: unpackVerActorTyAndAIIdx_800F29C has no typed C interface yet */
+static inline call_unpackVerActorTyAndAIIdx_800F29C_result call_unpackVerActorTyAndAIIdx_800F29C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(unpackVerActorTyAndAIIdx_800F29C);
+    return (call_unpackVerActorTyAndAIIdx_800F29C_result){ R0, R1, R2 };
+}
+
+typedef struct { u32 r1, r2; bool z, n; } call_battle_networkInvert_result;
+/* register form: generated wrapper: battle_networkInvert has no typed C interface yet */
+static inline call_battle_networkInvert_result call_battle_networkInvert(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_networkInvert);
+    return (call_battle_networkInvert_result){ R1, R2, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_applyDamageToPlayer_801ba12;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_applyDamageToPlayer_801ba12 call_PlaySoundEffect_applyDamageToPlayer_801ba12(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_applyDamageToPlayer_801ba12){ R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r2, r3; } call_sprite_forceWhitePalette_result;
+/* register form: generated wrapper: sprite_forceWhitePalette has no typed C interface yet */
+static inline call_sprite_forceWhitePalette_result call_sprite_forceWhitePalette(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_forceWhitePalette);
+    return (call_sprite_forceWhitePalette_result){ R2, R3 };
+}
+
+typedef struct { u32 r0, r6, r7; } call_battle_isAllianceActiveAndAiFlag0x4000_802DD2A_result;
+/* register form: generated wrapper: battle_isAllianceActiveAndAiFlag0x4000_802DD2A has no typed C interface yet */
+static inline call_battle_isAllianceActiveAndAiFlag0x4000_802DD2A_result call_battle_isAllianceActiveAndAiFlag0x4000_802DD2A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_isAllianceActiveAndAiFlag0x4000_802DD2A);
+    return (call_battle_isAllianceActiveAndAiFlag0x4000_802DD2A_result){ R0, R6, R7 };
+}
+
+/* register form: generated wrapper: SetAIData_Unk_44_Flag has no typed C interface yet */
+static inline void call_SetAIData_Unk_44_Flag(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(SetAIData_Unk_44_Flag);
+}
+
+typedef struct { u32 r2; } call_object_setFlag2_result;
+/* register form: generated wrapper: object_setFlag2 has no typed C interface yet */
+static inline call_object_setFlag2_result call_object_setFlag2(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setFlag2);
+    return (call_object_setFlag2_result){ R2 };
+}
+
+typedef struct { u32 r2, r3, r5, r6; } call_sub_801A200_result;
+/* register form: generated wrapper: sub_801A200 has no typed C interface yet */
+static inline call_sub_801A200_result call_sub_801A200(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_801A200);
+    return (call_sub_801A200_result){ R2, R3, R5, R6 };
+}
+
+/* Apply pending collision damage to the player object: record in AI tally, check
+ * the undershirt (shield) flag, subtract HP, play the hurt SFX (or its dark-network
+ * variant), flash the sprite white if still alive, then always subtract the collision
+ * HP-bar value and handle death flags. */
+static void apply_damage_to_player(u32 player, u32 collision, u32 r10_val) {
+    u16 damage = LD16(collision + oCollisionData_FinalDamage);
+
+    if (damage != 0) {
+        /* Add this hit to the AI's running damage tally. */
+        call_battle_aiAddTotalDamageTaken_8010548(damage, player);
+
+        /* Undershirt / navi-shield protection: if the object has the
+         * shield flag (bit 0x40000) and the incoming damage would
+         * kill it outright, clamp damage so HP stays at 1. */
+        u16 hp = LD16(player + oBattleObject_HP);
+        if ((s32)hp > 1) {
+            u32 obj_flags = call_object_getFlag_applyDamageToPlayer_801ba12(player);
+            if ((obj_flags & 0x40000) != 0) {
+                hp = LD16(player + oBattleObject_HP);
+                if ((s32)hp <= (s32)damage) {
+                    damage = hp - 1;
+                }
+            }
+        }
+
+        /* Subtract the (possibly clamped) damage from the player object. */
+        call_object_subtractHP_result subtract_res =
+            call_object_subtractHP(damage, player);
+        u32 hp_remaining = subtract_res.r1;
+
+        /* Pick the hurt sound: default 0x6D, or 0x6B for a dark-network navi. */
+        u16 name_id = LD16(player + oBattleObject_NameID);
+        call_unpackVerActorTyAndAIIdx_800F29C_result unpack_res =
+            call_unpackVerActorTyAndAIIdx_800F29C(name_id);
+
+        if (unpack_res.r0 == 2) {
+            u8 alliance = LD8(player + oBattleObject_Alliance);
+            call_battle_networkInvert_result invert_res =
+                call_battle_networkInvert(alliance);
+            if (invert_res.z) {
+                /* Network result is zero → dark-network hurt sound. */
+                unpack_res.r0 = 0x6B;
+            } else {
+                unpack_res.r0 = 0x6D;
+            }
+        } else {
+            unpack_res.r0 = 0x6D;
+        }
+        u32 sfx_id = unpack_res.r0;
+
+        /* register form: r2 for PlaySoundEffect comes from the previous
+         * unpack/invert calls as a register side-effect of the original. */
+        R2 = unpack_res.r2;
+        call_PlaySoundEffect_applyDamageToPlayer_801ba12(sfx_id, unpack_res.r2);
+
+        /* r10_val is used only by the trailing sub_801A200 wrapper below. */
+        (void)r10_val;
+
+        if (hp_remaining != 0) {
+            /* Flash the sprite white, then fall through to the
+             * collision-HP-bar subtraction. */
+            call_sprite_forceWhitePalette(player);
+            u16 col_val = LD16(collision + 0x8C);
+            call_object_subtractHP(col_val, player);
+
+            if (LD16(player + oBattleObject_HP) != 0) {
+                call_sub_801A200(player);
+                return;
+            }
+        } else {
+            /* HP hit zero on the first subtract: skip white flash and the
+             * second HP subtraction entirely (original beq loc_801BA76). */
+        }
+
+        /* Death handling (reached from both paths when HP reaches zero). */
+        {
+            call_battle_isAllianceActiveAndAiFlag0x4000_802DD2A_result ai_res =
+                call_battle_isAllianceActiveAndAiFlag0x4000_802DD2A(player);
+            if (ai_res.r0 != 0) {
+                /* AI side active: flag 0x8000000 in AI data. */
+                call_SetAIData_Unk_44_Flag(A__text, player);
+            } else {
+                /* Normal object: set death flag. */
+                call_object_setFlag2(1, player);
+            }
+        }
+
+        call_sub_801A200(player);
+        return;
+    }
+
+    /* damage == 0: skip directly to the collision HP-bar subtraction. */
+    {
+        u16 col_val = LD16(collision + 0x8C);
+        call_object_subtractHP(col_val, player);
+
+        if (LD16(player + oBattleObject_HP) != 0) {
+            call_sub_801A200(player);
+            return;
+        }
+
+        call_battle_isAllianceActiveAndAiFlag0x4000_802DD2A_result ai_res =
+            call_battle_isAllianceActiveAndAiFlag0x4000_802DD2A(player);
+        if (ai_res.r0 != 0) {
+            call_SetAIData_Unk_44_Flag(A__text, player);
+        } else {
+            call_object_setFlag2(1, player);
+        }
+
+        call_sub_801A200(player);
+    }
+}
+
+Next applyDamageToPlayer_801ba12(void) {
+    apply_damage_to_player(R5, R6, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_object_postAction4CheckClearFlags_801BA92 ── */
 /* battle_object_postAction4CheckClearFlags_801BA92(r5 = battle object):
  * Post-action check for a battle object. If its current action is 4,
@@ -1729,6 +1939,74 @@ Next state_dispatchHandler_801CF0E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801CF3C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4, r5, r6, r7; bool z, n, c, v; } call_sub_802FE28_result_sub_801CF3C;
+/* register form: generated wrapper: sub_802FE28 has no typed C interface yet */
+static inline call_sub_802FE28_result_sub_801CF3C call_sub_802FE28_sub_801CF3C(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sub_802FE28);
+    return (call_sub_802FE28_result_sub_801CF3C){ R0, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Tile/BG-map DMA fill driver, parameter block at r7:
+ *   r7+2: high byte of tile column     r7+3: low byte of tile column
+ *   r7+4: high byte of BG-map column   r7+5: low byte of BG-map column
+ *   r7+6: fill control byte (bits 31:25 of source address)
+ *   r7+8: if 1, additionally queue one BG-map fill
+ * Tile fill is split into 5 sub-fills (count += 8, addr += 0x20<<16 each). */
+
+#define TILE_SRC_BASE     0x80004100u
+#define TILE_FILL_FIRST   0xB370u
+#define TILE_ROW_ADVANCE  (0x20u << 16)
+#define TILE_FILL_STEP    8
+#define TILE_FILL_ITERS   5
+#define BGMAP_SRC_BASE    0x40000100u
+/* 32-bit LDR from word_801CF9C (a .hword 0xB398 definition): reads 4 bytes
+ * and yields 0xB570B398 because the preceding dword_801CF94 (0xB370)
+ * supplies the upper halfword on little-endian GBA memory layout. */
+#define BGMAP_FILL        0xB570B398u
+
+/* Compose fill source address: base | (hi_byte << 16) | lo_byte | (control << 25) */
+static u32 build_fill_src(u32 r7, u32 base, u32 hi_off, u32 lo_off) {
+    return base
+         | ((u32)LD8(r7 + hi_off) << 16)
+         |  (u32)LD8(r7 + lo_off)
+         | ((u32)LD8(r7 + 6) << 25);
+}
+
+/* Run the five tile fills and optionally the BG-map fill.
+ * Returns the final r1 (fill count) left at function exit. */
+static u32 queue_map_fills(u32 r7) {
+    u32 addr  = build_fill_src(r7, TILE_SRC_BASE, 2, 3);
+    u32 count = TILE_FILL_FIRST;
+
+    for (int i = 0; i < TILE_FILL_ITERS; i++) {
+        call_sub_802FE28_sub_801CF3C(addr, count, 0, 0);
+        addr  += TILE_ROW_ADVANCE;
+        count += TILE_FILL_STEP;
+    }
+
+    if (LD8(r7 + 8) != 1)
+        return count;  /* 0xB398 after five +8 increments */
+
+    /* Conditional BG-map fill */
+    u32 bg_addr = build_fill_src(r7, BGMAP_SRC_BASE, 4, 5);
+    call_sub_802FE28_sub_801CF3C(bg_addr, BGMAP_FILL, 0, 0);
+    return BGMAP_FILL;  /* r1 = 0xB570B398, preserved across the call */
+}
+
+/* sub_801CF3C(r7 = parameter block) -> r1, r2 = 0, r3 = 0 */
+Next sub_801CF3C(void) {
+    R1 = queue_map_fills(R7);
+    R2 = 0;
+    R3 = 0;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_sceneFrameSetup_801DA24 ── */
 /* battle_sceneFrameSetup_801DA24: battle-scene per-frame setup.
  * - stores 0x1F09 into the render info block's Unk_0a halfword,
@@ -2678,6 +2956,104 @@ Next eStruct2035280_DrawMessageMode_801E228(void) {
     R5 = r5_save;
     R6 = r6_save;
     R7 = r7_save;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801E270 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r6, r8, r9, r10, r11, r12; } call_dispatch_801DACC_result_sub_801E270;
+/* register form: generated wrapper: dispatch_801DACC has no typed C interface yet */
+static inline call_dispatch_801DACC_result_sub_801E270 call_dispatch_801DACC_sub_801E270(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(dispatch_801DACC);
+    return (call_dispatch_801DACC_result_sub_801E270){ R6, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r3, r5, r6, r7, r8, r9, r10, r11, r12; bool v; } call_renderTextGfx_8045F8C_result;
+/* register form: generated wrapper: renderTextGfx_8045F8C has no typed C interface yet */
+static inline call_renderTextGfx_8045F8C_result call_renderTextGfx_8045F8C_sub_801E270(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(renderTextGfx_8045F8C);
+    return (call_renderTextGfx_8045F8C_result){ R3, R5, R6, R7, R8, R9, R10, R11, R12, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2; } call_eStruct2035280_SetRequestBits_801BECC_result_sub_801E270;
+/* register form: generated wrapper: eStruct2035280_SetRequestBits_801BECC has no typed C interface yet */
+static inline call_eStruct2035280_SetRequestBits_801BECC_result_sub_801E270 call_eStruct2035280_SetRequestBits_801BECC_sub_801E270(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(eStruct2035280_SetRequestBits_801BECC);
+    return (call_eStruct2035280_SetRequestBits_801BECC_result_sub_801E270){ R1, R2 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r8, r9, r10, r11, r12; } call_dispatch_801DA48_result_sub_801E270;
+/* register form: generated wrapper: dispatch_801DA48 has no typed C interface yet */
+static inline call_dispatch_801DA48_result_sub_801E270 call_dispatch_801DA48_sub_801E270(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(dispatch_801DA48);
+    return (call_dispatch_801DA48_result_sub_801E270){ R0, R1, R2, R3, R8, R9, R10, R11, R12 };
+}
+
+/* Window panel handler for the eStruct2035280 game state.
+ *
+ * If request bit 8 is pending in the state dword at offset 0x40 and the
+ * "visible" flag byte (offset 0xC) is still nonzero (panel not yet
+ * dismissed), dispatch the open request first.  On every path except the
+ * early bail-out, set the panel timer byte to 0x3C, mark visible, render
+ * the script text into the window VRAM region, register the request bit,
+ * and dispatch the display update.
+ *
+ * Returns 0 on the early bail-out, else the final r0 from dispatch_801DA48. */
+static u32 handle_window_panel(void) {
+    u32 state = A_eStruct2035280;
+
+    /* Check if engine request bit 8 (0x100) is pending */
+    if (LD32(state + 0x40) & (1u << 8)) {
+        /* If the visible flag is already cleared, the panel was dismissed – bail */
+        if (LD8(state + 0xC) == 0)
+            return 0;
+        /* Notify the engine that the window-open request was processed */
+        call_dispatch_801DACC_sub_801E270(1u << 8);
+    }
+
+    /* Set the panel countdown timer (byte_203528B) and re-mark as visible */
+    ST8(state + 0xB, 0x3C);
+    ST8(state + 0xC, 1);
+
+    /* Render text script 86F0374 into the window VRAM area at 0x6009560 */
+    call_renderTextGfx_8045F8C_sub_801E270(A_TextScript86F0374,  /* source text       */
+                               0xE,                  /* render kind       */
+                               A_byte_203C4E0,       /* glyph output buf  */
+                               0x6009560,            /* VRAM tile dest    */
+                               0x11,                 /* palette index     */
+                               1,                    /* tile row count    */
+                               A_dword_86B7AE0,      /* tile pattern src  */
+                               0);                   /* layer (BG0)       */
+
+    /* Register the window request bit in the engine request structure */
+    call_eStruct2035280_SetRequestBits_801BECC_sub_801E270(1u << 8);
+
+    /* Dispatch the display update – its r0 is the function's final result */
+    return call_dispatch_801DA48_sub_801E270(1u << 8).r0;
+}
+
+/* sub_801E270() – window panel update, called from the main loop.
+ * Preserves r4-r7 (the original push/pop); outputs r0, r2, r5, r7,
+ * r8-r12 from the final dispatch call. */
+Next sub_801E270(void) {
+    u32 sv4 = R4, sv5 = R5, sv6 = R6, sv7 = R7;
+    u32 result = handle_window_panel();
+    R0 = result;
+    R4 = sv4;
+    R5 = sv5;
+    R6 = sv6;
+    R7 = sv7;
     RETURN_TO_CALLER();
 }
 
