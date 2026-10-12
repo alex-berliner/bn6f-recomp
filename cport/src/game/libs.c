@@ -503,10 +503,13 @@ static void sio32_id_init(void) {
     ST16(A_InterruptMasterEnableRegister, 0);
 
     /* Clear the multiplayer-SIO IRQ bit (bit 8 << multiplayer_id, with the id read from
-     * the save data at dword_2010CCC + 0xA) and the generic SIO IRQ bit 0x80 in IE. */
+     * the save data at dword_2010CCC + 0xA) and the generic SIO IRQ bit 0x80 in IE.
+     * The original's `lsl r1, r0` by a register gives 0 for a shift of 32 or more; C's
+     * << does not (x86 takes the count mod 32), so such an id clears no timer bit here. */
     {
         u32 save_ptr = LD32(A_dword_2010CCC);
-        u32 mask = (8u << LD8(save_ptr + 0xA)) | 0x80u;
+        u32 shift = LD8(save_ptr + 0xA);
+        u32 mask = (shift < 32 ? 8u << shift : 0u) | 0x80u;
         ST16(A_InterruptEnableRegister,
              LD16(A_InterruptEnableRegister) & (u16)~mask);
     }
