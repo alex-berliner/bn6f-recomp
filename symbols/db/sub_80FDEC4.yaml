@@ -1,0 +1,75 @@
+name: sub_80FDEC4
+address: '0x080FDEC4'
+kind: function
+status: confirmed
+summary: Per-BattleObject end-of-turn housekeeping that re-locates the opposing player into the object's sub-block
+  at +0x60, clears one extra var, and records the object's packed panel position.
+interface: void sub_80FDEC4(BattleObject* obj /* r5, with r3/r10 as pass-through context */) ; leaves r0 = obj->PanelX
+  | (obj->PanelY << 4), r1 = obj->PanelY << 4, NZ from that ORR, C clear; preserves r4/r5/r6/r7
+details: 'Reads the AI difficulty tier (battle_getAiDifficultyTier_800FE36, result kept live in r4 as the original
+  does though dead afterwards), calls sub_80FE05C(2) (result held in r6 across the next call, also apparently dead),
+  then finds the player BattleObject on the opposite alliance (battle_findPlayer(obj->Alliance ^ 1)). Calls sub_80CAC58
+  with (player, 2, obj + 0x60), so the callee receives a pointer to the object''s scratch/sub-block at offset 0x60
+  plus argument value 2 — likely refreshing or registering the current opposing player in the object''s AI/target
+  data. Afterwards it zeroes obj->ExtraVars + 4 (second extra var) and stores obj->PanelX | (obj->PanelY << 4) into
+  obj->ExtraVars + 8, a packed X/Y snapshot of the object''s current panel. The r4/r6 values are restored from the
+  stack only to match the original''s liveness, not used meaningfully. The final ORR''s NZ flags and r0/r1 leftovers
+  are caller-visible side effects the contract records.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_80FDEC4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FDEC4
+
+    ./wf verify --function sub_80FDEC4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FDEC4
+
+    ./wf verify --function sub_80FDEC4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FDEC4
+
+    ./wf verify --function sub_80FDEC4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080fdec4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- What sub_80FE05C(2) does and why its result is kept live across battle_findPlayer
+- Purpose of sub_80CAC58(player, 2, obj + 0x60) — AI target refresh? panel/area setup?
+- Meaning of ExtraVars + 4 and + 8 within BattleObject and who consumes the packed panel position
+- Whether the AI difficulty tier read has a hidden effect (or is pure query whose use was optimized away)
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

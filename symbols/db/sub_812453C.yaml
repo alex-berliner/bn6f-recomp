@@ -1,0 +1,80 @@
+name: sub_812453C
+address: '0x0812453C'
+kind: function
+status: confirmed
+summary: Renders the next character of the active chatbox text into the text-box tile buffer and then runs the chatbox
+  follow-up update.
+interface: Next chatbox_renderNextChar_812453C(ChatboxState *r5); // r5 = chatbox/text state pointer in and out
+  (preserved); r10 passed in but unused here; result state of the follow-up call arrives in r8-r12; flags clobbered
+details: 'Clears the "glyph rendered" flag at state+0x0E, then if the chatbox-active flag at state+0x0C is nonzero:
+  reads the 16-bit text-entry index at state+0x14, doubles it (2-byte table entries) to index the text table at
+  unk_201C400, subtracts 0x80 from the byte found there to get the character code, and stores it at state+0x0F.
+  It then calls renderTextGfx_8045F8C with r0=eTextScript201C100 (text script data), r1=charCode, r2=unk_201AA00
+  (glyph/work buffer), r3=0x6007000 (VRAM destination), r4=0xB, r5=3, r6=dword_86A5D60 (font/charset table), r7=0,
+  saving/restoring r4-r7 around the call since the state pointer lives in r5. The call''s return value is stored
+  back into state+0x0E as the render-result flag. Finally it calls sub_8124588 (the next step of the chatbox update)
+  before returning via pop {pc}; r8-r12 on exit are whatever sub_8124588 leaves behind, per the caller contract.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_812453C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812453C
+
+    ./wf verify --function sub_812453C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812453C
+
+    ./wf verify --function sub_812453C --snapshots build-snapshots'
+  result: 27 compared, 0 differed, 1 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812453C
+
+    ./wf verify --function sub_812453C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^0812453c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+related:
+- sub_8124588
+open_questions:
+- Exact meaning of the active flag at state+0x0C and the render-result flag at state+0x0E
+- Purpose of the r10 input the callers pass (not touched by this function itself)
+- What sub_8124588 does with the updated state and why its r8-r12 outputs surface as this function's outputs
+- Semantics of the 0x80 offset applied to table entries at unk_201C400 (charset base?)
+- Meaning of renderTextGfx's fixed arguments r4=0xB and r5=3
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

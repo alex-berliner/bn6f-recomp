@@ -1,0 +1,92 @@
+name: sub_81206C4
+address: '0x081206C4'
+kind: function
+status: confirmed
+summary: Iterates a list of 0x20-byte packed chip entries from newest to oldest and hands each one with a nonzero
+  count to GiveChips.
+interface: void chip_givePackedEntryList_81206C4(ChipEntry* entries /*r0*/, EntryListHeader* header /*r5, preserved*/);
+  /* r10 passed in by callers but unused; count read from header+0x28 */
+details: 'Reads a u16 count from header+0x28. If nonzero, walks the entry array in
+
+  reverse order (starts at entries + (count-1)*0x20, stepping back 0x20 bytes),
+
+  so the most recently added entry is processed first. For each entry it takes
+
+  the u32 at entry+0x1C: its upper halfword (bits 23..16 of the word, i.e.
+
+  bits 7..15 of the low halfword shifted up) is the chip amount, and bits
+
+  22..16 of the word (bits 6..0 of the halfword) are the chip code. If the
+
+  amount is nonzero it calls GiveChips(amount, chipCode, entry+0x14_hi) where
+
+  the third argument is the high halfword of the field at entry+0x14 (likely
+
+  some chip id/type data). Entries with amount 0 are skipped without calling
+
+  GiveChips. Preserves r4-r7; only reads the header, never writes it, so the
+
+  list is not consumed or cleared here.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_81206C4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81206C4
+
+    ./wf verify --function sub_81206C4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81206C4
+
+    ./wf verify --function sub_81206C4 --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 12 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81206C4
+
+    ./wf verify --function sub_81206C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081206c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What structure the 0x20-byte entries belong to (folder, pack, chip trader, or script-placed chip grant list)
+- Meaning of the r2 argument (high halfword of entry+0x14) passed to GiveChips
+- Why callers pass r10 (not referenced by this routine)
+- Significance of iterating the list in reverse order (newest-first)
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

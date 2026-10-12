@@ -1,0 +1,85 @@
+name: sub_8124588
+address: '0x08124588'
+kind: function
+status: confirmed
+summary: Refills a region of background tile block 2, either from a static tile-id table or by letting a helper
+  pick the source, depending on a flag byte in the state struct.
+interface: void sub_8124588(r5 = background state struct); reads r5+0xE flag; preserves r4-r7, returns with r5 unchanged
+details: 'Entry point for redrawing a background area for whatever screen owns the struct passed in r5.
+
+  It always targets tile block 2 (a 32x32-tile background block) with start coordinates j=0xF, i=0xC.
+
+  If the byte at struct+0xE is nonzero, it calls CopyBackgroundTiles with a tile-id table at
+
+  unk_201EBDC and region size 0xB x 6 tiles; if the flag is clear, it makes the same call shape but
+
+  with tileIds = 0 routed through call_sub_3005EBA, which chooses the tile source itself (a
+
+  "default/animated background" variant, likely for empty or standard background tiles).
+
+  The struct at r5 is some per-scene background state; only the +0xE flag byte is touched here.
+
+  No return value; clobbers r0-r3, flags and lr per the ABI of the tail-called helpers.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_8124588
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8124588
+
+    ./wf verify --function sub_8124588 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8124588
+
+    ./wf verify --function sub_8124588 --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 54 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8124588
+
+    ./wf verify --function sub_8124588 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^08124588 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+related:
+- sub_812453C
+open_questions:
+- What game object the r5 struct belongs to (the flag at +0xE's meaning, e.g. "custom background active" vs "default
+  background", is inferred from the two call paths).
+- Exact semantics of call_sub_3005EBA's tileIds = 0 path (which tile source it substitutes).
+- Why the start coords (0xF, 0xC) differ from the region size (0xB, 6); whether the coords are in a larger map space.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

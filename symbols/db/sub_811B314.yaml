@@ -1,0 +1,78 @@
+name: sub_811B314
+address: '0x0811B314'
+kind: function
+status: confirmed
+summary: Starts a requested animation on an object's sprite and hides its shadow, unless the sprite's state byte
+  has the 0x08 flag set.
+interface: void sprite_startAnimNoShadow_811B314(u32 objectId /* r0 */, u32 animId /* r1 */);
+details: 'Takes an object id in r0 and an animation id in r1 (stashed in r4). Looks the object up in the sprite/entity
+  list rooted at 2008450 via getStructFrom2008450, which returns the sprite struct in r1 and signals "not found"
+  through the Z flag. Returns without doing anything if no struct was found, or if the struct''s first byte (a state/flags
+  byte, [r1+0]) has bit 0x08 set — that flag appears to mean "animation locked / don''t touch". Otherwise it calls
+  sprite_setAnimation(animId) on the struct, then sprite_loadAnimationData() to load the new animation''s frame
+  data, then sprite_noShadow() to disable the sprite''s shadow blob, so this is a one-shot "play this animation
+  with no shadow" helper for sprites/effects that float (air attacks, flying enemies, etc.). Leaves r2 = 8 (the
+  mask value tested) and, per the lifter''s caller analysis, r5 holding the sprite struct pointer after the callee
+  chain runs; the function itself preserves r4/r5 on every path.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_811B314
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811B314
+
+    ./wf verify --function sub_811B314 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 245 out of
+    domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811B314
+
+    ./wf verify --function sub_811B314 --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 58 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811B314
+
+    ./wf verify --function sub_811B314 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^0811b314 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- exact meaning of the 0x08 flag in the sprite struct's state byte (guessed "animation locked / skip update")
+- which subsystem owns the 2008450 sprite list (entity list vs. dedicated sprite pool)
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

@@ -1,0 +1,88 @@
+name: sub_8029F70
+address: '0x08029F70'
+kind: function
+status: confirmed
+summary: Returns a yes/no battle condition that is always true in battle mode 8, mode-dependent with veto checks
+  (a battle-effects bit, event flag 163, battle flag 0x40) in modes 0/0xA/0xB, and false in all other modes.
+interface: bool sub_8029F70(void* obj /* r5 */, ... /* r10 passed but unread */); out r0 = 1 if condition met else
+  0; preserves r4, clobbers r1/r3/lr and NZCV via helper calls
+details: 'Reads the current battle mode via GetBattleMode. Mode 8 immediately yields "condition met". Modes 0, 0xA
+  and 0xB yield "met" unless one of three vetoes fires: (1) GetBattleEffects() has bit 0x200000 set; (2) event flag
+  163 (0x63, tested via TestEventFlagFromImmediate) is set AND byte [r5+0x10] is nonzero — note that when the flag
+  is clear the byte at +0x10 is never consulted; (3) battle flag 0x40 (TestBattleFlag_0x40) is set. Any other battle
+  mode returns 0. r5 points at some battle-related object (possibly the player/custom state) whose +0x10 byte acts
+  as a per-instance override tied to event flag 163; the exact game meaning of the condition is not identified from
+  this function alone.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_8029F70
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8029F70
+
+    ./wf verify --function sub_8029F70 --snapshots build-snapshots'
+  result: 'captured calls: 26 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8029F70
+
+    ./wf verify --function sub_8029F70 --snapshots build-snapshots'
+  result: 62 compared, 0 differed, 34 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8029F70
+
+    ./wf verify --function sub_8029F70 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08029f70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What game concept the returned condition represents (a HUD element? a restriction? a special-rule toggle?)
+- What battle modes 8, 0xA and 0xB are, and why mode 8 bypasses all vetoes
+- Which battle-effects flag bit 0x200000 is
+- What battle flag 0x40 means and what field [r5+0x10] holds
+- Why r10 is listed as an input but never read
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

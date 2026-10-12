@@ -1,0 +1,104 @@
+name: sub_80FE0F8
+address: '0x080FE0F8'
+kind: function
+status: confirmed
+summary: Enemy AI attack windup handler — starts the pre-fire animation/timer on first call, then counts it down
+  each frame until handing off to the firing state.
+interface: void sub_80FE0F8(battle object *obj /*r5*/, AIAttackVars *atk /*r7*/); returns next-state value 4 in
+  r1 (callers read r1)
+details: 'Per-call AI attack state machine step for one enemy battle object. r7 points at the
+
+  attack''s AI attack vars block (oAIAttackVars: Unk_00 = current state/next-state,
+
+  Unk_01 = windup-started flag, Unk_10 = windup frame timer).
+
+  If Unk_01 != 0 the windup is already running: decrement the halfword timer Unk_10;
+
+  once it reaches 0, write state 4 (fire) into Unk_00 to hand control to the firing
+
+  handler. Note the in-progress path stores the decrement with strh (halfword) while
+
+  the started flag is stored as a byte.
+
+  On the first call (Unk_01 == 0) it stores 4 into Unk_01 to mark the windup begun,
+
+  then queries the AI data word at offset 0x48 via GetAIDataUnk0x48Flag. If bit 0x20
+
+  is already set (this attack already fired its shot), it skips straight to state 4 in
+
+  Unk_00 without any animation. Otherwise it sets bit 0x20 via SetAIDataUnk0x48Flag
+
+  (presumably the "shot fired this attack" latch so the windup only plays once),
+
+  plays battle object animation 8 (obj->CurAnim = 8, r5), and loads the windup timer
+
+  Unk_10 with 14 frames (0xE).
+
+  Always returns with r1 = 4 (loaded from dword_80FE12C = 0x20 and reused by tst;
+
+  after the mov r0,#4 path r1 is still the literal 4... actually r1 retains 0x20 from
+
+  the literal pool load on paths through loc_80FE126 — callers'' contract lists r1 as
+
+  the only meaningful output either way).
+
+  No flags/registers other than r0, r1, r3, lr and NZCV are clobbered; nothing is
+
+  preserved beyond what the callee ABI guarantees.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_80FE0F8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FE0F8
+
+    ./wf verify --function sub_80FE0F8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FE0F8
+
+    ./wf verify --function sub_80FE0F8 --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 81 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FE0F8
+
+    ./wf verify --function sub_80FE0F8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080fe0f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- exact meaning of bit 0x20 in the AIData 0x48 flag word (assumed "shot already fired")
+- what attack(s) use animation 8 and the 14-frame windup (identity of the enemy/attack)
+- whether r1's outgoing value is actually consumed by callers or just an artifact
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

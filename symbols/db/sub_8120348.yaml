@@ -1,0 +1,83 @@
+name: sub_8120348
+address: '0x08120348'
+kind: function
+status: confirmed
+summary: Fills two spans of a tilemap with the blank text-box tile ((palette<<12)|0x200), then hands the leftover
+  run to a continuation filler.
+interface: void sub_8120348(u32 passthrough, u16 *tilemapDest, u32 palette, s32 runLength, s32 secondRunOffset /*
+  in r4 */) — all registers r0-r7 preserved except that the two helper calls are invoked; contract lists r7 as an
+  output because callers rely on it surviving unchanged.
+details: 'Builds the halfword (palette << 12) | 0x200 — tile 0x200 is the blank text-box tile, so the palette argument
+  just recolors it. Writes that value to two parallel runs of the BG tilemap: runLength (r3) halfwords starting
+  at tilemapDest (r1), and the same count starting at tilemapDest + 2*secondRunOffset (r1 + 2*r4). This is the classic
+  two-halves-of-a-row layout of a text window that wraps around the tilemap. The loop is a do/while (sub/bgt), so
+  even a count of 0 or negative still writes one halfword per run. After the loop it calls sub_804A24C with r0 passthrough,
+  r1 = fill value, r2/r3 = the two end cursors, r4 = the (normally 0) remaining counter, r6 = 0; then calls sub_81202B4
+  with r1 as left by that call, r2/r3 = end cursors, r4 = fill value, r5 = (r4_input - r3_input) remaining length,
+  r6 = 0 — i.e. the continuation filler keeps painting the same blank tile from where the inline loop stopped. Stack
+  slots: [sp]=fill value, [sp+4]=remaining, [sp+8]=original dest, [sp+0xC]=second-run cursor, [sp+0x10]=saved r3.
+  Contains a dead pool literal .word byte_20065C0 (unused leftover), and off_812038C is a literal pool holding 0x200.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_8120348
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8120348
+
+    ./wf verify --function sub_8120348 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 292 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8120348
+
+    ./wf verify --function sub_8120348 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 20 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8120348
+
+    ./wf verify --function sub_8120348 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08120348 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- exact meaning of the r0 value passed through to sub_804A24C
+- what byte_20065C0 (dead literal) originally pointed to
+- whether sub_81202B4 is strictly a continuation of this fill or can be reached independently
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

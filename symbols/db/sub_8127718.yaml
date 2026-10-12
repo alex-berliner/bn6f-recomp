@@ -1,0 +1,97 @@
+name: sub_8127718
+address: '0x08127718'
+kind: function
+status: confirmed
+summary: Prints the next batch of pending characters from the textbox text buffer into the textbox tile area in
+  VRAM, calling the per-character renderer for each slice.
+interface: void chatbox_printPendingChars(TextboxState* r5 /* print state */) — in r5 (textbox print state; r10/lr
+  also carried per caller contract but unused in the body); out r0-r3, r5, r7-r12 clobbered by the calls, r4-r9
+  restored to entry values; flags clobbered
+details: 'r5+0x24 (u16) is the index of the next character to print and r5+0x26 (u16)
+
+  is one past the last pending character in the text buffer byte_201D74C; when
+
+  they are equal there is nothing to do and the function returns immediately.
+
+  Otherwise it renders up to four characters (loop while slice offset <= 0x600,
+
+  i.e. offsets 0x000, 0x200, 0x400, 0x600 — a hard cap of 4 chars per call):
+
+  for each character it reads the code from byte_201D74C[r7]; codes >= 0x40 are
+
+  first passed through sub_8127760 (extended/control-character handling), which
+
+  may rewrite the code before rendering; then sub_8127580 is called with
+
+  r0 = character code, r1 = slice offset (0x200 step), r2 = textbox VRAM base
+
+  0x600A000, r3 = TextScript873EA50, r4 = byte_2019A00 (font/table data), each
+
+  character occupying one 0x200-byte tile slice at successively higher VRAM
+
+  offsets. r7 (char index) advances by 1 and r6 (VRAM slice offset) by 0x200
+
+  each iteration. The routine is a leaf-ish helper: it preserves r4, r5 and r6
+
+  by push/pop even though it uses them as work registers, so callers expect
+
+  those intact. Note the loop condition uses ''<='' on the slice offset, so the
+
+  slice at offset 0x600 is written on the final iteration (4th character).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_8127718
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8127718
+
+    ./wf verify --function sub_8127718 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8127718
+
+    ./wf verify --function sub_8127718 --snapshots build-snapshots'
+  result: 55 compared, 0 differed, 26 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8127718
+
+    ./wf verify --function sub_8127718 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^08127718 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story2
+open_questions:
+- exact role of sub_8127760 for codes >= 0x40 (which codes it remaps, what control/extended glyphs they correspond
+  to)
+- meaning of the byte_2019A00 font/table pointer and TextScript873EA50 passed through to sub_8127580
+- whether callers rely on r10 (listed in the contract inputs) for anything this body ignores
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

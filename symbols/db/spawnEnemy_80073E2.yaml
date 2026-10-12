@@ -1,0 +1,90 @@
+name: spawnEnemy_80073E2
+address: '0x080073E2'
+kind: function
+status: confirmed
+summary: Spawns one enemy battle object from an EnemySetup record, reading its panel position, 12-bit enemy id,
+  and alliance, optionally remapping the id per current battle effects.
+interface: BattleObject *battle_spawnEnemyFromSetup(EnemySetup *setup /* r6 */); also reads r4, r7, r10 context
+  from callers and passes r4/r6/r7 straight through; returns r0, r5 preserved, flags nzcv clobbered
+details: 'Reads an EnemySetup record pointed to by r6: byte +0 bit 0 is the alliance flag (the remaining bits of
+  that byte were consumed by whatever dispatched to this spawner); byte +1 holds the spawn panel, bits 0-2 = panel
+  x and bits 4-7 = panel y, with panel y passed unmasked so a byte with bit 7 set spills into another row (kept
+  as in the original); bytes +2/+3 form a 12-bit enemy id (low byte plus high nibble shifted up by 8) that can reference
+  enemy navis, not just viruses, when > 0xFF. It then calls GetBattleEffects and tests bit 15 (0x8000, dword_8007420);
+  if that bit is clear, the enemy id is first run through sub_800EC80, which may substitute a different id before
+  spawning. Finally calls battle_spawnEnemyObject_800768C(enemy_idx, panel_x, panel_y, alliance, r5=0), whose BattleObject
+  result in r0 plus the passthrough r4/r6/r7 values go back to the caller. r5 is used as a zero-valued 5th argument
+  to the spawner and is restored before returning. r1-r3 and the id are briefly saved on the stack around the GetBattleEffects
+  call.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    spawnEnemy_80073E2
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function spawnEnemy_80073E2
+
+    ./wf verify --function spawnEnemy_80073E2 --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function spawnEnemy_80073E2
+
+    ./wf verify --function spawnEnemy_80073E2 --snapshots build-snapshots'
+  result: 20 compared, 0 differed, 76 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function spawnEnemy_80073E2
+
+    ./wf verify --function spawnEnemy_80073E2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080073e2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- what sub_800EC80 computes (an id remap/substitution, possibly a random-virus or transformation effect)
+- which battle effect sets bit 0x8000 in GetBattleEffects and why it suppresses the remap
+- meaning of the zero 5th argument (r5) to battle_spawnEnemyObject_800768C
+- whether panel_y's unmasked bits 4-7 (including bit 7) are ever intentionally out of range in real setup data
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

@@ -1,0 +1,75 @@
+name: sub_80CAEC8
+address: '0x080CAEC8'
+kind: function
+status: confirmed
+summary: Spawns a type-3 battle object (kind 0x37) on a given panel carrying an element and damage value, inheriting
+  the source object's alliance/direction, e.g. an attack's lingering damage or hit-effect entity.
+interface: 'BattleObject* battle_spawnDamageObjectOnPanel(u32 panelX /*r0*/, u32 panelY /*r1*/, u32 element /*r2*/,
+  BattleObject* source /*r5*/, u32 damage /*r6*/); returns the new object pointer in r5, or the unchanged source
+  pointer in r5 if spawning failed. Flags: Z from object_spawnType3 is consumed (BEQ on failure).'
+details: 'Pushes r0-r2 and r5, sets r0 = 0x37 and calls object_spawnType3, which returns the new object in r5 (or
+  NULL/0 on failure, flagged in Z). On success it fills the new object: PanelX and PanelY (bytes) from r0/r1, Element
+  (byte) from r2, and the 32-bit DamageAndStaminaDamageCounterDisabler field from r6 (a damage value / damage-counter
+  control word). It then copies the 16-bit AllianceAndDirectionFlip halfword from the source object (r5 at entry)
+  so the spawned object faces the same side, and ORs 0x10 into oObjectHeader_Flags, the spawned-this-frame marker
+  used by the object update loop. The popped r5 restores the caller''s source pointer, which doubles as the return
+  value (unchanged on failure, so callers get a usable pointer either way). r4 appears in the caller contract but
+  is never read by the function itself.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_80CAEC8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CAEC8
+
+    ./wf verify --function sub_80CAEC8 --snapshots build-snapshots'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CAEC8
+
+    ./wf verify --function sub_80CAEC8 --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 65 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CAEC8
+
+    ./wf verify --function sub_80CAEC8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080caec8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- What object kind 0x37 actually represents in-game (damage popup, persistent panel hazard, etc.); the field name
+  DamageAndStaminaDamageCounterDisabler suggests a damage-bearing entity.
+- Whether callers always pass a valid source object; behavior reads through r5's alliance halfword unconditionally
+  on success.
+- Why r4 is listed as an input when the body never uses it.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

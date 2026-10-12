@@ -1,0 +1,73 @@
+name: sub_80C9726
+address: '0x080C9726'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current-action handler via a small jump table, then clears the object's "busy"
+  flag unless the action should keep running (alliance check or related object's 0x100000 AI flag).
+interface: void battle_runObjectActionHandler_80C9726(BattleObject* obj /* r5 */); // r10 passed in by callers per
+  contract but unused here; r5 preserved, many caller regs clobbered (r0-r4, r6-r7, r8-r12, flags)
+details: "Takes the battle object in r5, reads its oBattleObject_CurAction byte, and calls one of two\naction handlers\
+  \ through off_80C976C (action 0 -> sub_80C9774, action 1 -> sub_80C97B4);\nthe handler is invoked with r0 = action\
+  \ index and r1 = its own table entry (self pointer,\na common trampoline idiom). After the handler returns, bit\
+  \ 0x02 of oObjectHeader_Flags is\nset, marking the object as busy/acting. The busy bit is then cleared again when\
+  \ either:\n  - sub_800EB6C(alliance) returns 0 (alliance check fails), or\n  - the object pointed to by oBattleObject_RelatedObject1Ptr\
+  \ reports flag 0x100000 from\n    GetAIDataUnk0x48Flag (checked via tst with dword_80C9808 = 0x100000).\nSo the\
+  \ busy flag only survives when the object passes the alliance test AND the related\nobject's AI data lacks flag\
+  \ 0x100000. r5 is saved/restored around the related-object lookup,\nsince the call clobbers it. Works on the standard\
+  \ battle object layout (oObjectHeader_Flags,\noBattleObject_CurAction, oBattleObject_Alliance, oBattleObject_RelatedObject1Ptr).\n\
+  \nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_80C9726
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C9726
+
+    ./wf verify --function sub_80C9726 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C9726
+
+    ./wf verify --function sub_80C9726 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 39 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C9726
+
+    ./wf verify --function sub_80C9726 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, story8, story9.'
+  reproduce: grep -l '^080c9726 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles1
+- battles2
+- story8
+- story9
+open_questions:
+- exact meaning of the busy flag bit 0x02 in oObjectHeader_Flags (acting? input-locked?)
+- what sub_800EB6C's alliance check actually compares (r5's Alliance field vs. some global state)
+- the semantic of AI-data flag 0x100000 in the related object that forces the action to end
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

@@ -1,0 +1,82 @@
+name: sub_812068C
+address: '0x0812068C'
+kind: function
+status: confirmed
+summary: Searches a row-based lookup table for a packed position, fires a handler (with the row index bumped by
+  0x16) when a hit is found, then re-searches with the hit's index shifted down by 8.
+interface: int sub_812068C(int value, int row, int arg2, int arg3) — returns whatever sub_81205C0 leaves in r0 on
+  the second call; NZCV flags come from that same final call; r4-r7 preserved.
+details: 'Wraps two calls to sub_81205C0, which is queried as (value, row, arg2, 1) and returns a packed 32-bit
+  position whose negative result means "no hit" (checked with tst/blt). On a hit, sub_802FE28 is called as (hit,
+  row + 0x16, 0, 1) — the +0x16 (22) row offset suggests the handler targets a related but distinct row/entry, and
+  the constant 1 in the last argument of every call looks like an enable/count flag. The hit itself is repacked
+  before the second search: the low halfword is kept verbatim, while the high halfword (arithmetic, so it stays
+  signed) is incremented by 8 — the second query therefore starts 8 entries past the previous hit, with arg3 substituted
+  for value as the new search key. The final NZCV state seen by callers is simply whatever sub_81205C0 leaves behind;
+  r0-r6 are all effectively call-clobbered outputs.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_812068C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812068C
+
+    ./wf verify --function sub_812068C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 65 out of
+    domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812068C
+
+    ./wf verify --function sub_812068C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812068C
+
+    ./wf verify --function sub_812068C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^0812068c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+related:
+- sub_8117CD4
+open_questions:
+- exact role of sub_81205C0 (table/row search? text or menu cursor lookup?) and the meaning of its packed return
+  value's two halfwords
+- what sub_802FE28 does with (hit, row+0x16, 0, 1) — likely an advance/select callback, but unverified
+- why the high halfword is advanced by exactly 8 and why arg3 replaces value in the second query
+- which game system supplies value/row/arg2/arg3 (callers were analyzed only via the register contract)
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

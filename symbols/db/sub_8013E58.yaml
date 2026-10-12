@@ -1,0 +1,90 @@
+name: sub_8013E58
+address: '0x08013E58'
+kind: function
+status: confirmed
+summary: Reads the battle object's alliance navi stats byte 0x1A and dispatches one of nine handlers from a table,
+  randomizing among entries 1-4 or 5-8 when the byte is 9 or 10.
+interface: void sub_8013E58(r5, r10); r5/r10 passed through to callees, r4 = 0 or 4 (half selector) on tail-call,
+  r1 = table base; r4 preserved for caller
+details: 'First calls GetBattleEffects and, only if bit 3 (0x8) of the result is clear, GetBattleMode — but both
+  results are discarded; the two branches merge at loc_8013E6C, so these reads have no effect on control flow (likely
+  leftover or debug gating). It then calls GetBattleNaviStatsByte_AllianceFromBattleObject with r1=0x1A to fetch
+  the partner/alliance navi''s stats byte 0x1A. Byte value 9 or 10 is special-cased: r4 is set to 0 (for 9) or 4
+  (for 10) and the RNG is called, taking (RNG & 3) + r4 + 1 as the table index, i.e. a random entry among indices
+  1-4 or 5-8 respectively. Any other value indexes the table directly with r4 = 4. The handler address is loaded
+  from off_8013E9C (nine entries: nullsub_45, sub_8013EC2 .. sub_8013F14) and invoked via `mov lr, pc; bx r0` with
+  r1 holding the table base, r4 the half selector, and r5/r10 passed through unchanged; the handler returns straight
+  back to this function''s caller (pop {r4,pc}), so r4 is preserved across the whole call. The purpose of the per-byte
+  handlers (status effects? beast/cross upkeep per alliance navi state?) is not yet determined.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_8013E58
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8013E58
+
+    ./wf verify --function sub_8013E58 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8013E58
+
+    ./wf verify --function sub_8013E58 --snapshots build-snapshots'
+  result: 33 compared, 0 differed, 62 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8013E58
+
+    ./wf verify --function sub_8013E58 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08013e58 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- what stats byte 0x1A of the alliance navi actually means in game terms
+- why byte values 9 and 10 pick a random handler and what the 0/4 half selector (r4) means to the callees
+- whether the GetBattleEffects/GetBattleMode preamble is dead code or intended to gate something
+- what each of the nine table handlers does
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

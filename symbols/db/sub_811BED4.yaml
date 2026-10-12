@@ -1,0 +1,75 @@
+name: sub_811BED4
+address: '0x0811BED4'
+kind: function
+status: confirmed
+summary: Looks up a record in the shared structure pool and stamps its status byte (offset 0) with 0x23 or 1 depending
+  on the record's kind byte.
+interface: void struct_setRecordStatusByKind_811BED4(u32 id /* r0 */, void* poolArg /* r1, replaced with the resolved
+  record pointer by getStructFrom2008450 */); returns nothing in r0-r3 (r0 ends holding the written status value),
+  Z flag from the lookup tells callers "record not found"; r4-r7 preserved (callers read back r5/r7)
+details: "Saves the id (r0) in r4, moves the original r1 into r0 and calls getStructFrom2008450, which resolves\
+  \ the record in the pool at 0x2008450 and updates r1 to point at it. If the record is not found (Z set), the function\
+  \ returns without writing anything. Otherwise it writes a status byte to record+0x00: - default value 1; - 0x23\
+  \ when id != 0 AND the record's kind byte at record+0x0C indexes a non-zero\n  entry of byte_811BF94 (a 35-entry\
+  \ lookup table whose non-zero values are\n  0x49..0x53 and 0x90..0x92, so kinds like 1..0x0B and 0x0C, 0x11, 0x14,\
+  \ 0x17, 0x1D..0x21\n  qualify);\n- 1 otherwise (id == 0, or kind maps to 0 in the table, or kind is out of the\
+  \ table's range). The data pool around this function (byte_811BF0C all-zero, byte_811BFB6, byte_811BFD8, off_811C010\
+  \ with handlers sub_811C01C/sub_811C07C/sub_811C084) suggests this is part of a table-driven record/task subsystem;\
+  \ byte_811BF94 reads like a \"kind -> special status/type\" map, so 0x23 likely marks records of particular kinds\
+  \ (e.g. special NPCs or interactables) while everything else is flagged as 1 (ordinary). Note the byte write at\
+  \ record+0 only happens for records that exist; missing ids are silently ignored.\n\nRegister form, old prompt;\
+  \ queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_811BED4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811BED4
+
+    ./wf verify --function sub_811BED4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 180 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811BED4
+
+    ./wf verify --function sub_811BED4 --snapshots build-snapshots'
+  result: 40 compared, 0 differed, 56 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811BED4
+
+    ./wf verify --function sub_811BED4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^0811bed4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+- story2
+open_questions:
+- what game-side entity the 0x2008450 pool records represent (NPCs, tasks, triggers?)
+- what status 0x23 means downstream (likely a special state/flag consumed by the record's handlers)
+- why id 0 is explicitly forced to status 1 even if its kind maps into byte_811BF94
+- which callers rely on the outgoing Z flag vs. the pass-through r5/r7 values
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

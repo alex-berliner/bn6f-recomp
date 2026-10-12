@@ -1,0 +1,77 @@
+name: submenu_subchip_dispatch_8124144
+address: '0x08124144'
+kind: function
+status: confirmed
+summary: Per-frame dispatcher for the sub-chip folder submenu; yields to any active chatbox and otherwise calls
+  the mode-selected step handler.
+interface: void submenu_subchip_perFrameDispatch_8124144(struct UnkSubMenu* state /* r5 */)
+details: 'Runs once per frame for the sub-chip folder submenu, with the menu state struct in r5. If the struct is
+  flagged active (+0x11 bit 0), it skips the chatbox checks and goes straight to the dispatch. Otherwise it defers
+  to the chatbox: while global flag 0x80 of eFlags2009F38 (chatbox visible) is clear it does nothing; while flag
+  0x10 (chatbox opening/transitioning) is set, or while chatbox_GetState_8045F4C reports the chatbox state machine
+  busy (nonzero), it writes state 4 (the "hold/wait" state) to state->+2 and returns. Note the asymmetry: flag 0x20
+  (chatbox awaiting input) must be clear to reach the state check but the state check itself then blocks until it
+  finishes. Once clear to proceed, it reads state->mode (+3), which stores a byte offset into the jump table jt_8124188
+  rather than a small case index (valid values 0, 4, 8, 0xC, 0x10, 0x14), loads the handler address from jt_8124188[mode],
+  and tail-calls it with r0 = &jt_8124188 and r1 = the mode byte (state still in r5) via the classic mov lr, pc;
+  bx r0 Thumb call. Handlers: modes 0 and 4 both go to submenu_subchip_81241A0, mode 8 to submenu_subchip_8124230,
+  0xC to submenu_subchip_812425C, 0x10 to submenu_subchip_812427C, 0x14 to submenu_subchip_81242AC. Returns without
+  dispatching when the menu is inactive and no chatbox is on screen (no state write in that case).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    submenu_subchip_dispatch_8124144
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function submenu_subchip_dispatch_8124144
+
+    ./wf verify --function submenu_subchip_dispatch_8124144 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 240 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function submenu_subchip_dispatch_8124144
+
+    ./wf verify --function submenu_subchip_dispatch_8124144 --snapshots build-snapshots'
+  result: 43 compared, 0 differed, 42 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function submenu_subchip_dispatch_8124144
+
+    ./wf verify --function submenu_subchip_dispatch_8124144 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: fuzz, menus3.'
+  reproduce: grep -l '^08124144 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33.c
+coverage:
+- fuzz
+- menus3
+open_questions:
+- Meaning of the individual mode values (0, 4, 8, 0xC, 0x10, 0x14) in the submenu state machine; modes 0 and 4 share
+  one handler.
+- Exact game meaning of the chatbox flags 0x80/0x10/0x20 tested against eFlags2009F38 (naming inferred from the
+  mask helper).
+- Why the inactive case (menu inactive, no chatbox) returns without forcing state 4, unlike the busy-chatbox cases.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

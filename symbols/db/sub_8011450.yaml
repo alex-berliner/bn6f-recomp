@@ -1,0 +1,101 @@
+name: sub_8011450
+address: '0x08011450'
+kind: function
+status: confirmed
+summary: Dispatches a per-AI-type "actor finished" handler for a battle object, usually ending the actor's current
+  animation.
+interface: void battle_RunObjectActorEndHandler_8011450(BattleObject* obj /* r5 */); clobbers r0-r4, r6-r12, flags,
+  lr; r1/r2 still hold aiIndex/aiDataPtr on the actorType==0 early return
+details: 'Called with the battle object in r5. Loads the object''s AI data pointer
+
+  (oBattleObject_AIDataPtr), reads oAIData_ActorType and oAIData_AIIndex, and
+
+  returns immediately if the actor type is 0 (no actor attached). Otherwise it
+
+  indexes the ROM jump table at off_8011470 with aiIndex*4 and does a long-blx
+
+  (mov lr, pc / bx r1) into the handler, passing r0 = the object''s
+
+  RelatedObject2 pointer. Handlers are mostly battle_EndObjectCurrentAnim_80C44D2
+
+  (AI indices 0, 1, 9, 13, 16, 18, 19), two bespoke handlers (sub_80FF668 for
+
+  AI index 14, sub_80C46B6 for AI index 24), and nullsub_43 no-ops for the rest.
+
+  Quirks: an AI index >= 25 reads past the table end (undefined jump target in
+
+  the original); r5 is used as the object pointer rather than r0, so callers
+
+  must set it up beforehand; the callee address is also left in r1 as a
+
+  side effect.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_8011450
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8011450
+
+    ./wf verify --function sub_8011450 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8011450
+
+    ./wf verify --function sub_8011450 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 90 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8011450
+
+    ./wf verify --function sub_8011450 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08011450 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact meaning of each AI index value
+- what sub_80FF668 and sub_80C46B6 do beyond ending the animation
+- which pointer RelatedObject2 holds in game terms
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

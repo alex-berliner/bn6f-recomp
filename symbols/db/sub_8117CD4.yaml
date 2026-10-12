@@ -1,0 +1,79 @@
+name: sub_8117CD4
+address: '0x08117CD4'
+kind: function
+status: confirmed
+summary: Draws the menu cursor/highlight sprite for the active menu, sliding it horizontally with the menu's scroll
+  value and picking a highlighted tile variant when the selection matches the current entry.
+interface: void sub_8117CD4(void); // reads no incoming registers (only lr); returns sub_812068C's r0-r3 and flags
+details: "Chooses which menu state block to read: if the shared submenu is open\n(submenu_isOpen_81355D8, Z flag\
+  \ set on yes) it uses sSubmenu, otherwise it\nasks sub_81312F4 for the current menu object and uses the pointer\
+  \ in r0.\nFrom the chosen block it reads:\n  - byte  at menu+0x17 (selection/cursor index) -> r0\n  - half  at\
+  \ menu+0x1E (current entry/index)    -> r3\n  - s16   at menu+0x18 (scroll offset)          -> shifted left by\
+  \ 19\nIt then calls sub_812068C with:\n  r0 = selection byte\n  r1 = 0x5140 if selection == entry, else 0x6140\
+  \ (tile/attr pair differing\n       by 0x1000, i.e. a highlighted vs normal cursor tile)\n  r2 = 0xC08003 - (scroll\
+  \ << 19); the x coordinate field sits at bit 19,\n       so the base x is 24 px and moves left as the menu scrolls\
+  \ right\n  r3 = entry halfword\nsub_812068C presumably submits this as an OAM/sprite entry. r7 is saved and\n\
+  restored around the calls (it is only used to hold the menu block pointer);\nr4-r6 are untouched despite being\
+  \ listed as preserved. Return state is\nwhatever sub_812068C leaves in r0-r3 and the flags.\n\nRegister form,\
+  \ old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_8117CD4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8117CD4
+
+    ./wf verify --function sub_8117CD4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 30 out of
+    domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8117CD4
+
+    ./wf verify --function sub_8117CD4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8117CD4
+
+    ./wf verify --function sub_8117CD4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08117cd4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+related:
+- sub_812068C
+open_questions:
+- exact meaning of the byte at menu+0x17 vs halfword menu+0x1E (cursor index vs entry id)
+- which menu object sub_81312F4 returns when no submenu is open
+- what sub_812068C does with r3 (entry halfword)
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962

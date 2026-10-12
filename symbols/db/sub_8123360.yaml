@@ -1,0 +1,85 @@
+name: sub_8123360
+address: '0x08123360'
+kind: function
+status: confirmed
+summary: Returns whether the currently selected PET navi counts as present for overworld HUD/dialogue behaviour.
+interface: bool isPetNaviPresent(Toolkit* r10) -> r0; preserves r4; clobbers r0 r1 r3 lr and flags
+details: 'Reads the currently selected navi via GetCurPETNavi() (r0). A navi counts as present when one is selected
+  (result != 0) OR the "navi gone" story event EVENT_172A is not set — i.e. even with no navi selected the game
+  treats the navi as around unless the story event that removed it has fired. If present, the function then loads
+  the GameState pointer from toolkit + oToolkit_GameStatePtr and reads GameState + oGameState_MapGroup: on special
+  areas with mapGroup >= 0x80 the result stays TRUE, but on normal maps (mapGroup < 0x80) the result is instead
+  the state of event flag EVENT_PET_NAVI_ACTIVE, so the navi only counts as present while that flag is up. Result
+  is returned in r0 (TRUE=1/FALSE=0 via r4 scratch). Flag ids are passed to TestEventFlagFromImmediate split as
+  high byte in r0, low byte in r1, with "flag set" reported by the Z flag being clear.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-121255);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 27' --file inbox_farm_old_27.c
+    sub_8123360
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8123360
+
+    ./wf verify --function sub_8123360 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121255-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8123360
+
+    ./wf verify --function sub_8123360 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121255-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8123360
+
+    ./wf verify --function sub_8123360 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121255-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08123360 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 8b15962
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact in-game meaning of EVENT_172A (presumed the story moment where the navi leaves/is lost)
+- Which special areas have mapGroup >= 0x80 and why they skip the EVENT_PET_NAVI_ACTIVE check
+- Callers not examined, so the exact HUD/dialogue use of the result is inferred
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-121255
+- recomp 8b15962
