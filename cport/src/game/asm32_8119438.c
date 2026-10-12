@@ -2598,6 +2598,172 @@ Next sprite_setPositionByStructIndex_811BDFC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811BE1C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6; } call_initGuiSprite_8002770_result;
+/* register form: generated wrapper: initGuiSprite_8002770 has no typed C interface yet */
+static inline call_initGuiSprite_8002770_result call_initGuiSprite_8002770(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(initGuiSprite_8002770);
+    return (call_initGuiSprite_8002770_result){ R4, R5, R6 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result call_sprite_loadAnimationData(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r2; } call_sprite_setSubEntryPaletteBank_800304A_result;
+/* register form: generated wrapper: sprite_setSubEntryPaletteBank_800304A has no typed C interface yet */
+static inline call_sprite_setSubEntryPaletteBank_800304A_result call_sprite_setSubEntryPaletteBank_800304A(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+    return (call_sprite_setSubEntryPaletteBank_800304A_result){ R2 };
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNavi_result;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result call_GetCurPETNavi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result){ R0, R3 };
+}
+
+typedef struct { u32 r0; } call_GetCurPETNaviStatsByte_result;
+/* register form: generated wrapper: GetCurPETNaviStatsByte has no typed C interface yet */
+static inline call_GetCurPETNaviStatsByte_result call_GetCurPETNaviStatsByte(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (call_GetCurPETNaviStatsByte_result){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: generated wrapper: slotList_storeHalfwordAndClearField_800306C has no typed C interface yet */
+static inline void call_slotList_storeHalfwordAndClearField_800306C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+typedef struct { u32 r2; } call_sprite_setPriority_8002E14_result;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result call_sprite_setPriority_8002E14(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result){ R2 };
+}
+
+/* register form: generated wrapper: sprite_setSubRecordFieldA_8003060 has no typed C interface yet */
+static inline void call_sprite_setSubRecordFieldA_8003060(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setCoordinates_result;
+/* register form: generated wrapper: sprite_setCoordinates has no typed C interface yet */
+static inline call_sprite_setCoordinates_result call_sprite_setCoordinates(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(sprite_setCoordinates);
+    return (call_sprite_setCoordinates_result){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Initialize (or stamp) the GUI sprite for the given slot.
+ *  r0 = slot index, r5 = sprite record, r3_in = caller's r3, returned unchanged on early return.
+ *  Returns r3 set by sprite_setCoordinates on the full path. */
+static u32 init_pet_navi_sprite(u32 slot_index, u32 sprite_record, u32 r3_in) {
+    /* Mark the sprite record as "entered" (state 1). */
+    ST8(sprite_record + 0, 1);
+
+    /* Look up the sprite-type table for this slot. If zero, the slot has no entry;
+     * return with r3 preserved from the caller. */
+    u32 table_val = LD8(A_byte_811BF94 + slot_index);
+    if (table_val == 0)
+        return r3_in;
+
+    /* Bring up the GUI sprite shell. The sprite type comes from the table, the flag is 1. */
+    call_initGuiSprite_8002770(table_val, 1, sprite_record);
+
+    /* Mark the sprite record as fully initialized (state 0x23). */
+    ST8(sprite_record + 0, 0x23);
+
+    /* Set animation 0, pull in the frame data, disable the shadow, set palette bank 4. */
+    call_sprite_setAnimation(0, sprite_record);
+    call_sprite_loadAnimationData(sprite_record);
+    call_sprite_noShadow(sprite_record);
+    call_sprite_setSubEntryPaletteBank_800304A(4, sprite_record);
+
+    /* Pick the palette index from the kind byte at sprite_record+0xC.
+     *   - kind 0x17 is the current PET Navi: ask the live Navi for stats byte 0x0E. If the
+     *     Navi has no data (0xFF), use the "no data" palette (0x0C); otherwise look the
+     *     palette up in the table at index 0x17.
+     *   - any other kind: look the palette up directly at offset = kind. */
+    u8 kind = LD8(sprite_record + 0xC);
+    u8 palette_index;
+    if (kind == 0x17) {
+        u8 navi = call_GetCurPETNavi().r0;
+        u8 stat_byte = call_GetCurPETNaviStatsByte(navi, 0xE).r0;
+        if (stat_byte == 0xFF) {
+            palette_index = 0x0C;
+        } else {
+            palette_index = LD8(A_byte_811BFD8 + 0x17);
+        }
+    } else {
+        palette_index = LD8(A_byte_811BFD8 + kind);
+    }
+    call_sprite_setPalette(palette_index, sprite_record);
+
+    /* Stash a magic halfword (0x120) in the slot list, then set BG priority to 2. */
+    call_slotList_storeHalfwordAndClearField_800306C(0x120, sprite_record);
+    call_sprite_setPriority_8002E14(2, sprite_record);
+
+    /* Sub-record field A holds a per-kind visual variant. Re-read kind — intervening
+     * sprite helpers may have modified sprite_record+0xC. */
+    u8 kind2 = LD8(sprite_record + 0xC);
+    call_sprite_setSubRecordFieldA_8003060(LD8(A_byte_811BFB6 + kind2), sprite_record);
+
+    /* Coordinates come from a packed (x, y) s16 table indexed by kind. Re-read kind. */
+    u8 kind3 = LD8(sprite_record + 0xC);
+    u32 xy_base = A_byte_811BF0C + ((u32)kind3 << 2);
+    s16 x = (s16)LDS16(xy_base);
+    s16 y = (s16)LDS16(xy_base + 2);
+    /* ldrsh sign-extends, so cast through s32 to u32. */
+    return call_sprite_setCoordinates((u32)(s32)x, (u32)(s32)y, sprite_record).r3;
+}
+
+Next sub_811BE1C(void) {
+    R3 = init_pet_navi_sprite(R0, R5, R3);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_checkStatusFlag_811BE90 ── */
 /* object_checkStatusFlag_811BE90(r5 = object/state pointer):
  * Check a byte-sized status flag indexed by the value at [r5+0xC] against the
