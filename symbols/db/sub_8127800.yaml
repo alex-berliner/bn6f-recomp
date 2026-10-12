@@ -1,0 +1,73 @@
+name: sub_8127800
+address: '0x08127800'
+kind: function
+status: confirmed
+summary: Scans 13 paired event flags; sets EVENT_F7 if any pair has either flag set.
+interface: void checkStoryFlagPair_8127800(void /* uses r10, lr trivially */)
+details: "Iterates two parallel 13-entry flag tables (group_a at 0x8127834, group_b at 0x812787C)\nwith stride 4\
+  \ (u32 entries). For each index i, it tests group_a[i] via TestEventFlag;\nif set, or if group_b[i] is set (tested\
+  \ on ZF fall-through), it calls\nSetEventFlagFromImmediate(EVENT_F7) and exits the loop. If neither flag of the\
+  \ pair is\nset the loop advances (r6 += 4) until i >= 0x34 (i.e. 13 entries).\ngroup_a entries (story/social gates):\
+  \ 0x321, 0x327, 0x32D, 0x333, 0x339, 0x345, 0x34B,\n    0x351, 0x357, 0x35D, 0x33F, 0x369, 0x303.\ngroup_b entries\
+  \ (completion/chip-link gates, 0xAC..0xB8 inclusive, 13 entries starting\n    at 0xAC then 0xAD..0xB8).\nThe mnemonic\
+  \ 'EVENT_F7' is the literal event flag id 0xF7 set via the immediate variant\nSetEventFlagFromImmediate (bits\
+  \ 0/1 are the immediate flag-id in r1).\nCaller's r10/lr are preserved across the call; r5 is initialized to 0\
+  \ and r6 to the table\noffset cursor (preserved on return per the register contract). No NV clobbered register\n\
+  other than the standard scratch set (r0/r1/r3/lr plus nzcv from TestEventFlag).\n\nRegister form, old prompt;\
+  \ queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205827);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 15' --file inbox_farm_old_15.c
+    sub_8127800
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8127800
+
+    ./wf verify --function sub_8127800 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-205827-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8127800
+
+    ./wf verify --function sub_8127800 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-205827-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8127800
+
+    ./wf verify --function sub_8127800 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205827-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^08127800 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp d77f7f1
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story2
+open_questions:
+- Exact game meaning of EVENT_F7 (likely a "story pack unlocked" / "access granted" sentinel whose check this function
+  computes on demand).
+- Whether group_a's irregular ordering (0x33F, 0x369, 0x303 tucked in late) reflects story branch ordering rather
+  than a contiguous range.
+- Whether the function is called once at boot, per area transition, or from a save-load hook (its linkage and surrounding
+  callers in the caller list would disambiguate).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205827
+- recomp d77f7f1

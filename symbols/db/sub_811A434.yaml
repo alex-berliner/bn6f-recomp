@@ -1,0 +1,75 @@
+name: sub_811A434
+address: '0x0811A434'
+kind: function
+status: confirmed
+summary: Initialise a slot-list icon sprite in the submenu, picking sprite/animation art from the submenu mode and
+  slot flag, then queue the next state step.
+interface: void submenuSpriteSlot_init_811A434(u8* slot /* r5 */, void* scratch /* r10 */); clobbers r0-r3,r8,r9,r11,r12,lr;
+  preserves r4,r6,r7; flags NZCV trashed
+details: 'Writes sprite-id 0x23 into slot->kind (offset 0). Picks the sprite kind byte (0x24 or 0x23) and the GUI
+  art descriptor (A_byte_20231A0 or A_eGuiSprite2022AA0) from a 2-level decision: submenu mode byte at sSubmenu+1
+  == 0x1C and the slot''s flag byte (offset 4). Builds the GUI sprite via initGuiSprite_8002770, mirrors slot->anim
+  (offset 5) into offset 0xC, then calls sprite_setAnimation, sprite_loadAnimationData and sprite_noShadow. Sets
+  palette 0 and priority 2 (sprite_setPalette, sprite_setPriority_8002E14). Looks up a u32 in the ROM table at byte_811A4BC
+  indexed by the slot flag byte and forwards it to slotList_storeHalfwordAndClearField_800306C. Looks up a byte
+  in the ROM table at 0x100 (off_811A4D8) indexed by the slot flag byte and forwards it to sprite_setSubEntryPaletteBank_800304A.
+  Calls sprite_setSubRecordFieldA_8003060 with 3, then sub_811A5BC, then sub_811A640 only when slot->flag != 0.
+  Writes 4 into slot->flags2 (offset 8) and tail-calls sub_811A4DC as the next-state handler.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205827);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 15' --file inbox_farm_old_15.c
+    sub_811A434
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811A434
+
+    ./wf verify --function sub_811A434 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-205827-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811A434
+
+    ./wf verify --function sub_811A434 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 16 out of domain (verify run convert-20261011-205827-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811A434
+
+    ./wf verify --function sub_811A434 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205827-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0811a434 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp d77f7f1
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- menus3
+open_questions:
+- What does the "0x1C" submenu mode select (likely a sub-screen variant such as the Beast-Out/Soul-Unison change
+  screen).
+- Which of the two tied (byte_20231A0, eGuiSprite2022AA0) branches correspond to the non-0x1C submenu vs. the 0x1C
+  submenu — the C version keeps both assignments identical for control-flow fidelity, so the actual chosen art is
+  ambiguous.
+- 'Meaning of slot->flags2 = 4: state phase marker for the slot icon (e.g. ready / shown).'
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205827
+- recomp d77f7f1

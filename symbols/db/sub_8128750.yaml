@@ -1,0 +1,76 @@
+name: sub_8128750
+address: '0x08128750'
+kind: function
+status: confirmed
+summary: 'Initialise a screen/scene: clear VRAM/OAM, set up render info and state block, run sub-init helpers, and
+  start a screen fade from black.'
+interface: void sub_8128750(void) // uses r5 (state struct ptr), r10 (toolkit ptr)
+details: "Entry-point style \"init\" function for a non-battle screen (called from the\ngame's main state machine;\
+  \ identified in the readable-C comment as a\ntitle/screen init). Steps performed in order:\n  1. Clears all GBA\
+  \ video buffers: zeroFillVRAM (tile/map VRAM), the\n     small byte buffer at 0x03001960, and the GFX buffer at\
+  \ 0x030025C0\n     (sprite/OAM equivalent).\n  2. Calls sub_80015FC with r0 = 0x10 (likely a \"scene/stage\" selector\n\
+  \     in a generic setup helper).\n  3. Reads render-info pointer via oToolkit_RenderInfoPtr off the\n     toolkit\
+  \ struct pointed to by r10. Writes 0x1F40 to the tile-base\n     field and zeros the six 16-bit slot/offset fields\
+  \ at offsets\n     +0x10..+0x1A.\n  4. Initialises the r5-pointed state struct: byte +0x01 = 4 (state\n     phase),\
+  \ byte +0x02 = 0 (timer), bytes +0x0F and +0x10 cleared,\n     halfwords +0x22 and +0x26 and byte +0x0E seeded\
+  \ with 0xFF\n     (typical \"no object / unused\" sentinel for slot indices).\n  5. Calls four sub-initialisers\
+  \ in turn: sub_81288FC, sub_81289C4,\n     sub_8128A44, sub_8128AB0, sub_8128B34 (sub_81288FC interleaved\n  \
+  \   with the r5 writes).\n  6. Kicks off SetScreenFade(8, 0x10) - 8-step fade from black using\n     palette bank\
+  \ 0x10.\nClobbers nz/c/v plus r0,r1,r2,r3,r7,lr; preserves r4,r5,r6,r8,r9.\nSaves only lr; tail-pops pc, so it\
+  \ is a leaf-style init that returns\ndirectly to its caller (the main loop / state machine).\n\nRegister form,\
+  \ old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205827);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 15' --file inbox_farm_old_15.c
+    sub_8128750
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8128750
+
+    ./wf verify --function sub_8128750 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-205827-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8128750
+
+    ./wf verify --function sub_8128750 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-205827-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8128750
+
+    ./wf verify --function sub_8128750 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205827-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08128750 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp d77f7f1
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Exact identity of the screen this initialises (title, ending, etc. - the readable-C comment says "battle/title"
+  but the chosen name should be confirmed by tracing callers).
+- Meaning of the 0x1F40 tile base and the six zeroed slot offsets in the render-info block.
+- Which sub-init helper (sub_81288FC vs sub_81289C4/.../sub_8128B34) sets up what; they may each handle a layer/background/sprite
+  group.
+- Whether sub_80015FC's 0x10 argument is a scene id or palette/VRAM bank.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205827
+- recomp d77f7f1

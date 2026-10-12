@@ -1,0 +1,86 @@
+name: sub_8117E60
+address: '0x08117E60'
+kind: function
+status: confirmed
+summary: Picks a battle sprite's animation index from its and the object's facing/lane, swaps it in if changed,
+  then runs the per-frame sprite update.
+interface: void sub_8117E60(void *battleSprite /* r5 */, void *battleObj /* r7 */); clobbers r0,r1; r2/r3 returned
+  via sprite_update; NZCV clobbered
+details: 'Operates on a battle sprite struct at r5 and a battle object/state struct at r7.
+
+  Reads sprite fields: +3 = current facing, +4 = base anim index, +0xC = current anim
+
+  index. Reads object fields: +0xD = object facing (0..3, where 2 means "same row
+
+  /long-range") and +0x21 = some boolean flag (only checked when facing >= 2).
+
+  Logic: if the object''s facing lane (facing>>1) matches the sprite''s facing lane,
+
+  use the sprite''s base anim; if the object''s facing is neither 2 nor 0, bump to
+
+  base+1. Otherwise (opposite lane) use base+5, or base+6 when facing >= 2 and the
+
+  flag at +0x21 is set (i.e. long-range 2-laner facing a same-row target).
+
+  Only when the resolved anim index differs from the sprite''s current anim index
+
+  at +0xC does it call sprite_setAnimation(u8), sprite_loadAnimationData(), and
+
+  sprite_noShadow() to switch animations and clear the shadow; otherwise it just
+
+  calls sprite_update(). The r2/r3 outputs in the contract come from sprite_update.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205827);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 15' --file inbox_farm_old_15.c
+    sub_8117E60
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8117E60
+
+    ./wf verify --function sub_8117E60 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-205827-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8117E60
+
+    ./wf verify --function sub_8117E60 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261011-205827-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8117E60
+
+    ./wf verify --function sub_8117E60 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205827-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08117e60 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp d77f7f1
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm32.c
+coverage:
+- menus3
+open_questions:
+- Exact meaning of object +0xD values 0..3 (0/1 = left/right panel? 2 = "same row"? 3 = ?).
+- What the boolean at object +0x21 represents (same-row-in-range flag? charge/attack flag?).
+- Whether the +1 / +6 offset corresponds to a specific "attack frame" animation in the sprite's anim table.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205827
+- recomp d77f7f1

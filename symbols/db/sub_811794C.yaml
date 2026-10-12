@@ -1,0 +1,72 @@
+name: sub_811794C
+address: '0x0811794C'
+kind: function
+status: confirmed
+summary: 'Per-frame step for the in-battle HP/shield bar UI tile: picks the tile variant from the current battle-chip
+  art, repositions the sprite, advances its frame animation, and commits the new frame.'
+interface: void sub_811794C(u8* state /* r5 */, struct* chipOrPanelCtx /* r7 */);  /* uses lr; clobbers r0,r1,r2,r3,r4;
+  preserved r5,r6,r7; flags NZCV */
+details: "Variant selection: r4 starts as 0x23 (normal). Calls sub_8047D84 (battle-chip art resolver);\nif its first\
+  \ byte == 1 and word at +2 == 0x70 (likely the \"FullCust\"/LongSword or shield-style\nchip-id sentinel), switches\
+  \ to variant 0x21 (max-width shield bar). Variant is stored as a\nbyte at [r5].\n\nPlacement: reads palette index\
+  \ from [r7+8], computes\n   x = 0x24 + ((0x1E - (palette - 0xC)) << 3)\n   y = 0x38\nand calls sprite_setCoordinates.\
+  \ This aligns the bar tile with the row of the player's HP\npanel based on which palette slot the current chip\
+  \ art lives in.\n\nAnimation: sub_8117998 returns the next frame index. If it differs from the previously\nwritten\
+  \ frame at [r5+5], the new index is stored, then sprite_setAnimation and\nsprite_loadAnimationData are invoked.\
+  \ Finally sprite_update is called.\n\nQuirks: returns via `pop {pc}`, not `bx lr`. Reads only a single field off\
+  \ the r7 context\n(offset 0x8, palette/slot index).\n\nRegister form, old prompt; queued for retype (the farm's\
+  \ prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (3 attempt(s), run convert-20261011-205827);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 15' --file inbox_farm_old_15.c
+    sub_811794C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811794C
+
+    ./wf verify --function sub_811794C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-205827-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811794C
+
+    ./wf verify --function sub_811794C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 95 out of domain (verify run convert-20261011-205827-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811794C
+
+    ./wf verify --function sub_811794C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-205827-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, story2.'
+  reproduce: grep -l '^0811794c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp d77f7f1
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- story2
+open_questions:
+- Exact meaning of sub_8047D84's return struct — what is the "0x70" identifier (chip id, art-id)?
+- Which palette range 0xC..0x1E corresponds to which panel row.
+- Whether r5 is a per-bar UI state struct or the sprite's own state (offset 5 = frame index).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-205827
+- recomp d77f7f1
