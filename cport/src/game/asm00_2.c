@@ -1467,6 +1467,32 @@ Next battle_object_detachRelatedObject2_80111B8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8011268 ── */
+/* Mode dispatcher (0x08011268): the caller passes a mode index in r0. The
+ * handler for that mode is read from the jump table at off_801127C and called.
+ * The original tail-calls the handler (its "return" pops sub_8011268's saved
+ * lr and goes straight back to sub_8011268's caller), so the handler's results
+ * in r4-r12 are this function's outputs and are already in the guest register
+ * file when the call comes back — nothing needs to be copied through. */
+
+/* register form: no wrapper covers the jump-table handlers (they are reached
+ * only through this table), so the call is made through the handler's code
+ * address with the entry state the original sets up:
+ *   r0 = handler address (the table load overwrites the mode index),
+ *   r1 = table base, r2 = 0. */
+static void dispatch_mode(u32 mode) {
+    u32 handler = LD32(A_off_801127C + (mode << 2));
+    R0 = handler;
+    R1 = A_off_801127C;
+    R2 = 0;
+    GUEST_CALL_ADDR(handler);
+}
+
+Next sub_8011268(void) {
+    dispatch_mode(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_43 ── */
 /* nullsub_43: empty stub, called by the game and immediately returns. */
 Next nullsub_43(void) {

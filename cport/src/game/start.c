@@ -8,6 +8,25 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── start_clearMemory ── */
+/* Zero-fill memory in 4-byte words, walking backwards from the end of the
+ * range: for each step, decrement the byte count by 4 and clear the word at
+ * dst + count. The count must be a multiple of 4. r1 and r2 end clobbered
+ * (the count is consumed; r2 is the zero constant), flags end Z-set. */
+
+static void clear_memory(u32 dst, u32 byte_count) {
+    while (byte_count != 0) {
+        byte_count -= 4;
+        ST32(dst + byte_count, 0);
+    }
+}
+
+/* start_clearMemory(r0 = dst, r1 = byte count) */
+Next start_clearMemory(void) {
+    clear_memory(R0, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── start_copyMemory ── */
 /* start_copyMemory copies 'size' bytes (r2) from src (r0) to dst (r1),
  * one word at a time, walking backwards from the end of the buffers.

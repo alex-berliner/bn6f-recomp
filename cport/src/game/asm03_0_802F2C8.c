@@ -1449,6 +1449,128 @@ Next mapTiles_ResetDimensionsToDefault_80303E8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── decompAndCopyMapTiles_8030472 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_CopyByEightWords_result;
+/* register form: generated wrapper: CopyByEightWords has no typed C interface yet */
+static inline call_CopyByEightWords_result call_CopyByEightWords(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyByEightWords);
+    return (call_CopyByEightWords_result){ R2, R3 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_SWI_LZ77UnCompReadNormalWrite8bit_result;
+/* register form: generated wrapper: SWI_LZ77UnCompReadNormalWrite8bit has no typed C interface yet */
+static inline call_SWI_LZ77UnCompReadNormalWrite8bit_result call_SWI_LZ77UnCompReadNormalWrite8bit(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SWI_LZ77UnCompReadNormalWrite8bit);
+    return (call_SWI_LZ77UnCompReadNormalWrite8bit_result){ R1, R2, R3 };
+}
+
+typedef struct { u32 r2, r3; } call_CopyWords_result;
+/* register form: generated wrapper: CopyWords has no typed C interface yet */
+static inline call_CopyWords_result call_CopyWords(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyWords);
+    return (call_CopyWords_result){ R2, R3 };
+}
+
+/* Decompresses and installs the current overworld map's graphics:
+ *   1. copies the BG palette (0x1A0 bytes past its 4-byte header) to work RAM,
+ *   2. LZ77-decompresses both BG tilesets into the scratch buffer and copies
+ *      them to their VRAM offsets,
+ *   3. copies the BG tilemap header, then decompresses the tile entries
+ *      behind it into the same buffer,
+ * and finally dispatches the map state's post-load callback. */
+
+#define BG_VRAM_BASE      0x6000000u
+#define BG_TILESET_COUNT  2
+#define PALETTE_BYTES     (13u << 5)   /* 0x1A0 */
+
+/* register form: the callback is dispatched with `mov lr, pc; bx r0` and takes
+ * its arguments from registers plain C cannot reach: the map state pointer in
+ * r5, the tileset list base in r6, its end in r7, and the leftovers of the
+ * last LZ77 SWI in r1-r3 (the original even passes the callback its own
+ * address in r0). Right after it returns, the original pops r4-r7 and
+ * r8/r9/r12; restoring guest registers around an opaque call cannot be
+ * expressed in typed C, so the helper saves and restores them itself. */
+static void run_map_load_callback(u32 callback, u32 state, u32 tileset_base,
+                                  u32 tileset_end,
+                                  u32 swi_r1, u32 swi_r2, u32 swi_r3)
+{
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    u32 saved_r8 = R8, saved_r9 = R9, saved_r12 = R12;
+
+    R0 = callback;      /* the original branches to r0 holding its own address */
+    R1 = swi_r1;
+    R2 = swi_r2;
+    R3 = swi_r3;
+    R5 = state;
+    R6 = tileset_base;
+    R7 = tileset_end;
+    GUEST_CALL_ADDR(callback);
+
+    /* the original's pop {r4-r7} / pop {r1-r3} into r8/r9/r12 */
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    R8 = saved_r8;
+    R9 = saved_r9;
+    R12 = saved_r12;
+}
+
+static void decomp_and_copy_map_tiles(void)
+{
+    u32 state = A_eMapTilesState200be70;
+
+    /* BG palette: skip the 4-byte header, copy 0x1A0 bytes to work RAM. */
+    u32 palette_src = LD32(state + oMapTilesState200be70_PalettePtr) + 4;
+    call_CopyByEightWords(palette_src, A_palette_3001960, PALETTE_BYTES);
+
+    /* Two BG tilesets (BG1, BG2): LZ77-decompress each into the scratch
+     * buffer, then copy the uncompressed data to its VRAM offset. */
+    u32 tileset_base = LD32(state + oMapTilesState200be70_TilesetPtr);
+    u32 tileset = tileset_base;
+    for (u32 i = 0; i < BG_TILESET_COUNT; i++) {
+        u32 comp_src = LD32(tileset + oMapBGTilesetHeader_CompressedDataOffset)
+                     + tileset_base;
+        call_SWI_LZ77UnCompReadNormalWrite8bit(comp_src, A_eDecompBuffer2013A00);
+
+        u32 vram_dest = LD32(tileset + oMapBGTilesetHeader_VRAMOffset)
+                      + BG_VRAM_BASE;
+        u32 copy_bytes = LD32(tileset + oMapBGTilesetHeader_WordCount) << 2;
+        call_CopyByEightWords(A_eDecompBuffer2013A00, vram_dest, copy_bytes);
+
+        tileset += oMapBGTilesetHeader_Size;
+    }
+
+    /* BG tilemap: copy the plain header with CopyWords, then LZ77-decompress
+     * the tile entries following it into the buffer behind that header. */
+    u32 bg_desc = LD32(state + oMapTilesState200be70_MapBGDescriptorPtr);
+    u32 tilemap = LD32(bg_desc + oMapBGDescriptor_TilemapPtr);
+    call_CopyWords(tilemap, A_eDecompBuffer2013A00, oMapBGTilemapHeader_Size);
+    call_SWI_LZ77UnCompReadNormalWrite8bit_result decomp =
+        call_SWI_LZ77UnCompReadNormalWrite8bit(
+            tilemap + oMapBGTilemapHeader_Size,
+            A_eDecompBuffer2013A00 + oMapBGTilemapHeader_Size);
+
+    /* Hand control to the map's post-load callback. */
+    run_map_load_callback(LD32(state + oMapTilesState200be70_UnkCallback_1c),
+                          state, tileset_base, tileset,
+                          decomp.r1, decomp.r2, decomp.r3);
+}
+
+Next decompAndCopyMapTiles_8030472(void) {
+    decomp_and_copy_map_tiles();
+    RETURN_TO_CALLER();
+}
+
 /* ── EnterMap_RunMapGroupAsmFunction_8030A00 ── */
 /* EnterMap_RunMapGroupAsmFunction_8030A00(r0 = map group number):
  * Dispatch to the EnterMap handler for the given map group. The group

@@ -3039,6 +3039,170 @@ Next mainState_runFrame_8005814(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80058D0 ── */
+/* ---------------------------------------------------------------------------
+ * sub_80058D0 -- overworld warp trigger check
+ *
+ * Runs from the overworld dispatcher.  While the on-map-update gamestate is
+ * active and nothing else owns the screen (no fade, no cutscene, no PET menu
+ * state), the player's coordinates are matched against the current map's
+ * warp triggers.  When one fires and its "warp seen" event flag is still
+ * clear, the warp is armed in the oWarp2011bb0 state block and the cutscene
+ * handler matching the warp's type is started via JumpTable8005948.
+ *
+ * The jump table is indexed by the warp's type *byte* (ldr r0,[r0,r1] with no
+ * shift), so warp types 0,4,8,...,0x20 select its nine entries:
+ *   0x00 gameState_beginEndingSequence_800596C  fade to black warp
+ *   0x04 sub_8005990                            fade to white warp
+ *   0x08 map_onMapWarpCutscene_80059B4          jack out anim, fade to black,
+ *                                               fade from black, jack in anim,
+ *                                               walk in direction
+ *   0x0C startInMapWarpCutscene_80059D0         jack out anim, auto camera
+ *                                               scroll to another area in the
+ *                                               same map, jack in anim, walk in
+ *                                               direction
+ *   0x10 sub_80059EC                            jack out warp
+ *   0x14 sub_8005A00                            levbus warp
+ *   0x18 sub_8005A0C                            underground warp
+ *   0x1C sub_8005A28                            like 0x00, but with a delay +
+ *                                               plays a hardcoded sound
+ *   0x20 sub_8005A50                            same as above, different delay
+ * ------------------------------------------------------------------------- */
+
+/* oGameState_SubsystemIndex value while the map update gamestate is running. */
+#define SUBSYSTEM_ON_MAP_UPDATE 4
+/* Highest trigger index checkCoordinateTrigger_8031a7a may report. */
+#define WARP_TRIGGER_MAX 0xF
+
+/* register form: calls sub_809E462 outside this file, which has no typed C interface yet.
+ * Answers in flags: Z set means the on-map update is ready for a warp to be checked. */
+static bool on_map_update_ready(void) {
+    GUEST_CALL(sub_809E462);
+    return ZERO_FLAG();
+}
+
+/* register form: calls warp_LoadCurrentAndReadUnk10_8005F28 outside this file, which has no
+ * typed C interface yet.  Answers in flags: Z set means the warp state block is free to arm. */
+static bool warp_state_ready(void) {
+    GUEST_CALL(warp_LoadCurrentAndReadUnk10_8005F28);
+    return ZERO_FLAG();
+}
+
+/* register form: calls TestPETMenuDataFlag outside this file, which has no typed C interface yet.
+ * Z set if the flag is clear. */
+static bool pet_menu_data_flag_set_sub_80058D0(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestPETMenuDataFlag);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet.
+ * Answers in flags: Z set while a screen fade is running. */
+static bool screen_fade_active_sub_80058D0(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return ZERO_FLAG();
+}
+
+/* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface
+ * yet.  Answers in flags: Z clear while a cutscene script is running. */
+static bool cutscene_script_non_null_sub_80058D0(void) {
+    GUEST_CALL(IsCutsceneScriptNonNull);
+    return !ZERO_FLAG();
+}
+
+/* register form: calls checkCoordinateTrigger_8031a7a outside this file, which has no typed C
+ * interface yet.  Returns the trigger index delivered in r1; the original also copies it into
+ * r4 (mov r4, r1) and that copy must stay live in guest r4 through later calls and early
+ * returns up to the function's exit, which a typed C function cannot express. */
+static s32 check_coordinate_trigger(u32 coords) {
+    R0 = coords;
+    GUEST_CALL(checkCoordinateTrigger_8031a7a);
+    R4 = R1;
+    return (s32)R1;
+}
+
+/* register form: calls TestEventFlag outside this file, which has no typed C interface yet.
+ * Z set if the flag is clear. */
+static bool event_flag_set(u32 flag) {
+    R0 = flag;
+    GUEST_CALL(TestEventFlag);
+    return !ZERO_FLAG();
+}
+
+/* register form: the warp cutscene handler is fetched from JumpTable8005948 at runtime and
+ * reached through `mov lr, pc; bx r0`, so no typed wrapper exists for it.  Plants the register
+ * state the original hands each handler at that call: r0 = handler address, r1 = jump table,
+ * r2 = this warp's data entry, r4 = its byte offset into the warp data array, r5 = game state
+ * (the handlers' self pointer).  The handler's leftover register state (including r8-r12,
+ * which this function outputs) is left in the guest registers by the call itself. */
+static u32 start_warp_cutscene(u32 handler, u32 warp_data, u32 data_offset, u32 game_state) {
+    R0 = handler;
+    R1 = A_JumpTable8005948;
+    R2 = warp_data;
+    R4 = data_offset;
+    R5 = game_state;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* Check the player's position against the map's warp triggers and start the matching warp
+ * cutscene when one fires.  Returns entry_r5 unchanged; the original's push/pop keeps r5
+ * intact across every path, so the adapter writes it back. */
+static u32 check_map_warp_start(u32 entry_r5, u32 toolkit) {
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+
+    /* Warp triggers are only honoured while the on-map-update gamestate is active. */
+    if (LD8(game_state + oGameState_SubsystemIndex) != SUBSYSTEM_ON_MAP_UPDATE)
+        return entry_r5;
+
+    /* Bail out while anything else rules out starting a warp. */
+    if (!on_map_update_ready())
+        return entry_r5;
+    if (!warp_state_ready())
+        return entry_r5;
+    if (pet_menu_data_flag_set_sub_80058D0(1)) /* PET menu data flag 1 must be clear */
+        return entry_r5;
+    if (screen_fade_active_sub_80058D0())
+        return entry_r5;
+    if (cutscene_script_non_null_sub_80058D0())
+        return entry_r5;
+
+    /* Which warp trigger, if any, is the player standing on? */
+    u32 player = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+    s32 warp_index = check_coordinate_trigger(player + oOWPlayerObject_Coords);
+    if (warp_index < 1 || warp_index > WARP_TRIGGER_MAX)
+        return entry_r5;
+
+    /* Each trigger has a "warp seen" flag; ignore warps already taken. */
+    if (event_flag_set(EVENT_16F0 + (u32)warp_index))
+        return entry_r5;
+
+    /* Arm the warp in the shared warp state block. */
+    u32 warp = LD32(toolkit + oToolkit_Warp2011bb0_Ptr);
+    ST8(warp + oWarp2011bb0_Unk_10, 1);
+    ST8(warp + oWarp2011bb0_WarpIndex, (u8)warp_index);
+    ST8(warp + oWarp2011bb0_MapGroupTransitionType, 0);
+
+    /* Hand control to the cutscene for this warp's type, pointed at its data entry.  The
+     * type byte indexes the jump table directly, one 4-byte word per type. */
+    u32 data_offset = (u32)(warp_index - 1) * oWarpData_Size;
+    u32 warp_data = LD32(warp + oWarp2011bb0_WarpDataPtr) + data_offset;
+    u32 warp_type = LD8(warp_data + oWarpData_warpType_02);
+    u32 handler = LD32(A_JumpTable8005948 + warp_type);
+    start_warp_cutscene(handler, warp_data, data_offset, game_state);
+    return entry_r5;
+}
+
+/* sub_80058D0(r10 = toolkit) -> r1..r12; r5 preserved on every path.
+ * r1/r2/r3/r4 on exit are whatever the last guest callee left behind (or the armed warp
+ * values handed to the cutscene handler), which the GUEST_CALLs above already put in place.
+ * r8-r12 are the original's outputs: unchanged on the early paths, and on the warp path
+ * whatever the cutscene handler left, which the guest calls already left in place. */
+Next sub_80058D0(void) {
+    R5 = check_map_warp_start(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── gameState_beginEndingSequence_800596C ── */
 /* gameState_beginEndingSequence_800596C (self: *GameState in r5): begin the ending sequence.
  *

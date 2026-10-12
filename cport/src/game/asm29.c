@@ -784,6 +784,38 @@ update_and_return:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A55CC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_FreeOverworldMapObject_result;
+/* register form: generated wrapper: FreeOverworldMapObject has no typed C interface yet */
+static inline call_FreeOverworldMapObject_result call_FreeOverworldMapObject_sub_80A55CC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(FreeOverworldMapObject);
+    return (call_FreeOverworldMapObject_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Frees an overworld map object: passes the object index in r5 straight
+ * through to FreeOverworldMapObject and keeps its r2/r5 results. */
+typedef struct {
+    u32 r2;
+    u32 r5;
+} FreeMapObjectResult;
+
+static FreeMapObjectResult free_map_object(u32 object_index) {
+    call_FreeOverworldMapObject_result res = call_FreeOverworldMapObject_sub_80A55CC(object_index);
+    FreeMapObjectResult out;
+    out.r2 = res.r2;
+    out.r5 = res.r5;
+    return out;
+}
+
+Next sub_80A55CC(void) {
+    FreeMapObjectResult res = free_map_object(R5);
+    R2 = res.r2;
+    R5 = res.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80A5690 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r4; } call_sub_80A5724_result;

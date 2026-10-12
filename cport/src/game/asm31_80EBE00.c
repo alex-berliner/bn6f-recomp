@@ -1696,6 +1696,155 @@ Next sub_80FD8B0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FDA62 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline void call_object_reservePanel(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+}
+
+typedef struct { u32 r0, r4, r5; } call_object_getPanelsIgnoreColumnFiltered_result;
+/* register form: generated wrapper: object_getPanelsIgnoreColumnFiltered has no typed C interface yet */
+static inline call_object_getPanelsIgnoreColumnFiltered_result call_object_getPanelsIgnoreColumnFiltered(u32 r0, u32 r2, u32 r3, u32 r7) {
+    R0 = r0;
+    R2 = r2;
+    R3 = r3;
+    R7 = r7;
+    GUEST_CALL(object_getPanelsIgnoreColumnFiltered);
+    return (call_object_getPanelsIgnoreColumnFiltered_result){ R0, R4, R5 };
+}
+
+typedef struct { u32 r0, r1, r4, r5, r7; } call_object_getPanelsInRowFiltered_result;
+/* register form: generated wrapper: object_getPanelsInRowFiltered has no typed C interface yet */
+static inline call_object_getPanelsInRowFiltered_result call_object_getPanelsInRowFiltered(u32 r0, u32 r2, u32 r3, u32 r7) {
+    R0 = r0;
+    R2 = r2;
+    R3 = r3;
+    R7 = r7;
+    GUEST_CALL(object_getPanelsInRowFiltered);
+    return (call_object_getPanelsInRowFiltered_result){ R0, R1, R4, R5, R7 };
+}
+
+typedef struct { u32 r0, r2, r3, r7; } call_GetPositiveSignedRNG_result;
+/* register form: generated wrapper: GetPositiveSignedRNG has no typed C interface yet */
+static inline call_GetPositiveSignedRNG_result call_GetPositiveSignedRNG(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return (call_GetPositiveSignedRNG_result){ R0, R2, R3, R7 };
+}
+
+typedef struct { u32 r2, r3; bool z, n, c, v; } call_object_removePanelReserve_result;
+/* register form: generated wrapper: object_removePanelReserve has no typed C interface yet */
+static inline call_object_removePanelReserve_result call_object_removePanelReserve_sub_80FDA62(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_removePanelReserve);
+    return (call_object_removePanelReserve_result){ R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80FDA62 - pick a random panel for a panel-targeting AI action.
+ *
+ * The actor (r5) reserves its panel slot, then the candidate panels matching
+ * the requested filters are gathered into a list on the stack: first with the
+ * "ignore column" filter, falling back to the "same row" filter when that
+ * list comes back empty.  One entry is chosen with the BIOS random number
+ * (svc 6 Div remainder), its byte is decoded as column = high nibble and
+ * row = low 3 bits, and the reservation is released.  With no candidate the
+ * result is row 0 and r1 whatever the row-filter call left behind.
+ *
+ * Inputs:  r0 = target object, r2/r3 = filter parameters, r5 = actor object,
+ *          lr = return address.  r4-r7 are preserved (r6/r7 via push/pop).
+ * Outputs: r0 = row, r1 = column, r5/r6/r7 as on entry. */
+
+typedef struct {
+    u32 row;      /* r0: low 3 bits of the chosen panel byte */
+    u32 column;   /* r1: high nibble of the chosen panel byte */
+    u32 actor;    /* r5, passed through unchanged */
+    u32 savedR6;  /* r6, restored (the original pops it) */
+    u32 savedR7;  /* r7, restored (the original pops it) */
+} PanelPick;
+
+/* BIOS Div (swi 6): quotient in r0, remainder in r1. */
+/* register form: swi 6 returns its remainder in r1, which no wrapper-style
+ * single return value can carry, so this helper reads R1 after the call. */
+static u32 bios_div_remainder(u32 dividend, u32 divisor) {
+    R0 = dividend;
+    R1 = divisor;
+    swi_call(6);
+    return R1;
+}
+
+static PanelPick pick_random_panel(u32 object, u32 filterA, u32 filterB,
+                                   u32 actor, u32 entryR6, u32 entryR7,
+                                   u32 entryLR) {
+    PanelPick result;
+
+    /* register form: the panel list is filled by the callees through its
+     * guest address, so the original's exact stack frame is reproduced. */
+    SP -= 12;                            /* push {r6,r7,lr} */
+    ST32(SP, entryR6);
+    ST32(SP + 4, entryR7);
+    ST32(SP + 8, entryLR);
+    SP -= 0x24;                          /* three spills + 0x18-byte panel list */
+    ST32(SP, object);
+    ST32(SP + 4, filterA);
+    ST32(SP + 8, filterB);
+    u32 panelList = SP + 0xC;
+
+    /* Hold the actor's panel reservation while searching. */
+    call_object_reservePanel(LD8(actor + 0x12), LD8(actor + 0x13), actor);
+
+    /* Candidate panels: ignore the object's column first, else use its row. */
+    u32 count = call_object_getPanelsIgnoreColumnFiltered(
+        LD8(object + 0x13), filterA, filterB, panelList).r0;
+    u32 emptyRowListR1 = 0;
+    if (count == 0) {
+        call_object_getPanelsInRowFiltered_result rowList =
+            call_object_getPanelsInRowFiltered(
+                LD8(object + 0x13), filterA, filterB, panelList);
+        count = rowList.r0;
+        emptyRowListR1 = rowList.r1;     /* the r1 the original leaves behind */
+    }
+
+    if (count != 0) {
+        u32 panel = LD8(panelList +
+                        bios_div_remainder(call_GetPositiveSignedRNG().r0, count));
+        result.column = panel >> 4;          /* high nibble */
+        result.row = (panel << 29) >> 29;    /* low 3 bits */
+    } else {
+        result.row = 0;
+        result.column = emptyRowListR1;
+    }
+
+    /* Release the reservation; the original saves r0/r1 across this call. */
+    SP -= 8;
+    ST32(SP, result.row);
+    ST32(SP + 4, result.column);
+    call_object_removePanelReserve_sub_80FDA62(LD8(actor + 0x12), LD8(actor + 0x13), actor);
+    SP += 8;
+
+    SP += 0x24;                          /* drop the local frame ... */
+    SP += 12;                            /* ... and pop {r6,r7,pc} */
+
+    result.actor = actor;
+    result.savedR6 = entryR6;
+    result.savedR7 = entryR7;
+    return result;
+}
+
+Next sub_80FDA62(void) {
+    PanelPick result = pick_random_panel(R0, R2, R3, R5, R6, R7, LR);
+    R0 = result.row;
+    R1 = result.column;
+    R5 = result.actor;
+    R6 = result.savedR6;
+    R7 = result.savedR7;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FDAC4 ── */
 /* sub_80FDAC4: pick a target panel for an object based on its column preferences.
  * inputs:  r0 (struct ptr), r2 (param2), r3 (param3), r5 (object), lr

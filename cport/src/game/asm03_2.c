@@ -171,6 +171,121 @@ Next sub_804634C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8046356 ── */
+/* sub_8046356 - advance the animated bitmap reveal whose state lives at
+ * byte_200A220.
+ *
+ * State block layout (offsets from the base A_byte_200A220):
+ *   +0x00 byte   row stride in bytes
+ *   +0x01 byte   step counter, bumped once per call
+ *   +0x1C dword  packed bit position: stride * 112 * counter
+ *   +0x20 dword  base address of the bitmap row words
+ *   +0x38 dword  pixel mask for the column being drawn
+ *
+ * The packed position splits into a word index (>> 5, scaled to bytes by
+ * << 2) and a bit offset within the word (& 0x1F).  The mask with its low
+ * `bit` bits cut off is OR-ed into 12 row words spaced `stride` bytes
+ * apart, starting at the indexed word.  Exactly as in the original, the
+ * stores are skipped entirely when the bit offset is zero (TST r6,r6 /
+ * BLE in the loop).  Afterwards the counter is bumped and the packed
+ * position is rewritten as stride * 14 * 8 * counter.
+ *
+ * The original pushes the caller's r0 and pops it just before
+ * `add r0, #1`, so r0 comes back as caller_r0 + 1; C/V are left by that
+ * ADD and N/Z are then forced clear by the final `mov r3, #1`. */
+
+struct sub_8046356_out {
+    u32 r0, r1, r2, r3, r4, r6, r7;
+};
+
+static struct sub_8046356_out sub_8046356_step(u32 caller_r0)
+{
+    u32 state = A_byte_200A220;
+
+    u32 packed  = LD32(state + (A_dword_200A23C - 0x200A220));
+    u32 rows    = LD32(state + (A_dword_200A240 - 0x200A220));
+    u32 mask    = LD32(state + (A_dword_200A258 - 0x200A220));
+    u32 stride  = LD8(state);
+
+    u32 bit     = packed & 0x1F;
+    u32 row     = rows + ((packed >> 5) << 2);
+    u32 pattern = (mask >> bit) << bit;   /* mask, low `bit` bits cleared */
+
+    for (s32 i = 0; i < 12; i++) {
+        u32 word = LD32(row) | pattern;
+        if (bit != 0)
+            ST32(row, word);              /* original skips stores at bit == 0 */
+        row += stride;
+    }
+
+    u32 counter = LD8(state + (A_byte_200A221 - 0x200A220)) + 1;
+    ST8(state + (A_byte_200A221 - 0x200A220), counter);
+
+    u32 new_packed = ((stride * 14) << 3) * counter;
+    ST32(state + (A_dword_200A23C - 0x200A220), new_packed);
+
+    struct sub_8046356_out o;
+    o.r0 = caller_r0 + 1;      /* popped caller r0, then add r0, #1 */
+    o.r1 = new_packed;
+    o.r2 = state;
+    o.r3 = 1;
+    o.r4 = counter;
+    o.r6 = bit;
+    o.r7 = 14;                 /* mov r7, #0xe is the last thing in r7 */
+    return o;
+}
+
+Next sub_8046356(void) {
+    struct sub_8046356_out o = sub_8046356_step(R0);
+    R0 = o.r0, R1 = o.r1, R2 = o.r2, R3 = o.r3,
+    R4 = o.r4, R6 = o.r6, R7 = o.r7;
+    SET_FLAGS_ADD(o.r0 - 1, 1);   /* C/V from the final add r0, #1 */
+    SET_FLAGS_NZ(o.r3);           /* N/Z from the final mov r3, #1 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8046450 ── */
+/* sub_8046450: run an entity's per-state handler.
+ *
+ * r0 points to the entity; byte 1 of the entity holds the state index. That
+ * index selects one entry of the handler table at dword_8046464, and the
+ * handler is entered with
+ *   r0 = the entity pointer,
+ *   r3 = index * 4 (the table offset the "lsl r3, r3, #2" left in r3),
+ *   N/Z = flags of index * 4, C = clear (a byte shifted left by two never
+ *         shifts a one out of bit 30),
+ * via "mov lr, pc; bx r1", so it returns straight through the pop back to
+ * sub_8046450's caller. The caller's r3/r7 are pushed around the dispatch and
+ * popped before the return, so both end unchanged; r0 and whatever the handler
+ * leaves in r8/r10/r11/r12 are the results. */
+
+/* register form: the handler address is read from the dispatch table at run
+ * time, so the call must go through the code address itself (mov lr, pc; bx r1),
+ * and the caller's r3/r7 must survive the dispatched call the way the
+ * original's push {r3,r7,lr} / pop {r3,r7,pc} does. */
+static u32 run_entity_state_handler(u32 entity) {
+    u32 state = LD8(entity + 1);
+    u32 slot = state << 2;
+    u32 handler = LD32(A_dword_8046464 + slot);
+    u32 saved_r3 = R3;
+    u32 saved_r7 = R7;
+
+    R0 = entity;                /* handler receives the entity pointer ... */
+    R3 = slot;                  /* ...and the shifted state index in r3 */
+    SET_FLAGS_ADD(slot, 0);     /* N/Z of the shifted index, C clear: the lsl's flags */
+
+    GUEST_CALL_ADDR(handler);   /* table entries are stored Thumb+1, as bx expects */
+
+    R3 = saved_r3;              /* pop {r3,r7}: both preserved for the caller */
+    R7 = saved_r7;
+    return R0;
+}
+
+Next sub_8046450(void) {
+    R0 = run_entity_state_handler(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_initEStructArr_804657C ── */
 /* battle_initEStructArr_804657C: initialise eStructArr2008450.
  * Zero-fills the whole 0x528-byte array (15 entries of 0x58 bytes each),
@@ -281,6 +396,58 @@ Next sprite_clearScaleCounterAndMakeUnscalable_804668A(void) {
 
     GUEST_CALL(sprite_makeUnscalable); /* bl sprite_makeUnscalable */
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8046696 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3; bool c, v; } call_sprite_makeUnscalable_result;
+/* register form: generated wrapper: sprite_makeUnscalable has no typed C interface yet */
+static inline call_sprite_makeUnscalable_result call_sprite_makeUnscalable(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_makeUnscalable);
+    return (call_sprite_makeUnscalable_result){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8046696(r0 = index into the struct array at eStructArr2008450):
+ * Clears the first byte of entry #index (its "scalable"/scale state byte) and
+ * marks that entry's sprite as unscalable via sprite_makeUnscalable, which
+ * takes the entry address in r5. r4-r7 are pushed/popped around the call, so
+ * they (including the entry address in r5) end unchanged; r2/r3 are whatever
+ * sprite_makeUnscalable leaves behind. */
+
+typedef struct {
+    u32 r2, r3, r4, r5, r6, r7;
+} sprite_scale_clear_result;
+
+static sprite_scale_clear_result clear_sprite_scale(u32 index, u32 r4, u32 r5, u32 r6, u32 r7) {
+    sprite_scale_clear_result out;
+
+    /* Address of this entry's struct: base + 0x58 * index */
+    u32 entry = A_eStructArr2008450 + 0x58 * index;
+
+    ST8(entry, 0);
+
+    call_sprite_makeUnscalable_result call = call_sprite_makeUnscalable(entry);
+
+    out.r2 = call.r2;
+    out.r3 = call.r3;
+    /* The original's pop {r4-r7} restores the entry values. */
+    out.r4 = r4;
+    out.r5 = r5;
+    out.r6 = r6;
+    out.r7 = r7;
+    return out;
+}
+
+Next sub_8046696(void) {
+    sprite_scale_clear_result out = clear_sprite_scale(R0, R4, R5, R6, R7);
+    R2 = out.r2;
+    R3 = out.r3;
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    R7 = out.r7;
     RETURN_TO_CALLER();
 }
 

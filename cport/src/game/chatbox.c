@@ -863,6 +863,133 @@ Next chatbox_8040B8C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_8040C44 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_chatbox_maskFlags_3e_result;
+/* register form: generated wrapper: chatbox_maskFlags_3e has no typed C interface yet */
+static inline call_chatbox_maskFlags_3e_result call_chatbox_maskFlags_3e(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(chatbox_maskFlags_3e);
+    return (call_chatbox_maskFlags_3e_result){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Chatbox character handler (0x08040C44).
+ *
+ * r5 points at the chatbox state struct. The function first runs
+ * chatbox_maskFlags_3e with mask 0x10 to refresh the control-code mask;
+ * that call's Z flag and its returned r1 classify the pending character:
+ *
+ *   control character (Z set by the mask call, or r1 == 0, r1 == 0x25,
+ *   0x40 <= signed r1 < 0x59, or signed r1 >= 0x5D):
+ *     clear the auto-advance byte at +0x1F2, then step the text-advance
+ *     state: next (+0x1F0) = cur (+0x1F1) with 2 mapped to 1, unless
+ *     next is already 3 (chat finished - left alone).
+ *
+ *   printable character (signed r1 < 0x40 excluding 0/0x25, or
+ *   0x5A..0x5C):
+ *     set the auto-advance byte to 1 and copy cur into next.
+ *
+ * r0/r1/r4/r5 are preserved (the original pushes/pops them). r2 ends as
+ * 0x1F0, the last literal loaded on both paths. r3 ends as the pre-store
+ * value of +0x1F0 on the control path, and as whatever
+ * chatbox_maskFlags_3e left behind on the printable path. Final flags:
+ * control path - CMP r3,#3; printable path - N/Z from `mov r1,#1`
+ * (N=0, Z=0) with C/V still standing from CMP r1,#0x5D.
+ */
+
+/* Offsets into the chatbox state struct; the original loads these from its
+ * literal pool at 0x08040C90..0x08040C98. */
+#define CB_NEXT_STATE 0x1F0u /* [r5+0x1F0] next text-advance state */
+#define CB_CUR_STATE  0x1F1u /* [r5+0x1F1] current text-advance state */
+#define CB_ADVANCE    0x1F2u /* [r5+0x1F2] auto-advance flag */
+
+/* Everything the thin adapter needs: the output registers, the operands of
+ * the final CMP, the value whose N/Z match the original's final N/Z, and a
+ * mask telling it whether r3 was computed here or must keep the value the
+ * mask call left in the guest register. */
+struct chatbox_8040C44_out {
+    u32 r0, r1, r2, r3, r4, r5;
+    u32 r3_keep_mask;  /* 0xFFFFFFFF: r3 is our loaded byte; 0: keep callee's r3 */
+    u32 cmp_a, cmp_b;  /* operands of the last CMP the original executes */
+    u32 nz_src;        /* value whose N/Z reproduce the original's final N/Z */
+};
+
+static struct chatbox_8040C44_out chatbox_8040C44_body(u32 in_r0, u32 in_r1, u32 in_r4, u32 in_r5)
+{
+    struct chatbox_8040C44_out out;
+
+    /* Refresh the control-code mask state for mask 0x10. */
+    call_chatbox_maskFlags_3e_result mask = call_chatbox_maskFlags_3e(0x10, in_r5);
+    u32 ch = mask.r1;
+
+    /* Classify the character exactly as the original's branch chain does;
+     * all the range checks are signed, on the full 32-bit r1. */
+    bool control;
+    if (!mask.z)                        /* bne: the mask flagged this byte */
+        control = true;
+    else if (ch == 0 || ch == 0x25)     /* NUL / '%' */
+        control = true;
+    else if ((s32)ch < (s32)0x40)
+        control = false;                /* 0x01..0x3F except 0x25, or negative */
+    else if ((s32)ch < (s32)0x59)
+        control = true;
+    else if ((s32)ch < (s32)0x5D)
+        control = false;                /* 0x5A..0x5C */
+    else
+        control = true;
+
+    u32 cur = LD8(in_r5 + CB_CUR_STATE);
+
+    if (control) {
+        /* Stop auto-advancing, then step the state machine unless the
+         * chat is already finished (next state 3). */
+        ST8(in_r5 + CB_ADVANCE, 0);
+        u32 step = (cur == 2) ? 1 : cur;
+        u32 old_next = LD8(in_r5 + CB_NEXT_STATE);
+        if (old_next != 3)
+            ST8(in_r5 + CB_NEXT_STATE, step);
+
+        /* Final flags come from `cmp r3, #3` on the pre-store byte. */
+        out.r3 = old_next;
+        out.r3_keep_mask = 0xFFFFFFFFu;
+        out.cmp_a = old_next;
+        out.cmp_b = 3;
+        out.nz_src = (old_next == 3) ? 0u : (old_next < 3 ? 0x80000000u : 1u);
+    } else {
+        /* Keep advancing; the current state becomes the next one. */
+        ST8(in_r5 + CB_ADVANCE, 1);
+        ST8(in_r5 + CB_NEXT_STATE, cur);
+
+        /* C/V still come from the `cmp r1, #0x5D` that chose this path;
+         * N/Z come from the `mov r1, #1` that follows it. r3 stays as the
+         * callee left it. */
+        out.r3 = 0;
+        out.r3_keep_mask = 0;
+        out.cmp_a = ch;
+        out.cmp_b = 0x5D;
+        out.nz_src = 1;
+    }
+
+    out.r0 = in_r0;
+    out.r1 = in_r1;
+    out.r2 = CB_NEXT_STATE;
+    out.r4 = in_r4;
+    out.r5 = in_r5;
+    return out;
+}
+
+Next chatbox_8040C44(void) {
+    struct chatbox_8040C44_out out = chatbox_8040C44_body(R0, R1, R4, R5);
+    R0 = out.r0, R1 = out.r1, R2 = out.r2, R4 = out.r4, R5 = out.r5;
+    /* r3: computed by the control path; on the printable path the wrapper's
+     * call already left the callee's value in the guest register. */
+    R3 = (out.r3 & out.r3_keep_mask) | (R3 & ~out.r3_keep_mask);
+    SET_FLAGS_CMP(out.cmp_a, out.cmp_b);
+    SET_FLAGS_NZ(out.nz_src);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_advanceNextState_8040C9C ── */
 /* Chatbox state offsets within the chatbox work area (r5). */
 #define CHATBOX_NEXT_STATE  0x1F0  /* mode/state byte this function updates */

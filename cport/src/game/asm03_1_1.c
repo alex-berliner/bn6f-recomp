@@ -2087,6 +2087,50 @@ Next sub_803EA78(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803EAE4 ── */
+/* sub_803EAE4: mode dispatcher for the struct at eStruct200BC30.
+ *
+ * The byte at the start of that struct selects an entry in the handler table
+ * at off_803EAF8, and the selected handler is called; its results (all
+ * registers and the flags) become the results of this function:
+ *   0 -> sub_803EB04, 1 -> sub_803EB14, 2 -> sub_803EB60.
+ *
+ * The original reaches the handler with "mov lr,pc; bx r0", so on entry the
+ * handler sees r0 = its own table entry, r1 = the table base and
+ * r5 = eStruct200BC30 (the pointer the dispatcher just loaded). The trailing
+ * "pop {r4-r7,pc}" then restores the caller's r4-r7, while r0-r3, r8-r12,
+ * lr and the flags stay exactly as the handler left them. */
+
+/* register form: the handler is entered through a computed address
+ * (mov lr,pc; bx r0) carrying the caller's live register state, and the
+ * handler's registers and flags ARE this function's result — only r4-r7 are
+ * restored afterwards, which cannot be expressed as typed C. */
+static void dispatch_mode_handler(void) {
+    u32 table = A_off_803EAF8;
+    u32 r4_in = R4, r5_in = R5, r6_in = R6, r7_in = R7;
+
+    u32 mode   = LD8(A_eStruct200BC30);
+    u32 target = LD32(table + mode);        /* byte offset used as-is, as the original does */
+
+    R1 = table;             /* the original leaves the table base in r1 */
+    R5 = A_eStruct200BC30;  /* the handlers expect r5 -> the mode struct */
+    R0 = target;            /* r0 still holds the table entry just loaded */
+
+    GUEST_CALL_ADDR(target);
+
+    /* pop {r4-r7}: the caller's registers are back; r0-r3, r8-r12, lr and
+     * the flags remain the handler's results. */
+    R4 = r4_in;
+    R5 = r5_in;
+    R6 = r6_in;
+    R7 = r7_in;
+}
+
+Next sub_803EAE4(void) {
+    dispatch_mode_handler();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803EB04 ── */
 /* sub_803EB04(r3 r4 r5 r6 r8 r9 r10 r11 r12 lr):
  * Calls sub_803DEB4; if its return value equals 2, also calls sub_803ED1C

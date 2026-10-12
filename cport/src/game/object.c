@@ -735,6 +735,43 @@ Next object_getPanelParameters(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_getPanelDataOffset ── */
+/* object_getPanelDataOffset: 0800C90A-0800C918 THUMB, bn6f object.s:2252
+ *
+ * Pure interworking trampoline: it saves lr on the stack, loads the Thumb
+ * entry address of the real implementation (the word stored at off_800C914,
+ * i.e. _object_getPanelDataOffset+1) into r2, points lr at the instruction
+ * after the bx with "mov lr, pc", and branches there. When the callee
+ * returns into the trampoline, "pop {pc}" returns straight to the
+ * trampoline's own caller. The net effect is a tail call: the caller
+ * receives whatever the callee leaves behind in r0-r3, the C/V flags and
+ * lr, so no result has to be copied back explicitly. */
+
+/* register form: the original reaches the callee through its code address
+ * (ldr r2, =target; mov lr, pc; bx r2), not through a named function, so
+ * this helper must drive the guest call itself. r2 is loaded with the same
+ * branch target the original puts there (the callee sees that value on
+ * entry), and every register and flag the callee leaves behind is the
+ * trampoline's result, so the helper touches nothing after the call. */
+static void tail_call_object_getPanelDataOffset(u32 arg0, u32 arg1) {
+    R0 = arg0;
+    R1 = arg1;
+    R2 = A__object_getPanelDataOffset + 1; /* Thumb entry word from off_800C914 */
+    GUEST_CALL_ADDR(A__object_getPanelDataOffset + 1);
+}
+
+/* Typed body: pass the caller's two arguments on to the real routine.
+ * All outputs (r0-r3, C/V, lr) are produced by the callee's call itself and
+ * stay in place, so there is nothing to return. */
+static void object_getPanelDataOffset_body(u32 arg0, u32 arg1) {
+    tail_call_object_getPanelDataOffset(arg0, arg1);
+}
+
+Next object_getPanelDataOffset(void) {
+    object_getPanelDataOffset_body(R0, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_updatePanelParameters ── */
 /* object_updatePanelParameters(r0..r1, r4..r7, r10 = object/panel context):
  * Thin trampoline. The original loads the address of the real body into r2,

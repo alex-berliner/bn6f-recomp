@@ -226,6 +226,170 @@ Next sub_80C8100(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C8144 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_80C8144;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_sub_80C8144 call_object_getFrontDirection_sub_80C8144(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_sub_80C8144){ R0 };
+}
+
+typedef struct { u32 r0; bool c, v; } call_object_isValidPanel_result;
+/* register form: generated wrapper: object_isValidPanel has no typed C interface yet */
+static inline call_object_isValidPanel_result call_object_isValidPanel(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_isValidPanel);
+    return (call_object_isValidPanel_result){ R0, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r6; } call_object_updateCollisionPanels_result;
+/* register form: generated wrapper: object_updateCollisionPanels has no typed C interface yet */
+static inline call_object_updateCollisionPanels_result call_object_updateCollisionPanels(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateCollisionPanels);
+    return (call_object_updateCollisionPanels_result){ R6 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_spawn_t1_0x0_EffectObject_result;
+/* register form: generated wrapper: spawn_t1_0x0_EffectObject has no typed C interface yet */
+static inline call_spawn_t1_0x0_EffectObject_result call_spawn_t1_0x0_EffectObject(u32 r1, u32 r2, u32 r3, u32 r4) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    return (call_spawn_t1_0x0_EffectObject_result){ R1, R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result call_PlaySoundEffect(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result){ R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_object_highlightPanel_result;
+/* register form: generated wrapper: object_highlightPanel has no typed C interface yet */
+static inline call_object_highlightPanel_result call_object_highlightPanel(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_highlightPanel);
+    return (call_object_highlightPanel_result){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1; } call_object_clearCollisionRegion_result;
+/* register form: generated wrapper: object_clearCollisionRegion has no typed C interface yet */
+static inline call_object_clearCollisionRegion_result call_object_clearCollisionRegion(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_clearCollisionRegion);
+    return (call_object_clearCollisionRegion_result){ R1 };
+}
+
+/* Battle object "advance one panel" handler.
+ *
+ * On the first call of a phase (CurPhase == 0) it latches CurPhase = 4 and
+ * seeds the countdown timer from Param2. Every call then decrements the timer:
+ *  - while it still counts down, the object's current panel stays highlighted;
+ *  - when it reaches zero the object steps one panel in its facing direction.
+ *    If the destination panel is off the field, the collision region is
+ *    cleared and the object switches to the destroy state. Otherwise it
+ *    commits its world position and collision panels, restarts the countdown,
+ *    spawns a step dust effect, plays the step sound and highlights the panel
+ *    it landed on.
+ *
+ * Register contract: inputs r5 (object) lr; outputs r1 r5 r10; preserved
+ * r4 r5 r6 r7 r10.
+ */
+
+struct StepResult {
+    u32 r1;   /* value the last panel call leaves behind in r1 */
+    u32 r10;  /* r10 pass-through (as PlaySoundEffect leaves it) */
+};
+
+static struct StepResult step_object_forward(u32 obj, u32 r10_in) {
+    struct StepResult res;
+    res.r10 = r10_in;
+
+    /* register form: this handler must preserve the incoming r4 (the original
+     * push/pop {r4,lr} restores it on return), but the callees on the step
+     * path clobber the guest r4 register (spawn_t1_0x0_EffectObject leaves
+     * its scratch value there). The incoming r4 is not one of this function's
+     * inputs and exists only in the register file, so typed C cannot preserve
+     * it across the wrapper calls without touching the register directly. */
+    u32 saved_r4 = R4;
+
+    /* First tick of the phase: latch phase 4 and seed the countdown. */
+    if (LD8(obj + oBattleObject_CurPhase) == 0) {
+        ST8(obj + oBattleObject_CurPhase, 4);
+        ST16(obj + oBattleObject_Timer, LD8(obj + oBattleObject_Param2));
+    }
+
+    /* Count down one tick; the decremented value is what the next call sees. */
+    u32 timer = LD16(obj + oBattleObject_Timer) - 1;
+    ST16(obj + oBattleObject_Timer, timer);
+
+    if ((s32)timer > 0) {
+        /* Still counting down: just keep the current panel highlighted. */
+        res.r1 = call_object_highlightPanel(LD8(obj + oBattleObject_PanelX),
+                                            LD8(obj + oBattleObject_PanelY)).r1;
+    } else {
+        /* Timer expired: move one panel in the object's facing direction. */
+        u32 step_x = call_object_getFrontDirection_sub_80C8144(obj).r0;
+        u32 new_x = step_x + LD8(obj + oBattleObject_PanelX);
+        ST8(obj + oBattleObject_PanelX, new_x);
+
+        if (call_object_isValidPanel(new_x, LD8(obj + oBattleObject_PanelY)).r0 == 0) {
+            /* Walked off the field: drop the collision region, self-destruct. */
+            res.r1 = call_object_clearCollisionRegion(obj).r1;
+            ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+                 CUR_STATE_DESTROY);
+        } else {
+            /* Landed on the field: commit world position and collision
+             * panels, restart the countdown, spawn the step effect and play
+             * its sound. */
+            call_object_setCoordinatesFromPanels(obj);
+            call_object_updateCollisionPanels(obj);
+            ST16(obj + oBattleObject_Timer, LD8(obj + oBattleObject_Param2));
+
+            call_spawn_t1_0x0_EffectObject_result fx = call_spawn_t1_0x0_EffectObject(
+                LD32(obj + oBattleObject_X),
+                LD32(obj + oBattleObject_Y),
+                0x20u << 16,   /* effect layer/priority word (0x00200000) */
+                0);
+
+            call_PlaySoundEffect_result sfx =
+                call_PlaySoundEffect(0x106, fx.r2);   /* 7 + 0xFF: step sound */
+            res.r10 = sfx.r10;
+
+            /* Highlight the panel the object just landed on. */
+            res.r1 = call_object_highlightPanel(LD8(obj + oBattleObject_PanelX),
+                                                LD8(obj + oBattleObject_PanelY)).r1;
+        }
+    }
+
+    /* Restore the caller's r4, as the original's pop {r4,pc} does. */
+    R4 = saved_r4;
+    return res;
+}
+
+Next sub_80C8144(void) {
+    struct StepResult res = step_object_forward(R5, R10);
+    R1 = res.r1;
+    R10 = res.r10;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C81A6 ── */
 /* sub_80C81A6(r0 = panel X, r1 = panel Y, r2 = element, r5 = source object,
  *             r6 = damage / stamina-damage counter value):

@@ -367,6 +367,42 @@ Next battle_initAttackFromPreset_8113162(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8116924 ── */
+/* Pet-menu object dispatcher (sub_8116924).
+ *
+ * A trampoline: it reads the pet-menu object's state byte at [r5+8], picks
+ * a handler address from the three-entry table at off_8116938, and calls
+ * it with LR pointing back here, so the handler returns straight through
+ * to sub_8116924's caller. The handler is entered with r0 = its own
+ * address (r0 still holds the table entry when `bx r0` executes) and
+ * r1 = the state byte; its register results (r2, r3, r5, r10, r11) flow
+ * unchanged to the caller, and the flags are whatever the handler left. */
+
+/* register form: dispatch through a code address taken from a jump table;
+ * the three handlers have no typed wrappers, and their r2/r3/r5/r10/r11
+ * results must reach sub_8116924's caller unfiltered, which rules out a
+ * typed wrapper for them. */
+static u32 call_pet_menu_handler(u32 handler, u32 state) {
+    R0 = handler;   /* handler entry state: r0 = handler address ... */
+    R1 = state;     /* ... r1 = the object's state byte */
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* Run one pet-menu object step: dispatch on the state byte at [object+8]
+ * (an index into the handler table at off_8116938). */
+static void run_pet_menu_object(u32 object) {
+    u32 state = LD8(object + 8);
+    u32 handler = LD32(A_off_8116938 + state);
+    call_pet_menu_handler(handler, state);
+}
+
+/* sub_8116924(r5 = pet-menu object) -> r2 r3 r5 r10 r11 left by the handler */
+Next sub_8116924(void) {
+    run_pet_menu_object(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── petMenu_initSprite_8116944 ── */
 /* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
 static void init_gui_sprite_sub_8116944(int type) {
@@ -2461,6 +2497,38 @@ Next battle_dispatchEventScript_8119018(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7, saved_lr = LR;
     do_battle_event_script(saved_r5);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7; LR = saved_lr;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81190D8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sprite_clearScaleCounterAndMakeUnscalable_804668A_result;
+/* register form: generated wrapper: sprite_clearScaleCounterAndMakeUnscalable_804668A has no typed C interface yet */
+static inline call_sprite_clearScaleCounterAndMakeUnscalable_804668A_result call_sprite_clearScaleCounterAndMakeUnscalable_804668A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_clearScaleCounterAndMakeUnscalable_804668A);
+    return (call_sprite_clearScaleCounterAndMakeUnscalable_804668A_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_81190D8: clear a sprite's scale counter and mark it unscalable.
+ *
+ * The original is a bare tail-call stub: it forwards the sprite object
+ * pointer in r5 to sprite_clearScaleCounterAndMakeUnscalable_804668A and
+ * returns immediately. Everything the caller sees afterwards (r2, r3, the
+ * flags, and the untouched r4/r5/r6/r7) is simply whatever that callee
+ * leaves behind, so the wrapper's execution of the callee already puts the
+ * guest registers in their final state and the adapter has nothing to copy. */
+
+/* Forward the object pointer to the scale-reset routine. The generated
+ * wrapper runs the callee in place, leaving its register results (r2, r3,
+ * ...) and flags exactly as the original tail call does. */
+static void reset_sprite_scale(u32 sprite) {
+    call_sprite_clearScaleCounterAndMakeUnscalable_804668A(sprite);
+}
+
+/* sub_81190D8(r5 = sprite object pointer) */
+Next sub_81190D8(void) {
+    reset_sprite_scale(R5);
     RETURN_TO_CALLER();
 }
 
