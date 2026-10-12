@@ -3130,6 +3130,32 @@ Next MapScriptSubCmd_free_all_spawned_ow_map_objects(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CutsceneCmd_call_native_with_return_value ── */
+/* CutsceneCmd_call_native_with_return_value (0x08038028)
+ *
+ * Map-script cutscene command handler. It first pulls the next script word
+ * (ReadMapScriptWord) and then invokes the native command routine whose
+ * address the dispatcher left in R4. The native routine reports in R0:
+ *   - 0  -> the command is still running, so advance the script cursor (R7)
+ *           past this 5-byte command and tell the caller to continue (R0 = 1);
+ *   - !=0 -> stop the script and report 0.
+ */
+Next CutsceneCmd_call_native_with_return_value(void) {
+    R6 = 1;                          /* flag consumed by ReadMapScriptWord */
+    GUEST_CALL(ReadMapScriptWord);
+
+    GUEST_CALL_ADDR(R4);             /* mov lr, pc; bx r4 -- run native handler */
+
+    if (ZERO_FLAG()) {               /* handler returned 0: keep going */
+        R7 += 5;                     /* skip this 5-byte script command */
+        R0 = 1;
+    } else {                         /* handler returned non-zero: halt script */
+        R0 = 0;
+    }
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCmd_warp_cmd_8038040 ── */
 /*
  * Cutscene map-script command "warp" (08038040).
