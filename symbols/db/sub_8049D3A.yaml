@@ -1,0 +1,66 @@
+name: sub_8049D3A
+address: '0x08049D3A'
+kind: function
+status: hypothesis
+summary: 'Likely flag setter: writes "enabled = 1" into the byte_2001802 enable flag of a shared word_2001800 subsystem
+  block.'
+interface: void sub_8049D3A(void); // r1 = 1 on return, r0 = &word_2001800
+details: 'Loads the global address of word_2001800 (EWRAM at "0x02001800") into r0, stores an immediate 1 into its
+  byte at offset 2 (byte_2001802), then returns with r1 = 1. Effectively a one-shot "set enabled" toggle for whatever
+  subsystem owns the "0x2001800" block; the function then restores r0 to point at the block so the caller can immediately
+  inspect/use it together with the r1 = 1 return.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (1 attempt(s), run convert-20261011-203740);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 12' --file inbox_farm_old_12.c
+    sub_8049D3A
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8049D3A
+
+    ./wf verify --function sub_8049D3A --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-203740-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8049D3A
+
+    ./wf verify --function sub_8049D3A --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-203740-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8049D3A
+
+    ./wf verify --function sub_8049D3A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203740-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08049d3a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp d9d3211
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- Which subsystem owns word_2001800 (it has size >= 3 bytes; offset 2 is being treated as an "enable" flag).
+- What r1 = 1 is intended to signal back to callers (just the written value, or a logical "ok/started" status).
+- Whether r0 must hold a specific pre-call value (preserved/expected) or if loading it is purely for the caller's
+  convenience.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203740
+- recomp d9d3211

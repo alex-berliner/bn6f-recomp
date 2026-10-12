@@ -1,0 +1,74 @@
+name: sub_803BEC0
+address: '0x0803BEC0'
+kind: function
+status: confirmed
+summary: Expand a static table of text-script word indexes into per-byte 8-byte command records in a RAM buffer.
+interface: void sub_803BEC0(void /* reads off_803BF18 list, TextScript87E36F8, writes unk_2024A00 buffer, returns
+  via lr with r4-r7 preserved */);
+details: "Iterates an entry table at off_803BF18 (pairs of (output_ptr in unk_2024A00, word_index))\nuntil an output_ptr\
+  \ is NULL. For each entry it resolves the matching word in\nTextScript87E36F8 (text at 87E36F8) by indexing an\
+  \ offset table with the supplied\nword_index*2, then walks that text byte-by-byte emitting one 8-byte record into\
+  \ the\noutput buffer:\n\n  +0: u16 = 0x0002 (command type id)\n  +2: u8  = source byte (the opcode)\n  +3: u8\
+  \  = 0xE5 for single-byte opcodes, second source byte for 0xE4 (two-byte)\n  +4: u8  = 0xE6 (terminator marker)\n\
+  \  rest of 8 bytes unused\n\nThe walk stops on a source byte == 0xE6, at which point the function writes a final\n\
+  0xE6 marker at offset +2 (i.e. signals end of this record stream) and advances to the\nnext entry. Opcodes 0xE4\
+  \ are recognised as a two-byte form (consumes 2 source bytes,\nwrites both into the record); all others are single-byte.\n\
+  \nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (1 attempt(s), run convert-20261011-203740);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 12' --file inbox_farm_old_12.c
+    sub_803BEC0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803BEC0
+
+    ./wf verify --function sub_803BEC0 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-203740-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803BEC0
+
+    ./wf verify --function sub_803BEC0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-203740-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803BEC0
+
+    ./wf verify --function sub_803BEC0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203740-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps, menus3.'
+  reproduce: grep -l '^0803bec0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp d9d3211
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- battles2
+- maps
+- menus3
+related:
+- sub_8049770
+- sub_8049EBC
+open_questions:
+- What is the meaning of the command type id 2 at offset +0 of each record (consumer/parser on the other side)?
+- Why does the single-byte branch hard-code 0xE5 at offset +3 while 0xE4 carries the actual second byte?
+- Is unk_2024A00 the chatbox/dialogue command queue, or a different per-frame command buffer?
+- unk_2024E00 (in the embedded literal at off_803BF1C) - separate buffer or scratch?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203740
+- recomp d9d3211

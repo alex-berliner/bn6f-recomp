@@ -1,0 +1,70 @@
+name: sub_804C074
+address: '0x0804C074'
+kind: function
+status: confirmed
+summary: Clears battle event flag (flag id 4, bit 0xFE) and turns off the 0x400 render/info bit in the toolkit's
+  render-info word.
+interface: 'void sub_804C074(void) /* in: r10 toolkit ptr, lr return; out: r2=0x400, r3, r5; clobbers r0,r1,lr +
+  nz,c,v */'
+details: "First calls ClearEventFlagFromImmediate with an immediate flag id of 4 and bit 0xFE\n(clear that bit in\
+  \ event-flag slot 4). Then loads the toolkit pointer from r10 and,\nvia the toolkit's render-info pointer offset\
+  \ (oToolkit_RenderInfoPtr), reads the current\n16-bit render-info word, ANDs it with ~0x400 (loaded into r2 from\
+  \ off_804C294), and\nwrites the result back as a half-word. The mask value 0x400 is intentionally left\nin r2\
+  \ as the function's r2 output (quirk matching the original). The cleared bit\ncorresponds to a render/info state\
+  \ on the battle/UI toolkit (e.g. dismissing a\npanel, palette, or animation flag in the toolkit's render info\
+  \ word).\nQuirks:\n  \"- Uses EVENT_4FE notation: flag index 4, bit 0xFE (NOT a 12-bit id of 0x4FE).\"\n  - \"\
+  movflag EVENT_4FE\" is the lifter's rendering of the immediate flag-id encoding.\n  - Preserves r4-r7; only r5\
+  \ appears in the output set because of the preserved-register\n    shadow left in the immediate operand.\n\nRegister\
+  \ form, old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (1 attempt(s), run convert-20261011-203740);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 12' --file inbox_farm_old_12.c
+    sub_804C074
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804C074
+
+    ./wf verify --function sub_804C074 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-203740-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804C074
+
+    ./wf verify --function sub_804C074 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-203740-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804C074
+
+    ./wf verify --function sub_804C074 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203740-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: story5, story6.'
+  reproduce: grep -l '^0804c074 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp d9d3211
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- story5
+- story6
+open_questions:
+- Which render-info bit 0x400 exactly represents (panel/state/animation/palette)?
+- What event-flag 4 bit 0xFE is being cleared (likely "battle event 4FE / flag 4 bit 0xFE")?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203740
+- recomp d9d3211

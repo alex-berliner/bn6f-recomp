@@ -1,0 +1,76 @@
+name: sub_8049F70
+address: '0x08049F70'
+kind: function
+status: hypothesis
+summary: Initializes a battle/scene state by queuing several setup actions and resuming script playback.
+interface: void sub_8049F70(void);
+details: "Thin dispatcher that fires four scripted actions in sequence and returns. The\ncallees and their arguments\
+  \ strongly suggest a battle/scene initialization:\n- sub_803BA64() with no argument: appears to be an unconditional\
+  \ action enqueue\n  or fade/reset hook.\n- sub_803B522(0xA) with R0=10: enqueues action type 0xA (commonly a load/queue\n\
+  \  step in the BN6 action system).\n- sub_803B674(0x28=40) with R0=40: enqueues action type 0x28.\n- sub_803A8B4(1)\
+  \ with R0=1: enqueues action type 1.\nThe final \"1\" passed to sub_803A8B4 is consistent with \"run / start the\n\
+  queued action stream,\" which is how battle setup scenes typically close.\nInputs r5 and r10 are preserved verbatim\
+  \ through the call chain (the function\nonly mutates r0-r3 via ARM ABI and pops {r4-r7,pc}), so callers pass scratch\n\
+  values through it. No global state is touched directly here — everything is\ndelegated to the battle/action helpers\
+  \ at 0x803BA64, 0x803B522, 0x803B674 and\n0x803A8B4, which are the canonical \"sub_803Bxxx\" battle-action entry\
+  \ points\nused throughout BN6.\n\nRegister form, old prompt; queued for retype (the farm's prompt 6505961c4798,\
+  \ register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by minimax/MiniMax-M3+old through the convert workflow (1 attempt(s), run convert-20261011-203740);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 12' --file inbox_farm_old_12.c
+    sub_8049F70
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8049F70
+
+    ./wf verify --function sub_8049F70 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-203740-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8049F70
+
+    ./wf verify --function sub_8049F70 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-203740-verify-1)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8049F70
+
+    ./wf verify --function sub_8049F70 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-203740-verify-1)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles2, maps.'
+  reproduce: grep -l '^08049f70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp d9d3211
+  tool: tools/wf convert (minimax/MiniMax-M3+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles2
+- maps
+related:
+- sub_8049F8A
+- sub_803B522
+- sub_803BA64
+open_questions:
+- Exact semantics of each action byte (0xA, 0x28, 1) — needs cross-reference with sub_803B522 / sub_803B674 / sub_803A8B4
+  to confirm they map to specific battle-setup events (e.g. spawn enemies, place panel, start turn).
+- Whether sub_803BA64 is an unconditional "push current state" hook or a fade reset, since it takes no argument.
+- Whether the function name should carry a battle_ prefix or a more specific one (e.g. battleInitEncounter_, battleInitPreBattle_)
+  once the action types are decoded.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261011-203740
+- recomp d9d3211
