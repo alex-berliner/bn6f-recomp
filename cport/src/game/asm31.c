@@ -661,6 +661,32 @@ Next advancePhase3ToPhase4_80C0A6C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C0B4A ── */
+/* sub_80C0B4A(r5 = battle object):
+ * One-tick handler for a battle object's entry phase.
+ * First call initializes the phase (CurAnim, ExtraVars, Timer=10, PhaseInitialized=4).
+ * Subsequent calls decrement Timer; on expiry, advance CurAction to 0xC and
+ * reset the phase so the object can re-initialize. */
+Next sub_80C0B4A(void) {
+    if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
+        /* Phase not yet started: set up initial state */
+        ST8(R5 + oBattleObject_CurAnim, 0);
+        ST32(R5 + 0x6C, 0);          /* ExtraVars + 0xc */
+        ST16(R5 + oBattleObject_Timer, 10);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+    } else {
+        /* Phase running: count down the timer */
+        s32 new_timer = (s32)LD16(R5 + oBattleObject_Timer) - 1;
+        ST16(R5 + oBattleObject_Timer, new_timer);
+        if (new_timer > 0)
+            RETURN_TO_CALLER();
+        /* Timer reached zero: switch to next action and clear phase init */
+        ST8(R5 + 9, 0xC);  /* CurAction */
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C0B76 ── */
 /* sub_80C0B76: per-phase tick dispatcher for a battle object.
  *
@@ -888,6 +914,59 @@ Next sub_80C0DC2(void) {
 
     R4 = 0x26;
     GUEST_CALL(spawn_t1_0x0_EffectObject);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0DD8 ── */
+/* sub_80C0DD8: Spawn a type-0x2C battle object (fx / projectile) and configure it
+ * with the given panel position, linking it back to the source object.
+ *   r0 = panel X coordinate
+ *   r1 = panel Y coordinate
+ *   r5 = source BattleObject (provides alliance/direction, becomes RelatedObject1)
+ *   r6 = damage-counter-disabler value stored in the new object
+ *   r7 = pointer whose first byte gets marked active (also stored in ExtraVars+4)
+ *
+ * Returns with r0/r1/r2 and flags as free scratch; r3–r7 preserved. */
+Next sub_80C0DD8(void) {
+    /* object_spawnType1 clobbers r3 and r5; save what we need. */
+    u32 saved_r3   = R3;
+    u32 source_obj = R5;   /* the object this fx was spawned from */
+    u32 panel_x    = R0;   /* X coordinate in tile units           */
+    u32 panel_y    = R1;   /* Y coordinate in tile units           */
+
+    /* Spawn object type 0x2C; result pointer lands in r5. */
+    R0 = 0x2C;
+    GUEST_CALL(object_spawnType1);
+
+    R3 = saved_r3;  /* restore preserved register */
+
+    u32 new_obj = R5;  /* freshly spawned BattleObject, or 0 on failure */
+    R5 = source_obj;   /* r5 is a preserved output – put it back */
+
+    if (new_obj == 0) {
+        /* Spawn failed (pool full); nothing to configure. */
+        RETURN_TO_CALLER();
+    }
+
+    /* Write panel coordinates into both the canonical and mirror fields. */
+    ST8(new_obj + oBattleObject_PanelX, panel_x);
+    ST8(new_obj + oBattleObject_Unk_0c, panel_x);
+    ST8(new_obj + oBattleObject_PanelY, panel_y);
+    ST8(new_obj + oBattleObject_Unk_0d, panel_y);
+
+    /* Inherit alliance and facing direction from the source object. */
+    ST16(new_obj + oBattleObject_AllianceAndDirectionFlip,
+         LD16(source_obj + oBattleObject_AllianceAndDirectionFlip));
+
+    /* Link metadata: disabler value, related object back-pointer,
+     * and the "active" flag byte address in the extra-variable slot. */
+    ST32(new_obj + oBattleObject_DamageAndStaminaDamageCounterDisabler, R6);
+    ST32(new_obj + oBattleObject_RelatedObject1Ptr, source_obj);
+    ST32(new_obj + oBattleObject_ExtraVars + 4, R7);
+
+    /* Mark the referenced byte (e.g. an owner's "has-fx" flag) as active. */
+    ST8(R7, 1);
 
     RETURN_TO_CALLER();
 }
@@ -2349,6 +2428,57 @@ Next sub_80C5E44(void) {
     default: GUEST_CALL(sub_80C5F0C); break;
     }
     GUEST_CALL(object_presentCollisionData);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C5F2C ── */
+/* sub_80C5F2C(r0 = panel X, r1 = panel Y, r2 = element, r5 = source battle object,
+ *             r6 = damage/stamina counter disabler value):
+ * Spawn a type-3 battle object (subtype 9); if successful, initialize its panel position,
+ * element, and damage counter from the caller's arguments, then copy the alliance and
+ * direction-flip field from the source object.
+ * Outputs: r0 = new object (0 on failure), r1 = panel X, r2 = panel Y,
+ *          r3 = element (beq path) or alliance word (success path),
+ *          r5 = source object (unchanged), C = 0, V = 0. */
+Next sub_80C5F2C(void) {
+    u32 panel_x = R0;
+    u32 panel_y = R1;
+    u32 element = R2;
+    u32 src_obj = R5;
+
+    /* Spawn the object; result pointer arrives in R5. */
+    R0 = 9;
+    GUEST_CALL(object_spawnType3);
+    u32 new_obj = R5;
+
+    /* mov r0, r5 in Thumb MOVS also behaves as ADDS Rd, Rn, #0 here:
+     * sets NZ from the pointer and clears C and V. */
+    SET_FLAGS_ADD(new_obj, 0);
+
+    /* Restore the arguments that the callee may have clobbered (the pop in the original). */
+    R1 = panel_x;
+    R2 = panel_y;
+    R3 = element;
+    R5 = src_obj;
+
+    if (new_obj == 0) {
+        /* Spawn failed – return with r0 = 0. */
+        R0 = 0;
+        RETURN_TO_CALLER();
+    }
+
+    /* Initialize the new object's panel position, element, and counter. */
+    ST8(new_obj + oBattleObject_PanelX, panel_x);
+    ST8(new_obj + oBattleObject_PanelY, panel_y);
+    ST8(new_obj + oBattleObject_Element, element);
+    ST32(new_obj + oBattleObject_DamageAndStaminaDamageCounterDisabler, R6);
+
+    /* Copy alliance / direction-flip from the source object into the new one. */
+    u16 alliance = LD16(src_obj + oBattleObject_AllianceAndDirectionFlip);
+    ST16(new_obj + oBattleObject_AllianceAndDirectionFlip, alliance);
+
+    R0 = new_obj;
+    R3 = alliance;
     RETURN_TO_CALLER();
 }
 

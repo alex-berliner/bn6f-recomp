@@ -2619,6 +2619,62 @@ Next eStruct200A008_setUnk03(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800B6F2 ── */
+/* sub_800B6F2: Scan the battle state's pending-event list and fire any
+ * event flags for entries with value >= 0x100 (the flag number is
+ * value + 0x300).  Skipped entirely when battle-effect bits 3 or 19
+ * indicate a special mode is active.
+ *
+ * The battle state holds two parallel event arrays selected by the
+ * "side" bit from state byte 0x0d:
+ *   count byte  at  offset 4 + side   (r1)
+ *   event u16[] at  offset 0x4C + 8*side  (r7 base) */
+Next sub_800B6F2(void) {
+    u32 statePtr = LD32(R10 + oToolkit_BattleStatePtr);
+
+    /* Check battle-effect flags: bit 3 (0x8) or bit 19 (0x80000) */
+    GUEST_CALL(GetBattleEffects);
+    R1 = 8;
+    if (R0 & 8) {
+        SET_FLAGS_NZ(R0 & 8);
+        RETURN_TO_CALLER();
+    }
+
+    R1 = 0x80000;
+    if (R0 & 0x80000) {
+        SET_FLAGS_NZ(R0 & 0x80000);
+        RETURN_TO_CALLER();
+    }
+
+    /* Determine which event list: invert byte-0x0d state (side 0 ↔ 1) */
+    GUEST_CALL(battle_getStateByte0d_800A7E2);
+    u32 side = R0 ^ 1;
+
+    R1 = side + 4;
+    u32 count = LD8(statePtr + R1);
+    statePtr += (side << 3) + 0x4C;
+
+    /* Walk the event array; fire flags for entries >= 0x100 */
+    do {
+        u16 evt = LD16(statePtr);
+
+        R1 = 0x100;
+        s32 adjusted = (s32)evt - 0x100;   /* SUBS evt, #0x100 */
+        if (adjusted >= 0) {
+            R1 = 0x300;
+            R0 = (u32)(adjusted + 0x300);
+            GUEST_CALL(SetEventFlag);
+        }
+
+        statePtr += 2;
+        s32 prevCount = (s32)count;
+        count--;
+        SET_FLAGS_CMP(prevCount, 1);       /* SUBS count, #1 – final flags */
+    } while ((s32)count > 0);             /* BGT */
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_800B75A ── */
 /* sub_800B75A: store 0xFF (a "cancel/back out" flag?) into byte_203C960. */
 Next sub_800B75A(void) {

@@ -1509,6 +1509,47 @@ Next initSaveStateBlock_8048F9C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── cb_8048FD4 ── */
+/* cb_8048FD4: subsystem tick callback.
+ * Reads the state byte at eS200A290 (0/4/8/12 selects one of four
+ * subsystem handlers from a jump table), calls the selected handler,
+ * then checks whether the subsystem has finished; if so it fires
+ * event 0xDA with argument 2 via sub_803C59C.
+ *
+ * R4–R7 are preserved across this function (the original uses
+ * push/pop {r4-r7}); R5 is temporarily set to the state pointer for
+ * the handler's use but must be restored before returning. */
+Next cb_8048FD4(void) {
+    u32 statePtr = A_eS200A290;
+    u8 offset = LD8(statePtr);
+
+    /* Handlers index [R5] for state; temporarily set R5, save/restore. */
+    u32 savedR5 = R5;
+    R1 = offset;
+    R5 = statePtr;
+
+    switch (offset) {
+    case 0:  GUEST_CALL(sub_804900C); break;
+    case 4:  GUEST_CALL(sub_8049058); break;
+    case 8:  GUEST_CALL(sub_8049080); break;
+    case 12: GUEST_CALL(sub_804971C); break;
+    }
+
+    R5 = savedR5;
+
+    /* If the subsystem is still in use (non-zero), skip the completion event. */
+    GUEST_CALL(IsCurSubsystemInUse);
+    if (!ZERO_FLAG()) {
+        RETURN_TO_CALLER();
+    }
+
+    /* Subsystem finished – signal completion. */
+    R0 = 0xDA;
+    R1 = 2;
+    GUEST_CALL(sub_803C59C);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_804900C ── */
 /* sub_804900C: scene shutdown for the area-transition/menu-exit path.
  *

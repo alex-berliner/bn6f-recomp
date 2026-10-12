@@ -1363,6 +1363,49 @@ Next sound_tickAllMusicPlayers_814EA58(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_814EAF0 ── */
+/* Magic tag identifying this object as a message/script sequence. */
+#define MSG_OBJ_TAG 0x68736D53u
+
+/* Field offsets within the tagged message object. */
+#define oMsgObj_Status       0x04  /* bit 31 used as a "done/finished" flag */
+#define oMsgObj_Field24      0x24  /* sequence/step pointer low             */
+#define oMsgObj_Field26      0x26  /* sequence/step pointer high            */
+#define oMsgObj_State        0x28  /* 16-bit state, set to 2 on init        */
+#define oMsgObj_TypeTag      0x34  /* fourcc tag validated before writes    */
+
+/* sub_814EAF0(r0 = msgObj, r1 = value):
+ * If msgObj carries the MSG_OBJ_TAG at offset 0x34, initialize it:
+ *   store the 16-bit value into the two sequence fields,
+ *   set its 16-bit state to 2,
+ *   clear bit 31 ("done") of its status word.
+ * Outputs: r1 = 0x7FFFFFFF (match path) or value & 0xFFFF (no-match),
+ *          r2 = msgObj, r3 = loaded tag word. */
+Next sub_814EAF0(void) {
+    u32 msgObj = R0;
+    u32 value  = R1 & 0xFFFF;       /* lsl #16 / lsr #16 pair */
+    u32 tag    = LD32(msgObj + oMsgObj_TypeTag);
+
+    R2 = msgObj;
+    R3 = tag;
+
+    if (tag == MSG_OBJ_TAG) {
+        ST16(msgObj + oMsgObj_Field26, value);
+        ST16(msgObj + oMsgObj_Field24, value);
+        ST16(msgObj + oMsgObj_State,   2);
+
+        u32 status = LD32(msgObj + oMsgObj_Status);
+        status &= 0x7FFFFFFF;       /* clear the "done" flag */
+        ST32(msgObj + oMsgObj_Status, status);
+
+        R1 = 0x7FFFFFFF;            /* mask constant loaded into r1 by the ldr */
+    } else {
+        R1 = value;                 /* masked input survives on the skip path */
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── cgbSoundInit_814EB84 ── */
 /* register form: calls SWI_CpuSet (BIOS wrapper) outside this file;
  * needs SP because it passes a stack address as the 32-bit fill source.

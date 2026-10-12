@@ -190,6 +190,39 @@ Next sub_8033B80(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── gfxTransfer_8033DA0 ── */
+/* gfxTransfer_8033DA0(r0 = base address):
+ * Queue a 32-byte PET-navi tileset transfer to VRAM buffer byte_30016D0.
+ * The source tileset is chosen from a pointer table indexed by the current
+ * navi, overridden to entry 0xC when EVENT_163 is clear and the special
+ * RAM byte at 0x200AD04 is non-zero. */
+Next gfxTransfer_8033DA0(void) {
+    u32 basePtr = R0;
+
+    /* Get the current PET navi index */
+    GUEST_CALL(GetCurPETNavi);
+    u32 tileIdx = R0;
+
+    /* Check EVENT_163 (flag 0x63, bank 1) */
+    R0 = 1;
+    R1 = 0x63;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (ZERO_FLAG()) {
+        /* EVENT_163 is not set; consult the override byte */
+        GUEST_CALL(notZero_eByte200AD04);
+        if (!ZERO_FLAG())
+            tileIdx = 0xC;
+    }
+
+    /* Look up the tileset source pointer from the table and add the base */
+    R0 = LD32(A_off_8033DD4 + (tileIdx << 2)) + basePtr;
+    R1 = A_byte_30016D0;
+    R2 = 0x20;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── doPETEffect_8033fc0 ── */
 /* doPETEffect_8033fc0(r0 = PET effect index):
  * Records the requested PET effect in the eS2011E30 state block and

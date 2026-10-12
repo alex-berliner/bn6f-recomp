@@ -1398,3 +1398,108 @@ Next overworld_CheckPlayerAdvanceForwardTrigger_809E46E(void) {
 }
 
 #undef EVENT_1717_PLAYER_ADVANCE_FORWARD
+
+/* ── owPlayer_toggleUsingCopybot_809e4bc ── */
+/* owPlayer_toggleUsingCopybot_809e4bc (0x0809E4BC):
+ * Toggle EVENT_COPYBOT_ACTIVE, then reload the overworld player sprite showing
+ * the copybot companion (sprite 0x37) if the flag is now set, or sprite 0 otherwise.
+ * Sets the player's animation, loads animation frames, disables shadow, refreshes sprite.
+ *
+ * inputs:   r10 = toolkit pointer
+ * outputs:  r1, r2 (left by sprite_update/sprite_load)
+ *           r4, r5, r7 (preserved – restored from stack as original does)
+ * clobbers: r0, r3, nz, c, v, lr
+ * preserved: r4, r5, r6, r7
+ */
+
+#define EVENT_COPYBOT_ENTRY   0x17  /* event-flag byte index for COPYBOT_ACTIVE */
+#define EVENT_COPYBOT_BIT     0x29  /* event-flag bit index within that byte    */
+#define OW_SPRITE_SLOT        0x80  /* overworld sprite slot for the player     */
+#define OW_SPRITE_INDEX       0x18  /* sprite entry index within that slot      */
+#define SPRITE_ID_COPYBOT     0x37  /* copybot companion sprite ID              */
+
+Next owPlayer_toggleUsingCopybot_809e4bc(void) {
+    /* Save callee-saved registers (original: push {r4-r7,lr}) */
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    /* Toggle the "copybot active" event flag */
+    R0 = EVENT_COPYBOT_ENTRY;
+    R1 = EVENT_COPYBOT_BIT;
+    GUEST_CALL(ToggleEventFlagFromImmediate);
+
+    /* Toolkit → GameState → OverworldPlayerObject (original: r5 = [[r10]] chain) */
+    u32 playerObj = LD32(LD32(R10 + oToolkit_GameStatePtr)
+                         + oGameState_OverworldPlayerObjectPtr);
+
+    /* Determine sprite ID: 0x37 if flag is now set, 0 otherwise.
+     * (original: mov r4,#0x37; bl Test; bne keep; mov r4,#0) */
+    R0 = EVENT_COPYBOT_ENTRY;
+    R1 = EVENT_COPYBOT_BIT;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    u32 spriteId = ZERO_FLAG() ? 0 : SPRITE_ID_COPYBOT;
+
+    /* Load the player's overworld sprite slot with the chosen companion sprite.
+     * Original passes spriteId in R2 (via r4) and has R5 = playerObj; sprite_load
+     * reads these from the register file. */
+    R0 = OW_SPRITE_SLOT;
+    R1 = OW_SPRITE_INDEX;
+    R2 = spriteId;
+    R4 = spriteId;
+    R5 = playerObj;
+    R6 = savedR6;
+    R7 = savedR7;
+    GUEST_CALL(sprite_load);
+
+    /* Apply the player's current animation selection */
+    R0 = LD8(playerObj + oOWPlayerObject_AnimationSelect);
+    GUEST_CALL(sprite_setAnimation);
+
+    /* Build animation frames, suppress shadow, push updated sprite to display */
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_noShadow);
+    GUEST_CALL(sprite_update);
+
+    /* Restore callee-saved registers (original: pop {r4-r7,pc}) */
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809E4F8 ── */
+/* sub_809E4F8(r10 = Toolkit*):
+ * Draw the overworld player. Loads the sprite (tile 0x80, attr 0x18),
+ * selects the animation stored at byte 0x14 of the player object,
+ * fetches tile/palette data, disables the shadow, then blits.
+ *
+ * R5 is used as a scratch pointer to the player object across the
+ * subroutine calls; it is saved and restored to satisfy the preserved
+ * contract (the original achieves this via push {r4-r7}/pop). */
+Next sub_809E4F8(void) {
+    u32 savedR5 = R5;
+
+    /* Walk Toolkit → GameState → Overworld player object. */
+    R5 = R10;
+    R5 = LD32(R5 + oToolkit_GameStatePtr);
+    R5 = LD32(R5 + oGameState_OverworldPlayerObjectPtr);
+
+    /* Load the player sprite: tile index 0x80, attribute 0x18, no flags. */
+    R0 = 0x80;
+    R1 = 0x18;
+    R2 = 0;
+    GUEST_CALL(sprite_load);
+
+    /* Apply the animation frame stored in the player object. */
+    R0 = LD8(R5 + 0x14);
+    GUEST_CALL(sprite_setAnimation);
+
+    /* Fetch tile/palette data, suppress shadow, render. */
+    GUEST_CALL(sprite_loadAnimationData);
+    GUEST_CALL(sprite_noShadow);
+    GUEST_CALL(sprite_update);
+
+    R5 = savedR5;
+    RETURN_TO_CALLER();
+}

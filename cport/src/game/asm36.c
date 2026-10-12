@@ -899,6 +899,61 @@ Next gfx_fillAllBandedTilemaps_81330AC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81333A0 ── */
+/* sub_81333A0: dispatch a battle object's type-specific update handler,
+ * then sync fields, run entity handlers, and apply post-update effects.
+ * R5 = object pointer; object byte [R5+2] is the type (pre-scaled by 4 as
+ * a word-table offset), byte [R5+3] is a sub-type/flag. */
+Next sub_81333A0(void) {
+    /* Jump table dispatch: type values 0,4,8,0xC,0x10 index a 5-entry
+     * word table of update handlers. */
+    u32 objType = LD8(R5 + 2);
+    R1 = objType;   /* callee may inspect the type byte */
+
+    if (objType == 0)
+        GUEST_CALL(battle_objectUpdate_8133400);
+    else if (objType == 4)
+        GUEST_CALL(sub_81337C4);
+    else if (objType == 8)
+        GUEST_CALL(sub_8133434);
+    else if (objType == 0xC)
+        GUEST_CALL(sub_8133484);
+    else /* objType == 0x10 */
+        GUEST_CALL(sub_8133788);
+
+    /* Sync battle state from the object and finalize the handler call */
+    GUEST_CALL(battle_setFieldsFromObj_81340FC);
+    GUEST_CALL(sub_8134490);
+
+    /* Run the generic entity update pipeline */
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+    GUEST_CALL(sub_80465F8);
+
+    /* Post-update: type-specific effect spawning or cleanup */
+    objType = LD8(R5 + 2);
+
+    if (objType == 0xC) {
+        /* Type 12 path: act only if sub-type is non-zero */
+        u32 subType = LD8(R5 + 3);
+        if (subType == 0) {
+            SET_FLAGS_CMP(subType, 0);
+            RETURN_TO_CALLER();
+        }
+        GUEST_CALL(sub_81345FC);
+    } else if (objType == 4 && LD8(R5 + 3) == 0xC) {
+        /* Type 4, sub-type 12: no further effects */
+        SET_FLAGS_CMP(0xC, 0xC);
+        RETURN_TO_CALLER();
+    } else {
+        /* Default / type-4-with-other-sub-type: spawn fixed effects */
+        GUEST_CALL(sub_81345D4);
+        GUEST_CALL(battle_spawnFixedArgEffect_wrapper_81345E8);
+        GUEST_CALL(sub_8134610);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectUpdate_8133400 ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool screen_fade_active_sub_8133400(void) {

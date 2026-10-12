@@ -2696,3 +2696,51 @@ Next install_object_state_handler_811CA1C(void) {
     install_object_state_handler(R5);
     RETURN_TO_CALLER();
 }
+
+/* ── sub_811CA94 ── */
+/* sub_811CA94(r5 = battle-object pointer):
+ * Run the object's state-machine loop until a handler signals completion
+ * (returns with Z = 1), then update flag bit 1 based on the timer field,
+ * and refresh the object's sprite.
+ *
+ * Jump table at 0x0811CAC4 (7 × 4-byte entries, thumb-bit set):
+ *   0: sub_811CAEC
+ *   4: timerCountdown_step_811CBA0
+ *   8: battle_matchTrackedSpriteAndShrink_811CBD0
+ *  12: sub_811CC02
+ *  16: battle_initObjectSpriteAndStartAnimation_811CC0C
+ *  20: sub_811CC26
+ *  24: sub_811CC3A */
+Next sub_811CA94(void) {
+    u32 state_offset;
+
+    /* dispatch loop: step the state machine until it reports "done" */
+    do {
+        /* sub_811CC68 returns a pointer whose halfword is the byte-offset
+         * into the jump table for the current state. */
+        GUEST_CALL(sub_811CC68);
+        state_offset = LD16(R0);
+
+        switch (state_offset) {
+            case  0: GUEST_CALL(sub_811CAEC);                                            break;
+            case  4: GUEST_CALL(timerCountdown_step_811CBA0);                            break;
+            case  8: GUEST_CALL(battle_matchTrackedSpriteAndShrink_811CBD0);             break;
+            case 12: GUEST_CALL(sub_811CC02);                                            break;
+            case 16: GUEST_CALL(battle_initObjectSpriteAndStartAnimation_811CC0C);       break;
+            case 20: GUEST_CALL(sub_811CC26);                                            break;
+            case 24: GUEST_CALL(sub_811CC3A);                                            break;
+            default: GUEST_CALL(sub_811CAEC);                                            break;
+        }
+    } while (!ZERO_FLAG());
+
+    /* flag bit 1 tracks whether the countdown timer (offset 0x1A) has reached
+     * the expiry threshold 0x1150; set it once elapsed, clear otherwise. */
+    u32 flags = LD8(R5);
+    flags &= ~2;
+    if ((s32)LD16(R5 + 0x1A) >= 0x1150)
+        flags |= 2;
+    ST8(R5, flags);
+
+    GUEST_CALL(sprite_update);
+    RETURN_TO_CALLER();
+}

@@ -1451,6 +1451,59 @@ Next battle_objectDestroyWithRelated2Unlink_80CAC44(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80CAC58 ── */
+/* sub_80CAC58(r0, r1, r2, r3, r4, r5, r6, r7):
+ * Spawn a type-0x36 battle object and initialize its fields from caller
+ * registers. Note: push {r0-r2,r5} / pop {r1-r3,r5} are asymmetric, so
+ * after the pop r1 holds the caller's r0, r2 holds the caller's r1, etc.
+ * r5 (source object) supplies the alliance/direction-flip value.
+ * r7 is the secondary related-object; a back-pointer is written to [r7].
+ * If the spawn returns NULL in r5, initialization is skipped. */
+Next sub_80CAC58(void) {
+    /* Save caller registers that the asymmetric push/pop shifts into others */
+    u32 caller_r0 = R0;
+    u32 caller_r1 = R1;
+    u32 caller_r2 = R2;
+    u32 source_obj = R5;
+
+    /* Spawn the new battle object (type 0x36); pointer returned in r5 */
+    R0 = 0x36;
+    GUEST_CALL(object_spawnType3);
+    u32 new_obj = R5;
+
+    /* Simulate pop {r1-r3, r5}: values shift from saved r0,r1,r2,r5 */
+    R2 = caller_r1;
+    R3 = caller_r2;
+    R5 = source_obj;
+
+    if (new_obj != 0) {
+        /* r1 after pop = caller_r0; r3 after pop = caller_r2 */
+        ST32(new_obj + oBattleObject_ExtraVars, caller_r0);
+        ST8(new_obj + oBattleObject_Element, caller_r2);
+        ST32(new_obj + oBattleObject_RelatedObject1Ptr, source_obj);
+        ST32(new_obj + oBattleObject_DamageAndStaminaDamageCounterDisabler, R6);
+
+        /* Inherit alliance and direction flip from source object */
+        u16 alliance_dir = LD16(source_obj + oBattleObject_AllianceAndDirectionFlip);
+        ST16(new_obj + oBattleObject_AllianceAndDirectionFlip, alliance_dir);
+        R3 = alliance_dir;
+
+        /* Link secondary related object with a back-pointer at [r7] */
+        ST32(new_obj + oBattleObject_RelatedObject2Ptr, R7);
+        ST32(R7, new_obj);
+
+        /* Mark the new object with active-battle flag (bit 4) */
+        u32 flags = LD8(new_obj + oObjectHeader_Flags) | 0x10;
+        ST8(new_obj + oObjectHeader_Flags, flags);
+        R2 = flags;
+    }
+
+    /* Last flag-setting op is ADDS new_obj, #0 → V = 0 (no overflow) */
+    SET_FLAGS_ADD(new_obj, 0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiPickMovePanels_80CAC82 ── */
 typedef struct { u32 column; u32 row; } PanelPos;
 typedef struct { u32 r0, r1, r2, r3, r7; } Out5;
@@ -1866,6 +1919,66 @@ static void dispatch_battle_object_state_t3_0x44_80CC944(u32 object) {
 
 Next t3_0x44_80CC944(void) {
     dispatch_battle_object_state_t3_0x44_80CC944(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CC964 ── */
+/* sub_80CC964: Initialize a battle object's collision data and transition to update state.
+ * r5 = BattleObject pointer. */
+Next sub_80CC964(void) {
+    u32 saved_r4 = R4;
+
+    /* Place the object on the grid using its panel coordinates */
+    GUEST_CALL(object_setCoordinatesFromPanels);
+
+    /* Reset the object's vertical (Z) offset */
+    ST32(R5 + oBattleObject_Z, 0);
+
+    /* Allocate a collision data buffer for this object */
+    GUEST_CALL(object_createCollisionData);
+    u32 collisionHandle = R0;
+
+    if (collisionHandle == 0) {
+        /* Allocation failed – release memory and bail */
+        GUEST_CALL(object_freeMemory);
+        R4 = saved_r4;
+        RETURN_TO_CALLER();
+    }
+
+    /* Configure collision geometry from the object's parameter bytes */
+    R0 = collisionHandle;
+    R1 = LD8(R5 + oBattleObject_Param4);
+    R2 = LD8(R5 + oBattleObject_Param3);
+    R3 = LD32(R5 + oBattleObject_ExtraVars);
+    R4 = collisionHandle;
+    GUEST_CALL(object_setupCollisionData);
+
+    /* Assign the hit effect ID to this collision */
+    R0 = LD8(R5 + oBattleObject_Param2);
+    R4 = collisionHandle;
+    GUEST_CALL(object_setCollisionHitEffect);
+
+    /* Store the damage amount into the collision record (offset 1) */
+    ST8(collisionHandle + 1, LD8(R5 + oBattleObject_Param1));
+
+    /* Optionally attach a status effect if ExtraVars[4] is set */
+    R0 = LD32(R5 + oBattleObject_ExtraVars + 4);
+    if (R0 != 0) {
+        R4 = collisionHandle;
+        GUEST_CALL(object_setCollisionStatusEffect1);
+    }
+
+    /* Finalize the collision so it becomes active in the battle */
+    R4 = collisionHandle;
+    GUEST_CALL(object_presentCollisionData);
+
+    /* Load the update timer from ExtraVars[8] into the object's timer */
+    ST16(R5 + oBattleObject_Timer, LD32(R5 + oBattleObject_ExtraVars + 8));
+
+    /* Transition the object to its update state */
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+
+    R4 = saved_r4;
     RETURN_TO_CALLER();
 }
 
