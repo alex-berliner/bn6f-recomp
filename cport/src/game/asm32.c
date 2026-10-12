@@ -781,6 +781,26 @@ Next record_getNthSubRecordPtr_8116CD4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8116CE0 ── */
+#define oBattleObject_BehaviorStep 8
+
+/* register form: dispatch the battle object's behavior handler via the 3-entry jump table at
+ * off_8116CF4. The table entries already have the Thumb bit set (+1). R1 carries the step
+ * byte through to the handler unchanged; R0 is the loaded handler address; all other
+ * registers (R2..R12, SP, LR apart from the call return) pass through. */
+static void dispatch_behavior_step(u32 object_ptr) {
+    u32 step_byte = LD8(object_ptr + oBattleObject_BehaviorStep);
+    R1 = step_byte;
+    R0 = LD32(A_off_8116CF4 + step_byte);
+    GUEST_CALL_ADDR(R0);
+}
+
+/* sub_8116CE0(r5 = battle object pointer; r2 r3 r5 r10 r11 output, rest pass through) */
+Next sub_8116CE0(void) {
+    dispatch_behavior_step(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_initSpriteType23_8116D00 ── */
 /* Object offsets for the battle sprite record pointed to by R5 */
 #define oBattleSprite_Type       0x00   /* class/type ID byte */
@@ -1397,6 +1417,39 @@ Next sprite_setStructHalfwordPairOnThree_8117084(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8117690 ── */
+/* Jump-table dispatch over a battle-context byte (offset 8). The three table
+ * entries are THUMB targets (low bit set). Original behaviour:
+ *   push {lr}
+ *   r0 = &table; r1 = ctx[8]; r0 = table[r1]
+ *   lr = retaddr (0x811769C, the pop); bx r0
+ *   pop {pc}      ; returns to caller via the saved lr
+ * The target is a THUMB function (bx with bit0 set); the callee runs with our
+ * lr, so on return the original pops our saved pc and resumes here. We model
+ * it directly so the guest stack matches the original. */
+
+static u32 dispatch_via_table(u32 context, u32 caller_lr) {
+    u32 idx    = LD8(context + 8);
+    u32 target = LD32(A_off_81176A4 + idx);
+
+    /* register form: callee (sub_81176B0/C0/C8) reads guest stack relative to SP,
+     * so we must reproduce the original's push {lr}/pop {pc} to match layout. */
+    SP -= 4;
+    ST32(SP, caller_lr);
+    R0 = target;
+    R1 = idx;
+    GUEST_CALL_ADDR(target);
+    u32 result = R0;
+    SP += 4;
+    return result;
+}
+
+/* sub_8117690(r5 = battle context) -> r0 (handler result) */
+Next sub_8117690(void) {
+    R0 = dispatch_via_table(R5, LR);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81176B0 ── */
 /* sub_81176B0(r5 = state struct):
  * Mark the entity as active (flag 1) and set its mode/counter field at +8 to 4,
@@ -1951,6 +2004,22 @@ Next copyTwoDigitNumberTiles_8117B94(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8117BC8 ── */
+/* register form: dispatches via table at off_8117BDC indexed by a byte from the object at r5+8;
+   the targets (sprite_initGuiSlotA_8117BE8, sub_8117C4C, sub_8117CCC) have no typed C interface yet */
+static void dispatch_handler(void) {
+    u32 table = A_off_8117BDC;
+    u32 idx = LD8(R5 + 8);
+    R0 = LD32(table + idx);
+    GUEST_CALL_ADDR(R0);
+}
+
+/* sub_8117BC8(r5 = handler object) -> r2 r3 r5 r10 r11 */
+Next sub_8117BC8(void) {
+    dispatch_handler();
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_initGuiSlotA_8117BE8 ── */
 /* register form: calls initGuiSprite_8002770 outside this file, which has no typed C interface yet */
 static void call_initGuiSprite_sub_8117BE8(int a1, int a2) {
@@ -2165,6 +2234,29 @@ Next sub_8117E60(void) {
     }
 
     GUEST_CALL(sprite_update);   /* R2/R3 outputs come from this leaf */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8118F24 ── */
+/* sub_8118F24(r5 = battle object pointer): sprite-update trampoline.
+ * Dispatches to one of three Thumb handlers via a ROM jump table indexed
+ * by the state byte at [r5+8], preserving LR across the call. All output
+ * registers (r2/r3/r5/r10/r11) come from the dispatched handler. */
+Next sub_8118F24(void) {
+    u32 obj = R5;
+    u32 lr_save = LR;
+
+    u32 state = LD8(obj + 8);
+    u32 target = LD32(A_off_8118F38 + state);
+
+    /* register form: indirect call through a ROM jump table; the target is
+     * a Thumb address (low bit set) and LR must be preserved across it so
+     * the callee returns to us. */
+    R1 = state;
+    R0 = target;
+    GUEST_CALL_ADDR(target);
+
+    LR = lr_save;
     RETURN_TO_CALLER();
 }
 

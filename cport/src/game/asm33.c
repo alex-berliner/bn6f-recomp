@@ -2058,6 +2058,87 @@ Next battle_transitionTick_8125170(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8125198 ── */
+/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+static void call_sub_8126818_zero(void) {
+    R0 = 0;
+    GUEST_CALL(sub_8126818);
+}
+
+/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+static void call_sub_8125444_sub_8125198(void) {
+    GUEST_CALL(sub_8125444);
+}
+
+/* register form: calls bg_drawArenaTiles_8125E78 outside this file, which has no typed C interface yet */
+static void call_sub_8125E78_sub_8125198(void) {
+    GUEST_CALL(bg_drawArenaTiles_8125E78);
+}
+
+/* register form: calls sub_8126184 outside this file, which has no typed C interface yet */
+static void call_sub_8126184(void) {
+    GUEST_CALL(sub_8126184);
+}
+
+/* register form: calls sprite_setStructHalfwordPairOnThree_8117084 outside this file,
+ * which has no typed C interface yet */
+static void call_sprite_set(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+}
+
+/* Subtract 2 from the object's frame counter at +0x74, clamp it to a minimum of 0x6A,
+ * finalize it and update two sprite frame slots from the object's animation state.
+ *
+ * Operates directly on the object memory at `addr` (R5 passed in). */
+static void tick_object_frame(u32 addr) {
+    call_sub_8126818_zero();
+
+    u32 frame = LD32(addr + 0x74) - 2;
+    ST32(addr + 0x74, frame);
+
+    if ((s32)frame <= 0x6A) {
+        ST32(addr + 0x74, 0x6A);
+        ST8(addr + 2, 0x30);
+    }
+
+    ST32(addr + 0x70, 0xFF);
+
+    call_sub_8125444_sub_8125198();
+    call_sub_8125E78_sub_8125198();
+    call_sub_8126184();
+
+    /* First sprite slot (index 4): normally 0, but if the object kind is 5, use +0x26. */
+    u32 kind1 = LD32(addr + 0x60);
+    u32 r1 = 0;
+    if (kind1 == 5)
+        r1 = LD16(addr + 0x26);
+    call_sprite_set(kind1, r1, 4);
+
+    /* Second sprite slot (index 7): normally 0, but if the object kind is 0x27 use +0x1C;
+     * and if the clamped frame is <= 0x60 and kind is 0x1D, use +0x3A instead. */
+    u32 kind2 = LD32(addr + 0x68);
+    r1 = 0;
+    if (kind2 == 0x27)
+        r1 = LD16(addr + 0x1C);
+    u32 frame_after = LD32(addr + 0x74);
+    if ((s32)frame_after <= 0x60) {
+        r1 = 0;
+        u32 kind2b = LD32(addr + 0x5C);
+        if (kind2b == 0x1D)
+            r1 = LD16(addr + 0x3A);
+        kind2 = kind2b;
+    }
+    call_sprite_set(kind2, r1, 7);
+}
+
+Next sub_8125198(void) {
+    tick_object_frame(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_flagResolve_8125254 ── */
 #define EVENT_CHATBOX_FLAG 0x1711
 

@@ -751,6 +751,118 @@ Next chatbox_loadMugshotPortrait_8040B3A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_8040B8C ── */
+/* Chatbox mugshot fade filter step + sprite render sequence.
+ * Original saves r4/r5/r6 via push/pop; the adapter takes care of that. */
+
+#define FLAG_MUGSHOT_ACTIVE  2
+#define FLAG_UNK_0004        4
+#define FLAG_UNK_0008        8
+#define FILTER_DEC           0x421
+#define FILTER_INC           0x842
+#define OPEN_STATE_OFFSET    oChatbox_OpenState_10
+#define FILTER_OFFSET        oChatbox_MugshotColorFilter_40
+#define PALETTE_IDX_OFFSET   oChatbox_MugshotPaletteIdx
+#define CUR_FRAME_OFFSET     0x1F2
+#define PREV_FRAME_OFFSET    0x1F3
+#define ANIM_ID_OFFSET       0x1F0
+#define SPRITE_BASE_OFFSET   0x1F8
+#define SPRITE_ANIM_ID_SLOT  0
+#define SPRITE_PALETTE_SLOT  4
+#define SPRITE_FILTER_HWORD  6
+
+/* register form: chatbox_maskFlags_3e (no typed C interface) returns Z set when mask is unset */
+static bool flag_3e_is_set(u32 mask) {
+    R0 = mask;
+    GUEST_CALL(chatbox_maskFlags_3e);
+    return !ZERO_FLAG();
+}
+
+/* register form: chatbox_clearFlags_3e (no typed C interface), r1 = companion value */
+static void flag_3e_clear(u32 mask, u32 companion) {
+    R0 = mask;
+    R1 = companion;
+    GUEST_CALL(chatbox_clearFlags_3e);
+}
+
+/* register form: sprite_render_sequence chains several sprite helpers that thread register
+ * state between calls. Reproduces the original sequence exactly. */
+static void sprite_render_sequence(u32 chatbox, u32 sprite_ptr,
+                                   u32 adjusted_filter, u32 orig_filter) {
+    /* store palette index into the sprite header */
+    ST8(sprite_ptr + SPRITE_PALETTE_SLOT, LD8(chatbox + PALETTE_IDX_OFFSET));
+
+    u32 cur  = LD8(chatbox + CUR_FRAME_OFFSET);
+    u32 prev = LD8(chatbox + PREV_FRAME_OFFSET);
+    if (cur != prev) {
+        ST8(chatbox + PREV_FRAME_OFFSET, (u8)cur);
+        ST8(sprite_ptr + SPRITE_ANIM_ID_SLOT, LD8(chatbox + ANIM_ID_OFFSET));
+        R5 = sprite_ptr;
+        GUEST_CALL(sprite_loadAnimationData_spritePtrProvidedDirectly);
+    }
+
+    R5 = sprite_ptr;
+    GUEST_CALL(sprite_chatbox_80026D6);
+
+    ST16(sprite_ptr + SPRITE_FILTER_HWORD, (u16)orig_filter);
+
+    R5 = sprite_ptr;
+    GUEST_CALL(sprite_loadPalette_8002818);
+
+    R5 = sprite_ptr;
+    GUEST_CALL(sprite_loadAnimFrameTiles_8002874);
+
+    R0 = 0;
+    R1 = 3;
+    R5 = sprite_ptr;
+    GUEST_CALL(sub_8002694);
+}
+
+/* chatbox_update_mugshot: drive one step of the mugshot fade and render the sprite. */
+static void chatbox_update_mugshot(u32 chatbox) {
+    if (!flag_3e_is_set(FLAG_MUGSHOT_ACTIVE))
+        return;
+
+    if (!flag_3e_is_set(0x100)) {
+        if (LD8(chatbox + OPEN_STATE_OFFSET) != 3)
+            return;
+    }
+
+    u32 orig_filter = LD32(chatbox + FILTER_OFFSET);
+    u32 adjusted = orig_filter;
+
+    if (flag_3e_is_set(FLAG_UNK_0004)) {
+        s32 dec = (s32)orig_filter - (s32)FILTER_DEC;
+        if (dec < 0) {
+            adjusted = 0;
+            flag_3e_clear(FLAG_UNK_0004, FILTER_DEC);
+        } else {
+            adjusted = (u32)dec;
+        }
+        ST32(chatbox + FILTER_OFFSET, adjusted);
+    } else if (flag_3e_is_set(FLAG_UNK_0008)) {
+        u32 inc = orig_filter + FILTER_INC;
+        adjusted = inc;
+        u32 low5 = inc & 0x1F;
+        if ((s32)low5 >= 6) {
+            flag_3e_clear(FLAG_UNK_0008 | FLAG_MUGSHOT_ACTIVE, 0x1F);
+        }
+        ST32(chatbox + FILTER_OFFSET, adjusted);
+    }
+
+    u32 sprite_ptr = chatbox + SPRITE_BASE_OFFSET;
+    sprite_render_sequence(chatbox, sprite_ptr, adjusted, orig_filter);
+}
+
+Next chatbox_8040B8C(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6;
+    chatbox_update_mugshot(R5);
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_advanceNextState_8040C9C ── */
 /* Chatbox state offsets within the chatbox work area (r5). */
 #define CHATBOX_NEXT_STATE  0x1F0  /* mode/state byte this function updates */

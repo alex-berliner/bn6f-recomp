@@ -2697,6 +2697,32 @@ Next sprite_setPositionById_811C23C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811C9FC ── */
+/* sub_811C9FC: dispatches to one of three mode handlers through the jump
+ * table at off_811CA10.  The mode selector is the byte at [r5+8]; the
+ * byte is used as an index (0, 4, or 8) into the table of handler
+ * addresses.  The loaded value still has bit 0 set (the original's
+ * "sub_XXX+1" Thumb bit), and `bx r0` transfers to that Thumb target. */
+
+#define MODE_BYTE_OFFSET 8
+
+/* register form: computed branch through a jump table – the target
+ * address is read from memory and the original's "bx r0" is preserved
+ * exactly via GUEST_CALL_ADDR.  Only R0 (target address) and R1 (the
+ * mode byte that the original placed in r1) are written here. */
+static u32 dispatch_mode_handler(u32 ctx) {
+    u32 mode    = LD8(ctx + MODE_BYTE_OFFSET);
+    u32 handler = LD32(A_off_811CA10 + mode);
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* sub_811C9FC(r5 = context whose +8 byte selects the handler) */
+Next sub_811C9FC(void) {
+    R0 = dispatch_mode_handler(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── install_object_state_handler_811CA1C ── */
 /* install_object_state_handler: object base passed via guest register r5; the assembly
  * uses r5 to address fields 0/4/8 of the object record (state byte, palette index,

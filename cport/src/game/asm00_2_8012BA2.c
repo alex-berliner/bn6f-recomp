@@ -1463,6 +1463,39 @@ Next nullsub_51(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80147E4 ── */
+/* register form: calls CopyWords outside this file, which has no typed C interface yet */
+static void copy_words(const u32 *src, u32 *dest, u32 size) {
+    R0 = (u32)src;
+    R1 = (u32)dest;
+    R2 = size;
+    GUEST_CALL(CopyWords);
+}
+
+/* Install the two 0x10-byte descriptor blocks: copy each block into both the
+ * live state at A_dword_20367F0 (at offsets 8 and 0x18) and the cached copies
+ * at A_unk_203A980 / A_unk_203A990, then zero the state's word counter and
+ * mark it active.
+ */
+static void install_descriptor_blocks(const u32 *src0, const u32 *src1) {
+    u32 *state_base = (u32 *)A_dword_20367F0;
+
+    copy_words(src0, state_base + 2,          0x10);
+    copy_words(src0, (u32 *)A_unk_203A980,    0x10);
+    copy_words(src1, (u32 *)(A_dword_20367F0 + 0x18), 0x10);
+    copy_words(src1, (u32 *)A_unk_203A990,    0x10);
+
+    ST32(state_base, 0);
+    ST8(A_dword_20367F0 + 4, 1);
+}
+
+/* sub_80147E4(r0 = src0 = byte_203F558,
+ *             r1 = src1 = byte_203F658) */
+Next sub_80147E4(void) {
+    install_descriptor_blocks((const u32 *)R0, (const u32 *)R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── timer_resetAndStart_801482C ── */
 /* timer_resetAndStart_801482C:
  * Reset the counter at dword_20367F0 to zero and set the flag byte at

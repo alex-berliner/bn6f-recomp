@@ -630,6 +630,57 @@ Next scenario_ClearEffectActiveFlag_800399A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80039AA ── */
+/* Indirect-dispatch helper for sub_80039AA.
+ * The original sets r5=eScenarioEffectState, r7=jt-entry, r1=16, r0=handler,
+ * then bx r0. The handler may clobber r2-r12; r4-r7 are saved/restored here. */
+static u32 call_effect_handler(u32 handler, u32 status_addr, u32 entry_addr) {
+    /* register form: bx through a runtime-computed handler address */
+    SP -= 16;
+    ST32(SP + 0, R4);
+    ST32(SP + 4, R5);
+    ST32(SP + 8, R6);
+    ST32(SP + 12, R7);
+
+    R0 = handler;
+    R1 = 16;
+    R5 = status_addr;
+    R7 = entry_addr;
+
+    GUEST_CALL_ADDR(handler);
+
+    R4 = LD32(SP + 0);
+    R5 = LD32(SP + 4);
+    R6 = LD32(SP + 8);
+    R7 = LD32(SP + 12);
+    SP += 16;
+    return R0;
+}
+
+/* If the scenario effect is active and incomplete, call its jump-table handler.
+ * The handler's modifications to r2-r12 are the outputs; r4-r7 are preserved. */
+static void dispatch_scenario_effect(u32 r2, u32 r3, u32 r4, u32 r6,
+                                     u32 r8, u32 r9, u32 r10, u32 r11, u32 r12) {
+    (void)r2; (void)r3; (void)r4; (void)r6;
+    (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    u32 status = LD8(A_eScenarioEffectState2000780);
+    if (status == 0 || (status & 0x80))
+        return;
+    u32 sub  = LD8(A_eScenarioEffectState2000780 + 1);
+    u32 entry = A_jt_80038E8 + sub * 16;
+    u32 handler = LD32(entry);
+    call_effect_handler(handler, A_eScenarioEffectState2000780, entry);
+}
+
+/* sub_80039AA: scenario-effect dispatcher.
+ * Outputs: r2-r12. Preserved: r4-r7. Clobbers: nz c v r0 r1 lr. */
+Next sub_80039AA(void) {
+    u32 lr_save = LR;
+    dispatch_scenario_effect(R2, R3, R4, R6, R8, R9, R10, R11, R12);
+    LR = lr_save;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_ClearEStruct2001010_8003A58 ── */
 /* battle_ClearEStruct2001010_8003A58: clear the eStruct2001010 battle work area (0x48 bytes).
  * Takes no arguments and returns nothing; r2-r7 are untouched. */

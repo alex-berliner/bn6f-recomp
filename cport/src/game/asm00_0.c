@@ -1948,6 +1948,26 @@ Next SetDummyBGScrollCallbacks(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CallBGScrollCallback1 ── */
+/* Offset of the Callback1 slot within the eBGScrollCallbacks table.
+ * Mirrors `ldr r0, [r1, #oBGScrollCallbacks_Callback1_CallBGScrollCallback1]` (off_200A888 - 0x200a880). */
+#define oBGScrollCallbacks_Callback1_CallBGScrollCallback1 8
+
+/* register form: loads Callback1's function pointer from eBGScrollCallbacks and
+ * calls it. The target is a function living outside this file with no typed C
+ * interface yet; it is reached via an indirect call (original `bx r0`). */
+static void call_bg_scroll_callback1(void) {
+    R0 = LD32((u32)A_eBGScrollCallbacks_Callback0 + oBGScrollCallbacks_Callback1_CallBGScrollCallback1);
+    GUEST_CALL_ADDR(R0);
+}
+
+Next CallBGScrollCallback1(void) {
+    /* push {lr} / pop {pc} in the original just trampoline through to the callback,
+     * which returns directly to the caller of CallBGScrollCallback1. No locals survive. */
+    call_bg_scroll_callback1();
+    RETURN_TO_CALLER();
+}
+
 /* ── BGScrollCB_BG1Diagonal3to2Scroll ── */
 /* Field offsets used here (not present in game.h for this build). */
 #define oBGScrollCBCounters_Counter0 0

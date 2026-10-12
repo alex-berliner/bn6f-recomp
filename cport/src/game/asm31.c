@@ -623,6 +623,30 @@ Next sub_80C0A0E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C0A4C ── */
+/* Phase handler dispatch for a battle object: looks up the handler by the
+ * object's current phase and tail-calls it. The handler runs with SP four
+ * bytes below the caller's SP (one slot below LR's slot) and the saved LR
+ * is consumed by the pop, so control returns straight to sub_80C0A4C's
+ * caller; the handler's r5/r8-r12 leak back as outputs. */
+static u32 phase_handler_addr(u32 phase) {
+    return LD32(A_off_80C0A60 + phase);
+}
+
+Next sub_80C0A4C(void) {
+    u32 phase = LD8(R5 + oBattleObject_CurPhase);
+    /* register form: the handler is dispatched through the table at
+     * off_80C0A60 with bx, which means it runs with a shifted SP and the
+     * guest-link slot populated for the pop {pc} to return to the caller. */
+    SP -= 4;
+    ST32(SP, LR);
+    R0 = phase;
+    R1 = phase_handler_addr(phase);
+    GUEST_CALL_ADDR(R1);
+    SP += 4;
+    RETURN_TO_CALLER();
+}
+
 /* ── advancePhase3ToPhase4_80C0A6C ── */
 /* advancePhase3ToPhase4_80C0A6C — advance the phase-3 → phase-4 transition for a battle object.
  *   inputs:  r5 = battle object pointer
