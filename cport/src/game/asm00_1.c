@@ -1192,6 +1192,93 @@ Next TryUpdateEachOWPlayerObject_8003BA2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8003BF4 ── */
+/* Overworld object layout (offsets as in the original asm). */
+#define OWOBJ_STRIDE    0xC8  /* bytes per entry in the overworld object list        */
+#define OWOBJ_POSITION  0x1C  /* world position, input to the sprite projection      */
+#define OWOBJ_SPRITE    0x90  /* sprite/OAM state that follows each object           */
+#define OWOBJ_QUEUE_CNT 0x24  /* +0x24 into the sprite state: queued OAM piece count */
+
+#define OW_FLAG_ACTIVE  0x01  /* object is taking part (bit 0 of the flag byte)      */
+#define OW_FLAG_VISIBLE 0x02  /* OBJECT_FLAG_VISIBLE in the disassembly's enum       */
+
+/* register form: calls sprite_projectAndCull outside this file, which has no typed C interface yet.
+ * The owning object is also passed in r5, which the original keeps live across the call. */
+static void sprite_project_and_cull(u32 position, u32 object) {
+    R0 = position;
+    R5 = object;
+    GUEST_CALL(sprite_projectAndCull);
+}
+
+/* register form: calls sprite_ensureGfxResident outside this file, which has no typed C interface yet.
+ * It also reads the owning object from r5, as in the original. */
+static void sprite_ensure_gfx_resident(u32 slot, u32 object) {
+    R0 = slot;
+    R5 = object;
+    GUEST_CALL(sprite_ensureGfxResident);
+}
+
+/* register form: calls sprite_queueFramePieces outside this file, which has no typed C interface yet.
+ * The sprite state to queue from is a hidden argument in r5 (the original does
+ * `add r5, #0x90` immediately before the call); r0/r1 carry the other two arguments. */
+static void sprite_queue_frame_pieces(u32 a, u32 b, u32 sprite) {
+    R0 = a;
+    R1 = b;
+    R5 = sprite;
+    GUEST_CALL(sprite_queueFramePieces);
+}
+
+/* register form: calls sub_80028C0 outside this file, which has no typed C interface yet.
+ * r5 must hold the address just past the walked object list, as the original leaves it,
+ * and r1 is 0 there (the original's restored loop counter). */
+static void commit_sprite_queue(u32 arg, u32 list_end) {
+    R0 = arg;
+    R1 = 0;
+    R5 = list_end;
+    GUEST_CALL(sub_80028C0);
+}
+
+/* Per-frame sprite update for the overworld object list that starts at the player.
+ * The original walks r0 = 1 entry, i.e. the player object only. A visible object is
+ * projected to the screen, its graphics kept in VRAM and its OAM pieces queued; a
+ * hidden object forgets its queued pieces and is only re-projected while it is still
+ * active (flag bit 0), so its screen position stays fresh. The pieces queued this
+ * frame are committed at the end. */
+static void update_overworld_player_sprites(void) {
+    u32 object = A_eOWPlayerObject;
+
+    for (u32 i = 0; i < 1; i++, object += OWOBJ_STRIDE) {  /* count hard-coded to 1 */
+        u8 flags = LD8(object);
+
+        if (flags & OW_FLAG_VISIBLE) {
+            sprite_project_and_cull(object + OWOBJ_POSITION, object);
+            sprite_ensure_gfx_resident(0, object);
+            sprite_queue_frame_pieces(2, 0x60, object + OWOBJ_SPRITE);  /* original's draw arguments */
+        } else {
+            /* Hidden: drop anything still queued for this object. */
+            ST32(object + OWOBJ_SPRITE + OWOBJ_QUEUE_CNT, 0);
+
+            if (flags & OW_FLAG_ACTIVE)
+                sprite_project_and_cull(object + OWOBJ_POSITION, object);
+        }
+    }
+
+    /* object now points just past the walked list, as the original's r5 does here. */
+    commit_sprite_queue(0, object);
+}
+
+/* sub_8003BF4(): no results in registers. r4-r7 and r8/r9/r12 are returned exactly as
+ * the caller left them (the original pushes and pops them); save them here because the
+ * guest calls above pass hidden arguments through r5 and may clobber the set. */
+Next sub_8003BF4(void) {
+    u32 keep_r4 = R4, keep_r5 = R5, keep_r6 = R6, keep_r7 = R7, keep_r8 = R8,
+        keep_r9 = R9, keep_r12 = R12;
+    update_overworld_player_sprites();
+    R4 = keep_r4, R5 = keep_r5, R6 = keep_r6, R7 = keep_r7, R8 = keep_r8,
+        R9 = keep_r9, R12 = keep_r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8003C70 ── */
 /* sub_8003C70: reset the something tracked by sub_80028C0 (r0 = 0 as its argument). */
 Next sub_8003C70(void) {
