@@ -1576,6 +1576,51 @@ Next sub_8127990(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81279A8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n; } call_TestEventFlag_result_sub_81279A8;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_sub_81279A8 call_TestEventFlag_sub_81279A8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_sub_81279A8){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+#define EVENT_FLAG_BASE 0x1DA0
+
+/* Scan the story-progress byte table. For each entry whose event flag is NOT yet set,
+ * check the parallel attribute table (4 bytes per entry); if any has bit 0x80, return 0
+ * immediately. Otherwise return 1.  dword_2001140 holds the entry count; byte_2006530 is
+ * the story-progress byte table; byte_812851C is the attribute table indexed by 4*byte. */
+static u32 check_story_event_flags(void) {
+    u32 count = LD32(A_dword_2001140);
+    if (count == 0)
+        return 1;
+
+    for (u32 i = 0; i < count; i++) {
+        u8 tbl_byte = LD8(A_byte_2006530 + i);
+        u32 flag = (u32)tbl_byte + EVENT_FLAG_BASE;
+
+        /* TestEventFlag leaves Z set when the flag is NOT active */
+        if (!call_TestEventFlag_sub_81279A8(flag).z)
+            continue;          /* flag is set – nothing to check */
+
+        /* Flag is clear: look up the 4-byte-stride attribute entry */
+        u8 attr = LD8(A_byte_812851C + 4u * tbl_byte);
+        if (attr & 0x80)
+            return 0;
+    }
+    return 1;
+}
+
+/* sub_81279A8() -> r0 = 0 or 1, nz from that value; r4-r7 preserved by push/pop */
+Next sub_81279A8(void) {
+    u32 result = check_story_event_flags();
+    R0 = result;
+    SET_FLAGS_NZ(result);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_sceneReset_8127A1C ── */
 /* Fade timer value stored to the render-info header on scene init. */
 #define RENDER_FADE_TIMER  0x1F40
@@ -2140,6 +2185,48 @@ Next chatbox_runVariantScript_8127ED4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8127EF4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n; } call_TestEventFlag_result_sub_8127EF4;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_sub_8127EF4 call_TestEventFlag_sub_8127EF4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_sub_8127EF4){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+#define FLAG_LO_BASE 0x1CA0u
+#define FLAG_HI_BASE 0x1D20u
+#define FLAG_TABLE   A_byte_812851C
+
+/* Count story event flag pairs (lo/hi) in [0x1CA0, 0x1D20) where both flags are
+ * set and the table entry's high bit matches the object byte at offset 0xD's low bit. */
+static u32 count_matched_flags(u32 obj_ptr) {
+    u32 count = 0;
+    for (u32 idx = 0; idx < (FLAG_HI_BASE - FLAG_LO_BASE); idx++) {
+        if (call_TestEventFlag_sub_8127EF4(FLAG_LO_BASE + idx).z)
+            continue;
+        if (call_TestEventFlag_sub_8127EF4(FLAG_HI_BASE + idx).z)
+            continue;
+
+        u8 table_byte = LD8(FLAG_TABLE + idx * 4);
+        u8 obj_byte = LD8(obj_ptr + 0xD);
+
+        bool table_high = (table_byte & 0x80) != 0;
+        bool obj_low = (obj_byte & 1) != 0;
+
+        if (table_high == obj_low)
+            count++;
+    }
+    return count;
+}
+
+/* sub_8127EF4(r5 = object ptr, r10 passthrough) -> r0 = matched count */
+Next sub_8127EF4(void) {
+    R0 = count_matched_flags(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── fieldEntityTileAnimTick_8127F54 ── */
 /* fieldEntityTileAnimTick_8127F54(r5 = entity, r10, lr):
  *   Per-frame update for an entity on the field: if it is no longer active
@@ -2285,6 +2372,66 @@ Next bg_ReloadBackgroundRegion_5_3_81281C0(void) {
         R0 = enable;
         SET_FLAGS_NZ(enable);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81281E0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r5, r6, r7; } call_sub_802FE28_result;
+/* register form: generated wrapper: sub_802FE28 has no typed C interface yet */
+static inline call_sub_802FE28_result call_sub_802FE28(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sub_802FE28);
+    return (call_sub_802FE28_result){ R0, R5, R6, R7 };
+}
+
+/* Display up to four icon sprites via the sprite-queue routine.
+ * r5 points to a battle-object state struct:
+ *   [0x1E] u16  number of icons (0 = skip; values above 4 are clamped to 4),
+ *   [0x24] u16  index of the first icon's record in the dword_2027590 array
+ *               (each record is 0x20 bytes; the index is re-read every iteration).
+ * Per icon i:
+ *   - screen position: halfword pair i from the byte_8128250 ROM table,
+ *     packed as (first << 16 | second) into attr01's low 16 bits.
+ *   - tile number: high halfword of word 0 of the record, bit 7 cleared,
+ *     scaled by 4 and offset by base tile 0x210.
+ *   - attr2: (0xA << 12) | (2 << 10) | tile = 0xA800 | tile.
+ * Calls sub_802FE28(attr01, attr2, 0, 2) for each icon.
+ * r5 is unchanged on return (it is saved/restored via push/pop in the original). */
+static u32 show_icon_sprites(u32 state) {
+    u32 count = LD16(state + 0x1E);
+    if (count == 0)
+        return state;
+    if (count > 4)
+        count = 4;
+
+    for (u32 i = 0; i < count; i++) {
+        /* packed on-screen position of icon i (two halfwords in ROM) */
+        u32 posAddr = A_byte_8128250 + i * 4;
+        u32 packedPos = (LD16(posAddr) << 16) | LD16(posAddr + 2);
+
+        /* sprite record: base + (firstIndex + i) * 32 bytes */
+        u32 record = A_dword_2027590 + (LD16(state + 0x24) + i) * 0x20;
+
+        /* tile number from high halfword of record word 0 */
+        u32 tile = 0x210 + (((LD32(record) >> 16) & ~0x80u) << 2);
+
+        /* attr01 = OBJ base | packedPos; attr2 = 0xA800 | tile */
+        call_sub_802FE28(0x40000000u | packedPos,
+                         0xA800u | tile,
+                         0,
+                         2);
+    }
+
+    return state;
+}
+
+/* sub_81281E0(r5 = state ptr) -> r5 (unchanged) */
+Next sub_81281E0(void) {
+    R5 = show_icon_sprites(R5);
     RETURN_TO_CALLER();
 }
 
@@ -2721,6 +2868,108 @@ Next sub_81288E4(void) {
     GUEST_CALL(IsScreenFadeActive);
     if (!ZERO_FLAG())
         GUEST_CALL(pet_menuExitToMap_811F708);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8128A44 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r8, r9, r10, r11, r12; } call_renderTextGfx_8045F8C_result;
+/* register form: generated wrapper: renderTextGfx_8045F8C has no typed C interface yet */
+static inline call_renderTextGfx_8045F8C_result call_renderTextGfx_8045F8C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(renderTextGfx_8045F8C);
+    return (call_renderTextGfx_8045F8C_result){ R3, R8, R9, R10, R11, R12 };
+}
+
+/* sub_8128A44: renders one row of up to 8 text glyphs into VRAM tile data by
+ * calling renderTextGfx once per character.  The state object at r5 provides
+ * a start index (+0x24) and a total char count (+0x1E).  Each glyph's
+ * attribute byte is fetched from the script table with stride 2, and the tile
+ * is written 0x280 bytes apart in the destination buffer. */
+
+typedef struct {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+} RenderRowResult;
+
+#define TILE_SIZE          0x280u
+#define VRAM_TILE_DATA     0x6004020u
+#define PALETTE_SLOT       0xAu
+#define ATTR_STRIDE        2u
+#define MAX_GLYPHS_PER_ROW 8
+
+static RenderRowResult render_text_row(u32 state) {
+    /* register form: r4-r7 are preserved across this function but the
+     * renderTextGfx wrapper clobbers them; save before loop, restore after. */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    u32 saved_r8 = R8, saved_r9 = R9, saved_r10 = R10;
+    u32 saved_r11 = R11, saved_r12 = R12;
+
+    RenderRowResult out = { state, saved_r8, saved_r9, saved_r10, saved_r11, saved_r12 };
+
+    u32 scriptBase = A_eTextScript201BF00;
+    u32 scriptByteOffset = (u32)LD16(state + 0x24) * ATTR_STRIDE;
+    u32 charCount = LD16(state + 0x1E);
+
+    if (charCount == 0) {
+        /* register form: restore preserved r4-r7 (no calls made, already correct) */
+        R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+        return out;
+    }
+
+    u32 remaining = charCount - scriptByteOffset;
+    u32 glyphCount = MAX_GLYPHS_PER_ROW;
+    if ((s32)remaining < (s32)MAX_GLYPHS_PER_ROW)
+        glyphCount = remaining;
+
+    for (u32 i = 0; i < glyphCount; i++) {
+        u32 attr = LD8(scriptBase + ATTR_STRIDE * (scriptByteOffset + i));
+        u32 tileOffset = TILE_SIZE * i;
+
+        call_renderTextGfx_8045F8C_result res = call_renderTextGfx_8045F8C(
+            A_TextScript873D9FC,
+            attr,
+            A_byte_2017A00 + tileOffset,
+            VRAM_TILE_DATA + tileOffset,
+            PALETTE_SLOT,
+            1,
+            A_dword_86A5D60,
+            0
+        );
+
+        out.r8  = res.r8;
+        out.r9  = res.r9;
+        out.r10 = res.r10;
+        out.r11 = res.r11;
+        out.r12 = res.r12;
+    }
+
+    /* register form: restore caller's preserved r4-r7 after clobbering calls */
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+
+    return out;
+}
+
+/* sub_8128A44(r5 = state ptr, r10) -> r5 r8 r9 r10 r11 r12 */
+Next sub_8128A44(void) {
+    RenderRowResult res = render_text_row(R5);
+    R5  = res.r5;
+    R8  = res.r8;
+    R9  = res.r9;
+    R10 = res.r10;
+    R11 = res.r11;
+    R12 = res.r12;
     RETURN_TO_CALLER();
 }
 
@@ -3629,6 +3878,100 @@ Next sub_81296A0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81296D8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r6, r7, r10; } call_menu_moveCursorUpDown_811FA22_result_sub_81296D8;
+/* register form: generated wrapper: menu_moveCursorUpDown_811FA22 has no typed C interface yet */
+static inline call_menu_moveCursorUpDown_811FA22_result_sub_81296D8 call_menu_moveCursorUpDown_811FA22_sub_81296D8(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(menu_moveCursorUpDown_811FA22);
+    return (call_menu_moveCursorUpDown_811FA22_result_sub_81296D8){ R0, R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r2, r3, r5, r6, r7; bool c, v; } call_sub_812B3FC_result;
+/* register form: generated wrapper: sub_812B3FC has no typed C interface yet */
+static inline call_sub_812B3FC_result call_sub_812B3FC(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(sub_812B3FC);
+    return (call_sub_812B3FC_result){ R2, R3, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_sub_81296D8;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_sub_81296D8 call_IsButtonPressed_sub_81296D8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_sub_81296D8){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_81296D8;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_81296D8 call_PlaySoundEffect_sub_81296D8(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_81296D8){ R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_SetScreenFade_result;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result call_SetScreenFade(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Handle cursor movement and A/B button presses on a menu sub-page.
+ * menu: sub-page descriptor, toolkit: global toolkit pointer. */
+static void submenu_cursor_and_buttons(u32 menu, u32 r6, u32 r7, u32 toolkit) {
+    u32 joypad = LD32(toolkit + oToolkit_JoypadPtr);
+    u32 pressed = LD16(joypad + oJoypad_Pressed);
+    u32 cursor = LD8(menu + 0xE);
+
+    call_menu_moveCursorUpDown_811FA22_result_sub_81296D8 mv =
+        call_menu_moveCursorUpDown_811FA22_sub_81296D8(pressed, 3, 1,
+                                           cursor, cursor, menu, r6, r7);
+
+    if (mv.r0 != cursor) {
+        /* Cursor moved: commit new index and redraw the list. */
+        ST8(menu + 0xE, mv.r0);
+        call_sub_812B3FC(cursor, menu);
+        return;
+    }
+
+    /* Cursor stayed – check A button to confirm selection. */
+    if (!call_IsButtonPressed_sub_81296D8(JOYPAD_A).z) {
+        call_PlaySoundEffect_sub_81296D8(SOUND_MENU_SELECT, mv.r2);
+        ST8(menu + 3, 0xC);
+        ST8(menu + 0x1B, LD8(menu + 0x1B) | 1);
+        ST8(menu + 0x1C, 0);
+        ST8(menu + 0x1E, 0);
+    } else if (!call_IsButtonPressed_sub_81296D8(JOYPAD_B).z) {
+        /* B: exit sub-menu with fade-out. */
+        call_PlaySoundEffect_sub_81296D8(SOUND_EXIT_SUBMENU, mv.r2);
+        ST8(menu + 3, 0x18);
+        call_SetScreenFade(0xC, 0x10);
+    }
+    /* Neither A nor B: nothing to do. */
+}
+
+/* sub_81296D8(r5=menu, r6, r7, r10=toolkit) -> r4 r5 r6 r10; r4 r6 r7 r10 preserved */
+Next sub_81296D8(void) {
+    u32 saved_r4 = R4;
+    submenu_cursor_and_buttons(R5, R6, R7, R10);
+    R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_object_advanceState3_8129738 ── */
 /* battle_object_advanceState3_8129738(r5 = battle object ptr):
  * If sub_812B318(3) succeeds, mark the object's state: store 3 at +0x1D,
@@ -3915,6 +4258,89 @@ Next sub_812982C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129870 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r6, r7, r10; } call_menu_moveCursorUpDown_811FA22_result_sub_8129870;
+/* register form: generated wrapper: menu_moveCursorUpDown_811FA22 has no typed C interface yet */
+static inline call_menu_moveCursorUpDown_811FA22_result_sub_8129870 call_menu_moveCursorUpDown_811FA22_sub_8129870(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(menu_moveCursorUpDown_811FA22);
+    return (call_menu_moveCursorUpDown_811FA22_result_sub_8129870){ R0, R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r4, r5, r6; } call_sub_812B39C_result_sub_8129870;
+/* register form: generated wrapper: sub_812B39C has no typed C interface yet */
+static inline call_sub_812B39C_result_sub_8129870 call_sub_812B39C_sub_8129870(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(sub_812B39C);
+    return (call_sub_812B39C_result_sub_8129870){ R4, R5, R6 };
+}
+
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_sub_8129870;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_sub_8129870 call_IsButtonPressed_sub_8129870(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_sub_8129870){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_8129870;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_8129870 call_PlaySoundEffect_sub_8129870(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_8129870){ R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Handle D-pad cursor movement and A/B confirm/cancel for a 3-item vertical menu.
+ * On cursor change, save the new index and notify the menu via sub_812B39C.
+ * On A press, play the select sound and advance to the "selected" sub-state.
+ * On B press, play the exit sound and advance to the "cancel" sub-state. */
+static void menu_vpad_handler(u32 r5, u32 r6, u32 r7, u32 r10) {
+    u16 pressed = LD16(LD32(r10 + oToolkit_JoypadPtr) + oJoypad_Pressed);
+    u8 old_index = LD8(r5 + 0x12);
+
+    /* Cursor helper expects all eight input registers matching the original. */
+    call_menu_moveCursorUpDown_811FA22_result_sub_8129870 cur =
+        call_menu_moveCursorUpDown_811FA22_sub_8129870(pressed, 3, 1,
+                                          (u32)old_index, (u32)old_index, r5, r6, r7);
+
+    if (cur.r4 != cur.r0) {
+        /* Selection moved: persist the new index and redraw. */
+        ST8(r5 + 0x12, cur.r0);
+        call_sub_812B39C_sub_8129870(cur.r4, r5);
+    } else if (!call_IsButtonPressed_sub_8129870(JOYPAD_A).z) {
+        /* A button: confirm current selection. */
+        call_PlaySoundEffect_sub_8129870(SOUND_MENU_SELECT, cur.r2);
+        ST8(r5 + 3, 0xC);
+        ST8(r5 + 0x1C, 0);
+        ST8(r5 + 0x1E, 0);
+        ST8(r5 + 0x1B, LD8(r5 + 0x1B) | 1);
+    } else if (!call_IsButtonPressed_sub_8129870(JOYPAD_B).z) {
+        /* B button: cancel / go back. */
+        call_PlaySoundEffect_sub_8129870(SOUND_EXIT_SUBMENU, cur.r2);
+        ST8(r5 + 3, 0x10);
+        ST8(r5 + 0x1C, 0);
+        ST8(r5 + 0x1E, 0);
+        ST8(r5 + 0x1B, LD8(r5 + 0x1B) | 1);
+    }
+}
+
+/* sub_8129870(r5 = menu state ptr, r6, r7, r10 = toolkit ptr) -> r4 r5 r6 r10 */
+Next sub_8129870(void) {
+    menu_vpad_handler(R5, R6, R7, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObj_setCanceledPose_81298D4 ── */
 /* battleObj_setCanceledPose_81298D4(r5 = object):
  *   Initialize a battle object to the "battle-canceled / show-fingers / etc."
@@ -4141,6 +4567,131 @@ Next sub_812996C(void) {
     R4 = out.r4;
     R5 = out.r5;
     R6 = out.r6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81299B0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r6, r7, r10; } call_menu_moveCursorUpDown_811FA22_result_sub_81299B0;
+/* register form: generated wrapper: menu_moveCursorUpDown_811FA22 has no typed C interface yet */
+static inline call_menu_moveCursorUpDown_811FA22_result_sub_81299B0 call_menu_moveCursorUpDown_811FA22_sub_81299B0(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(menu_moveCursorUpDown_811FA22);
+    return (call_menu_moveCursorUpDown_811FA22_result_sub_81299B0){ R0, R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r4, r5, r6; } call_sub_812B3CC_result_sub_81299B0;
+/* register form: generated wrapper: sub_812B3CC has no typed C interface yet */
+static inline call_sub_812B3CC_result_sub_81299B0 call_sub_812B3CC_sub_81299B0(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(sub_812B3CC);
+    return (call_sub_812B3CC_result_sub_81299B0){ R4, R5, R6 };
+}
+
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_sub_81299B0;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_sub_81299B0 call_IsButtonPressed_sub_81299B0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_sub_81299B0){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_81299B0;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_81299B0 call_PlaySoundEffect_sub_81299B0(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_81299B0){ R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { bool z, n; } call_TestEventFlagFromImmediate_result_sub_81299B0;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_sub_81299B0 call_TestEventFlagFromImmediate_sub_81299B0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_sub_81299B0){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_chatbox_runScript_803FD9C_on_eTextScript201BA20_result;
+/* register form: generated wrapper: chatbox_runScript_803FD9C_on_eTextScript201BA20 has no typed C interface yet */
+static inline call_chatbox_runScript_803FD9C_on_eTextScript201BA20_result call_chatbox_runScript_803FD9C_on_eTextScript201BA20(u32 r0, u32 r4, u32 r5) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript201BA20);
+    return (call_chatbox_runScript_803FD9C_on_eTextScript201BA20_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6; } call_sub_812B414_result_sub_81299B0;
+/* register form: generated wrapper: battle_selectTarget_812B414 has no typed C interface yet */
+static inline call_sub_812B414_result_sub_81299B0 call_sub_812B414_sub_81299B0(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(battle_selectTarget_812B414);
+    return (call_sub_812B414_result_sub_81299B0){ R4, R5, R6 };
+}
+
+#define JOYPAD_A_sub_81299B0  1
+#define JOYPAD_B_sub_81299B0  2
+#define EVENT_F2  0xF2
+
+/* Handle menu cursor in the battle submenu.
+ * r5 = state, r6/r7 = passthrough, r10 = toolkit.
+ * Outputs r4/r5/r6/r10 are set as side-effects of the callee wrappers. */
+static void menu_cursor_handler(u32 input_r5, u32 input_r6, u32 input_r7, u32 input_r10) {
+    /* Read joypad, ask the generic cursor mover to advance through 3 items. */
+    u32 joypad = LD16(LD32(input_r10 + oToolkit_JoypadPtr) + oJoypad_Pressed);
+    u32 cursor_index = LD8(input_r5 + 0x12);
+
+    call_menu_moveCursorUpDown_811FA22_result_sub_81299B0 cur = call_menu_moveCursorUpDown_811FA22_sub_81299B0(
+        joypad, 3, 1, cursor_index, cursor_index, input_r5, input_r6, input_r7);
+
+    if (cur.r4 != cur.r0) {
+        /* Cursor moved – store new index and refresh the submenu display. */
+        ST8(cur.r5 + 0x12, cur.r0);
+        call_sub_812B3CC_sub_81299B0(cur.r4, cur.r5);
+        return;
+    }
+
+    /* Cursor unchanged – check A (confirm). */
+    if (!call_IsButtonPressed_sub_81299B0(JOYPAD_A_sub_81299B0).z) {
+        call_PlaySoundEffect_result_sub_81299B0 snd = call_PlaySoundEffect_sub_81299B0(SOUND_MENU_SELECT, cur.r2);
+
+        /* Item 1 with event F2 set → run special chatbox; otherwise confirm normally. */
+        if (LD8(snd.r5 + 0x12) == 1 && call_TestEventFlagFromImmediate_sub_81299B0(0, EVENT_F2).z) {
+            call_chatbox_runScript_803FD9C_on_eTextScript201BA20(5, snd.r4, snd.r5);
+        } else {
+            call_sub_812B414_sub_81299B0(snd.r4, snd.r5);
+        }
+        return;
+    }
+
+    /* A not pressed – check B (back). */
+    if (call_IsButtonPressed_sub_81299B0(JOYPAD_B_sub_81299B0).z) {
+        return;
+    }
+
+    /* B pressed – exit the submenu. */
+    call_PlaySoundEffect_result_sub_81299B0 snd = call_PlaySoundEffect_sub_81299B0(SOUND_EXIT_SUBMENU, cur.r2);
+    ST8(snd.r5 + 3,    0x0C);
+    ST8(snd.r5 + 0x1C, 0);
+    ST8(snd.r5 + 0x1E, 0);
+    ST8(snd.r5 + 0x1B, LD8(snd.r5 + 0x1B) | 1);
+}
+
+/* sub_81299B0(r5 r6 r7 r10) -> r4 r5 r6 r10 */
+Next sub_81299B0(void) {
+    menu_cursor_handler(R5, R6, R7, R10);
     RETURN_TO_CALLER();
 }
 
@@ -4516,6 +5067,119 @@ Next sub_8129C74(void) {
     R1 = 0;
     GUEST_CALL(sub_811A610);
     R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129D00 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r6, r7, r10; } call_menu_moveCursorUpDown_811FA22_result_sub_8129D00;
+/* register form: generated wrapper: menu_moveCursorUpDown_811FA22 has no typed C interface yet */
+static inline call_menu_moveCursorUpDown_811FA22_result_sub_8129D00 call_menu_moveCursorUpDown_811FA22_sub_8129D00(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(menu_moveCursorUpDown_811FA22);
+    return (call_menu_moveCursorUpDown_811FA22_result_sub_8129D00){ R0, R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7; bool c, v; } call_sub_812B3E4_result;
+/* register form: generated wrapper: sub_812B3E4 has no typed C interface yet */
+static inline call_sub_812B3E4_result call_sub_812B3E4(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(sub_812B3E4);
+    return (call_sub_812B3E4_result){ R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_sub_8129D00;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_sub_8129D00 call_IsButtonPressed_sub_8129D00(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_sub_8129D00){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_8129D00;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_8129D00 call_PlaySoundEffect_sub_8129D00(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_8129D00){ R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6; } call_sub_812B414_result_sub_8129D00;
+/* register form: generated wrapper: battle_selectTarget_812B414 has no typed C interface yet */
+static inline call_sub_812B414_result_sub_8129D00 call_sub_812B414_sub_8129D00(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(battle_selectTarget_812B414);
+    return (call_sub_812B414_result_sub_8129D00){ R4, R5, R6 };
+}
+
+/* sub_8129D00: handle joystick cursor movement and A/B confirm/back for a menu list. */
+
+typedef struct {
+    u32 r4, r5, r6, r10;
+} sub_8129D00_result;
+
+static sub_8129D00_result menu_handle_list_input(u32 r5, u32 r6, u32 r7, u32 r10) {
+    /* Read the joypad pressed-this-frame bitmask via the toolkit pointer. */
+    u32 joypad = LD16(LD32(r10 + oToolkit_JoypadPtr) + oJoypad_Pressed);
+    /* List item count at byte offset 0x20; current cursor at byte offset 0x13. */
+    u32 count  = LD8(r5 + 0x20);
+    u32 cursor = LD8(r5 + 0x13);
+
+    /* Move the cursor (wrap enabled in r2).  The callee also returns r10 unchanged. */
+    call_menu_moveCursorUpDown_811FA22_result_sub_8129D00 mc =
+        call_menu_moveCursorUpDown_811FA22_sub_8129D00(joypad, count, 1, cursor, cursor, r5, r6, r7);
+    u32 new_cursor = mc.r0;
+
+    sub_8129D00_result res = { cursor, r5, r6, r10 };
+
+    if (cursor != new_cursor) {
+        /* Cursor moved: store new index and refresh whatever depends on it. */
+        ST8(r5 + 0x13, new_cursor);
+        call_sub_812B3E4_result s = call_sub_812B3E4(cursor, r5);
+        res.r4 = s.r4;
+        res.r5 = s.r5;
+        res.r6 = r6;      /* preserved – callee may have touched it */
+        res.r10 = r10;    /* preserved */
+    } else if (!call_IsButtonPressed_sub_8129D00(JOYPAD_A).z) {
+        /* Confirm: play select sound then let the target-chooser take over. */
+        call_PlaySoundEffect_sub_8129D00(SOUND_MENU_SELECT, mc.r2);
+        call_sub_812B414_result_sub_8129D00 s = call_sub_812B414_sub_8129D00(cursor, r5);
+        res.r4 = s.r4;
+        res.r5 = s.r5;
+        res.r6 = r6;
+        res.r10 = r10;
+    } else if (!call_IsButtonPressed_sub_8129D00(JOYPAD_B).z) {
+        /* Back out: play exit sound, mark list as closing (offset 3 ← 0x0C),
+         * clear two sub-fields at 0x1C/0x1E, and set bit-0 of the flag byte at 0x1B. */
+        call_PlaySoundEffect_sub_8129D00(SOUND_EXIT_SUBMENU, mc.r2);
+        ST8(r5 + 0x03, 0x0C);
+        ST8(r5 + 0x1C, 0);
+        ST8(r5 + 0x1E, 0);
+        ST8(r5 + 0x1B, LD8(r5 + 0x1B) | 1);
+        /* r4 keeps the old cursor value – no callee touched it past this point. */
+    }
+    /* No button: fall through – all outputs equal the defaults above. */
+
+    return res;
+}
+
+/* sub_8129D00(r5 = list base, r6 r7 r10 preserved) -> r4 r5 r6 r10 */
+Next sub_8129D00(void) {
+    sub_8129D00_result res = menu_handle_list_input(R5, R6, R7, R10);
+    R4  = res.r4;
+    R5  = res.r5;
+    R6  = res.r6;
+    R10 = res.r10;
     RETURN_TO_CALLER();
 }
 

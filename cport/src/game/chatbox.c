@@ -2837,6 +2837,66 @@ Next chatbox_pushTextLevel_8042128(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_804222C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_CopyWords_result;
+/* register form: generated wrapper: CopyWords has no typed C interface yet */
+static inline call_CopyWords_result call_CopyWords(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyWords);
+    return (call_CopyWords_result){ R3 };
+}
+
+/* Advance one chatbox text-script entry:
+ * - bump the recursion-depth byte,
+ * - look up the string (src pointer + word count) from the script table,
+ * - copy the words into the next 64-byte slot of the text ring buffer,
+ * - bump the slot index, store the cursor and the advanced script pointer,
+ * - record the script pointer in a depth-indexed slot (0x140 + (depth-1)*4).
+ * Returns the destination address (becomes the new r4). */
+static u32 chatbox_advance(u32 script_ptr, u32 chatbox) {
+    /* Bump the one-byte recursion depth on the chatbox struct. */
+    u32 depth = LD8(chatbox + oChatbox_Unk_05) + 1;
+    ST8(chatbox + oChatbox_Unk_05, depth);
+
+    /* Each table entry is 8 bytes: [src u32, word_count u32]. */
+    u32 table = A_byte_8043B54 + ((u32)LD8(script_ptr + 2) << 3);
+    u32 src   = LD32(table);
+    u32 count = LD32(table + 4);
+
+    /* Ring-buffer destination: byte_200AFA0 + slot_index * 64. */
+    u32 slot_field = chatbox + 0x64;
+    u32 slot_idx   = LD16(slot_field);
+    u32 dst        = A_byte_200AFA0 + (slot_idx << 6);
+
+    /* Copy the string words into the slot. */
+    call_CopyWords(src, dst, count);
+
+    /* Advance the ring-buffer write slot. */
+    ST16(slot_field, slot_idx + 1);
+
+    /* Store cursor and new script position. */
+    ST32(chatbox + oChatbox_TextScriptCursorPtr, dst);
+
+    u32 new_ptr = script_ptr + 3;
+    ST32(chatbox + oChatbox_Unk_44, new_ptr);
+
+    /* Save script position in the depth-indexed slot. */
+    ST32(chatbox + 0x140 + (depth - 1) * 4, new_ptr);
+
+    return dst;
+}
+
+/* chatbox_804222C(r4 = script ptr, r5 = chatbox ptr) -> r0=1, r2=4, r4=dst */
+Next chatbox_804222C(void) {
+    R4 = chatbox_advance(R4, R5);
+    R0 = 1;
+    R2 = 4;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_PlayScriptSoundCue_80422D4 ── */
 /* chatbox_PlayScriptSoundCue_80422D4: play the sound cue at the current chatbox script position.
  * r4 points at a 4-byte cue record; bytes 2-3 hold the 16-bit sound effect

@@ -403,6 +403,72 @@ Next rfu_STC_REQ_callback(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── rfu_clearAllSlot ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_SWI_CpuSet_result_rfu_clearAllSlot;
+/* register form: generated wrapper: SWI_CpuSet has no typed C interface yet */
+static inline call_SWI_CpuSet_result_rfu_clearAllSlot call_SWI_CpuSet_rfu_clearAllSlot(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(SWI_CpuSet);
+    return (call_SWI_CpuSet_result_rfu_clearAllSlot){ R3 };
+}
+
+/* rfu_clearAllSlot: zero all four RFU wireless slot buffers, mark each slot
+ * closed, reset the link-state control bytes, and restore the saved
+ * interrupt master enable.  Always loops exactly 4 times (slots 0–3).
+ * Returns the RFU base pointer, used as the r2 output. */
+static u32 rfu_clear_all_slots_rfu_clearAllSlot(void) {
+    /* Save and disable interrupts for the duration of the clear */
+    u32 saved_ime = LD16(A_InterruptMasterEnableRegister);
+    ST16(A_InterruptMasterEnableRegister, 0);
+
+    /* register form: SWI_CpuSet needs a guest-addressed buffer on the stack
+     * as its source (a zero halfword acts as the fill pattern); the BIOS
+     * dereferences the SP-relative pointer we hand it. */
+    SP -= 4;
+    u32 fill_word  = SP;     /* [SP+0] = 0 → src for data-buffer fill   */
+    u32 fill_word2 = SP + 2; /* [SP+2] = 0 → src for link-buffer fill   */
+
+    for (u32 slot = 0; slot < 4; slot++) {
+        /* Zero the slot's received-data buffer (0x34 halfwords) */
+        ST16(fill_word, 0);
+        u32 data_ptr = LD32(A_dword_2010CB0 + slot * 4);
+        call_SWI_CpuSet_rfu_clearAllSlot(fill_word, data_ptr, 0x1000034);
+
+        /* Zero the slot's link/destination buffer (10 halfwords) */
+        ST16(fill_word2, 0);
+        u32 link_ptr = LD32(A_off_2010CA0 + slot * 4);
+        call_SWI_CpuSet_rfu_clearAllSlot(fill_word2, link_ptr, 0x100000A);
+
+        /* Mark slot closed: status byte at RFU_base+0x10+slot ← 0x10 */
+        ST8(LD32(A_dword_2010CC0) + 0x10 + slot, 0x10);
+    }
+
+    /* Reset RFU link-state control bytes */
+    u32 rfu_base = LD32(A_dword_2010CC0);
+    ST8(rfu_base + 0x04, 0);
+    ST8(rfu_base + 0x05, 0);
+    ST8(rfu_base + 0x06, 0);
+    ST8(rfu_base + 0x0F, 0x57);  /* link type/status */
+    ST8(LD32(A_dword_2010CC4) + 0x02, 0);
+
+    /* Restore the saved interrupt master enable */
+    ST16(A_InterruptMasterEnableRegister, saved_ime);
+
+    SP += 4;
+
+    return rfu_base;
+}
+
+Next rfu_clearAllSlot(void) {
+    R2 = rfu_clear_all_slots_rfu_clearAllSlot();
+    R3 = R8;                      /* original code pops saved r8 into r3 */
+    SET_FLAGS_CMP(4, 3);          /* loop-exit cmp: always r5=4 → C=1,V=0 */
+    RETURN_TO_CALLER();
+}
+
 /* ── STWI_init_timer ── */
 /* STWI_init_timer(r0 = callback slot, r1 = timer id):
  * Install STWI_intr_timer as the handler stored at *r0 and record the timer id
@@ -1225,6 +1291,92 @@ Next sprite_crossfadeColorChannels_814E528(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_814E758 ── */
+/* Bit masks for the note flag byte (offset 0 in a note entry). */
+#define NOTE_QUAL_MASK  0x83  /* at least one of these bits must be set */
+#define NOTE_PLAYED     0x40  /* bit 6 – note has been dispatched */
+
+/* Stream-control constant: a script byte >= 0x80 means "use stored pitch". */
+#define STREAM_HALT     0x80
+
+/* Channel-structure offsets (r1 on entry). */
+#define oChan_StreamPtr   0x40  /* script read pointer */
+#define oChan_StoredKey   5     /* last non-halt pitch byte */
+#define oChan_NoteList    0x20  /* head of the active note linked list */
+
+/* Note-entry offsets. */
+#define oNote_Flags       0x00  /* dispatch status bits */
+#define oNote_Key         0x11  /* pitch byte of this note */
+#define oNote_Next        0x34  /* next node in the list (self-referencing = end) */
+
+/* Read the next pitch from the channel's script stream.
+ * If the byte is < 0x80, consume it (advance the pointer) and save it at
+ * chan+5; otherwise the stream is halted and we return the previously
+ * stored pitch from chan+5. */
+static u8 read_target_key(u32 chan) {
+    u32 ptr  = LD32(chan + oChan_StreamPtr);
+    u8  byte = LD8(ptr);
+
+    if (byte < STREAM_HALT) {
+        ST8(chan + oChan_StoredKey, byte);
+        ST32(chan + oChan_StreamPtr, ptr + 1);
+        return byte;
+    }
+    return LD8(chan + oChan_StoredKey);
+}
+
+/* Walk the active-note list from `head`.  Look for the first entry whose
+ * flag byte has at least one NOTE_QUAL_MASK bit set, NOTE_PLAYED clear,
+ * and whose key byte equals `key`.  On a match set NOTE_PLAYED and stop.
+ * A node whose next pointer references itself is treated as a terminator
+ * (the field is zeroed). */
+static bool match_and_flag_note(u32 head, u8 key) {
+    u32 node = head;
+    while (node) {
+        u8 flags = LD8(node);
+
+        if ((flags & NOTE_QUAL_MASK) != 0
+            && !(flags & NOTE_PLAYED)
+            && LD8(node + oNote_Key) == key) {
+            ST8(node, (u8)(flags | NOTE_PLAYED));
+            return true;
+        }
+
+        u32 next = LD32(node + oNote_Next);
+        if (next == node) {
+            next = 0;
+            ST32(node + oNote_Next, 0);
+        }
+        node = next;
+    }
+    return false;
+}
+
+/* The original saves and restores r4/r5, leaving them unchanged. */
+struct preserved_pair { u32 r4, r5; };
+
+/* Channel note-dispatch (sub_814E758).  Advances the script stream,
+ * reads the target pitch, then scans the note list to flag a matching
+ * unplayed entry.  r4 and r5 pass through untouched. */
+static struct preserved_pair dispatch_channel_note(u32 chan, u32 in_r4, u32 in_r5) {
+    u8  key  = read_target_key(chan);
+    u32 head = LD32(chan + oChan_NoteList);
+
+    if (head)
+        match_and_flag_note(head, key);
+
+    struct preserved_pair ret = { in_r4, in_r5 };
+    return ret;
+}
+
+/* sub_814E758(r1 = channel ptr) -> r4, r5 preserved */
+Next sub_814E758(void) {
+    struct preserved_pair saved = dispatch_channel_note(R1, R4, R5);
+    R4 = saved.r4;
+    R5 = saved.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_814E7A4 ── */
 /* sub_814E7A4(r1 = status struct ptr):
  * Clear the two status bytes at +0x16 and +0x1A, then OR a mode flag into
@@ -1305,6 +1457,61 @@ Next sub_814E7E0(void) {
         GUEST_CALL(sub_814E7A4);    /* extra fixup only when result was zero */
 
     RETURN_TO_CALLER();             /* bx r12 */
+}
+
+/* ── sub_814E7F4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: umul3232H32 has no typed C interface yet */
+static inline u32 call_umul3232H32(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(umul3232H32);
+    return R0;
+}
+
+/* Interpolate between two adjacent audio samples from the sample-decoding
+ * tables, blend by the 8-bit factor (high byte), and scale by struct amplitude. */
+
+static u32 decode_sample(u8 packed) {
+    u32 slot  = (u32)(packed & 0xFu);
+    u32 shift = (u32)(packed >> 4);
+    return LD32(A_byte_81C055C + slot * 4u) >> shift;
+}
+
+static u32 interp_blend(u32 struct_ptr, u32 raw_index, u32 raw_blend) {
+    u32 idx        = raw_index & 0xFFu;
+    u32 blend_word = raw_blend << 24;
+
+    /* Clamp past the end of the sample table */
+    if (idx > 0xB2u) {
+        idx = 0xB2u;
+        blend_word = 0xFF000000u;
+    }
+
+    /* Decode the two adjacent samples */
+    u8  cur_byte  = LD8(A_byte_81C04A8 + idx);
+    u32 base      = decode_sample(cur_byte);
+
+    u8  next_byte = LD8(A_byte_81C04A8 + idx + 1);
+    u32 next_val  = decode_sample(next_byte);
+
+    /* Linear interpolation: base + (next - base) * blend >> 32 */
+    u32 delta        = next_val - base;
+    u32 interp_delta = call_umul3232H32(delta, blend_word);
+    u32 blended      = base + interp_delta;
+
+    /* Scale by the struct's amplitude field */
+    u32 amplitude = LD32(struct_ptr + 4);
+    return call_umul3232H32(amplitude, blended);
+}
+
+/* sub_814E7F4(r0 = sample struct ptr, r1 = sample index byte, r2 = blend factor byte)
+ * -> r0 = scaled interpolated value; r12 = struct ptr */
+Next sub_814E7F4(void) {
+    u32 struct_ptr = R0;
+    R0  = interp_blend(struct_ptr, R1, R2);
+    R12 = struct_ptr;
+    RETURN_TO_CALLER();
 }
 
 /* ── battle_smashFx_SetParams_814E87C ── */

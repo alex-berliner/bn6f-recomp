@@ -26,6 +26,88 @@ Next sub_810D970(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_810D998 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_810DAF0_result;
+/* register form: generated wrapper: sub_810DAF0 has no typed C interface yet */
+static inline call_sub_810DAF0_result call_sub_810DAF0(u32 r4, u32 r5, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R4 = r4;
+    R5 = r5;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(sub_810DAF0);
+    return (call_sub_810DAF0_result){ R0, R1, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* sub_810D998: advance one step of the enemy AI state machine.
+ * Calls a pre-check (sub_810DAF0); if it returns nonzero the AI is paused
+ * and no handler runs. Otherwise the state byte stored in the AI block
+ * (at the modified r6 from sub_810DAF0) indexes a four-entry jump table
+ * whose handler runs in-place and sets the output registers.
+ * r4 and r6 are preserved by push/pop: they always equal the entry values. */
+
+struct ai_step_result {
+    u32 r1, r5, r8, r9, r10, r11, r12;
+};
+
+/* register form: jump-table dispatch via bx; after the handler returns,
+ * pop {r4,r6,pc} restores the entry values of the preserved registers. */
+static struct ai_step_result call_ai_handler(u32 handler_addr, u32 state,
+                                              u32 r4, u32 r5, u32 r6, u32 r7,
+                                              u32 r8, u32 r9, u32 r10, u32 r11, u32 r12,
+                                              u32 entry_r4, u32 entry_r6) {
+    R0 = state;
+    R1 = handler_addr;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R10 = r10;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL_ADDR(handler_addr);
+    /* restore preserved registers: pop {r4,r6,pc} */
+    R4 = entry_r4;
+    R6 = entry_r6;
+    struct ai_step_result out = { R1, R5, R8, R9, R10, R11, R12 };
+    return out;
+}
+
+static struct ai_step_result ai_step(u32 r4, u32 r5, u32 r6, u32 r7,
+                                      u32 r8, u32 r9, u32 r10, u32 r11, u32 r12) {
+    call_sub_810DAF0_result pre = call_sub_810DAF0(r4, r5, r7, r8, r9, r11, r12);
+
+    if (pre.r0 != 0) {
+        /* register form: pop {r4,r6,pc} restores entry values after the pre-check
+         * modified them; wrapper left R4/R6 changed but original pops them. */
+        R4 = r4;
+        R6 = r6;
+        return (struct ai_step_result){ pre.r1, pre.r5, pre.r8, pre.r9,
+                                        pre.r10, pre.r11, pre.r12 };
+    }
+
+    u32 state = LD8(pre.r6 + oAIState_Unk_00);
+    u32 handler = LD32(A_off_810D9B4 + state);
+
+    return call_ai_handler(handler, state,
+                           pre.r4, pre.r5, pre.r6, pre.r7,
+                           pre.r8, pre.r9, pre.r10, pre.r11, pre.r12,
+                           r4, r6);
+}
+
+/* sub_810D998(r4..r12, lr) -> r1 r5 r8 r9 r10 r11 r12; preserves r4 r6 */
+Next sub_810D998(void) {
+    struct ai_step_result out = ai_step(R4, R5, R6, R7, R8, R9, R10, R11, R12);
+    R1 = out.r1, R5 = out.r5, R8 = out.r8, R9 = out.r9,
+    R10 = out.r10, R11 = out.r11, R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_810DA00 ── */
 /* sub_810DA00: AI helper that runs a forward probe from an object.
  * Inputs:  r5 = battle object pointer, r6 = AI state pointer
@@ -79,6 +161,193 @@ Next sub_810DA24(void) {
     else
         GUEST_CALL(sub_810DAAA);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_810DA4C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_object_getFrontDirection_result;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result call_object_getFrontDirection(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result){ R0 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_sub_8109708_result;
+/* register form: generated wrapper: sub_8109708 has no typed C interface yet */
+static inline call_sub_8109708_result call_sub_8109708(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sub_8109708);
+    return (call_sub_8109708_result){ R0, R1, R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r2, r3, r5, r6, r7; } call_sub_80103F8_result;
+/* register form: generated wrapper: sub_80103F8 has no typed C interface yet */
+static inline call_sub_80103F8_result call_sub_80103F8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_80103F8);
+    return (call_sub_80103F8_result){ R0, R2, R3, R5, R6, R7 };
+}
+
+/* AI step: find a movement target tile for the battle object.
+ * Reads the front direction, checks the panel ahead via sub_8109708,
+ * then (if walkable) locates the opposing alliance's object and picks
+ * an X-coordinate relative to its panel range.  Writes four fields of
+ * the AI state (r6) and leaves r1 = the range lower bound. */
+static u32 ai_select_movement_target(u32 battle, u32 ai_state) {
+    /* Probe the tile one step ahead of us. */
+    call_object_getFrontDirection_result dir1 = call_object_getFrontDirection(battle);
+    u32 front_x = dir1.r0 + LD8(battle + oBattleObject_PanelX);
+    u32 front_y = LD8(battle + oBattleObject_PanelY);
+    u32 extra_4 = LD32(battle + oBattleObject_ExtraVars + 4);
+
+    call_sub_8109708_result walkable = call_sub_8109708(front_x, front_y, extra_4, battle);
+    if (walkable.r0 != 0) {
+        /* Panel is blocked – give up, set state byte to 0xC. */
+        ST8(ai_state + oAIState_Unk_00, 0xC);
+        return walkable.r1;
+    }
+
+    /* Find the opposing alliance's battle object. */
+    u32 opposing = LD8(battle + oBattleObject_Alliance) ^ 1;
+    call_sub_80103F8_result enemy_res = call_sub_80103F8(opposing, battle);
+    u32 enemy = enemy_res.r0;
+
+    ST8(ai_state + oAIState_Unk_05, LD8(enemy + 0x13));
+
+    /* Build the signed panel-X range [lo, hi] around our column. */
+    call_object_getFrontDirection_result dir2 = call_object_getFrontDirection(battle);
+    u32 d = dir2.r0;
+    s32 px = (s32)LD8(battle + oBattleObject_PanelX);
+    s32 lo = px + (s32)d;
+    u32 extra_0 = LD32(battle + oBattleObject_ExtraVars);
+    u32 offset = d * extra_0;
+    s32 hi = px + (s32)offset;
+
+    if (lo >= hi) {
+        s32 tmp = lo;
+        lo = hi;
+        hi = tmp;
+    }
+
+    /* Decide target X: chase the enemy directly if in range, else step. */
+    s32 enemy_x = (s32)LD8(enemy + 0x12);
+    s32 target_x;
+    if (enemy_x >= lo && enemy_x <= hi) {
+        target_x = px;
+    } else {
+        target_x = enemy_x - (s32)offset;
+    }
+
+    ST8(ai_state + oAIState_Unk_04, (u8)target_x);
+    ST8(ai_state + oAIState_Unk_02, 4);
+
+    return (u32)lo;
+}
+
+/* sub_810DA4C(r5 = battle object, r6 = AI state, r10, lr) -> r1, r5 */
+Next sub_810DA4C(void) {
+    R1 = ai_select_movement_target(R5, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_810DB20 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_GetAllianceDependentPanelParamArgs_result;
+/* register form: generated wrapper: GetAllianceDependentPanelParamArgs has no typed C interface yet */
+static inline call_GetAllianceDependentPanelParamArgs_result call_GetAllianceDependentPanelParamArgs(u32 r3, u32 r5) {
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(GetAllianceDependentPanelParamArgs);
+    return (call_GetAllianceDependentPanelParamArgs_result){ R2, R3 };
+}
+
+typedef struct { u32 r0, r2, r3, r4, r5; } call_object_checkPanelParameters_result;
+/* register form: generated wrapper: object_checkPanelParameters has no typed C interface yet */
+static inline call_object_checkPanelParameters_result call_object_checkPanelParameters(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(object_checkPanelParameters);
+    return (call_object_checkPanelParameters_result){ R0, R2, R3, R4, R5 };
+}
+
+/* sub_810DB20: AI panel-step helper.
+ *
+ * Attempts to move a battle object one panel closer to its AI target (r6).
+ * Tries the Y axis first; if that yields a valid panel (checkPanelParameters
+ * returns non-zero), returns the candidate (x, y).  Otherwise falls through
+ * to try the X axis.  If neither axis produces a valid step, returns (0, y).
+ *
+ * Inputs:  r5 = battle object pointer, r6 = AI state pointer.
+ * Outputs: r0 = candidate X (or 0 if no valid move), r1 = candidate Y.
+ */
+
+typedef struct { u32 x; u32 y; } PanelStepResult;
+
+static PanelStepResult ai_step_panel_toward_target(u32 battle_obj, u32 ai_state) {
+    /* --- Y axis attempt --- */
+    u32 target_y = LD8(ai_state + oAIState_Unk_05);
+    u32 panel_y  = LD8(battle_obj + oBattleObject_PanelY);
+
+    if (panel_y != target_y) {
+        /* Nudge Y one step toward the target. */
+        u32 cand_y = (panel_y < target_y) ? (panel_y + 1) : (panel_y - 1);
+        u32 cand_x = LD8(battle_obj + oBattleObject_PanelX);
+
+        call_GetAllianceDependentPanelParamArgs_result gp =
+            call_GetAllianceDependentPanelParamArgs(A_byte_810DBF0, battle_obj);
+
+        call_object_checkPanelParameters_result chk =
+            call_object_checkPanelParameters(cand_x, cand_y, gp.r2, gp.r3);
+
+        if (chk.r0 != 0) {
+            PanelStepResult out = { cand_x, cand_y };
+            return out;
+        }
+        /* Y step not valid; fall through to try X axis. */
+    }
+
+    /* --- X axis attempt --- */
+    u32 panel_x  = LD8(battle_obj + oBattleObject_PanelX);
+    u32 target_x = LD8(ai_state + oAIState_Unk_04);
+
+    if (panel_x == target_x) {
+        /* Already aligned on X: no move possible. */
+        PanelStepResult out = { 0, target_x };
+        return out;
+    }
+
+    /* Nudge X one step toward the target. */
+    u32 cand_x = (panel_x < target_x) ? (panel_x + 1) : (panel_x - 1);
+    u32 cand_y = LD8(battle_obj + oBattleObject_PanelY);
+
+    call_GetAllianceDependentPanelParamArgs_result gp =
+        call_GetAllianceDependentPanelParamArgs(A_byte_810DBF0, battle_obj);
+
+    call_object_checkPanelParameters_result chk =
+        call_object_checkPanelParameters(cand_x, cand_y, gp.r2, gp.r3);
+
+    if (chk.r0 != 0) {
+        PanelStepResult out = { cand_x, cand_y };
+        return out;
+    }
+
+    /* No valid step found on either axis. */
+    PanelStepResult out = { 0, cand_y };
+    return out;
+}
+
+Next sub_810DB20(void) {
+    PanelStepResult res = ai_step_panel_toward_target(R5, R6);
+    R0 = res.x;
+    R1 = res.y;
     RETURN_TO_CALLER();
 }
 
@@ -667,6 +936,193 @@ Next sub_8116A44(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8116ADC ── */
+/* register form: jump-table dispatch; the original branches through a loaded
+ * pointer (mov lr, pc; bx r0) so we call the computed address directly.
+ * Before the call: R0 = target, R1 = variant, R7 = ePETMenuData (menu data).
+ * R5 (battle object) is already set by the caller and read by the target. */
+static void epet_menu_dispatch(u32 battle_obj) {
+    u32 variant = (u32)LD8(battle_obj + 8);
+    u32 funcptr = LD32(A_off_8116AF0 + variant);
+    u32 saved_r7 = R7;
+    R0 = funcptr;
+    R1 = variant;
+    R7 = A_ePETMenuData;
+    GUEST_CALL_ADDR(funcptr);
+    R7 = saved_r7;
+}
+
+/* sub_8116ADC: ePET menu variant dispatch (r5 = battle object pointer) */
+Next sub_8116ADC(void) {
+    epet_menu_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8116B00 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_GetCurPETNavi_result;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result call_GetCurPETNavi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_sub_8116B00(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_sub_8116B00;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_sub_8116B00 call_sprite_loadAnimationData_sub_8116B00(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_sub_8116B00){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_sub_8116B00(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r2; } call_sprite_setSubEntryPaletteBank_800304A_result_sub_8116B00;
+/* register form: generated wrapper: sprite_setSubEntryPaletteBank_800304A has no typed C interface yet */
+static inline call_sprite_setSubEntryPaletteBank_800304A_result_sub_8116B00 call_sprite_setSubEntryPaletteBank_800304A_sub_8116B00(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+    return (call_sprite_setSubEntryPaletteBank_800304A_result_sub_8116B00){ R2 };
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_sub_8116B00(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+typedef struct { u32 r1, r2; } call_sprite_setPriority_8002E14_result_sub_8116B00;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_sub_8116B00 call_sprite_setPriority_8002E14_sub_8116B00(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_sub_8116B00){ R1, R2 };
+}
+
+/* register form: generated wrapper: slotList_storeHalfwordAndClearField_800306C has no typed C interface yet */
+static inline void call_slotList_storeHalfwordAndClearField_800306C_sub_8116B00(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+/* register form: generated wrapper: sprite_setSubRecordFieldA_8003060 has no typed C interface yet */
+static inline void call_sprite_setSubRecordFieldA_8003060_sub_8116B00(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setCoordinates_result_sub_8116B00;
+/* register form: generated wrapper: sprite_setCoordinates has no typed C interface yet */
+static inline call_sprite_setCoordinates_result_sub_8116B00 call_sprite_setCoordinates_sub_8116B00(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(sprite_setCoordinates);
+    return (call_sprite_setCoordinates_result_sub_8116B00){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r5, r10, r11; } call_sprite_dispatchVariantUpdate_8116B9C_result;
+/* register form: generated wrapper: sprite_dispatchVariantUpdate_8116B9C has no typed C interface yet */
+static inline call_sprite_dispatchVariantUpdate_8116B9C_result call_sprite_dispatchVariantUpdate_8116B9C(u32 r5, u32 r7) {
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(sprite_dispatchVariantUpdate_8116B9C);
+    return (call_sprite_dispatchVariantUpdate_8116B9C_result){ R2, R3, R5, R10, R11 };
+}
+
+/* Direct call to sub-record initializer at loc_8002774 (no generated wrapper). */
+/* register form: known code address, no typed wrapper provided */
+static void call_loc_8002774(u32 a1, u32 a2) {
+    R0 = a1;
+    R1 = a2;
+    GUEST_CALL(loc_8002774);
+}
+
+/* Team byte values stored at sprite offset 0. */
+#define TEAM_A  0x23
+#define TEAM_B  0x43
+
+/* Animation index overrides. */
+#define ANIM_DEFAULT_KIND  3
+#define ANIM_PET_NAVI      8
+
+/* Initialize a battle sprite for display: pack team byte, set animation,
+ * configure palette/priority/coordinates, then dispatch its variant update. */
+static call_sprite_dispatchVariantUpdate_8116B9C_result
+init_sprite_variant(u32 spr, u32 player_slot) {
+    /* Store team byte: 0x43 if kind is set, else 0x23. */
+    u8 kind = LD8(spr + 4);
+    ST8(spr, kind ? TEAM_B : TEAM_A);
+
+    /* Initialize sub-record fields. */
+    call_loc_8002774(0, kind);
+
+    /* Determine animation index; override for current PET navi. */
+    u8 anim = LD8(spr + 4);
+    if (anim == ANIM_DEFAULT_KIND && call_GetCurPETNavi().r0 != 0)
+        anim = ANIM_PET_NAVI;
+
+    /* Configure sprite appearance. */
+    call_sprite_setAnimation_sub_8116B00(anim, spr);
+
+    /* Load animation data; the sprite slot may be relocated. */
+    call_sprite_loadAnimationData_result_sub_8116B00 anim_res = call_sprite_loadAnimationData_sub_8116B00(spr);
+    spr = anim_res.r5;
+
+    call_sprite_noShadow_sub_8116B00(spr);
+    call_sprite_setSubEntryPaletteBank_800304A_sub_8116B00(0xD, spr);
+    call_sprite_setPalette_sub_8116B00(1, spr);
+    call_sprite_setPriority_8002E14_sub_8116B00(0, spr);
+    call_slotList_storeHalfwordAndClearField_800306C_sub_8116B00(LD32(A_off_8116B90), spr);
+    call_sprite_setSubRecordFieldA_8003060_sub_8116B00(0, spr);
+
+    /* Set state: frame 4 active, sub-frame 0. */
+    ST8(spr + 8, 4);
+    ST8(spr + 9, 0);
+
+    /* Compute display coordinates based on team kind and slot alignment. */
+    u32 x, y;
+    if (LD8(spr + 5) != 0) {
+        u8 k = LD8(spr + 4);
+        y = LD8(A_byte_8116BEC + (u32)k * 2);
+        x = (LD8(player_slot + 4) == k) ? 0x1E : 0x16;
+    } else {
+        x = 0x16;
+        y = 0x20;
+    }
+    call_sprite_setCoordinates_sub_8116B00(x, y, spr);
+
+    /* Mark sprite as visible and active. */
+    ST8(spr + 0xD, 1);
+    ST8(spr + 0xC, 0);
+
+    /* Final variant dispatch; produces the output registers. */
+    return call_sprite_dispatchVariantUpdate_8116B9C(spr, player_slot);
+}
+
+/* sub_8116B00(r5 = sprite, r7 = player slot, r10, lr) -> r2 r3 r5 r10 r11 */
+Next sub_8116B00(void) {
+    call_sprite_dispatchVariantUpdate_8116B9C_result res = init_sprite_variant(R5, R7);
+    R2 = res.r2; R3 = res.r3; R5 = res.r5; R10 = res.r10; R11 = res.r11;
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_dispatchVariantUpdate_8116B9C ── */
 /* sprite_dispatchVariantUpdate_8116B9C(r5 = sprite/object pointer):
  * Run the per-variant update routine selected by the byte at [r5+9], then
@@ -805,6 +1261,81 @@ Next record_adjustNthSubRecordFieldC_8116C40(void) {
     }
 
     ST16(record + 0xC, (u32)value);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8116C78 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_sprite_setSubEntryPaletteBank_800304A_result_sub_8116C78;
+/* register form: generated wrapper: sprite_setSubEntryPaletteBank_800304A has no typed C interface yet */
+static inline call_sprite_setSubEntryPaletteBank_800304A_result_sub_8116C78 call_sprite_setSubEntryPaletteBank_800304A_sub_8116C78(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+    return (call_sprite_setSubEntryPaletteBank_800304A_result_sub_8116C78){ R2 };
+}
+
+typedef struct { u32 r3; } call_sprite_setPalette_result;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result call_sprite_setPalette_sub_8116C78(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result){ R3 };
+}
+
+/* Advance a battle sprite's sub-palette animation state and apply the result.
+ *
+ * sprite_ptr (r5): the sprite's state block.  Byte 0 bit 6 is a "match"
+ * flag, byte 4 is the alliance ID, byte 0xC is the current frame index,
+ * byte 0xD is a per-frame countdown timer.
+ * related_ptr (r7): a second object whose byte 4 is compared against
+ * the sprite's alliance to decide whether the sprite participates in the
+ * match animation.
+ *
+ * If the alliances match we switch to an animated palette-bank pair and
+ * tick the timer from a small two-entry table (byte_8116CCC).  If the
+ * timer reaches zero we load the next entry's frame/timer pair.  Either
+ * way the (possibly default) bank and palette are handed to the sprite
+ * helpers, and bit 6 of byte 0 is cleared. */
+static void sub_8116C78_impl(u32 sprite_ptr, u32 related_ptr) {
+    u32 bank = 0xD;
+    u32 palette = 1;
+    bool animate = false;
+
+    if (LD8(related_ptr + 4) == LD8(sprite_ptr + 4)) {
+        bank = 0xC;
+        palette = 0;
+        animate = true;
+    }
+
+    /* Clear the match flag (bit 6) in the sprite's control byte. */
+    ST8(sprite_ptr, LD8(sprite_ptr) & ~0x40);
+
+    if (animate) {
+        u32 tbl = A_byte_8116CCC;
+        u32 off = (u32)LD8(sprite_ptr + 0xC) << 2;
+        bank = LD8(tbl + off);
+        palette = LD8(tbl + off + 1);
+
+        /* Decrement the frame timer (32-bit wrap mirrors the original SUBS). */
+        u32 timer = LD8(sprite_ptr + 0xD);
+        u32 new_timer = timer - 1;
+        ST8(sprite_ptr + 0xD, (u8)new_timer);
+
+        /* On underflow (timer was 0) load the next frame/timer pair. */
+        if ((s32)new_timer < 0) {
+            ST8(sprite_ptr + 0xC, LD8(tbl + off + 2));
+            ST8(sprite_ptr + 0xD, LD8(tbl + off + 3));
+        }
+    }
+
+    call_sprite_setSubEntryPaletteBank_800304A_sub_8116C78(bank, sprite_ptr);
+    call_sprite_setPalette_sub_8116C78(palette, sprite_ptr);
+}
+
+Next sub_8116C78(void) {
+    sub_8116C78_impl(R5, R7);
     RETURN_TO_CALLER();
 }
 
@@ -1450,6 +1981,81 @@ Next sprite_setStructHalfwordPairOnThree_8117084(void) {
         }
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81170C0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n, c, v; } call_sprite_setUnk0x2c_result;
+/* register form: generated wrapper: sprite_setUnk0x2c has no typed C interface yet */
+static inline call_sprite_setUnk0x2c_result call_sprite_setUnk0x2c(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setUnk0x2c);
+    return (call_sprite_setUnk0x2c_result){ R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_81170C0:
+ *   inputs:  r0 r5 lr
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *
+ * Draws two values from the BIOS PRNG (svc 6) and uses them to punch holes
+ * out of a default bitmask (0x7FFFFE00), then hands the resulting mask to
+ * sprite_setUnk0x2c (with the sprite object pointer in r5).
+ *
+ * The two PRNG draws are chained: each svc 6 call takes the incoming r0/r1
+ * as (seed, limit) and returns a random value in r0 and the updated state in
+ * r1. The original uses the first call's r1 as the second call's r0, sets
+ * r1 to 0x0A, then uses r0 and r1 after the second call. Because svc 6
+ * reads and writes guest registers directly, the draw is a small
+ * register-form helper. */
+
+#define DEFAULT_SPRITE_MASK   0x7FFFFE00u
+#define MASK_BIT_FIRST_DRAW   0x80000000u
+#define MASK_BIT_SECOND_DRAW  0x10000000u
+#define MASK_BIT_SECOND_STATE 0x00040000u
+
+/* One BIOS svc 6 (Random) draw: inputs r0/r1, outputs r0/r1. */
+static u32 bios_random(u32 r0_in, u32 r1_in, u32 *r1_out) {
+    /* register form: svc 6 is a BIOS service that consumes and returns r0/r1 */
+    R0 = r0_in;
+    R1 = r1_in;
+    swi_call(6);
+    u32 result = R0;
+    *r1_out = R1;
+    return result;
+}
+
+/* ARM register-shift LSR (no flags): shift amount is the low byte; a count
+ * of 32 or more yields zero. */
+static u32 lsr_byte(u32 value, u32 amount) {
+    u32 s = amount & 0xFFu;
+    return (s >= 32u) ? 0u : (value >> s);
+}
+
+/* Punch the mask holes out of DEFAULT_SPRITE_MASK.  The 0x10000000 bit is
+ * cleared only if either PRNG draw is non-zero (the branch on the second
+ * draw's value, falling through to the first draw's test); when the second
+ * draw is zero the shift count is zero, i.e. the whole bit is cleared. */
+static u32 build_sprite_mask(u32 first_draw, u32 second_draw, u32 second_state) {
+    u32 mask = DEFAULT_SPRITE_MASK;
+    mask &= ~lsr_byte(MASK_BIT_FIRST_DRAW, first_draw);
+    if (first_draw != 0 || second_draw != 0)
+        mask &= ~lsr_byte(MASK_BIT_SECOND_DRAW, second_draw);
+    mask &= ~lsr_byte(MASK_BIT_SECOND_STATE, second_state);
+    return mask;
+}
+
+static void draw_sprite_random_mask(u32 first_seed, u32 object) {
+    u32 first_state, second_draw, second_state;
+    u32 first_draw = bios_random(first_seed, 0x64, &first_state);
+    second_draw = bios_random(first_state, 0x0A, &second_state);
+    call_sprite_setUnk0x2c(build_sprite_mask(first_draw, second_draw, second_state), object);
+}
+
+Next sub_81170C0(void) {
+    draw_sprite_random_mask(R0, R5);
     RETURN_TO_CALLER();
 }
 
@@ -2318,6 +2924,155 @@ Next objectStateDispatcher_8117D2C(void) {
         break;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8117D4C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6; } call_initGuiSprite_8002770_result;
+/* register form: generated wrapper: initGuiSprite_8002770 has no typed C interface yet */
+static inline call_initGuiSprite_8002770_result call_initGuiSprite_8002770(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(initGuiSprite_8002770);
+    return (call_initGuiSprite_8002770_result){ R4, R5, R6 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_sub_8117D4C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_sub_8117D4C;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_sub_8117D4C call_sprite_loadAnimationData_sub_8117D4C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_sub_8117D4C){ R2, R4, R5 };
+}
+
+typedef struct { u32 r1; } call_sprite_noShadow_result;
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline call_sprite_noShadow_result call_sprite_noShadow_sub_8117D4C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+    return (call_sprite_noShadow_result){ R1 };
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_sub_8117D4C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+typedef struct { u32 r2; } call_sprite_setPriority_8002E14_result_sub_8117D4C;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_sub_8117D4C call_sprite_setPriority_8002E14_sub_8117D4C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_sub_8117D4C){ R2 };
+}
+
+/* register form: generated wrapper: slotList_storeHalfwordAndClearField_800306C has no typed C interface yet */
+static inline void call_slotList_storeHalfwordAndClearField_800306C_sub_8117D4C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+typedef struct { u32 r2; } call_sprite_setSubEntryPaletteBank_800304A_result_sub_8117D4C;
+/* register form: generated wrapper: sprite_setSubEntryPaletteBank_800304A has no typed C interface yet */
+static inline call_sprite_setSubEntryPaletteBank_800304A_result_sub_8117D4C call_sprite_setSubEntryPaletteBank_800304A_sub_8117D4C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+    return (call_sprite_setSubEntryPaletteBank_800304A_result_sub_8117D4C){ R2 };
+}
+
+/* register form: generated wrapper: sprite_setSubRecordFieldA_8003060 has no typed C interface yet */
+static inline void call_sprite_setSubRecordFieldA_8003060_sub_8117D4C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+typedef struct { u32 r3; bool v; } call_sprite_setCoordinates_result_sub_8117D4C;
+/* register form: generated wrapper: sprite_setCoordinates has no typed C interface yet */
+static inline call_sprite_setCoordinates_result_sub_8117D4C call_sprite_setCoordinates_sub_8117D4C(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(sprite_setCoordinates);
+    return (call_sprite_setCoordinates_result_sub_8117D4C){ R3, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r5, r10, r11; } call_sub_8117DC8_result;
+/* register form: generated wrapper: sub_8117DC8 has no typed C interface yet */
+static inline call_sub_8117DC8_result call_sub_8117DC8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_8117DC8);
+    return (call_sub_8117DC8_result){ R2, R3, R5, R10, R11 };
+}
+
+/* off_8117DB4: two u32 palette-VRAM base pointers (0x90, 0xC0) indexed by
+ * the player-slot byte at obj+3.  byte_8117DC4: four palette-bank numbers
+ * (2, 3, 4, 0) likewise indexed by slot. */
+
+/* Initialize and position one link/select portrait sprite.
+ * obj (r5 on entry) is the sprite control block:
+ *   +0  graphics ID byte
+ *   +3  player slot (0–3)
+ *   +4  current animation frame
+ *   +8  animation state
+ *   +0xC derived sub-record field (frame + 5)
+ * Returns the registers produced by the final sub_8117DC8 call. */
+static call_sub_8117DC8_result init_link_portrait(u32 obj) {
+    ST8(obj, 0x23);
+
+    call_initGuiSprite_8002770(0x61, A_unk_20251B0, obj);
+
+    u32 frameVal = LD8(obj + 4) + 5;
+    ST8(obj + 0xC, frameVal);
+
+    call_sprite_setAnimation_sub_8117D4C(frameVal, obj);
+    call_sprite_loadAnimationData_sub_8117D4C(obj);
+    call_sprite_noShadow_sub_8117D4C(obj);
+    call_sprite_setPalette_sub_8117D4C(0, obj);
+    call_sprite_setPriority_8002E14_sub_8117D4C(2, obj);
+
+    u8 slot = LD8(obj + 3);
+
+    /* Select palette base by slot from the word table at off_8117DB4. */
+    u32 palBase = LD32(A_off_8117DB4 + slot * 4);
+    call_slotList_storeHalfwordAndClearField_800306C_sub_8117D4C(palBase, obj);
+
+    /* Palette bank for this slot from the byte table at byte_8117DC4. */
+    u32 palBank = LD8(A_byte_8117DC4 + slot);
+    call_sprite_setSubEntryPaletteBank_800304A_sub_8117D4C(palBank, obj);
+
+    call_sprite_setSubRecordFieldA_8003060_sub_8117D4C(3, obj);
+
+    /* X = 0x78 fixed; Y = 0x28 + slot * 0x20 (four rows, 32 px apart). */
+    call_sprite_setCoordinates_sub_8117D4C(0x78, 0x28 + (u32)slot * 0x20, obj);
+
+    ST8(obj + 8, 4);
+
+    return call_sub_8117DC8(obj);
+}
+
+/* sub_8117D4C(r5 = sprite control block) -> r2 r3 r5 r10 r11 */
+Next sub_8117D4C(void) {
+    call_sub_8117DC8_result res = init_link_portrait(R5);
+    R2 = res.r2;
+    R3 = res.r3;
+    R5 = res.r5;
+    R10 = res.r10;
+    R11 = res.r11;
     RETURN_TO_CALLER();
 }
 

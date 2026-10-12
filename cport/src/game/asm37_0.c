@@ -222,6 +222,87 @@ Next battle_categorizeRandomIds_813BC1C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813BC98 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3; } call_sub_813B9B4_result;
+/* register form: generated wrapper: sub_813B9B4 has no typed C interface yet */
+static inline call_sub_813B9B4_result call_sub_813B9B4(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_813B9B4);
+    return (call_sub_813B9B4_result){ R0, R3 };
+}
+
+typedef struct { u32 r0, r2; } call_toolkit_getUnk2004190EntryPtr_813B9FC_result_sub_813BC98;
+/* register form: generated wrapper: toolkit_getUnk2004190EntryPtr_813B9FC has no typed C interface yet */
+static inline call_toolkit_getUnk2004190EntryPtr_813B9FC_result_sub_813BC98 call_toolkit_getUnk2004190EntryPtr_813B9FC_sub_813BC98(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_getUnk2004190EntryPtr_813B9FC);
+    return (call_toolkit_getUnk2004190EntryPtr_813B9FC_result_sub_813BC98){ R0, R2 };
+}
+
+typedef struct { u32 r0, r2; } call_sub_813B780_result_sub_813BC98;
+/* register form: generated wrapper: sub_813B780 has no typed C interface yet */
+static inline call_sub_813B780_result_sub_813BC98 call_sub_813B780_sub_813BC98(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_813B780);
+    return (call_sub_813B780_result_sub_813BC98){ R0, R2 };
+}
+
+/* Marker byte array the game keeps at 0x2006C88; one slot per scanned entry. */
+#define MARKER_ARRAY A_unk_2006C88
+
+/* Scan the 0x31 ally/entry records for the current battle.
+ *
+ * Seven fixed slots (partners 0..6) reserve their entry ids, taken from
+ * sub_813B9B4(id, 3) - 1, and every scanned id that is reserved is skipped.
+ * For each unreserved id the record pointer comes from the toolkit helper; an
+ * empty record (first 16-bit word 0) is skipped.  Otherwise sub_813B780 maps
+ * the record to an item descriptor: a usable item (type byte == 0) bumps the
+ * caller's per-index rank counter at [r0 + item index], while any other type
+ * marks the entry in the global marker array as (entry + 1).
+ *
+ * The original's local scratch array lives in its stack frame; it is never
+ * passed to a callee, so a plain C array reproduces it.  R5/R7 are restored by
+ * the original's pop and therefore leave the call unchanged. */
+static void scan_entries_and_count_ranks(u32 rank_array) {
+    u32 reserved_id[7];
+
+    for (u32 partner = 0; partner < 7; partner++)
+        reserved_id[partner] = call_sub_813B9B4(partner, 3).r0 - 1;
+
+    for (u32 entry = 0; entry < 0x31; entry++) {
+        /* Skip ids claimed by the seven fixed partners. */
+        u32 t;
+        for (t = 0; t < 7; t++)
+            if (reserved_id[t] == entry)
+                break;
+        if (t < 7)
+            continue;
+
+        u32 record = call_toolkit_getUnk2004190EntryPtr_813B9FC_sub_813BC98(entry).r0;
+        if (LD16(record) == 0)
+            continue;                     /* empty record */
+
+        u32 item = call_sub_813B780_sub_813BC98(LD16(record)).r0;
+
+        if (LD8(item + 1) == 0) {
+            /* Usable item: bump the rank counter for its index. */
+            u32 idx = LD8(item + 4);
+            ST8(rank_array + idx, (u8)(LD8(rank_array + idx) + 1));
+        } else {
+            /* Unusable item: flag this entry in the marker array. */
+            ST8(MARKER_ARRAY + entry, (u8)(entry + 1));
+        }
+    }
+}
+
+/* sub_813BC98(r0 = rank counter array) -> (memory only) */
+Next sub_813BC98(void) {
+    scan_entries_and_count_ranks(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── getWorkAreaPtr_2006CF8_813BD0C ── */
 /* getWorkAreaPtr_2006CF8_813BD0C: trivial getter -- loads the address of the work buffer
  * unk_2006CF8 into r7 and returns. */
@@ -242,6 +323,87 @@ Next sub_813BD10(void) {
 /* getWorkAreaPtr_2006CC0_813BD14: return the base address of the unk_2006CC0 data block in R7. */
 Next getWorkAreaPtr_2006CC0_813BD14(void) {
     R7 = A_unk_2006CC0;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813BEA8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: ByteFill has no typed C interface yet */
+static inline void call_ByteFill(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(ByteFill);
+}
+
+typedef struct { u32 r0, r2; } call_toolkit_getUnk2004190EntryPtr_813B9FC_result_sub_813BEA8;
+/* register form: generated wrapper: toolkit_getUnk2004190EntryPtr_813B9FC has no typed C interface yet */
+static inline call_toolkit_getUnk2004190EntryPtr_813B9FC_result_sub_813BEA8 call_toolkit_getUnk2004190EntryPtr_813B9FC_sub_813BEA8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_getUnk2004190EntryPtr_813B9FC);
+    return (call_toolkit_getUnk2004190EntryPtr_813B9FC_result_sub_813BEA8){ R0, R2 };
+}
+
+typedef struct { u32 r0; } call_sub_813B780_result_sub_813BEA8;
+/* register form: generated wrapper: sub_813B780 has no typed C interface yet */
+static inline call_sub_813B780_result_sub_813BEA8 call_sub_813B780_sub_813BEA8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_813B780);
+    return (call_sub_813B780_result_sub_813BEA8){ R0 };
+}
+
+/* Collect unique entry IDs from the toolkit's unknown-entry table into the
+ * byte_2006D30 buffer (max 0x31 slots), then bump a tally byte when more
+ * than four distinct IDs are found.  r7 is used internally but saved via
+ * push/pop, so callers observe it unchanged. */
+static void scan_unknown_entries(u32 toolkit, u32 id_buf) {
+    /* Fill the ID buffer with 0xFF (empty sentinel). */
+    call_ByteFill(id_buf, 0x31, 0xFF);
+
+    u32 collected = 0;
+
+    for (u32 idx = 0; idx < 0x31; idx++) {
+        /* Get entry pointer for this index. */
+        u32 entry = call_toolkit_getUnk2004190EntryPtr_813B9FC_sub_813BEA8(idx).r0;
+
+        /* Skip entries with a zero 16-bit flag at offset 0. */
+        u16 flag = LD16(entry);
+        if (flag == 0)
+            continue;
+
+        /* Resolve the entry's info structure and read its ID byte. */
+        u32 info = call_sub_813B780_sub_813BEA8(flag).r0;
+        u8 id = LD8(info + 3);
+
+        /* Check whether this ID is already in the buffer. */
+        bool seen = false;
+        for (u32 j = 0; j < 0x31; j++) {
+            if (LD8(id_buf + j) == id) {
+                seen = true;
+                break;
+            }
+        }
+        if (seen)
+            continue;
+
+        /* Record the new ID. */
+        ST8(id_buf + collected, id);
+        collected++;
+    }
+
+    /* Update the toolkit's tally counters when more than four IDs collected. */
+    if (collected > 4) {
+        u32 tally = LD32(toolkit + oToolkit_Unk200431c_Ptr);
+        if (collected == 5)
+            ST8(tally + 0xB, LD8(tally + 0xB) + 1);
+        else
+            ST8(tally + 0xC, LD8(tally + 0xC) + 2);
+    }
+}
+
+/* sub_813BEA8(r10 = toolkit) -> r7 (preserved, no change) */
+Next sub_813BEA8(void) {
+    scan_unknown_entries(R10, A_byte_2006D30);
     RETURN_TO_CALLER();
 }
 

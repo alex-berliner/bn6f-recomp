@@ -380,6 +380,166 @@ Next queueGFXTransfersFromTable_811EC68(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811ED58 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_LoadGFXAnim_result;
+/* register form: generated wrapper: LoadGFXAnim has no typed C interface yet */
+static inline call_LoadGFXAnim_result call_LoadGFXAnim_sub_811ED58(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(LoadGFXAnim);
+    return (call_LoadGFXAnim_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sub_80465A0_result;
+/* register form: generated wrapper: sub_80465A0 has no typed C interface yet */
+static inline call_sub_80465A0_result call_sub_80465A0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_80465A0);
+    return (call_sub_80465A0_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r5, r7; } call_sub_811F1B8_result;
+/* register form: generated wrapper: sub_811F1B8 has no typed C interface yet */
+static inline call_sub_811F1B8_result call_sub_811F1B8_sub_811ED58(void) {
+    GUEST_CALL(sub_811F1B8);
+    return (call_sub_811F1B8_result){ R5, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_replaySpriteFrames_811F24C_result;
+/* register form: generated wrapper: replaySpriteFrames_811F24C has no typed C interface yet */
+static inline call_replaySpriteFrames_811F24C_result call_replaySpriteFrames_811F24C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(replaySpriteFrames_811F24C);
+    return (call_replaySpriteFrames_811F24C_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r5, r7; } call_sub_811F0C8_result;
+/* register form: generated wrapper: sub_811F0C8 has no typed C interface yet */
+static inline call_sub_811F0C8_result call_sub_811F0C8_sub_811ED58(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_811F0C8);
+    return (call_sub_811F0C8_result){ R5, R7 };
+}
+
+/* register form: generated wrapper: petCommSaveInit_811F11C has no typed C interface yet */
+static inline void call_petCommSaveInit_811F11C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(petCommSaveInit_811F11C);
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_CopyBackgroundTiles_PET_811EF70_result;
+/* register form: generated wrapper: CopyBackgroundTiles_PET_811EF70 has no typed C interface yet */
+static inline call_CopyBackgroundTiles_PET_811EF70_result call_CopyBackgroundTiles_PET_811EF70_sub_811ED58(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles_PET_811EF70);
+    return (call_CopyBackgroundTiles_PET_811EF70_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_CopyBackgroundTiles_onNaviSelect_811F54C_result;
+/* register form: generated wrapper: CopyBackgroundTiles_onNaviSelect_811F54C has no typed C interface yet */
+static inline call_CopyBackgroundTiles_onNaviSelect_811F54C_result call_CopyBackgroundTiles_onNaviSelect_811F54C_sub_811ED58(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles_onNaviSelect_811F54C);
+    return (call_CopyBackgroundTiles_onNaviSelect_811F54C_result){ R4, R5, R6, R7 };
+}
+
+/* sub_811ED58 (0x0811ED58) THUMB – PET-window animation tick
+ * Advances the signed timer at state+0x10 by 4; on overflow reloads GFX
+ * scripts, resets bookkeeping bytes, replays sprite frames, then always
+ * runs the comm/tile-update tail. Returns the output registers. */
+
+typedef struct {
+    u32 r5, r7, r8, r9, r10, r11, r12;
+} pet_tick_result;
+
+static pet_tick_result tick_pet_window(u32 state, u32 pet_comm,
+                                       u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    /* Advance timer and write back (unsigned halfword). */
+    s16 timer = (s16)LDS16(state + 0x10) + 4;
+    ST16(state + 0x10, (u16)timer);
+
+    /* Track evolving register values through callees. */
+    u32 cur_r5 = state;
+    u32 cur_r7 = r7, cur_r8 = r8, cur_r9 = r9, cur_r11 = r11, cur_r12 = r12;
+
+    if (timer >= 0) {
+        /* Load first GFX-anim script; modifies r1–r12 (including r5). */
+        call_LoadGFXAnim_result g1 = call_LoadGFXAnim_sub_811ED58(A_byte_811EA68);
+        cur_r5 = g1.r5;
+        cur_r7 = g1.r7; cur_r8 = g1.r8; cur_r9 = g1.r9;
+        cur_r11 = g1.r11; cur_r12 = g1.r12;
+
+        /* Load second GFX-anim script; overwrites r1–r12 again. */
+        call_LoadGFXAnim_result g2 = call_LoadGFXAnim_sub_811ED58(A_byte_811EAB8);
+        cur_r5 = g2.r5;
+        cur_r7 = g2.r7; cur_r8 = g2.r8; cur_r9 = g2.r9;
+        cur_r11 = g2.r11; cur_r12 = g2.r12;
+
+        /* Reset animation bookkeeping (stores at current r5). */
+        ST16(cur_r5 + 0x10, 0);
+        ST8(cur_r5 + 9, 0);
+        ST8(cur_r5 + 0xE, 0);
+        ST8(cur_r5 + 0xD, 2);
+        ST8(cur_r5 + 0x0, 4);
+
+        /* Initialise data block (modifies r4–r7). */
+        call_sub_80465A0_result a0 = call_sub_80465A0(A_byte_811EB78);
+        cur_r7 = a0.r7;
+
+        /* Update PET display state (modifies r5, r7). */
+        call_sub_811F1B8_result fb = call_sub_811F1B8_sub_811ED58();
+        cur_r5 = fb.r5;
+        cur_r7 = fb.r7;
+
+        /* Replay animation sprite frames (modifies r4–r7, takes r5). */
+        call_replaySpriteFrames_811F24C_result rp = call_replaySpriteFrames_811F24C(cur_r5);
+        cur_r5 = rp.r5;
+        cur_r7 = rp.r7;
+    }
+
+    /* Common tail: always executed. */
+
+    /* Update PET communication state (modifies r5, r7). */
+    call_sub_811F0C8_result f0 = call_sub_811F0C8_sub_811ED58(cur_r5);
+    cur_r5 = f0.r5;
+    cur_r7 = f0.r7;
+
+    /* Initialise PET communication save buffer. */
+    call_petCommSaveInit_811F11C(cur_r5);
+
+    /* Copy PET background tiles (modifies r4–r7). */
+    call_CopyBackgroundTiles_PET_811EF70_result bg = call_CopyBackgroundTiles_PET_811EF70_sub_811ED58(cur_r5);
+    cur_r5 = bg.r5;
+    cur_r7 = bg.r7;
+
+    /* If timer is non-negative, also copy tiles for the current Navi. */
+    s16 final_timer = LDS16(cur_r5 + 0x10);
+    if (final_timer >= 0) {
+        call_CopyBackgroundTiles_onNaviSelect_811F54C_result navi =
+            call_CopyBackgroundTiles_onNaviSelect_811F54C_sub_811ED58(cur_r5);
+        cur_r5 = navi.r5;
+        cur_r7 = navi.r7;
+    }
+
+    pet_tick_result out = { cur_r5, cur_r7, cur_r8, cur_r9, pet_comm, cur_r11, cur_r12 };
+    return out;
+}
+
+/* register form: r7/r8/r9/r10/r11/r12 are pass-through outputs that the
+ * lifter did not classify as inputs, so the adapter must read them from
+ * the global registers to supply the typed function. */
+Next sub_811ED58(void) {
+    pet_tick_result out = tick_pet_window(R5, R10, R7, R8, R9, R11, R12);
+    R5 = out.r5;
+    R7 = out.r7;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_state_tick_811EE98 ── */
 /* Floor value for the battle countdown (loaded as a 32-bit constant 0xFFFFFFE0 = -32). */
 #define COUNTDOWN_FLOOR (-32)
@@ -1918,6 +2078,67 @@ Next sub_81203E4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8120618 ── */
+/* Decode one 0x20-byte panel: if the activity flag (bits 7+ of the u16 at +0x1C) is set
+ * and the low halfword of the u32 at +0x14 is nonzero, clamp the high halfword to 0x63,
+ * divide by 10 to get tens/ones, offset each by src_base, and pack into two consecutive
+ * words at dst.  Otherwise store two zeros. */
+static void convert_panel(u32 panel_addr, u32 src_base, u32 dst) {
+    u16 flags = LD16(panel_addr + 0x1C);
+    if ((u32)flags >> 7 == 0) {
+        ST32(dst, 0);
+        ST32(dst + 4, 0);
+        return;
+    }
+
+    u32 field = LD32(panel_addr + 0x14);
+    if ((u16)field == 0) {
+        ST32(dst, 0);
+        ST32(dst + 4, 0);
+        return;
+    }
+
+    u32 high = field >> 16;
+    if (high > 0x63)
+        high = 0x63;
+
+    /* Equivalent to SVC 6 (unsigned div by 10): quotient = tens digit, remainder = ones */
+    u32 quotient  = high / 10;
+    u32 remainder = high % 10;
+
+    /* Low 16 bits: src_base when quotient==0, else src_base + (quotient+1)*2 */
+    u32 low_bits  = (quotient == 0) ? src_base
+                                    : src_base + (quotient + 1) * 2;
+    /* High 16 bits: src_base + (remainder+1)*2 */
+    u32 high_bits = src_base + (remainder + 1) * 2;
+
+    u32 packed = (high_bits << 16) | low_bits;
+    ST32(dst, packed);
+    ST32(dst + 4, packed + 0x10001);
+}
+
+/* Decode `count` 0x20-byte panels starting at index `first` in the table at `table_base`.
+ * Output is two u32 words per panel at `dst` (stride 8).  The loop is do-while: it
+ * executes at least once even when count is zero or negative (as signed). */
+static void decode_panels(u32 first, u32 table_base, u32 dst,
+                          u32 src_base, u32 count) {
+    u32 panel = first * 0x20 + table_base;
+    u32 i = 0;
+    do {
+        convert_panel(panel, src_base, dst);
+        panel += 0x20;
+        dst   += 8;
+        i++;
+    } while ((s32)i < (s32)count);
+}
+
+/* sub_8120618(r0 = first panel index, r1 = table base, r2 = output buffer,
+ *             r3 = tile source base, r5 = panel count) */
+Next sub_8120618(void) {
+    decode_panels(R0, R1, R2, R3, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_812068C ── */
 /* sub_812068C(r0 = value, r1 = row, r2 = arg2, r3 = arg3):
  * Queries sub_81205C0 for a packed position; if one is found (result >= 0),
@@ -2249,6 +2470,121 @@ Next countNaviFolderChipsWithElement_8120AE8(void) {
     }
 
     R0 = count;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8120B54 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_notZero_eByte200AD04_result;
+/* register form: generated wrapper: notZero_eByte200AD04 has no typed C interface yet */
+static inline call_notZero_eByte200AD04_result call_notZero_eByte200AD04(void) {
+    GUEST_CALL(notZero_eByte200AD04);
+    return (call_notZero_eByte200AD04_result){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r4, r5, r6; } call_sub_803F674_result;
+/* register form: generated wrapper: sub_803F674 has no typed C interface yet */
+static inline call_sub_803F674_result call_sub_803F674(void) {
+    GUEST_CALL(sub_803F674);
+    return (call_sub_803F674_result){ R0, R4, R5, R6 };
+}
+
+/* register form: generated wrapper: GetBattleEffects has no typed C interface yet */
+static inline u32 call_GetBattleEffects(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+typedef struct { u32 r1; } call_sub_8144D30_result;
+/* register form: generated wrapper: sub_8144D30 has no typed C interface yet */
+static inline call_sub_8144D30_result call_sub_8144D30(void) {
+    GUEST_CALL(sub_8144D30);
+    return (call_sub_8144D30_result){ R1 };
+}
+
+typedef struct { u32 r1, r2; } call_link_getSlotState_803F740_result;
+/* register form: generated wrapper: link_getSlotState_803F740 has no typed C interface yet */
+static inline call_link_getSlotState_803F740_result call_link_getSlotState_803F740(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(link_getSlotState_803F740);
+    return (call_link_getSlotState_803F740_result){ R1, R2 };
+}
+
+/*
+ * sub_8120B54: determine the style-override code for a chip.
+ *
+ * Checks a RAM guard byte, a battle-state value, and the slot state,
+ * then scans a fixed table to map the chip value (r2) to a small code
+ * stored in a result table.
+ *
+ * Outputs r0 = the code, r1/r2 = from callee wrappers,
+ * r3 = column index found (or input value on short-circuit paths).
+ */
+
+/* Fixed table addresses in ROM. */
+#define A_byte_8120BB4 ((u32)0x08120BB4)  /* base-key lookup table (6 u32 entries) */
+#define A_byte_8120BCC ((u32)0x08120BCC)  /* result table (6 u32 entries, last = 0xFF) */
+
+typedef struct { u32 r0; u32 r3; } style_result_t;
+
+static style_result_t compute_style_override(u32 chip_value, u32 in_r3) {
+    style_result_t res;
+    res.r3 = in_r3; /* pass-through on short-circuit paths */
+
+    /* Guard: byte_200AD04.  Z set (byte == 0) => guard clear, skip to default. */
+    call_notZero_eByte200AD04_result notzero_res = call_notZero_eByte200AD04();
+    if (notzero_res.z) {
+        res.r0 = LD32(A_byte_8120BCC + 0x14);
+        return res;
+    }
+
+    /* Battle phase: sub_803F674 returns state >= 2 means late battle. */
+    call_sub_803F674_result state_res = call_sub_803F674();
+    if ((s32)state_res.r0 >= 2) {
+        /* Check battle-effects flag bit 3 (effect active). */
+        u32 effects = call_GetBattleEffects(); /* reads r10, returns r0 */
+        if ((effects & 8) == 0) {
+            /* No active effect: query alternate table via sub_8144D30, then default. */
+            call_sub_8144D30();
+            res.r0 = LD32(A_byte_8120BCC + 0x14);
+            return res;
+        }
+    }
+
+    /* Slot check: style-swap slot 4 (r0 = 4). */
+    call_link_getSlotState_803F740_result slot_res = call_link_getSlotState_803F740(4);
+    if (slot_res.r1 != 0) {
+        res.r0 = LD32(A_byte_8120BCC + 0x14);
+        return res;
+    }
+
+    /* Scan the base-key table: 6 rows × 15 columns.
+     * Each row's entry is a base chip value; column offset indexes within 15 consecutive chips.
+     * Row offsets into byte_8120BB4: 0, 4, 8, 12, 16, 20 (loop bound 0x18 = 24).
+     * Match returns the corresponding entry from byte_8120BCC at the same row offset. */
+    for (u32 row_off = 0; row_off < 0x18; row_off += 4) {
+        u32 base = LD32(A_byte_8120BB4 + row_off);
+        for (u32 col = 0; col < 15; col++) {
+            if (base + col == chip_value) {
+                res.r0 = LD32(A_byte_8120BCC + row_off);
+                res.r3 = col;
+                return res;
+            }
+        }
+    }
+
+    /* No match in any row: r3 = 15 (last inner-loop value), lookup at offset 0x14. */
+    res.r0 = LD32(A_byte_8120BCC + 0x14);
+    res.r3 = 15;
+    return res;
+}
+
+/* sub_8120B54(r2 = chip_value, r10 = toolkit ptr for GetBattleEffects, lr = caller)
+ * -> r0 = style code, r3 = column found (or unchanged), r1/r2/r4/r5/r7/lr left by callees */
+Next sub_8120B54(void) {
+    style_result_t result = compute_style_override(R2, R3);
+    R0 = result.r0;
+    R3 = result.r3;
     RETURN_TO_CALLER();
 }
 

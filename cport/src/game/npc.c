@@ -1894,3 +1894,86 @@ Next recordCapsule_809F922(void) {
 
     RETURN_TO_CALLER();
 }
+
+/* ── sub_809F942 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n, c, v; } call_TestEventFlagFromImmediate_result_sub_809F942;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_sub_809F942 call_TestEventFlagFromImmediate_sub_809F942(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_sub_809F942){ R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r3; } call_clearBattleStateIfEvent1708Pending_809F90C_result;
+/* register form: generated wrapper: clearBattleStateIfEvent1708Pending_809F90C has no typed C interface yet */
+static inline call_clearBattleStateIfEvent1708Pending_809F90C_result call_clearBattleStateIfEvent1708Pending_809F90C(void) {
+    GUEST_CALL(clearBattleStateIfEvent1708Pending_809F90C);
+    return (call_clearBattleStateIfEvent1708Pending_809F90C_result){ R3 };
+}
+
+/* sub_809F942: scan the NPC proximity list (count at byte_2000210[0], entries at +0x10)
+ * for an NPC inside the player's collision diamond (same Z, and dx/dy within the
+ * diamond bounds). On a hit, store the NPC pointer at byte_2000210+8. Short-circuits
+ * when event flag 0x0817 is set. r3 is the only register output that changes. */
+
+/* Collision diamond half-widths (in 1/65536-pixel units, matching the subpixel coords). */
+#define DIAMOND_DX_MAX       0x00240000
+#define DIAMOND_DY_MIN      (-0x00380000)
+#define DIAMOND_SUM_MAX      0x001C0000
+#define DIAMOND_SUM_MIN     (-0x001C0000)
+
+static u32 check_npc_collision(u32 toolkit) {
+    /* If event 0x0817 is already set, nothing to do. */
+    call_TestEventFlagFromImmediate_result_sub_809F942 evt = call_TestEventFlagFromImmediate_sub_809F942(0x17, 8);
+    if (!evt.z)
+        return evt.r3;
+
+    /* Resolve the player's overworld object: toolkit → gameState → player. */
+    u32 player_obj = LD32(LD32(toolkit + oToolkit_GameStatePtr)
+                                + oGameState_OverworldPlayerObjectPtr);
+
+    s32  remaining = (s32)LD8(A_byte_2000210);
+    u32  list_ptr  = A_byte_2000210 + 0x10;
+    u32  hit_npc   = 0;
+    bool found     = false;
+
+    while (remaining > 0) {
+        remaining -= 1;
+        u32 npc = LD32(list_ptr);
+
+        /* NPC must be on the same Z-plane as the player. */
+        if (LD32(npc + 0x2C) == LD32(player_obj + 0x24)) {
+            s32 dx   = (s32)LD32(npc + 0x24) - (s32)LD32(player_obj + 0x1C);
+            s32 dy   = (s32)LD32(npc + 0x28) - (s32)LD32(player_obj + 0x20);
+            s32 diff = dx - dy;
+            s32 sum  = dx + dy;
+
+            /* Diamond test: |dx-dy| within bounds and |dx+dy| within bounds. */
+            if (diff <= DIAMOND_DX_MAX && diff >= DIAMOND_DY_MIN &&
+                sum  <= DIAMOND_SUM_MAX && sum >= DIAMOND_SUM_MIN) {
+                found   = true;
+                hit_npc = npc;
+                break;
+            }
+        }
+
+        list_ptr += 4;
+    }
+
+    /* Clear the event-1708 battle-state flag (output r3, clobbers some regs). */
+    call_clearBattleStateIfEvent1708Pending_809F90C_result cl =
+        call_clearBattleStateIfEvent1708Pending_809F90C();
+
+    if (found)
+        ST32(A_byte_2000210 + 8, hit_npc);
+
+    return cl.r3;
+}
+
+/* sub_809F942(r10 = toolkit pointer) -> r3;  r4-r7 preserved */
+Next sub_809F942(void) {
+    R3 = check_npc_collision(R10);
+    RETURN_TO_CALLER();
+}

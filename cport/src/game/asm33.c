@@ -1273,6 +1273,127 @@ Next submenu_subchip_81240BC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── submenu_subchip_81240D0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_submenu_subchip_81240D0;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_submenu_subchip_81240D0 call_IsButtonPressed_submenu_subchip_81240D0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_submenu_subchip_81240D0){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7, r10; } call_submenu_ConfirmExitAndFade_811FB64_result_submenu_subchip_81240D0;
+/* register form: generated wrapper: submenu_ConfirmExitAndFade_811FB64 has no typed C interface yet */
+static inline call_submenu_ConfirmExitAndFade_811FB64_result_submenu_subchip_81240D0 call_submenu_ConfirmExitAndFade_811FB64_submenu_subchip_81240D0(u32 r0, u32 r2, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(submenu_ConfirmExitAndFade_811FB64);
+    return (call_submenu_ConfirmExitAndFade_811FB64_result_submenu_subchip_81240D0){ R2, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_submenu_subchip_81240D0;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_submenu_subchip_81240D0 call_PlaySoundEffect_submenu_subchip_81240D0(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_submenu_subchip_81240D0){ R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r5, r8, r9, r10, r11, r12; } call_sub_81245D4_result;
+/* register form: generated wrapper: sub_81245D4 has no typed C interface yet */
+static inline call_sub_81245D4_result call_sub_81245D4(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(sub_81245D4);
+    return (call_sub_81245D4_result){ R2, R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r0, r2, r3, r4, r5, r6, r7, r10; } call_menu_moveCursorUpDown_811FA22_result_submenu_subchip_81240D0;
+/* register form: generated wrapper: menu_moveCursorUpDown_811FA22 has no typed C interface yet */
+static inline call_menu_moveCursorUpDown_811FA22_result_submenu_subchip_81240D0 call_menu_moveCursorUpDown_811FA22_submenu_subchip_81240D0(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(menu_moveCursorUpDown_811FA22);
+    return (call_menu_moveCursorUpDown_811FA22_result_submenu_subchip_81240D0){ R0, R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r5; } call_sub_81244EC_result;
+/* register form: generated wrapper: sub_81244EC has no typed C interface yet */
+static inline call_sub_81244EC_result call_sub_81244EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_81244EC);
+    return (call_sub_81244EC_result){ R5 };
+}
+
+/* Sub-chip submenu handler.
+ * state (r5): sub-chip submenu state struct.
+ *   +0x0C: u8  option_count  (number of sub-chip options; 0 = none)
+ *   +0x14: u16 cursor_index  (currently highlighted option)
+ * toolkit (r10): game toolkit pointer.
+ *
+ * Handles Start/B (exit), A (jack-in), and Up/Down (cursor movement). */
+static void submenu_subchip_handle(u32 state, u32 r2_in, u32 r4_in,
+                                   u32 r6_in, u32 r7_in, u32 toolkit) {
+    /* Start or B → confirm exit and fade out */
+    if (!call_IsButtonPressed_submenu_subchip_81240D0(JOYPAD_START | JOYPAD_B).z) {
+        call_submenu_ConfirmExitAndFade_811FB64_result_submenu_subchip_81240D0 fade =
+            call_submenu_ConfirmExitAndFade_811FB64_submenu_subchip_81240D0(8, r2_in, state);
+        call_sub_81244EC(fade.r5);
+        return;
+    }
+
+    /* A pressed and this option slot exists → attempt jack-in */
+    if (LD8(state + 0xC) != 0 && !call_IsButtonPressed_submenu_subchip_81240D0(JOYPAD_A).z) {
+        u16 cursor = LD16(state + 0x14);
+        /* unk_201C400[cursor*2 + 1]: non-zero means the slot has a sub-chip */
+        if (LD8(A_unk_201C400 + (u32)cursor * 2 + 1) == 0) {
+            /* Empty slot – play "can't jack in" sound */
+            call_PlaySoundEffect_result_submenu_subchip_81240D0 snd =
+                call_PlaySoundEffect_submenu_subchip_81240D0(SOUND_CANT_JACK_IN, r2_in);
+            call_sub_81244EC(snd.r5);
+            return;
+        }
+        /* Filled slot – execute jack-in routine and play select sound */
+        call_sub_81245D4_result s5d4 = call_sub_81245D4(r4_in, state);
+        call_PlaySoundEffect_result_submenu_subchip_81240D0 snd =
+            call_PlaySoundEffect_submenu_subchip_81240D0(SOUND_MENU_SELECT, s5d4.r2);
+        call_sub_81244EC(snd.r5);
+        return;
+    }
+
+    /* Up/Down cursor movement: needs joypad state and more than 1 option */
+    u32 joypad = LD32(toolkit + oToolkit_JoypadPtr);
+    u16 held   = LD16(joypad + oJoypad_LowSensitivityHeld);
+    u32 count  = LD8(state + 0xC);
+
+    if (count > 1) {
+        u16 current = LD16(state + 0x14);
+        call_menu_moveCursorUpDown_811FA22_result_submenu_subchip_81240D0 mv =
+            call_menu_moveCursorUpDown_811FA22_submenu_subchip_81240D0(
+                held, count, 1, current,
+                r4_in, state, r6_in, r7_in);
+        ST16(mv.r5 + 0x14, mv.r0);
+        call_sub_81244EC(mv.r5);
+    } else {
+        call_sub_81244EC(state);
+    }
+}
+
+/* submenu_subchip_81240D0(r2, r4, r5, r6, r7, r10) → r5 r8 r9 r10 r11 r12 */
+Next submenu_subchip_81240D0(void) {
+    submenu_subchip_handle(R5, R2, R4, R6, R7, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── submenu_subchip_8124134 ── */
 /* submenu_subchip_8124134(r5 = sub-menu state struct):
  * If the chatbox is currently open (flag 0x80 of the chatbox state mask),
@@ -2008,6 +2129,46 @@ Next battle_init_8124B5C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8124C30 ── */
+/* sub_8124C30: Battle-phase dispatcher.
+ *
+ * The work object at r5 stores the current battle-phase byte at +0x02.  That byte
+ * is used as a *byte* offset into the handler table at off_8124C44 (the original
+ * does ldr r0,[r0,r1] with no scaling, so the byte already encodes the table
+ * index in 4-byte units: 0, 4, 8 … 0x4C for the 20 entries).  The selected
+ * handler runs with r0 = its own address and r1 = the phase byte; r2, r5, r10
+ * are passed through untouched.  After the handler returns the dispatcher forces
+ * r0 = 0 (which also clears N and sets Z).
+ *
+ * Everything else (r1, r2, r3, r5, r7–r12, lr, c, v) is whatever the handler left.
+ */
+
+#define BATTLE_PHASE_BYTE(r5) ((u32)LD8((r5) + 2))
+
+/* register form: the target is one of twenty thumb handler addresses read from
+ * the jump table; those routines have no typed wrappers and the dispatcher must
+ * hand every register and the c/v flags straight through to its caller. */
+static void dispatch_battle_phase(u32 r2, u32 r5, u32 r10) {
+    u32 phase = BATTLE_PHASE_BYTE(r5);
+    u32 handler = LD32(A_off_8124C44 + phase);
+
+    R0 = handler;        /* original: bx r0 with the target still in r0       */
+    R1 = phase;          /* original: ldrb r1,[r5,#2] before the table load   */
+    R2 = r2;
+    R5 = r5;
+    R10 = r10;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* sub_8124C30(r2, r5 = work object, r10) -> r0 = 0.
+ * r1, r2, r3, r5, r7–r12, lr and c/v pass through from the phase handler. */
+Next sub_8124C30(void) {
+    dispatch_battle_phase(R2, R5, R10);
+    R0 = 0;
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objTickTimerAndRefreshSpritePairs_8124D30 ── */
 /* battle_objTickTimerAndRefreshSpritePairs_8124D30 — per-object update step.
  *
@@ -2081,6 +2242,125 @@ static void update_object_timer_and_sprite_pairs(u32 obj) {
  * register are left exactly as the last guest callee leaves them. */
 Next battle_objTickTimerAndRefreshSpritePairs_8124D30(void) {
     update_object_timer_and_sprite_pairs(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8124D78 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r6; } call_sub_8126818_result;
+/* register form: generated wrapper: sub_8126818 has no typed C interface yet */
+static inline call_sub_8126818_result call_sub_8126818_sub_8124D78(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_8126818);
+    return (call_sub_8126818_result){ R5, R6 };
+}
+
+typedef struct { u32 r2, r5, r6; } call_sub_811983C_result;
+/* register form: generated wrapper: sub_811983C has no typed C interface yet */
+static inline call_sub_811983C_result call_sub_811983C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_811983C);
+    return (call_sub_811983C_result){ R2, R5, R6 };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r12; } call_sub_81255F8_result;
+/* register form: generated wrapper: sub_81255F8 has no typed C interface yet */
+static inline call_sub_81255F8_result call_sub_81255F8(u32 r0, u32 r2, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sub_81255F8);
+    return (call_sub_81255F8_result){ R5, R8, R9, R10, R12 };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_8125444_result;
+/* register form: generated wrapper: sub_8125444 has no typed C interface yet */
+static inline call_sub_8125444_result call_sub_8125444_sub_8124D78(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_8125444);
+    return (call_sub_8125444_result){ R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r4, r5, r6, r7, r8, r9; } call_sub_8125D94_result;
+/* register form: generated wrapper: sub_8125D94 has no typed C interface yet */
+static inline call_sub_8125D94_result call_sub_8125D94_sub_8124D78(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_8125D94);
+    return (call_sub_8125D94_result){ R4, R5, R6, R7, R8, R9 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_wrapper_sub8126570_fixedArgs_812650C_result;
+/* register form: generated wrapper: wrapper_sub8126570_fixedArgs_812650C has no typed C interface yet */
+static inline call_wrapper_sub8126570_fixedArgs_812650C_result call_wrapper_sub8126570_fixedArgs_812650C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(wrapper_sub8126570_fixedArgs_812650C);
+    return (call_wrapper_sub8126570_fixedArgs_812650C_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sprite_setStructHalfwordPairOnThree_8117084_result;
+/* register form: generated wrapper: sprite_setStructHalfwordPairOnThree_8117084 has no typed C interface yet */
+static inline call_sprite_setStructHalfwordPairOnThree_8117084_result call_sprite_setStructHalfwordPairOnThree_8117084(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
+    return (call_sprite_setStructHalfwordPairOnThree_8117084_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7; } call_sub_812674C_result;
+/* register form: generated wrapper: sub_812674C has no typed C interface yet */
+static inline call_sub_812674C_result call_sub_812674C_sub_8124D78(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_812674C);
+    return (call_sub_812674C_result){ R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sub_81267A8_result;
+/* register form: generated wrapper: sub_81267A8 has no typed C interface yet */
+static inline call_sub_81267A8_result call_sub_81267A8_sub_8124D78(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_81267A8);
+    return (call_sub_81267A8_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Prepare a battle sprite: reset animation controller, enable entity tick,
+ * copy current pose halfwords into their previous-frame slots for
+ * interpolation, start the entry animation (type 0xA), configure two pose
+ * slots via the halfword-pair setter, then run the remaining post-setup
+ * and finalise.  `base` is the R5 struct pointer from the caller. */
+static void sub_8124D78_impl(u32 base) {
+    call_sub_8126818_sub_8124D78(0, base);                              /* reset controller */
+    call_sub_811983C_result tick = call_sub_811983C(1, 1);  /* enable tick */
+
+    ST8(base + 0x0D, 1);                                    /* mark in-play */
+    ST16(base + 0x20, LD16(base + 0x1E));                   /* prev pose X */
+    ST16(base + 0x24, LD16(base + 0x22));                   /* prev pose Y */
+
+    call_sub_81255F8(0xA, tick.r2, base);                  /* entry anim type 0xA */
+    call_sub_8125444_sub_8124D78(base);
+    call_sub_8125D94_sub_8124D78(base);
+    call_wrapper_sub8126570_fixedArgs_812650C(base);
+
+    /* Pose slot 4: sprite pointer at +0x58, halfword at +0x12. */
+    call_sprite_setStructHalfwordPairOnThree_8117084(
+        LD32(base + 0x58), LD16(base + 0x12), 4);
+
+    /* Pose slot 7: sprite pointer at +0x5C.  If the pointer itself is 0x27,
+     * take the saved halfword at +0x1C; otherwise pass 0. */
+    u32 sprite_idx = LD32(base + 0x5C);
+    u32 pose = (sprite_idx == 0x27) ? (u32)LD16(base + 0x1C) : 0;
+    call_sprite_setStructHalfwordPairOnThree_8117084(sprite_idx, pose, 7);
+
+    call_sub_812674C_sub_8124D78(base);
+    call_sub_81267A8_sub_8124D78(base);                                 /* finalise, sets r1-r3/c/v */
+}
+
+/* sub_8124D78(r5 = battle-object base) — all register outputs are left
+ * behind by the callee calls; the adapter writes nothing explicitly. */
+Next sub_8124D78(void) {
+    sub_8124D78_impl(R5);
     RETURN_TO_CALLER();
 }
 
@@ -2593,6 +2873,126 @@ Next initRefs_buildAndDecompressTable_8125280(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81252C0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r6, r7; } call_call_sub_3005EBA_result;
+/* register form: generated wrapper: call_sub_3005EBA has no typed C interface yet */
+static inline call_call_sub_3005EBA_result call_call_sub_3005EBA(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(call_sub_3005EBA);
+    return (call_call_sub_3005EBA_result){ R6, R7 };
+}
+
+typedef struct { u32 r3, r6, r7; } call_CopyBackgroundTiles_result_sub_81252C0;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result_sub_81252C0 call_CopyBackgroundTiles_sub_81252C0(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result_sub_81252C0){ R3, R6, R7 };
+}
+
+/* Loads background tile graphics and the static + scene-specific tilemaps into VRAM.
+ * scene_ptr is the per-scene state pointer (r5 on entry); the tileset index for the
+ * scene-specific map lives at [scene_ptr + 0x74]. */
+static void load_scene_backgrounds(u32 scene_ptr) {
+    /* register form: the original's "push {r4-r7, lr}" / "pop {r4-r7, pc}" means R4-R7
+       must be preserved across the wrapper calls, which run the real callees and let them
+       write those registers on the live guest state. Snapshot them and put them back. */
+    u32 save_r4 = R4, save_r5 = R5, save_r6 = R6, save_r7 = R7;
+
+    /* Blank two 32x32 tile-block slots (2 and 3) so the upcoming tilemap copies
+       overwrite only the parts we want to keep. */
+    call_call_sub_3005EBA(0, 2, 2, 0, 0x1E, 0x11);
+    call_call_sub_3005EBA(0, 2, 3, 0, 0x1E, 2);
+
+    /* Copy the fixed (scripted) background tilemap into VRAM. */
+    call_CopyBackgroundTiles_sub_81252C0(0, 0, 1, A_eTextScript201BA20, 0x1E, 0x14);
+
+    /* Copy the scene-specific tilemap; the tileset id source is (scene->0x74) - 0x95. */
+    u32 tilemap = LD32(scene_ptr + 0x74) - 0x95;
+    call_CopyBackgroundTiles_sub_81252C0(tilemap, 2, 2, A_eTextScript201BF20, 0x5B, 0x11);
+
+    R4 = save_r4; R5 = save_r5; R6 = save_r6; R7 = save_r7;
+}
+
+/* sub_81252C0(r5 = scene ptr, r10, lr) -> r5, r6 preserved across the whole call */
+Next sub_81252C0(void) {
+    load_scene_backgrounds(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812546C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r4, r6, r7; } call_CopyBackgroundTiles_result_sub_812546C;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result_sub_812546C call_CopyBackgroundTiles_sub_812546C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result_sub_812546C){ R3, R4, R6, R7 };
+}
+
+/* Offsets into the BG-object struct passed in r5. */
+#define OBJ_TILE_BASE_OFF  0x74   /* base tile index from which row "j" is derived */
+#define OBJ_ALT_FLAG_OFF   0x64   /* nonzero selects the alternate pair of tile-ID tables */
+
+/* Copy 2x3 blocks of 32x32 tiles for the background graphic owned by obj.
+ * Rows 0-2 are unconditional; rows 3-4 depend on the alt-flag word.
+ * The original reloads the tile-base pointer before every call. */
+static void redraw_object_tiles(u32 obj) {
+    u32 base;
+
+    /* Row 0 */
+    base = LD32(obj + OBJ_TILE_BASE_OFF);
+    call_CopyBackgroundTiles_sub_812546C(base - 0x94, 2, 3, A_byte_812489C, 9, 2);
+
+    /* Row 1 */
+    base = LD32(obj + OBJ_TILE_BASE_OFF);
+    call_CopyBackgroundTiles_sub_812546C(base - 0x82, 2, 3, A_byte_81248C0, 9, 2);
+
+    /* Row 2 */
+    base = LD32(obj + OBJ_TILE_BASE_OFF);
+    call_CopyBackgroundTiles_sub_812546C(base - 0x70, 2, 3, A_byte_81248E4, 9, 2);
+
+    if (LD32(obj + OBJ_ALT_FLAG_OFF) == 0) {
+        /* Row 3 – default tile set only */
+        base = LD32(obj + OBJ_TILE_BASE_OFF);
+        call_CopyBackgroundTiles_sub_812546C(base - 0x5E, 2, 3, A_byte_812492C, 9, 2);
+    } else {
+        /* Row 3 – alternate tile set */
+        base = LD32(obj + OBJ_TILE_BASE_OFF);
+        call_CopyBackgroundTiles_sub_812546C(base - 0x5E, 2, 3, A_byte_8124908, 9, 2);
+        /* Row 4 – default tile set */
+        base = LD32(obj + OBJ_TILE_BASE_OFF);
+        call_CopyBackgroundTiles_sub_812546C(base - 0x4C, 2, 3, A_byte_812492C, 9, 2);
+    }
+}
+
+/* sub_812546C(r5 = bg-object ptr, r10, lr) -> r3 r4 r5 r6 r7
+ * r3/r4/r6/r7 come from the last CopyBackgroundTiles wrapper call.
+ * r5 is saved/restored (original push/pop); r7 = original r5 (mov r7,r5 at entry). */
+Next sub_812546C(void) {
+    u32 obj = R5;
+    redraw_object_tiles(obj);
+    R5 = obj;
+    R7 = obj;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81254FC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r8, r9, r10, r11, r12; } call_renderTextGfx_8045F8C_result;
@@ -2647,6 +3047,150 @@ Next sub_81254FC(void) {
     call_renderTextGfx_8045F8C_result res = render_text_strips();
     R4 = r4_in, R5 = r5_in, R6 = r6_in, R7 = r7_in;
     R8 = res.r8, R9 = res.r9, R10 = res.r10, R11 = res.r11, R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_input_tick_8125784 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r10; } call_menu_confirmExitAndFade_812580C_result;
+/* register form: generated wrapper: menu_confirmExitAndFade_812580C has no typed C interface yet */
+static inline call_menu_confirmExitAndFade_812580C_result call_menu_confirmExitAndFade_812580C(u32 r0, u32 r2, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(menu_confirmExitAndFade_812580C);
+    return (call_menu_confirmExitAndFade_812580C_result){ R10 };
+}
+
+typedef struct { u32 r10; } call_sub_81266E0_result;
+/* register form: generated wrapper: sub_81266E0 has no typed C interface yet */
+static inline call_sub_81266E0_result call_sub_81266E0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_81266E0);
+    return (call_sub_81266E0_result){ R10 };
+}
+
+typedef struct { u32 r10; } call_playSoundEffect_7A_81258E8_result;
+/* register form: generated wrapper: playSoundEffect_7A_81258E8 has no typed C interface yet */
+static inline call_playSoundEffect_7A_81258E8_result call_playSoundEffect_7A_81258E8(u32 r2) {
+    R2 = r2;
+    GUEST_CALL(playSoundEffect_7A_81258E8);
+    return (call_playSoundEffect_7A_81258E8_result){ R10 };
+}
+
+typedef struct { u32 r5, r7, r9, r10, r12; } call_sub_8125820_result;
+/* register form: generated wrapper: sub_8125820 has no typed C interface yet */
+static inline call_sub_8125820_result call_sub_8125820(u32 r0, u32 r1, u32 r2, u32 r5, u32 r8) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(sub_8125820);
+    return (call_sub_8125820_result){ R5, R7, R9, R10, R12 };
+}
+
+/* battle_input_tick_8125784 — per-frame dispatch for the battle-style menu.
+ *
+ * Start+B           → confirm exit & fade
+ * pressed bit 0     → dedicated handler (sub_81266E0)
+ * Select held       → write state byte on battle object, play cue 7A
+ * cursor field set  → try sub_8125820 navigation when D-pad or A/B held,
+ *                     then restore the temporarily-written 16-bit field.
+ */
+
+typedef struct {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r12;
+} battle_input_tick_result;
+
+static battle_input_tick_result battle_input_tick(
+    u32 held, u32 code_param, u32 obj, u32 toolkit, u32 r9_in, u32 r12_in)
+{
+    battle_input_tick_result res = { obj, held, r9_in, toolkit, r12_in };
+
+    /* register form: original push {r4-r7,lr} / pop {r4-r7,pc} — GUEST_CALL
+       wrappers may clobber R4-R7; save them once and restore before every
+       return so the caller sees the entry values. */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    u32 joy = LD32(toolkit + oToolkit_JoypadPtr);
+    u16 pressed = LD16(joy + oJoypad_Pressed);
+
+    /* Start+B pressed: fade out and exit the menu. */
+    if (pressed & (JOYPAD_START | JOYPAD_B)) {
+        call_menu_confirmExitAndFade_812580C(0x44, code_param, obj);
+        R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+        return res;
+    }
+
+    /* Bit 0 of pressed set: hand off to dedicated handler. */
+    if (pressed & 1) {
+        call_sub_81266E0(obj);
+        R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+        return res;
+    }
+
+    /* Select held (bit 5 of held-buttons field at joy+4): choose state byte
+       based on obj+0x64 and play sound cue. */
+    if (LD16(joy + 4) & 0x20) {
+        ST8(obj + 2, (LD32(obj + 0x64) == 0) ? 0x4C : 0x2C);
+        call_playSoundEffect_7A_81258E8(code_param);
+        R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+        return res;
+    }
+
+    /* Cursor navigation: only when obj+0x68 (cursor ptr) is non-zero. */
+    u32 cursor = LD32(obj + 0x68);
+    if (cursor == 0) {
+        R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+        return res;
+    }
+
+    /* Temporarily install cursor into 16-bit field at obj+0x3A,
+       dispatch navigation via sub_8125820, then restore. */
+    u16 saved_3a = LD16(obj + 0x3A);
+    ST16(obj + 0x3A, (u16)cursor);
+
+    u16 held2 = LD16(joy + 4);
+    u16 pres2 = LD16(joy);
+
+    if (held2 & 0x300) {
+        /* D-pad held: clear A/B bits (mask off 0xC0) then dispatch. */
+        call_sub_8125820_result sr =
+            call_sub_8125820(held2 & ~0xC0, 7, 0, obj, held);
+        res.r9  = sr.r9;
+        res.r12 = sr.r12;
+        ST32(sr.r5 + 0x70, sr.r7);
+        ST16(sr.r5 + 0x3A, saved_3a);
+    } else if (!(pres2 & 0x300) && (held2 & 0xC0)) {
+        /* No D-pad press but A/B held: dispatch with unmodified held. */
+        call_sub_8125820_result sr =
+            call_sub_8125820(held2, 7, 0, obj, held);
+        res.r9  = sr.r9;
+        res.r12 = sr.r12;
+        ST32(sr.r5 + 0x70, sr.r7);
+        ST16(sr.r5 + 0x3A, saved_3a);
+    } else {
+        ST16(obj + 0x3A, saved_3a);
+    }
+
+    /* register form: restore R4-R7 (pop {r4-r7} equivalent) */
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+    return res;
+}
+
+Next battle_input_tick_8125784(void) {
+    battle_input_tick_result res =
+        battle_input_tick(R0, R2, R5, R10, R9, R12);
+    R5  = res.r5;
+    R8  = res.r8;
+    R9  = res.r9;
+    R10 = res.r10;
+    R12 = res.r12;
     RETURN_TO_CALLER();
 }
 
