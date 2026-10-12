@@ -8,6 +8,59 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_803A740 ── */
+/* sub_803A740: call sub_803B522 for slot indices 4 through 9 (inclusive).
+ *   inputs:  r1 r2 r3 r10 lr
+ *   outputs: r5 r8 r9 r10 r11 r12
+ *   clobbers: nz c v r0 r1 r2 r3 lr
+ *   preserved: r4 r5 r6 r7 r8 r9 r12
+ *
+ * Initializes battler slots 4..9 by invoking sub_803B522 with the slot
+ * index in r0. sub_803B522 takes no other arguments and returns no
+ * value; r1/r2/r3/r10 are callee-saved inputs that the callers preserve
+ * across this call.
+ */
+Next sub_803A740(void) {
+    for (u32 slot = 4; (s32)slot <= 9; slot++) {
+        R0 = slot;
+        GUEST_CALL(sub_803B522);
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A752 ── */
+/* sub_803A752(r10 = ignored, lr):
+ *   Loop calling sub_803B674 with r0 = 4..14 inclusive.
+ *   Mirrors the original's r4 register starting at 4, incrementing by 1, and
+ *   continuing while r4 <= 0xF (i.e. the loop runs for r0 = 4..14, 11 calls).
+ *   outputs: r5
+ *   clobbers: nz c v r0 r1 r2 r3 lr (preserved: r4 r5 r6 r7)
+ */
+Next sub_803A752(void) {
+    u32 r4 = 4;
+    while ((s32)r4 <= (s32)0xF) {
+        R0 = r4;
+        GUEST_CALL(sub_803B674);
+        r4 += 1;
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A764 ── */
+/* sub_803A764: Call sub_803B674 for slot indices 0x1D through 0x20.
+ * The original loop runs while post-increment r4 <= 0x20, so r4 values
+ * passed to sub_803B674 are 0x1D, 0x1E, 0x1F, 0x20. */
+Next sub_803A764(void) {
+    for (u32 i = 0x1D; (s32)i <= 0x20; i++) {
+        R0 = i;
+        GUEST_CALL(sub_803B674);
+    }
+    /* Final CMP r4, #0x20 leaves flags visible to the caller:
+     * i was incremented past 0x20 to 0x21 before this comparison. */
+    SET_FLAGS_CMP((s32)(0x20 + 1), 0x20);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803A7B8 ── */
 /* sub_803A7B8: scene/audio/display init dispatcher.
  * Calls a sequence of subsystems to set up battle/screen state:
@@ -95,6 +148,63 @@ Next battle_moduleInit_803A820(void) {
     R0 = 0;
     GUEST_CALL(sub_803A8B4);
     GUEST_CALL(sub_803A8E2);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A84E ── */
+/* sub_803A84E(r5 = battle object ptr):
+ *   Set the object's "action taken" flags: mark attack-flag (#0x1E) = 1,
+ *   clear sub-action (#0x1C) = 0, and reset state byte (#2) = 0. */
+Next sub_803A84E(void) {
+    ST8(R5 + 0x1E, 1);
+    ST8(R5 + 0x1C, 0);
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    ST8(R5 + 2, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A85C ── */
+/* sub_803A85C(r5 = object):
+ *   inputs:  r5 lr
+ *   outputs: nz r0
+ *   clobbers: -
+ *   preserved: -
+ *
+ * Reset a battle object's pose/anim state:
+ *   - object[0x1E] = 1  (set "enabled" / active flag)
+ *   - object[0x1C] = 0  (clear pending action / state byte)
+ *   - object[0x02] = 4  (set anim step to 4)
+ * Leaves 4 in R0 so callers can branch on the nonzero result.
+ */
+Next sub_803A85C(void) {
+    u8* obj = (u8*)R5;
+
+    ST8(obj + 0x1E, 1);
+    ST8(obj + 0x1C, 0);
+
+    R0 = 4;
+    SET_FLAGS_NZ(R0);
+
+    ST8(obj + 0x02, (u8)R0);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803A878 ── */
+/* sub_803A878(r5 = battle object):
+ *   Reset the object's turn/state flags: mark it as having acted (offset 0x1F = 1),
+ *   clear its command byte (offset 0x1D = 0), and set its action state to 4 (offset 2).
+ *   Outputs: nz (r0 = 4). */
+Next sub_803A878(void) {
+    u32 object = R5;
+
+    ST8(object + 0x1F, 1);
+    ST8(object + 0x1D, 0);
+    R0 = 4;
+    ST8(object + 2, R0);
+    SET_FLAGS_NZ(R0);
 
     RETURN_TO_CALLER();
 }
@@ -253,6 +363,16 @@ Next shopBuyMenu_confirm_803ABB4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803ABF4 ── */
+/* sub_803ABF4: play the panel-slide sound effect and mark the panel slot as occupied
+ * (writes 0x3F to the byte at r5+8). */
+Next sub_803ABF4(void) {
+    R0 = SOUND_CUR_MOVE_80;
+    GUEST_CALL(PlaySoundEffect);
+    ST8(R5 + 8, 0x3F);
+    RETURN_TO_CALLER();
+}
+
 /* ── chipSelect_dispatchState_803AD20 ── */
 /* chipSelect_dispatchState_803AD20: dispatcher for "battle chip select" sub-states.
  *
@@ -349,6 +469,166 @@ Next menuSelectElement_803AE98(void) {
         GUEST_CALL(sub_803AEC0);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803AED8 ── */
+/* sub_803AED8: play SOUND_CUR_MOVE_80, then set [r5+8] = 0x3F.
+ * Plays the "move while moving" sound effect and flags the object as having
+ * already triggered its movement-cursor SFX this step. */
+Next sub_803AED8(void) {
+    R0 = SOUND_CUR_MOVE_80;
+    GUEST_CALL(PlaySoundEffect);
+
+    /* 0x3F marks the SFX as already played (see r5+8 cursor-SFX debounce). */
+    ST8(R5 + 8, 0x3F);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803B522 ── */
+Next sub_803B522(void) {
+    u32 state = R0;
+
+    /* Save the callee-preserved registers (the original pushes r4-r7 then r8). */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    u32 saved_r8 = R8;
+
+    /* Persist the four context words into the toolbox's script-ctx slot. */
+    u32 tool = LD32(R10 + oToolkit_Unk200a220_Ptr);
+    ST32(tool + 0x8, R1);
+    ST32(tool + 0xC, R2);
+    ST32(tool + 0x10, R3);
+    ST32(tool + 0x14, R8);
+
+    /* Look up the 16-byte descriptor for this state and pull its fields. */
+    const u8 *desc = (const u8 *)A_byte_803B574 + state * 0x10;
+
+    R0 = (u32)A_text_87E36F8;
+    R1 = LD8((u32)desc);
+    R2 = (u32)LD8((u32)(desc + 3)) << 16;
+    R1 |= R2;
+    R2 = LD32((u32)(desc + 4));
+    R3 = LD32((u32)(desc + 0xC));
+    R4 = LD8((u32)(desc + 1));
+    R5 = LD8((u32)(desc + 2));
+    R6 = (u32)A_byte_86ACD60;
+    R7 = LD32((u32)(desc + 8));
+    R0 = state;
+
+    /* Branch on state: < 10 takes one tutorial player, >= 10 takes the other. */
+    if ((s32)R0 < (s32)0xA) {
+        R0 = (u32)A_text_87E36F8;
+        GUEST_CALL(sub_8045FC6);
+    } else {
+        R0 = (u32)A_text_87E36F8;
+        GUEST_CALL(loc_8045FE4);
+    }
+
+    /* Restore the callee-preserved registers the original saved on the stack. */
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    R8 = saved_r8;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803BA64 ── */
+/* sub_803BA64(r5 = ???, lr = return address)
+ *   args:     none from the caller (sets r0..r3 itself)
+ *   outputs:  r1 r2 r3 r5
+ *   clobbers: nz c v r0 lr
+ *   preserved: r4 r5 r6 r7
+ *
+ * Thin wrapper that calls sub_803BA84 with a fixed 0x30/0x50/0x20/0x10
+ * argument set. Original disassembly pops {r4-r7,pc} from the same stack
+ * frame it pushed, so no caller-saved state escapes; r5 (and the
+ * untouched r4/r6/r7) is preserved automatically. */
+Next sub_803BA64(void) {
+    R0 = 0x30;
+    R1 = 0x50;
+    R2 = 0x20;
+    R3 = 0x10;
+    GUEST_CALL(sub_803BA84);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803BA74 ── */
+/* sub_803BA74: thin wrapper that configures and calls sub_803BA84 with
+ * a fixed set of battle-screen parameters. r5 is preserved across the call. */
+Next sub_803BA74(void) {
+    R0 = 0x90;
+    R1 = 0xB0;
+    R2 = 0x20;
+    R3 = 0x11;
+    GUEST_CALL(sub_803BA84);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803BB7C ── */
+/* sub_803BB7C(r0 = value, r5 = object):
+ * store r0 into the object's field at offset 0x28. */
+Next sub_803BB7C(void) {
+    ST32(R5 + 0x28, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803BEC0 ── */
+/* sub_803BEC0: Walk a list of text-script entries and expand each into a
+ * stream of 8-byte command records in RAM.
+ *
+ * The list lives at off_803BF18 (an array of (ptr, word_index) pairs). For
+ * each non-NULL pointer, we look up a word in TextScript87E36F8 using the
+ * paired index, then walk that word byte-by-byte, emitting one record per
+ * source byte (advancing r4 by 8 each time) until we hit a 0xE6 terminator,
+ * at which point we move on to the next list entry. */
+#define TEXT_TERMINATOR 0xE6
+#define TEXT_TWO_BYTE   0xE4
+#define COMMAND_TYPE    2
+
+Next sub_803BEC0(void) {
+    u32 r6 = A_off_803BF18;
+
+    for (;;) {
+        u32 r4 = LD32(r6);                  /* output pointer */
+        if (r4 == 0) break;                 /* end of list */
+
+        u32 word_index = LD32(r6 + 4);      /* which word in the text script */
+        u32 r7 = A_text_87E36F8 + (u32)((u16)LD16(A_text_87E36F8 + word_index * 2));
+
+        for (;;) {
+            u8 r0 = LD8(r7);
+
+            if (r0 == TEXT_TERMINATOR) {
+                /* 0xE6: end of this entry, write the terminator marker and
+                 * move on to the next list slot. */
+                ST8(r4 + 2, TEXT_TERMINATOR);
+                r6 += 8;
+                break;
+            } else if (r0 == TEXT_TWO_BYTE) {
+                /* 0xE4: two-byte opcode - copy both bytes and pad with 0xE6. */
+                ST16(r4, COMMAND_TYPE);
+                ST8(r4 + 2, r0);
+                ST8(r4 + 3, LD8(r7 + 1));
+                ST8(r4 + 4, TEXT_TERMINATOR);
+                r7 += 2;
+                r4 += 8;
+            } else {
+                /* Single-byte opcode: copy it, pad with 0xE5 / 0xE6. */
+                ST16(r4, COMMAND_TYPE);
+                ST8(r4 + 2, r0);
+                ST8(r4 + 3, 0xE5);
+                ST8(r4 + 4, TEXT_TERMINATOR);
+                r7 += 1;
+                r4 += 8;
+            }
+        }
+    }
+
+    /* Caller preserves lr; outputs go back via the saved registers below. */
+    R4 = R4; R5 = R5; R6 = R6; R7 = R7;
     RETURN_TO_CALLER();
 }
 
@@ -1134,6 +1414,20 @@ Next logoScreen_loadLogoTiles_803D2B8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803DCD8 ── */
+/* sub_803DCD8: store link-state fields (object index + two u16s) into the global eLinkState.
+ *   r0 -> eLinkState+0x1C (full word, the chosen link object/companion index)
+ *   r1 -> eLinkState+0x0A (halfword)
+ *   r2 -> eLinkState+0x0E (halfword)
+ * Outputs: r4 r5 r6 r7 are preserved (called as a tail pop {pc}). */
+Next sub_803DCD8(void) {
+    u32 link = A_eLinkState;
+    ST32(link + 0x1C, R0);
+    ST16(link + 0x0A, R1);
+    ST16(link + 0x0E, R2);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803DCE8 ── */
 /* Camera/screen state. Offsets are taken straight from the disassembly so the typed
  * function matches the original byte-for-byte; the field names follow the original
@@ -1300,6 +1594,13 @@ Next sub_803DEAC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803E8F8 ── */
+/* sub_803E8F8: returns the address of the eLinkState global. */
+Next sub_803E8F8(void) {
+    R0 = A_eLinkState;
+    RETURN_TO_CALLER();
+}
+
 /* ── init_eStartScreenAnimationControl200B1A0_1 ── */
 /* init_eStartScreenAnimationControl200B1A0_1:
  * Initialize the 8-byte e-StartScreen animation control block and mark it
@@ -1431,6 +1732,42 @@ Next eStruct200BC30_getJumpOffset00_pushpop(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── eStruct200BC30_setJumpOffset00 ── */
+/* eStruct200BC30_setJumpOffset00: store the given byte as the "jump offset 00"
+ * field of the eStruct200BC30 control byte at A_eStruct200BC30. */
+Next eStruct200BC30_setJumpOffset00(void) {
+    ST8(A_eStruct200BC30, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803EB04 ── */
+/* sub_803EB04(r3 r4 r5 r6 r8 r9 r10 r11 r12 lr):
+ * Calls sub_803DEB4; if its return value equals 2, also calls sub_803ED1C
+ * before returning to the caller. */
+Next sub_803EB04(void) {
+    /* push {lr} */
+    SP -= 4;
+    ST32(SP, LR);
+
+    /* bl sub_803DEB4 ; cmp r0, #2 ; bne locret_803EB12 */
+    GUEST_CALL(sub_803DEB4);
+    SET_FLAGS_CMP(R0, 2);
+    if (R0 != 2) {
+        /* pop {pc} */
+        LR = LD32(SP);
+        SP += 4;
+        RETURN_TO_CALLER();
+    }
+
+    /* bl sub_803ED1C */
+    GUEST_CALL(sub_803ED1C);
+
+    /* pop {pc} */
+    LR = LD32(SP);
+    SP += 4;
+    RETURN_TO_CALLER();
+}
+
 /* ── clearStruct200BC30_803EBAC ── */
 /* clearStruct200BC30_803EBAC: clear the 0x20-byte work struct at 0x200BC30 (eStruct200BC30).
  * Leaves the struct zeroed word-by-word via ZeroFillByWord; r2/r3 pass
@@ -1439,6 +1776,17 @@ Next clearStruct200BC30_803EBAC(void) {
     R0 = A_eStruct200BC30;
     R1 = 0x20;
     GUEST_CALL(ZeroFillByWord);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803EBB8 ── */
+/* sub_803EBB8(lr)
+ * Zero-fill the field at eStruct200BC30 + 2 (32 bytes).
+ * r2 is preserved across the call. */
+Next sub_803EBB8(void) {
+    R0 = A_eStruct200BC30 + 2;
+    R1 = 0x20;
+    GUEST_CALL(ZeroFillByByte);
     RETURN_TO_CALLER();
 }
 

@@ -42,6 +42,17 @@ Next renderTextGfx_8045F8C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_804634C ── */
+Next sub_804634C(void) {
+    /* Tail-call: do the work in sub_8046356, then clear r3 and return.
+     * sub_8046356 preserves nothing we care about here, so just invoke it
+     * directly and let its return path bring us back to the caller with
+     * r3 already zeroed. */
+    GUEST_CALL(sub_8046356);
+    R3 = 0;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_initEStructArr_804657C ── */
 /* battle_initEStructArr_804657C: initialise eStructArr2008450.
  * Zero-fills the whole 0x528-byte array (15 entries of 0x58 bytes each),
@@ -1171,6 +1182,23 @@ Next background_LoadAreaTiles_8047800(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80478B8 ── */
+/* sub_80478B8:
+ *   inputs:  lr
+ *   outputs: r2 r5 r7
+ *   clobbers (unused by callers): nz c v r0 r1 r3 lr
+ *   preserved: r4 r5 r6 r7
+ *
+ * Initializes chapter/area state by calling sub_8046696 four times with
+ * indices 0..3, then returns to the address saved in LR. */
+Next sub_80478B8(void) {
+    for (u32 i = 0; i < 4; i++) {
+        R0 = i;
+        GUEST_CALL(sub_8046696);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── mail_drawSelectedEntry_80478D4 ── */
 /* Mail list entry object (arrives in r5) — field offsets as used by the disassembly. */
 #define ENTRY_CURSOR_INDEX  0x08  /* u8: which list row is currently highlighted */
@@ -1461,6 +1489,65 @@ Next initSaveStateBlock_8048F9C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8049770 ── */
+/* sub_8049770: scene/transition entry point.
+ * Called as part of a screen/state change. Performs LCD/replay state setup,
+ * configures the screen fade, clears several state bytes in the r5 struct,
+ * runs the standard sub_803A740/sub_803A752/sub_803A764 object-link trio,
+ * then enables chatbox displays 0 and 1 and writes state byte 4 to the
+ * struct at [r5 + 1]. */
+Next sub_8049770(void) {
+    /* SetRenderInfoLCDControl(0x1F40) */
+    R0 = 0x1F40;
+    GUEST_CALL(SetRenderInfoLCDControl);
+
+    /* Run the render-info refresh pair. */
+    GUEST_CALL(renderInfo_8001788);
+    GUEST_CALL(renderInfo_80017A0);
+
+    /* toolkit_applyOverlayPalette_80015FC(0x13) */
+    R0 = 0x13;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+
+    GUEST_CALL(sub_8046664);
+    GUEST_CALL(copyData_8049A18);
+
+    /* SetScreenFade(8, 0x10) -- fade-in: 8 frames, 0x10 step. */
+    R0 = 8;
+    R1 = 0x10;
+    GUEST_CALL(SetScreenFade);
+
+    /* Zero out a handful of state bytes in the struct pointed to by r5. */
+    R0 = 0;
+    ST8(R5 + 0x08, R0);
+    ST8(R5 + 0x12, R0);
+    ST8(R5 + 0x1C, R0);
+    ST8(R5 + 0x1D, R0);
+    ST8(R5 + 0x13, R0);
+
+    GUEST_CALL(sub_803BEC0);
+    GUEST_CALL(sub_8049CBC);
+    GUEST_CALL(sub_803A740);
+    GUEST_CALL(sub_803A752);
+    GUEST_CALL(sub_803A764);
+
+    /* sub_803BE30(0) then sub_803BE30(1): enable chatbox layers 0 and 1. */
+    R0 = 0;
+    GUEST_CALL(sub_803BE30);
+    R0 = 1;
+    GUEST_CALL(sub_803BE30);
+
+    GUEST_CALL(chatbox_8040818);
+
+    /* Write the state value (4) to byte +1 of the r5 struct.
+     * The MOV sets nz; preserve it per the contract. */
+    R0 = 4;
+    SET_FLAGS_NZ((u32)R0);
+    ST8(R5 + 0x01, R0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8049808 ── */
 /* sub_8049808(r2, r4, r5, r10, lr): jump-table dispatcher.
  *   Calls sub_803AFC2(0); if it returns nonzero, the result indexes a small Thumb
@@ -1746,6 +1833,25 @@ Next chatbox_initTextLineBuffer_8049CF8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8049D3A ── */
+Next sub_8049D3A(void) {
+    /* Write 1 to byte_2001802 (the "enable" flag at offset 2 of the
+     * word_2001800 block). Returns the written value in r1, per contract. */
+    ST8(A_word_2001800 + 2, 1);
+    R0 = A_word_2001800;
+    R1 = 1;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049D42 ── */
+Next sub_8049D42(void) {
+    /* Read the per-battle state byte at 0x2001802 and return it (preserving NZ). */
+    u32 state = LD8(A_word_2001800 + (A_byte_2001802 - 0x2001800));
+    SET_FLAGS_NZ(state);
+    R0 = state;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8049D4A ── */
 /* sub_8049D4A: Copy two 0x20-byte blocks from eS200A290 into word_2001800.
  *   inputs:  lr
@@ -1765,6 +1871,19 @@ Next sub_8049D4A(void) {
     R2 = 0x20;
     GUEST_CALL(CopyBytes);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049D70 ── */
+/* sub_8049D70: store the next RNG value into the global RNG seed (word_2001800).
+ * inputs:  lr
+ * outputs: r4 r5 r6 r7
+ * clobbers: nz c v r0 r1 r2 r3 lr */
+Next sub_8049D70(void) {
+    /* Draw a fresh random u32 from the RNG and stash the low 16 bits as the
+     * next RNG seed used by the rest of the game. */
+    GUEST_CALL(GetRNG);
+    ST16((u32)A_word_2001800, (u16)R0);
     RETURN_TO_CALLER();
 }
 
@@ -1797,6 +1916,101 @@ Next chatbox_initNewScreen_8049E28(void) {
     ST8(R5, 8);
     ST8(R5 + 1, 0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049E84 ── */
+/* sub_8049E84: dispatch a chatbox/scene/fade state step based on the sub-state
+ * byte stored at r5+1. The original is a 20-byte trampoline that pushes
+ * {r4-r7,lr}, loads a function pointer from a 9-entry table indexed by that
+ * byte, sets lr to the return address, and tail-calls the handler via bx.
+ *
+ * The two indirections in the original (off_8049E94 -> off_8049E98 -> [r5+1])
+ * collapse here to a single load through a pointer symbol. The byte is the
+ * only index value observed; the table is small and fixed.
+ *
+ * Register contract: r4 r5 r6 r7 must come back unchanged (preserved), r8 r9
+ * r10 r11 r12 are the outputs the lifter attributes to the callee (so we don't
+ * touch them), and r0 r1 r2 r3 lr/nz/c/v are scratch. */
+Next sub_8049E84(void) {
+    /* Index by the sub-state byte the caller placed at r5+1. */
+    u32 sub_state = LD8(R5 + 1);
+    /* The original does: ldr r0, =off_8049E94 (= &off_8049E98);
+     *                     ldrb r1, [r5,#1];
+     *                     ldr r0, [r0, r1]
+     * which is LD32(A_off_8049E98 + sub_state). The low bit is the Thumb bit
+     * the original `bx r0` requires; we mask it off before calling. */
+    u32 target_thumb = LD32(A_off_8049E98 + sub_state);
+    u32 target = target_thumb & ~1u;
+    /* The callee returns to whichever value we leave in lr, matching the
+     * original's tail-call semantics. The callee is responsible for
+     * r4..r7 preservation. */
+    GUEST_CALL_ADDR(target);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049EBC ── */
+/* sub_8049EBC: scene initializer / fade-in setup.
+ * Inputs: r5 = state struct pointer, r10 = preserved across the call, lr = return address.
+ * Outputs: r8/r9/r11/r12 untouched (preserved); r10 preserved; ends with state->field_1 = 4. */
+Next sub_8049EBC(void) {
+    u32 state = R5;
+
+    /* Configure LCD for the upcoming transition. */
+    R0 = 0x1F40;
+    GUEST_CALL(SetRenderInfoLCDControl);
+
+    GUEST_CALL(renderInfo_8001788);
+    GUEST_CALL(renderInfo_80017A0);
+
+    /* 0x13 = palette slot count or bg layer id for the fade prep. */
+    R0 = 0x13;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+
+    GUEST_CALL(sub_8046664);
+    GUEST_CALL(copyData_804A0AC);
+
+    /* SetScreenFade(speed=8, target=0x10) -- a two-tone screen fade in. */
+    R0 = 8;
+    R1 = 0x10;
+    GUEST_CALL(SetScreenFade);
+
+    /* Zero out a batch of state flags / counters. */
+    ST8(state + 8, 0);
+    ST8(state + 0x1C, 0);
+    ST8(state + 0x1D, 0);
+    ST8(state + 0x13, 0);
+    ST8(state + 0x12, 0);
+
+    GUEST_CALL(sub_803BEC0);
+    GUEST_CALL(sprite_loadTilesAndPlaySfx_804A14C);
+    GUEST_CALL(sub_803A740);
+    GUEST_CALL(sub_803A752);
+    GUEST_CALL(sub_8049F20);
+
+    /* Run the per-frame setup hooks twice (idx 0 then idx 1). */
+    R0 = 0;
+    GUEST_CALL(sub_803BE30);
+    R0 = 1;
+    GUEST_CALL(sub_803BE30);
+
+    GUEST_CALL(chatbox_8040818);
+
+    /* Mark the next scene state (0x04 = "ready / transitioned in"). */
+    ST8(state + 1, 4);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049F20 ── */
+/* sub_8049F20(r10 = ?, lr):
+ * Call sub_803B674 with the args 0x29, 0x2A and 0x2B (then terminate).
+ * Preserved: r4 r5 r6 r7. Output: r5 (sub_803B674's R5 is observed by callers). */
+Next sub_8049F20(void) {
+    for (u32 arg = 0x29; (s32)arg <= 0x2C; arg++) {
+        R0 = arg;
+        GUEST_CALL(sub_803B674);
+    }
     RETURN_TO_CALLER();
 }
 
@@ -1843,6 +2057,47 @@ Next sub_8049F50(void) {
     GUEST_CALL(sub_803B674);
     R0 = 1;
     GUEST_CALL(sub_803A8B4);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049F70 ── */
+/* sub_8049F70: initialize something (likely a battle/scene setup).*/
+Next sub_8049F70(void) {
+    GUEST_CALL(sub_803BA64);
+
+    R0 = 0xA;
+    GUEST_CALL(sub_803B522);
+
+    R0 = 0x28;
+    GUEST_CALL(sub_803B674);
+
+    R0 = 1;
+    GUEST_CALL(sub_803A8B4);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8049F8A ── */
+/* sub_8049F8A: chatbox/process-style hook.
+ *   inputs:  r5 (some chatbox control struct), r10, lr
+ *   outputs: r8, r9, r10, r11, r12
+ *   clobbers: r0, r1, r2, r3, nz, c, v, lr
+ *   preserved: r4, r5, r6, r7, r8, r9, r12
+ *
+ * If flag 0x80 is currently masked out by chatbox_mask_eFlags2009F38
+ * (result != 0), skip the inner block. Otherwise call sub_803BB80;
+ * if it returns non-zero, write 0x0C to r5+1.
+ * Then fall through to sub_8049F70. */
+Next sub_8049F8A(void) {
+    R0 = 0x80;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    if (ZERO_FLAG()) {
+        GUEST_CALL(sub_803BB80);
+        if (!ZERO_FLAG()) {
+            ST8(R5 + 1, 0x0C);
+        }
+    }
+    GUEST_CALL(sub_8049F70);
     RETURN_TO_CALLER();
 }
 
@@ -2044,6 +2299,25 @@ Next textScript_copyFolderNameToWide_804A1FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_804A230 ── */
+/* sub_804A230(r0 = chip ID)
+ * Copy a chip's 0x20-byte data block into the chip queue slot.
+ * Looks up a per-chip table at dword_804A25C to find which chip slot
+ * to fill, then copies 0x20 bytes from unk_2001850 (chip data) into
+ * eS200A290 + 0x70 (chip slot in the battle queue / toolkit area). */
+Next sub_804A230(void) {
+    u8 slot = LD8(A_dword_804A25C + R0);
+    u32 dest = A_eS200A290 + 0x70;
+    u32 src = A_unk_2001850 + slot;
+
+    R0 = dest;
+    R1 = src;
+    R2 = 0x20;
+    GUEST_CALL(CopyBytes);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_804A24C ── */
 /* sub_804A24C: looks up a byte at the dword_804A25C table using r0 as the index,
  * then returns unk_2001850 + that byte. r4-r7 and flags are preserved per the
@@ -2056,6 +2330,105 @@ static u32 lookup_table_entry(u32 index) {
 /* register form: thin adapter - typed body lives in lookup_table_entry. */
 Next sub_804A24C(void) {
     R0 = lookup_table_entry(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C074 ── */
+/* sub_804C074: clear flag EVENT_4FE (flag id 4, bit 0xFE), then clear the 0x400 bit
+ * in the toolkit's render-info word (dismisses a render/info state in the battle UI).
+ * inputs:  r10, lr
+ * outputs: r2, r3, r5
+ * clobbers: nz, c, v, r0, r1, lr */
+Next sub_804C074(void) {
+    /* ClearEventFlagFromImmediate(flag_id = 4, bit = 0xFE) */
+    R0 = 4;
+    R1 = 0xFE;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+
+    /* Edit the toolkit's render-info flags: clear bit 0x400.
+     * (Original loads the 0x400 mask into r2 and leaves it there as the
+     * function's r2 output; keep r2 = 0x400 on return.) */
+    u32 toolkit = R10;
+    u32 render_info_ptr = LD32(toolkit + oToolkit_RenderInfoPtr);
+    u32 flags = LD16(render_info_ptr);
+    R2 = 0x400;
+    flags &= ~R2;
+    ST16(render_info_ptr, (u16)flags);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C08C ── */
+/* sub_804C08C: initialize the battle toolkit/HUD for a request.
+ * Loads palette/tilemap GFX, configures render info and an internal palette
+ * blob, zeroes several HUD fields on r5, optionally calls sub_804C2D0 based
+ * on event flags, then finalizes by calling sub_804C144/chatbox_stepIfGatesOpen_804C11C and
+ * setting the EVENT_4FE flag.
+ *   inputs:  r5 (HUD/battle object ptr), r10 (toolkit ptr), lr
+ *   outputs: r2
+ *   clobbers: nz c v r0 r1 r3 lr
+ *   preserved: r4 r5 r6 r7
+ */
+Next sub_804C08C(void) {
+    /* Queue the main palette/tilemap GFX transfer into VRAM. */
+    R0 = (u32)A_byte_869D76C;
+    R1 = 0x0600CC00;
+    R2 = 0xC0;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+
+    /* Queue the secondary tile/palette transfer. */
+    R0 = (u32)A_byte_869D74C;
+    R1 = (u32)A_byte_3001B00;
+    R2 = 0x20;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+
+    /* Configure the toolkit's render info. */
+    u32 toolkit = R10;
+    u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render_info + 8, 0x1E09);
+    ST16(render_info + 0x16, 0);
+    ST16(render_info + 0x14, 0);
+
+    /* Write the 4-byte palette setup to the unk2009740 blob. */
+    u32 palette = LD32(toolkit + oToolkit_Unk2009740_Ptr);
+    ST8(palette + 0, 0x44);
+    ST8(palette + 1, 0x3B);
+    ST8(palette + 2, 0x00);
+    ST8(palette + 3, 0x10);
+
+    /* Clear HUD fields and set initial state on the r5 battle object. */
+    u32 hud = R5;
+    ST8(hud + 0x14, 0x0A);
+    ST8(hud + 0x13, 0);
+    ST8(hud + 0x15, 0);
+    ST8(hud + 0x16, 0);
+    ST8(hud + 0x17, 0);
+    ST8(hud + 0x11, 0);
+    ST8(hud + 0x18, 2);
+
+    /* If both EVENT_4FB and EVENT_4FE are unset, do the extra setup. */
+    R0 = 4;
+    R1 = 0xFB;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (!ZERO_FLAG()) {
+        R0 = 4;
+        R1 = 0xFE;
+        GUEST_CALL(TestEventFlagFromImmediate);
+        if (!ZERO_FLAG()) {
+            GUEST_CALL(sub_804C2D0);
+        }
+    }
+
+    GUEST_CALL(sub_804C144);
+
+    ST8(hud + 0x10, 4);
+
+    R0 = 4;
+    R1 = 0xFE;
+    GUEST_CALL(SetEventFlagFromImmediate);
+
+    GUEST_CALL(chatbox_stepIfGatesOpen_804C11C);
+
     RETURN_TO_CALLER();
 }
 
@@ -2087,6 +2460,86 @@ Next chatbox_stepIfGatesOpen_804C11C(void) {
     GUEST_CALL(sub_804C144);
     GUEST_CALL(sub_804C298);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C144 ── */
+/* sub_804C144: handle the screen-flash / background-fill sequence used while a
+ * battle intro or special effect is running. Reads/writes a small state block
+ * pointed to by r5 (timers and frame index), reads a counter at word_2013974
+ * to decide which sub-effect is active, and copies a 32x32 tile block. */
+Next sub_804C144(void) {
+    /* The original saves {r4-r7, lr} on entry; reproduce that on the guest
+     * stack so the toolkit/state pointers survive the helper calls below. */
+    u32 sp = SP;
+    SP -= 20;
+    ST32(SP + 0,  R4);
+    ST32(SP + 4,  R5);
+    ST32(SP + 8,  R6);
+    ST32(SP + 12, R7);
+    ST32(SP + 16, LR);
+
+    /* Pull the render-info pointer out of the toolkit. */
+    u32 render_info = LD32(R10 + oToolkit_RenderInfoPtr);
+    R4 = render_info;
+    ST16(render_info, LD16(render_info) | 0x400);
+
+    u32 state_base = A_unk_2013960;
+    R6 = state_base;
+    u16 effect_counter = LD16(state_base + 0x14);
+
+    if ((s32)effect_counter > 0x24) {
+        GUEST_CALL(tickActionTimer_804C214);
+    } else if ((s32)effect_counter > 0) {
+        GUEST_CALL(sub_804C244);
+    } else {
+        /* Counter has reached 0: tear down the effect. */
+        R4 = LD32(R10 + oToolkit_RenderInfoPtr);
+        ST8(R4, 4);
+        ST8(R5 + 0x11, 0);
+
+        /* Epilogue: restore the saved registers and return. */
+        R4 = LD32(SP + 0);
+        R5 = LD32(SP + 4);
+        R6 = LD32(SP + 8);
+        R7 = LD32(SP + 12);
+        u32 ret = LD32(SP + 16);
+        SP = sp;
+        RETURN_TO_CALLER();
+    }
+
+    /* Frame-advance: hand off to the per-frame helper. */
+    GUEST_CALL(applyScrollOffset_804C1D4);
+
+    /* Frame-index / per-frame timer handling, then copy the 32x32 tile block
+     * for the current frame into character block 2. */
+    u8 frame_index = LD8(R5 + 0x13);
+    u8 timer       = LD8(R5 + 0x14) - 1;
+    ST8(R5 + 0x14, timer);
+    if (timer == 0) {
+        ST8(R5 + 0x14, 0xA);
+        if (frame_index < 7)
+            frame_index++;
+        else
+            frame_index = 0;
+        ST8(R5 + 0x13, frame_index);
+    }
+
+    R0 = 0;
+    R1 = 0;
+    R2 = 2;
+    R3 = LD32(A_off_804C1B4 + frame_index * 4);
+    R4 = 0x20;
+    R5 = 0x20;
+    GUEST_CALL(CopyBackgroundTiles);
+
+    /* Epilogue: restore the saved registers and return. */
+    R4 = LD32(SP + 0);
+    R5 = LD32(SP + 4);
+    R6 = LD32(SP + 8);
+    R7 = LD32(SP + 12);
+    u32 ret = LD32(SP + 16);
+    SP = sp;
     RETURN_TO_CALLER();
 }
 

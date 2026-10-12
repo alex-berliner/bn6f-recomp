@@ -1296,6 +1296,21 @@ Next battle_setFieldsFromObj_81340FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_runScript_803FD9C_on_eTextScript2028A20 ── */
+/* chatbox_runScript_803FD9C_on_eTextScript2028A20(r0 = scriptIdx, r4, r5, r10, lr):
+ * Run the text script at index scriptIdx from the eTextScript2028A20 archive.
+ * inputs:  r0 r4 r5 r10 lr
+ * outputs: nz c v r0 r1 r2 r3 r4 r5 r6 r7 lr
+ * preserved: r6 r7 */
+Next chatbox_runScript_803FD9C_on_eTextScript2028A20(void) {
+    /* Move scriptIdx into r1 (the archive's script-index slot) and pass the
+     * eTextScript2028A20 archive as r0 to chatbox_runScript_803FD9C. */
+    R1 = R0;
+    R0 = A_eTextScript2028A20;
+    GUEST_CALL(chatbox_runScript_803FD9C);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8134538 ── */
 /* sub_8134538: thin wrapper that invokes object_resolveTableEntry_8134558 with the fixed argument
  * set (226, 28, 30, 36); result and condition flags are whatever the callee
