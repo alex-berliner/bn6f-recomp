@@ -1,0 +1,85 @@
+name: sub_80147E4
+address: '0x080147E4'
+kind: function
+status: confirmed
+summary: Installs two 0x10-byte chatbox text/portrait descriptor blocks, copying each into both the live chatbox
+  state (dword_20367F0) and the cached copies (unk_203A980 / unk_203A990), then resets the word counter and flags
+  the state as active.
+interface: void sub_80147E4(const u32 *src0 /* r0 = byte_203F558 */, const u32 *src1 /* r1 = byte_203F658 */)
+details: "Operates on a chatbox descriptor state object rooted at dword_20367F0 (an EWAM-style state\nstruct: a\
+  \ u32 counter at offset 0, a u8 active flag at offset 4, then two 0x10-byte\ndescriptor blocks at offsets 8 and\
+  \ 0x18, likely a \"before/active\" or \"line A / line B\"\npair consumed by the text-window engine).\nFour CopyWords\
+  \ calls of 0x10 bytes each fan the two source blocks (passed in r0/r1, coming\nfrom the chatbox's per-line buffers\
+  \ byte_203F558 / byte_203F658) into:\n  - dword_20367F0 + 0x08  (live slot 0)\n  - unk_203A980            (cached\
+  \ slot 0)\n  - dword_20367F0 + 0x18  (live slot 1)\n  - unk_203A990            (cached slot 1)\nAfter the copies,\
+  \ the u32 word counter at dword_20367F0+0 is cleared (str #0) and the u8\nactive byte at dword_20367F0+4 is set\
+  \ to 1, which is what flags the chatbox state as live\nand ready to be ticked by the chatbox update loop.\nClobbers\
+  \ r0/r1/lr and NZCV; preserves r3, r5, r6, r7 per the contract (r5-r7 are locals\nfor the base pointer and the\
+  \ two src pointers).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c sub_80147E4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80147E4
+
+    ./wf verify --function sub_80147E4 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 152 out
+    of domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80147E4
+
+    ./wf verify --function sub_80147E4 --snapshots build-snapshots'
+  result: 76 compared, 0 differed, 20 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80147E4
+
+    ./wf verify --function sub_80147E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^080147e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly dword_20367F0+0x10..0x17 holds (gap between the two 0x10 descriptor blocks and the live copy at +0x18)
+  — possibly another counter or the "active" descriptor index.
+- Why two parallel destinations per source (live + cached) — likely so the engine can restore the previous frame's
+  text when reopening or animating the box.
+- Whether byte_203F558 / byte_203F658 are the chatbox's "line 1" / "line 2" buffers or something else (e.g. name
+  + message).
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2

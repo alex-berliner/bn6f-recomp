@@ -1,0 +1,73 @@
+name: sub_80C0A4C
+address: '0x080C0A4C'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current phase handler via a small table at off_80C0A60.
+interface: 'void sub_80C0A4C(void);
+
+  // r5 = battle object pointer; r2, r3, r7, lr used as inputs by convention
+
+  // returns nothing; handler''s r5/r8-r12 leak back as outputs
+
+  // clobbers nz/cv, r0, r1, r2, r3, r4, r6, r7, lr
+
+  '
+details: "Reads oBattleObject_CurPhase (a byte offset on the battle object pointed\nto by r5) and uses it to index\
+  \ a four-entry handler table at off_80C0A60\n(loaded indirectly via off_80C0A5C). The three dispatchable handlers\
+  \ are:\n  phase 0 -> advancePhase3ToPhase4_80C0A6C\n  phase 1 -> sub_80C0A90\n  phase 2 -> sub_80C0B4A\nThe table\
+  \ is invoked via `bx` with LR set up as a return into a `pop {pc}`,\nmeaning the dispatched handler is expected\
+  \ to return straight to the caller\nof sub_80C0A4C rather than back here. The decompiler models this by\nshifting\
+  \ SP down four bytes, writing LR there, and reading r0 as the phase\nargument and r1 as the resolved handler address\
+  \ before the guest call.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c sub_80C0A4C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C0A4C
+
+    ./wf verify --function sub_80C0A4C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C0A4C
+
+    ./wf verify --function sub_80C0A4C --snapshots build-snapshots'
+  result: 36 compared, 0 differed, 9 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C0A4C
+
+    ./wf verify --function sub_80C0A4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0a4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- The table only lists three handlers (phases 0/1/2). What happens at higher phase values (read happens unguarded)
+  — wrap-around or fallthrough?
+- Are all three callees strict tails, or could any of them ever return to sub_80C0A4C itself (in which case the
+  second `pop {pc}` would fire)?
+- The off_80C0A5C indirect through off_80C0A60 looks like it could be a larger switch table whose first word points
+  at the subtable; needs the surrounding object to confirm.
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2

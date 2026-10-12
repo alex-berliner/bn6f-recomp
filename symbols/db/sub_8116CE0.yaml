@@ -1,0 +1,86 @@
+name: sub_8116CE0
+address: '0x08116CE0'
+kind: function
+status: confirmed
+summary: Battle object dispatcher that runs the current behavior-step handler chosen from a 3-entry table.
+interface: void sub_8116CE0(uint32_t r5_battleObject, uint32_t unused lr_in); r2 r3 r5 r10 r11 preserved for caller
+details: 'Reads byte at r5+8 (oBattleObject_BehaviorStep = 8), uses it as an index into the
+
+  3-entry jump table at off_8116CF4, and tail-calls the matching handler in Thumb mode
+
+  (table entries are pre-incremented to set the Thumb bit: +1). The three targets are
+
+  battle_initSpriteType23_8116D00, battle_objectRunBehaviorStep_8116D6C, and
+
+  sub_8116E08. The behavior-step byte is forwarded in r1; the loaded handler address
+
+  in r0; r2..r12 (except r4/r6..r9 which the handler may clobber) flow through to the
+
+  handler. `push {lr} / pop {pc}` is a standard GCC-style tail return.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c sub_8116CE0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8116CE0
+
+    ./wf verify --function sub_8116CE0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8116CE0
+
+    ./wf verify --function sub_8116CE0 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 16 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8116CE0
+
+    ./wf verify --function sub_8116CE0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08116ce0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the full struct layout of the battle object? Only offset 8 (BehaviorStep) is referenced here.
+- What distinguishes the three behavior steps (init vs run vs the sub_8116E08 case)?
+- Are the +1 Thumb-bit entries produced by the compiler as a literal table, or built up at link time?
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2

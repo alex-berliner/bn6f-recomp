@@ -1,0 +1,77 @@
+name: sub_8118F24
+address: '0x08118F24'
+kind: function
+status: confirmed
+summary: Sprite update trampoline; dispatches to one of three handlers based on the state byte at [r5+8] via a ROM
+  jump table, preserving LR.
+interface: 'void sub_8118F24(u32* r5) /* reads r5->state @ +8, clobbers nz c v r0 r1 r4 r6 r7 r8 r9 r12 lr, returns
+  via lr_save; preserved: none */'
+details: "This is a thin dispatcher sitting in front of the per-state sprite logic. It loads a pointer\nfrom off_8118F38\
+  \ (which points to off_8118F38 itself), reads the state byte at r5+0x8,\nindexes that pointer table with the state\
+  \ byte, then performs an indirect jump to the\nresulting Thumb handler (low bit set, hence the +1 trick to switch\
+  \ into Thumb mode).\n\nThe three targets listed in the jump table are:\n  - off_8118F38[0] = sprite_initBattle_8118F44+1\n\
+  \  - off_8118F38[1] = sprite_dispatchUpdate_8118FC0+1\n  - off_8118F38[2] = sub_81190D8+1\n\nLR is saved/restored\
+  \ around the call so the callee returns to the trampoline, which then\npops PC from the stack and returns to the\
+  \ original caller. This means the caller sees this\nas a single subroutine boundary even though internally it\
+  \ fans out into per-state behavior.\n\nInputs/outputs: r5 is the only meaningful input (a battle-sprite struct;\
+  \ the state byte at\noffset 8 selects the handler). All other output registers (r2, r3, r5, r10, r11) are produced\n\
+  by the dispatched handler and bubble through unchanged.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c sub_8118F24
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8118F24
+
+    ./wf verify --function sub_8118F24 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8118F24
+
+    ./wf verify --function sub_8118F24 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 17 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8118F24
+
+    ./wf verify --function sub_8118F24 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08118f24 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What is the full layout of the sprite struct at r5? Only +8 (state) is read here.
+- What additional state values beyond 0..2 are valid? The table currently has 3 entries but the dispatch is a single
+  byte, so up to 256 could be wired up.
+- Is r5 expected to be a specific sprite subsystem pointer (battle sprite vs. navi sprite)?
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2

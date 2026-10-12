@@ -1,0 +1,82 @@
+name: CallBGScrollCallback1
+address: '0x080019A0'
+kind: function
+status: confirmed
+summary: Trampoline that invokes the first of the two BG-scroll callbacks stored in eBGScrollCallbacks (slot at
+  offset 8).
+interface: void CallBGScrollCallback1(void); /* r10 in, lr in; r8 r9 r10 r11 r12 out; nz c v + r0-r7 lr clobbered
+  */
+details: 'Loads the pointer at offset 8 of the eBGScrollCallbacks table (off_200A888 - 0x200a888 base, i.e. the
+  Callback1 slot per oBGScrollCallbacks_Callback1 == 8) into r0 and tail-calls it via `bx r0`. Pure forwarder: pushes
+  only lr and pops pc so the callback returns directly to CallBGScrollCallback1''s caller with no locals preserved.
+  Executed in ARM mode (registers include the high regs r8-r12 and pushes only lr, not r14); targets an external
+  function whose typed signature is unknown. The companion slot at offset 0 (Callback0) is loaded but unused here.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c CallBGScrollCallback1
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CallBGScrollCallback1
+
+    ./wf verify --function CallBGScrollCallback1 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CallBGScrollCallback1
+
+    ./wf verify --function CallBGScrollCallback1 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CallBGScrollCallback1
+
+    ./wf verify --function CallBGScrollCallback1 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^080019a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which module owns BG-scroll updates and what the typed signature of the slot-1 callback is (takes what I/O registers
+  / returns what).
+- Why the table base is loaded into r1 then read via [r1,
+- Whether the "1" in the name reflects call order (called after Callback0) or just the slot index.
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2

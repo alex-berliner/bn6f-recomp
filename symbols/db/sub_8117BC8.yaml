@@ -1,0 +1,77 @@
+name: sub_8117BC8
+address: '0x08117BC8'
+kind: function
+status: confirmed
+summary: Thumb trampoline that jumps to one of three handlers chosen by the byte at r5+8.
+interface: 'void sub_8117BC8(struct HandlerObj *r5); /* returns: r2 r3 r5 r10 r11 */'
+details: 'Loads the dispatch table base from off_8117BD8, indexes it by the unsigned byte at
+
+  r5+8, and tail-calls the resulting address with lr set to the next instruction so
+
+  that `pop {pc}` on return resumes the original caller. Targets (switched by the
+
+  thumb bit) are sub_8117BE8, sub_8117C4C, sub_8117CCC. r5 is the handler object
+
+  threaded through every call. No other register contract beyond r5 is meaningful;
+
+  the other output/clobbered registers come from whatever the dispatched handler
+
+  does.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c sub_8117BC8
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8117BC8
+
+    ./wf verify --function sub_8117BC8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8117BC8
+
+    ./wf verify --function sub_8117BC8 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8117BC8
+
+    ./wf verify --function sub_8117BC8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08117bc8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which of the three handlers corresponds to which value of the r5+8 byte (0/1/2)?
+- What subsystem owns this dispatch (sprite / npc / battle state)?
+- Why are three of the preserved registers returned (r2 r3 r5 r10 r11) when the function itself does no work?
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2

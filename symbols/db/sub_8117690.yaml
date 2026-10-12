@@ -1,0 +1,78 @@
+name: sub_8117690
+address: '0x08117690'
+kind: function
+status: confirmed
+summary: Dispatches to one of three THUMB handlers based on a battle-context byte at offset 8.
+interface: u32 sub_8117690(u32 r5_battleCtx, u32 r10_in, u32 lr); // reads ctx[8]; clobbers r0,r1,r2,r3,r4,r6,r7,r8,r9,r12,lr;
+  preserves nothing
+details: 'Thin jump-table dispatcher. Loads the table base (off_81176A4 -> table of three THUMB
+
+  function pointers with low bit set), indexes it with byte at [r5 + 8] (a state byte
+
+  of the per-frame / per-entity battle context structure held in r5), then performs
+
+  `bx r0` to enter the chosen handler. The wrapper pushes {lr} and pops {pc} so the
+
+  callee sees a normal guest return frame and the caller resumes on its saved lr.
+
+  The three targets (sub_81176B0, sub_81176C0, sub_81176C8) are sequential in the
+
+  same file, suggesting closely related phases of a battle state machine. r10 is
+
+  an additional preserved-by-caller input register.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c sub_8117690
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8117690
+
+    ./wf verify --function sub_8117690 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8117690
+
+    ./wf verify --function sub_8117690 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 17 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8117690
+
+    ./wf verify --function sub_8117690 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^08117690 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+open_questions:
+- What is the meaning of the ctx[8] byte (state phase index 0/1/2)?
+- What does each of sub_81176B0 / sub_81176C0 / sub_81176C8 do?
+- Why is r10 threaded by callers (likely a secondary battle-context or scratch pointer)?
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2

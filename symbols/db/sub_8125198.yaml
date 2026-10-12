@@ -1,0 +1,79 @@
+name: sub_8125198
+address: '0x08125198'
+kind: function
+status: confirmed
+summary: Advances an object's frame counter by 2 (with a clamp to 0x6A), finalizes the frame, and refreshes two
+  sprite slots based on the object's kind and animation state.
+interface: 'void tickObjectFrame_8125198(struct Object* r5); // r5: pointer to an object struct; trashes r0–r4,
+  r7, r10, r11, r12, lr; preserves r5, r6, r8, r9, r12 (note r12 is both clobbered and preserved per contract —
+  indicates lr/ip reuse in a tail-pop)'
+details: "Operates on an object record pointed to by r5 (a sprite/actor struct). Field offsets used:\n  +0x02 (byte)\
+  \  — set to 0x30 when the frame counter is clamped\n  +0x1C (u16)   — alternative sprite tile index used when\
+  \ +0x68 == 0x27\n  +0x26 (u16)   — alternative sprite tile index used when +0x60 == 5\n  +0x3A (u16)   — alternative\
+  \ sprite tile index used when +0x5C == 0x1D and frame <= 0x60\n  +0x5C (u32)   — object \"kind B\" gating the\
+  \ +0x3A override\n  +0x60 (u32)   — object \"kind A\" gating the +0x26 override\n  +0x68 (u32)   — object \"kind\
+  \ C\" gating the +0x1C override\n  +0x70 (u32)   — written to 0xFF (likely a dirty/state flag)\n  +0x74 (u32)\
+  \   — frame counter; decremented by 2, clamped to a minimum of 0x6A (and a second lower threshold of 0x60 is read\
+  \ for sprite selection)\n\nSequence:\n  1. Calls sub_8126818(0) — probably a \"begin tick\" / init helper.\n \
+  \ 2. Loads +0x74, subtracts 2, stores back.\n  3. If the new value is <= 0x6A, forces +0x74 to 0x6A and writes\
+  \ 0x30 to byte +0x02 (finalize/end-of-animation marker).\n  4. Writes 0xFF to +0x70 (state/dirty bit).\n  5. Calls\
+  \ sub_8125444, sub_8125E78, sub_8126184 in sequence — likely per-frame update/finalize/sub-plot helpers.\n  6.\
+  \ Computes sprite slot 4: normally r1=0, but if +0x60 == 5 uses u16 at +0x26; calls sprite_setStructHalfwordPairOnThree_8117084\
+  \ with r0=+0x60 value, r1, r2=4.\n  7. Computes sprite slot 7: normally r1=0, but if +0x68 == 0x27 uses u16 at\
+  \ +0x1C; if the (clamped) +0x74 is also <= 0x60 and +0x5C == 0x1D, switches to using u16 at +0x3A and uses +0x5C\
+  \ as the kind argument; calls sprite_setStructHalfwordPairOnThree_8117084 with r0=kind, r1, r2=7.\n\nThe function\
+  \ ends with `pop {pc}` (tail-return), which is why lr is listed in the register contract as both an input and\
+  \ a clobbered output. Caller passes an object pointer in r5.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c sub_8125198
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8125198
+
+    ./wf verify --function sub_8125198 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8125198
+
+    ./wf verify --function sub_8125198 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 11 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8125198
+
+    ./wf verify --function sub_8125198 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^08125198 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm33.c
+coverage:
+- story2
+open_questions:
+- Which in-game layer is this (battle sprite, map object, animation driver, etc.)? The struct layout with multiple
+  "kind" fields and frame counter at +0x74 looks like a per-frame animation tick.
+- What do the magic constants 5, 0x1D, 0x27 represent (object categories / animation kinds)?
+- What is the meaning of writing 0xFF to +0x70 and 0x30 to +0x02 (event flags? state codes?).
+- What does sprite_setStructHalfwordPairOnThree_8117084 actually do — set a tile/palette/animation pair on a sprite?
+- Are sub_8125444 / sub_8125E78 / sub_8126184 / sub_8126818 part of a fixed per-tick pipeline (init → update → finalize
+  → commit) called for every object each frame?
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2

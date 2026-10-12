@@ -1,0 +1,123 @@
+name: chatbox_8040B8C
+address: '0x08040B8C'
+kind: function
+status: confirmed
+summary: Steps the mugshot color-filter fade and renders the chatbox mugshot sprite each tick.
+interface: "void chatbox_updateMugshot_8040B8C(void)\n  // inputs:  r5 = chatbox state struct pointer\n  // outputs:\
+  \ r2/r3/r5/r8/r9/r10/r11/r12 clobbered\n  // clobbers: r0/r1/r7/lr, N/Z/C/V\n  // preserved: r4/r5/r6\n"
+details: 'Per-frame mugshot update, gated by chatbox flag "0x02" (FLAGS_3E_MUGSHOT_ACTIVE). If the mugshot
+
+  flag is unset the routine is a no-op. Otherwise it checks flag "0x100"; when unset it bails out
+
+  unless the chatbox open-state byte at oChatbox_OpenState_10 is already 3 (fully opened),
+
+  meaning the fade is only driven once the text box is at its widest.
+
+
+  The 32-bit color-filter value at oChatbox_MugshotColorFilter_40 is then stepped once per
+
+  call: flag "0x04" subtracts 0x421 (clamps to 0 and clears the flag), flag "0x08" adds 0x842
+
+  (clears flags "0x08|0x02" once the low 5 bits reach the open threshold). The unadjusted value
+
+  is preserved in r6 so it can be written into the sprite header''s filter slot after the
+
+  helpers below run, while the adjusted value is stored back to the struct. r5 holds the
+
+  chatbox state struct and is also used as the basis for the sprite header pointer at
+
+  chatbox + 0x1F8.
+
+
+  Rendering: the palette index byte at oChatbox_MugshotPaletteIdx is written into the sprite
+
+  header at offset +4. If the current animation frame byte (chatbox+0x1F2) differs from the
+
+  previously-rendered byte (chatbox+0x1F3), the previous byte is updated, the chatbox''s
+
+  animation-id byte (chatbox+0x1F0) is copied into the sprite header''s anim-id slot, and
+
+  sprite_loadAnimationData_spritePtrProvidedDirectly is called. Then
+
+  sprite_chatbox_80026D6, sprite_loadPalette_8002818, sprite_loadAnimFrameTiles_8002874,
+
+  and sub_8002694 are invoked with r5 = sprite header; sub_8002694 is called with r0=0, r1=3.
+
+  The original (pre-step) filter value is stored as a halfword into the sprite header at
+
+  +6 just before the palette/animation load calls.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (1 attempt(s), run convert-20261011-234704);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 89' --file inbox_farm_89.c chatbox_8040B8C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_8040B8C
+
+    ./wf verify --function chatbox_8040B8C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 216 out
+    of domain (verify run convert-20261011-234704-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_8040B8C
+
+    ./wf verify --function chatbox_8040B8C --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261011-234704-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_8040B8C
+
+    ./wf verify --function chatbox_8040B8C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-234704-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08040b8c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 4a5d8f2
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What the 0x04 / 0x08 / 0x100 mugshot flags and the two filter deltas (0x421 / 0x842) mean in color-blend terms
+  (probably a channel-by-channel fade-in vs. fade-out of the mugshot tint, since +0x842 saturating at >=6 in the
+  low 5 bits matches an alpha-style terminator).
+- Why flag 0x08's clear path also clears the master "mugshot active" flag - looks like a "fade-in completed" auto-hide.
+- Exact fields behind sprite_chatbox_80026D6, sprite_loadPalette_8002818, sprite_loadAnimFrameTiles_8002874 and
+  sub_8002694 (the four callees that consume the sprite header built here).
+- Why this routine is also called when oChatbox_OpenState_10 != 3 provided flag 0x100 is set - the 0x100 bit looks
+  like a "skip open-state gate" override used mid-celebration.
+sources:
+- tools/wf run convert-20261011-234704
+- recomp 4a5d8f2
