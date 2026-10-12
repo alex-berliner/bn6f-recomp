@@ -2165,6 +2165,33 @@ Next palette_clearEPalette20097a0_80023A8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── run_eStruct200a6a0_Callback_8002484 ── */
+/* run_eStruct200a6a0_Callback_8002484:
+ * If the eStruct200a6a0 block is armed (flag byte at +0 non-zero and a callback
+ * installed at +8), invoke that callback (with R5 still pointing at the struct,
+ * as the original does), then zero-fill the whole 0x50-byte block. */
+Next run_eStruct200a6a0_Callback_8002484(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    u32 callback;
+
+    if (LD8(A_eStruct200a6a0) != 0
+            && (callback = LD32(A_eStruct200a6a0 + 8)) != 0) {
+        R0 = callback;
+        R5 = A_eStruct200a6a0;
+        GUEST_CALL_ADDR(callback);
+    }
+
+    R0 = A_eStruct200a6a0;
+    R1 = 0x50;
+    GUEST_CALL(ZeroFillByWord);
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── zeroFill_80024A2 ── */
 /* zeroFill_80024A2:
  * Clear the 0x50-byte struct at eStruct200a6a0 by filling it with zero words.

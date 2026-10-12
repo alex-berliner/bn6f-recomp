@@ -1224,6 +1224,66 @@ Next cutsceneCamera_focusCameraOnPlayerMaybe_8036faa(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── RunCutsceneCameraCommand ── */
+Next RunCutsceneCameraCommand(void) {
+    u32 info = A_eCutsceneCameraInfo;
+
+    /* The command handler is dispatched via `bx r0` and may clobber r4-r7,
+     * so the original wraps the dispatch in push/pop {r4-r7}. Save them now
+     * and restore them before returning so callers see them unchanged. */
+    u32 savedR4 = R4;
+    u32 savedR5 = R5;
+    u32 savedR6 = R6;
+    u32 savedR7 = R7;
+
+    u32 scriptPtr = LD32(info + oCutsceneCameraInfo_CutsceneCameraScriptPtr);
+    u8 command = LD8(scriptPtr);
+
+    /* Handler receives the script pointer in r1, the command byte in r2,
+     * and (as in the original) the camera-info base in r5. */
+    R1 = scriptPtr;
+    R2 = command;
+    R5 = info;
+
+    switch (command) {
+    case 0x00: GUEST_CALL(CutsceneCameraCmd_set_camera_pos); break;
+    case 0x04: GUEST_CALL(CutsceneCameraCmd_simple_scroll); break;
+    case 0x08: GUEST_CALL(CutsceneCameraCmd_end); break;
+    case 0x0C: GUEST_CALL(CutsceneCameraCmd_wait); break;
+    case 0x10: GUEST_CALL(CutsceneCameraCmd_init_shake_effect); break;
+    case 0x14: GUEST_CALL(CutsceneCameraCmd_auto_scroll_to_player); break;
+    case 0x18: GUEST_CALL(CutsceneCameraCmd_smooth_auto_scroll_to_pos); break;
+    case 0x1C: GUEST_CALL(CutsceneCameraCmd_smooth_auto_scroll_to_pos_relative_to_ow_player); break;
+    case 0x20: GUEST_CALL(CutsceneCameraCmd_smooth_auto_scroll_to_soul_weapons_cursor); break;
+    case 0x24: GUEST_CALL(CutsceneCameraCmd_smooth_auto_scroll_cmd_80372ec); break;
+    case 0x28: GUEST_CALL(CutsceneCameraCmd_run_text_script); break;
+    case 0x2C: GUEST_CALL(CutsceneCameraCmd_wait_chatbox); break;
+    case 0x30: GUEST_CALL(CutsceneCameraCmd_call_sub_8001B1C); break;
+    case 0x34: GUEST_CALL(CutsceneCameraCmd_call_sub_8001B6C); break;
+    case 0x38: GUEST_CALL(CutsceneCameraCmd_set_screen_fade); break;
+    case 0x3C: GUEST_CALL(CutsceneCameraCmd_wait_screen_fade); break;
+    case 0x40: GUEST_CALL(CutsceneCameraCmd_set_event_flag); break;
+    case 0x44: GUEST_CALL(CutsceneCameraCmd_clear_event_flag); break;
+    case 0x48: GUEST_CALL(CutsceneCameraCmd_sound_cmd_80373fc); break;
+    case 0x4C: GUEST_CALL(CutsceneCameraCmd_play_music); break;
+    case 0x50: GUEST_CALL(CutsceneCameraCmd_write_camera_field_03_14); break;
+    default: break;
+    }
+
+    /* The handler advanced the script pointer in r1; store it back. */
+    ST32(info + oCutsceneCameraInfo_CutsceneCameraScriptPtr, R1);
+
+    /* pop {r4-r7}: undo any clobbering the handler did. */
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+
+    /* tst r0, r0 : N/Z from the handler's status, C/V untouched. */
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCameraCmd_simple_scroll ── */
 /* register form: calls ReadCutsceneCameraScriptHalfword outside this file, which has no typed C interface yet */
 static u16 read_script_halfword(u32 offset, u32 script_ptr) {

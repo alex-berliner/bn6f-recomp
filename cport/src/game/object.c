@@ -1000,6 +1000,42 @@ Next object_getPanelsIgnoreColumnFiltered(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_getPanelsInColumnFiltered ── */
+/* object_getPanelsInColumnFiltered(r0 = panel base id, r2/r3 = filter params,
+ *                                 r7 = output buffer):
+ * Scans panel columns 1..3; for each column whose panel is accepted by
+ * object_checkPanelParameters, appends the encoded panel byte
+ * (base | column << 4) to the output buffer.
+ * Returns r0 = number of panels appended. */
+Next object_getPanelsInColumnFiltered(void) {
+    u32 panelBase = R0;
+    u32 param0 = R2;
+    u32 param1 = R3;
+    u32 buffer = R7;
+    u32 count = 0;
+
+    for (u32 column = 1; column <= 3; column++) {
+        R0 = panelBase;
+        R1 = column;
+        R2 = param0;
+        R3 = param1;
+        GUEST_CALL(object_checkPanelParameters);
+        if (R0 != 0) {
+            R0 = panelBase;
+            R1 = column << 4;
+            R0 |= R1;
+            ST8(buffer + count, R0);
+            count++;
+        }
+    }
+
+    R0 = count;
+    /* Final `mov r0, r6` is encoded as ADD r0, r6, #0, so it sets all flags:
+     * C = 0 (no carry out), V = 0, N/Z from the count. */
+    SET_FLAGS_ADD(count, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_getPanelsInRowFiltered ── */
 /* object_getPanelsInRowFiltered(r0 = row, r2/r3 = filter parameters,
  *                               r7 = output byte buffer):

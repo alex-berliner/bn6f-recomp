@@ -606,6 +606,37 @@ Next sub_80062EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── subsystem_triggerTransition_800630A ── */
+/* subsystem_triggerTransition_800630A: tick the two screen-fade slots.
+ * Each slot is 0x20 bytes starting at eScreenFade. If a slot is active
+ * (byte 0 == 1), byte 1 selects a handler from the table at off_8005FB4,
+ * which is entered with r1 = 1 and r2 = the selected index. */
+Next subsystem_triggerTransition_800630A(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    for (s32 i = 0; i < 2; i++) {
+        u32 slot = A_eScreenFade + i * 0x20;
+
+        R1 = 1;
+        if (LD8(slot) == 1) {
+            u32 mode = LD8(slot + 1);
+            u32 handler = LD32(A_off_8005FB4 + mode);
+
+            R0 = handler;
+            R2 = mode;
+            R4 = i;
+            R5 = slot;
+            GUEST_CALL_ADDR(handler);
+        }
+    }
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+    SET_FLAGS_CMP(2, 2);
+    RETURN_TO_CALLER();
+}
+
 /* ── screenFade_StopAndFreePalettes_8006330 ── */
 /* screenFade_StopAndFreePalettes_8006330(r0 = fade slot index): stop the screen fade, then free the two
  * palettes (0x12, 0x13) used by the fade effect. r5 is preserved for callers. */

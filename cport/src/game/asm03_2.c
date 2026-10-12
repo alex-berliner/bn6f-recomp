@@ -2101,6 +2101,31 @@ Next sub_8049F8A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8049FA4 ── */
+/* sub_8049FA4: dispatch the current menu/battle substate.
+ *
+ * sub_803AFC2(1) returns a substate id (0 = none).  For a non-zero id
+ * the matching handler from the jump table is run, then the submenu
+ * and the battle-object state are refreshed. */
+Next sub_8049FA4(void) {
+    R0 = 1;
+    GUEST_CALL(sub_803AFC2);
+
+    if (R0 != 0) {
+        switch (R0) {
+        case 1: GUEST_CALL(handleExitSubmenu_803AA24);          break;
+        case 2: GUEST_CALL(battleObj_dispatchSubstate_803AA40); break;
+        case 3: GUEST_CALL(sub_803ABF4);                        break;
+        case 4: GUEST_CALL(sub_803AB6C);                        break;
+        case 5: GUEST_CALL(sub_803AB94);                        break;
+        }
+    }
+
+    GUEST_CALL(sub_8049F50);
+    GUEST_CALL(sub_803BC7C);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_stateStep_804A024 ── */
 /* chatbox_stateStep_804A024: Handle a chatbox state transition for the script runner.
  * r5 = state struct pointer; r10 = some context used by sub_8049F70.
