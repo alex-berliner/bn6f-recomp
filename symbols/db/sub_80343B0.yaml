@@ -1,0 +1,76 @@
+name: sub_80343B0
+address: '0x080343B0'
+kind: function
+status: confirmed
+summary: Per-frame advance of the world-map animation table, queueing its row palette and restamping the 32x20 BG
+  tile block before ticking entities and draining queued GFX.
+interface: void sub_80343B0(void);  // r5 = state (row table + frame counter); r10 passed through; clobbers r0-r3,
+  r8, r9, r11, r12, lr, NZCV; preserves r4, r5, r6, r7
+details: "Drives a small per-frame animation table rooted at off_8034400. State layout:\n  state+3  (u8)  current\
+  \ row offset into the 12-byte-per-row table\n  state+6  (u16) frames remaining on the current row\nEach row is\
+  \ {tileIds pointer, palette_src pointer, frame_count, ?}. Behavior:\n  - If frames_left > 1: decrement and stay\
+  \ on the row.\n  - Else: peek row_ptr+0xC. If zero (end-of-table sentinel) wrap to row 0\n    but keep r3 on the\
+  \ row that just expired (so the queued palette still\n    comes from the old row). Otherwise advance by 0xC to\
+  \ the next row and\n    pick up its frame count from row_ptr+8.\nThen writes the new row_idx/frames_left back\
+  \ to state, queues the row's\npalette source (32 bytes / 0x20) into palette_3001960 via\nQueueWordAlignedGFXTransfer,\
+  \ restamps the standard 32x20 BG tile block\nfrom eTileIds2017A04 via CopyBackgroundTiles(j=0, i=0, block=1, ...,\n\
+  j_size=32, i_size=20), runs entity_runAllUpdateHandlers_80465BC, and\nfinishes via sub_80465F8 (queue-drain).\n\
+  Note: the array at off_8034400 is 7 rows; rows 4..6 reuse\neTileIds2017A04 and the palette source cycles byte_86C22C0,\
+  \ byte_86C22E0,\n..., byte_86C2380 with frame_count = 2.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c sub_80343B0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80343B0
+
+    ./wf verify --function sub_80343B0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80343B0
+
+    ./wf verify --function sub_80343B0 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 17 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80343B0
+
+    ./wf verify --function sub_80343B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, menus2, story1, story2, story4, story5, story8.'
+  reproduce: grep -l '^080343b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story8
+open_questions:
+- The trailing data in the disassembly (Struct8034460 onward through the internet/world jumptables and gfx_anim
+  scripts) is appended after sub_80343B0's return; it is referenced by later code, not by this function, so its
+  scope here is uncertain.
+- The "keep r3 on the expired row" wrap behavior may be an intentional one-tick delay on the first row's palette,
+  or an assembly quirk -- gameplay impact not verified.
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

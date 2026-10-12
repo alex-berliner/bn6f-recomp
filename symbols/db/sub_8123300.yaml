@@ -1,0 +1,96 @@
+name: sub_8123300
+address: '0x08123300'
+kind: function
+status: confirmed
+summary: Decompresses the current PET Navi's LZ77-compressed tile graphic into a destination buffer, using a per-Navi
+  bank offset.
+interface: void sub_8123300(u32 r0 /* bank_table */, u32 r1 /* dest_buf */, u32 r2 /* out_buf */); clobbers r0,
+  r2, r3, lr, flags; preserves r1 (and is reloaded into r1 from the stack); r7 is scratch; r4 is unused but preserved.
+details: 'Selects a bank index: by default 0x30, or (GetCurPETNavi() << 2) when sub_8123360() returns non-zero
+
+  (so the offset is per-Navi in multiples of 4 bytes). Treats the input r0 as a table of LZ77
+
+  source pointers; loads bank_table[bank_index] and calls SWI_LZ77UnCompReadNormalWrite8bit to
+
+  decompress it into out_buf. After decompression, reads the 32-bit LZ77 header at out_buf,
+
+  computes a payload size of "(header_word >> 8) - 4", and bulk-copies that many bytes from
+
+  out_buf+4 into dest_buf, picking the widest legal copy unit by testing the size''s low bits:
+
+  bit0 -> CopyBytes, bit1 -> CopyHalfwords, bits0-4 -> CopyWords, else CopyByEightWords.
+
+  r1 and r2 are spilled to the stack and restored so they pass through unchanged to the caller.
+
+  r4 is preserved (never written); r7 is used as a scratch for the bank index and the literal
+
+  0x30 is loaded into it before the call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c sub_8123300
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8123300
+
+    ./wf verify --function sub_8123300 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8123300
+
+    ./wf verify --function sub_8123300 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 42 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8123300
+
+    ./wf verify --function sub_8123300 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08123300 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is sub_8123360 — likely a 'should this use the per-Navi bank index' check (e.g. PET/Navi present, valid scene).
+- 'What structure bank_table points at: a small array of LZ77 source pointers indexed by bank_index.'
+- Why the magic 0x30 default bank; probably the 6th * 8 (or similar) slot reserved for a specific Navi or shared
+  art.
+- Whether the 'halfword_count' is actually byte count (the comment says bytes; the dispatch just checks low bits).
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

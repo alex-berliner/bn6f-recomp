@@ -1,0 +1,79 @@
+name: t3_0x36_80CAB68
+address: '0x080CAB68'
+kind: function
+status: confirmed
+summary: Per-frame dispatcher that tail-calls a battle object's current-state phase handler based on its CurState
+  byte.
+interface: "void t3_0x36_80CAB68(u32 /*r5*/ object_addr);\n    // in:  r5 = battle object base pointer\n    // out:\
+  \ r5/r8/r9/r10/r11/r12 (handler-defined)\n    // clobbers nz/c/v, r0-r4, r6-r7, lr\n"
+details: 'Reads oBattleObject_CurState (a single byte at an offset into the battle-object
+
+  record held in r5) and uses it as an index into a 3-entry Thumb dispatch table
+
+  at 0x80CAB7C. Each entry stores (handler+1) so the Thumb bit is set, allowing
+
+  a direct `bx r1` tail-call without an extra mode flip. The handlers in the
+
+  table are: battle_object_SetStateUpdatePhase_80CAB88 (state 0),
+
+  sub_80CAB90 (state 4), and battle_objectDestroyWithRelated2Unlink_80CAC44
+
+  (state 8). The frame pops lr into pc on exit, so the function is a true
+
+  tail-call dispatcher (no return path of its own). Struct field referenced:
+
+  oBattleObject_CurState on the battle-object structure passed via r5.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c t3_0x36_80CAB68
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x36_80CAB68
+
+    ./wf verify --function t3_0x36_80CAB68 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x36_80CAB68
+
+    ./wf verify --function t3_0x36_80CAB68 --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 7 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x36_80CAB68
+
+    ./wf verify --function t3_0x36_80CAB68 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080cab68 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- Are the three state indices (0, 4, 8) the only valid CurState values, or are other bytes meant to fall through
+  / be no-ops via the table gap?
+- Does setting CurState = 8 mean "destroy / unlink" (matching the third handler's name) and is that used as a clean-up
+  state?
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

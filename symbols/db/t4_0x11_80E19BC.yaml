@@ -1,0 +1,108 @@
+name: t4_0x11_80E19BC
+address: '0x080E19BC'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's current-state handler through a 3-entry jump table (called from t4_0x11, R5
+  = battle object).
+interface: 'void battle_object_dispatchCurState_80E19BC(void);
+
+  // in:  r5 = battle object ptr (THUMB t4_0x11 caller)
+
+  // out: r5, r8-r12 preserved by callee convention; NZCV + r0-r4,r6-r7,r11 clobbered
+
+  // Reads: [r5 + oBattleObject_CurState] (u8 index into JumpTable80E19CC)
+
+  //       JumpTable80E19CC[i] -> THUMB handler (+1 set in THUMB BX convention):
+
+  //         0 -> battle_objectSetTimerFromParam1Table_80E19DC
+
+  //         1 -> sub_80E19F4
+
+  //         2 -> battle_object_freeWithPhaseReset_80E1A5E
+
+  '
+details: 'A trivial THUMB "case-dispatch" shim: pushes lr, loads the static jump-table base
+
+  JumpTable80E19CC_p (stored immediately after the pop {pc} into .word JumpTable80E19CC),
+
+  indexes it with the u8 battle-object state byte at r5+oBattleObject_CurState to fetch a
+
+  raw 32-bit code address, sets lr = pc, and BX''s into it (the +1 bit selects THUMB mode).
+
+  On return it pops pc to return to its THUMB t4_0x11 caller. Because the dispatcher is
+
+  stored and dispatched as a raw code pointer rather than a function pointer through the
+
+  usual FUNCPTR slot, this is a hand-rolled switch in the engine''s battle-object state
+
+  machine; state 0 routes to a "set timer from param1" handler, state 1 to an inlined/
+
+  local worker sub_80E19F4, and state 2 to a phase-reset free destructor
+
+  battle_object_freeWithPhaseReset_80E1A5E. The "t4_0x11" prefix indicates it is reached
+
+  only from the t4 caller slot index 0x11 in whatever owner vector calls into it.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c t4_0x11_80E19BC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x11_80E19BC
+
+    ./wf verify --function t4_0x11_80E19BC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x11_80E19BC
+
+    ./wf verify --function t4_0x11_80E19BC --snapshots build-snapshots'
+  result: 23 compared, 0 differed, 6 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x11_80E19BC
+
+    ./wf verify --function t4_0x11_80E19BC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, menus2, menus3, story2, story4, story5, story6, story7,
+    story8, story9.'
+  reproduce: grep -l '^080e19bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the full state enum for oBattleObject_CurState (only 3 of N entries are mapped here)?
+- Which higher-level routine indexes into the t4_0x11 table (i.e. what owns this dispatcher)?
+- Is sub_80E19F4 a real worker or padding so the +1 THUMB bit matches the other entries?
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

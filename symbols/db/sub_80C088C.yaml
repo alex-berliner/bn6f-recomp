@@ -1,0 +1,82 @@
+name: sub_80C088C
+address: '0x080C088C'
+kind: function
+status: confirmed
+summary: 'Drives one phase of a battle object: on first entry spawns its intro effect and SFX, then flashes the
+  object hide-flag each tick and advances the phase once the flash counter reaches zero.'
+interface: void sub_80C088C(u32 r5 /* battleObject */); clobbers r0,r1,r2,r3,r4,lr and NZCV; preserves r5,r6,r7,r10.
+details: 'Acts on the battle object passed in r5 using its offset table (oBattleObject_*).
+
+  First visit (PhaseInitialized == 0): reads three u32s from object+0x34 (effect type,
+
+  param, coord); the third gets +=0x140000 (a sprite/bg coordinate bias), then calls
+
+  spawn_t1_0x0_EffectObject with effect args in r1,r2,r3 and type 0x26 in r4.
+
+  Sets Unk_19 = 0x1F (frame counter for the flash), plays sound 0x94 (r2 forwarded
+
+  from the spawner return), resets the per-tick Timer u16 to 0, writes PhaseInitialized = 4.
+
+  Subsequent visits: tick Timer += 1; each tick sets ObjectHeader_Flags bit 0x02
+
+  (hide), and on odd ticks clears it again, producing a flashing appearance; the
+
+  Unk_19 counter is decremented by 2/tick and when it reaches 0 the hide bit is
+
+  permanently re-set, Unk_19 cleared, and CurPhaseAndPhaseInitialized is written with
+
+  4 (advancing the state machine). Sound 0x94 is the phase-start SFX.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c sub_80C088C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C088C
+
+    ./wf verify --function sub_80C088C --snapshots build-snapshots'
+  result: 'captured calls: 34 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C088C
+
+    ./wf verify --function sub_80C088C --snapshots build-snapshots'
+  result: 33 compared, 0 differed, 63 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C088C
+
+    ./wf verify --function sub_80C088C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c088c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- Which battle-object type/state machine invokes this; the three-u32 spawn blob at +0x34 is object-specific and
+  may be reused across states.
+- Meaning of oBattleObject_Unk_19 (counter vs. animation index) and why it starts at 0x1F and is decremented by
+  2 instead of 1.
+- Why the third coordinate word is biased by exactly 0x140000 (likely a layer/affine constant rather than a true
+  offset).
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

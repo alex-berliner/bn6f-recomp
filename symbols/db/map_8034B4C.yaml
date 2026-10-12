@@ -1,0 +1,92 @@
+name: map_8034B4C
+address: '0x08034B4C'
+kind: function
+status: confirmed
+summary: Loads a map (real-world or internet) by clearing the per-map work block, running map-music/event setup,
+  spawning the overworld player and NPCs, then installing the map's on-init/on-update script pair and starting the
+  map's music.
+interface: void loadMap_8034B4C(u8 map_group /* r0 */, u8 map_number /* r1 */);
+details: "Entry: r0 = map_group, r1 = map_number. Caller-saved r8/r9/r12 are\nsnapshotted on the stack and restored\
+  \ on exit; r4-r7/r10/lr are saved\nin the prologue and restored in the epilogue.\n\nSteps:\n1. Zeroes the 0x40-byte\
+  \ per-map work block at unk_2011EA0 via\n   ZeroFillByWord.\n2. Calls playCertainMapMusicBasedOnEventByte_8036e44,\
+  \ then the\n   gamestate helper sub_8035028, then owPlayer_80350a8, then the\n   NPC spawner npc_spawnOverworldNPCObjectsForMap\
+  \ (which receives\n   the live r5/r6/r7). r0/r1 are preserved across these calls by\n   being pushed on the stack\
+  \ first.\n3. Calls sub_803537C and then sub_80353DA on the r0/r1 it leaves\n   behind (re-pushed to keep map_group/map_number\
+  \ available for the\n   table lookup below).\n4. Selects the script-pointer table: RealWorldMapScriptPointers\
+  \ if\n   map_group < INTERNET_MAP_GROUP_START, otherwise\n   InternetMapScriptPointers (after subtracting\n  \
+  \ INTERNET_MAP_GROUP_START).\n5. Resolves the (on_init, on_update) script pair for the group/map\n   through two\
+  \ levels of indirection:\n     group_entry = table + (map_group << 3)\n     on_init    = [[[group_entry + 0] +\
+  \ (map_number << 2)]]\n     on_update  = [[[group_entry + 4] + (map_number << 2)]]\n6. Calls StoreMapScriptsThenRunOnInitMapScript(on_init,\
+  \ on_update),\n   which stashes the script pair and runs the on-init handler for\n   the freshly loaded map.\n\
+  7. Calls PlayMapMusic to start the map's BGM.\n\nTouches: unk_2011EA0 (0x40-byte map work block, zeroed),\nRealWorldMapScriptPointers\
+  \ and InternetMapScriptPointers\n([*const [*const [*const MapScript]; 2]; NUM_GROUPS]).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c map_8034B4C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function map_8034B4C
+
+    ./wf verify --function map_8034B4C --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function map_8034B4C
+
+    ./wf verify --function map_8034B4C --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 4 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function map_8034B4C
+
+    ./wf verify --function map_8034B4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08034b4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What exactly unk_2011EA0 holds (likely a transient per-map struct of 0x40 bytes holding things like current map
+  script pointers, the active map group/number, or loaded-map scratch state).
+- Whether RealWorldMapScriptPointers / InternetMapScriptPointers are static const tables in ROM or relocated pointers.
+- What sub_8035028, sub_803537C and sub_80353DA actually do for the loaded map (one of them likely installs the
+  map's tilemap / map data into VRAM given the "map work block" terminology).
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

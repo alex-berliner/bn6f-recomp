@@ -1,0 +1,74 @@
+name: sub_8133C0C
+address: '0x08133C0C'
+kind: function
+status: confirmed
+summary: 'Handles START / B cancel input for a sub-menu screen: enters or exits the cancel state (0x0C), saving/restoring
+  the prior state and playing the corresponding SFX.'
+interface: void sub_8133C0C(u32 menu_ptr /* r5 in */); /* leaves r0 = 0, Z set, NZ clr */
+details: "Operates on a menu state structure passed via r5 whose fields used here are:\n  +0x03  u8  current state\n\
+  \  +0x0D  u8  saved-previous state\n  +0x34  u16 timer (cleared to 0 on entry)\n  +0x44  u8  lock flag (non-zero\
+  \ = no-op)\nFlow:\n  - If JOYPAD_START is pressed, OR (current state == 0x0C and JOYPAD_B is pressed),\n    proceed;\
+  \ otherwise return 0.\n  - If the lock byte at +0x44 is non-zero, return 0.\n  - If current state == 0x0C: copy\
+  \ +0x0D back into +0x03 (restore previous state),\n    play SOUND_EXIT_SUBMENU.\n  - Otherwise: stash current\
+  \ state into +0x0D, set state to 0x0C, clear the u16\n    timer at +0x34, play SOUND_MENU_SELECT.\nCalls out to\
+  \ IsButtonPressed (in r0: button id, Z set when NOT pressed) and\nPlaySoundEffect (in r0: sound id). The trailing\
+  \ `mov r0,#0; tst r0,r0` always\nyields Z so callers can branch on Z for \"did nothing\" vs. \"input handled\"\
+  .\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c sub_8133C0C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8133C0C
+
+    ./wf verify --function sub_8133C0C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8133C0C
+
+    ./wf verify --function sub_8133C0C --snapshots build-snapshots'
+  result: 52 compared, 0 differed, 44 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8133C0C
+
+    ./wf verify --function sub_8133C0C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08133c0c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which exact menu/window this routine is attached to (subsystem prefix). It is generic enough to be reused by multiple
+  sub-menus; the caller's address would pin it down.
+- Why the cancel/confirm state happens to be hard-coded as 0x0C across all callers.
+- Meaning of the +0x34 "timer" and what reads it after being cleared.
+- Meaning and scope of the lock byte at +0x44.
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

@@ -1,0 +1,66 @@
+name: t4_0x3_80E0710
+address: '0x080E0710'
+kind: function
+status: confirmed
+summary: 'State-dispatch trampoline for the timefreeze battle object: reads r5''s CurState, jumps through the 3-entry
+  table at off_80E0724 to Begin/sub_80E0730/End, and returns.'
+interface: void object_timefreezeDispatch_80E0710(u32 r3, u32 r4, u32 r5, u32 r6, u32 r7, u32 r10, u32 lr); /* r5
+  = timefreeze battle object; returns via {pop pc} */
+details: "r5 is a battle object whose oBattleObject_CurState byte (offset read via LD8) indexes a 3-entry jump table\
+  \ at off_80E0724:\n  0 -> object_timefreezeBegin\n  1 -> sub_80E0730 (middle/update handler, not renamed)\n  2\
+  \ -> object_timefreezeEnd\nThe handler pointer is loaded into r1, copied to lr, and the routine is entered via\
+  \ `bx r1`, so the\nchosen handler is tail-called and returns directly to the caller (pop {pc}). Every caller-visible\n\
+  register (r3..r12, lr) is forwarded verbatim, matching the register contract documented for each\nhandler. No\
+  \ flags are consumed. This is a pure dispatcher; the Begin/End pair brackets a \"timefreeze\"\nwindow in the battle\
+  \ and sub_80E0730 services it while active.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c t4_0x3_80E0710
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x3_80E0710
+
+    ./wf verify --function t4_0x3_80E0710 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x3_80E0710
+
+    ./wf verify --function t4_0x3_80E0710 --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 11 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x3_80E0710
+
+    ./wf verify --function t4_0x3_80E0710 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus2, menus3, story2.'
+  reproduce: grep -l '^080e0710 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- menus2
+- menus3
+- story2
+open_questions:
+- What does sub_80E0730 do while the freeze is active (per-frame tick / hit detection / animation)?
+- Is CurState a u8 or a wider field; the table is 3 entries wide so only 0..2 are valid here.
+- Is this trampoline called directly from the battle object scheduler, or through another indirection?
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

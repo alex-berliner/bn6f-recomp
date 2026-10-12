@@ -1,0 +1,88 @@
+name: sub_80E0684
+address: '0x080E0684'
+kind: function
+status: confirmed
+summary: Kicks the battle into a screen-fade transition (picking fade kind from current battle state/effects), then
+  advances the BattleObject's phase to 4 once the fade finishes.
+interface: void sub_80E0684(void);  // r5 = BattleObject*, r10 = toolkit/BattleState ptr; // clobbers r0-r3; flags
+  NZCV trashed; lr trashed; r5 preserved.
+details: "Lives inside the per-frame BattleObject dispatcher (called with the object pointer in r5\nand a battle\
+  \ toolkit/state pointer in r10). The struct offsets oBattleObject_PhaseInitialized\nand oBattleObject_CurPhaseAndPhaseInitialized\
+  \ are reused as a simple init / state machine:\non first entry it picks a fade kind, stores 4 into oBattleObject_PhaseInitialized\n\
+  (a \"phase-init done, polling\" sentinel distinct from the phase count), sets a global byte\n(byte_2036740) to\
+  \ 1, and waits for IsScreenFadeActive() to clear. When the fade completes\nit ORs state flags 5c with 0x1 (clearing\
+  \ the 0x10 \"fading\" bit that was set at entry) and\nwrites 4 into the low byte of oBattleObject_CurPhaseAndPhaseInitialized\
+  \ to advance phase.\n\nFade-kind selection:\n  * If GetBattleEffects() & 0x400:\n      - fade_kind = (state_addr->unk_1a\
+  \ > 1) ? 8 : 0;\n  * Else:\n      - fade_kind = (BattleSettings[5] >= 2) ? 8 : 0;\nFade color is fixed to 0x10.\
+  \ Both branches take SetScreenFade(fade_kind, 0x10), so the\nif/else just decides between kind 0 and kind 8. oBattleState_Unk_1a\
+  \ and the\noBattleState_BattleSettings+5 byte are not yet named.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c sub_80E0684
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E0684
+
+    ./wf verify --function sub_80E0684 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E0684
+
+    ./wf verify --function sub_80E0684 --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 71 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E0684
+
+    ./wf verify --function sub_80E0684 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080e0684 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What are oBattleState_Unk_1a and the byte at oBattleState_BattleSettings+5? They look like "battle sub-mode /
+  order" flags, but their meaning is not in this routine.
+- What does byte_2036740 gate? It is unconditionally set to 1 here and lives outside the BattleObject, so something
+  else probably reads it.
+- Why is the 0x10 bit set/cleared around the fade via battle_orStateFlags5c_8001382? Are those the actual "fade
+  in progress" bits?
+- Is the special value 4 written to oBattleObject_PhaseInitialized intentional or an aliasing with oBattleObject_CurPhaseAndPhaseInitialized's
+  low byte? It effectively marks "fade-init ran", and the eventual phase bump writes 4 again to the halfword.
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

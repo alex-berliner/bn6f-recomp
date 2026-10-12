@@ -1,0 +1,100 @@
+name: RunBattleObjectLogic
+address: '0x080031AC'
+kind: function
+status: confirmed
+summary: Walks the battle-object linked list once per frame and dispatches each non-sentinel node to its type/index-specific
+  update routine, with pause and time-stop gating.
+interface: void RunBattleObjectLogic(void); /* uses r10 = toolkit pointer on entry; NZCV clobbered, r0-r3 and lr
+  clobbered, r4-r7 preserved, r2/r3/r8/r9/r10/r11/r12/lr read on entry */
+details: "Clears a 3-byte per-frame object scratch area via object_Clear3RAMBytes_800371A (a comment in the\ndisassembly\
+  \ notes that disabling this call causes sprites to glitch/blink, panel elements to\nturn to poison, MegaMan to\
+  \ stop moving, and enemies to stop attacking). Then iterates the inner\nlinked list whose head is eBattleObjectsLinkedListStart\
+  \ (field at +oBattleObject_LinkedList_Next),\nstopping at eBattleObjectsLinkedListSentinel. For each node it:\n\
+  \  - stores the current node pointer into eUnkBattleObjectLinkedList (a \"currently processed\n    object\" slot\
+  \ that is cleared back to 0 once the loop ends),\n  - reads the object \"core\" at node+0x10 (this is where the\
+  \ per-object fields live),\n  - reads the flags byte at +oBattleObject_Flags and checks oGameState_BattlePaused\
+  \ via the\n    toolkit's oToolkit_GameStatePtr; when the battle is paused (menus open, etc.) only objects\n  \
+  \  with the PAUSE_UPDATE flag (defined elsewhere as 0x4) keep updating,\n  - calls battle_isTimeStop; when time\
+  \ is stopped only objects whose flags have bit 0x10 set\n    (OBJECT_FLAG_UPDATE_WHILE_TIME_STOPPED, the \"update\
+  \ while time is stopped\" flag) run,\n  - dispatches via a 2-level ROM jumptable: the outer index is the low 4\
+  \ bits of\n    oBattleObject_Type, the inner index is oBattleObject_Index, and the leaf routine is\n    loaded\
+  \ with `push {r7}; mov lr, pc; bx r0; pop {r7}` (r7 is the linked-list node and must\n    come back live),\n \
+  \ - then calls object_800372A on the object core as a post-update step.\nThe outer jumptable at .BattleObjectFunctionJumptableTable\
+  \ is sparse (NULL/NULL/T1/T3/T4/\noff_800323C), so most object types share the per-index jumptable in off_800323C,\
+  \ while types\n2 and 4 use their own dedicated tables T3BattleObjectJumptable and T4BattleObjectJumptable.\nThe\
+  \ trailing word/hword/.asciz records in the disassembly (0x1B + \"P%02x\" / \"E%02x\" / \"M%02x\"\n/ \"S%02x\"\
+  \ / \"F%02x\" at word_8003250..word_8003270) are debug-format strings (Player/Enemy/\nMystery/Subchip/Field-style\
+  \ prefixes) that live in the same ROM page as the jumptable; they\nare not read by this function but are reached\
+  \ through off_800323C as a separate table.\nThe original zeroes a 4-byte stack slot at sp+0 that is never read,\
+  \ so the C version omits it.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c RunBattleObjectLogic
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function RunBattleObjectLogic
+
+    ./wf verify --function RunBattleObjectLogic --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 1 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function RunBattleObjectLogic
+
+    ./wf verify --function RunBattleObjectLogic --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 44 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function RunBattleObjectLogic
+
+    ./wf verify --function RunBattleObjectLogic --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080031ac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact purpose of eUnkBattleObjectLinkedList (a "currently processed object" handle for other battle code to read;
+  no reader has been identified in this function).
+- Whether the per-type jumptable in off_800323C maps to debug-message printouts (the adjacent "P%02x" / "E%02x"
+  / "M%02x" / "S%02x" / "F%02x" format strings) instead of update routines, since the original function is named
+  for "logic" yet half the table points at format strings.
+- Identity of the NULL entries in the outer jumptable (types 0 and 2 have NULL inner pointers, suggesting either
+  unused types or types whose update path is established elsewhere).
+- Whether the LSB `0x1B` bytes on each format word are an opcode prefix for a thumb helper that these strings are
+  the operands of.
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a

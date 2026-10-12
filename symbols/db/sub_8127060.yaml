@@ -1,0 +1,71 @@
+name: sub_8127060
+address: '0x08127060'
+kind: function
+status: confirmed
+summary: Draws the background tiles for one folder-list row (folder-name banner plus four icon strips) onto tile-block
+  1, with icon horizontal positions offset by the row descriptor's column byte.
+interface: 'void sub_8127060(void);  // in: r5 = row-descriptor record pointer, r10 preserved; out: r5, r7 preserved;
+  clobbers r0-r3, lr, n/z/c/v'
+details: "Copies five 16-color background tile regions into VRAM tile-block 1 via CopyBackgroundTiles (j, i, which_tile_block_32x32=1,\
+  \ *tileIds, j_size, i_size):\n  * Banner: 30x20 tiles at (0,0) from 'eTextScript201BA20' (the folder-name string-art\
+  \ tiles).\n  * Icon strip 1: 14x10 (col + 0x0F, 2) from unk_201CF20.\n  * Icon strip 2: 14x10 (col + 0x22, 2)\
+  \ from unk_201D120.\n  * Icon strip 3: 13x10 (col + 0x30, 2) from unk_201D320 (one column narrower).\n  * Icon\
+  \ strip 4: 12x8 (col + 1, 4) from unk_201D520 (wider but shorter).\nThe 'col' offset is the signed byte at record\
+  \ offset 0xD (the row's horizontal position on the folder list).\nAll five copies target tile-block 32x32 #1,\
+  \ so this is the \"list of folders\" tile-blob laid down once per visible row.\nThe function preserves r4/r5/r6/r7/r10\
+  \ (push/pop) and only really uses r5 as the row-record pointer (stashed in r7 and re-read five times for the col\
+  \ byte).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (3 attempt(s), run convert-20261012-121931);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file inbox_farm_97.c sub_8127060
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8127060
+
+    ./wf verify --function sub_8127060 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-121931-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8127060
+
+    ./wf verify --function sub_8127060 --snapshots build-snapshots'
+  result: 52 compared, 0 differed, 44 out of domain (verify run convert-20261012-121931-verify-3)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8127060
+
+    ./wf verify --function sub_8127060 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-121931-verify-3)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3, story2.'
+  reproduce: grep -l '^08127060 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 2d7f84a
+  tool: tools/wf convert (minimax/MiniMax-M3)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+- story2
+open_questions:
+- Whether r5 points into a per-row struct inside the folder list controller or is a standalone row descriptor.
+- What unk_201CF20 / unk_201D120 / unk_201D320 / unk_201D520 represent (per-likely PET/folder icon tile sets vs.
+  stat / count icons).
+- Why strip 4 uses 12x8 instead of 14x10 and a different x base (col+1) — likely a different icon family (e.g. mail/unread
+  dot) rather than another folder icon.
+- Whether the function is called once per row from the folder-list window redraw loop or only for the focused/selected
+  row.
+sources:
+- tools/wf run convert-20261012-121931
+- recomp 2d7f84a
