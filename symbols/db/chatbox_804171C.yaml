@@ -1,0 +1,99 @@
+name: chatbox_804171C
+address: '0x0804171C'
+kind: function
+status: confirmed
+summary: Chatbox step that runs one of two script IDs based on an event flag, or skips the command if both are 0xFF.
+interface: void chatbox_runConditionalScript_804171C(u16 flagID_highByte);  // r4 = script command ptr, r10 preserved,
+  r0 out=1, r2 out=scriptOffset, r3 out=clobbered, nzc/V clobbered
+details: 'Chatbox command interpreter step. The 6-byte command at r4 holds:
+
+  - [r4+2..3]: little-endian u16 event flag id
+
+  - [r4+4]:    script id to run if the flag is SET
+
+  - [r4+5]:    script id to run if the flag is CLEAR
+
+  Calls TestEventFlag(u16 flag) which uses Z (clear = set). Based on the Z result it
+
+  picks [r4+4] or [r4+5] as scriptId. If that scriptId == 0xFF, r4 is simply advanced
+
+  by 6 (treats the command as a no-op advance). Otherwise it dispatches via
+
+  chatbox_config_80408D0(int unusedR0, u8 scriptID) -- note r0 passed in is the
+
+  return value TestEventFlag left behind, not a clean zero. Always returns r0=1 to
+
+  the chatbox driver so execution continues to the next command. The two script-id
+
+  fields mirror the 0xFF "no-op" sentinel also seen in the 80408D0 config writer.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    chatbox_804171C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_804171C
+
+    ./wf verify --function chatbox_804171C --snapshots build-snapshots'
+  result: 'captured calls: 27 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_804171C
+
+    ./wf verify --function chatbox_804171C --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_804171C
+
+    ./wf verify --function chatbox_804171C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0804171c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Whether the r0 handed to chatbox_config_80408D0 carrying TestEventFlag's residue is intentional (it may matter
+  to the callee) or an incidental oversight.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

@@ -1,0 +1,99 @@
+name: sub_8134FB0
+address: '0x08134FB0'
+kind: function
+status: hypothesis
+summary: Clears the bitmask tied to a given member id from an object's status word at +0x4C, then triggers a re-update
+  if the result no longer has both 0x60 bits set.
+interface: void clearMemberFlags_8134FB0(u32 memberId /* r0 */, void *obj /* r5 */);
+details: 'Walks a two-entry dispatch table at off_8135018 (slot offsets into the
+
+  object pointed to by r5) and a parallel mask table at byte_8135030. For
+
+  each slot whose stored word equals the incoming memberId, the
+
+  corresponding mask word is cleared from the status word at obj+0x4C
+
+  (BIC, not AND-NOT, so the mask is used raw as a clear mask).
+
+  After the loop, if obj+0x4C no longer has both 0x60 bits set,
+
+  sub_8134FE0 is called to refresh the object''s derived state. The 0x60
+
+  mask is the "fully-joined / not-needs-update" sentinel for the
+
+  two tracked members.
+
+  Quirks: the mask load clobbers r0 (the memberId), so the per-iteration
+
+  compare uses the original id only for the first hit; later slots compare
+
+  the slot''s stored word against the mask that was just loaded. This is
+
+  harmless in practice because the slot words are distinct member ids and
+
+  no mask will equal a real id. r4-r7 are pushed/popped, so r7''s loop
+
+  scratch is discarded; r2 is the only output register that survives and
+
+  holds the last table entry (or whatever sub_8134FE0 leaves).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    sub_8134FB0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8134FB0
+
+    ./wf verify --function sub_8134FB0 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out of
+    domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8134FB0
+
+    ./wf verify --function sub_8134FB0 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8134FB0
+
+    ./wf verify --function sub_8134FB0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08134fb0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What kind of object is at r5 and which game system owns it (battle party member, link partner, etc.)?
+- What is the meaning of status bits 0x40 and 0x20 (i.e. why is the 0x60 mask used as the "settled" sentinel)?
+- What does sub_8134FE0 do, and why is it only invoked when at least one of those bits is missing?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

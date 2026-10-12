@@ -1,0 +1,66 @@
+name: sub_80010EC
+address: '0x080010EC'
+kind: function
+status: confirmed
+summary: Clamps a requested value for PET navi stat 0x40 to the existing cap held in stat 0x42, then stores it.
+interface: u8 which_navi (r0), s32 requested_value (r1) -> void (returns via pop {pc}); r4-r7 preserved.
+details: 'Reads the current PET/Navi stat at index 0x42 via GetCurPETNaviStatsHword (r0 = navi, r1 = 0x42) and uses
+  it as a cap for the value in r6. The cap comparison is performed with ble using the signed-result flags from the
+  getter, so the cap is treated as signed. Stores the (possibly clamped) value via SetCurPETNaviStatsHword into
+  stat 0x40 (r0 = navi, r1 = 0x40, r2 = value). Only r2 carries the clamped value to the setter; r1/r3 are clobbered
+  by the inner calls.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    sub_80010EC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80010EC
+
+    ./wf verify --function sub_80010EC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80010EC
+
+    ./wf verify --function sub_80010EC --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80010EC
+
+    ./wf verify --function sub_80010EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story6.'
+  reproduce: grep -l '^080010ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- story6
+open_questions:
+- What stat 0x40 represents on the PET/Navi partner (HP regen, emotion/sync gauge, charge level, etc.) and what
+  domain the 0x42 cap lives in (per-frame, per-battle, persistent).
+- Whether the 0x42 cap is itself saturated/regenerated elsewhere before this routine is called, and whether callers
+  expect the original (unclamped) value to be returned anywhere (this routine discards it).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

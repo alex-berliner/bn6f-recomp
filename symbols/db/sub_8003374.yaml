@@ -1,0 +1,81 @@
+name: sub_8003374
+address: '0x08003374'
+kind: function
+status: confirmed
+summary: Spawns a battle object of type 3 with a 5-word context taken from r0-r4, linking it into the battle object
+  list on success.
+interface: 'BattleObject* spawnBattleObjectType3WithCtx(u32 ctx0, u32 ctx1, u32 ctx2, u32 ctx3, u32 ctx4); // in:
+  r0-r4=context words; out: r5=BattleObject* or NULL; clobbers r0-r3,LR,flags; preserves r4,r6,r7'
+details: 'Stashes r0..r4 onto the stack as a context block, then calls SpawnBattleObjectCommon
+
+  with type=3 (r0) and a stack pointer to that block (r1). The new object''s
+
+  constructor presumably reads its arguments out of that block. If the spawn
+
+  succeeds (r5 != NULL), UpdateBattleObjectLinkedList is called to insert the new
+
+  BattleObject into the live list. Failure leaves the list untouched. Preserved
+
+  registers r4/r6/r7 match the documented contract. Likely a thin specialization
+
+  of the generic spawner used to emit a particular battle-object class (type 3)
+
+  with an immediate inline context.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    sub_8003374
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8003374
+
+    ./wf verify --function sub_8003374 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8003374
+
+    ./wf verify --function sub_8003374 --snapshots build-snapshots'
+  result: 62 compared, 0 differed, 34 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8003374
+
+    ./wf verify --function sub_8003374 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, story5, story6, story9.'
+  reproduce: grep -l '^08003374 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battles2
+- story5
+- story6
+- story9
+open_questions:
+- Which battle object class is type 3 (chip effect, animation, projectile, etc.)?
+- How does the new BattleObject interpret the 5-word context block?
+- Are there sibling wrappers for other object types that share this pattern?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

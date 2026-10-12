@@ -1,0 +1,93 @@
+name: sub_801FE24
+address: '0x0801FE24'
+kind: function
+status: confirmed
+summary: Start or restart the battle-effects overlay (0x10) — reset link state when the slot is free and start it
+  in mode 5, otherwise restart in mode 0 — and flag the overlay as active in the battle-effects struct.
+interface: 'void sub_801FE24(void);
+
+  // inputs:  none meaningful (r10/lr inherited)
+
+  // outputs: r5 r6 r7 set; preserves r4 r5 r6 r7; clobbers r0 r1 r2 r3 lr, N Z C V
+
+  '
+details: "Calls GetBattleEffects() and tests bit 0x8 of the returned bitmap.\n- Bit 0x8 set (effects already in\
+  \ use): calls sub_803DCE8 with\n  (id=0x10, arg1=0, arg2=2, arg3=0) — restarts the standard overlay in mode 0.\n\
+  - Bit 0x8 clear: first checks notZero_eByte200AD04 and bails out early (returns\n  to caller) if it is zero —\
+  \ guarding against starting the overlay when its\n  backing slot is unavailable. Otherwise resets link-state slot\
+  \ 0 via\n  eLinkState_ResetForNewUse_803DE88(arg=0) and starts the overlay with\n  (id=0x10, arg1=0, arg2=2, arg3=5).\n\
+  - On the path that actually starts the overlay, writes byte 1 to\n  A_eStruct203F7D8 (eStruct203F7D8) to mark\
+  \ the overlay active.\nNote: the active-flag write is reached only after a successful start; the\nearly-return\
+  \ on the zero check at 0x200AD04 skips it, so the flag stays\nwhatever it was.\nSubsystems touched: battle effects\
+  \ / overlay engine, link-state slot 0,\neStruct203F7D8 active flag, byte at 0x0200AD04.\n\nRegister form, old\
+  \ prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm01.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    sub_801FE24
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801FE24
+
+    ./wf verify --function sub_801FE24 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801FE24
+
+    ./wf verify --function sub_801FE24 --snapshots build-snapshots'
+  result: 55 compared, 0 differed, 41 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801FE24
+
+    ./wf verify --function sub_801FE24 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0801fe24 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm01.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm01.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What does bit 3 of GetBattleEffects()'s return mean exactly ("already in use" is inferred from the branch direction)?
+- What is the field at 0x0200AD04 that notZero_ guards?
+- Why are arg1=0, arg2=2 passed to sub_803DCE8 in both cases, and what do modes 0 vs 5 mean for the battle-effects
+  overlay?
+- Why is the active flag at eStruct203F7D8 only written on the success path, and who clears it back to 0?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

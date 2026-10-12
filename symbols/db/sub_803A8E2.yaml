@@ -1,0 +1,80 @@
+name: sub_803A8E2
+address: '0x0803A8E2'
+kind: function
+status: confirmed
+summary: Redraws the 2x2 background tile block for an object based on its current step animation.
+interface: 'void sub_803A8E2(struct Object *r5, void *r10, uint32_t lr /* return */); flags out: NZ C V'
+details: 'Advances the object''s step animation via objectStepTable_803A886(0x1F, 0x1D), then
+
+  reads the resulting step index at obj+0x1F and uses it (shifted <<3) to index into a
+
+  8-byte-per-entry pattern table that maps each step to a {u16 tileId[4], u32 pad}.
+
+  The object''s flag byte at obj+2 selects between two mirror-variant tables (off_803A910
+
+  vs off_803A960). The picked four tile ids (e.g. 0x42B0-0x42BF across byte_803A9AC/0xB4/
+
+  0xBC/0xC4) are written as one 2x2 tile block into BG tile block 0 at local (j=1, i=4)
+
+  through CopyBackgroundTiles(j=1, i=4, tileBlock32x32=0, tileIds, jSize=2, iSize=2).
+
+  Clobbers r4/r5/r0-r3 for the CopyBackgroundTiles call but expects the caller to get r4-r7
+
+  back unchanged (it manually restores them via the pop {r4-r7,pc}).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    sub_803A8E2
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803A8E2
+
+    ./wf verify --function sub_803A8E2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803A8E2
+
+    ./wf verify --function sub_803A8E2 --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803A8E2
+
+    ./wf verify --function sub_803A8E2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^0803a8e2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- menus3
+open_questions:
+- Which object type owns this routine — the +0x1F step byte and the two pattern variants look like a small repeating
+  prop/animation that toggles its 2x2 BG patch per step.
+- The terminating 0x0 entries in off_803A910/0x960 are padding/unused; it is unclear whether step 0 is intentionally
+  mapped to byte_803A9AC + 0xFFFFFFFF*3 (i.e. three uninitialised slots) or whether those slots are meant to be
+  filled at runtime.
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

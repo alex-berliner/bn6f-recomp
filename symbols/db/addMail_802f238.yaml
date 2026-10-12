@@ -1,0 +1,82 @@
+name: addMail_802f238
+address: '0x0802F238'
+kind: function
+status: confirmed
+summary: Records a newly received mail by setting its event flag and companion flag (mailId + 0x80), then pushes
+  the mail's inbox slot (mailId - 0x1CA0) to the front of the inbox entry list and increments the inbox entry count.
+interface: void addMail_802f238(u32 mailId /* r0 */); /* clobbers r0, r1, r2, r3, c, v; preserves r4, r6, r7; trashes
+  nz */
+details: '- Sets two event flags via SetEventFlag: one for mailId, one for mailId + 0x80 (a paired flag for the
+  same mail).
+
+  - Computes inbox slot index = mailId - 0x1CA0 and stores it as a byte at byte_2006530 (the inbox entry array,
+  ordered newest-first).
+
+  - Shifts existing entries one slot toward the end (indices count-1 .. 0 are moved up by 1) to make room at the
+  front.
+
+  - Increments dword_2001140 (the inbox entry count) by 1; the c/v flags come from this add.
+
+  - Quirks: the copy loop decrements src before the signed >=0 test, so when count is non-zero it always copies
+  at least once even if its signed interpretation is negative; when count is 0 the function skips the copy entirely
+  and falls through. dword_2001140 is read but its signedness is not clearly established; treat it as unsigned unless
+  other callers indicate otherwise.
+
+  - Touches global state: byte_2006530 (inbox entry bytes), dword_2001140 (inbox entry count).
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    addMail_802f238
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function addMail_802f238
+
+    ./wf verify --function addMail_802f238 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function addMail_802f238
+
+    ./wf verify --function addMail_802f238 --snapshots build-snapshots'
+  result: 57 compared, 0 differed, 39 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function addMail_802f238
+
+    ./wf verify --function addMail_802f238 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story1, story8, story9.'
+  reproduce: grep -l '^0802f238 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- story1
+- story8
+- story9
+open_questions:
+- Whether dword_2001140 is intended to be signed; the loop relies on signed bge of r1/r4 after decrement.
+- Whether the companion flag (+0x80) encodes read/unread or some other per-mail bit (two flags per mail id).
+- Whether the inbox entry list at byte_2006530 is bounded and what happens on overflow (no bounds check here).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

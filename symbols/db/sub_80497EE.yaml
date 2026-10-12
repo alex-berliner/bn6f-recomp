@@ -1,0 +1,78 @@
+name: sub_80497EE
+address: '0x080497EE'
+kind: function
+status: hypothesis
+summary: 'Per-frame state driver for an object: tests flag 0x80 of eFlags2009F38; if unset, calls sub_803BB80 and,
+  on a non-zero result, sets state byte 1 to 0xC, then always runs battle_moduleInit_803A820.'
+interface: 'void sub_80497EE(void);
+
+  // no in/out regs (r5 points to object, r10 to caller context); preserves r4-r9,r12
+
+  // uses NZ; outputs to r0 (passed on to sub_803A820), then borrows r3,r8-r11,r12 + C/V from sub_803A820
+
+  '
+details: "- r0 = 0x80 is passed in to chatbox_mask_eFlags2009F38(flag). If the flag is set the routine\n  falls\
+  \ straight through (bne loc_8049802 -> skip the sub_803BB80 call AND the state write,\n  but r0 is overwritten\
+  \ by 0xC only when both conditions trigger).\n- sub_803BB80 is consulted only when the eFlags2009F38 mask test\
+  \ returned 0. Its non-zero\n  result (bne/!Z) flips the object's [r5+1] byte from its previous value to 0xC, the\n\
+  \  standard sub-state index used by the object's state machine.\n- After the conditional block, sub_803A820 (battle_moduleInit)\
+  \ is invoked with r0 carrying\n  either 0x80 (no change) or 0xC (state was updated). This coupling between object\
+  \ sub-state\n  and module init suggests sub_803A820 re-initialises the battle module according to the\n  chosen\
+  \ phase.\n- The function always tails into sub_803A820, so eFlags2009F38 mask set and not-set paths both\n  run\
+  \ module init each frame, but only the \"flag clear + sub_803BB80 != 0\" path promotes the\n  object to sub-state\
+  \ 0xC.\n- The chatbox_ prefix on eFlags2009F38 conflicts with this being a battle/object driver; the\n  flag is\
+  \ shared elsewhere (likely a global \"skip update\" / \"suppress\" toggle).\n\nRegister form, old prompt; queued\
+  \ for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    sub_80497EE
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80497EE
+
+    ./wf verify --function sub_80497EE --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80497EE
+
+    ./wf verify --function sub_80497EE --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80497EE
+
+    ./wf verify --function sub_80497EE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^080497ee ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- What sub_803BB80 actually checks (a queue, a timer, or a per-object readiness test?).
+- Why the same r0 value is forwarded to sub_803A820; could it be a phase selector mirroring the 0xC written to [r5+1]?
+- Whether [r5+1] really is a sub-state index or a generic counter byte (different callers probably reuse this routine
+  with different layouts).
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

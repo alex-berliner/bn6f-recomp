@@ -1,0 +1,78 @@
+name: sub_80DFE64
+address: '0x080DFE64'
+kind: function
+status: confirmed
+summary: Activate a battle object by snapping it to panel coordinates, building its collision data, and handing
+  it off to the per-frame update state.
+interface: 'void sub_80DFE64(void /* r5 = battle object */);  // inputs: r5, r8, r10, lr; outputs: r5, r8; clobbers
+  NzCV, r0-r3, lr; preserves r4, r6, r7'
+details: "Operates on the battle object pointer held in r5.\n1. object_setCoordinatesFromPanels() snaps the object\
+  \ onto its assigned panels.\n2. oBattleObject_Timer (u16) is initialized from oBattleObject_Param2 (low byte).\n\
+  3. object_createCollisionData() builds the collision structure; a NULL return\n   means the object is invalid,\
+  \ so object_freeMemory() is called and the\n   function returns immediately (object is discarded instead of activated).\n\
+  4. Collision shape index is derived from oBattleObject_Param3:\n     0 -> 3, 1 -> 1, anything else -> 0.\n5. object_setupCollisionData(shape,\
+  \ width=0xA, height=5) configures a fixed\n   10x5 collision box.\n6. object_setCollisionHitEffect(0) clears the\
+  \ hit effect, then\n   object_clearCollisionRegion() and object_presentCollisionData() publish\n   the collision\
+  \ to the field so it can start being hit-tested.\n7. oBattleObject_CurStateActionPhaseAndPhaseInitialized is set\
+  \ to\n   CUR_STATE_UPDATE (0), handing control to the object's normal update state.\nr7 is used only as a local\
+  \ scratch return slot (matching the original push\n{r7,lr}); the readable C does not surface it.\n\nRegister form,\
+  \ old prompt; queued for retype (the farm's prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv)."
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    sub_80DFE64
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80DFE64
+
+    ./wf verify --function sub_80DFE64 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80DFE64
+
+    ./wf verify --function sub_80DFE64 --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 54 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80DFE64
+
+    ./wf verify --function sub_80DFE64 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, battlesweep, fuzz, menus3, story2, story8, story9.'
+  reproduce: grep -l '^080dfe64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles2
+- battlesweep
+- fuzz
+- menus3
+- story2
+- story8
+- story9
+open_questions:
+- Which callers reach this via the NULL-collission path vs. the normal path, and why does the freed object case
+  not also reset its state?
+- What is the semantic meaning of the Param3->shape remap (0->3, 1->1, else 0); does "shape 3" denote a specific
+  hitbox archetype shared with other object types?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c

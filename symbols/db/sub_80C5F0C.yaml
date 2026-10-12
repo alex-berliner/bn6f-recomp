@@ -1,0 +1,80 @@
+name: sub_80C5F0C
+address: '0x080C5F0C'
+kind: function
+status: confirmed
+summary: 'Per-frame update that finalizes a battle object''s destruction: drops collision then waits for the current
+  animation to finish before switching state to CUR_STATE_DESTROY.'
+interface: 'void sub_80C5F0C(void); /* in: r5 = battle object; clobbers r0, r1, r2, r3, lr, nzc/v; returns r1 =
+  0x80 */'
+details: 'Operates on a battle object descriptor pointer in r5. On the first call (when
+
+  oBattleObject_CurPhase is 0) it advances the phase to 1 and invokes
+
+  object_clearCollisionRegion, so the object no longer participates in hit
+
+  detection. Every call then queries sprite_getFrameParameters, sets r1 = 0x80
+
+  (the end-of-animation flag bit in the returned frame-parameter word), and
+
+  tests bit 7 (mask 0x80). When the animation has finished, it writes
+
+  CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+
+  to hand the object off to the next state. r1 being left at 0x80 looks like
+
+  a residual return value for the caller rather than meaningful output.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (2 attempt(s), run convert-20261012-115919);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 26' --file inbox_farm_old_26.c
+    sub_80C5F0C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C5F0C
+
+    ./wf verify --function sub_80C5F0C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 184 out
+    of domain (verify run convert-20261012-115919-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C5F0C
+
+    ./wf verify --function sub_80C5F0C --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 79 out of domain (verify run convert-20261012-115919-verify-2)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C5F0C
+
+    ./wf verify --function sub_80C5F0C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-115919-verify-2)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c5f0c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 85ea23c
+  tool: tools/wf convert (hyper/glm-5.3-flash+old)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+open_questions:
+- Is r1 = 0x80 an intentional return flag for the caller or simply an incidental register leftover?
+- Does CUR_STATE_DESTROY live in the same oBattleObject field as the "phase initialized" bit, requiring an explicit
+  clear elsewhere?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-115919
+- recomp 85ea23c
