@@ -1,0 +1,84 @@
+name: battle_BDT_main_80c93cc
+address: '0x080C93CC'
+kind: function
+status: confirmed
+summary: Drives the "battle BDT" object's per-frame state machine (init/update/destroy) and refreshes its sprites
+  via object_updateSprite.
+interface: void battle_BDT_runState_80c93cc(u32 r5 /* battle object */); clobbers r0-r4,r6,r7,lr,nzcv; preserves
+  nothing
+details: 'One-line state dispatcher kept on the battle object. Reads u8 oBattleObject_CurState
+
+  from the object in r5, indexes the 3-entry handler table at off_80C93E4
+
+  (init battle_BDT_init_80c940c+1 / update battle_BDT_update_80c94bc+1 / destroy
+
+  battle_BDT_destroy_80c93f0+1, each stored +1 for Thumb), and tail-calls the
+
+  chosen handler with the standard ARM-Thumb trampoline "mov lr,pc; bx r1",
+
+  passing the state byte in r0 and r1 still holding the handler address from
+
+  the table. After the handler returns, calls object_updateSprite(object)
+
+  (object pointer retained in r5) to advance the object''s OAM/sprite frames.
+
+  Quirks: Thumb-handler tail call via +1 in the table; only 3 states, so
+
+  BattleObject_CurState must be <3; tail-call-style cleanup with "bl then
+
+  pop {pc}" effectively makes the update path return directly into object_updateSprite
+
+  and then to the caller.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-001935);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 90' --file inbox_farm_90.c battle_BDT_main_80c93cc
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_BDT_main_80c93cc
+
+    ./wf verify --function battle_BDT_main_80c93cc --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-001935-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_BDT_main_80c93cc
+
+    ./wf verify --function battle_BDT_main_80c93cc --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 24 out of domain (verify run convert-20261012-001935-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_BDT_main_80c93cc
+
+    ./wf verify --function battle_BDT_main_80c93cc --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-001935-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles2, story8.'
+  reproduce: grep -l '^080c93cc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 3f2acb5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles2
+- story8
+open_questions:
+- What a "BDT" battle object represents in-game (boss / projectile / scripted entity?) and which allocator/caller
+  installs it.
+- Whether oBattleObject_CurState is the same field used by every battle object kind or specific to BDT.
+- Exact lifecycle between battle_BDT_destroy_80c93f0 and any free/release hook.
+sources:
+- tools/wf run convert-20261012-001935
+- recomp 3f2acb5
