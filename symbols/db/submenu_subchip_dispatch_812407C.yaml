@@ -1,0 +1,72 @@
+name: submenu_subchip_dispatch_812407C
+address: '0x0812407C'
+kind: function
+status: confirmed
+summary: Runs one phase step of the sub-chip submenu (dispatch on state phase byte) then refreshes entities, scene
+  strips and background.
+interface: void submenu_subchip_runPhase_812407C(struct UnkSubMenu* state /* r5 */)
+details: 'Reads phase = state[2] (byte), shifts it right by 2 (phase/4, likely phase*4 bytes per tick subdivided),
+  and dispatches via jt_81240A0 to one of seven submenu_subchip_* handlers (addresses 81240BC..8124340). The handler
+  is entered in an unorthodox way: mov lr, pc; bx r0, so the handler runs with r0 = its own Thumb jump-table entry
+  and r1 = the phase byte, while pc-relative lr lets it "return" into the code right after the bx. After the handler,
+  calls entity_runAllUpdateHandlers_80465BC, sub_80465F8, sub_812453C, and background_updateSceneStrips_812475C
+  to advance entity update handlers and redraw the affected screen strips. State struct: field at +2 is the phase
+  counter. Outputs r8-r12 according to the contract, consistent with callee-saved usage by guests.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by opencode/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261012-122117);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 30' --file inbox_farm_old_30.c
+    submenu_subchip_dispatch_812407C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function submenu_subchip_dispatch_812407C
+
+    ./wf verify --function submenu_subchip_dispatch_812407C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-122117-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function submenu_subchip_dispatch_812407C
+
+    ./wf verify --function submenu_subchip_dispatch_812407C --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 0 out of domain (verify run convert-20261012-122117-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function submenu_subchip_dispatch_812407C
+
+    ./wf verify --function submenu_subchip_dispatch_812407C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-122117-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, fuzz, maps, menus3, story4, story6.'
+  reproduce: grep -l '^0812407c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 8012da8
+  tool: tools/wf convert (opencode/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+open_questions:
+- exact meaning of the two low bits of the phase byte (they are masked off by the >>2 dispatch)
+- roles of sub_80465F8 and sub_812453C are unnamed
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-122117
+- recomp 8012da8

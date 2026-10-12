@@ -1,0 +1,76 @@
+name: sub_8034E3C
+address: '0x08034E3C'
+kind: function
+status: confirmed
+summary: Searches one of three hardcoded u16 lists for the halfword at [r7,#4] and returns the byte offset of the
+  match (or of the 0xFFFF terminator if absent), with the Z flag marking "not found".
+interface: 'u32 sub_8034E3C(u32 listIndex /*r1*/, /*r7*/ struct with u16 field at +4); out: r0 = r2 = byte offset
+  of match or terminator, Z set when NOT found (NZ from notFound flag); r1/r3 clobbered, r4/r6 preserved despite
+  r4 being written locally'
+details: 'Selects a u16 array from the pointer table at off_8034E64 (entries byte_8034E74, dword_8034E80, dword_8034E84
+  — lists such as {1,4,5,1,0,0,4,0,0x93,0x91}) using r1<<2 as an index into off_8034E64. The lists are terminated
+  by 0xFFFF. It scans with a byte offset counter (stepping 2 per entry) until a halfword equals the value stored
+  at [r7,#4] of the caller''s struct. On match or terminator it returns the byte offset; the caller is expected
+  to use that offset as an index (offset/2) into a parallel table, or to branch on the flag to handle "not in list".
+  Note the terminator''s offset is also a valid return, so callers using the result as a zero-based index into parallel
+  data rely on the Z flag to distinguish the miss case.
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by opencode/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261012-122117);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 30' --file inbox_farm_old_30.c
+    sub_8034E3C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8034E3C
+
+    ./wf verify --function sub_8034E3C --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out of
+    domain (verify run convert-20261012-122117-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8034E3C
+
+    ./wf verify --function sub_8034E3C --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 8 out of domain (verify run convert-20261012-122117-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8034E3C
+
+    ./wf verify --function sub_8034E3C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-122117-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: fuzz, maps, story1, story3, story4, story8.'
+  reproduce: grep -l '^08034e3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 8012da8
+  tool: tools/wf convert (opencode/glm-5.3-flash+old)
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- fuzz
+- maps
+- story1
+- story3
+- story4
+- story8
+open_questions:
+- exact in-game meaning of the three lists (they look like attribute/element-type tables, possibly custom-virus-screen
+  or battle data keyed per style)
+- which struct r7 points to and who validates r1 is 0-2
+- whether r0 vs r2 duplication is a calling-convention artifact of a caller reading either register
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
+sources:
+- tools/wf run convert-20261012-122117
+- recomp 8012da8

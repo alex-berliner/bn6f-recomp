@@ -1,87 +1,81 @@
 name: paintMapEventTileBlock_81273F0
 address: '0x081273F0'
 kind: function
-status: probable
-summary: If event flag 0x163 is set, paints a 3x2 tile block into the BG at the column read from the map
-  data's offset 0xD (shifted +2), using a row offset of 9.
-interface: void paintMapEventTileBlock_81273F0(u32 map_data /* r5 */);
-details: 'Guarded by event flag 0x163 (EVENT_163 / TestEventFlagFromImmediate); returns immediately if
-  the flag is clear. When the flag is set, reads a signed byte from map_data+0xD (interpreted as a tile-column
-  position) and adds 2 to it, then calls CopyBackgroundTiles with j = adjusted column, i = 9, which_tile_block_32x32
-  = 3, tile_ids = byte_8126B10, j_size = 3, i_size = 2. Effectively copies a 3x2 block of tile IDs (3
-  columns wide, 2 rows tall, row offset 9) into tile block 3 at a column derived from the map data''s
-  per-row offset byte. r5 is the input map_data pointer and is preserved/clobbered per contract (saved
-  into r7 for the call, restored on return). Behavior tied to a single event flag and a small constant
-  tile-ID table in ROM (byte_8126B10).
+status: confirmed
+summary: If event flag "EVENT_163" is set, paints a 3x2 tile block (from byte_8126B10) at the calling map event
+  object's position (column 9, row = object's +0x0D signed byte + 2) using tile block 3.
+interface: void paintMapEventTileBlock_81273F0(const void *r5 /* map event object */);
+details: 'Conditionally overlays a 3x2 block of BG tiles onto the map background when
 
-  '
+  event flag "EVENT_163" is set. The destination column is hard-coded to 9;
+
+  the destination row is the signed byte at offset 0x0D in the event object
+
+  plus 2 (so the block starts two rows below the object''s anchor row).
+
+  Tile block index 3 is used, with tile ids taken from byte_8126B10.
+
+  No structures or fields beyond the single byte at +0x0D of the caller''s
+
+  map event object (passed in r5 and forwarded to the callee in r7) are
+
+  touched. Only the thinnest wrapper: a flag test, an immediate
+
+  CopyBackgroundTiles call, and a return.
+
+
+  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
 evidence:
 - method: readable-c
-  date: '2026-10-10'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
+  date: '2026-10-12'
+  detail: Written by opencode/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261012-122117);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm33_81263D0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c
-    sub_81273F0
+  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 30' --file inbox_farm_old_30.c
+    paintMapEventTileBlock_81273F0
 - method: difftest
-  date: '2026-10-10'
+  date: '2026-10-12'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_81273F0
+  reproduce: './wf capture --function paintMapEventTileBlock_81273F0
 
-    ./wf verify --function sub_81273F0 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    300 out of domain (verify run convert-20261010-231345-verify-4)'
+    ./wf verify --function paintMapEventTileBlock_81273F0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-122117-verify-1)'
 - method: cpu-oracle
-  date: '2026-10-10'
+  date: '2026-10-12'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_81273F0
+  reproduce: './wf capture --function paintMapEventTileBlock_81273F0
 
-    ./wf verify --function sub_81273F0 --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
+    ./wf verify --function paintMapEventTileBlock_81273F0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-122117-verify-1)
 - method: lockstep
-  date: '2026-10-10'
+  date: '2026-10-12'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_81273F0
+  reproduce: './wf capture --function paintMapEventTileBlock_81273F0
 
-    ./wf verify --function sub_81273F0 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+    ./wf verify --function paintMapEventTileBlock_81273F0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-122117-verify-1)
 - method: coverage
-  date: '2026-10-10'
+  date: '2026-10-12'
   detail: 'Executed by: menus3, story2.'
   reproduce: grep -l '^081273f0 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-10'
+- date: '2026-10-12'
   what: readable C replacement in cport/src/game/asm33_81263D0.c
-  where: recomp 9fdb4a7
-  tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm33_81263D0.c after review against the assembly (the
-    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
-    that differs from the original: Output r5, and preserved r4/r7, are wrong on the EVENT_163-set path.
-    Asm: `mov r7, r5` ... `mov r4, #3; mov r5, #2; bl CopyBackgroundTiles` then `pop {r4-r7,pc}`, so the
-    caller''s r4-r7 come back. C: copy_bg_tiles_sub_81273F0 does `R4 = j_sz; R5 = i_sz; R7 = map_ptr;`,
-    and `Next sub_81273F0` has no save/restore. CopyBackgroundTiles pushes/pops only {r6,r7}. iCopyBackgroundTiles
-    does `add r4, r4, r0...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_81273F0 -> paintMapEventTileBlock_81273F0
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
+  where: recomp 8012da8
+  tool: tools/wf convert (opencode/glm-5.3-flash+old)
+readable_c: cport/src/game/asm33_81263D0.c
 coverage:
 - menus3
 - story2
 open_questions:
-- Which battle/map structure holds the offset byte at +0xD (likely an enemy's or panel's per-row x offset,
-  but unconfirmed).
-- Whether this fires once per frame in a loop or only on a state transition.
-- Exact contents of byte_8126B10 (the 3x2 tile-ID pattern).
+- What map event/encounter uses "EVENT_163" and the fixed column 9, and what object layout does the +0x0D signed
+  byte correspond to (is it the event's base row)?
+- Is the hard-coded column 9 a sign that the call site only ever invokes this for one specific event, or that it
+  is genuinely column-fixed?
+- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
+  C (stages S3/S4)'
 sources:
-- tools/wf run convert-20261010-231345
-- recomp 9fdb4a7
-previous_names:
-- sub_81273F0
+- tools/wf run convert-20261012-122117
+- recomp 8012da8
