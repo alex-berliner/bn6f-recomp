@@ -1,0 +1,84 @@
+name: sub_802C218
+address: '0x0802C218'
+kind: function
+status: confirmed
+summary: 'Chip Folder screen opening: wipe the row buffer, draw the 7x6 folder window, then advance the screen object
+  to its next state and seed its frame timer.'
+interface: void sub_802C218(struct ChipFolderScreen* r5); // returns r5 unchanged; preserves r5, r7; clobbers r0-r4,
+  r6, nzcv, lr
+details: 'Allocates a 0x74-byte frame on the stack (plus the pushed lr) holding a tilemap row buffer
+
+  at frame+4; the frame''s guest address is exported in r6 and the original callers read it
+
+  back. Calls chipFolder_ClearTilemapArea_802C59C on the row buffer, then
+
+  blitTileBlockToRowBuffer_802C4B6 to stamp the 7x6 folder window at tile coordinates (14,
+
+  10). Writes the screen object''s next state (u16 = +2 <- 4) and a 30-frame timer
+
+  (u8 +0xB = 30). The dead path at 0x802C226 (per-call tile reveal while +0xB < 42 using a
+
+  tile source byte from `off_802C27C` -> unk_2035320) is bypassed by the unconditional branch
+
+  at 0x802C224 and never executes. Screen-object offsets touched: state field at +2
+
+  (u16), timer/animation counter at +0xB (u8).
+
+
+  Register form kept (C call semantics could not work): r5'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261012-001937); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 91' --file inbox_farm_91.c sub_802C218
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802C218
+
+    ./wf verify --function sub_802C218 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261012-001937-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802C218
+
+    ./wf verify --function sub_802C218 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261012-001937-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802C218
+
+    ./wf verify --function sub_802C218 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-001937-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3, story2, story6, story9.'
+  reproduce: grep -l '^0802c218 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 547a1ee
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- menus3
+- story2
+- story6
+- story9
+open_questions:
+- Which chip-folder screen states reference this function as their enter/open handler, and which state id 4 actually
+  represents downstream?
+- What structure / size is the screen object passed in r5, and where is the stack-allocated frame's address (r6)
+  consumed by subsequent chip-folder code?
+- What does unk_2035320 hold - is it a tile-gfx source / cursor table that the unreachable reveal path would have
+  indexed by r0?
+- 'Calling-convention work: register form kept because r5'
+sources:
+- tools/wf run convert-20261012-001937
+- recomp 547a1ee

@@ -1,0 +1,101 @@
+name: NPCCommand_init_mystery_data
+address: '0x0809F058'
+kind: function
+status: confirmed
+summary: NPC script opcode that converts the current NPC into a mystery-data orb (or retires it when the data is
+  already collected).
+interface: void npc_cmd_initMysteryData_809f058(struct OverworldNPCObject* r5 /* npc */, const u8* r6 /* npc script
+  */) /* returns new r6 */
+details: 'Sets the NPC''s UnkFlags_60 chatbox bits (0x400|0x800) and "face player when
+
+  interacted" flag. Reads the opcode''s halfword argument as the mystery-data
+
+  id and stores it in Chatbox_90. Calls sub_809FC1C (lookup_mystery_data)
+
+  which returns r0 = variant, r1 = flag_scale, r2 = position (three s16s).
+
+  If variant == 0 the data was already collected: marks the object ACTIVE,
+
+  queues a sprite load (0x80, 0x1C, 0xA0) plus animation data, frees the NPC
+
+  and disables script 0x19, then returns the original r6 unchanged. Otherwise
+
+  picks the orb''s PaletteIndex from byte_809F0E4 = {0xFF,0,0,2,2,1,3,0xFF}
+
+  indexed by variant, ORs 0x40 * flag_scale into UnkFlags_60 (a flag bit
+
+  whose source field is always 0), points the NPC at the shared
+
+  TextScript873D108 with TextScriptIndex = 0xFF, copies the s16 x/y/z from
+
+  md.position into fixed-point X/Y/Z, sets CollisionRadius = 4,
+
+  CenterOffsetX = 2, CenterOffsetY = -2, and returns r6 + 3 (past the
+
+  opcode and its halfword argument). r5 and r2 are left exactly as the
+
+  original found them.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by zai/glm-5.3 through the convert workflow (1 attempt(s), run convert-20261012-001937); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 91' --file inbox_farm_91.c NPCCommand_init_mystery_data
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function NPCCommand_init_mystery_data
+
+    ./wf verify --function NPCCommand_init_mystery_data --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-001937-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function NPCCommand_init_mystery_data
+
+    ./wf verify --function NPCCommand_init_mystery_data --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 85 out of domain (verify run convert-20261012-001937-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function NPCCommand_init_mystery_data
+
+    ./wf verify --function NPCCommand_init_mystery_data --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-001937-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, story1, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0809f058 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp 547a1ee
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/npc.c
+coverage:
+- maps
+- story1
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What OW_NPC_UNK_FLAGS_60 bit the 'flag bit the lookup scales' (0x40 * flag_scale) actually represents; the source
+  field is always 0 so the OR is effectively a no-op in practice.
+- Why the despawn path forces OBJECT_FLAG_ACTIVE before freeing (visually toggling the orb on for one frame?) and
+  which sprite/animation 0x80/0x1C/0xA0 corresponds to.
+- Why byte_809F0E4 starts and ends with 0xFF and what variant indices 1..7 map to in-game (the readable C treats
+  variant 0 as 'collected'; the script may use other slots).
+- Whether sub_809FC1C's three return values are in fact guaranteed by every caller or whether r1/r2 can be garbage
+  when r0 == 0.
+sources:
+- tools/wf run convert-20261012-001937
+- recomp 547a1ee
