@@ -1,0 +1,93 @@
+name: sub_80C9CDA
+address: '0x080C9CDA'
+kind: function
+status: confirmed
+summary: Spawns a battle object of spawn type 0x2F via object_spawnType3 and, if one was created, finishes it with
+  BasicBattleObjectInitialize.
+interface: void battle_spawnAndInitObject2F(in u32 r0, in u32 r1, in u32 r2, in u32 r3, in u32 r4, in u32 r6; out
+  u32 r1, out u32 r2, out u32 r5; clobbers r0, r3, lr, flags)
+details: 'A thin battle-side spawn wrapper. It pushes r0-r2/r5, sets r0 = 0x2F (spawn
+
+  type/kind 47) and calls object_spawnType3 with the caller''s r1-r4 passed
+
+  through unchanged as spawn parameters. The spawn''s result is returned in
+
+  r5: a non-zero value is the new object pointer/handle, zero means nothing
+
+  was spawned. If the spawn succeeded (branch on the flags object_spawnType3
+
+  left), the new object in r0 is passed to BasicBattleObjectInitialize with
+
+  r1 = the caller''s original r0, r2 = the caller''s original r1 (restored by
+
+  the pop), r3 = 0, r5 = the caller''s original r5, and r6 = whatever the
+
+  spawn left in r6. If the spawn failed, initialization is skipped entirely
+
+  and the function returns immediately. The stack trick (push {r0-r2,r5} /
+
+  pop {r1-r3,r5}) means on exit r1 = old r0, r2 = old r1 and r5 = old r5, so
+
+  the caller''s first two arguments end up shifted down one register; r3 also
+
+  receives old r2 on the failure path before the early return. r4/r6/r7 are
+
+  left holding whatever the callee(s) left behind. The 0x2F spawn kind is
+
+  presumably a specific battle entity (object/obstacle/effect) defined by
+
+  object_spawnType3''s dispatch table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_80C9CDA
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C9CDA
+
+    ./wf verify --function sub_80C9CDA --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C9CDA
+
+    ./wf verify --function sub_80C9CDA --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 72 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C9CDA
+
+    ./wf verify --function sub_80C9CDA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, story8, story9.'
+  reproduce: grep -l '^080c9cda ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles1
+- battles2
+- story8
+- story9
+open_questions:
+- what battle object spawn type 0x2F actually is in game terms (needs the object_spawnType3 dispatch table)
+- meaning of the caller's r0-r4/r5/r6 arguments (likely object ID + position/state parameters)
+- why BasicBattleObjectInitialize always gets r3 = 0 (a flag? a parent/owner pointer?)
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

@@ -1,0 +1,84 @@
+name: sub_8031420
+address: '0x08031420'
+kind: function
+status: confirmed
+summary: Drives the camera across a map edge into the adjacent map, in two half-scroll passes (first half via one
+  delta provider, second half via another), folding each pass's completion status into the caller's r12 accumulator.
+interface: void sub_8031420(u32 r0, u32 r1, u32 r2, u32 r5 /* camera anchor */, u32 r12 /* status accumulator */);
+  leaves r0/r1/r2/r5 unchanged, returns r3 = status of the last camera move (0 = still scrolling, 1 = that pass
+  finished) and r12 with bit0 = pass-1 status, bit1 = pass-2 status; clobbers r4/r6-r9, lr and the NZCV flags.
+details: 'Two-pass edge scroll between map screens. Each pass calls sub_8031136 first to (re)anchor the camera state,
+  then a per-pass scroll-delta provider to get the movement step, then camera_moveByDelta_80310B0 to apply it. Pass
+  1 uses sub_8030E14 with extents (x = -1, y = -1, w = 0x20, h = 0, layer 0) and applies the delta with r1 = 0;
+  pass 2 uses sub_8030F04 with the mirrored extents (x = 0x20, y = 0, w = -1, h = -1, layer 0) and applies it with
+  r0 = 0, i.e. the two passes scroll along opposite axes/edges of the seam. The move routine reports progress in
+  r3: if pass 1 reports 1 (edge scroll already complete) the routine returns early and pass 2 is skipped. Each pass''s
+  r3 is OR-ed into r12 (pass 1 -> bit 0, pass 2 -> bit 1 << 1), letting the caller track both halves'' completion
+  independently. r0/r1/r2/r5 are pushed and popped around each pass so the caller''s state survives both anchor
+  calls; r4/r6 and condition flags are scratch. The 0x20 extent and the mirrored -1/0x20 pairs suggest 32px-half-screen
+  edge zones on the map seam (typical for the outdoor overworld connections).'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_8031420
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8031420
+
+    ./wf verify --function sub_8031420 --snapshots build-snapshots'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8031420
+
+    ./wf verify --function sub_8031420 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8031420
+
+    ./wf verify --function sub_8031420 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, story1, story2, story3, story4, story5, story6, story8,
+    story9, wander.'
+  reproduce: grep -l '^08031420 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+- story9
+- wander
+open_questions:
+- What sub_8031136 does exactly (camera re-anchor for the edge-scroll context; called with the original r0/r5 each
+  pass)
+- Exact semantics of sub_8030E14 vs sub_8030F04 (two scroll directions/edges of the seam, and which fields of their
+  r2-r6 extent args are x/y/w/h vs layer)
+- Full meaning of camera_moveByDelta_80310B0's r3 return (only 0 vs 1 observed here)
+- What the caller's r12 accumulator feeds into (per-map-edge scroll state bits?)
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

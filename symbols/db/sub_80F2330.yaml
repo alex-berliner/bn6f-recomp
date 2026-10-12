@@ -1,0 +1,94 @@
+name: sub_80F2330
+address: '0x080F2330'
+kind: function
+status: confirmed
+summary: Runs one battle object's per-state update (dispatching on its CurState byte) and then updates its sprite.
+interface: void battle_object_updateByState_80F2330() // battle object in r5; returns updated object pointer in
+  r5 and pass-through r8-r12
+details: 'Reads the object''s CurState byte (oBattleObject_CurState) from the battle
+
+  object in r5 and uses it as a byte index into the jump table at off_80F2348
+
+  (ldr r1, [r1, r0], unmasked, so CurState values beyond the 3 entries would
+
+  read past the table). It then calls the selected handler with the original''s
+
+  `mov lr, pc; bx r1` idiom, passing r0 = CurState and r1 = table entry/handler
+
+  pointer, with r5 still holding the battle object. Three handlers are
+
+  registered: state 0 -> sub_8016F56, state 1 -> sub_80F2354 (a local handler
+
+  just after this function), state 2 -> sub_8016C4E; these are shared
+
+  object-state routines, suggesting a common CurState scheme across object
+
+  types. After the handler returns, object_updateSprite is called with the
+
+  object pointer the handler left in r5, applying the shared sprite animation/
+
+  position update. The handler''s r8-r12 values are preserved by
+
+  object_updateSprite and pass through as this function''s outputs; r5 out is
+
+  whatever object pointer the sprite update leaves. Flags are clobbered.
+
+  Note: the dispatch is not a tailcall - lr is reloaded for the sprite call,
+
+  so the handler is an ordinary (long-lived, register-convention) call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_80F2330
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F2330
+
+    ./wf verify --function sub_80F2330 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F2330
+
+    ./wf verify --function sub_80F2330 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 5 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F2330
+
+    ./wf verify --function sub_80F2330 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips, story7.'
+  reproduce: grep -l '^080f2330 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battle
+- battlesweep
+- chips
+- story7
+related:
+- object_updateSprite
+open_questions:
+- exact game meaning of CurState values 0/1/2 (idle/local/second shared handler) not confirmed
+- which battle object types use this dispatcher and what sub_80F2354 (state 1) does
+- why outputs r8-r12 matter to callers (probably persistent per-object state kept in high registers)
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

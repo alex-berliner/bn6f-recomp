@@ -1,0 +1,80 @@
+name: sub_802C6EC
+address: '0x0802C6EC'
+kind: function
+status: confirmed
+summary: Renders a 0-11 counter value as digit glyphs (values over 10 clamped and shown as a single special "11"
+  glyph) and blits it into a UI row buffer.
+interface: void sub_802C6EC(u32 value /* r0, 0..11 */); callers see r5-r7 back but these are incidental (r7 is whatever
+  blitTileBlockToRowBuffer_802C4B6 leaves), r4 preserved, flags clobbered
+details: 'Builds a 5-slot scratch tile row on the guest stack (sp lowered by 0x1C; +0x14 spills the clamped value,
+  as in the original). Each u16 slot gets a tile pair: a blank glyph (NUMBER_TILE_BANK+0x14 = 0x90B4) plus the next
+  tile, written to both the slot at +0x00 and its duplicate at +0x0A. Values > 11 are clamped to 11 first. If the
+  value is >= 11, a single glyph is taken from a tile bank 0x1000 indices further in (0x90A0 + 0x1000, likely a
+  second glyph sheet, e.g. a filled/complete marker); otherwise memory_bcdConvert converts the value to packed BCD
+  and countHexDigits_8000C5C gives the digit count. Digit glyphs are then written right-to-left (glyph index = digit*2,
+  paired with digit*2+1) over the blank-filled slots from sp+8 downward, so the number is right-aligned in the 5-slot
+  field. Finally blitTileBlockToRowBuffer_802C4B6(0x10, 6, sp, 5, 2) blits a 16x6-tile area (5 tile pairs, 2 rows
+  apart, tile column 0x10) into the row buffer. Given the use of memory_bcdConvert and a digit tile bank, this looks
+  like a small on-screen counter in a memory/menu-style screen (e.g. counting collected items or progress out of
+  11); exact screen is not identified.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_802C6EC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802C6EC
+
+    ./wf verify --function sub_802C6EC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802C6EC
+
+    ./wf verify --function sub_802C6EC --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802C6EC
+
+    ./wf verify --function sub_802C6EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802c6ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which screen/state calls this and what the 0-11 counter actually counts (the 11-cap and special glyph suggest
+  a bounded checklist).
+- What the second tile bank at 0x90A0+0x1000 depicts (the >= 11 single glyph).
+- Why callers reportedly read r5-r7 back; likely just callee leftovers rather than a real return value.
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

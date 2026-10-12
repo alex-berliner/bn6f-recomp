@@ -1,0 +1,64 @@
+name: sub_81254FC
+address: '0x081254FC'
+kind: function
+status: confirmed
+summary: Renders five pre-rendered text-graphic strips into consecutive VRAM tiles via renderTextGfx_8045F8C, likely
+  for a fixed UI label/message box.
+interface: void sub_81254FC(void); // reads r10 (passed through to renderTextGfx_8045F8C), clobbers r0-r3, lr, flags;
+  preserves r4, r6, r7; returns r5 (caller's value restored), r8-r12 (tail values of the final renderTextGfx call)
+details: "Calls renderTextGfx_8045F8C five times in a fixed order (character indices 0, 1, 2, 5, 3),\neach time\
+  \ with the same shared parameters: font/glyph buffer unk_201CC20, glyph width 9,\n1 row, palette data dword_86B7AE0,\
+  \ layer 0. Only the source glyph buffer and the VRAM\ndestination change:\n  strip 0: src unk_2018A00  -> dst\
+  \ 0x6009000\n  strip 1: src unk_2018E00  -> dst 0x6009400\n  strip 2: src unk_2019200  -> dst 0x6009800\n  strip\
+  \ 5: src unk_2019600  -> dst 0x6009C00\n  strip 3: src byte_2019A00 -> dst 0x600A000\nThe destinations are consecutive\
+  \ 0x400-byte VRAM slots, so this fills one 5-slot tile\nregion with pre-baked text/label graphics. Quirks: the\
+  \ out-of-order strip index (5 before 3)\nis faithful to the original; the odd register contract (r5/r8-r12 as\
+  \ outputs, r10 as input)\nis an artifact of the renderTextGfx_8045F8C wrapper's ABI, not intentional game behavior\
+  \ —\nthe function itself just pushes/pops r4-r7 around the calls.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_81254FC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81254FC
+
+    ./wf verify --function sub_81254FC --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81254FC
+
+    ./wf verify --function sub_81254FC --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 0 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81254FC
+
+    ./wf verify --function sub_81254FC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, story2.'
+  reproduce: grep -l '^081254fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- maps
+- story2
+open_questions: []
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

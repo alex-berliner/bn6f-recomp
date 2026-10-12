@@ -1,0 +1,75 @@
+name: sub_81337C4
+address: '0x081337C4'
+kind: function
+status: confirmed
+summary: Folder-edit menu state machine dispatcher - reads the current step from [r5+3] and tail-jumps to the matching
+  handler from a 4-entry table.
+interface: 'void sub_81337C4(void) /* in: r2,r4,r5(struct ptr),r6,r7,r8,r10; out: r5,r8,r9,r10,r11,r12; clobbers
+  r0-r4,r6,r7,lr,NZCV */'
+details: 'Pure trampoline for the folder-edit menu. Loads the current state byte from offset +3 of the menu context
+  struct in r5, indexes the jump table at off_81337D8 with it, and performs an indirect Thumb tail-call ("mov lr,pc;
+  bx r0") so the chosen handler runs with the caller''s return address pushed on the stack and returns directly
+  to sub_81337C4''s caller via "pop {pc}". The table has exactly four states: sub_81337E8 (step 0, apparently the
+  init/idle step), folderEdit_step_813388C (step 1, already named as a folder-edit step handler), sub_81338D4 (step
+  2), and sub_8133944 (step 3). All other registers (r2, r4, r6-r8, r10) pass through untouched to the handler,
+  and the handler''s final r5 and r8-r12 become this function''s outputs; only r0/r1 and the flags are scratch.
+  Because the handler executes inside the push {lr}/pop {pc} window, SP is 4 bytes below the entry SP during the
+  call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_81337C4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81337C4
+
+    ./wf verify --function sub_81337C4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81337C4
+
+    ./wf verify --function sub_81337C4 --snapshots build-snapshots'
+  result: 20 compared, 0 differed, 14 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81337C4
+
+    ./wf verify --function sub_81337C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081337c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- exact role of sub_81337E8, sub_81338D4 and sub_8133944 (only the step-1 handler is named)
+- full layout of the r5 menu context struct beyond the state byte at +3
+- whether callers rely on the handler's r0 result or ignore it
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

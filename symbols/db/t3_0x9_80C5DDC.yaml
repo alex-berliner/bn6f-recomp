@@ -1,0 +1,74 @@
+name: t3_0x9_80C5DDC
+address: '0x080C5DDC'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's per-frame state handler through a jump table and refreshes the object's sprite.
+interface: 'void t3_0x9_80C5DDC(void); // in: r5=battle object pointer (CurState at oBattleObject_CurState); out:
+  r5=battle object pointer; clobbers r0-r4,r6-r12, flags'
+details: 'Reads the object''s CurState byte at oBattleObject_CurState, uses it to index the
+
+  jump table at off_80C5DF4 (three entries: sub_80C5E00, sub_80C5E44,
+
+  object_genericDestroy), tail-calls the selected handler via the original
+
+  `mov lr, pc; bx r1` sequence so the handler runs with r0 = CurState and r1 =
+
+  handler address (lr/return into the trailing `bl object_updateSprite`), then
+
+  calls object_updateSprite to refresh the object''s sprite from whatever r5
+
+  holds afterwards.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c t3_0x9_80C5DDC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x9_80C5DDC
+
+    ./wf verify --function t3_0x9_80C5DDC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x9_80C5DDC
+
+    ./wf verify --function t3_0x9_80C5DDC --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 13 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x9_80C5DDC
+
+    ./wf verify --function t3_0x9_80C5DDC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c5ddc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+related:
+- object_updateSprite
+open_questions:
+- Whether the three handlers correspond to specific in-battle object states (e.g. Idle/Active/Dealloc) and how callers
+  set oBattleObject_CurState.
+- Whether r5 is preserved across the handler or may be replaced (the function re-reads it from r5 to feed object_updateSprite,
+  suggesting it could change).
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

@@ -1,0 +1,69 @@
+name: sub_812B4AC
+address: '0x0812B4AC'
+kind: function
+status: confirmed
+summary: Opens the battle submenu's two text windows (IDs 0x10 and 0x11) via the window-enqueue routine and returns.
+interface: void sub_812B4AC(void); // preserves r4-r7; clobbers r0-r3, lr and flags; callers pass/inspect r10 per
+  the contract but it is not used directly here
+details: 'The function is a tiny wrapper that makes two calls to the window-enqueue helper call_sub_3005EBA (sub_3005EBA),
+  each time passing six arguments in r0-r5: first (0x10, 4, 2, 0, 0xA, 2) and then (0x11, 6, 2, 0, 0xA, 2). Interpreting
+  the pattern as (windowId, width, height, ?, column, row), this queues submenu window 0x10 sized 4x2 and window
+  0x11 sized 6x2, both positioned at column 0x0A on row 2 — i.e. the two stacked boxes of the in-battle submenu
+  (the chip/folder menu area). It then restores r4-r7 and returns immediately; it does not draw content or wait
+  for input. Note the disassembly listing also contains a second routine after the first pop {r4-r7,pc}: it loads
+  sSubmenu, calls battle_initScene_8129248 and sub_8132614, stores 0x10 into sSubmenu+0x03 and 0 into sSubmenu+0x1E,
+  zero-fills 0x10 bytes at unk_20251A0, calls sub_812AFC8, and finally sub_80465A0 with byte_8129150 (likely text/script
+  setup). That block appears to be a separate (mis-labeled) submenu-scene init function rather than part of this
+  wrapper; the readable-C verification covers only the window-opening part.'
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_812B4AC
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_812B4AC
+
+    ./wf verify --function sub_812B4AC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_812B4AC
+
+    ./wf verify --function sub_812B4AC --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_812B4AC
+
+    ./wf verify --function sub_812B4AC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: maps, menus3, story2.'
+  reproduce: grep -l '^0812b4ac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- Exact meaning of the six arguments to sub_3005EBA (width/height/x/y interpretation is inferred, not confirmed).
+- Why the contract lists r10 as an input (possibly consumed inside sub_3005EBA).
+- Whether the second push/pop block after the first return is truly part of sub_812B4AC or an unnamed adjacent function
+  that should be split out.
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

@@ -1,0 +1,72 @@
+name: t3_0x38_80CAEF0
+address: '0x080CAEF0'
+kind: function
+status: confirmed
+summary: Per-frame update for a battle object — dispatches to one of three state handlers based on the object's
+  CurState byte, then runs the shared sprite/pause update.
+interface: void battle_objectStateDispatch_80CAEF0(r5 = battle object, r10 = passthrough to state handler); returns
+  r5 r8 r9 r10 r11 r12 as left by the callees, clobbers flags and r0-r7, lr
+details: 'Reads the object''s CurState byte at [r5 + oBattleObject_CurState] and indexes the three-entry jump table
+  off_80CAF08 with it, then tail-enters the chosen handler using the "mov lr, pc; bx r1" idiom (so the handler is
+  an ARM function entered with lr set to the return address). States: 0 = battle_initShipSprite_80CAF14 (initializes
+  the ship sprite, i.e. the object''s first-state setup), 1 = sub_80CAF9C (idle/hold state), 2 = object_destroyWrapper_80CB078
+  (self-destruction wrapper). Each handler receives the state byte in r0 and its own table entry in r1. When the
+  handler returns, this function calls object_updateSpritePaused with r5 still holding the object pointer (the handler
+  leaves the object in r5), which advances/updates the object''s sprite while respecting pause state. Because the
+  handler is entered via the lr-set idiom and object_updateSpritePaused preserves r8-r12, whatever the handler left
+  in r8-r12 survives to callers, which matches the register contract''s outputs r5 r8 r9 r10 r11 r12. r10 is passed
+  straight through to the state handler untouched; it appears to carry extra per-call context the handlers use.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c t3_0x38_80CAEF0
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x38_80CAEF0
+
+    ./wf verify --function t3_0x38_80CAEF0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x38_80CAEF0
+
+    ./wf verify --function t3_0x38_80CAEF0 --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 8 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x38_80CAEF0
+
+    ./wf verify --function t3_0x38_80CAEF0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battlesweep, chips.'
+  reproduce: grep -l '^080caef0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- what object type this dispatcher serves (handler 0's ship sprite init suggests a ship/ferry-style battle object
+  or a specific enemy); the exact meaning of state 1's sub_80CAF9C
+- what r10 carries into the state handlers
+- whether callers rely on r8-r12 outputs or merely tolerate them
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

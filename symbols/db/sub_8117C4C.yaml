@@ -1,0 +1,75 @@
+name: sub_8117C4C
+address: '0x08117C4C'
+kind: function
+status: confirmed
+summary: Dispatches a sprite's current sub-state handler from a 3-entry jump table and then ticks the sprite with
+  the shared sprite_update.
+interface: void sprite_runSubStateHandlerAndUpdate_8117C4C(sprite /* r5 */); // returns r2, r3, r5, r10, r11 to
+  caller; all flags clobbered
+details: 'Entry r5 = pointer to a sprite/object structure; the byte at [r5+9] is a sub-state index (0..2) used to
+  select a Thumb handler address from the table at 08117C64 (sub_8117C70, sub_8117C9C, sub_8117CC4). The handler
+  is invoked with mov lr, pc; bx r0, so it is entered with r0 = handler address, r1 = sub-state index, lr pointing
+  just after the bx (thumb bit set by lr=pc+4), and r5 = sprite pointer. The handler may change r5 (the sprite pointer),
+  r10 and r11; r10/r11 are passed through untouched to this function''s caller, and the (possibly new) r5 is fed
+  into the tail sprite_update(r5) call, which supplies the r2/r3/r5 outputs the caller reads. lr is used as a scratch
+  address register, so the handler must not rely on the return address it is handed. No stack frame besides the
+  pushed lr.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_8117C4C
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8117C4C
+
+    ./wf verify --function sub_8117C4C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8117C4C
+
+    ./wf verify --function sub_8117C4C --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 34 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8117C4C
+
+    ./wf verify --function sub_8117C4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08117c4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm32.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What structure r5 points to and what field +9 is called in the wider sprite/npc code.
+- What the three handlers sub_8117C70, sub_8117C9C and sub_8117CC4 do per sub-state.
+- Why the handler is entered with lr = address after bx (it may return via lr into the sprite_update call path);
+  intended by design or incidental.
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

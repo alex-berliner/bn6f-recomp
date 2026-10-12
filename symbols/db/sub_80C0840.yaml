@@ -1,0 +1,70 @@
+name: sub_80C0840
+address: '0x080C0840'
+kind: function
+status: confirmed
+summary: Dispatches a battle object's per-action update via a jump table, then refreshes its sprite and runs shared
+  end-of-update processing.
+interface: '/* arm: takes/returns the battle object in r5 */
+
+  u32 sub_80C0840(u32 r5 /*battle object*/); /* returns object in r5 */
+
+  '
+details: "- Indexed jump table at off_80C0858, five entries keyed by the raw byte\n  at object + oBattleObject_CurAction\
+  \ (no scaling: 'ldr r1, [r1, r0]').\n- The five targets are sub_80C0870+1, sub_80C0912+1, sub_80C0A4C+1,\n  sub_80C0B76+1,\
+  \ sub_80C0C04+1: the per-action state handlers of a\n  battle object. The dispatched handler runs in guest register\
+  \ state\n  (mov lr, pc; bx r1) and may advance r5 to a different object.\n- After the handler, object_updateSprite\
+  \ is called for sprite refresh\n  and may further advance r5.\n- sub_80C0DB0 is then called for shared end-of-update\
+  \ processing on\n  whatever object r5 ends up pointing at.\n- The object current at the end is the one returned\
+  \ to the caller in r5.\n- Function saves only lr and returns by popping into pc.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_80C0840
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C0840
+
+    ./wf verify --function sub_80C0840 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C0840
+
+    ./wf verify --function sub_80C0840 --snapshots build-snapshots'
+  result: 20 compared, 0 differed, 9 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C0840
+
+    ./wf verify --function sub_80C0840 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080c0840 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- story9
+related:
+- object_updateSprite
+open_questions:
+- Which of the five table entries corresponds to which action ID (idle, enter, exit, hurt, attack, etc.) -- would
+  need to attribute the per-handler subs.
+- Whether callers always pass the same object, or whether this is the standard per-tick object pump that walks a
+  chain.
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

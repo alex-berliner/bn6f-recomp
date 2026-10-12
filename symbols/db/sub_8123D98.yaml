@@ -1,0 +1,80 @@
+name: sub_8123D98
+address: '0x08123D98'
+kind: function
+status: confirmed
+summary: Refreshes one spawn slot in a battle-object array, decrementing its tier and looking up the next entry
+  via sub_811FAF4 when the tier runs out.
+interface: void battle_refreshSpawnSlot(u32 page /*r0*/, u32 offset /*r1*/, u32 table_idx /*r2*/, u32 slot_off /*r3*/,
+  u32 fwd_r3 /*r4*/, void *base /*r5*/, u32 fwd_r4 /*r6*/); // preserves r4-r7, no register outputs, clobbers flags
+details: 'Operates on a byte inside an object array at r5, addressed by slot_off (r3); the byte is packed as (tier
+  << 4) | kind. Builds a 32-bit descriptor for sub_811FAF4 as (page << 16) | (offset + 16 * weight), where weight
+  is a u16 read from base + table_idx (0 when table_idx is 0, i.e. "no shift"), and calls sub_811FAF4 with the constant
+  argument pair 0x20005 (r1=0x20005) plus the slot''s kind nibble and two forwarded context values (r4 -> r3, r6
+  -> r4). Afterwards: if the old tier nibble was 1, calls sub_8120CC8 with the lookup result and the table at dword_81233D4
+  (off_8123E04) and stores the returned byte directly into the slot (refill), using its r1 as the new tier; otherwise
+  the new tier is old_tier - 1. Finally the (possibly refilled) slot byte is re-read and rewritten as (existing
+  low nibble) | (new_tier << 4). So each invocation drops the slot one tier, and tier 1 is the last level before
+  an automatic refill from the follow-up table. The preserved r4 is passed through and restored by the adapter because
+  the sub_811FAF4 call clobbers it internally.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_8123D98
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8123D98
+
+    ./wf verify --function sub_8123D98 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 265 out of
+    domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8123D98
+
+    ./wf verify --function sub_8123D98 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8123D98
+
+    ./wf verify --function sub_8123D98 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08123d98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- battles2
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+related:
+- sub_8120CC8
+open_questions:
+- Exact game meaning of the "page"/"offset" descriptor and of the kind/tier nibbles depends on the sub_811FAF4 contract,
+  which is not yet typed.
+- Contents of dword_81233D4 (the refill table passed to sub_8120CC8) and what its returned r1 tier value means.
+- Which caller(s) pass the forwarded r3/r4 context values and what structure they point into.
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

@@ -1,0 +1,71 @@
+name: sub_80498E4
+address: '0x080498E4'
+kind: function
+status: confirmed
+summary: Per-module battle initializer hook that defers module start until the chatbox clears its 0x80 flag.
+interface: void sub_80498E4(u32 modulePtr /* r5 */); // returns via tail-call to battle_moduleInit_803A820, surfacing
+  r3, r8-r12, c, v
+details: 'Reads the chatbox "eFlags" word at 0x2009F38 and tests bit 0x80 via chatbox_mask_eFlags2009F38.
+
+  If the bit is clear (Z set), writes the marker byte 0x28 to modulePtr+1 (one byte past the
+
+  pointer itself) to record that the module is waiting on the chatbox before it can finish
+
+  initializing. Then unconditionally tail-calls battle_moduleInit_803A820, passing r5 (modulePtr)
+
+  through; that routine is the one that produces the r3 / r8-r12 / c / v outputs the callers of
+
+  this wrapper observe, so this function is effectively a thin per-module ctor/hook layered on
+
+  top of the shared battle_moduleInit_803A820 entry point.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_80498E4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80498E4
+
+    ./wf verify --function sub_80498E4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80498E4
+
+    ./wf verify --function sub_80498E4 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80498E4
+
+    ./wf verify --function sub_80498E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^080498e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- menus3
+open_questions:
+- What is the 0x28 marker at modulePtr+1 - is it a state id, a "pending" flag, or an index into a module init table?
+- Does the function ever take the path where bit 0x80 is already set, and what difference that makes downstream
+  of battle_moduleInit_803A820?
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

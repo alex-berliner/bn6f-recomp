@@ -1,0 +1,96 @@
+name: object_updateSprite
+address: '0x0801BBAC'
+kind: function
+status: confirmed
+summary: Per-frame sprite ticker for one battle object — reloads the object's animation if it changed and advances
+  it, skipping when the battle is paused, time is stopped, or the object's flags forbid updates.
+interface: void object_updateSprite(r5 = battle object header ptr, r10 = battle state); trashes r0-r3, preserves
+  r4; returns caller-facing r0/r1/N/Z from the last callee run (r2-r5 and C/V are pass-through leftovers)
+details: "Runs once per battle object in the battle object loop. Gate checks in order:\n1. battle_isPaused() — if\
+  \ the battle is paused (Z clear), return without touching the sprite.\n2. Reads oObjectHeader_Flags (byte) on\
+  \ the object:\n   - bit 0 (OBJFLAG_UPDATE_ENABLE) clear: object never ticks its sprite, return.\n   - bit 2 (0x08,\
+  \ OBJFLAG_NO_SPRITE_TICK): sprite update explicitly disabled, return.\n   - bit 4 (0x10, OBJFLAG_SKIP_TIMESTOP):\
+  \ if clear, battle_isTimeStop() is consulted and the object freezes while time is stopped (custom/boss cutscene-style\
+  \ freezes); if set, the time-stop check is bypassed.\n3. If the object has a non-null oBattleObject_CollisionDataPtr,\
+  \ the byte oBattleObject_PreventAnim is checked; nonzero suppresses only the animation *reload* (the object still\
+  \ gets sprite_update called, since loc_801BBEE is reached via loc_801BBDA falling through... actually on PreventAnim!=0\
+  \ it returns early, skipping sprite_update entirely this frame — useful while a hit/hurt animation must not be\
+  \ replaced).\n4. Compares oBattleObject_CurAnim against oBattleObject_CurAnimCopy (a shadow of the currently loaded\
+  \ animation). On mismatch: sprite_setAnimation(curAnim) selects the new animation, sprite_loadAnimationData()\
+  \ loads its frame data, and CurAnimCopy is synced to CurAnim.\n5. Finally sprite_update() advances the animation\
+  \ frame/OAM for the object.\nStructures: the battle object header at r5 — oObjectHeader_Flags, oBattleObject_CollisionDataPtr,\
+  \ oBattleObject_PreventAnim, oBattleObject_CurAnim, oBattleObject_CurAnimCopy. r10 is passed through implicitly\
+  \ as the battle-state pointer used by battle_isPaused/battle_isTimeStop.\nQuirks: the caller-facing r0/r1 and\
+  \ N/Z are just whatever the last executed callee or in-function TST left behind — callers are expected to ignore\
+  \ them. C/V are never explicitly set anywhere in the function.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c object_updateSprite
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_updateSprite
+
+    ./wf verify --function object_updateSprite --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_updateSprite
+
+    ./wf verify --function object_updateSprite --snapshots build-snapshots'
+  result: 46 compared, 0 differed, 50 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_updateSprite
+
+    ./wf verify --function object_updateSprite --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0801bbac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+related:
+- sub_80C0840
+- t3_0x9_80C5DDC
+- sub_80CE178
+- sub_80F2330
+open_questions:
+- exact semantics of the 0x08 vs 0x01 header flag bits (both disable the tick; whether 0x08 marks invisible/unspriteable
+  objects is unverified)
+- whether battle_isTimeStop refers to FreezeCustObj/PsycheOut-style time stop or a cutscene-freeze mechanism
+- precise meaning of PreventAnim when CollisionDataPtr is null (check skipped entirely, reload allowed even with
+  PreventAnim set)
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

@@ -1,0 +1,77 @@
+name: sub_81203E4
+address: '0x081203E4'
+kind: function
+status: confirmed
+summary: Builds a packed chip-slot address list from a chip-pack entry row of the folder table.
+interface: void sub_81203E4(u32 entry_index /* r0 */, u32 entry_base /* r1 */, u32 out_list /* r2 */, u32 slot_base
+  /* r3 */, u32 count /* r5 */); /* r7 preserved; flags clobbered */
+details: "Zeros 0x38 bytes of the output buffer (ZeroFillByWord), then iterates over `count`\nentries of size 0x20\
+  \ starting at `entry_base + entry_index*0x20`. For each entry it\nreads the u16 at +0x1C and tests bit 7:\n  -\
+  \ bit set: calls getChip8021DA8(mask) to get the chip record, reads its id byte at +6,\n    maps it through sub_811FF54\
+  \ to a slot index, and writes two packed u32s at\n    out + 8*i:\n        word_lo = (slot_base + slot*4)     |\
+  \ ((slot_base + slot*4 + 1) << 16)\n        word_hi = word_lo + 0x20002         // -> upper half = (slot_base+slot*4+3)\n\
+  \    So the two words encode pairs of consecutive u16 addresses: (base+0, base+1)\n    and (base+2, base+3) where\
+  \ base = slot_base + slot*4. Matches the\n    battle chip-use queue layout (16-bit element code followed by element\
+  \ id).\n  - bit clear: writes two zero words.\nOutput stride is 8 bytes per slot (stride 0x80 kept in r4 but unused).\
+  \ The loop is\na do-while (cmp/blt at the bottom), so it always runs at least once and will spin\nforever if `count`\
+  \ is 0 (it isn't in practice; the comment notes the quirk).\nThe chip-slot table is the in-battle \"selectable\"\
+  \ queue populated from the folder's\ncurrent chip-pack row (Custom Gauge / chip selection screen data).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_81203E4
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81203E4
+
+    ./wf verify --function sub_81203E4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 291 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81203E4
+
+    ./wf verify --function sub_81203E4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 44 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81203E4
+
+    ./wf verify --function sub_81203E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081203e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- The 0x20002 constant - why is that exact spacing (always +0x20002 regardless of slot)?
+- r4 is incremented by 0x80 per iteration but never read; looks like dead code.
+- The zero-fill size of 0x38 vs the per-iteration 8-byte stride suggests an upper bound of 7 slots is supported
+  (0x38/8 = 7), though `count` could in principle be larger.
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

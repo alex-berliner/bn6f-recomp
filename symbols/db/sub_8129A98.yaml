@@ -1,0 +1,68 @@
+name: sub_8129A98
+address: '0x08129A98'
+kind: function
+status: confirmed
+summary: One step of the opponent's battle-menu state machine; dispatches on a phase byte to a per-phase AI handler,
+  then runs a shared follow-up with command 0x12.
+interface: void battle_aiStep_8129A98(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10); /* returns r5, r8, r9, r10, r11,
+  r12; clobbers r0-r4, r6, r7, lr, n, z, c, v */
+details: "Reads the battle object's phase byte at r5+0x3 and uses it to index the\nsix-entry Thumb dispatch table\
+  \ at off_8129AB0:\n  0 decideBattleAction_8129AC8\n  1 sub_8129AF0\n  2 sub_8129B34\n  3 chipSelectInit_8129B90\n\
+  \  4 sub_8129BB0\n  5 sub_8129BDC\nThe selected routine is invoked via \"mov lr, pc; bx r0\" (Thumb switch\nthrough\
+  \ the +1 low bit), so it runs in the caller's context with\nr0 = handler address, r1 = phase byte, and r4-r7/r10\
+  \ as the caller left\nthem. Handlers may rewrite r4/r5/r6 (the comment in the disassembly notes\ne.g. sub_8129B34\
+  \ hands back a new object pointer and state). After the\nhandler returns, sub_812B25C is called with command 0x12\
+  \ (0x12) and the\nupdated r4/r5/r6 and r10; whatever r10 stands at after the handler\nmatters because that call\
+  \ reads it too. Outputs r5, r8, r9, r10, r11,\nr12 are what callers of sub_8129A98 actually observe -- they come\n\
+  straight out of sub_812B25C, not from the dispatched handler. Phase\nhandlers are otherwise opaque here; their\
+  \ individual register contracts\nare not part of this function's contract.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_8129A98
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129A98
+
+    ./wf verify --function sub_8129A98 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129A98
+
+    ./wf verify --function sub_8129A98 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 10 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129A98
+
+    ./wf verify --function sub_8129A98 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08129a98 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- What r5 actually points to during this step (the "battle object"); only its phase byte at +0x3 is read here.
+- What sub_812B25C command 0x12 (0x12) does specifically and which of r4/r5/r6/r10 it consumes.
+- Which of the six phase routines is the "AI chooses an action" entry vs. animation/menu sub-states, since the table
+  mixes decideBattleAction_8129AC8 with chipSelectInit_8129B90 and unnamed stubs.
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

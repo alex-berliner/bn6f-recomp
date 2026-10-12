@@ -1,88 +1,72 @@
 name: battle_chipMatchesHpFullRestoreAiBranch_8012B4E
 address: '0x08012B4E'
 kind: function
-status: probable
-summary: Decides whether the current chip is eligible for the AI's "HP-full restore" attack branch by
-  checking the navi's alliance stat and chip flags.
-interface: u32 battle_chipMatchesHpFullRestoreAiBranch_8012B4E(u32 chip_id, u32 arg1, u32 battle_object
-  /* r5 */); // returns 0/1 in r0; r6, r7 preserved; clobbers nz,cv,r1,r4,lr
-details: 'Reads two alliance-style bytes from the battle object via
-
-  GetBattleNaviStatsByte_AllianceFromBattleObject at offsets 0x29 and 0x2C; short-circuits to the
-
-  flag check when either equals 6, or when 0x2C equals 0x12. Resolves the chip descriptor via
-
-  getChip8021DA8 and inspects chip+9 (bit 1 must be set, bit 0 must be clear) and chip+4 (must equal 2).
-
-  If arg1 != 0 the function returns 1 immediately; otherwise it reads oBattleObject_AIDataPtr->PwrAtkState
-
-  (must be 2) and PwrAtkButton (must be 1) from the battle object''s AI data block before returning 1.
-
-  Otherwise returns 0. The chip-element check at +4==2 plus the alliance filter is consistent with
-
-  selecting Recovery-family chips (element 2) used by a specific navi alliance under an HP-full
-
-  condition for the AI''s power-attack path.
-
-  '
+status: confirmed
+summary: 'Chip-selection AI predicate: returns true (r0=1) only for the "HP full restore" branch when the ali'
+interface: u32 battle_chipMatchesHpFullRestoreAiBranch_8012B4E(u32 chip_id /*r0*/, u32 forceMatch /*r1*/,
+details: "Decides whether a candidate chip is eligible for the AI's \"HP full\nrestore\" selection branch (apparently\
+  \ reserved for regular-attack chips\nused while a charged power attack is queued, when the player/navi stats\n\
+  map to a specific role value).\nInputs:\n  r0 = chip id, used via getChip8021DA8\n  r1 = a \"skip AI state\" force-flag;\
+  \ non-zero matches without further checks\n  r5 = acting battleObject pointer (read for AIData and the two navi\
+  \ stats\n       bytes via GetBattleNaviStatsByte_AllianceFromBattleObject)\nOutputs:\n  r0 = 0 no-match, 1 match\n\
+  \  r2 = scratch/echo: 2 on the bit0 (chip_flags & 2) miss path, 1 otherwise\n  r6 = pass-through of the caller's\
+  \ r6 (preserved through the two\n       GetBattleNaviStatsByte calls)\nClobbers: r1, r4, LR; flags NZCV.\nLogic:\n\
+  \  1. Read navi stats byte at offset 0x29 via GetBattleNaviStatsByte.\n     If it equals 6, fall through to chip\
+  \ test.\n     Else read navi stats byte at offset 0x2C: must be 6 or 0x12 to\n     continue; otherwise return\
+  \ 0.\n  2. Look up the chip via getChip8021DA8(chip_id). The chip's byte +9\n     (chip_flags) must have bit 1\
+  \ set (tst #2 == 0 fails branch), bit 0\n     clear (tst #1 != 0 bne exits with 0), and byte +4 must be exactly\n\
+  \     2 (chip kind 2 = regular/attack chip). Any miss returns 0 with\n     r2 reflecting the last tst mask used.\n\
+  \  3. If incoming r1 != 0, return 1 immediately (force-match shortcut).\n  4. Otherwise load AIData pointer at\
+  \ oBattleObject_AIDataPtr from\n     battleObject and require:\n        oAIData_PwrAtkState  == 2  (charged power-attack\
+  \ held)\n        oAIData_PwrAtkButton == 1  (queued on the \"correct\" button)\n     Both must hold; otherwise\
+  \ return 0.\nField offsets seen:\n  oBattleObject_AIDataPtr    (offset used with ldr r1,[r5,#ofs])\n  oAIData_PwrAtkState\
+  \        (ldrb r0,[r1,#ofs])\n  oAIData_PwrAtkButton       (ldrb r0,[r1,#ofs])\n  chip byte +9 = flags, chip byte\
+  \ +4 = kind/sub-kind\nQuirks:\n  - The two GetBattleNaviStatsByte calls pass r1=0x29 then r1=0x2C,\n    using\
+  \ R5 (battleObject) as a hidden 2nd arg.\n  - r6 is explicitly preserved (saved into the local and never\n   \
+  \ overwritten; only the C-level call returns carry/overflow which\n    are clobbered by the wrapper).\n  - r2\
+  \ is essentially a tag showing which tst mask was the last to be\n    inspected on the early-out path; on success\
+  \ r2 ends as 1.\n"
 evidence:
 - method: readable-c
-  date: '2026-10-11'
-  detail: Written by minimax/MiniMax-M3 through the convert workflow (5 attempt(s), run convert-20261011-000854);
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm00_2.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 47' --file inbox_farm_47.c
-    sub_8012B4E
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c battle_chipMatchesHpFullRestoreAiBranch_8012B4E
 - method: difftest
-  date: '2026-10-11'
+  date: '2026-10-12'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8012B4E
+  reproduce: './wf capture --function battle_chipMatchesHpFullRestoreAiBranch_8012B4E
 
-    ./wf verify --function sub_8012B4E --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    233 out of domain (verify run convert-20261011-000854-verify-5)'
+    ./wf verify --function battle_chipMatchesHpFullRestoreAiBranch_8012B4E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 238 out
+    of domain (verify run convert-20261012-120932-verify-1)'
 - method: cpu-oracle
-  date: '2026-10-11'
+  date: '2026-10-12'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8012B4E
+  reproduce: './wf capture --function battle_chipMatchesHpFullRestoreAiBranch_8012B4E
 
-    ./wf verify --function sub_8012B4E --snapshots build-snapshots'
-  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261011-000854-verify-5)
+    ./wf verify --function battle_chipMatchesHpFullRestoreAiBranch_8012B4E --snapshots build-snapshots'
+  result: 52 compared, 0 differed, 44 out of domain (verify run convert-20261012-120932-verify-1)
 - method: lockstep
-  date: '2026-10-11'
+  date: '2026-10-12'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8012B4E
+  reproduce: './wf capture --function battle_chipMatchesHpFullRestoreAiBranch_8012B4E
 
-    ./wf verify --function sub_8012B4E --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-000854-verify-5)
+    ./wf verify --function battle_chipMatchesHpFullRestoreAiBranch_8012B4E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
 - method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
-    story4, story5, story6, story7, story8, story9.'
+  date: '2026-10-12'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
   reproduce: grep -l '^08012b4e ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-11'
+- date: '2026-10-12'
   what: readable C replacement in cport/src/game/asm00_2.c
-  where: recomp df6be1f
-  tool: tools/wf convert (minimax/MiniMax-M3)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm00_2.c after review against the assembly (the lifted
-    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
-    differs from the original: Contract output r2 is not reproduced on the chip-check paths. After getChip8021DA8
-    (which leaves r2 = 44 from `mov r2, #44`), the original does `mov r2, #2; tst r1, r2; beq ...` and
-    then `mov r2, #1; tst r1, r2; bne ...`. So on return r2 = 2 when chip byte 9 has bit 1 clear, and
-    1 on every later path. The C never writes R2 (`if ((flags & 2) == 0) return 0; if ((flags & 1) !=
-    0) return 0; ...`), so...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_8012B4E -> battle_chipMatchesHpFullRestoreAiBranch_8012B4E
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm00_2.c
 coverage:
 - battle
 - battles1
@@ -100,13 +84,12 @@ coverage:
 - story8
 - story9
 open_questions:
-- Exact chip element mapping for value 2 (likely Recovery, but unconfirmed).
-- Semantics of arg1 (likely "HP already full" flag or stage selector passed by the AI tick).
-- Why stat offset 0x2C==0x12 is grouped with the stat==6 fast-return path.
-- Whether 0x29 and 0x2C are "current HP" and "max HP" or alliance-related stats (call site name says Alliance,
-  but behaviour suggests HP-related thresholds).
+- Exact meanings of oBattleObject_AIDataPtr, oAIData_PwrAtkState and oAIData_PwrAtkButton offsets (not annotated
+  in the project yet).
+- Which navi stats the bytes at 0x29 / 0x2C correspond to (role/element related; values 6 and 0x12 select "HP full
+  restore"-eligible navi).
+- Whether r2's trailing value is consumed by callers or is purely scratch.
+- Exact meaning of chip byte +4 == 2 (chip "kind" 2 = standard attack chip vs. other chip classes).
 sources:
-- tools/wf run convert-20261011-000854
-- recomp df6be1f
-previous_names:
-- sub_8012B4E
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

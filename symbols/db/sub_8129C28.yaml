@@ -1,0 +1,87 @@
+name: sub_8129C28
+address: '0x08129C28'
+kind: function
+status: hypothesis
+summary: Runs the per-step handler selected by the state byte at [r5+3], then calls sub_812B25C(0x13) with the handler's
+  leftover r4/r5/r6 as part of a scripted object update (likely a chatbox/sequence step machine).
+interface: 'StepResult sub_8129C28(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10);
+
+  // reads r5+3 as state index, dispatches via table at off_8129C40
+
+  // returns r5, r8, r9, r10, r11, r12 from the trailing sub_812B25C(0x13) call
+
+  // clobbers r0-r4, r6, r7, lr and flags nzc
+
+  '
+details: '- Function is a small dispatcher. Loads pointer off_8129C3C (-> off_8129C40), uses [r5+3] as an index
+  to fetch a Thumb handler address from the 13-entry table at off_8129C40, and bx''s into it with r0 = handler address,
+  r1 = index. Several slots (2, 8, 11) reuse sub_8129D78, suggesting common sub-states.
+
+  - After the handler returns, the function unconditionally calls sub_812B25C(0x13) passing in whatever r4/r5/r6
+  the handler left. The register contract confirms this tail call''s outputs (r5, r8, r9, r10, r11, r12) are what
+  callers observe from the step.
+
+  - r5+3 byte is the dispatcher key; r5 itself is preserved across the handler and read out of the tail call, so
+  r5 looks like a pointer to a per-object state/control struct whose byte at offset 3 is the state index.
+
+  - The 0x13 argument to sub_812B25C looks like a routine-id within that callee''s own dispatcher, not data, which
+  suggests this is a generic "tick" wrapper that combines a state-specific handler with a fixed cleanup/trigger
+  call.
+
+  - Without more context on r5''s struct and which subsystem owns sub_812B25C, the exact purpose (e.g., chatbox
+  line advance, battle popup phase, event sequencer) cannot be pinned down. The handler table at off_8129C40 and
+  its callees would disambiguate.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33_81263D0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_8129C28
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8129C28
+
+    ./wf verify --function sub_8129C28 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8129C28
+
+    ./wf verify --function sub_8129C28 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 13 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8129C28
+
+    ./wf verify --function sub_8129C28 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: menus3.'
+  reproduce: grep -l '^08129c28 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm33_81263D0.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm33_81263D0.c
+coverage:
+- menus3
+open_questions:
+- Which subsystem is r5 pointing at, and what does the byte at [r5+3] represent (animation phase, dialog step, command
+  index)?
+- What is sub_812B25C and why is it always called with 0x13 after the handler runs?
+- Are the duplicated handler slots (sub_8129D78 at indices 4, 8, 11 and sub_8129DC4 at indices 5, 12) intentional
+  reuse of a common sub-state?
+- Why is r10 explicitly threaded through (never touched here) -- is it a live input to the handler or to sub_812B25C?
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1

@@ -1,0 +1,85 @@
+name: sub_80CE178
+address: '0x080CE178'
+kind: function
+status: confirmed
+summary: 'Per-frame action dispatcher for a battle object: jumps to the handler selected by the object''s current
+  action, then refreshes its sprite animation.'
+interface: 'void battleObject_runAction_80CE178(void);
+
+  // inputs:  r2 (context, passed through to handler), r5 (battle object pointer), r10, lr
+
+  // outputs: r5 (possibly updated object pointer), r8-r12 (as left by handler/sprite update)
+
+  // clobbers: r0-r4, r6-r7, lr, nzcv
+
+  '
+details: 'Reads the object''s current action byte from r5+oBattleObject_CurAction, uses
+
+  it directly (no shift) as a byte index into the two-entry Thumb jump table
+
+  off_80CE190, and tail-calls the selected handler (sub_80CE198 or
+
+  sub_80CE1D6) via a Thumb-mode bx. The handler runs with r0=action,
+
+  r1=handler address, r2=the caller''s r2, and the (possibly new) object
+
+  pointer is read back from r5. After the handler returns, calls
+
+  object_updateSprite to advance the object''s sprite animation for the
+
+  frame. The handler table entries point at sub_80CE198+1 and
+
+  sub_80CE1D6+1 (Thumb bit pre-set).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-12'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261012-120932);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file inbox_farm_94.c sub_80CE178
+- method: difftest
+  date: '2026-10-12'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CE178
+
+    ./wf verify --function sub_80CE178 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261012-120932-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CE178
+
+    ./wf verify --function sub_80CE178 --snapshots build-snapshots'
+  result: 29 compared, 0 differed, 9 out of domain (verify run convert-20261012-120932-verify-1)
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CE178
+
+    ./wf verify --function sub_80CE178 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261012-120932-verify-1)
+- method: coverage
+  date: '2026-10-12'
+  detail: 'Executed by: story9.'
+  reproduce: grep -l '^080ce178 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-12'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 07652b1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- story9
+related:
+- object_updateSprite
+open_questions:
+- What the two action handlers (sub_80CE198, sub_80CE1D6) actually do (e.g. idle vs. active).
+- What the r2 "context" parameter represents; likely a per-frame scratch value from the battle update loop.
+- Whether CurAction is genuinely a byte index or if the field is normally 0/1 and the unshifted LDR is a coincidence.
+sources:
+- tools/wf run convert-20261012-120932
+- recomp 07652b1
