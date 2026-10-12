@@ -16,7 +16,8 @@ For each pair:
 Then bn6f is rebuilt (its Makefile checks bn6f.sha1: the ROM must be
 identical; on any failure every change is undone), committed on its current
 branch, and the lifted C is regenerated (tools/build_lifted.sh) unless
---no-regen. The recomp repo is left for you to commit.
+--no-regen; the captured calls in build-snapshots get a link under each new
+name (tools/snapshot_names.py). The recomp repo is left for you to commit.
 
 The bn6f commit's subject is "Rename OLD -> NEW" for one pair, else "Rename N
 symbols", followed by the record run (--run) as in "(record-20261010-120000)";
@@ -26,6 +27,7 @@ import datetime, os, re, subprocess, sys
 import yaml
 
 import gamepaths  # tools/gamepaths.py: the game profile (tools/paths.env)
+import snapshot_names  # tools/snapshot_names.py: the snapshot store under today's names
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BN6F = gamepaths.BN6F_DIR
@@ -158,6 +160,10 @@ def main():
     if regen:
         r = run([os.path.join(ROOT, "tools", "build_lifted.sh")])
         print(r.stdout[-500:], r.stderr[-1000:])
+    # the captured calls of a renamed function stay in build-snapshots/OLD: link them under the new name
+    made = snapshot_names.link()
+    if made:
+        print(f"build-snapshots: {len(made)} renamed functions' captured calls linked under their new names")
 
 
 if __name__ == "__main__":

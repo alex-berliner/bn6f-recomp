@@ -24,6 +24,9 @@ Checks, each only when the commit touches what it checks:
            file of its bn6f source, parts self-contained: laying out the tree gives back the same
            tree), and every symbols/db `readable_c:` names the file that holds its function
   wf       the tools/wf tests, when tools/wf changes
+  snapshots tools/snapshot_names.py --check, when symbols/db or bn6f changes (a rename): a renamed
+           function's captured calls are linked under its new name, or the captured-call difftest
+           finds none (warns only; tools/rename_symbol.py makes the links)
 
 It reads files and git only: no model calls, no builds, no lockstep. In hook mode it checks the
 index, not the working tree, so other people's unstaged edits never fail someone's commit, and
@@ -360,6 +363,18 @@ def check_wf(hook: bool) -> Result:
     return res
 
 
+def check_snapshots() -> Result:
+    import snapshot_names
+    res = Result("snapshots")
+    links, _ = snapshot_names.missing_links(snapshot_names.STORE)
+    if links:
+        name, folder = links[0]
+        res.warnings.append(f"{len(links)} functions have captured calls only under an older name (e.g. {name} in "
+                            f"build-snapshots/{folder}), so the captured-call difftest finds none: "
+                            "python3 tools/snapshot_names.py links them")
+    return res
+
+
 # ── main ──
 
 def timed(name: str, fn: Callable[[], Result]) -> Result:
@@ -390,6 +405,8 @@ def main() -> int:
         jobs.append(("layout", lambda: check_layout(hook, changed)))
     if touches(WF):
         jobs.append(("wf", lambda: check_wf(hook)))
+    if touches("symbols/db/", "bn6f", "tools/snapshot_names.py"):
+        jobs.append(("snapshots", check_snapshots))
     results: list[Result] = [Result("?")] * len(jobs)
 
     def run(i: int, job: tuple[str, Callable[[], Result]]) -> None:

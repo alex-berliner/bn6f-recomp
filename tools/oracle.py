@@ -256,7 +256,9 @@ def write_contract(path, us, cfg=os.path.join(HOST, "host", "difftest.cfg")):
 def bases_and_pool(base_dir):
     """The memory the entry states start from (8 captured calls of the snapshot store, chosen with
     seed 1) and the register values seen in real calls (a sample of about 300), per register."""
-    snaps = sorted(p for p in glob.glob(os.path.join(base_dir, "*", "snap_*.bin")) if not p.endswith(".exit.bin"))
+    # a linked folder is a function's calls under its new name (tools/snapshot_names.py): counted once
+    snaps = sorted(p for p in glob.glob(os.path.join(base_dir, "*", "snap_*.bin"))
+                   if not p.endswith(".exit.bin") and not os.path.islink(os.path.dirname(p)))
     rng = random.Random(1)
     base_paths = rng.sample(snaps, min(8, len(snaps)))
     bases = [load_snap(p) for p in base_paths]
