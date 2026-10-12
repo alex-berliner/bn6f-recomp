@@ -2248,6 +2248,116 @@ Next battle_checkSubFlags_8128280(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81283A0 ── */
+/* sub_81283A0: Builds the battle-arena object array for the current encounter.
+ * Reads the participant list, looks up each member's 4-byte descriptor in a
+ * static table, and writes one 32-byte entry per matching member into the
+ * battle-object buffer (dword_2027590). */
+
+#define OBJECT_BUFFER_SIZE  0x1000
+#define ENTRY_SIZE          0x20
+
+/* register form: ZeroFillByEightWords takes (dst, size) in r0/r1; callees
+ * in this function may clobber r4-r7 which the original restores via push/pop */
+static void zero_fill_object_buffer(u32 dst, u32 size) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = dst;
+    R1 = size;
+    GUEST_CALL(ZeroFillByEightWords);
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+}
+
+/* register form: battle_countFlaggedActions_81284B4 reads r4 (output buffer base) and returns a
+ * counter pair in r0/r1; it may clobber r4-r7 */
+static u32 seed_entry_counter(u32 buf, u32 *out_alt) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R4 = buf;
+    GUEST_CALL(battle_countFlaggedActions_81284B4);
+    *out_alt = R1;
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+    return R0;
+}
+
+/* register form: battle_fieldLockDispatch_8120018 takes (buf, count, flag2, flag3) in r0-r3;
+ * it may clobber r4-r7 */
+static void finalize_object_list(u32 buf, u16 count, u8 arg2, u8 arg3) {
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
+    R0 = buf;
+    R1 = count;
+    R2 = arg2;
+    R3 = arg3;
+    GUEST_CALL(battle_fieldLockDispatch_8120018);
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7;
+}
+
+static void build_battle_objects(u32 object_ptr) {
+    const u32 buf = A_dword_2027590;
+
+    /* Clear the entire object buffer */
+    zero_fill_object_buffer(buf, OBJECT_BUFFER_SIZE);
+
+    /* Seed the per-entry counter from encounter logic */
+    u32 alt;
+    u32 primary = seed_entry_counter(buf, &alt);
+
+    /* Select counter based on team-membership flag (bit 0 of object+0xD) */
+    bool in_team = (LD8(object_ptr + 0x0D) & 1) != 0;
+    u32 counter = in_team ? primary : alt;
+
+    /* Number of active arena participants; skip everything if none */
+    u32 count = LD8(A_dword_2001140);
+    if (count == 0)
+        return;
+
+    /* Reset the written-entry counter in the object */
+    ST16(object_ptr + 0x1E, 0);
+
+    u32 out = buf;
+
+    for (u32 i = 0; i < count; i++) {
+        u8 id = LD8(A_byte_2006530 + i);
+        u32 tbl = A_byte_812851C + (u32)id * 4;
+        u8 flag_byte = LD8(tbl);
+
+        /* Write entry only when bit 0x80 of the table flag matches team status */
+        bool table_flag = (flag_byte & 0x80) != 0;
+        if (in_team != table_flag)
+            continue;
+
+        u32 inv = (~counter) & 0xFFFF;
+
+        /* Assemble and store the 32-byte object entry */
+        ST32(out + 0x00, ((u32)flag_byte << 16) | inv);
+        ST8(out + 0x04, LD8(tbl + 1));
+        ST32(out + 0x08, ((u32)LD8(tbl + 2) << 16) | inv);
+        ST32(out + 0x0C, ((u32)LD8(tbl + 3) << 16) | inv);
+        ST8(out + 0x10, (u8)(id * 2));
+        ST8(out + 0x14, (u8)(id * 2 + 1));
+        ST32(out + 0x18, ((u32)id << 16) | id);
+        ST32(out + 0x1C, (counter << 16) | counter);
+
+        counter--;
+
+        /* Track entries written in the object's halfword at +0x1E */
+        ST16(object_ptr + 0x1E, LD16(object_ptr + 0x1E) + 1);
+        out += ENTRY_SIZE;
+    }
+
+    /* Hand the assembled list to the next stage if at least one entry was written */
+    u16 entries = LD16(object_ptr + 0x1E);
+    if (entries != 0) {
+        u8 a2 = LD8(A_byte_2000FE0);
+        u8 a3 = LD8(A_byte_2000FE0 + 1);
+        finalize_object_list(buf, entries, a2, a3);
+    }
+}
+
+/* sub_81283A0(r5 = battle-object pointer) */
+Next sub_81283A0(void) {
+    build_battle_objects(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81284A4 ── */
 /* sub_81284A4: store the mode/state pair (7, 4) at byte_2000FE0,
  * exactly as the original does via the byte_2000FE0 base pointer. */
@@ -2257,6 +2367,43 @@ Next sub_81284A4(void) {
     ST8(R0, R1);
     R1 = 4;
     ST8(R0 + 1, R1);       /* byte_2000FE1 = byte_2000FE0 + 1 */
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_countFlaggedActions_81284B4 ── */
+/* Count entries in the tag index table whose first byte has bit 7 set vs unset.
+ * dword_2001140: number of entries to scan (loop bound; signed do-while runs at least once).
+ * byte_2006530: byte array of tag indices into byte_812851C.
+ * byte_812851C: 4-byte-per-entry table; byte 0 of each entry carries the flag. */
+
+typedef struct { u32 set_count; u32 reset_count; } TagCounts;
+
+static TagCounts count_tag_entries(void) {
+    u32 remaining   = LD32(A_dword_2001140);
+    u32 idx_ptr     = A_byte_2006530;
+    u32 set_count   = 0;
+    u32 reset_count = 0;
+
+    /* do-while: body always executes at least once; loop while remaining (signed) > 0 */
+    do {
+        u32 tag_index   = LD8(idx_ptr);
+        u32 entry_flags = LD8(A_byte_812851C + tag_index * 4);
+        if (entry_flags & 0x80)
+            set_count++;
+        else
+            reset_count++;
+        idx_ptr++;
+        remaining--;
+    } while ((s32)remaining > 0);
+
+    return (TagCounts){ set_count, reset_count };
+}
+
+/* battle_countFlaggedActions_81284B4 -> r0 = set_count, r1 = reset_count (r4-r7 preserved by original push/pop) */
+Next battle_countFlaggedActions_81284B4(void) {
+    TagCounts result = count_tag_entries();
+    R0 = result.set_count;
+    R1 = result.reset_count;
     RETURN_TO_CALLER();
 }
 
@@ -2434,6 +2581,81 @@ Next sceneStep_81287DC(void) {
     ST16(R5 + 0x22, LD16(R5 + 0x20));
     ST8 (R5 + 0x0E, LD8 (R5 + 0x0D));
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8128AB0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_HalfwordFill_result;
+/* register form: generated wrapper: HalfwordFill has no typed C interface yet */
+static inline call_HalfwordFill_result call_HalfwordFill(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(HalfwordFill);
+    return (call_HalfwordFill_result){ R2 };
+}
+
+/* Build a 4-row interleaved tile-pair table in the staging buffer (unk_201C040).
+ * First fills 0x170 halfwords with the blank tile 0x7200, then overwrites with
+ * incrementing tile IDs starting at 0x7201 in two interleaved half-rows per
+ * outer iteration (max 4).  The row budget [r5+0x1E] − 2*[r5+0x24] gates how
+ * many half-row checks pass before the outer loop terminates early; a zero
+ * value in [r5+0x1E] skips the table build entirely. */
+static void build_tilemap(u32 object) {
+    u16 total_rows = LD16(object + 0x1E);
+    u16 skip       = LD16(object + 0x24);
+    u32 remaining  = (u32)total_rows - (u32)(skip << 1);
+
+    u32 base = A_unk_201C040;
+    call_HalfwordFill(base, 0x170, 0x7200);
+
+    if (total_rows == 0)
+        return;
+
+    u32 buf_a = base;
+    u32 buf_b = base + 0x2E;
+    u16 tile  = 0x7201;
+    u32 outer = 4;
+
+    for (;;) {
+        /* First half-row: 10 paired halfwords at byte offsets 0..18. */
+        u32 off = 0;
+        for (u32 i = 0; i < 0x14; i += 2) {
+            ST16(buf_a + off, tile++);
+            ST16(buf_b + off, tile++);
+            off += 2;
+        }
+
+        remaining -= 1;
+        if (remaining == 0)
+            break;
+
+        /* Second half-row: 10 paired halfwords at byte offsets 26..44. */
+        off += 6;
+        for (u32 i = 0; i < 0x14; i += 2) {
+            ST16(buf_a + off, tile++);
+            ST16(buf_b + off, tile++);
+            off += 2;
+        }
+
+        remaining -= 1;
+        if (remaining == 0)
+            break;
+
+        /* Advance to the next row-pair block (0x2E halfwords × 2). */
+        buf_a += 0x5C;
+        buf_b += 0x5C;
+
+        outer--;
+        if (outer == 0)
+            break;
+    }
+}
+
+/* sub_8128AB0(r5 = object pointer) -> r5 preserved */
+Next sub_8128AB0(void) {
+    build_tilemap(R5);
     RETURN_TO_CALLER();
 }
 
@@ -3337,6 +3559,53 @@ Next sub_81297C0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81297DC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B25C_result_sub_81297DC;
+/* register form: generated wrapper: sub_812B25C has no typed C interface yet */
+static inline call_sub_812B25C_result_sub_81297DC call_sub_812B25C_sub_81297DC(u32 r0, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_812B25C);
+    return (call_sub_812B25C_result_sub_81297DC){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Dispatch through the battle-state jump table at off_81297F4, then post message 0x12. */
+
+/* register form: indirect call through game function-pointer table */
+static void dispatch_jump(u32 target) {
+    GUEST_CALL_ADDR(target);
+}
+
+/* register form: the jump-table handler is external guest code that communicates via
+ * registers; after it returns we must read the mutated R4/R5/R6 to pass into
+ * call_sub_812B25C_sub_81297DC, which leaves R5/R8–R12 in place for the caller. */
+static void battle_dispatch_and_post(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) {
+    u8 state_byte = LD8(r5 + 3);
+    u32 target    = LD32(A_off_81297F4 + state_byte);
+
+    /* Restore the registers the handler expects from the original caller. */
+    R4  = r4;
+    R5  = r5;
+    R6  = r6;
+    R7  = r7;
+    R10 = r10;
+    R1  = state_byte;
+
+    dispatch_jump(target);
+
+    /* Handler returned to the point after bx; post follow-up message 0x12. */
+    call_sub_812B25C_sub_81297DC(0x12, R4, R5, R6);
+}
+
+/* sub_81297DC(r4, r5, r6, r7, r10) -> r5 r8 r9 r10 r11 r12 */
+Next sub_81297DC(void) {
+    battle_dispatch_and_post(R4, R5, R6, R7, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8129808 ── */
 /* sub_8129808: takes r5 = some battle object pointer (has a byte at +0x1d and +3),
  * reads its state index byte, calls sub_812B318, and based on results either
@@ -3364,6 +3633,82 @@ Next sub_8129808(void) {
     R1 = 0;
     GUEST_CALL(sub_811A610);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812982C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6; } call_sub_812B39C_result;
+/* register form: generated wrapper: sub_812B39C has no typed C interface yet */
+static inline call_sub_812B39C_result call_sub_812B39C(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(sub_812B39C);
+    return (call_sub_812B39C_result){ R4, R5, R6 };
+}
+
+/*
+ * sub_812982C: Scan three battle-slot pointers at unk_20251A0 (stride 4, count 3).
+ * Each pointer uses bit 31 as an "active" flag; the low 31 bits are an object address.
+ * If any active object has a non-zero byte at offset +7, bail out with R6 = that slot's
+ * byte-offset.  Otherwise clear all three active flags, set the stage byte at R5+3 to 8,
+ * advance the state machine via sub_812B39C, and clear bit 0 of the byte at R5+0x1B.
+ */
+
+#define SLOT_MASK 0x80000000u
+#define SLOT_COUNT 3
+#define SLOT_STRIDE 4
+
+struct sub_812982C_out {
+    u32 r4;
+    u32 r5;
+    u32 r6;
+};
+
+/* register form: sub_812B39C does not modify R6 (pass-through output); the original
+ * enters the call with R6 == SLOT_COUNT*SLOT_STRIDE (0xc) from the loop counter.
+ * The wrapper sets only R4/R5 from its parameters, so we must restore R6 here. */
+static call_sub_812B39C_result call_state_advance(u32 slots, u32 state) {
+    R6 = SLOT_COUNT * SLOT_STRIDE;   /* 0xc – loop-end value */
+    return call_sub_812B39C(slots, state);
+}
+
+static struct sub_812982C_out sub_812982C_impl(u32 battle_state) {
+    u32 slots_base = A_unk_20251A0;
+
+    /* Pass 1: bail if any slot's object has a non-zero byte at +7. */
+    for (u32 off = 0; off < SLOT_COUNT * SLOT_STRIDE; off += SLOT_STRIDE) {
+        u32 ptr = LD32(slots_base + off) & ~SLOT_MASK;
+        if (LD8(ptr + 7) != 0) {
+            struct sub_812982C_out early = { slots_base, battle_state, off };
+            return early;
+        }
+    }
+
+    /* Pass 2: clear the active flag (bit 31) on all three slot pointers. */
+    for (u32 off = 0; off < SLOT_COUNT * SLOT_STRIDE; off += SLOT_STRIDE) {
+        ST32(slots_base + off, LD32(slots_base + off) & ~SLOT_MASK);
+    }
+
+    /* Set stage byte: battle_state+3 = 8. */
+    ST8(battle_state + 3, 8);
+
+    /* Advance the state machine (reads R4=slots, R5=battle_state, R10; outputs R4,R5,R6). */
+    call_sub_812B39C_result cr = call_state_advance(slots_base, battle_state);
+
+    /* Clear bit 0 of the active-state flag at battle_state+0x1B. */
+    ST8(battle_state + 0x1B, LD8(battle_state + 0x1B) & ~1u);
+
+    struct sub_812982C_out result = { cr.r4, cr.r5, cr.r6 };
+    return result;
+}
+
+/* sub_812982C(r5 = battle-state ptr, r10, lr) -> r4 r5 r6 */
+Next sub_812982C(void) {
+    struct sub_812982C_out out = sub_812982C_impl(R5);
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
     RETURN_TO_CALLER();
 }
 
@@ -3533,6 +3878,66 @@ Next sub_8129948(void) {
         GUEST_CALL(sub_811A610);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812996C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6; } call_sub_812B3CC_result;
+/* register form: generated wrapper: sub_812B3CC has no typed C interface yet */
+static inline call_sub_812B3CC_result call_sub_812B3CC(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(sub_812B3CC);
+    return (call_sub_812B3CC_result){ R4, R5, R6 };
+}
+
+/* Walk the 3-slot pointer table at unk_20251A0. If every slot's
+ * bit-31-stripped pointer has a zero byte at offset 7, clear bit 31
+ * in-place, flag r5+3, run sub_812B3CC, and clear bit 0 of r5+0x1B.
+ * Otherwise bail out early.
+ * Returns r4, r5, r6 as left by the function (r6 = loop offset on
+ * early exit; 0xC if it went through the second loop and sub_812B3CC
+ * is called – matching the original register state). */
+typedef struct { u32 r4, r5, r6; } TableWalkResult;
+
+static TableWalkResult walk_pointer_table(u32 obj) {
+    const u32 table = A_unk_20251A0;
+    const u32 mask = 0x80000000;
+
+    /* Pass 1: for each slot, clear bit 31 of the pointer and test byte +7. */
+    for (u32 off = 0; off < 0xC; off += 4) {
+        u32 ptr = LD32(table + off) & ~mask;
+        if (LD8(ptr + 7) != 0) {
+            return (TableWalkResult){ table, obj, off };
+        }
+    }
+
+    /* Pass 2: strip bit 31 from every slot in place. */
+    for (u32 off = 0; off < 0xC; off += 4) {
+        ST32(table + off, LD32(table + off) & ~mask);
+    }
+
+    /* Mark the object's byte 3 as 8 (state indicator). */
+    ST8(obj + 3, 8);
+
+    /* Hand off to the battle helper; it reads r4, r5, r10. */
+    call_sub_812B3CC(table, obj);
+
+    /* Clear bit 0 of the status byte at r5+0x1B (using input r5, matching
+     * the original register state after the bl). */
+    ST8(obj + 0x1B, LD8(obj + 0x1B) & ~1);
+
+    /* Return r4=table, r5=obj, r6=0xC (loop index from pass 2). */
+    return (TableWalkResult){ table, obj, 0xC };
+}
+
+/* sub_812996C(r5, r10) -> r4, r5, r6 */
+Next sub_812996C(void) {
+    TableWalkResult out = walk_pointer_table(R5);
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
     RETURN_TO_CALLER();
 }
 
@@ -4043,6 +4448,84 @@ Next loadEntryPairTable_812B1DC(void) {
         }
         break;
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B318 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3, r4, r5; } call_sub_811A768_result;
+/* register form: generated wrapper: sub_811A768 has no typed C interface yet */
+static inline call_sub_811A768_result call_sub_811A768(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_811A768);
+    return (call_sub_811A768_result){ R0, R3, R4, R5 };
+}
+
+/* sub_812B318: walk the deallocation table unk_20251A0.
+ * For each of slot_count entries (indexed 0 … slot_count−1):
+ *   slot == 0            → tally as null (null_count++)
+ *   bit 31 of slot set   → tally as locked  (high_count++)
+ *   bit 31 clear         → call sub_811A768(−0x10, slot & 0x7FFF_FFFF)
+ *                          on success zero the slot entry and clear result.
+ * A per-level threshold table (byte_812B394) and an 8-bit counter at
+ * [entity_base+0x1C] (incremented once before the loop) govern early exit.
+ * Returns r0 = 1 (all OK) or 0 (a slot was deallocated),
+ *   r1 = null_count, r2 = high_count, r3 = last callee r3. */
+
+typedef struct { u32 r0, r1, r2, r3; } Result_812B318;
+
+static Result_812B318 process_dealloc_slots(u32 slot_count, u32 entity_base, u32 r3_in)
+{
+    u32 null_count = 0;
+    u32 high_count = 0;
+    u32 success    = 1;   /* becomes 0 when a slot is actually freed */
+    u32 r3         = r3_in;
+
+    /* Bump the per-entity 8-bit counter at base+0x1C once before the loop. */
+    ST8(entity_base + 0x1C, (u8)(LD8(entity_base + 0x1C) + 1));
+
+    u32 i = 1;  /* loop index: slot i−1 is checked, threshold at byte_812B394[i] */
+    do {
+        u32 offset = (i - 1) << 2;
+        u32 slot   = LD32(A_unk_20251A0 + offset);
+
+        if (slot == 0) {
+            null_count++;
+        } else if ((s32)slot < 0) {
+            /* Bit 31 set: entry is locked */
+            high_count++;
+        } else {
+            /* Bit 31 clear: try to deallocate via sub_811A768(−0x10, slot) */
+            call_sub_811A768_result res = call_sub_811A768(
+                0xFFFFFFF0u, slot & 0x7FFFFFFFu);
+            r3 = res.r3;
+            if (res.r0 == 0) {
+                ST32(A_unk_20251A0 + offset, 0);  /* clear the table entry */
+                success = 0;
+            }
+        }
+
+        /* Early-exit when the level threshold reaches the counter.
+         * Both values are u8 (0–255), so signed bge == unsigned >= here. */
+        if ((s32)LD8(A_byte_812B394 + i) >= (s32)LD8(entity_base + 0x1C))
+            break;
+
+        i++;
+    } while ((s32)i < (s32)(slot_count + 1u));
+
+    Result_812B318 out = { success, null_count, high_count, r3 };
+    return out;
+}
+
+/* sub_812B318(r0=slot_count, r5=entity_base) → r0,r1,r2,r3 */
+Next sub_812B318(void) {
+    Result_812B318 res = process_dealloc_slots(R0, R5, R3);
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
+    SET_FLAGS_ADD(R0, 0);
     RETURN_TO_CALLER();
 }
 

@@ -2248,6 +2248,28 @@ Next battle_initEntry_8007A0C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8007B80 ── */
+/* Dispatch the current battle-state phase handler via the two-entry jump
+ * table at off_8007B94.  The byte at BattleState::index_01 (offset 1)
+ * selects:  0 → sub_8007B9C,  4 → battle_state_tick_8007CA0.
+ * r0 must hold the raw phase index when the handler enters (the handler
+ * reads it), matching the original ldrb r0 / bx r1 sequence. */
+
+/* register form: the jump-table handler expects r0 = phase index byte;
+ * no typed wrapper covers a bx-to-computed-address call, and r5 (self)
+ * is already placed by the caller. */
+static void battle_state_dispatch(u32 self) {
+    R0 = LD8(self + oBattleState_Index_01);
+    u32 handler = LD32(A_off_8007B94 + R0);
+    GUEST_CALL_ADDR(handler);
+}
+
+/* sub_8007B80(r5 = *BattleState) -> (r5 r6 r7 r8 r9 r10 r11 r12 after handler) */
+Next sub_8007B80(void) {
+    battle_state_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_stateCountdownTick_8007BD0 ── */
 /* battle_stateCountdownTick_8007BD0: battle-state countdown tick.
  * r5 = battle state object. If its phase byte (offset 3) is still zero,

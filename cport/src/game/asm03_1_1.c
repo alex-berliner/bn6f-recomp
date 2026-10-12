@@ -645,6 +645,56 @@ Next sub_803BA74(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803BAE2 ── */
+/* sub_803BAE2: 0803BAE2-0803BB2C THUMB
+ * Animation-phase step for a battle object.
+ * Increments the phase counter (byte 0x13); when the low 6 bits enter the
+ * "transition" window [0,0x1F], looks up a {base,subIdx} pair from a 2-byte
+ * table and rewrites the two-byte sprite record it points to:
+ *   record starts with 0xE6 → {0x25,0xE6}  (stay active)
+ *   otherwise               → {0x9F,0xE5}  (go idle)
+ * Outside the window nothing is written and r1 = 0x3F.
+ *
+ * inputs:  r0 (table index), r5 (object ptr)
+ * outputs: r1 (record addr, subIdx, or 0x3F), r5 (unchanged)
+ * clobbers: nz, c, v, r0
+ */
+
+static u32 sub_803BAE2_logic(u32 table_index, u32 obj) {
+    /* Table of 2-byte {base_offset, sub_index} pairs in RAM. */
+    u32 entry = (u32)A_dword_803BB28 + (table_index << 1);
+
+    /* Increment phase counter and extract low 6 bits for the gate check. */
+    u32 incremented = LD8(obj + 0x13) + 1;
+    ST8(obj + 0x13, incremented);
+    u32 masked = incremented & 0x3F;
+
+    if ((s32)masked >= 0x20)
+        return 0x3F;  /* outside transition window; r1 = 0x3F */
+
+    /* Resolve the record: obj + base + (obj[sub_idx] << 1). */
+    u32 base    = LD8(entry);
+    u32 sub_idx = LD8(entry + 1);
+    u32 rec     = obj + base + (LD8(obj + sub_idx) << 1);
+
+    if (LD8(rec) == 0xE6) {
+        /* Still active: rewrite to {0x25, 0xE6}; r1 keeps sub_idx. */
+        ST8(rec, 0x25);
+        ST8(rec + 1, 0xE6);
+        return sub_idx;
+    }
+
+    /* Idle (or first byte != 0xE6): rewrite to {0x9F, 0xE5}; r1 = record addr. */
+    ST8(rec, 0x9F);
+    ST8(rec + 1, 0xE5);
+    return rec;
+}
+
+Next sub_803BAE2(void) {
+    R1 = sub_803BAE2_logic(R0, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803BB7C ── */
 /* sub_803BB7C(r0 = value, r5 = object):
  * store r0 into the object's field at offset 0x28. */
@@ -1996,6 +2046,42 @@ Next eStruct200BC30_getJumpOffset00_pushpop(void) {
  * field of the eStruct200BC30 control byte at A_eStruct200BC30. */
 Next eStruct200BC30_setJumpOffset00(void) {
     ST8(A_eStruct200BC30, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_803EA78 ── */
+/* Dispatch to a mode handler via the jump table at off_803EA8C.
+ * The mode byte at eStruct200BC30 is a byte offset (0, 4, or 8) selecting one
+ * of three sub_803EAx handlers. The handler runs with r5 pointing at
+ * eStruct200BC30 and r1 = table base; its results appear in r8-r12.
+ * r4-r7 are saved and restored so the caller's values survive the dispatch. */
+
+/* register form: jump-table call through a code address; r4-r7 are explicitly
+ * saved around GUEST_CALL_ADDR because r5 is set to eStruct200BC30 for the callee */
+static void call_mode_handler(u32 handler_addr) {
+    u32 save_r4 = R4, save_r5 = R5, save_r6 = R6, save_r7 = R7;
+
+    R5 = A_eStruct200BC30;
+    R1 = A_off_803EA8C;
+    R0 = handler_addr;
+
+    GUEST_CALL_ADDR(handler_addr);
+
+    R4 = save_r4;
+    R5 = save_r5;
+    R6 = save_r6;
+    R7 = save_r7;
+}
+
+static void mode_dispatch(void) {
+    u32 mode = LD8(A_eStruct200BC30);
+    u32 handler_addr = LD32(A_off_803EA8C + mode);
+    call_mode_handler(handler_addr);
+}
+
+/* sub_803EA78() -> r4 r5 r6 r7 r8 r9 r10 r11 r12 */
+Next sub_803EA78(void) {
+    mode_dispatch();
     RETURN_TO_CALLER();
 }
 

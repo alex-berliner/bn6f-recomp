@@ -2089,6 +2089,27 @@ Next sub_80CE224(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t3_0x98_80D8444 ── */
+/* Tail-call dispatch on BattleObject->CurState: look up the handler in the
+ * jump table at off_80D8458 using CurState as a direct byte offset, then
+ * transfer control. The handler's return goes directly to this function's
+ * caller (classic Thumb "mov lr, pc; bx r1" tail-call idiom). */
+/* register form: GUEST_CALL_ADDR for jump-table tail call */
+static void battle_object_state_dispatch(u32 battle_obj) {
+    u32 state = LD8(battle_obj + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80D8458 + state);
+    GUEST_CALL_ADDR(handler);
+}
+
+/* t3_0x98_80D8444: dispatch on BattleObject state.
+ *   inputs:  r5 (BattleObject ptr)
+ *   outputs: r5 r8 r9 r10 r11 r12 (modified by the selected handler)
+ *   clobbers: nz c v r0 r1 r2 r3 r4 r6 r7 lr */
+Next t3_0x98_80D8444(void) {
+    battle_object_state_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80D8464 ── */
 /* sub_80D8464: Initialize a battle object (FlagMan-type object) by snapping it to its
  * panel, loading its sprite/animation, setting its stat sheet, building its hitbox and

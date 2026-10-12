@@ -360,6 +360,32 @@ Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t1_0x2c_80C07BC ── */
+/* Jump-table trampoline for a battle object's per-state update. */
+
+/* register form: dispatch through a computed code address (jump-table entry) */
+static u32 call_handler_addr(u32 addr, u32 state) {
+    R0 = state;
+    R1 = addr;
+    GUEST_CALL_ADDR(addr);
+    return R0;
+}
+
+/* Read the battle object's state byte (r5 = object pointer), look up the
+ * handler in JumpTable80C07CC, and call it.  The handler modifies
+ * r5, r8–r12 which emerge as this dispatcher's outputs. */
+static void dispatch_battle_object_state(u32 object) {
+    u32 state = LD8(object + oBattleObject_CurState);
+    u32 handler = LD32(A_JumpTable80C07CC + state);
+    call_handler_addr(handler, state);
+}
+
+/* t1_0x2c_80C07BC(r5 = battle object) -> r5, r8, r9, r10, r11, r12 */
+Next t1_0x2c_80C07BC(void) {
+    dispatch_battle_object_state(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C0870 ── */
 /* Battle object phase dispatcher (0x080C0870).
  *
@@ -2077,6 +2103,42 @@ Next object_spawnDimmingCollisionRegion(void) {
         R2 = OBJECT_FLAG_UPDATE_DURING_TIMESTOP;
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── t3_0x4_80C53C0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSprite_result;
+/* register form: generated wrapper: object_updateSprite has no typed C interface yet */
+static inline call_object_updateSprite_result call_object_updateSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSprite);
+    return (call_object_updateSprite_result){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: replicate `mov lr, pc; bx r1` through the
+ * jump-table entry at `addr`. The handler may advance the object pointer. */
+static u32 dispatch_state_handler(u32 addr, u32 state, u32 obj) {
+    /* register form: jump-table GUEST_CALL_ADDR dispatch */
+    R0 = state;
+    R5 = obj;
+    GUEST_CALL_ADDR(addr);
+    return R5;
+}
+
+/* One frame of battle-object logic: run the per-state handler from
+ * the small jump table, then refresh the object's sprite. */
+static u32 battle_object_update(u32 obj) {
+    u32 state   = LD8(obj + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80C53D8 + state);
+    obj = dispatch_state_handler(handler, state, obj);
+    call_object_updateSprite_result res = call_object_updateSprite(obj);
+    return res.r5;
+}
+
+/* t3_0x4_80C53C0 (r5 = battle object) -> r5 (+ r8–r12 via callees) */
+Next t3_0x4_80C53C0(void) {
+    R5 = battle_object_update(R5);
     RETURN_TO_CALLER();
 }
 

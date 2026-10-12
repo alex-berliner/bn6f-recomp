@@ -478,6 +478,118 @@ Next Sio32IDInit(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── Sio32IDMain ── */
+/* Sio32IDMain (0x0814CD70): the 32-bit multiplayer ID handshake state machine.
+ *
+ * byte_2010CD0 is a small RAM control block; byte_2010CD1 holds the current
+ * stage. r12 is set to that stage on entry and kept as a result (the original
+ * never rewrites r12 on any path). r0 is the function's real return value.
+ *
+ *   stage 0 -> activate: set byte_2010CD0, raise the SIO start bit, bracket the
+ *              IE SIO-enable with IME 0 then IME 1, advance the stage byte to 1,
+ *              and finally set bit 7 of SIO's low byte. Returns 0.
+ *   stage 1 -> if word_2010CDA (partner ID) is non-zero, mark the stage byte 2
+ *              and return that partner ID. Otherwise if the active flag is 1,
+ *              re-arm IME around SIO; else run the full teardown/restart: clear
+ *              the SIO IRQ enable, drive RCNT 0 -> 0x1000 (32-bit parent clock),
+ *              ack the SIO IRQ, raise RCNT with 0x4080, then re-enable the SIO
+ *              IRQ inside a fresh IME bracket. Either way returns 0.
+ *   any other stage -> just return the partner ID word.
+ *
+ * r4/r5/r6/r7 are saved and restored by the prologue/epilogue, so the caller's
+ * values survive; only r0 and r12 are real results. The flags are clobbered and
+ * callers do not read them. */
+
+#define SIO32_ID_STATE_OFF   (A_byte_2010CD1  - A_byte_2010CD0)   /* stage byte   */
+#define SIO32_ID_SEND_OFF    (A_word_2010CD2  - A_byte_2010CD0)   /* pending send */
+#define SIO32_ID_MODE_OFF    (A_word_2010CD4  - A_byte_2010CD0)   /* session word */
+#define SIO32_ID_PARTNER_OFF (A_word_2010CDA  - A_byte_2010CD0)   /* partner slot */
+
+#define SIO32_ID_MODE_FULL     0x8001u    /* "already in the full session" sentinel */
+#define SIO32_ID_START         0x0001u    /* RCNT start bit                */
+#define SIO32_ID_ENABLE        0x0080u    /* IE SIO-IRQ enable / RCNT bit 7 */
+#define SIO32_ID_CLR           0xFF7Fu    /* mask to clear IE bit 7        */
+#define SIO32_ID_PARENT32      0x1000u    /* 32-bit multiplayer parent clock */
+#define SIO32_ID_MULT32        0x4080u    /* multiplayer control packet    */
+
+typedef struct {
+    u32 r0;     /* partner ID (or 0 for the "busy/wait" paths) */
+    u32 state;  /* stage byte as it was on entry (returned in r12) */
+} Sio32Result;
+
+/* The handshake, with base = the byte_2010CD0 control block. */
+static Sio32Result sio32_id_run(u32 base) {
+    u32 state = LD8(base + SIO32_ID_STATE_OFF);   /* captured before any write */
+    u32 result;
+
+    if (state == 0) {
+        /* First entry: bring the SIO link up and advance the stage byte. */
+        ST8(base, 1);
+        ST16(A_SIOControlRegister,
+             LD16(A_SIOControlRegister) | SIO32_ID_START);
+        ST16(A_InterruptMasterEnableRegister, state);       /* mask IME (0) */
+        ST16(A_InterruptEnableRegister,
+             LD16(A_InterruptEnableRegister) | SIO32_ID_ENABLE);
+        ST16(A_InterruptMasterEnableRegister, 1);           /* unmask IME (1) */
+        ST8(base + SIO32_ID_STATE_OFF, 1);                  /* advance stage */
+        ST8(A_SIOControlRegister,
+            (u8)(LD8(A_SIOControlRegister) | SIO32_ID_ENABLE)); /* low-byte pulse */
+        result = 0;
+    } else if (state == 1) {
+        u32 partner = LD16(base + SIO32_ID_PARTNER_OFF);
+        if (partner != 0) {
+            /* Partner slot filled: commit and surface it. */
+            ST8(base + SIO32_ID_STATE_OFF, 2);
+            result = partner;
+        } else if (LD8(base) == 1) {
+            /* Mode 1: pulse the SIO start bit under an IME bracket. */
+            result = 0;
+            if (LD16(base + SIO32_ID_SEND_OFF) == 0) {
+                ST16(A_InterruptMasterEnableRegister, 0);
+                ST16(A_SIOControlRegister,
+                     LD16(A_SIOControlRegister) | SIO32_ID_ENABLE);
+                ST16(A_InterruptMasterEnableRegister, state);
+            }
+        } else {
+            /* Full session finalisation: tear SIO down, restart it in 32-bit
+             * mode, ack the IRQ, then re-enable the SIO IRQ under IME. */
+            result = 0;
+            if (LD16(base + SIO32_ID_MODE_OFF) != SIO32_ID_MODE_FULL &&
+                LD16(base + SIO32_ID_SEND_OFF) == 0) {
+                ST16(A_InterruptMasterEnableRegister, 0);
+                ST16(A_InterruptEnableRegister,
+                     LD16(A_InterruptEnableRegister) & SIO32_ID_CLR);
+                ST16(A_InterruptMasterEnableRegister, state);
+                ST16(A_SIOControlRegister, 0);
+                ST16(A_SIOControlRegister, SIO32_ID_PARENT32);
+                ST16(A_InterruptRequestFlags_IRQAcknowledge, SIO32_ID_ENABLE);
+                ST16(A_SIOControlRegister,
+                     LD16(A_SIOControlRegister) | SIO32_ID_MULT32);
+                ST16(A_InterruptMasterEnableRegister, 0);
+                ST16(A_InterruptEnableRegister,
+                     LD16(A_InterruptEnableRegister) | SIO32_ID_ENABLE);
+                ST16(A_InterruptMasterEnableRegister, state);
+            }
+        }
+    } else {
+        /* Idle stage: just report the partner slot. */
+        result = LD16(base + SIO32_ID_PARTNER_OFF);
+    }
+
+    Sio32Result out;
+    out.r0    = result;
+    out.state = state;
+    return out;
+}
+
+/* Sio32IDMain() -> r0 = result, r12 = original stage byte. */
+Next Sio32IDMain(void) {
+    Sio32Result out = sio32_id_run(A_byte_2010CD0);
+    R0  = out.r0;
+    R12 = out.state;
+    RETURN_TO_CALLER();
+}
+
 /* ── SWI_CpuFastSet ── */
 /* SWI_CpuFastSet(r0 = src, r1 = dest, r2 = length | mode):
  * BIOS call 0xC. Copies or fills words in 8-word bursts.

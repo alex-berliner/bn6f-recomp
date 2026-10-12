@@ -908,6 +908,61 @@ Next chatbox_E6_end(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_E8_msgbox ── */
+/* register form: the jump table dispatch (GUEST_CALL_ADDR) and post-call stride
+ * advance read/modify R0 and R4 directly; these registers are set up for the callee
+ * and modified by it, which cannot be expressed in plain typed C. */
+static u32 msgbox_run(u32 r4_in, u32 r5_in) {
+    u32 cmd = LD8(r4_in + 1);
+    u32 r3_pre;
+
+    if (cmd >= 0x10) {
+        ST8(r5_in + 0x1D2, 6);
+        r3_pre = 6;
+    } else if (cmd >= 0xC) {
+        ST8(r5_in + 0x1D2, 5);
+        r3_pre = 5;
+    } else if (cmd >= 8) {
+        ST8(r5_in + 0x1D2, 4);
+        r3_pre = 4;
+    } else if (cmd <= 3) {
+        ST8(r5_in + 0x1D2, 0);
+        r3_pre = 0;
+    } else {
+        u32 state = LD8(r4_in + 2);
+        ST8(r5_in + 0x1D2, state);
+        u32 idx = LD8(r4_in + 3);
+        if (idx != 0xFF) {
+            u32 entry = A_byte_8045DCC + (idx << 2);
+            ST8(r5_in + oChatbox_CursorIdx, LD16(entry));
+            ST8(r5_in + oChatbox_Unk_1B, LD16(entry + 2));
+            r3_pre = idx << 2;
+        } else {
+            r3_pre = 0xFF;
+        }
+    }
+
+    R4 = r4_in;
+    R5 = r5_in;
+    R1 = cmd;
+    R2 = 0x1D2;
+    R3 = r3_pre;
+    R1 <<= 2;
+    GUEST_CALL_ADDR(LD32(A_chatbox_EB_msgboxJumpTable + R1));
+
+    if (R0) {
+        u32 stride = LD8(0x0804102C + LD8(R4 + 1));
+        R4 = R4 + stride;
+        R0 = 0x0804102C;
+    }
+    return R0;
+}
+
+Next chatbox_E8_msgbox(void) {
+    R0 = msgbox_run(R4, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_stepOpenAnimation_804103E ── */
 /* register form: calls chatbox_setflags_3e outside this file, which has no typed C interface yet */
 static void call_setflags_3e(u32 mask) {
@@ -1084,6 +1139,159 @@ Next chatbox_E9_newline(void) {
     R0 = 0;
     SET_FLAGS_NZ(0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_EA_flag ── */
+/* Chatbox command 0xEA: reads a handler index (byte 1) and a 16-bit event flag
+ * (bytes 2-3) from the command struct at r4, dispatches via a jump table to one
+ * of several handlers, then returns r0 = 1 (success). r5 is preserved across the
+ * indirect call; all other registers are outputs (set by the callee). */
+
+/* Jump table targets with thumb bit, matching off_8041184 entries. */
+#define EA_ADDR_0  (0x080411B0 + 1)
+#define EA_ADDR_1  (0x080411BC + 1)
+#define EA_ADDR_2  (0x080411C8 + 1)
+#define EA_ADDR_3  (0x080411E8 + 1)
+#define EA_ADDR_4  (0x08041200 + 1)
+/* entry 5 is NULL (unreachable in practice) */
+#define EA_ADDR_6  (0x08041218 + 1)
+#define EA_ADDR_7  (0x080411D4 + 1)
+#define EA_ADDR_8  (0x080411E0 + 1)
+#define EA_ADDR_9  (0x0804122C + 1)
+#define EA_ADDR_10 (0x08041238 + 1)
+
+/* register form: calls chatbox_setEventFlagAndAdvanceEventCursor_80411B0 outside this file, which has no typed C interface yet */
+static void ea_call_0(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5; /* register form: save r5 to match push {r5} / pop {r5} */
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_0;
+    GUEST_CALL(chatbox_setEventFlagAndAdvanceEventCursor_80411B0);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_ClearEntryWaitFlagAndAdvanceEntry_80411BC outside this file, which has no typed C interface yet */
+static void ea_call_1(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_1;
+    GUEST_CALL(chatbox_ClearEntryWaitFlagAndAdvanceEntry_80411BC);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_80411C8 outside this file, which has no typed C interface yet */
+static void ea_call_2(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_2;
+    GUEST_CALL(chatbox_80411C8);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_80411E8 outside this file, which has no typed C interface yet */
+static void ea_call_3(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_3;
+    GUEST_CALL(chatbox_80411E8);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_8041200 outside this file, which has no typed C interface yet */
+static void ea_call_4(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_4;
+    GUEST_CALL(chatbox_8041200);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_cmdSetEventFlag_8041218 outside this file, which has no typed C interface yet */
+static void ea_call_6(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_6;
+    GUEST_CALL(chatbox_cmdSetEventFlag_8041218);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_80411D4 outside this file, which has no typed C interface yet */
+static void ea_call_7(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_7;
+    GUEST_CALL(chatbox_80411D4);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_80411E0 outside this file, which has no typed C interface yet */
+static void ea_call_8(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_8;
+    GUEST_CALL(chatbox_80411E0);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_804122C outside this file, which has no typed C interface yet */
+static void ea_call_9(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_9;
+    GUEST_CALL(chatbox_804122C);
+    R5 = saved_r5;
+}
+
+/* register form: calls chatbox_8041238 outside this file, which has no typed C interface yet */
+static void ea_call_10(u32 flag, u32 param_low) {
+    u32 saved_r5 = R5;
+    R0 = flag;
+    R1 = param_low;
+    R2 = EA_ADDR_10;
+    GUEST_CALL(chatbox_8041238);
+    R5 = saved_r5;
+}
+
+/* Dispatch chatbox 0xEA handler: read index and 16-bit flag from the command
+ * struct at cmd_addr, then call the matching handler via a jump table.
+ * The callee sets all output registers (r0-r12, lr, flags) except r5 which
+ * is preserved; the adapter overrides r0 = 1 afterwards. */
+static void dispatch_ea_flag(u32 cmd_addr) {
+    u32 handler_index = LD8(cmd_addr + 1);
+    u32 param_low     = LD8(cmd_addr + 2);
+    u32 param_high    = LD8(cmd_addr + 3);
+    u32 flag          = (param_high << 8) | param_low;
+
+    switch (handler_index) {
+        case 0:  ea_call_0(flag, param_low);  break;
+        case 1:  ea_call_1(flag, param_low);  break;
+        case 2:  ea_call_2(flag, param_low);  break;
+        case 3:  ea_call_3(flag, param_low);  break;
+        case 4:  ea_call_4(flag, param_low);  break;
+        case 5:  break; /* NULL table entry – unreachable in practice */
+        case 6:  ea_call_6(flag, param_low);  break;
+        case 7:  ea_call_7(flag, param_low);  break;
+        case 8:  ea_call_8(flag, param_low);  break;
+        case 9:  ea_call_9(flag, param_low);  break;
+        case 10: ea_call_10(flag, param_low); break;
+        default: break; /* out of range – callers never produce this */
+    }
+}
+
+/* chatbox_EA_flag(r4 = command struct) -> r0 = 1, nz from r0 */
+Next chatbox_EA_flag(void) {
+    dispatch_ea_flag(R4);
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 

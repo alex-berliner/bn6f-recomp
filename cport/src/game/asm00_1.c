@@ -494,6 +494,103 @@ Next ZeroFillObjectInteractionAreas_800378C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── checkOWObjectInteractions_80037f4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2; } call_checkOWObjectInteractionAreasOverlap_8003894_result;
+/* register form: generated wrapper: checkOWObjectInteractionAreasOverlap_8003894 has no typed C interface yet */
+static inline call_checkOWObjectInteractionAreasOverlap_8003894_result call_checkOWObjectInteractionAreasOverlap_8003894(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(checkOWObjectInteractionAreasOverlap_8003894);
+    return (call_checkOWObjectInteractionAreasOverlap_8003894_result){ R0, R2 };
+}
+
+/* Scan all ordered pairs (i, j) of OW interaction areas registered for this frame.
+ * When areas i and j have overlapping mask bits AND their hitboxes overlap,
+ * OR the combined bits into each area's event-flag word, and if area i carries
+ * the snap-player flag (0x200000 in Unk_08), copy area j's X/Y/Z to the player.
+ * Clears eNumOWObjectInteractionAreas to 0 before returning. */
+
+typedef struct { u32 r4; u32 r6; } OWPairResult;
+
+static OWPairResult scan_ow_pairs(u32 r4_in, u32 r6_in) {
+    u32 num = LD32(A_eNumOWObjectInteractionAreas);
+    if ((s32)num <= 1) {
+        ST32(A_eNumOWObjectInteractionAreas, 0);
+        OWPairResult passthrough = { r4_in, r6_in };
+        return passthrough;
+    }
+
+    u32 base = A_eOWObjectInteractionAreas;
+    u32 r4 = r4_in;
+    u32 r6 = 0;
+
+    /* Outer loop: i = 0 .. num-1 */
+    for (u32 i = 0; i < num; i++) {
+        u32 outer = base + i * oOWObjectInteractionArea_Size;
+
+        /* Inner loop: j = 0 .. num-1, skip j == i */
+        for (u32 j = 0; j < num; j++) {
+            if (i == j)
+                continue;
+            u32 inner = base + j * oOWObjectInteractionArea_Size;
+            r4 = inner;
+
+            /* Quick reject: shared bits between outer Unk_0c and inner Unk_08 */
+            u32 outer_mask = LD32(outer + oOWObjectInteractionArea_Unk_0c);
+            u32 inner_mask = LD32(inner + oOWObjectInteractionArea_Unk_08);
+            if ((outer_mask & inner_mask) == 0)
+                continue;
+
+            /* Full hitbox overlap test */
+            OWPairResult dummy; /* not used, just for type; actual call below */
+            (void)dummy;
+            call_checkOWObjectInteractionAreasOverlap_8003894_result ov =
+                call_checkOWObjectInteractionAreasOverlap_8003894(outer, inner);
+            if (ov.r0 == 0)
+                continue;
+
+            /* OR combined mask into outer area's event-flag word (*Unk_10) */
+            u32 combined = outer_mask & inner_mask;
+            u32 outer_evt = LD32(outer + oOWObjectInteractionArea_Unk_10);
+            ST32(outer_evt, combined | LD32(outer_evt));
+
+            /* If outer has the snap-player flag, copy inner coords to player */
+            u32 outer_unk08 = LD32(outer + oOWObjectInteractionArea_Unk_08);
+            if (outer_unk08 & OW_OBJECT_INTERACTION_AREA_FLAG_0x200000) {
+                u32 player = A_eOWPlayerObject;
+                ST16(player + oOWPlayerObject_Unk_72,
+                     LD16(inner + oOWObjectInteractionArea_X));
+                ST16(player + oOWPlayerObject_Unk_74,
+                     LD16(inner + oOWObjectInteractionArea_Y));
+                ST16(player + oOWPlayerObject_Unk_76,
+                     LD16(inner + oOWObjectInteractionArea_Z));
+            }
+
+            /* OR (outer Unk_08) & (inner Unk_0c) into inner area's event word */
+            u32 inner_mask2 = LD32(inner + oOWObjectInteractionArea_Unk_0c);
+            u32 combined2 = outer_unk08 & inner_mask2;
+            u32 inner_evt = LD32(inner + oOWObjectInteractionArea_Unk_10);
+            ST32(inner_evt, combined2 | LD32(inner_evt));
+        }
+
+        r6 = i + 1;
+    }
+
+    ST32(A_eNumOWObjectInteractionAreas, 0);
+    OWPairResult out = { r4, r6 };
+    return out;
+}
+
+/* checkOWObjectInteractions_80037f4() -> r4 r5 r6 */
+Next checkOWObjectInteractions_80037f4(void) {
+    OWPairResult result = scan_ow_pairs(R4, R6);
+    R4 = result.r4;
+    R5 = R5;
+    R6 = result.r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── Clear_eStruct2000780 ── */
 /* Clear_eStruct2000780: zero out the 0x48-byte scenario effect state block
  * at eScenarioEffectState2000780. Doesn't touch r2-r7. */

@@ -2306,6 +2306,37 @@ Next battle_pickRandomRowObjectFields_810971A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8109804 ── */
+/*
+ * AI-attack tail-call dispatch thunk (0x08109804).
+ *
+ * Reads a selector byte from the AI attack-vars block (r7), looks up a
+ * handler address in the two-entry table at off_8109818 (indexed by the
+ * raw byte, no ×4 scaling), and branches into it.  The handler sees
+ * R0 = selector, R1 = handler address; every register and flag it
+ * writes on return IS this thunk's result (the original simply
+ * "pop {pc}" back to the caller).
+ */
+
+/* register form: tail call through a jump table whose target is only
+ * known at runtime; no generated call_* wrapper exists for this
+ * pattern, so GUEST_CALL_ADDR performs the original's "mov lr, pc; bx r1". */
+static void ai_attack_dispatch_sub_8109804(void) {
+    /* selector byte from the attack-vars block */
+    R0 = LD8(R7 + oAIAttackVars_Unk_00);
+    /* table entry (4 bytes wide, indexed by raw selector as in ldr r1,[r1,r0]) */
+    R1 = LD32(A_off_8109818 + R0);
+    /* branch to handler; on return every guest register and flag holds
+     * whatever the callee left behind – that is our output. */
+    GUEST_CALL_ADDR(R1);
+}
+
+/* inputs: r5 r6 r7 lr; outputs: all regs + flags (pass-through from handler) */
+Next sub_8109804(void) {
+    ai_attack_dispatch_sub_8109804();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8109820 ── */
 /* sub_8109820: AI attack-step handler. If the object can move and the
  * candidate panel passes the parameter check, store the future panel on

@@ -1918,6 +1918,51 @@ Next IsR2BetweenR0AndR1(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800E994 ── */
+/* Classify the signed position deltas (ax-bx, ay-by) to produce a direction code.
+ * Codes: 0=origin, 1=dy<0, 2=dy>0, 3/4 depend on sign of dx and r4, 5=out-of-range.
+ * C and V are always left from the CMP against #2 (r0 if first bge hit, else r1). */
+
+typedef struct { u32 code; u32 dy; u32 flag_src; } E994Result;
+
+static E994Result classify_direction(u32 ax, u32 ay, u32 bx, u32 by, u32 r4) {
+    s32 dx = (s32)(ax - bx);
+    s32 dy = (s32)(ay - by);
+    u32 dy_u = ay - by;
+
+    if (dx >= 2)
+        return (E994Result){5, dy_u, (u32)dx};
+    if (dy >= 2)
+        return (E994Result){5, dy_u, dy_u};
+
+    if (dx > 0) {
+        if (dy != 0)
+            return (E994Result){5, dy_u, dy_u};
+        return (E994Result){r4 ? 3 : 4, dy_u, dy_u};
+    }
+    if (dx < 0) {
+        if (dy != 0)
+            return (E994Result){5, dy_u, dy_u};
+        return (E994Result){r4 ? 4 : 3, dy_u, dy_u};
+    }
+    /* dx == 0 */
+    if (dy > 0)
+        return (E994Result){2, dy_u, dy_u};
+    if (dy < 0)
+        return (E994Result){1, dy_u, dy_u};
+    return (E994Result){0, dy_u, dy_u};
+}
+
+/* sub_800E994(r0=ax, r1=ay, r2=bx, r3=by, r4=flag) -> r0=code, r1=dy, nz,c,v */
+Next sub_800E994(void) {
+    E994Result res = classify_direction(R0, R1, R2, R3, R4);
+    R0 = res.code;
+    R1 = res.dy;
+    SET_FLAGS_CMP(res.flag_src, 2);
+    SET_FLAGS_NZ(res.code);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_clearInvulnerableTime ── */
 /* object_clearInvulnerableTime(r5 = battle object):
  * Reset the object's post-hit invulnerability counter in its collision data
