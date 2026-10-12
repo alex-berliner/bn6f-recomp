@@ -1230,6 +1230,34 @@ Next sub_8123E08(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── submenu_subchip_dispatch_812407C ── */
+/* submenu_subchip_dispatch_812407C(r5 = sub-chip submenu state):
+ * Dispatch on the submenu's phase (/4 value in [state,#2]) and, once the
+ * phase handler returns, update entity handlers, scene strips and background.
+ * As in the original, the phase handler is entered with r0 = its jump-table
+ * entry (Thumb address) and r1 = the phase word. */
+Next submenu_subchip_dispatch_812407C(void) {
+    u32 phase = LD8(R5 + 2);
+
+    R1 = phase;
+    switch (phase >> 2) {
+    case 0: R0 = 0x081240BD; GUEST_CALL(submenu_subchip_81240BC); break;
+    case 1: R0 = 0x081240D1; GUEST_CALL(submenu_subchip_81240D0); break;
+    case 2: R0 = 0x08124135; GUEST_CALL(submenu_subchip_8124134); break;
+    case 3: R0 = 0x08124145; GUEST_CALL(submenu_subchip_dispatch_8124144); break;
+    case 4: R0 = 0x081242D9; GUEST_CALL(submenu_subchip_81242D8); break;
+    case 5: R0 = 0x08124309; GUEST_CALL(submenu_subchip_8124308); break;
+    case 6: R0 = 0x08124341; GUEST_CALL(submenu_subchip_8124340); break;
+    }
+
+    GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
+    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(sub_812453C);
+    GUEST_CALL(background_updateSceneStrips_812475C);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── submenu_subchip_81240BC ── */
 /* register form: calls sub_81244EC outside this file, which has no typed C interface yet */
 static void call_submenu_update(void) {

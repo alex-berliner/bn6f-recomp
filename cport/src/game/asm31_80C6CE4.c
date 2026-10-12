@@ -1129,6 +1129,29 @@ Next battle_BDT_main_80c93cc(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_BDT_destroy_80c93f0 ── */
+/* battle_BDT_destroy_80c93f0 (r5 = battle object): destroy a battle BDT object.
+ * If its sprite frame parameters have the destroy bit (0x80) set, clear the
+ * related object's header (if any) and free the object; otherwise do nothing.
+ * Leaves r5 untouched for the caller. */
+Next battle_BDT_destroy_80c93f0(void) {
+    GUEST_CALL(sprite_getFrameParameters);
+
+    if (R0 & 0x80) {
+        u32 related = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+        if (related != 0)
+            ST32(related + oBattleObject_ObjectHeader, 0);
+
+        /* object_genericDestroy is called with r0 = related-object pointer
+         * (or 0x80 if there was none) and r1 = 0 (or 0x80), exactly as the
+         * original leaves them before the call. */
+        R0 = related;
+        R1 = (related != 0) ? 0 : 0x80;
+        GUEST_CALL(object_genericDestroy);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_BDT_update_80c94bc ── */
 /* battle_BDT_update_80c94bc(r5 = battle object):
  * Per-frame update for a battle object's collision state. Refreshes the

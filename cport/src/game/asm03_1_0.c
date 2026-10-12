@@ -945,6 +945,40 @@ Next IsNotSlipRunningAndNotInCutscene(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8034E3C ── */
+/* sub_8034E3C(r1 = table selector, r7 -> struct with halfword at +4):
+ * Scan one of the u16 lists in off_8034E64 (picked by r1) for the halfword
+ * [r7,#4].  Stops at the first match, else at the 0xFFFF terminator.
+ * Returns r0 = r2 = byte offset of the match (or of the terminator) and
+ * the Z flag from (found ? 0 : 1); r4 is written locally inside the
+ * original but then restored from the stack, so it is preserved. */
+Next sub_8034E3C(void) {
+    u32 listBase = LD32(A_off_8034E64 + (R1 << 2)); /* pointer table entry */
+    u16 wanted   = LD16(R7 + 4);
+
+    u32 offset = 0;
+    u32 notFound;
+
+    for (;;) {
+        u16 value = LD16(listBase + offset);
+        if (value == wanted) {
+            notFound = 0;
+            break;
+        }
+        offset += 2;
+        if (value != 0xFFFF)
+            continue;
+        notFound = 1; /* hit the list terminator without a match */
+        break;
+    }
+
+    R0 = offset;
+    R2 = offset;
+    SET_FLAGS_NZ(notFound);
+    /* r4 = 0/1 only feeds the flag test; pop {r4,r6,pc} restores the caller's r4 */
+    RETURN_TO_CALLER();
+}
+
 /* ── maybeStartEntranceCutscene_8034F68 ── */
 /* register form: calls IsCutsceneScriptNonNull outside this file, which has no typed C interface yet */
 static bool cutscene_script_non_null_sub_8034F68(void) {

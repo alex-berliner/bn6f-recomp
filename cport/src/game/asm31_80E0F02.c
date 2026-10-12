@@ -779,6 +779,35 @@ Next battle_objectUpdatePosAndRunAction_80E3BEA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E3D1A ── */
+/* sub_80E3D1A(r0 = x, r1 = y, r5 = battle object):
+ * Convert (x, y) to a panel position, read the panel's parameter bits, and
+ * set the object's ExtraVars+8 flag if the panel type matches the object's
+ * alliance (normal-panel mask for alliance 0, dark-panel mask otherwise).
+ * r0, r1, r5 are preserved; r2 ends holding the alliance byte. */
+Next sub_80E3D1A(void) {
+    u32 saved_x = R0, saved_y = R1;
+    u32 object = R5;
+
+    GUEST_CALL(convertXYToPanelXY_800E258);   /* in: r0=x, r1=y; out: r0=panel pos */
+    GUEST_CALL(object_getPanelParameters);    /* in: r0; out: r0=parameter bits */
+
+    u32 panel_params = R0;
+    u32 alliance = LD8(R5 + oBattleObject_Alliance);
+    /* Alliance 0 checks the normal-panel bit (0x4000000), others the dark-panel bit. */
+    u32 panel_mask = (alliance == 0) ? 0x4000000 : 0x8000000;
+
+    R2 = alliance;
+    if (panel_params & panel_mask)
+        ST32(R5 + oBattleObject_ExtraVars + 8, 1);
+
+    /* push/pop {r0,r1}: both are returned unchanged; r0's intermediate
+     * panel-params/flag value never escapes. */
+    R0 = saved_x;
+    R1 = saved_y;
+    RETURN_TO_CALLER();
+}
+
 /* ── ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486 ── */
 /* ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486
  *   r0 = panel X, r1 = panel Y, r2 = panel-flag selector, r10 = toolkit.

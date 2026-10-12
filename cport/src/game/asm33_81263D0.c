@@ -1219,6 +1219,94 @@ Next battle_dispatchNextCmd_81272C4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_event163Progress_81273B4 ── */
+/* chatbox_event163Progress_81273B4:
+ * Event-163 chatbox script handler. If the event flag is set, advance the
+ * event's progress counter (obtained via sub_8121198 from the toolkit-side
+ * record) by one, capping the "finished" state at 15, and queue the matching
+ * text script entry (18 normally, 19 once complete).
+ * Preserves r4-r7 across the callee calls, as the original's push/pop does. */
+Next chatbox_event163Progress_81273B4(void) {
+    /* save r4-r7 like the original's push {r4-r7,lr} */
+    u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
+
+    /* test event flag 163 */
+    R0 = 1;
+    R1 = 0x63;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    if (ZERO_FLAG()) {
+        R4 = r4; R5 = r5; R6 = r6; R7 = r7;
+        RETURN_TO_CALLER();
+    }
+
+    /* the per-event data record hangs off the toolkit object */
+    u32 data = LD32(R10 + oToolkit_Unk200a220_Ptr);
+
+    GUEST_CALL(sub_8121198);          /* returns current progress in R0 */
+    u32 progress = R0 + 1;
+
+    u32 textId;
+    if (progress == 0xF) {
+        progress = 0x13;              /* event complete */
+        textId = 0x13;
+    } else {
+        ST32(data + 0xC, progress);   /* save incremented progress */
+        textId = 0x12;
+    }
+
+    /* show the chatbox text for this stage */
+    R0 = textId;
+    R1 = 0;
+    R2 = 0x600AC00;
+    R3 = A_eTextScript201BF20;
+    R4 = A_unk_201A600;
+    R6 = data;
+    GUEST_CALL(sub_8127578);
+
+    /* restore r4-r7 like the original's pop {r4-r7,pc} */
+    R4 = r4; R5 = r5; R6 = r6; R7 = r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── paintMapEventTileBlock_81273F0 ── */
+/* paintMapEventTileBlock_81273F0(r5 = map event object):
+ * If event flag EVENT_163 is set, CopyBackgroundTiles paints a 3x2 block of
+ * tiles (tile ids from byte_8126B10) at the object's position: the signed
+ * byte at +0x0D plus 2 is the destination row (j), 9 is the column (i),
+ * tile block 3, size 3x2.
+ * Preserved: r4, r6, r7; r5 returns unchanged (original saves/restores it
+ * around the CopyBackgroundTiles call where r5 = i_size = 2). */
+Next paintMapEventTileBlock_81273F0(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+    u32 saved_r6 = R6;
+    u32 saved_r7 = R7;
+    u32 obj = R5;
+
+    /* TestEventFlagFromImmediate reads r0 = 1 and r1 = flag id (movflag). */
+    R0 = 1;
+    R1 = EVENT_163;
+    GUEST_CALL(TestEventFlagFromImmediate);
+
+    if (!ZERO_FLAG()) { /* flag set: paint the event tile block */
+        R0 = (u32)((s8)LD8(obj + 0x0D) + 2); /* j: destination row */
+        R1 = 9;                              /* i: destination column */
+        R2 = 3;                              /* which_tile_block_32x32 */
+        R3 = A_byte_8126B10;                 /* tile_ids */
+        R4 = 3;                              /* j_size */
+        R5 = 2;                              /* i_size */
+        R7 = obj;                            /* callee sees r7 = r5 */
+        GUEST_CALL(CopyBackgroundTiles);
+    }
+
+    /* Restore the saved registers the original pops back. */
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── background_drawSceneSection_81275A8 ── */
 /* background_drawSceneSection_81275A8(r5 = background/scene state ptr):
  * Redraws a background section: reads the page/screen index stored at +0xD of

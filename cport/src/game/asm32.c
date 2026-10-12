@@ -3308,6 +3308,36 @@ Next nullsub_8118FE0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8118FE4 ── */
+/* sub_8118FE4(r5 = battle object, r10 = context):
+ * Runs the object's event handler selected by its state byte at +9 (dispatch
+ * table at off_8119010: entry 0 = battle_dispatchEventScript_8119018,
+ * entry 1 = sub_8119084). Afterwards, if the object's graphic (+4) differs
+ * from the cached value (+0xC), restarts its sprite animation.
+ * Outputs: r5/r10 passed through the handler, r11 likewise. */
+Next sub_8118FE4(void) {
+    u32 state = LD8(R5 + 9);
+
+    /* Dispatch to the handler named by the state byte. */
+    R0 = state;
+    if (state == 0)
+        GUEST_CALL(battle_dispatchEventScript_8119018);
+    else
+        GUEST_CALL(sub_8119084);
+
+    /* Only reload the sprite when the graphic actually changed. */
+    u32 graphic = LD8(R5 + 4);
+    if (graphic != LD8(R5 + 0xC)) {
+        ST8(R5 + 0xC, graphic);
+        R0 = graphic;
+        GUEST_CALL(sprite_setAnimation);
+        GUEST_CALL(sprite_loadAnimationData);
+        GUEST_CALL(sprite_noShadow);
+        GUEST_CALL(sub_81190E0);
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchEventScript_8119018 ── */
 /* register form: calls sub_8137884 outside this file, which has no typed C interface yet */
 static u32 lookup_script_entry(u32 index, u32 obj_ptr, u32 script_data) {
