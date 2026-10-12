@@ -1,0 +1,88 @@
+name: sub_8009158
+address: '0x08009158'
+kind: function
+status: confirmed
+summary: 'Battle state tick: runs the current state''s phase handler (via the jump table at off_80091BC) and updates
+  the low-HP warning siren based on the player''s HP crossing a quarter of max.'
+interface: void battle_dispatchStatePhase_8009158(void);  // r5 = battle state in/out; r2,r3,r4,r5,r6,r8,r9,r10,r11,r12
+  carry callee return values; clobbers nz,c,v,r0,r1,r7,lr
+details: "Reads the state's index byte (oBattleState_Index_01) and dispatches through the\n10-entry function pointer\
+  \ table at off_80091BC (entries for indices 0x00..0x24\nresolve to sub_80091F0, battle_dispatchStatePhase_80092A0,\
+  \ sub_8009338,\nsub_800938A, battle_DispatchStatePhase_800945C, sub_80094DA, sub_800951E,\nsub_8009552, sub_8009594,\
+  \ sub_80095C8).\nAfter the phase handler returns, if GetBattleEffects() bit 0x8\n(BATTLE_EFFECTS_LOW_HP_WARNING)\
+  \ is clear the function returns.\nOtherwise fetches the player object via\nbattle_preUpdateAndGetPlayerObject_80103EC\
+  \ and compares oBattleObject_HP\nagainst oBattleObject_MaxHP >> 2.\n  - HP > quarter-max and oBattleState_Unk_20\
+  \ != 0 -> clear Unk_20, call\n    sound_800065A(0x1F, 0xFFFF, 0) then sound_8000672(0x1F, 0x100) to stop\n   \
+  \ the siren.\n  - HP <= quarter-max and oBattleState_Unk_20 == 0 -> set Unk_20 = 1, call\n    sound_800065A(0x1F,\
+  \ 0xFFFF, 0x100) then sound_8000672(0x1F, 0x11A) to\n    start the looping low-HP siren (sound id 0x11A).\nHysteresis\
+  \ is implemented by only toggling the siren when the state of\noBattleState_Unk_20 disagrees with the current\
+  \ HP band, so the pair of\nsound calls fires at most once per crossing.\nTouches: oBattleState_Index_01, oBattleState_Unk_20,\
+  \ oBattleObject_HP,\noBattleObject_MaxHP.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8009158
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8009158
+
+    ./wf verify --function sub_8009158 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8009158
+
+    ./wf verify --function sub_8009158 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 19 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8009158
+
+    ./wf verify --function sub_8009158 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08009158 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What oBattleState_Unk_20 actually represents beyond "low-HP warning latch"; same field is shared with other phase
+  handlers, so it may be a more general "audio cue active" flag.
+- Exact meaning of GetBattleEffects() bit 0x8 (it is a per-battle toggle that allows the low-HP check to be disabled,
+  e.g. in scripted/custom battles).
+- Why the warning arm call uses 0x100 as a parameter to sound_800065A while the disarm call uses 0 - the 0x100 is
+  also the sound id used to stop the warning, so the two arguments may be unrelated to the sound id.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

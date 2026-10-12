@@ -1,0 +1,77 @@
+name: sub_8027332
+address: '0x08027332'
+kind: function
+status: confirmed
+summary: 'Drives one step of a battle script batch: spawns each 3-byte entry via sub_8001040 until the batch terminator,
+  then waits out a frame timer (cuttable by A or B near the end) before advancing the script state to 4.'
+interface: u32 sub_8027332(u32 r4 /* entry-list pos */, u32 r5 /* owner object */, u32 r10 /* toolkit */); // returns
+  r3 (joypad ptr if buttons read, else last sub_8001040 r3); clobbers r0,r1,r2,r3,r4,lr and NZCV; preserves r5,r6,r7,r10
+details: "Owner object layout (r5):\n  +0x02 h  state (set to 4 on completion)\n  +0x40 w  script position / resume\
+  \ pointer (updated to byte after final entry on completion)\n  +0x44 w  wait timer in frames (decremented each\
+  \ call)\nThe function increments the incoming r4 (script position) by 1 to skip a header byte, then\nwalks 3-byte\
+  \ entries (byte0, byte1, flags). For each entry it calls sub_8001040(a=byte0,\nb=byte1, r2=table[flags&0x7F],\
+  \ r3=0xB37A, r4=1). Bit 7 of the flags byte marks the last entry\nof the batch; the low 7 bits index byte_8027388\
+  \ as a 4-byte/entry table giving r2's argument\n(sample: index 0 -> 0x00000000, index 1 -> 0x40000000, index 3\
+  \ -> 0x60000000). After the call\nthe flags byte is RE-READ before the bit-7 test, mirroring the original (sub_8001040\
+  \ may\noverwrite the entry).\nOnce the batch is exhausted: subtract 1 from oScriptStep_WaitTimer. If timer ==\
+  \ 0 the step\nfinishes immediately. Otherwise, while frames_left <= 0x44, read the joypad through\noToolkit_JoypadPtr+0x44:\
+  \ A held (held-state halfword, +2 & 1) or B pressed\n(pressed-state halfword, +4 & 2) also finishes the step.\
+  \ When finishing, save the new\nscript_pos to +0x40 and write 4 to +0x02.\nThe wait window (A/B cancellable) is\
+  \ bounded by frames_left <= 0x44 and the B check uses\n\"pressed\" while A uses \"held\" -- a common SNESpeed-like\
+  \ confirm-vs-skip distinction.\nr3 is threaded back to the caller: it carries the joypad pointer when the joypad\
+  \ was\nconsulted, otherwise whatever sub_8001040 last left there. This residual lives in the guest\nregister file\
+  \ and cannot be expressed in pure C.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8027332
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8027332
+
+    ./wf verify --function sub_8027332 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8027332
+
+    ./wf verify --function sub_8027332 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 77 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8027332
+
+    ./wf verify --function sub_8027332 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, menus2.'
+  reproduce: grep -l '^08027332 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battlesweep
+- menus2
+open_questions:
+- What sub_8001040 actually spawns (projectiles, animations, packets?) -- the 3-byte entry shape and 0xB37A constant
+  are still opaque.
+- What byte_8027388's later entries (beyond the first three readable ones) hold; the ROM area is partially readable
+  in the dump.
+- Why the flags byte is reloaded after the spawn call (sub_8001040 writing the entry?).
+- Whether the owner object is specifically an OO, EOO, or a battle-step entity; the field names (state, script_pos,
+  wait_timer) match an OO pattern but the calling site decides.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

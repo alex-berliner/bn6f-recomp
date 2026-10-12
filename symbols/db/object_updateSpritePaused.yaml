@@ -1,0 +1,113 @@
+name: object_updateSpritePaused
+address: '0x0801BCA6'
+kind: function
+status: confirmed
+summary: Steps the sprite of a battle object whose logic is paused (time-stop immune), syncing its sprite animation
+  state to the object's currently selected animation and advancing one frame.
+interface: void object_updatePausedSprite_801BCA6(u32 obj /* r5 */, void *ctx /* r10 */); // uses lr; clobbers nzcv
+  r0-r5 (no other clobber contract)
+details: 'Operates on a battle object pointer passed in r5, with r10 carrying the encounter/ctx
+
+  (preserved, not actually read here). Reads oObjectHeader_Flags (offset on the object
+
+  header) and short-circuits with bit 0 clear — only objects flagged OBJ_FLAG_SPRITE_UPDATES
+
+  (=0x01) get their sprite ticked while paused. Even those are skipped while
+
+  battle_isTimeStop() reports an active time-stop, so chips like TimeStop/Navi-Cust freeze
+
+  frames cleanly for these objects.
+
+
+  When the object is unfrozen, it reads oBattleObject_CurAnim and compares it to the cached
+
+  oBattleObject_CurAnimCopy. On a mismatch it calls sprite_setAnimation(u8 anim) and
+
+  sprite_loadAnimationData(), then re-reads CurAnim (the callees can mutate it) before
+
+  storing it into CurAnimCopy — this is the "adopt the new animation" sync step.
+
+
+  Finally it calls sprite_update() to advance the sprite one frame. The early-out paths are
+
+  unusual: the flag-skip explicitly leaves the function''s own r0 (flags byte), r1 (=1), and
+
+  the Z flag from `tst` in place as "the result", while the time-stop path leaves the callee''s
+
+  leftover registers/flags untouched. Both behaviors are preserved verbatim by the assembly
+
+  (no auto-generated stub for either path), which is why the readable C has to hand-roll an
+
+  adapter (set_skip_result) rather than fall through plain C return-value plumbing.
+
+
+  Quirks: the function is the THUMB wrapper `object_updateSpritePaused` at 0x0801BCA6
+
+  (push {lr} / pop {pc}) and ends right after `locret_801BCCE`; it cannot itself branch on
+
+  the early-out conditions, so any rename must keep its two early-exit paths leaving their
+
+  distinct register/flag leftovers intact for the caller. No oBattleObject_* offsets are
+
+  known here beyond their identifiers; sprite_setAnimation / sprite_loadAnimationData /
+
+  sprite_update / battle_isTimeStop live in other translation units.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c object_updateSpritePaused
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_updateSpritePaused
+
+    ./wf verify --function object_updateSpritePaused --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 242 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_updateSpritePaused
+
+    ./wf verify --function object_updateSpritePaused --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 45 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_updateSpritePaused
+
+    ./wf verify --function object_updateSpritePaused --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, story7.'
+  reproduce: grep -l '^0801bca6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battlesweep
+- chips
+- story7
+open_questions:
+- Which oBattleObject_CurAnim / oBattleObject_CurAnimCopy offsets actually apply (confirmed only by name, not numeric
+  value)?
+- What setting oObjectHeader_Flags bit 0 (OBJ_FLAG_SPRITE_UPDATES) — set by spawn code, by an "is logic paused"
+  predicate, or per-type at table init?
+- Does any caller of object_updateSpritePaused actually consume the early-out's leftover Z flag / r0-r1, or is that
+  just incidental to the original register contract?
+- 'What the function''s "paused" means in scheduling terms: is this the routine called when the object''s main update
+  step is suppressed by an external pause flag, or is it always called and only its sprite side runs?'
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

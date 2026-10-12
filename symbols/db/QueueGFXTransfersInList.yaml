@@ -1,0 +1,118 @@
+name: QueueGFXTransfersInList
+address: '0x08000B8E'
+kind: function
+status: confirmed
+summary: Walks a 12-byte-per-entry list of graphics transfer requests and queues each copy to VRAM at the widest
+  alignment the size permits, transparently LZ77-unpacking any entry that has GFX_SOURCE_PACKED set in its source
+  word.
+interface: void queueGFXTransfersInList_8000B8E(const GfxTransferEntry *list /*r0*/);
+details: 'Walks an array of 12-byte entries terminated by a zero source word (so the list is implicitly
+
+  length-bounded). Each entry''s fields are at +0 (source), +4 (dest), +8 (size / scratch buffer),
+
+  with the layout dictated by the disassembly: ldr r0,[r7]; ldr r1,[r7,#4]; ldr r2,[r7,#8];.
+
+
+  If bit 31 of the source word is set (GFFX_SOURCE_PACKED = 0x80000000), the low 31 bits are
+
+  treated as a pointer to LZ77-compressed data and SWI_LZ77UnCompReadNormalWrite8bit is invoked
+
+  to unpack it into the buffer held at +8 (which is therefore a scratch destination, not a size).
+
+  The decompressed payload is prefixed by a 32-bit little-endian size header that counts itself,
+
+  so src = buffer+4 and size = (LD32(buffer)>>8)-4 strips it before queueing. If the entry''s +4
+
+  destination is 0 after unpacking, the entry is a pure "decompress this" request and nothing is
+
+  queued (b 8000BEA short-circuit).
+
+
+  Otherwise the entry is a plain copy and src/dest/size come directly from +0/+4/+8.
+
+
+  The transfer is dispatched to one of four queueing helpers based on the widest alignment its
+
+  byte size divides by — the cascade (size&1, size&3, size&0x1F) selects, in order,
+
+  QueueByteAlignedGFXTransfer, QueueHwordAlignedGFXTransfer, QueueWordAlignedGFXTransfer, and
+
+  QueueEightWordAlignedGFXTransfer. This is the GBA DMA transfer-size selection pattern.
+
+
+  Loop advance is add r7, #0xc (12). r4-r7 and lr are saved/restored with push/pop; the function
+
+  has no explicit return value (return register values are the leftovers from the last queued
+
+  transfer; r4-r7 are preserved per their push/pop contract).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c QueueGFXTransfersInList
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function QueueGFXTransfersInList
+
+    ./wf verify --function QueueGFXTransfersInList --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function QueueGFXTransfersInList
+
+    ./wf verify --function QueueGFXTransfersInList --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 2 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function QueueGFXTransfersInList
+
+    ./wf verify --function QueueGFXTransfersInList --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08000b8e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- The convention that +8 doubles as "size in bytes" for raw entries and as "scratch buffer pointer" for LZ77 entries
+  is inferred from the code; whether the GFX_SOURCE_PACKED bit was ever used by the game's own asset lists (vs.
+  only by overlays/tooling) is not checked here.
+- Whether a non-zero +4 destination with an LZ77 source can legally receive data that the caller expects to be 32-byte-aligned
+  (the unpacked size has had 4 subtracted from its header before alignment testing) is not verified.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

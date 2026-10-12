@@ -1,0 +1,76 @@
+name: sub_802728C
+address: '0x0802728C'
+kind: function
+status: confirmed
+summary: 'Battle chat window dispatcher: runs one of five state handlers picked by the chat object''s state byte,
+  then calls the common follow-up update.'
+interface: 'void sub_802728C(void);
+
+  // r5 = chat window object pointer (in)
+
+  // r4 = caller-saved word, preserved across this call (out unchanged)
+
+  // clobbers r0,r1,r2,r3,r6,r7,r8,r9,r10,r11,r12,lr; flags NZCV
+
+  '
+details: "Reads self->0x40 into r4 as the \"work\" word handed to whichever state\nhandler is invoked, and self->0x02\
+  \ as a single unsigned state byte used\ndirectly as a byte offset into the handler table at 0x080272A4. The\n\
+  table holds five Thumb addresses (with the Thumb bit already set):\n  state 0x00 -> battle_loadObjTableEntryAndSetState4_80272B8\n\
+  \  state 0x04 -> sub_80272D0\n  state 0x08 -> chatbox_setState4IfFlag80Clear_8027320\n  state 0x0C -> sub_8027332\n\
+  \  state 0x10 -> sub_8027394\nThe picked function is invoked via a literal \"mov lr,pc / bx r1\" tail\ncall so\
+  \ the handlers run with r0 = state byte, r1 = handler address\n(left over from the table load), r4 = work word,\
+  \ r5 = self. After the\nstate handler returns, the function unconditionally calls\nsub_8029C08 (the common chat-window\
+  \ update) with whatever r5 the\nstate handler left behind, then pops r4 and returns, restoring the\ncaller's r4.\
+  \ r2/r3/r5/r6/r8-r12 are whatever the callees leave in\nthem. The state byte being a raw BYTE-offset index (not\
+  \ scaled by 4)\nmeans live values are only 0x00, 0x04, 0x08, 0x0C, 0x10 — any other\nbyte would bx out of the\
+  \ table and crash.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_802728C
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802728C
+
+    ./wf verify --function sub_802728C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802728C
+
+    ./wf verify --function sub_802728C --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 11 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802728C
+
+    ./wf verify --function sub_802728C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battlesweep, menus2.'
+  reproduce: grep -l '^0802728c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battlesweep
+- menus2
+open_questions:
+- What are the meanings of states 0x04, 0x0C and 0x10 (sub_80272D0, sub_8027332, sub_8027394)?
+- What does sub_8029C08 do as the common update, and which fields of the chat object does it touch?
+- Where is this dispatcher called from in the per-frame battle loop?
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

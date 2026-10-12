@@ -1,0 +1,90 @@
+name: UpdateBattleObjectSprite
+address: '0x0801BC64'
+kind: function
+status: confirmed
+summary: Advances one battle object's sprite for the current frame, skipping it when inactive, sprite-update-locked,
+  caught by an active timestop, or when collision-attached with animation locked.
+interface: void UpdateBattleObjectSprite(struct BattleObject *obj /* r5 */, struct BattleSpriteState *state /* r10
+  */, lr /* lr */); returns nothing (NZ/C/V and r0..r5 left as last callee, or as the tst that branched)
+details: 'Reads oObjectHeader_Flags and tests three bits: 0x01 "OBJECT_FLAG_ACTIVE" (object must be active),
+
+  "OBJECT_FLAG_STOP_SPRITE_UPDATE" (suppresses update), and "OBJECT_FLAG_UPDATE_DURING_TIMESTOP"
+
+  (lets the sprite keep ticking through a timestop). When the timestop-exemption bit is clear,
+
+  calls battle_isTimeStop and bails on "stopped". Then, if oBattleObject_CollisionDataPtr is
+
+  non-null, checks oBattleObject_PreventAnim and skips the update when set. Otherwise compares
+
+  oBattleObject_CurAnim against oBattleObject_CurAnimCopy and, on mismatch, calls
+
+  sprite_setAnimation(CurAnim), sprite_loadAnimationData(), and writes the (possibly re-read)
+
+  CurAnim back into CurAnimCopy. Finally calls sprite_update(). Preserved registers: r4, r5.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c UpdateBattleObjectSprite
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function UpdateBattleObjectSprite
+
+    ./wf verify --function UpdateBattleObjectSprite --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 199 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function UpdateBattleObjectSprite
+
+    ./wf verify --function UpdateBattleObjectSprite --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function UpdateBattleObjectSprite
+
+    ./wf verify --function UpdateBattleObjectSprite --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, menus2, menus3, story2, story4, story5, story6, story7,
+    story8, story9.'
+  reproduce: grep -l '^0801bc64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact bit constants for the three flags; "OBJECT_FLAG_ACTIVE" matches bit 0x01 but the "STOP_SPRITE_UPDATE" and
+  "UPDATE_DURING_TIMESTOP" bit values are inferred from usage order and naming, not yet pinned.
+- Whether sprite_setAnimation/sprite_loadAnimationData can mutate CurAnim (the C port re-reads it after the calls;
+  the assembly only stores r0 of CurAnim once before them).
+- Exact structure offsets oObjectHeader_Flags, oBattleObject_CollisionDataPtr, oBattleObject_PreventAnim, oBattleObject_CurAnim,
+  oBattleObject_CurAnimCopy are not provided here and would need confirmation from the object header.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

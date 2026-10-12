@@ -1,0 +1,66 @@
+name: sub_80173F4
+address: '0x080173F4'
+kind: function
+status: confirmed
+summary: Forces every sprite into its white flash palette and dispatches the battle object's current phase handler
+  via the jump table at off_801740C.
+interface: void R5_battleObject (in r5); returns r5/r10 (object), r1 (handler address), r8/r9/r11/r12 untouched
+  by the wrapper; nz/c/v clobbered
+details: 'Calls sprite_forceWhitePalette first, then reads the byte at oBattleObject_CurPhase off the object and
+  uses it to index off_801740C, a four-entry Thumb jump table: 0x0 -> sub_801741C, 0x4 -> sub_801746E, 0x8 -> battle_objectTickTimerAndSetPhaseC_80174AA,
+  0xC -> sub_80174BE. Phases are 4-step (0, 4, 8, 0xC), matching the CurPhase scheme used elsewhere. The handler
+  address (with Thumb bit set) is loaded into r1 and the handler is tail-called with mov lr, pc / bx r1, so on return
+  execution pops pc — there is no further work in the wrapper. r5 and r10 therefore reach the handler untouched.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801728E.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_80173F4
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80173F4
+
+    ./wf verify --function sub_80173F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80173F4
+
+    ./wf verify --function sub_80173F4 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 47 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80173F4
+
+    ./wf verify --function sub_80173F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz.'
+  reproduce: grep -l '^080173f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801728E.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2_801728E.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- Which phase value this wrapper is intended to be invoked under (does the caller set CurPhase before jumping here,
+  or is one phase the steady state).
+- Whether the white flash is meant to bracket the entire handler (intro flicker) or merely accompanies certain phases.
+- Why only four entries are present if the object can otherwise hold arbitrary CurPhase bytes.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

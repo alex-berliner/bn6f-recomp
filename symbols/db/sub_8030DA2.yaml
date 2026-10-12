@@ -1,0 +1,87 @@
+name: sub_8030DA2
+address: '0x08030DA2'
+kind: function
+status: confirmed
+summary: Appends the tile under pixel (r4, r7) to the movement trail recorder at dword_2011D10, skipping duplicates
+  and capping at 16 entries.
+interface: void sub_8030DA2(s32 x /* r4 */, s32 y /* r7 */); /* r0/r4/r5/r7 preserved, nz/c/v + r8 clobbered */
+details: 'Operates on the trail recorder struct at dword_2011D10. Layout: +0x06 u16 last tile index, +0x08 u8 tile
+  pitch (low bit dropped before use), +0x09 u8 row bias (halved), +0x0A u8 entry count, +0x14 u32 bytes used, +0x18
+  entries[16] of size 0x10 (u16 tile at +0, u32 aligned x at +4, u32 aligned y at +8). Flattens (x,y) to a single
+  tile index by shifting each axis right by 3, adding the halved pitch (x) and halved row bias (y), then computing
+  row*(pitch & ~1) + column. If the flattened tile matches oTrail_LastTile or the recorder already holds 16 entries,
+  the call is a no-op (early return through the loc_8030E02 path that only restores the stack and returns). Otherwise
+  writes the new tile to oTrail_LastTile, increments oTrail_Count, bumps oTrail_BytesUsed by 0x10, and fills the
+  next entry with the flattened tile, x aligned down to 8, and y aligned down to 8. r8 is used as a temporary to
+  round the original x while r7 still holds y (so the rounding uses r4 before it is clobbered), and r0 ends up holding
+  7 (the mask used with bic). The function itself is a leaf returning via `mov pc, lr`.'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8030DA2
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8030DA2
+
+    ./wf verify --function sub_8030DA2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8030DA2
+
+    ./wf verify --function sub_8030DA2 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8030DA2
+
+    ./wf verify --function sub_8030DA2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08030da2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which subsystem owns dword_2011D10 (player movement trail, NaviCust overlay history, etc.) and what consumes the
+  recorded entries.
+- Whether the early-return when count + 1 >= 16 is intended to be >= 16 or == 16 (the comparison is performed before
+  the increment).
+- Why r0 must end up as 7 specifically on the entry-append path; callers appear to treat r0 as preserved.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

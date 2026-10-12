@@ -1,0 +1,72 @@
+name: sub_801746E
+address: '0x0801746E'
+kind: function
+status: confirmed
+summary: Starts a battle object's destruction sequence (sets anim 2, clears paired object and AI scratch, plays
+  sound 0x6C, spawns two effect objects at the object's position, and arms a 21-frame countdown into phase 8); no-op
+  while time stop is active.
+interface: void sub_801746E(u32 /*r5*/ obj) -> r1 (callee return), r5 (does r10 hold?); clobbers r0 r2 r3 r4 lr;
+  flags NZCV affected. Inputs via r5 (obj) and lr.
+details: "Battle-time helper gated by battle_isTimeStop (early return via pop {pc} when nonzero). When\nnot time-stopped\
+  \ it:\n  - ST8 obj+oBattleObject_CurAnim = 2 (the destruction animation)\n  - ST32 obj+oBattleObject_RelatedObject1Ptr\
+  \ = 0 (unlinks the linked object)\n  - ST8 obj+oBattleObject_PreventAnim = 0 (re-enables the animator)\n  - Loads\
+  \ oBattleObject_AIDataPtr into r1 and clears its oAIData_Unk_5c and oAIData_Unk_68 words.\n  - PlaySoundEffect(0x6C);\
+  \ r1 (the AI pointer) is still the live second arg when it is called.\n  - Reads three words from obj+0x34..0x3C\
+  \ (x/y/z position block) and obj+0x40 as a fourth\n    word, sets r4 = 3, and calls spawn_t1_0x0_EffectObject\
+  \ twice back to back. Note: the second\n    call reuses the first call's return-state in registers, so the spawner\
+  \ is called with\n    identical inputs both times (a \"pair\" of effect objects).\n  - ST16 obj+oBattleObject_Timer\
+  \ = 0x15 (21-frame countdown)\n  - ST16 obj+oBattleObject_CurPhaseAndPhaseInitialized = 8 (advance to phase 8\
+  \ with the\n    \"initialized\" nibble cleared: 0x08).\nReturn is `pop {pc}` so it is leaf-like but performs a\
+  \ tail-return to the caller.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801728E.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_801746E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801746E
+
+    ./wf verify --function sub_801746E --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801746E
+
+    ./wf verify --function sub_801746E --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801746E
+
+    ./wf verify --function sub_801746E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, chips, fuzz.'
+  reproduce: grep -l '^0801746e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801728E.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2_801728E.c
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- What "phase 8" actually means in the battle-object state machine (death/disappear?).
+- Which EffectObject spawn type 0x1/0x0 renders here and why two of them (mirrored sprites?).
+- Why r10 is listed in the contract but never touched in this function's body.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

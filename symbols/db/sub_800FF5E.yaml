@@ -1,0 +1,80 @@
+name: sub_800FF5E
+address: '0x0800FF5E'
+kind: function
+status: confirmed
+summary: Refreshes the battling Navi's AI data block (B-button, attack powers, BeastOut power) from the alliance's
+  navi-stats table each turn/setup.
+interface: void sub_800FF5E(void /* battle object in r5 */); /* clobbers r0,r1,r2,lr; flags NZCV; preserves r4,r6
+  */
+details: "Operates on the live battle object passed in r5. Pulls oBattleObject_AIDataPtr and refills\nthe AI data\
+  \ struct fields from GetBattleNaviStatsByte_AllianceFromBattleObject:\n  oAIData_Unk_04          <- stat 0x44\
+  \ when GetBattleMode()==9, else 0xFF (\"none\")\n  oAIData_BButton         <- stat 4\n  oAIData_BeastOutPwrAtk\
+  \  <- stat 5, via ai_setBeastOutPwrAtk_800FFAA(ai, stat5) which\n                             also takes the AI\
+  \ data block in r4\n  oAIData_APwrAtk         <- stat 0x39\n  oAIData_BLeftAbility    <- stat 7\n  then overwrites\
+  \ oAIData_BeastOutAPwrAtk with 0xFF so the BeastOut attack starts as \"none\".\nShort-circuits and returns without\
+  \ touching AI data when stat 0x2C is non-zero: the\ncomment in the C says this means the navi manages its own\
+  \ AI data. Battle mode 9 is the\nonly branch that pulls a real value into Unk_04; all other modes force 0xFF.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_800FF5E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_800FF5E
+
+    ./wf verify --function sub_800FF5E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 239 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_800FF5E
+
+    ./wf verify --function sub_800FF5E --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_800FF5E
+
+    ./wf verify --function sub_800FF5E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0800ff5e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What battle mode 9 is (e.g. BeastOut/spawn-mode) and what stat 0x44 actually represents.
+- What the oAIData_Unk_04 byte controls in the AI step (unlabelled field).
+- Which navis set stat 0x2C and own their AI lifecycle vs. relying on this refresh.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

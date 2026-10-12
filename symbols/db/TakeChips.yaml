@@ -1,0 +1,72 @@
+name: TakeChips
+address: '0x08021B92'
+kind: function
+status: confirmed
+summary: Removes a requested number of copies of a chip from the player's chip pack and reports the resulting owned
+  count (or a sentinel "empty" value when it empties out) together with a status code.
+interface: "u32 takeChipsFromPack_8021B92(u16 chip_idx /* r0 */, u8 chip_code /* r1 */,\n                      \
+  \        u8 amount /* r2 */)\n  /* r0 returns STATUS (0 = taken, 1 = none owned, 2 = not enough) */\n  /* r1 returns\
+  \ new owned count, or empty_value from lookup once 0 */\n  /* r2 returns amount echoed unchanged */\n  /* r3 returns\
+  \ STATUS again */\n  /* clobbers: r0, NZCV */\n  /* preserved: r2 */\n"
+details: ''
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c TakeChips
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function TakeChips
+
+    ./wf verify --function TakeChips --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function TakeChips
+
+    ./wf verify --function TakeChips --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function TakeChips
+
+    ./wf verify --function TakeChips --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08021b92 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm02.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm02.c
+coverage:
+- battles1
+- battles2
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- The status is duplicated into both r0 and r3; the original ARM/Thumb routine would normally have to honour an
+  "r0 = r3" push/pop pair, which looks deliberate but unusual.
+- empty_value from the lookup (returned in r3 by getOffsetToQuantityOfChipCodeMaybe_8021c7c) is propagated as the
+  count when the owned count reaches zero; it is unclear what that sentinel represents in the pack data structure
+  (likely the "slot now empty" code).
+- The push/pop {r2} around the lookup indicates the author considered r2 clobberable by the helper but still wanted
+  to expose the original amount to callers; this is fragile if the helper ever stops preserving r2 across other
+  call sites.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

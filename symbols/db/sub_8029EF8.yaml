@@ -1,0 +1,85 @@
+name: sub_8029EF8
+address: '0x08029EF8'
+kind: function
+status: confirmed
+summary: Builds a list of selectable PET-Navi candidates in the caller's work area, skipping locked, masked, and
+  currently-active ones.
+interface: "u32 sub_8029EF8(void);\n  // inputs:  R5 = pointer to caller's work buffer\n  // outputs: R0 = number\
+  \ of candidates listed (also written through R5)\n  // clobbers: R0..R3, LR; preserves R4, R5, R6; flags NZCV\
+  \ trashed\n  // calls: TestEventFlag (R0 = flag id), GetCurPETNaviStatsByte (R0=0, R1=0x17)\n"
+details: "Iterates i = 0..4 (CANDIDATE_COUNT = 5) over a ROM table at byte_8029F4C whose entries are\nu32 words\
+  \ containing event-flag ids 0xE7..0xEB (one per candidate). A candidate i is appended\nto the list when ALL of\
+  \ the following hold:\n  - TestEventFlag(flag_id) clears Z (i.e. its story flag is set);\n  - bit (5 + i) of the\
+  \ mask word at dword_20349A0 is clear;\n  - GetCurPETNaviStatsByte(0, 0x17) != 6 + i (the active candidate itself\
+  \ is excluded).\nFor each accepted candidate the function stores, through R5 (work base):\n  - work[0x50 + listed]\
+  \ = (u8)i     (LISTED_ID_OFFSET)\n  - work[0x55 + listed] = 0         (LISTED_ZERO_OFFSET, cleared)\nand increments\
+  \ `listed`. Returns `listed` in R0. R5 is preserved across the loop so the\ncaller can read the populated list\
+  \ directly.\nQuirks:\n  - The skip test for \"active candidate\" compares the stats byte against 6+i, not against\n\
+  \    a fixed id; the table at byte_8029F4C is treated as index-aligned (entry i -> id 6+i).\n  - The ROM table\
+  \ is a u32-per-entry array; only the low u16 is used as the flag id.\n  - LISTED_ZERO_OFFSET writes 0 to a parallel\
+  \ byte (0x55+n) whose meaning is unknown here.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8029EF8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8029EF8
+
+    ./wf verify --function sub_8029EF8 --snapshots build-snapshots'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8029EF8
+
+    ./wf verify --function sub_8029EF8 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8029EF8
+
+    ./wf verify --function sub_8029EF8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08029ef8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Who owns/initialises the mask word at dword_20349A0 and what each of its bits encodes?
+- What game context uses this list (PET-Navi selection menu? team-style join list?) and what the 0x55 parallel zeroed
+  byte is used for by the consumer?
+- Are indices 0..4 mapped 1:1 to navi ids, or is there an indirection step on the consumer side?
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

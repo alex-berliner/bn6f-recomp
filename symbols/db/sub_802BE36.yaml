@@ -1,0 +1,81 @@
+name: sub_802BE36
+address: '0x0802BE36'
+kind: function
+status: confirmed
+summary: 'Per-frame tick for a battle object: bumps its progress counter, transitions it to the follow-up state
+  when the animation tops out, and (unless the object is in mode 2) refreshes its component and display.'
+interface: 'void sub_802BE36(struct BattleObject *r5 /* r5 in/out */);
+
+  inputs:  r5 = object pointer
+
+  outputs: r5 preserved; r6, r7 as left by sub_802C6EC (last callee)
+
+  clobbers: r0, r1, r2, r3, r4, lr; flags NZCV
+
+  '
+details: "Bumps the object's progress counter (object+0x06, s8) by 2; when it\nreaches/passes 3 the counter is clamped\
+  \ at 3 and the object transitions\ninto state 4 (object+0x01 = 4) with timer (object+0x02, u16) zeroed.\nAfter\
+  \ that, if object+0x04 (mode) is not 2 it calls:\n  sub_802C4E8(object+0x1c /*component ptr*/, object+0x0e /*frame*/)\n\
+  \  sub_802C6EC(object+0x08 /*id*/)\nBypasses both callees entirely when mode == 2. Pool byte_802BE6C sits\nimmediately\
+  \ after the function and is reachable via the literal pool if\nneeded (not referenced here).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_802BE36
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802BE36
+
+    ./wf verify --function sub_802BE36 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802BE36
+
+    ./wf verify --function sub_802BE36 --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 57 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802BE36
+
+    ./wf verify --function sub_802BE36 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802be36 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+related:
+- sub_802C4E8
+open_questions:
+- Identity / role of the "battle object" pointed to by r5; field semantics beyond this function are inferred only
+  from the two callees.
+- Whether mode 2 really is a "frozen" state or simply a different update path owned elsewhere.
+- Whether sub_802C4E8 is the per-frame component updater and sub_802C6EC the sprite/display updater, or vice-versa.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

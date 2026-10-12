@@ -1,0 +1,93 @@
+name: sub_8015A38
+address: '0x08015A38'
+kind: function
+status: confirmed
+summary: Ticks the Navi's stat 0x21 countdown timer down by one if the gate flag is clear, the navi isn't paused,
+  and the status-kind is in range.
+interface: u32 sub_8015A38(u32 battleObject /* r0 */); // -> r0 = 0; r2 trashed; r5/r6/r7 preserved; NZCV clobbered
+details: 'Operates entirely through Get/SetBattleNaviStatsByte_AllianceFromBattleObject against a
+
+  battle-object handle cached in r5. The four stat indices it touches are 0x29 (gate flag,
+
+  must be 0), 0x17 (navi state, must be neither 0x0B nor 0x0C - the two paused states),
+
+  0x2C (status kind, must be in 0x0B..0x18 for the countdown to run), and 0x21 itself
+
+  (the countdown timer, decremented by one). A NULL handle short-circuits to the
+
+  constant 0 return; likewise, if the timer is already 0 it is left at 0 rather than
+
+  wrapped. The original never reloads r0 between stat calls, so each successive
+
+  Get/Set sees the previous callee''s r0 - this is faithfully threaded through the
+
+  helpers so the call sequence is bit-identical to the ROM.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8015A38
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8015A38
+
+    ./wf verify --function sub_8015A38 --snapshots build-snapshots'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 242 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8015A38
+
+    ./wf verify --function sub_8015A38 --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 68 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8015A38
+
+    ./wf verify --function sub_8015A38 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08015a38 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What game concept each stat actually represents - 0x29/0x17/0x2C are inferred from their gating roles and need
+  cross-referencing against the navi/battle struct.
+- Why the count is only ticked while status-kind is in 0x0B..0x18; that band likely corresponds to a specific battle
+  phase or effect window that should be confirmed.
+- Why the function always returns 0 - is it an action-tick callback that just needs a 'not-done' sentinel, or a
+  real hook into a per-Navi per-frame update?
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

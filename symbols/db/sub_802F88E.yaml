@@ -1,0 +1,112 @@
+name: sub_802F88E
+address: '0x0802F88E'
+kind: function
+status: confirmed
+summary: Per-frame refresh hook that, during frames 0-32 of a 64-frame cycle, resubmits an object's GFX request
+  table (5 entries) to the script list runner for a Toolkit referenced by r10.
+interface: void sub_802F88E(u32 toolkit /* r10 */); /* no return; clobbers r0-r3, lr, N/Z/C/V; preserves r4-r7 */
+details: 'Reads the Toolkit at oToolkit_CurFramePtr (current animation frame counter), masks the
+
+  frame index with 0x3F to obtain the low 6 bits (a 0..63 position in a 64-frame cycle).
+
+  If the masked frame is <= 0x20, calls sub_8001158 (scriptListRun_8001158) with the
+
+  pointer byte_802F8AC as the argument; otherwise returns immediately.
+
+
+  The data table byte_802F8AC lives immediately after the function in ROM and consists of
+
+  five 8-byte graphics-request entries (each starting with 0x78 0x40 = "GfxReq" opcode)
+
+  followed by an 8-byte zero terminator. The entries reference VRAM tiles at 0x803440,
+
+  0x803454, 0x803474, 0x803494, and 0x800B4A respectively, with sub-opcodes 0x01/0x09/
+
+  0x11/0x19/0x21 (increasing by 8 per row) and a final 0x21 byte, suggesting a tiled
+
+  strip sprite whose sub-tiles are uploaded in sequence. Because the call is gated to
+
+  the first ~half of the frame cycle, the table is effectively resubmitted twice per
+
+  cycle, keeping the tiles resident.
+
+
+  No external structure fields are written; this is a one-way per-frame upload pump
+
+  driven by an animation-phase check, presumably to make sure a Toolkit-owned object''s
+
+  GFX stays loaded while it is on screen.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_802F88E
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802F88E
+
+    ./wf verify --function sub_802F88E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802F88E
+
+    ./wf verify --function sub_802F88E --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802F88E
+
+    ./wf verify --function sub_802F88E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0802f88e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Which Toolkit (i.e. which world object) holds oToolkit_CurFramePtr here; the caller's r10 is a bare register,
+  not a field name.
+- Why the upload stops past the 32-frame mark - tile eviction by another system, or simply that one resubmit per
+  cycle is enough once tiles are loaded.
+- Whether sub_8001158 is a generic "run this script list" that interprets 0x78 as the GFX-upload opcode, or something
+  more specific.
+- Identity of the sprite whose tiles live at 0x800000+0x3440..0x800000+0x34A0 region (looks like a small character/UI
+  element given the compact 8-byte spacing).
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

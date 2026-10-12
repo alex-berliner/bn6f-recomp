@@ -1,0 +1,87 @@
+name: sub_80283C8
+address: '0x080283C8'
+kind: function
+status: confirmed
+summary: Sets the OBPalette index on each of the ten active-chip icon sprites on the custom-screen based on the
+  slot's chip kind.
+interface: void recolorActiveChipIcons_80283C8(void); // returns in r0/r1/r2 various leftovers (see details); clobbers
+  r6,r7; preserves r4,r5; returns via lr
+details: "Iterates the ten active-chip slot records returned by getLocOfActiveChips_8027E1C (stride 0xC).\nFor each\
+  \ slot reads the kind byte at offset 0:\n\n  - kinds 1, 2, 3: leave the icon's palette alone (continue).\n  -\
+  \ kind 0xA: use the standard palette (0xB000).\n  - kinds 0, 6, 7: read flag byte at offset 7; if 1 use alternate\
+  \ palette (0xC000), else standard (0xB000).\n  - any other kind: use a third palette (0x9000).\n\nWrites the chosen\
+  \ palette into the top six bits of four OBJ attribute halfwords per icon\n(offsets 0x00, 0x02, 0x1E, 0x20), keeping\
+  \ the low ten bits (mask 0x3FF). The icon OAM\naddresses come from off_802843C (one dword per slot, ten slots\
+  \ -> 0x2035188..0x2035198).\n\nQuirks / register leftovers (callers can read these):\n  - r0 holds the last value\
+  \ stored into an attribute halfword; for slots that were skipped\n    it ends as that slot's kind byte instead.\n\
+  \  - r1 holds 0x3FF once any icon is recolored, otherwise it is whatever r1\n    getLocOfActiveChips_8027E1C left\
+  \ behind.\n  - r2 holds the palette applied to the last-recolored slot, or 0 if the final slot was\n    skipped.\n\
+  \nPalette table lives at byte_8028470 (byte_8028470..byte_8028475); mask constant is the\ndword_8028464 literal\
+  \ 0x3FF. Slots are iterated 0..9 (comparison is 0xA).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_80283C8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80283C8
+
+    ./wf verify --function sub_80283C8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80283C8
+
+    ./wf verify --function sub_80283C8 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80283C8
+
+    ./wf verify --function sub_80283C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080283c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Who calls this and whether any caller actually consumes the r0/r1/r2 leftovers, or whether they are simply preserved
+  scratch state.
+- Whether the four attribute halfwords correspond to two 16x16 OAM tiles per icon (slot 0 + slot 1) and the second
+  pair at +0x1E/+0x20 is for the "element/element2" companion icon, or vice versa.
+- Exact meaning of the flag byte at offset 7 for kinds 0/6/7 (eg. selected vs. unselected, or quantity == 1).
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

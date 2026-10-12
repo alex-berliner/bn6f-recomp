@@ -1,0 +1,84 @@
+name: rfu_STC_clearAPIVariables
+address: '0x0814935C'
+kind: function
+status: confirmed
+summary: Resets the wireless-adapter (RFU) API state, including its link-state and work blocks, slot table, and
+  status halfwords, with interrupts disabled.
+interface: void rfu_clearAPIVariables(void); returns r2=4, r3=0; clobbers r0,r1,flags
+details: "Saves and restores IME around the routine so it runs with interrupts masked.\nUses SWI_CpuSet twice as\
+  \ a 16-bit fill (0x01000000 mode bits) sourced from a\n2-byte scratch slot on the guest stack (SP -= 4 / SP +=\
+  \ 4):\n  - 40-byte (20 halfwords) clear of the link-state block behind dword_2010CC4,\n    after which bit 3 of\
+  \ byte 0 of that block is restored from the value that\n    was there before the wipe.\n  - 180-byte (90 halfwords)\
+  \ clear of the API work block behind dword_2010CC0.\nAfter the memsets it re-seeds a few header bytes:\n  - [work_block]\
+  \ + 9 = 4\n  - [link_state_block] + 6 = 0\n  - [work_block] + 0 = 0xFF\nCalls rfu_clearAllSlot to release every\
+  \ slot in the link-state block, then\nwrites 0 to [link_state_block] + 9, and loops i = 0..3 clearing the four\n\
+  status halfwords at [link_state_block] + 0x12 + 2*i (the block pointer is\nre-loaded from dword_2010CC4 every\
+  \ iteration, matching the original).\nSaves/restores r4-r8 and uses lr only for the return; r2/r3 left in the\n\
+  return path are 4 and 0 (loop-trip count and zero fill value), not meaningful.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c rfu_STC_clearAPIVariables
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function rfu_STC_clearAPIVariables
+
+    ./wf verify --function rfu_STC_clearAPIVariables --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function rfu_STC_clearAPIVariables
+
+    ./wf verify --function rfu_STC_clearAPIVariables --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function rfu_STC_clearAPIVariables
+
+    ./wf verify --function rfu_STC_clearAPIVariables --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814935c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Why bit 3 of byte 0 of the link-state block is explicitly preserved across the clear (latched-flag retention?).
+- Why [work_block] + 0 is seeded to 0xFF (presumably "no slot in use") and whether the four halfwords at +0x12..+0x18
+  of the link-state block are per-child connection status flags.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

@@ -1,0 +1,111 @@
+name: sub_801E4B0
+address: '0x0801E4B0'
+kind: function
+status: hypothesis
+summary: Walks the custom-chip slot table on a struct and dispatches each filled slot to the IWRAM chip handler
+  twice (modes 0 and 3), then clears the "0x2000" bit of the global state flag word.
+interface: 'void sub_801E4B0(void);  /* in: r5 = owner struct, r10 and lr pass through; clobbers r0-r3, r4-r7, NZCV
+  */'
+details: 'Walks four u16 slots at +0x28 of the struct whose address is in r5. A slot
+
+  value of 0xFF marks the first unused slot and ends the scan; any value >=9
+
+  is clamped to 8 (so the slot level lives in 0..8). For each used slot the
+
+  function stages a 6-word parameter block on the guest stack (the offset
+
+  word saved on top, then r0=pos, r1=slot_offset, r2=0, r3=0, r4=level+1,
+
+  r5=2, r6=slot_addr) and calls call_sub_3005EBA with mode 0, then pops the
+
+  5-word block (leaving the saved offset on top) and calls the same routine
+
+  again with mode 3. The r0 of the first call is hard-coded to 0x1D minus the
+
+  clamped level, so the "pos" handed to the chip handler decreases as the
+
+  slot level increases. After all four slots are processed, the function
+
+  clears bit 13 (1<<13, value "0x2000") of the u32 at 0x20352C4 via
+
+  flags_clearBits_20352C4_801BEC2. The 0x1D constant, the +0x28 slot table,
+
+  the "level+1 / 2" registers, and the 0xFF / level-9 sentinel scheme match
+
+  the Battle Network custom-chip "select/activate" slot layout, so this is
+
+  most likely the routine that fires the queued custom-chip effects during
+
+  a battle turn.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_801E4B0
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801E4B0
+
+    ./wf verify --function sub_801E4B0 --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801E4B0
+
+    ./wf verify --function sub_801E4B0 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801E4B0
+
+    ./wf verify --function sub_801E4B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^0801e4b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Is the owner struct in r5 a battle entity (e.g. the player's battle state) or a generic chip-battle subsystem
+  object? The +0x28 slot table and the 0xFF sentinel strongly suggest a custom-chip slot array, but no struct definition
+  has been matched yet.
+- What does call_sub_3005EBA actually do, and why is each slot invoked twice (modes 0 then 3)? Mode 0 may be "spawn/select"
+  and mode 3 may be "run/resolve", but the meaning of modes is unknown.
+- What does the flag bit at "0x2000" in 0x20352C4 gate? Clearing it here suggests it was set when the chip queue
+  was built and is cleared once the queue has been drained.
+- r10 is preserved across the call but the function neither reads nor writes it; it is likely just a callee-preserved
+  scratch the caller happens to keep live.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

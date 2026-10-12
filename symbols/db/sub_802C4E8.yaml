@@ -1,0 +1,98 @@
+name: sub_802C4E8
+address: '0x0802C4E8'
+kind: function
+status: confirmed
+summary: draws a time value as a five-digit M'SS"CC timer on the battle BG using tiles starting at 0xA0 and palette
+  (palette + 9), capped at 9'59"99
+interface: u32 time in r0, u32 palette in r1; returns r5 preserved, r6/r7 left pointing at the digit x-table and
+  a stack slot for callers
+details: 'Converts r0 to BCD via memory_bcd_8000D84, clamps it with a signed compare against 0x95999
+
+  (BCD 9''59"99, the largest representable timer value, so the function never draws a 6-digit
+
+  overflow). The tile-map entry base is (palette + 9) << 12 | 0xA0, i.e. the digit glyphs
+
+  start at VRAM tile 0xA0 and use palette (palette + 9); each BCD nibble selects a digit by
+
+  adding nibble * 2 to that base. For each of five digits (index table at 0x802C538:
+
+  {0x14, 0x13, 0x11, 0x10, 0x0E}) the two tile-map entries (top, bottom) are written into
+
+  a 4-byte stack slot and passed by guest address to blitTileBlockToRowBuffer_802C4B6 with
+
+  column = x, row = 4, width = 1 tile, height = 2 tiles, drawing the digit as a 1x2
+
+  big-number glyph. The gaps in the x table (between 0x10 and 0x11 is no gap, between 0x13
+
+  and 0x14 is none; the layout 0x0E, 0x10, 0x11, 0x13, 0x14 leaves columns 0x0F and 0x12
+
+  free for the '' and " separator tiles, which this routine does not draw). Uses the r6
+
+  stack slot as a two-entry tile-map buffer across the call and preserves the loop''s r6/r7
+
+  so callers continue to see those scratch pointers.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_802C4E8
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802C4E8
+
+    ./wf verify --function sub_802C4E8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802C4E8
+
+    ./wf verify --function sub_802C4E8 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802C4E8
+
+    ./wf verify --function sub_802C4E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0802c4e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battles1
+- battles2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+related:
+- sub_802BE36
+open_questions:
+- Which battle screen/HUD owns this timer (chip-use countdown, battle timer, etc.) and who fills the separator tiles
+  at columns 0x0F and 0x12.
+- Why callers read back r6/r7 - the routine keeps the x-position table and a digit scratch slot alive, hinting at
+  a calling convention shared with adjacent 0x802C4xx code that hasn't been reverse-engineered yet.
+- The "preserve r5" contract looks like a quirk of a specific caller rather than a real ABI requirement; worth confirming
+  against every caller.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

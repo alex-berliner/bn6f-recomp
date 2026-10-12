@@ -1,0 +1,95 @@
+name: SubMenuControl
+address: '0x0811F774'
+kind: function
+status: confirmed
+summary: 'Per-frame dispatcher for the pause ("sub") menu: runs the active screen handler then steps the RNG, skipping
+  the RNG tick on comm/save sub-screens.'
+interface: "void submenuTick_811F774(void)\n  // r10 = toolkit pointer; r2/r3 forwarded to screen handler\n  //\
+  \ uses r4-r9, r11, r12, lr as scratch; r4-r7 also clobbered by callee\n  // flags: clobbers N Z C V\n"
+details: 'Reads oToolkit_SubmenuPtr via r10 (the toolkit pointer held in r10 by the caller).
+
+  Uses the first byte of the submenu state (offset 0) as an index into JumpTable811F7A0,
+
+  stepping by 4 (0x00 chip folder, 0x04 sub-chip, 0x08 library, 0x0C MegaMan,
+
+  0x10 e-mail, 0x14 key items, 0x18 comm, 0x1C save, plus five more unidentified
+
+  screens at 0x20/0x24/0x28/0x2C/0x30 and six unused NULL slots through 0x48).
+
+  Dispatches to the selected handler with the submenu pointer in r5 and the caller''s
+
+  r2/r3 forwarded untouched. After returning, if the (possibly-updated) screen is 0x18
+
+  (comm) and the second byte is either 0x18 or 0x1C (comm or save), returns without
+
+  calling GetRNG; otherwise calls GetRNG to advance the RNG stream. r4-r7 are
+
+  preserved across the dispatch via push/pop.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c SubMenuControl
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function SubMenuControl
+
+    ./wf verify --function SubMenuControl --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function SubMenuControl
+
+    ./wf verify --function SubMenuControl --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function SubMenuControl
+
+    ./wf verify --function SubMenuControl --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0811f774 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What are the unidentified screens at 0x20, 0x24, 0x28, 0x2C, 0x30 (sub_8133200, sub_81356D4, sub_8136DE0, sub_81378B4,
+  sub_8128CBC)?
+- Why is the RNG tick suppressed only when the comm sub-screen is itself comm or save?
+- What is the meaning of the second byte of the submenu state? (The comm handler reads it as a sub-screen id.)
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

@@ -1,0 +1,93 @@
+name: sub_8027CCC
+address: '0x08027CCC'
+kind: function
+status: confirmed
+summary: Stamps a width×height rectangle of running u16 tile indices into the 0x02035000 grid buffer at the given
+  starting cell, optionally numbering down columns rather than across rows, and returns the next index after the
+  block.
+interface: 'in: r0 column, r1 row, r2 firstTile, r3 width, r4 height, r5 numberingOrder (1 = column-wise); out:
+  r2 tile index following the rectangle; r6 and r7 also nominally preserved by push/pop; clobbers: n z c v; preserved:
+  r0, r1, r3-r7'
+details: 'Targets a 15-column (0x1E-byte row) grid of u16 tile indices at unk_2035000 (0x02035000).
+
+  Inner loop strides through `width` cells, advancing the running tile index by `step`, which
+
+  is `height` when r5 == 1 (column-wise numbering) and 1 otherwise (row-wise).
+
+  After each grid row is filled, the next row''s start tile is computed: when stepping by 1,
+
+  the next row simply continues from the last tile written; when stepping by `height`, each
+
+  subsequent row starts one index later than the row above, and r2 is adjusted to leave
+
+  behind the index immediately following the entire rectangle.
+
+  r6 and r7 are pushed/popped but only as scratch for `step` and `rowStartTile`.
+
+  Unknown: what subsystem (UI panel, menu, battle chip view, etc.) owns the unk_2035000 grid.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8027CCC
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8027CCC
+
+    ./wf verify --function sub_8027CCC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 295 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8027CCC
+
+    ./wf verify --function sub_8027CCC --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 15 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8027CCC
+
+    ./wf verify --function sub_8027CCC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^08027ccc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What owns the unk_2035000 grid and what each u16 entry (index) represents in that context.
+- Whether r5 == 1 is the only "column-wise" trigger value or any nonzero value should be treated as such.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

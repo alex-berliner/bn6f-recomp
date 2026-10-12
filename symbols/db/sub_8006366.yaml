@@ -1,0 +1,86 @@
+name: sub_8006366
+address: '0x08006366'
+kind: function
+status: confirmed
+summary: per-frame update of one entry in the eScreenFade screen-fade array, ticking its counter down and repainting
+  its two palettes with a fading grey until the end counter is hit
+interface: void sub_8006366(u32 r5 /* fade entry */);
+details: "Acts on a fade struct (size 0x20) whose fields are the screen-fade-array entry. Layout:\n  +0x2 u8  started\
+  \ (latched to 1 on entry)\n  +0x4 u16 step   (amount subtracted from counter each frame)\n  +0x6 u16 counter (fade\
+  \ time left; grey brightness = counter >> 4)\n  +0x8 u16 repaint id\n  +0xA u16 end_counter (counter value at\
+  \ which the fade is finished)\n  +0xC u8  pal_base\n  +0x10 u32 palette 1\n  +0x14 u32 palette 2\n  +0x18 u16\
+  \ repaint arg 1\n  +0x1C u16 repaint arg 2\n\nFirst update after creation only sets started = 1 and does not tick;\
+  \ from the next frame\ncounter -= step, clamped at 0. While counter > end_counter the routine builds one 15-bit\n\
+  BGR15 grey (level = counter >> 4, color = level | (level<<5) | (level<<10)) and calls\nsub_8002378 twice to repaint\
+  \ palette1 through slot pal_base+0x12 and palette2 through\nslot pal_base+0x13, both with the fade's repaint id\
+  \ and the appropriate repaint arg.\n\nWhen counter has reached end_counter it stops: stops the fade via\nscreenFade_StopAndFreePalettes_8006330\
+  \ (offset within eScreenFade is recomputed as\nr5 - eScreenFade and passed in r0). r4 is forced to 1 and r3 carries\
+  \ the old started flag\nstraight through that callee.\nr4/r6 are saved/restored around the repaint calls so the\
+  \ function preserves r4..r7.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_8005C04.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8006366
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8006366
+
+    ./wf verify --function sub_8006366 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8006366
+
+    ./wf verify --function sub_8006366 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8006366
+
+    ./wf verify --function sub_8006366 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08006366 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1_8005C04.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_1_8005C04.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- The contract is a per-array-entry updater, presumably wrapped by a higher-level routine that walks eScreenFade
+  and dispatches this for each non-empty slot.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

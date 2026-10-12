@@ -1,0 +1,77 @@
+name: HandleChipFolderMenu8123434
+address: '0x08123434'
+kind: function
+status: confirmed
+summary: Dispatches the chip-folder menu's five-state machine by indexing a handler table with the state byte stored
+  in the menu work area.
+interface: void HandleChipFolderMenu8123434(void *menu /* r5 */, uint32_t r2, void *r4, void *r6, void *r7, void
+  *r10)
+details: "Top-level dispatcher for the chip-folder menu screen. The menu work area pointer arrives\nin r5; the state\
+  \ byte at offset 1 (oFolderMenu_State:1) of that work area is a byte\noffset into the five-entry handler table\
+  \ at off_8123448, taking values 0, 4, 8, 12, 16\n(one entry per state, stride 4). The selected handler is invoked\
+  \ via the original\n\"mov lr,pc; bx r0\" sequence with r0 = the table entry's address (so the handler runs in\n\
+  Thumb mode) and r1 = the raw state byte; the call pops pc from the stack on return, so\nthis function never returns\
+  \ up its normal path -- control flows straight into the handler\nand back to the dispatcher the next frame.\n\n\
+  Handler table at off_8123448 (states 0..4):\n  0 -> chipFolder_screenInit_812345C  (screen init)\n  1 -> sub_8123514\n\
+  \  2 -> pet_menu_runFrame_81237BC     (PET/per-frame run)\n  3 -> chipFolder_init_812349C\n  4 -> sub_81234DC\n\
+  \nThe two named handlers (states 0 and 3) correspond to screen init and the chip folder's\nown init, which is\
+  \ consistent with this being the chip-folder menu dispatcher. The\nother three handlers remain sub_ symbols.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c HandleChipFolderMenu8123434
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function HandleChipFolderMenu8123434
+
+    ./wf verify --function HandleChipFolderMenu8123434 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function HandleChipFolderMenu8123434
+
+    ./wf verify --function HandleChipFolderMenu8123434 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function HandleChipFolderMenu8123434
+
+    ./wf verify --function HandleChipFolderMenu8123434 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^08123434 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm33.c
+coverage:
+- battles1
+- battles2
+- battlesweep
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which chip-folder screen states 1, 2 and 4 represent -- the table name only labels state 0 and state 2 (PET run
+  frame) and state 3 (chip-folder init).
+- Whether the state byte is intentionally stored as a *byte offset* (0/4/8/12/16) for some other indexing purpose,
+  or simply a hand-coded optimization in the original.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

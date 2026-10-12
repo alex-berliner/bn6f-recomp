@@ -1,0 +1,100 @@
+name: chatbox_E7_buttonhalt
+address: '0x08040EF4'
+kind: function
+status: confirmed
+summary: 'Implements chatbox script opcode E7 (button wait): pauses the script until the player presses a confirmation
+  button, then advances past the two-byte opcode.'
+interface: void chatbox_buttonhalt_8040EF4(Chatbox *self@r5, u8 *script@r4) -> r0=0, r2, r4 (always returns 0 in
+  r0; r2/r4 are the script-byte/script-pointer results consumed by the chatbox driver)
+details: "Per-frame routine dispatched by the chatbox script engine when the current opcode is 0xE7. It is called\
+  \ once per frame with r5=self and r4=script pointer (which still points at the opcode byte).\n\nState machine\
+  \ on `self->TextScriptState_04`:\n  - 0 (or any non-1/2): first frame of the wait. Seeds `BoxYX` to 5 and arms\
+  \ state=1; the script pointer is not advanced yet.\n  - 1: countdown. Each frame decrements `BoxYX` until it reaches\
+  \ 0, then transitions to state=2 (waiting for a button). The decrement exists so the button that finished the\
+  \ previous line (e.g. pressing A to advance) is not immediately consumed by this wait.\n  - 2: actively polling\
+  \ the joypad. The script operand byte (the byte after the E7 opcode, read via `script[oChatbox_TextScriptIdx]`)\
+  \ chooses the confirmation set: if it is 0, only A or B confirm; otherwise any button (0x03FF) confirms. A fresh\
+  \ press in `JoypadUp` matching the set ends the wait. If B is held and `BoxYX` has been counted back up to 10\
+  \ (0xA), that also ends the wait. Otherwise each frame with B held increments `BoxYX` by 1 (signed `bge` comparison\
+  \ in the asm).\nOn confirmation: clears FLAGS_3E bits 0x0020|0x0001 via chatbox_clearFlags_3e, resets TextScriptState_04\
+  \ to 0 and BoxYX to 0, writes 1 to `self->Unk_74`, and advances the script past both the E7 byte and its operand\
+  \ byte (r4 += 2). On every exit path r0 is left at 0; r2 is left holding the script byte the routine last inspected\
+  \ (0 on early frames, the operand byte once in state 2, and the operand byte after a confirmed exit).\n\nFlags\
+  \ handling: on entry the routine always sets FLAGS_3E_UNK_0400 (left set for the whole command) and FLAGS_3E_UNK_0020|FLAGS_3E_UNK_0001\
+  \ (cleared on confirmation). `self->Unk_03` is zeroed at entry.\n\nFields of the Chatbox struct touched:\n  oChatbox_Unk_03\
+  \            (u8,  written to 0 each frame)\n  oChatbox_TextScriptState_04 (u8,  state machine 0/1/2)\n  oChatbox_BoxYX\
+  \             (u16, countdown counter, range 0..0xA)\n  oChatbox_JoypadUp          (u16, freshly-pressed buttons)\n\
+  \  oChatbox_JoypadHeld        (u16, currently-held buttons; only B = 0x0002 is checked)\n  oChatbox_TextScriptIdx\
+  \      (offset into the script pointer for r4)\n  oChatbox_Unk_74            (u32, written 1 on confirmation)\n"
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c chatbox_E7_buttonhalt
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_E7_buttonhalt
+
+    ./wf verify --function chatbox_E7_buttonhalt --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_E7_buttonhalt
+
+    ./wf verify --function chatbox_E7_buttonhalt --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_E7_buttonhalt
+
+    ./wf verify --function chatbox_E7_buttonhalt --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^08040ef4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/chatbox.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What the three 3E flag values (0x0400, 0x0020, 0x0001) actually mean to the chatbox subsystem -- e.g. 0x0400 may
+  be the 'script-paused / waiting on input' marker.
+- Meaning of self->Unk_74 (only ever written 1 here).
+- Meaning of self->Unk_03 (zeroed each frame).
+- Why `bge` is used for the counter>=10 test rather than a plain unsigned compare -- could be defensive against
+  an overflow path or a signed field elsewhere; the field is u16 in the C view but compared as signed in the asm.
+- Whether holding B is intentionally a 'long press to skip' affordance or just an accident of the counter wraparound.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

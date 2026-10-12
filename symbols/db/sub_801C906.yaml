@@ -1,0 +1,92 @@
+name: sub_801C906
+address: '0x0801C906'
+kind: function
+status: confirmed
+summary: redraws a field object's four-digit HP readout by stamping right-aligned digit glyphs into background tile
+  block 3 and queuing the companion 32-byte tile upload for VRAM
+interface: 'void drawNumberLabel_801C906(void); /* r5 in: label object; r4-r7 preserved; r3/r4-r7 out: leftover
+  from callee, r4-r7 restored to entry values */'
+details: "- r5 points at a label/object struct with: u16 at +0x24 (the value to display,\n  a BCD-convertible number),\
+  \ u8 at +1 (map j position), u8 at +2 (map i\n  position), u8 at +3 (index into the companion-tile table).\n-\
+  \ The value at +0x24 is BCD-converted via memory_bcdConvert, the nibble count\n  is taken via countHexDigits_8000C5C,\
+  \ and the high nibbles above the\n  significant digits are filled with 0xA (the blank digit glyph nibble) so the\n\
+  \  number is right-aligned with leading blanks.\n- A 4x2 tile-id buffer is built on the stack (8 entries, 4 columns\
+  \ x top/bottom).\n  For each of the 4 columns, the nibble picks a digit glyph starting at tile\n  0xD1A0; the\
+  \ top tile (0xD1A0 + nibble*2) and the tile below it\n  (top + 1) are stored. Iteration goes column 3 -> 0, so\
+  \ the layout is\n  column 0 = rightmost digit.\n- CopyBackgroundTiles is called with (j+1, i, tileBlock=3, tile_ids,\
+  \ j_size=4,\n  i_size=2): the readout is drawn one tile right of the stored object position\n  in background tile\
+  \ block 3, four tiles wide and two tiles tall.\n- QueueEightWordAlignedGFXTransfer uploads 32 bytes of companion\
+  \ tile gfx:\n  the source is the 32-byte table entry indexed by object+3 (dword_86E1C78 +\n  (obj[+3] * 0x20)),\
+  \ the destination is byte_3001B00, and the size is 0x20.\n- The function is called as a leaf-style helper from\
+  \ a caller that owns a\n  loop over multiple label objects; r4-r7 are pushed on entry and popped on\n  return,\
+  \ and the mid-function push/pop of r5 around the CopyBackgroundTiles\n  call simply restores r5 to the caller's\
+  \ object pointer before the gfx queue\n  step. The function reads nothing back from its callees."
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_801C906
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801C906
+
+    ./wf verify --function sub_801C906 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 280 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801C906
+
+    ./wf verify --function sub_801C906 --snapshots build-snapshots'
+  result: 46 compared, 0 differed, 50 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801C906
+
+    ./wf verify --function sub_801C906 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0801c906 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What is the table at off_801C970 (dword_86E1C78 / byte_3001B00 / 0x20)? The read-only ROM source array dword_86E1C78
+  likely holds 32-byte companion tiles (e.g. a slash, a colon, a letter) that ride next to the four digits; the
+  index at obj+3 selects which companion to show, but the field's meaning is not yet identified from the code alone.
+- Is +0x24 a raw integer or already BCD? memory_bcdConvert suggests raw integer; whether the BCD result is then
+  used to index digit tiles or to spell out HP/MP directly depends on which of the digit glyphs is tile 0xD1A0.
+- Does the "label" ever include a leading non-zero digit? The 0xA blank-fill implies HP can show with leading blanks;
+  whether that matches the field UI (e.g. ""HP  42"" style) is plausible but not confirmed here.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

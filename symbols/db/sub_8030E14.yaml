@@ -1,0 +1,114 @@
+name: sub_8030E14
+address: '0x08030E14'
+kind: function
+status: confirmed
+summary: line-vs-point hit test; on hit returns the segment/line crossing offset (rx,ry) relative to a reference
+  point, on miss returns (0,0)
+interface: "u32 sub_8030E14(u32 matrix, u32 x1, u32 y1, u32 x2, u32 y2, u32 mode, u32 r9_in)\n    /* r0: matrix\
+  \ ptr (ref0 = +0/+4, ref1 = +0xC/+0x10) */\n    /* r2: x1, r4: y1, r3: x2, r5: y2 */\n    /* r6: mode (1 = one-sided,\
+  \ ignore ref1) */\n    /* returns: r0 = rx (crossing x relative to ref0; 0 on miss) */\n    /*          r1 = ry\
+  \ (crossing y relative to ref0; 0 on miss) */\n    /*          r4,r6,r7,r8,r9 = per-path working values the caller\
+  \ may keep */\n    /* clobbers flags; lr clobbered via tail-pop */\n"
+details: 'Treats the two endpoints (x1,y1)/(x2,y2) as defining the extended line of a
+
+  2D segment and tests whether the two reference points stored in `matrix`
+
+  lie on opposite signed sides of that line (one-sided when mode==1, only
+
+  ref0 must be strictly on the negative side).
+
+
+  Per-axis line math: dy = y2 - y1, neg_dx = x1 - x2,
+
+  cross = x2*y1 - x1*y2, side(p) = cross + px*dy + py*neg_dx.
+
+
+  On a hit, each axis of the crossing point is solved by calling
+
+  sub_8031048 (a divmod helper at 0x08031048) once per axis with the
+
+  appropriate numerator/denominator and the live `side` value still in r5
+
+  from whichever ref-point test ran last; the quotient is then de-biased
+
+  by the matching ref0 coordinate read back from `matrix` after the call.
+
+  Outputs are crossing offset (rx,ry) from ref0, mirrored into r4 (rx)
+
+  and r8 (ry), with the last divide''s remainder/quotient left in r6/r7
+
+  and rx duplicated into r9.
+
+
+  On a miss it returns (0,0) and leaves dy/neg_dx in r6/r7, the last
+
+  py*neg_dx partial product in r4, mode in r8, and the caller''s r9
+
+  value passed through untouched.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_802F2C8.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8030E14
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8030E14
+
+    ./wf verify --function sub_8030E14 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8030E14
+
+    ./wf verify --function sub_8030E14 --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 53 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8030E14
+
+    ./wf verify --function sub_8030E14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, chips, fuzz, maps, story1, story2, story3, story4, story5, story6,
+    story8, story9, wander.'
+  reproduce: grep -l '^08030e14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm03_0_802F2C8.c
+coverage:
+- battle
+- battles1
+- battles2
+- chips
+- fuzz
+- maps
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+- story9
+- wander
+open_questions:
+- Which battle/movement subsystem owns this; callers and meaning of mode!=1 vs mode==1.
+- Whether matrix always points at the same structure (two consecutive (x,y) pairs) or can be re-interpreted.
+- Exact contract of sub_8031048 (divmod helper) and what r5=`live_side` is for at the call site.
+- Whether (0,0) on miss is a sentinel or a legitimate result meaning "at the reference point".
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

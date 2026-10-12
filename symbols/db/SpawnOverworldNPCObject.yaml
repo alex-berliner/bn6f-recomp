@@ -1,0 +1,107 @@
+name: SpawnOverworldNPCObject
+address: '0x080045C0'
+kind: function
+status: confirmed
+summary: Claims the first free slot in the overworld NPC object table and initialises it with the caller's index,
+  position, and movement word.
+interface: void SpawnOverworldNPCObject(u32 r0_index, u32 r1_x, u32 r2_y, u32 r3_z, u32 r4_movement); r5 = new object
+  address (0 if full); r0-r4 preserved; C/V clobbered (Z set on full table, cleared on success).
+details: 'Walks the 32-bit bitfield `eActiveOverworldNPCObjectsBitfield` from the top bit down,
+
+  using `0x80000000` as slot 0, advancing `r5` by `oOverworldNPCObject_Size` each step
+
+  until it finds a free bit. The walk range is bounded by `byte_2006530`, the
+
+  one-past-the-last entry of `eOverworldNPCObjects`. If `r5` reaches `byte_2006530`
+
+  the table is full and the function returns 0 (r5 cleared) without touching the
+
+  caller''s registers.
+
+  On a free slot it sets the bit, then calls `ZeroFillByWord` to wipe
+
+  `[newObj + 0x06..+0xA2)` (0x9C bytes from
+
+  `oOverworldNPCObject_MovementSpeed_MovementTimer_Undetected_06_Unk_07` onward), writes
+
+  `OBJECT_FLAG_ACTIVE | OBJECT_FLAG_STOP_SPRITE_UPDATE` into byte 0, the caller''s
+
+  index at `oOverworldNPCObject_Index`, x at `oOverworldNPCObject_X`, y at
+
+  `oOverworldNPCObject_Y`, z at `oOverworldNPCObject_Z`, and the movement word at
+
+  `oOverworldNPCObject_MovementSpeed_MovementTimer_Undetected_06_Unk_07`. r5
+
+  (new object address) and all inputs (r0-r4) are returned to the caller.
+
+
+  Register form kept (C call semantics could not work): (r0: u32 index, r1: u32 x, r2: u32 y, r3: u32 z, r4: u32
+  movement) -> (r5: *mut OverworldNPCObject)'
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c SpawnOverworldNPCObject
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function SpawnOverworldNPCObject
+
+    ./wf verify --function SpawnOverworldNPCObject --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function SpawnOverworldNPCObject
+
+    ./wf verify --function SpawnOverworldNPCObject --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function SpawnOverworldNPCObject
+
+    ./wf verify --function SpawnOverworldNPCObject --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battlesweep, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6,
+    story7, story8, story9, wander.'
+  reproduce: grep -l '^080045c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- battle
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- How many slots the bitfield actually tracks (only the bits between `eOverworldNPCObjects` and `byte_2006530` are
+  walked, but the bitfield is loaded as a full u32).
+- What `oOverworldNPCObject_MovementSpeed_MovementTimer_Undetected_06_Unk_07` field encodes beyond speed/timer;
+  bytes 0x06 and 0x07 are unlabelled.
+- Whether any caller relies on the C/V/Z flag side effect on the full-table path (no caller analysis was provided).
+- 'Calling-convention work: register form kept because (r0: u32 index, r1: u32 x, r2: u32 y, r3: u32 z, r4: u32
+  movement) -> (r5: *mut OverworldNPCObject)'
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6

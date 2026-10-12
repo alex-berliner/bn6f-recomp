@@ -1,0 +1,109 @@
+name: sub_8012AFA
+address: '0x08012AFA'
+kind: function
+status: confirmed
+summary: Tests whether the battle object's current chip is a qualifying power-attack chip with its trigger armed
+  (special navi/form only, chip kind 4 with the right trait bits, plus an AI-state/button check unless force-armed).
+interface: u8 sub_8012AFA(u32 battleObject, u8 forceArmed, u32 ownerObject) -> u8; r0/r1/r5 in, r0 out, r2 clobbered
+  by tst-mask writes, r6/r7 preserved
+details: 'Reads the navi id and form from the battle object via
+
+  GetBattleNaviStatsByte_AllianceFromBattleObject (offsets "0x29" NAVI_STAT_NAVI and "0x2C"
+
+  NAVI_STAT_FORM); only navi id 7 and form ids 7 or "0x13" qualify (in-game these are the
+
+  navis whose power-attack AI is special, e.g. protoman/shadow/colonel style).
+
+
+  Then fetches the current chip pointer with getChip8021DA8(battleObject) and inspects
+
+  two chip fields: byte+9 (trait bits; bit "0x02" must be set and bit "0x01" must be
+
+  clear) and byte+4 (chip kind, must equal 4). The trait masks are tested with `tst
+
+  r1, r2` so r2 is left holding the last mask (2 then 1) on the tested paths, which the
+
+  caller contract exposes as an r2 clobber.
+
+
+  When forceArmed (r1) is non-zero the AI state check is skipped and the function
+
+  returns 1. Otherwise it dereferences [ownerObject + oBattleObject_AIDataPtr] and
+
+  requires oAIData_PwrAtkState == 2 and oAIData_PwrAtkButton == 1.
+
+
+  Returns 0/1 in r0. r6 (battle object) and r7 (result scratch, set to 0 and
+
+  overwritten to 1 on the success path) are preserved across the call as required by
+
+  the contract.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-11'
+  detail: Written by zai/glm-5.3 through the convert workflow (3 attempt(s), run convert-20261011-225351); reviewed
+    by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 85' --file inbox_farm_85.c sub_8012AFA
+- method: difftest
+  date: '2026-10-11'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8012AFA
+
+    ./wf verify --function sub_8012AFA --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 238 out
+    of domain (verify run convert-20261011-225351-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-11'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8012AFA
+
+    ./wf verify --function sub_8012AFA --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261011-225351-verify-3)
+- method: lockstep
+  date: '2026-10-11'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8012AFA
+
+    ./wf verify --function sub_8012AFA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261011-225351-verify-3)
+- method: coverage
+  date: '2026-10-11'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
+  reproduce: grep -l '^08012afa ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-11'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp de99dd6
+  tool: tools/wf convert (zai/glm-5.3)
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which navi ids are 7 / 0x13 in this build? Need to map NAVI_STAT_NAVI=0x29 and NAVI_STAT_FORM=0x2C back to a character
+  roster to confirm the qualifying set.
+- What chip kind 4 and trait bits 0x02/0x01 actually denote (e.g. which power-attack chip family) - oAIData_PwrAtkState/Button
+  semantics would confirm whether state=2 means "armed" and button=1 means "held".
+- Whether the second navi_stats_byte should really reuse the first byte as the handle or whether the disassembly
+  just happens to be a faithful quirk of the lifter; the readable C deliberately keeps the bug to match the original.
+sources:
+- tools/wf run convert-20261011-225351
+- recomp de99dd6
