@@ -575,6 +575,44 @@ Next sub_803BB7C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803BB80 ── */
+/* Decrement the 32-bit use counter at [r5 + 0x28].
+ *
+ * If the counter is still positive it is decremented in memory and the
+ * function returns 0 ("a use was consumed"); if it is already zero or
+ * negative nothing is written back and the function returns 1 ("none left").
+ *
+ * Flag behaviour of the original: the SUBS r0, #1 that decides the branch
+ * sets C/V (and briefly N/Z), then the final MOV r0, #imm on each exit path
+ * overwrites N/Z with the returned value while leaving C/V alone. */
+typedef struct {
+    u32 result;   /* 0 = counter decremented, 1 = already exhausted */
+    u32 old;      /* counter value before the attempted decrement */
+} DecResult;
+
+static DecResult decrement_use_counter(u32 counter_addr) {
+    DecResult r;
+    u32 counter = LD32(counter_addr);
+
+    r.old = counter;
+    if ((s32)counter <= 0) {
+        /* Nothing left to consume: leave the counter untouched. */
+        r.result = 1;
+    } else {
+        ST32(counter_addr, counter - 1);
+        r.result = 0;
+    }
+    return r;
+}
+
+Next sub_803BB80(void) {
+    DecResult r = decrement_use_counter(R5 + 0x28);
+    R0 = r.result;
+    SET_FLAGS_CMP(r.old, 1);   /* C/V exactly as the original's SUBS r0, #1 */
+    SET_FLAGS_NZ(r.result);    /* N/Z from the original's final MOV r0, #imm */
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803BEC0 ── */
 /* sub_803BEC0: Walk a list of text-script entries and expand each into a
  * stream of 8-byte command records in RAM.

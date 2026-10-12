@@ -865,6 +865,98 @@ Next objStepFinishSetState4_802BE0C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802BE90 ── */
+/* Register-form helper for the one call no generated wrapper covers: the
+ * battle object's state handler is reached through the four-entry jump table
+ * at off_802BEA4, so its address is only known at runtime. This reproduces
+ * the original sequence
+ *
+ *     push {lr}              ; caller's return address
+ *     ldr  r1, =off_802BEA4
+ *     ldrb r0, [r5,#2]
+ *     ldr  r1, [r1,r0]
+ *     mov  lr, pc
+ *     bx   r1                ; call table[state]
+ *     pop  {pc}
+ *
+ * register for register. The four stack bytes the push reserves matter: the
+ * handlers compute frame-relative addresses, so SP must sit 4 below the entry
+ * value for the duration of the call. The handler receives r0 = state byte,
+ * r1 = handler address, and every other register exactly as the caller left
+ * it; GUEST_CALL_ADDR performs the indirect call itself, including the
+ * mov lr,pc return-point bookkeeping. Afterwards SP is popped back and the
+ * entry lr is restored so RETURN_TO_CALLER() sends the results to the
+ * original caller — the handler's r5-r12 results are already sitting in the
+ * guest registers where the caller expects them.
+ */
+/* register form: indirect call through a runtime jump-table address, plus the
+ * caller's push {lr}/pop {pc} around it; cannot be expressed as a typed call */
+static void call_state_handler_sub_802BE90(u32 handler_addr, u32 state_byte) {
+    u32 entry_lr = LR;
+
+    SP -= 4;
+    ST32(SP, entry_lr);
+    R0 = state_byte;
+    R1 = handler_addr;
+    GUEST_CALL_ADDR(handler_addr);
+    SP += 4;
+    LR = entry_lr;
+}
+
+/* Send a battle object to the behavior routine for its current state: the
+ * state byte at [r5+2] indexes the handler table at off_802BEA4. The handler
+ * runs with the caller's register state, and whatever it leaves in r5-r12 is
+ * what this function's caller sees — the dispatch is a tail-call, so nothing
+ * here computes results of its own. */
+static void dispatch_battle_object_state_sub_802BE90(u32 object) {
+    u32 state_byte = LD8(object + 2);
+    u32 handler_addr = LD32(A_off_802BEA4 + state_byte);
+
+    call_state_handler_sub_802BE90(handler_addr, state_byte);
+}
+
+/* sub_802BE90: dispatch the battle object in r5 to its per-state handler.
+ * The other input registers (r2, r4, r6, r7, r10) are live only because the
+ * handler consumes them; they pass straight through the untouched guest
+ * registers, as do r3/r8/r9/r11/r12. Outputs r5-r12 are left behind by the
+ * handler itself, so the adapter writes nothing. */
+Next sub_802BE90(void) {
+    dispatch_battle_object_state_sub_802BE90(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802BEB4 ── */
+/* register form: the callee is reached through the runtime jump table at
+ * A_off_802BEC8 (ldr r1,[table,type]; bx r1), so the target address only
+ * exists at runtime and no typed wrapper covers the call. The helper sets
+ * r0/r1 to the original's register state at the bx (r0 = type byte from
+ * [object+3], r1 = the table entry just loaded) and lets every other guest
+ * register — and the callee's outputs — pass straight through. */
+static void call_jump_table_target(u32 type, u32 target) {
+    R0 = type;
+    R1 = target;
+    GUEST_CALL_ADDR(target);
+}
+
+/* Dispatch a battle object's per-type handler: the byte at [object+3]
+ * selects an entry (a Thumb address) from the jump table at A_off_802BEC8,
+ * which is then called with the original's register state. */
+static void sub_802BEB4_dispatch(u32 object_ptr) {
+    u32 type = LD8(object_ptr + 3);
+    u32 target = LD32(A_off_802BEC8 + type);
+    call_jump_table_target(type, target);
+}
+
+/* sub_802BEB4(r5 = object pointer): jump-table trampoline to one of the three
+ * per-type handlers. The push/pop of lr around the call only preserves the
+ * caller's return address, which the call mechanism already handles; all
+ * result registers are whatever the callee leaves behind, so the adapter
+ * computes nothing itself. */
+Next sub_802BEB4(void) {
+    sub_802BEB4_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── custMenu_handleInputQueuePop_802BED4 ── */
 /* custMenu_handleInputQueuePop_802BED4(r5 = custom-menu object):
  * Pop the next halfword from the menu input queue and act on it.

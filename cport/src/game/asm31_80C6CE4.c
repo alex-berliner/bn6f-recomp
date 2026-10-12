@@ -73,6 +73,47 @@ Next battle_objectDispatchPanelChange_80C6CFC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t3_0x1f_80C8098 ── */
+/* t3_0x1f_80C8098 -- battle object task dispatcher.
+ *
+ * Reads the object's current phase (oBattleObject_CurState) and calls the
+ * matching handler from the jump table at off_80C80AC:
+ *   0 -> battleObject_initActionPhase_80C80B8  (begin the object's action phase)
+ *   1 -> sub_80C8100
+ *   2 -> object_genericDestroy                 (remove the object)
+ * The handler is entered with r0 = current state and r1 = its own table
+ * entry (the original loads both right before `mov lr, pc; bx r1`); every
+ * other register, including the object pointer in r5, passes through
+ * untouched.  The original tail-calls the handler, so whatever the handler
+ * leaves in r5/r8-r12 is this function's result; here the handler returns
+ * into our helper and the adapter returns straight to the caller, which
+ * touches nothing in between and leaves those registers exactly as the
+ * handler set them. */
+
+/* register form: the handler address is read at runtime from the object's
+ * state table, so the call has to go through a guest code address with
+ * r0/r1 set by hand -- C cannot express either. */
+static void call_object_state_handler(u32 handler, u32 state) {
+    R0 = state;      /* handlers take the current state in r0 */
+    R1 = handler;    /* the original happens to leave the table entry in r1 */
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Run the handler selected by the object's current state.  No result value:
+ * the handler's effects are the guest register/memory state it leaves
+ * behind (r5, r8-r12 and its memory writes), which the guest call has
+ * already put in place. */
+static void dispatch_object_state_t3_0x1f_80C8098(u32 object) {
+    u32 state = LD8(object + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80C80AC + state);
+    call_object_state_handler(handler, state);
+}
+
+Next t3_0x1f_80C8098(void) {
+    dispatch_object_state_t3_0x1f_80C8098(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_initActionPhase_80C80B8 ── */
 /* battleObject_initActionPhase_80C80B8: Initialize a battle object on entry to its action phase.
  * Sets Z to 0, builds collision data, plays spawn VFX/sfx, and marks
@@ -126,6 +167,54 @@ Next battleObject_initActionPhase_80C80B8(void) {
     ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, next_state);
 
     R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
+/* ── t3_0x20_80C81CC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSpritePaused_result;
+/* register form: generated wrapper: object_updateSpritePaused has no typed C interface yet */
+static inline call_object_updateSpritePaused_result call_object_updateSpritePaused(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSpritePaused);
+    return (call_object_updateSpritePaused_result){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* t3_0x20_80C81CC: per-frame update for this battle object. The object's
+ * current state byte selects a handler through the jump table at
+ * off_80C81E4 (the original indexes it with the raw state byte), the
+ * handler runs with r5 = object pointer and r0 = state, and afterwards the
+ * object's sprite is refreshed with object_updateSpritePaused. */
+
+/* The state handler is reached through the object's jump table, so it has
+ * to be called through its code address instead of a named wrapper. It is
+ * entered exactly as the original enters it: r0 = state byte, r1 = its own
+ * table entry, r5 = object pointer; r10 and the other argument registers
+ * are already in place from the caller. */
+static u32 call_cur_state_handler(u32 handler, u32 state, u32 object) { /* register form: calls through a guest code address (noted by the tool) */
+    R0 = state;
+    R1 = handler;
+    R5 = object;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+static void t3_update_object(u32 object) {
+    u32 state = LD8(object + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80C81E4 + state);
+
+    call_cur_state_handler(handler, state, object);
+
+    /* register form: the handler returns with the (possibly updated) object
+     * pointer in r5, and object_updateSpritePaused must be called with that
+     * value; after the raw call it exists only in the guest register. */
+    call_object_updateSpritePaused(R5);
+}
+
+/* r5/r8-r12 outputs are whatever the state handler and the sprite update
+ * leave behind, so the adapter only passes the object pointer in. */
+Next t3_0x20_80C81CC(void) {
+    t3_update_object(R5);
     RETURN_TO_CALLER();
 }
 
@@ -212,6 +301,35 @@ Next battleObject_runPhase4AndDestroy_80C8268(void) {
         ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C829C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: battle_runObjects_80C8368 has no typed C interface yet */
+static inline void call_battle_runObjects_80C8368(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_runObjects_80C8368);
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5, r6, r7; bool z, n, c, v; } call_object_genericDestroy_result;
+/* register form: generated wrapper: object_genericDestroy has no typed C interface yet */
+static inline call_object_genericDestroy_result call_object_genericDestroy(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_genericDestroy);
+    return (call_object_genericDestroy_result){ R0, R1, R2, R3, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80C829C: run one frame of battle object updates for the object in r5,
+ * then destroy it. r5 goes out as object_genericDestroy leaves it. */
+
+static u32 sub_80C829C_body(u32 object) {
+    call_battle_runObjects_80C8368(object);
+    return call_object_genericDestroy(object).r5;
+}
+
+Next sub_80C829C(void) {
+    R5 = sub_80C829C_body(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1199,6 +1317,42 @@ Next battle_spawnCollisionForObject_80CB0AE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t3_0x44_80CC944 ── */
+/* Battle object state dispatcher (task type 3 handler).
+ *
+ * r5 points to a battle object. Its current-state byte indexes the handler
+ * table at off_80CC958:
+ *   0 -> sub_80CC964, 1 -> sub_80CC9AA, 2 -> object_genericDestroy
+ * (a state past the end reads whatever follows the table, as in the original).
+ *
+ * The chosen handler is tail-called with r0 = state byte and r1 = its own
+ * table entry, and it returns straight to this function's caller (the
+ * original's `mov lr, pc; bx r1` lands on the `pop {pc}`). The handler's
+ * register state therefore IS this function's result: r5, r8-r12 are left
+ * in the guest register file by the callee and must not be re-written here. */
+
+/* register form: the handler address comes from the guest jump table at
+ * off_80CC958, so the call must go through that address (the original's
+ * mov lr, pc; bx r1). The helper places the state byte in r0 and the table
+ * entry in r1, exactly as the dispatcher leaves them for the handler. */
+static void call_state_handler_t3_0x44_80CC944(u32 handler, u32 state) {
+    R0 = state;
+    R1 = handler;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Read the object's state byte, look up its handler in the table and run it. */
+static void dispatch_battle_object_state_t3_0x44_80CC944(u32 object) {
+    u32 state = LD8(object + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80CC958 + state);
+    call_state_handler_t3_0x44_80CC944(handler, state);
+}
+
+Next t3_0x44_80CC944(void) {
+    dispatch_battle_object_state_t3_0x44_80CC944(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80CC9FC ── */
 /* sub_80CC9FC(r0..r3,r6,r7 = fields, r5 = parent battle object):
  *   spawn a battle sub-object of type 0x44 (linked to parent in r5) and
@@ -1252,6 +1406,58 @@ Next sub_80CC9FC(void) {
     u32 flags = LD8(R0 + oObjectHeader_Flags);
     ST8(R0 + oObjectHeader_Flags, (u8)(flags | 0x10));
 
+    RETURN_TO_CALLER();
+}
+
+/* ── t3_0x4e_80CE118 ── */
+/* Battle-object state dispatcher (t3 = task 0x4e).
+ *
+ * The battle object at r5 carries a current-state byte; this dispatcher
+ * uses it to index the handler table at off_80CE12C and calls the
+ * selected handler, then returns to its own caller. The handler runs
+ * with:
+ *   r0  = the state byte that selected it
+ *   r1  = the jump-table base (off_80CE12C)
+ *   r2/r5/r10 passed through unchanged
+ * and finds the dispatcher's return address pushed at [SP] (the
+ * original's `push {lr}`), which some handlers inspect. */
+
+/* Call a state handler through its table address.
+ * Register form: the handler receives its arguments in the guest
+ * registers and its caller's return address in the word pushed at [SP];
+ * a plain C call cannot express that calling convention. The handler's
+ * register results (r5, r8-r12) stay in the guest register state. */
+static void call_state_handler_t3_0x4e_80CE118(u32 handler, u32 state, u32 r2v, u32 r5v, u32 r10v, u32 callerLr) {
+    /* register form: callee is entered through GUEST_CALL_ADDR with its
+       arguments in guest registers and the dispatcher's lr at [SP]. */
+    R0 = state;
+    R1 = A_off_80CE12C;
+    R2 = r2v;
+    R5 = r5v;
+    R10 = r10v;
+
+    /* push {lr}: expose the caller's return address to the handler */
+    SP -= 4;
+    ST32(SP, callerLr);
+
+    /* mov lr, pc; bx r1: call the handler, coming back here after it */
+    GUEST_CALL_ADDR(handler);
+
+    /* pop {lr}: restore the stack for the dispatcher's own caller */
+    SP += 4;
+}
+
+/* Look up the handler for the object's current state and run it. */
+static void dispatch_object_state_t3_0x4e_80CE118(u32 objPtr, u32 r2v, u32 r10v, u32 callerLr) {
+    u32 state = LD8(objPtr + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80CE12C + state);
+    call_state_handler_t3_0x4e_80CE118(handler, state, r2v, objPtr, r10v, callerLr);
+}
+
+/* t3_0x4e_80CE118: dispatch one battle object's state handler.
+ * Inputs r2/r5/r10; the handler's results are left in r5/r8-r12. */
+Next t3_0x4e_80CE118(void) {
+    dispatch_object_state_t3_0x4e_80CE118(R5, R2, R10, LR);
     RETURN_TO_CALLER();
 }
 
@@ -1955,6 +2161,79 @@ Next battle_MirrorRelatedObjectFlag1_80E0616(void) {
         ST8(R5, flags | R1);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── t4_0x2_80E0638 ── */
+/* Battle-object state dispatcher (t4_0x2_80E0638).
+ *
+ * Tail-calls the handler for the battle object's current state through the
+ * jump table at off_80E064C.  The table is indexed by the raw CurState byte
+ * used as a byte offset, so state 0 selects sub_80E0654 and state 4 selects
+ * sub_80E0668; any other byte loads whatever word lies at that offset and
+ * branches there, exactly as the original does.
+ *
+ * The selected handler is entered with r0 = state byte and r1 = its own table
+ * entry (Thumb address, as loaded), with r5 still pointing at the battle
+ * object, and it returns straight back to this routine's caller (the original
+ * reaches it via `mov lr, pc; bx r1`, skipping the `pop {pc}` on the normal
+ * return path).  Whatever the handler leaves in r5/r8-r12 is this routine's
+ * result, so nothing on the way may touch those registers. */
+
+/* register form: the branch target is read from the state table at run time,
+ * so no single wrappered callee covers this call; GUEST_CALL_ADDR performs the
+ * indirect call the way the original's `mov lr, pc; bx r1` does. */
+static void call_state_handler_t4_0x2_80E0638(u32 state, u32 handler_addr) {
+    R0 = state;
+    R1 = handler_addr;
+    GUEST_CALL_ADDR(handler_addr);
+}
+
+static void dispatch_battle_state_t4_0x2_80E0638(u32 battle_obj) {
+    u32 state = LD8(battle_obj + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80E064C + state);
+    call_state_handler_t4_0x2_80E0638(state, handler);
+}
+
+/* t4_0x2_80E0638(r5 = battle object): dispatch on CurState; all outputs come
+ * from the state handler that runs. */
+Next t4_0x2_80E0638(void) {
+    dispatch_battle_state_t4_0x2_80E0638(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E0668 ── */
+/* sub_80E0668: dispatch to the handler for a battle object's current phase.
+ * The two-entry table at off_80E067C maps oBattleObject_CurPhase (0 or 1) to
+ * the phase handler's thumb address:
+ *   phase 0 -> sub_80E0684
+ *   phase 1 -> battle_object_teardownAndFree_80E06E0
+ * The handler is entered with r0 = phase byte and r1 = its own table entry
+ * (thumb address, bit 0 set); r5 and r10 pass through to it untouched, and
+ * its results in r5/r8/r9/r10/r11/r12 are the results of this function. */
+
+/* register form: the phase handlers are reached through a code address taken
+ * from the dispatch table, so no generated call_NAME wrapper covers them.
+ * The helper enters the callee exactly as the original does: r0 = phase,
+ * r1 = the handler's thumb address, lr = return into this function. */
+static void call_phase_handler_sub_80E0668(u32 phase, u32 handler) {
+    R0 = phase;
+    R1 = handler;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Typed body: pick the handler for the object's current phase and call it.
+ * r10 passes through to the callee via the guest register file; the callee's
+ * register outputs (r5, r8-r12) are left in place by the call itself. */
+static void dispatch_phase(u32 object, u32 r10_pass_through) {
+    u32 phase = LD8(object + oBattleObject_CurPhase);
+    u32 handler = LD32(A_off_80E067C + phase);
+    call_phase_handler_sub_80E0668(phase, handler);
+}
+
+/* sub_80E0668 (r5 = battle object, r10 = pass-through) -> r5 r8 r9 r10 r11 r12 */
+Next sub_80E0668(void) {
+    dispatch_phase(R5, R10);
     RETURN_TO_CALLER();
 }
 

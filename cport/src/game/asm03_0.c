@@ -98,6 +98,43 @@ Next sub_80269E2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8026A28 ── */
+/* Dispatch one step of the state machine whose object lives at eS20364C0.
+ *
+ * The object's state byte (oS20364C0_JumpOffset00) selects an entry in the
+ * handler table at off_8026A3C:
+ *   +0  sub_8026A50
+ *   +4  custMenuMainMaybe_8026A88        (custom menu main loop)
+ *   +8  object_runFrameUpdate_8026A6C
+ * The chosen handler is called with r5 = state object (r0 still holds the
+ * state byte and r1 the table entry, exactly as the original leaves them)
+ * and returns a result in r0. Everything the handler leaves in the other
+ * registers passes straight through to this routine's caller; only r5 is
+ * restored, matching the original's push {r5,lr} / pop {r5,pc}. */
+
+/* register form: the handler is reached through the object's jump table
+ * (ldr r1,[r1,r0]; mov lr,pc; bx r1), so the call must go through
+ * GUEST_CALL_ADDR, and the register state it leaves behind (r0, r2-r4,
+ * r6, r8-r12) is sub_8026A28's own output contract. No typed signature can
+ * express a call that returns ten live registers. */
+static void run_state_step(void) {
+    u32 savedR5 = R5;                    /* push {r5}: caller's r5 */
+
+    R5 = A_eS20364C0;                    /* the state object (self) */
+    u32 state = LD8(A_eS20364C0 + oS20364C0_JumpOffset00);
+    R0 = state;                          /* live at handler entry, as in the original */
+    R1 = LD32(A_off_8026A3C + state);    /* handler address from the jump table */
+
+    GUEST_CALL_ADDR(R1);                 /* run the selected handler */
+
+    R5 = savedR5;                        /* pop {r5}: r5 is preserved for the caller */
+}
+
+Next sub_8026A28(void) {
+    run_state_step();
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8026A50 ── */
 /* sub_8026A50(self: r5 = *S20364C0) -> u8 in r0 (always 0)
  *
@@ -836,6 +873,46 @@ Next sub_8027394(void) {
     R0 = 0;
     ST16(R5 + 2, 0);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80273A4 ── */
+/* Battle-object mode dispatcher (sub_80273A4).
+ *
+ * The original is a trampoline: it reads the object's mode byte at [self+2],
+ * loads [self+0x40] into r4 as the handler's context argument, looks the
+ * handler up in a jump table indexed by the raw mode byte, and tail-calls it
+ * with mov lr,pc / bx.  The callee's register results (r2, r3, r5-r12) and
+ * flags are simply whatever the handler leaves behind; the trailing
+ * pop {r4,pc} restores the caller's r4 and returns to the original caller.
+ * The table lookup is not range-checked, so any mode byte outside 0..0x10
+ * still jumps to whatever word sits at table+mode - reproduced here with a
+ * call through the computed address. */
+
+/* register form: the handler address comes from a jump table at runtime, so
+ * the call must go through its code address; the handler is entered with
+ * r0 = mode byte, r1 = table entry (as the original leaves it), r4 = context. */
+static void call_mode_handler(u32 target, u32 mode, u32 context) {
+    R0 = mode;
+    R1 = target;
+    R4 = context;
+    GUEST_CALL_ADDR(target);
+}
+
+static void dispatch_battle_object_mode(u32 self) {
+    u32 context = LD32(self + 0x40);          /* per-object handler context */
+    u32 mode    = LD8(self + 2);              /* handler selector byte */
+    u32 target  = LD32(A_off_80273B8 + mode); /* jump-table entry, byte-indexed */
+
+    call_mode_handler(target, mode, context);
+}
+
+/* sub_80273A4(r5 = battle object, r10/lr pass through to the handler)
+ * -> r2 r3 r5 r6 r8 r9 r10 r11 r12 from the handler; r4 preserved. */
+Next sub_80273A4(void) {
+    u32 r4_in = R4;
+    dispatch_battle_object_mode(R5);
+    R4 = r4_in;                /* pop {r4,pc} restores the caller's r4 */
     RETURN_TO_CALLER();
 }
 

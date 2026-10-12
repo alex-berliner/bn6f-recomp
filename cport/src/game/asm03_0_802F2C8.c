@@ -29,6 +29,94 @@ Next resetPaletteScratch_802F2C8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── startscreen_render_802F544 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r4, r6, r7, r8, r9, r10, r11, r12; } call_startScreen_AnimatePressStart_803E938_result;
+/* register form: generated wrapper: startScreen_AnimatePressStart_803E938 has no typed C interface yet */
+static inline call_startScreen_AnimatePressStart_803E938_result call_startScreen_AnimatePressStart_803E938(u32 r5, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R5 = r5;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(startScreen_AnimatePressStart_803E938);
+    return (call_startScreen_AnimatePressStart_803E938_result){ R2, R3, R4, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r0, r2, r3, r7; bool z, n, c, v; } call_GetRNG_result;
+/* register form: generated wrapper: GetRNG has no typed C interface yet */
+static inline call_GetRNG_result call_GetRNG(void) {
+    GUEST_CALL(GetRNG);
+    return (call_GetRNG_result){ R0, R2, R3, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Registers the original pops back for its caller (push {r4-r7,lr} ...
+ * pop {r4-r7,pc}): r4-r7 leave this routine exactly as they entered,
+ * even though the callees change them on the way through. */
+typedef struct {
+    u32 r4, r5, r6, r7;
+} StartScreenCallerRegs;
+
+/* register form: the per-state handler is entered through a computed code
+ * address - an entry of the jt_802F560 table picked by the state byte -
+ * which the original reaches with "mov lr, pc / bx r0", so no typed wrapper
+ * covers it.  The guest registers themselves carry the state in and out:
+ *   r0 = handler address (as at the original's bx r0)
+ *   r1 = jump-table offset the handler was selected with
+ *   r5 = eStartScreen, the self pointer the handler takes
+ * Everything else (r2-r4, r6-r12) already holds the register state
+ * AnimatePressStart left behind, exactly as in the original; whatever the
+ * handler does to r8-r12 flows through to our caller. */
+static u32 dispatch_state_handler(u32 handler, u32 state_off)
+{
+    R0 = handler;
+    R1 = state_off;
+    R5 = A_eStartScreen;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* One rendered frame of the title / start screen:
+ *   1. animate the blinking "Press Start" text,
+ *   2. run the handler for the current start-screen state,
+ *   3. advance the RNG (drives star twinkles and other random effects).
+ * Returns the caller's r4-r7; r8-r12 keep whatever the callee chain left
+ * in the guest registers. */
+static StartScreenCallerRegs startscreen_render_frame(u32 r4, u32 r5, u32 r6, u32 r7,
+                                                      u32 r8, u32 r9, u32 r11, u32 r12)
+{
+    /* Advance the "Press Start" blink.  This call also leaves behind the
+     * register state (r2-r4, r6-r12) that the state handler runs with. */
+    call_startScreen_AnimatePressStart_803E938(r5, r7, r8, r9, r11, r12);
+
+    /* Dispatch the handler for the current state: the state byte at
+     * eStartScreen indexes the jump table jt_802F560. */
+    u32 self = A_eStartScreen;
+    u32 state_off = LD8(self + oStartScreen_JumpTableOff_00);
+    u32 handler = LD32(A_jt_802F560 + state_off);
+    dispatch_state_handler(handler, state_off);
+
+    /* Roll the RNG for this frame's random effects. */
+    call_GetRNG();
+
+    StartScreenCallerRegs restored = { r4, r5, r6, r7 };
+    return restored;
+}
+
+/* startscreen_render_802F544: render one start-screen frame.
+ * r4-r7 are preserved to the caller; r8-r12 pass through the callee chain. */
+Next startscreen_render_802F544(void)
+{
+    StartScreenCallerRegs restored =
+        startscreen_render_frame(R4, R5, R6, R7, R8, R9, R11, R12);
+    R4 = restored.r4;
+    R5 = restored.r5;
+    R6 = restored.r6;
+    R7 = restored.r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── startScreen_initGfx_802F574 ── */
 /* ---- register-form call helpers ---- */
 

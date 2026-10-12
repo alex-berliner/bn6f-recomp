@@ -360,6 +360,116 @@ Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C0870 ── */
+/* Battle object phase dispatcher (0x080C0870).
+ *
+ * Reads the battle object's current phase byte and uses it directly as a
+ * byte offset into the handler table at off_80C0884:
+ *   phase 0 -> sub_80C088C
+ *   phase 4 -> battleObject_runFirstTurnPhase_80C08EE
+ * The original reaches the handler with `mov lr, pc; bx r1`, so the handler
+ * returns straight back to this function's caller (the `pop {pc}` here is
+ * merely the handler's return path). The handler leaves the outputs r5 and
+ * r8-r12 behind; r0/r1 and the flags are scratch. */
+
+/* register form: the handler address is read from the phase table at
+ * off_80C0884, so no generated wrapper covers this call. The helper makes
+ * that one call with r0 = phase byte and r1 = handler address, exactly as
+ * the original's `mov lr, pc; bx r1` does. */
+static u32 call_phase_handler_sub_80C0870(u32 handler, u32 phase) {
+    R0 = phase;
+    R1 = handler;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* Look up the handler for the object's current phase and run it. The
+ * handler's register results (r5, r8-r12) stay in place for the caller. */
+static void run_battle_object_phase(u32 object) {
+    u32 phase = LD8(object + oBattleObject_CurPhase);
+    u32 handler = LD32(A_off_80C0884 + phase);
+    call_phase_handler_sub_80C0870(handler, phase);
+}
+
+/* sub_80C0870(r5 = battle object) */
+Next sub_80C0870(void) {
+    run_battle_object_phase(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0912 ── */
+/* sub_80C0912 -- phase dispatcher for one battle object (r5).
+ *
+ * Reads the object's current phase byte and calls the matching handler
+ * from the table at off_80C0924:
+ *   0 battle_panelObject_tryTargetAndSetPhase_80C0938
+ *   1 sub_80C0956
+ *   2 battleObject_jumpUpPhase_80C0988
+ *   3 sub_80C09C6
+ *   4 sub_80C0A0E
+ *
+ * The handler is entered with the state the original sets up:
+ *   r0 = phase byte
+ *   r1 = table entry that was jumped through (the handler's own address)
+ *   r2 = forwarded unchanged from the dispatcher's caller
+ *   r5 = battle object pointer
+ * Whatever the handler leaves in r5 and r8-r12 is this function's result;
+ * r0-r4/r6/r7 and the flags are scratch, lr returns to the caller. */
+
+struct PhaseDispatchResult {
+    u32 object;   /* r5 */
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+};
+
+/* register form: the phase handler is reached through a jump-table address
+ * (ldr r1, [table, phase]; mov lr, pc; bx r1), so no generated wrapper
+ * covers it. The helper reproduces the original's register state, makes the
+ * single call, and reads the surviving outputs back out of the register
+ * file once the handler returns. */
+static struct PhaseDispatchResult run_phase_handler_sub_80C0912(u32 handler, u32 phase,
+                                                    u32 arg2, u32 object)
+{
+    R0 = phase;   /* CurPhase value, as the original passes it */
+    R1 = handler; /* table entry the original jumps through */
+    R2 = arg2;    /* argument forwarded from the dispatcher's caller */
+    R5 = object;  /* battle object pointer */
+
+    GUEST_CALL_ADDR(handler);
+
+    struct PhaseDispatchResult out;
+    out.object = R5;
+    out.r8 = R8;
+    out.r9 = R9;
+    out.r10 = R10;
+    out.r11 = R11;
+    out.r12 = R12;
+    return out;
+}
+
+/* Look up the handler for the object's current phase and run it. */
+static struct PhaseDispatchResult dispatch_battle_object_phase(u32 arg2, u32 object)
+{
+    u32 phase = LD8(object + oBattleObject_CurPhase);
+    u32 handler = LD32(A_off_80C0924 + phase);
+    return run_phase_handler_sub_80C0912(handler, phase, arg2, object);
+}
+
+/* r2 = forwarded argument, r5 = battle object -> r5 r8 r9 r10 r11 r12 */
+Next sub_80C0912(void) {
+    struct PhaseDispatchResult out = dispatch_battle_object_phase(R2, R5);
+    R5 = out.object;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_panelObject_tryTargetAndSetPhase_80C0938 ── */
 /* battle_panelObject_tryTargetAndSetPhase_80C0938(r5 = battle object pointer):
  * Try to find a panel target via sub_80C0C9A.
@@ -454,6 +564,39 @@ Next advancePhase3ToPhase4_80C0A6C(void) {
             ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, R0);
         }
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C0B76 ── */
+/* sub_80C0B76: per-phase tick dispatcher for a battle object.
+ *
+ * Reads the object's CurPhase byte, looks the phase up in the two-entry
+ * handler table at off_80C0B88 and tail-calls that handler with
+ * r0 = phase, r1 = the handler's own address and r2 = the caller's r2.
+ * The original reaches the handler through "mov lr, pc; bx r1" so the
+ * handler returns straight back to this function's caller; whatever the
+ * handler leaves in r5 and r8-r12 is what the caller sees. */
+
+/* register form: the phase handler is reached through its table address
+ * (mov lr, pc; bx r1), which no call_NAME wrapper covers, and it is
+ * entered with r0 = phase, r1 = its own address, r2 = the caller's r2. */
+static void call_phase_handler_sub_80C0B76(u32 phase, u32 handler, u32 arg2) {
+    R0 = phase;
+    R1 = handler;
+    R2 = arg2;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Run the battle object's phase handler. The handler's register results
+ * (r5, r8-r12) stay in the guest register file, so nothing is returned. */
+static void run_phase_handler_sub_80C0B76(u32 objPtr, u32 arg2) {
+    u32 phase = LD8(objPtr + oBattleObject_CurPhase);
+    u32 handler = LD32(A_off_80C0B88 + phase);
+    call_phase_handler_sub_80C0B76(phase, handler, arg2);
+}
+
+Next sub_80C0B76(void) {
+    run_phase_handler_sub_80C0B76(R5, R2);
     RETURN_TO_CALLER();
 }
 
@@ -586,6 +729,41 @@ Next sub_80C0DC2(void) {
     R4 = 0x26;
     GUEST_CALL(spawn_t1_0x0_EffectObject);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── t1_0x2d_80C0E04 ── */
+/* t1_0x2d_80C0E04 — battle object state dispatcher.
+ *
+ * r5 holds a battle object. The object's current-state byte selects a
+ * handler from the table at off_80C0E18:
+ *   state 0 -> sub_80C0E24
+ *   state 1 -> sub_80C0EE2
+ *   state 2 -> object_freeMemory
+ * The handler is entered with the state byte in r0 and the table entry
+ * (the handler's own address) in r1, exactly as the original's
+ * "ldr r1, [r1,r0]; mov lr, pc; bx r1" sequence leaves them. The caller's
+ * r5-r12 stay live throughout, so whatever the handler leaves in
+ * r5/r8-r12 is this function's result; those registers are never touched
+ * by any C code here and simply pass through the guest register file.
+ */
+
+/* register form: the handler is reached through a code address read from
+ * the state table (the original's "mov lr, pc; bx r1" idiom), so the call
+ * must go through GUEST_CALL_ADDR. The handler must also see the caller's
+ * live r5-r12, which no typed parameter passing can express — they are
+ * left untouched in the guest registers and read back by the callee. */
+static void run_state_handler(u32 object) {
+    u32 state = LD8(object + oBattleObject_CurState);
+    u32 handler = LD32(A_off_80C0E18 + state);
+
+    R0 = state;      /* handler argument: the object's current state */
+    R1 = handler;    /* the original leaves the table entry in r1 as well */
+    GUEST_CALL_ADDR(handler);
+}
+
+Next t1_0x2d_80C0E04(void) {
+    run_state_handler(R5);
     RETURN_TO_CALLER();
 }
 

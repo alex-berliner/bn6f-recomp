@@ -1374,6 +1374,26 @@ Next copy_table_80469F0_to_202F800_8047CEC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8047D84 ── */
+/* Address of one battle grid cell: (column + row) entries of 8 bytes each,
+ * offset from the base of the cell data table at byte_2019A00.
+ * The column and row live as u16s at word_2011C24 / word_2011C28 in the
+ * battle state block at byte_2011C10.
+ *
+ * Note: the original pushes/pops r4-r7, so r4-r6 and r7 are left exactly as
+ * they came in; only r0 carries the result (r1 and the flags are scratch). */
+static u32 battle_cell_address(void) {
+    u32 column = LD16(A_word_2011C24);
+    u32 row = LD16(A_word_2011C28);
+    return (column + row) * 8 + A_byte_2019A00;
+}
+
+/* sub_8047D84() -> r0 (r4-r7 preserved; r1, nz/c/v scratch) */
+Next sub_8047D84(void) {
+    R0 = battle_cell_address();
+    RETURN_TO_CALLER();
+}
+
 /* ── shop_resetStockTable_8048C68 ── */
 /* shop_resetStockTable_8048C68:
  * (Re)initialize the shop data buffer owned by the toolkit: clear all 0xE80
@@ -1486,6 +1506,43 @@ Next initSaveStateBlock_8048F9C(void) {
     ST16(state + 0x26, R0);
 
     /* r4 and r5 are preserved across this function (push/pop) */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804971C ── */
+/* sub_804971C: chatbox state dispatch.
+ *
+ * r5 points to the chatbox work area; the byte at offset 1 is the current
+ * state, used as a raw byte offset into the thumb handler jump table at
+ * off_8049730. The original loads the selected handler address and does
+ * `mov lr, pc; bx r0`, so the callee is entered with r0 = its own address
+ * and r1 = the state byte, while r2 and r4-r12 pass through untouched.
+ * The push/pop of r4-r7 need not be reproduced: the callee preserves them
+ * per the ABI, so r4-r7 simply flow through to the caller, and the
+ * handler's results (r3, r8-r12, c, v) are what this function leaves
+ * behind in the guest registers for its caller.
+ */
+
+/* Call the selected chatbox state handler through its code address.
+ * Register form: indirect call through a jump-table address (the original's
+ * `mov lr, pc; bx r0`), which no generated wrapper covers. The callee is
+ * entered with r0 = handler address and r1 = state byte, matching the
+ * original dispatch; its register and flag results stay in the guest state. */
+static void call_chatbox_state_handler(u32 handler, u32 state) {
+    R0 = handler;
+    R1 = state;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Read the chatbox state and tail-jump to that state's handler. */
+static void chatbox_dispatch(u32 ctx) {
+    u32 state   = LD8(ctx + 1);
+    u32 handler = LD32(A_off_8049730 + state);
+    call_chatbox_state_handler(handler, state);
+}
+
+Next sub_804971C(void) {
+    chatbox_dispatch(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1603,6 +1660,47 @@ Next chatbox_inputHandler_8049888(void) {
     /* Run the chatbox state machine tick. */
     GUEST_CALL(battle_moduleInit_803A820);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80498D4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r8, r9, r10, r11, r12; bool z, n, c, v; } call_battle_moduleInit_803A820_result;
+/* register form: generated wrapper: battle_moduleInit_803A820 has no typed C interface yet */
+static inline call_battle_moduleInit_803A820_result call_battle_moduleInit_803A820(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_moduleInit_803A820);
+    return (call_battle_moduleInit_803A820_result){ R0, R1, R2, R3, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80498D4: reset a battle work structure before the battle module takes it over.
+ * Clears the byte at +8, stores the init-state marker 0x24 at +1, then hands the
+ * structure to battle_moduleInit_803A820, which fills in the rest.
+ * Inputs:  r5 = structure pointer (r10 is passed through untouched).
+ * Outputs: whatever battle_moduleInit_803A820 leaves behind: r3, r8-r12, C, V. */
+
+/* Body of sub_80498D4. Returns the module initializer's register results and flags. */
+static call_battle_moduleInit_803A820_result init_battle_work_area(u32 work)
+{
+    ST8(work + 8, 0);      /* clear the state byte at +8 */
+    ST8(work + 1, 0x24);   /* store the 0x24 init marker at +1 */
+    return call_battle_moduleInit_803A820(work);
+}
+
+Next sub_80498D4(void) {
+    call_battle_moduleInit_803A820_result res = init_battle_work_area(R5);
+    R3 = res.r3, R8 = res.r8, R9 = res.r9, R10 = res.r10, R11 = res.r11, R12 = res.r12;
+
+    /* Reproduce the initializer's C/V flags with one ADDS: pick operands whose
+     * carry and signed overflow match the pair (res.c, res.v):
+     *   c=0,v=0 -> 0x00000000 + 0x00000000   (C=0, V=0)
+     *   c=1,v=0 -> 0x7FFFFFFF + 0x80000001   (C=1, V=0)
+     *   c=0,v=1 -> 0x7FFFFFFF + 0x7FFFFFFF   (C=0, V=1)
+     *   c=1,v=1 -> 0xBFFFFFFF + 0xBFFFFFFF   (C=1, V=1) */
+    u32 c = res.c, v = res.v;
+    u32 addend_a = 0x7FFFFFFF * (c + v) - 0x3FFFFFFF * (c * v);
+    u32 addend_b = 0x80000001 * c + 0x7FFFFFFF * v - 0x40000001 * (c * v);
+    SET_FLAGS_ADD(addend_a, addend_b);
     RETURN_TO_CALLER();
 }
 
@@ -1884,6 +1982,76 @@ Next sub_8049D70(void) {
      * next RNG seed used by the rest of the game. */
     GUEST_CALL(GetRNG);
     ST16((u32)A_word_2001800, (u16)R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── cb_8049E04 ── */
+/* cb_8049E04: phase-step dispatcher for the E-Reader battle screens.
+ *
+ * eS200A290 holds the current phase byte. This callback indexes the jump
+ * table at off_8049E18 with it and calls the matching handler
+ * (chatbox_initNewScreen_8049E28 / sub_8049E5C / sub_8049E84), passing the
+ * phase byte in r1 and a pointer to the phase byte in r5. The handler also
+ * sees the dispatcher's own table entry in r0, exactly as the original's
+ * "ldr r0,[table,phase]; mov lr,pc; bx r0" leaves the register file.
+ * r4-r7 are callee-saved and restored by the trailing pop {r4-r7,pc};
+ * r8-r12 end as the handler left them. */
+
+/* r8-r12 as the handler leaves them (r4-r7 come back unchanged). */
+struct cb_8049E04_tail {
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+};
+
+/* register form: indirect call through the phase jump table. The handler
+ * runs on the live guest register file: r0 = its own table entry (thumb bit
+ * set), r1 = phase byte, r5 = &phase byte, with r2/r4/r10 and every other
+ * register passed through untouched. Afterwards r4-r7 are put back the way
+ * the original's pop {r4-r7,pc} does, and r8-r12 are collected as results. */
+static struct cb_8049E04_tail call_phase_handler_cb_8049E04(u32 handler, u32 phase,
+                                                 u32 r2in, u32 r4in, u32 r5in,
+                                                 u32 r6in, u32 r7in, u32 r10in) {
+    R0 = handler;
+    R1 = phase;
+    R2 = r2in;
+    R4 = r4in;
+    R5 = A_eS200A290;
+    R10 = r10in;
+    GUEST_CALL_ADDR(handler);
+
+    /* pop {r4-r7,pc}: the saved low registers come back unchanged. */
+    R4 = r4in;
+    R5 = r5in;
+    R6 = r6in;
+    R7 = r7in;
+
+    struct cb_8049E04_tail out;
+    out.r8 = R8;
+    out.r9 = R9;
+    out.r10 = R10;
+    out.r11 = R11;
+    out.r12 = R12;
+    return out;
+}
+
+/* Typed body: pick the handler for the current phase and run it. */
+static struct cb_8049E04_tail cb_8049E04_body(u32 r2in, u32 r4in, u32 r5in,
+                                              u32 r6in, u32 r7in, u32 r10in) {
+    u32 phase = LD8(A_eS200A290);
+    u32 handler = LD32(A_off_8049E18 + phase);
+    return call_phase_handler_cb_8049E04(handler, phase, r2in, r4in, r5in, r6in, r7in, r10in);
+}
+
+Next cb_8049E04(void) {
+    struct cb_8049E04_tail out = cb_8049E04_body(R2, R4, R5, R6, R7, R10);
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
     RETURN_TO_CALLER();
 }
 

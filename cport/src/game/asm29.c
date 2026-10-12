@@ -555,6 +555,63 @@ Next sub_80A5350(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A5428 ── */
+/* Result registers of the mode handler. sub_80A5428's contract exposes
+ * r2/r5/r10/r11: r5 and r10 are passed through to the handler and come
+ * back possibly updated, r2 and r11 are results the handler leaves
+ * behind. A handler that never touches r2/r11 keeps the value the
+ * caller had, which falls out naturally from reading the live
+ * registers after the call. */
+struct HandlerResult {
+    u32 r2;
+    u32 r5;
+    u32 r10;
+    u32 r11;
+};
+
+/* register form: the mode handlers are reached through the jump table at
+ * off_80A543C ("mov lr, pc / bx r0"), so no generated wrapper covers
+ * them. The helper seeds r0 = table entry, r1 = mode byte and r5/r10
+ * exactly as the original leaves them at the call, performs that single
+ * call, then collects the handler's r2/r5/r10/r11. */
+static struct HandlerResult dispatch_mode_handler(u32 handlerAddr, u32 mode,
+                                                  u32 objectPtr, u32 r10val) {
+    struct HandlerResult out;
+
+    R0 = handlerAddr;
+    R1 = mode;
+    R5 = objectPtr;
+    R10 = r10val;
+    GUEST_CALL_ADDR(handlerAddr);
+
+    out.r2 = R2;
+    out.r5 = R5;
+    out.r10 = R10;
+    out.r11 = R11;
+    return out;
+}
+
+/* Pick the handler for this object's mode. The mode byte at [r5+8] is
+ * added to the table address directly (the original does
+ * "ldrb r1,[r5,#8]; ldr r0,[r0,r1]" with no scaling), then the loaded
+ * entry is called with r0 = entry and r1 = mode. */
+static struct HandlerResult dispatch_mode(u32 objectPtr, u32 r10val) {
+    u32 mode = LD8(objectPtr + 8);
+    u32 handler = LD32(A_off_80A543C + mode);
+    return dispatch_mode_handler(handler, mode, objectPtr, r10val);
+}
+
+/* sub_80A5428: dispatch to the mode handler of the object in r5
+ * (r10 rides along). Results: r2 r5 r10 r11 as the handler leaves them. */
+Next sub_80A5428(void) {
+    struct HandlerResult res = dispatch_mode(R5, R10);
+    R2 = res.r2;
+    R5 = res.r5;
+    R10 = res.r10;
+    R11 = res.r11;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80A5448 ── */
 /* sub_80A5448: initialize a battle cursor / cursor-like sprite.
  *   r5 = sprite state struct, r10 = ???, lr = return address

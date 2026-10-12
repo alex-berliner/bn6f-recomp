@@ -1996,6 +1996,111 @@ Next sprite_QueueAnimFrameGfxUpload_8001C44(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── gfx_renderAnimTileSheet_8001C94 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r4, r5, r6, r7; bool z, n, c, v; } call_QueueEightWordAlignedGFXTransfer_result;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result call_QueueEightWordAlignedGFXTransfer(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result){ R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Result of rendering one animation frame: the C/V flags left by the DMA
+ * queue call, plus the entry values of r4/r7 (the original saves them on
+ * the stack at entry and pops them back right before returning). */
+struct gfx_anim_result {
+    u32 saved_r4;
+    u32 saved_r7;
+    bool c;
+    bool v;
+};
+
+/* register form: each tile's decoder is reached through a jump table with
+ * mov lr, pc / bx r0, which no wrapper covers. The callee sees the handler's
+ * own address in r0, the u16 entry's byte offset in r1, the type index *4 in
+ * r2, the tile byte offset in r3, the source tile pointer in r4, the scratch
+ * destination in r5, the entry list in r6 and the anim state in r7. */
+static void call_tile_handler(u32 handler, u32 entry_byte_off, u32 type_x4,
+                              u32 tile_off, u32 tile_src, u32 scratch_dest,
+                              u32 entry_list, u32 state) {
+    R0 = handler;
+    R1 = entry_byte_off;
+    R2 = type_x4;
+    R3 = tile_off;
+    R4 = tile_src;
+    R5 = scratch_dest;
+    R6 = entry_list;
+    R7 = state;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Render one frame of a GFX animation tile sheet: walk the frame's u16 tile
+ * descriptor list, let the per-type handler decode each 32-byte tile into the
+ * slot's EWRAM scratch buffer, then queue a word-aligned copy of the whole
+ * scratch sheet to the state's destination region.
+ * anim_data = *GFXAnimDataNext, state = *GFXAnimState. */
+static struct gfx_anim_result render_anim_tile_sheet(u32 anim_data, u32 state,
+                                                     u32 entry_r4, u32 entry_r7) {
+    /* u16 tile descriptors of the frame to draw */
+    u32 entry_list = LD32(anim_data);
+
+    /* EWRAM scratch buffer selected by the state's Param3 slot index */
+    u32 slot = LD8(state + oGFXAnimState_Param3);
+    u32 scratch = LD32(A_off_8001AB8 + (slot << 2));
+
+    /* base address of this animation's tile graphics */
+    u32 tile_base = LD32(state + oGFXAnimState_Param0);
+
+    u32 entry_count = LD8(state + oGFXAnimState_Param2);
+    u32 list_bytes = entry_count << 1;
+
+    /* The original only tests the offset after the first pass, so the body
+     * always runs once even when the entry list is empty. */
+    u32 byte_off = 0;
+    do {
+        u32 entry = LD16(entry_list + byte_off);
+        u32 tile_off = (entry & 0x3FF) << 5;    /* low 10 bits: tile, 32 bytes each */
+        u32 type_x4 = (entry >> 10) << 2;       /* top 6 bits: decoder type */
+
+        call_tile_handler(LD32(A_off_8001CEC + type_x4), byte_off, type_x4,
+                          tile_off, tile_base + tile_off, scratch,
+                          entry_list, state);
+
+        scratch += 0x20;    /* one tile (32 bytes) of scratch per entry */
+        byte_off += 2;
+    } while ((s32)byte_off < (s32)list_bytes);
+
+    /* Queue the copy of the finished scratch sheet. The original re-reads the
+     * slot index here, so a handler may have updated the state in the meantime. */
+    u32 copy_src = LD32(A_off_8001AB8 + (LD8(state + oGFXAnimState_Param3) << 2));
+    u32 copy_dest = LD32(state + oGFXAnimState_Param1);
+    u32 copy_size = LD8(state + oGFXAnimState_Param2) << 5;
+
+    call_QueueEightWordAlignedGFXTransfer_result dma =
+        call_QueueEightWordAlignedGFXTransfer(copy_src, copy_dest, copy_size);
+
+    struct gfx_anim_result out;
+    out.saved_r4 = entry_r4;
+    out.saved_r7 = entry_r7;
+    out.c = dma.c;
+    out.v = dma.v;
+    return out;
+}
+
+/* gfx_renderAnimTileSheet_8001C94(r0 = *GFXAnimDataNext, r7 = *GFXAnimState)
+ * -> c, v from the queued DMA transfer; r4/r7 preserved. */
+Next gfx_renderAnimTileSheet_8001C94(void) {
+    struct gfx_anim_result res = render_anim_tile_sheet(R0, R7, R4, R7);
+    R4 = res.saved_r4;
+    R7 = res.saved_r7;
+    cpu.c = res.c;
+    cpu.v = res.v;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8001D64 ── */
 /* sub_8001D64(r4 = source, r5 = destination):
  * copy a block of 8 words (0x20 bytes) from source to destination.

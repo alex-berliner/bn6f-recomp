@@ -1797,6 +1797,48 @@ Next ZeroAllNaviStatsMood(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── GetRandomRelativePanelFiltered ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call__GetRandomRelativePanelFiltered_result;
+/* register form: generated wrapper: _GetRandomRelativePanelFiltered has no typed C interface yet */
+static inline call__GetRandomRelativePanelFiltered_result call__GetRandomRelativePanelFiltered(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R6 = r6;
+    GUEST_CALL(_GetRandomRelativePanelFiltered);
+    return (call__GetRandomRelativePanelFiltered_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* GetRandomRelativePanelFiltered (0x08015E46)
+ *
+ * Thin front end for _GetRandomRelativePanelFiltered.  The caller passes a
+ * panel index in r4; this looks the matching panel-offset list up in
+ * PanelOffsetListsPointerTable and calls the implementation with that list
+ * pointer in r4 instead.  r4 and r7 are saved and restored around the call,
+ * so the caller's copies survive; everything else the implementation leaves
+ * behind (r0-r3, r5, the flags) passes straight through to our caller. */
+
+/* Typed body: replace the panel index in r4 with its offset-list pointer and
+ * run the implementation.  The generated wrapper leaves the implementation's
+ * outputs (r0-r3, r5, nz/c/v) in the guest state, so nothing needs to be
+ * carried back out of here. */
+static void get_random_relative_panel_filtered_body(u32 a, u32 b, u32 c, u32 d,
+                                                    u32 panel_index, u32 f)
+{
+    u32 offset_list = LD32(A_PanelOffsetListsPointerTable + (panel_index << 2));
+    call__GetRandomRelativePanelFiltered(a, b, c, d, offset_list, f);
+}
+
+Next GetRandomRelativePanelFiltered(void) {
+    u32 caller_r4 = R4;
+    get_random_relative_panel_filtered_body(R0, R1, R2, R3, R4, R6);
+    R4 = caller_r4;    /* the original pops r4 back off the stack on the way out */
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_object_runPhaseHandler_8016396 ── */
 /* battle_object_runPhaseHandler_8016396 — phase dispatcher for the battle object in R5.
  *
