@@ -727,6 +727,38 @@ Next GetCurPETNaviStatsHword(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── applyChipAllianceEffect_8013AE4 ── */
+/* applyChipAllianceEffect_8013AE4(r5 = battle object):
+ * Applies a navi-stat bonus stored in the object's collision data: byte 0xA4
+ * of the collision data is the stat id and byte 0xA5 is the bonus amount.
+ * Only stat ids 0x18 and 0x19 are processed; the current value of the stat is
+ * read, raised by the bonus (capped at 7) and written back. */
+Next applyChipAllianceEffect_8013AE4(void) {
+    u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
+
+    u32 statId = LD8(collisionData + 0xA4);
+    if (statId == 0)
+        RETURN_TO_CALLER(); /* collision carries no stat change */
+
+    u32 amount = LD8(collisionData + 0xA5);
+    if (statId == 0x18 || statId == 0x19) {
+        R1 = statId;
+        GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+
+        u32 value = amount + R0;
+        if ((s32)value > 7)
+            value = 7; /* stats never exceed 7 */
+
+        if ((s32)statId < 0x64) {
+            R1 = statId;
+            R2 = value;
+            GUEST_CALL(SetBattleNaviStatsByte_AllianceFromBattleObject);
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiAddCounterFromCollision_8013B20 ── */
 /* battle_aiAddCounterFromCollision_8013B20(r5 = battle object):
  * Checks two bytes of the object's collision data. When byte 0xA4 reports the
