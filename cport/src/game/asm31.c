@@ -1006,6 +1006,126 @@ Next t1_0x2d_80C0E04(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C0E24 ── */
+/* sub_80C0E24(r5 = battle object)
+ * If ExtraVars resolves to 2 (real Navi), set up the sprite/anim for that battle
+ * object using RelatedObject1's stats; otherwise just mark the state and advance. */
+Next sub_80C0E24(void) {
+    u32 saved_r4 = R4;
+
+    /* RelatedObject1 holds the underlying BattleNavi stats; read its NameID and
+     * decode the version/actor/AI index, then stash the result in ExtraVars. */
+    u32 related1 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+    R4 = related1;
+    R0 = LD16(R4 + oBattleObject_NameID);
+    GUEST_CALL(unpackVerActorTyAndAIIdx_800F29C);
+    ST32(R5 + oBattleObject_ExtraVars, R0);
+
+    /* Only Navi objects (ExtraVars == 2) get the full sprite/animation treatment. */
+    if (R0 == 2) {
+        /* chip_class_lookup_800FC9E(r0 = stat_0x29, r1 = stat_0x2C = alliance).
+         * The original saves alliance across the second stats read via push/pop. */
+        u32 prev_r5 = R5;
+        R5 = related1;
+        R1 = 0x2C;
+        GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+        u32 alliance = R0;
+        R1 = 0x29;
+        GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+        R1 = alliance;            /* restore the saved stat_0x2C into r1; r0 keeps stat_0x29 */
+        R5 = prev_r5;
+        GUEST_CALL(chip_class_lookup_800FC9E);
+
+        /* Sprite id 0x80, then load its animation data and apply a shadow. */
+        R0 = 0x80;
+        GUEST_CALL(sprite_load);
+        GUEST_CALL(sprite_loadAnimationData);
+        GUEST_CALL(sprite_hasShadow);
+
+        /* Set the HURT flag (bit 1) on this object's header. */
+        {
+            u8 flags = LD8(R5 + oObjectHeader_Flags);
+            flags |= 0x02;
+            ST8(R5 + oObjectHeader_Flags, flags);
+        }
+
+        /* Copy 12 bytes from RelatedObject1 + 0x34 into this object + 0x34. */
+        {
+            u32 src = LD32(R5 + oBattleObject_RelatedObject1Ptr) + 0x34;
+            u32 v1 = LD32(src);
+            u32 v2 = LD32(src + 4);
+            u32 v3 = LD32(src + 8);
+            u32 dst = R5 + 0x34;
+            ST32(dst,     v1);
+            ST32(dst + 4, v2);
+            ST32(dst + 8, v3);
+        }
+
+        /* Run the sprite init on RelatedObject1, then apply its palette to this one. */
+        {
+            u32 prev_r5 = R5;
+            R5 = related1;
+            GUEST_CALL(sub_801002C);
+            R5 = prev_r5;
+            GUEST_CALL(sprite_setPalette);
+        }
+
+        /* Real-Navi follow-ups, only if ExtraVars is still 2 (re-read, matches asm). */
+        if (LD32(R5 + oBattleObject_ExtraVars) == 2) {
+            /* sub_8011420(r0 = stat_0x29, r1 = alliance, r2 = 1). Same push/pop dance. */
+            {
+                u32 prev_r5 = R5;
+                R5 = related1;
+                R1 = 0x2C;
+                GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+                u32 alliance2 = R0;
+                R1 = 0x29;
+                GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+                R1 = alliance2;
+                R5 = prev_r5;
+                R2 = 1;
+                GUEST_CALL(sub_8011420);
+            }
+
+            /* If stat_0x2C (alliance) != 0 and RelatedObject2 exists, mark it as a
+             * follow-up sprite (Param3 = 1, OR 0x14 into header flags). */
+            {
+                u32 prev_r5 = R5;
+                R5 = related1;
+                R1 = 0x2C;
+                GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+                R5 = prev_r5;
+                if (R0 != 0) {
+                    u32 related2 = LD32(R5 + oBattleObject_RelatedObject2Ptr);
+                    if (related2 != 0) {
+                        ST8(related2 + oBattleObject_Param3, 1);
+                        u8 r2_flags = LD8(related2 + oObjectHeader_Flags);
+                        r2_flags |= 0x14;
+                        ST8(related2 + oObjectHeader_Flags, r2_flags);
+                    }
+                }
+            }
+        }
+
+        /* Sync the sprite flip to the object's facing, then pick the initial animation
+         * (3 + Param4) and force an anim refresh (0xFF marker). */
+        GUEST_CALL(object_getFlip);
+        GUEST_CALL(sprite_setFlip);
+        {
+            u8 anim = LD8(R5 + oBattleObject_Param4) + 3;
+            ST8(R5 + oBattleObject_CurAnim, anim);
+            ST8(R5 + oBattleObject_CurAnimCopy, 0xFF);
+        }
+    }
+
+    /* Advance to the next phase of this update-action's state machine. */
+    ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+    GUEST_CALL(sub_80C0EE2);
+
+    R4 = saved_r4;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80C0EE2 ── */
 /* sub_80C0EE2 — battle object sub-state: on first entry sets up a 4-frame timer
  * (and pokes a helper on RelatedObject1 when Param4 != 0); once the timer

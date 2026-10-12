@@ -529,6 +529,114 @@ Next battle_setUnk20349A5Flag_802A210(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_802A220 ── */
+/* sub_802A220(r2, r5, r10, lr):
+ * Return a battle-related selection value (often used as the "selected panel index").
+ * r4 starts at 0xFF; many early-returns keep r4 unchanged.
+ * Reads toolkit battle state byte 0xD and queries stats byte 0x29, plus battle flags,
+ * battle mode, and a panel state struct at dword_20349A0. */
+Next sub_802A220(void) {
+    u32 saved_r10 = R10;
+    u32 saved_r5 = R5;
+    u32 saved_lr = LR;
+
+    /* default return = 0xFF */
+    u32 result = 0xFF;
+
+    /* if event flag 0x163 (index 99) is set, bail out */
+    u32 has_flag = 0;
+    SET_FLAGS_NZ(1 & 0);  /* flag setting for the ldr/load path is irrelevant; callee updates nz */
+    R0 = 1;
+    R1 = 99;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    /* TestEventFlagFromImmediate returns !zf -> nz set means present */
+    if (!ZERO_FLAG()) {
+        goto done;
+    }
+
+    /* if battle effects has 0x200000 bit, bail out */
+    GUEST_CALL(GetBattleEffects);
+    if (R0 & 0x200000) {
+        goto done;
+    }
+
+    /* battle mode must be 0, 0xA, or 0xB */
+    GUEST_CALL(GetBattleMode);
+    u32 mode = R0;
+    if (mode != 0 && mode != 0xA && mode != 0xB) {
+        goto done;
+    }
+
+    /* get the player navi's stat byte 0x29 from the battle state */
+    u32 battle_state = LD32(saved_r10 + oToolkit_BattleStatePtr);
+    u32 navi_id = LD8(battle_state + 0xD);
+    R0 = navi_id;
+    R1 = 0x29;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    u32 stat = R0;
+    /* require stat < 1 (i.e. == 0) OR stat > 0xB; in practice == 0 */
+    if ((s32)stat >= 1 && (s32)stat <= 0xB) {
+        goto done;
+    }
+
+    /* read panel state struct dword_20349A0 */
+    u32 panel = A_dword_20349A0;
+    u32 p_byte5 = LD8(panel + 5);
+    if (p_byte5 == 0xFF) {
+        goto done;
+    }
+
+    /* sub_8120B54() returns a candidate slot id */
+    GUEST_CALL(sub_8120B54);
+    u32 slot = R0;
+    if (slot == 0xFF) {
+        goto done;
+    }
+
+    /* bail if slot matches the 0x3A word in r5 */
+    u32 r5_word_3a = LD16(saved_r5 + 0x3A);
+    if (slot == r5_word_3a) {
+        goto done;
+    }
+
+    /* bail if the slot's bit is set in panel+0xE word */
+    u32 p_word_e = LD16(panel + 0xE);
+    if (p_word_e & (1u << slot)) {
+        goto done;
+    }
+
+    /* check battle effects bit 8 */
+    GUEST_CALL(GetBattleEffects);
+    if (!(R0 & 8)) {
+        /* path: bit clear -> result bit, then unconditional fall-through picks slot */
+        /* The original sets r0=1, compares with 0, and falls through to r4=slot on !=0.
+         * r0 (=1) != 0, so the branch to done is NOT taken. */
+        goto pick_slot;
+    }
+
+    /* bit 8 set: require panel+5 < 2, then fall through to pick_slot */
+    if (p_byte5 >= 2) {
+        goto done;
+    }
+    /* r0=1; r0==0 branch not taken; fall through to pick_slot */
+
+pick_slot:
+    result = slot;
+
+done:
+    R0 = result;
+    R1 = R1;        /* unchanged */
+    R2 = R2;        /* unchanged */
+    R3 = R3;        /* unchanged */
+    R4 = R4;        /* unchanged */
+    R5 = saved_r5;  /* preserved */
+    R6 = R6;        /* unchanged */
+    R7 = R7;        /* unchanged */
+    R10 = saved_r10;
+    LR = saved_lr;
+    RETURN_TO_CALLER();
+}
+
 /* ── fadeScreenAndAdvanceState_802A2E8 ── */
 /* fadeScreenAndAdvanceState_802A2E8: (self: *S20364C0 in r5) -> ()
  * Check some condition (chipSelect_selectedSlotChipHasAttr20_802A394); when it holds, start the 0x54/0x5C

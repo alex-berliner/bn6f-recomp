@@ -8,6 +8,37 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── battle_applyDimmerShaderTo_801728E ── */
+/* battle_applyDimmerShaderTo_801728E: Apply a color shading effect to the sprite of the current acting
+ * battle object, if the relevant "hit flash" conditions are met. */
+Next battle_applyDimmerShaderTo_801728E(void) {
+    /* Bail out unless the "0x40" battle flag is set (e.g. enemy being hit). */
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+    if (R0 == 0) goto done;
+
+    /* Need an active action on this battle object. */
+    if (LD8(R5 + oBattleObject_CurAction) == 0) goto done;
+
+    /* Look up the opposing entry and read its 0x50 status byte. */
+    R0 = LD8(R5 + oBattleObject_Alliance);
+    GUEST_CALL(getEntryPtr_2036120_1D0_802E070);
+    if (LD8(R0 + 0x50) == 0) goto done;
+
+    /* Compute the shader palette from the battle state "unk40" timer.
+     * The lookup table maps a 0..0x1F tick value to a brightness index. */
+    GUEST_CALL(battle_getStateUnk40_800A704);
+    u32 tick = R0 & 0x1F;
+    u8  shadeIdx = LD8(A_byte_80172C8 + tick);
+
+    /* Convert shade index (0..0x1E) into a packed u32: shadeIdx * 0x21,
+     * which fits the (R, G, B=0) shader format sprite_setColorShader expects. */
+    R0 = (u32)shadeIdx * 0x21;
+    GUEST_CALL(sprite_setColorShader);
+
+done:
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80173F4 ── */
 /* Phase handler addresses as stored in the original's jump table at off_801740C.
  * The table is indexed by the raw CurPhase byte, so the phases count 0, 4, 8, 0xC;
