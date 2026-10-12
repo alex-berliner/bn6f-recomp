@@ -1781,68 +1781,6 @@ Next sub_800AE54(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── handleVariableDamageChip_800AEE8 ── */
-/* Per-battler chip records rooted at byte_20349C0: the player's block comes
- * first and the opponent's follows 0x50 bytes later.  Each block starts with
- * a selector byte that picks one entry; the entry holds the chip id as a u16
- * and, at +0xC, the damage value currently associated with it. */
-#define BATTLER_RECORD_STRIDE    0x50
-#define ENTRY_DAMAGE_OFFSET      0x0C
-#define CHIPFLAG_VARIABLE_DAMAGE 0x80
-
-/* register form: calls getChip8021DA8 outside this file, which has no typed C interface yet */
-static u32 get_chip_data_handleVariableDamageChip_800AEE8(u32 which_chip) {
-    R0 = which_chip;
-    GUEST_CALL(getChip8021DA8);
-    /* The original materializes the 0x80 flag-test mask in r2 immediately
-     * after each fetch.  When the chip turns out not to be variable-damage
-     * that value is what survives to the callers (r2 is an output), so keep
-     * r2 in step here; on the damage-call path sub_80109A4 overwrites it,
-     * exactly as in the original. */
-    R2 = CHIPFLAG_VARIABLE_DAMAGE;
-    return R0;
-}
-
-/* register form: calls sub_80109A4 outside this file, which has no typed C interface yet */
-static u32 variable_chip_damage(u32 which_chip, u32 player) {
-    R0 = which_chip;
-    R1 = player;
-    GUEST_CALL(sub_80109A4);
-    /* R2 is deliberately left alone: the outgoing r2 on this path is whatever
-     * the callee left, matching the original's r2 after the bl. */
-    return R0;
-}
-
-/* Refresh the damage of the selected chip in both battlers' records
- * (0 = player, 1 = opponent).  Only chips whose data carries the
- * variable-damage flag (bit 7 of byte 9 of the chip data) are reworked;
- * every other chip keeps its stored damage. */
-static void refresh_variable_damage_chips(void) {
-    u32 player;
-    for (player = 0; player < 2; player++) {
-        u32 record = A_byte_20349C0 + player * BATTLER_RECORD_STRIDE;
-        u32 entry = record + 2 + LD8(record) * 2;
-        u32 chip_id = LD16(entry);
-        u32 chip = get_chip_data_handleVariableDamageChip_800AEE8(chip_id);
-
-        if (LD8(chip + 9) & CHIPFLAG_VARIABLE_DAMAGE)
-            ST16(entry + ENTRY_DAMAGE_OFFSET,
-                 variable_chip_damage(chip_id, player));
-    }
-}
-
-/* handleVariableDamageChip_800AEE8: refresh variable-damage chip damage for
- * both battlers.  Every outgoing value is produced exactly where the
- * original leaves it: r2 comes back from the guest calls above (0x80 when
- * the second chip is not variable-damage, the callee's value otherwise),
- * r3 and r4-r12 pass through untouched, and the outgoing carry/overflow
- * flags are the ones the last guest call left behind (the original's final
- * TST only touches n/z) - so the adapter has nothing to write back itself. */
-Next handleVariableDamageChip_800AEE8(void) {
-    refresh_variable_damage_chips();
-    RETURN_TO_CALLER();
-}
-
 /* ── sub_800AF84 ── */
 /* sub_800AF84: choose a battle-mode pair and hand it to sub_800AC20.
  *
