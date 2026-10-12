@@ -2799,37 +2799,6 @@ Next sub_802DD1E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── battle_isAllianceActiveAndAiFlag0x4000_802DD2A ── */
-/* battle_isAllianceActiveAndAiFlag0x4000_802DD2A(r0 = battle object):
- * Returns 1 in r0 only if the battle object's navi-stats byte 0x29 is non-zero
- * AND the AI-data flag word has bit 0x4000 set; otherwise returns 0.
- * On the success path r1 ends as 0x2000 (constant left by the original),
- * otherwise as the callees/test left it. The final "mov r0, r7" of the
- * original is Thumb "adds r0, r7, #0", which is what sets the outgoing
- * flags (N/Z from the result, C = 0, V = 0) on every path. */
-Next battle_isAllianceActiveAndAiFlag0x4000_802DD2A(void) {
-    u32 savedR7 = R7;
-    u32 result = 0;
-
-    R7 = 0;                     /* the callees are called with r7 = 0 */
-    R1 = 0x29;                  /* navi stats byte index */
-    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
-
-    if ((s32)R0 != 0) {         /* cmp r0, #0; beq */
-        GUEST_CALL(GetAIDataUnk0x48Flag);
-        if (R0 & 0x4000) {      /* tst r0, r1 (bit 0x4000) */
-            R1 = 0x2000;
-            result = 1;
-        }
-    }
-
-    R7 = savedR7;
-    R0 = result;
-    /* mov r0, r7 == adds r0, r7, #0: sets N/Z from the result, C = 0, V = 0 */
-    SET_FLAGS_ADD(result, 0);
-    RETURN_TO_CALLER();
-}
-
 /* ── sub_802DE5C ── */
 /* sub_802DE5C: if test battle flag 0x40 is set, run sub_802E2C4 for
  * indices 0 and 1. Otherwise do nothing. */

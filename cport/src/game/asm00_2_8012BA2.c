@@ -1023,39 +1023,6 @@ Next battle_RollNaviStatChance_8013FAE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── battle_damagePlayerLeave1HP_8013FD0 ── */
-/* battle_damagePlayerLeave1HP_8013FD0: deal damage to the player. On entry R0 is the alliance flag used to
- * locate the player's battle object and R0 also carries the base damage amount
- * (read by battle_findPlayer / the stats lookup on entry). The damage is capped so
- * the hit can never reduce the player below 1 HP, then the hit sound is played. */
-Next battle_damagePlayerLeave1HP_8013FD0(void) {
-    /* R0 (alliance flag / pending damage value) is already set up by the caller. */
-    GUEST_CALL(battle_findPlayer);
-    u32 player = R0;
-
-    if (player == 0)
-        RETURN_TO_CALLER();
-
-    /* Fetch the damage value stored at navi-stats offset 0x54 for this object. */
-    R0 = player;
-    R1 = 0x54;
-    GUEST_CALL(GetBattleNaviStatsHword_AllianceFromBattleObject);
-    u32 damage = R0;
-
-    if (damage == 0)
-        RETURN_TO_CALLER();
-
-    /* Cap the subtraction at (current HP - 1) so the player survives the hit. */
-    u32 hp = LD16(player + 0x24);
-    R0 = ((s32)hp > (s32)damage) ? damage : hp - 1;
-    GUEST_CALL(object_subtractHP);
-
-    R0 = SOUND_HIT_6B;
-    GUEST_CALL(PlaySoundEffect);
-
-    RETURN_TO_CALLER();
-}
-
 /* ── battle_applyNaviStatDamageTick_8013FF8 ── */
 /* battle_applyNaviStatDamageTick_8013FF8 (r5 = battle object): damage tick driven by the object's navi
  * stats. Reads stat byte 0x3D and deals that much damage to the object's HP,

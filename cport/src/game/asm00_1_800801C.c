@@ -427,42 +427,6 @@ Next battle_waitLinkSync_8009478(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8009FCC ── */
-/* sub_8009FCC: walk the queue of 16-byte entries at dword_3002180 and hand each
- * one to sub_802FE28. byte_3000EA8 holds the number of entries to process.
- * The entry pointer/counter live only inside this routine; r4-r7 and r5's value
- * reach the caller untouched, while r0-r3 and c/v end up as the last call to
- * sub_802FE28 / the final pointer increment left them. */
-Next sub_8009FCC(void) {
-    u32 count = LD32(A_byte_3000EA8);
-    u32 entry = A_dword_3002180;
-
-    while (count != 0) {
-        count--;
-
-        u32 a1 = LD32(entry);
-        u32 a2 = LD32(entry + 4);
-        u32 a3 = LD32(entry + 8);
-        u32 a4 = LD32(entry + 0xC);
-
-        /* sub_802FE28 is free to clobber r6/r7, so the loop state is kept in
-         * locals across the call; the callee still sees the same register
-         * contents the original passes it. */
-        R0 = a1;
-        R1 = a2;
-        R2 = a3;
-        R3 = a4;
-        R6 = count;
-        R7 = entry;
-        GUEST_CALL(sub_802FE28);
-
-        u32 next = entry + 0x10;
-        SET_FLAGS_ADD(entry, 0x10);
-        entry = next;
-    }
-    RETURN_TO_CALLER();
-}
-
 /* ── fifo_pushRecord16_8009FF8 ── */
 /* fifo_pushRecord16_8009FF8(r0..r3 = four words of a record):
  * Append one 16-byte record to the FIFO at dword_3002180. The write slot is

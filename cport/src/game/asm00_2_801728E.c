@@ -832,51 +832,6 @@ Next object_setCollisionRegion(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── object_updateCollisionData ── */
-/* object_updateCollisionData(r1 = own element, r2 = opposing element, r3 = hit modifier,
- *   r5 = battle object): refresh the object's collision record — store the hit modifier
- *   and pending damage, look up both sides' collision type flags for the object's
- *   alliance — then re-evaluate it via sub_8019F44. While time is stopped, bit 16 is
- *   OR-ed into the record's own collision type flags (and left in r1 for the callee). */
-Next object_updateCollisionData(void) {
-    u32 self = R5;              /* battle object whose collision data is refreshed */
-    u32 ownElement = R1;        /* element key for the object's own collision entry */
-    u32 otherElement = R2;      /* element key for the opposing collision entry */
-    u32 inR4 = R4, inR7 = R7;   /* saved/restored by the original's push/pop */
-
-    u32 col = LD32(self + oBattleObject_CollisionDataPtr);
-    R7 = col;
-
-    ST8(col + oCollisionData_HitModifierBase, R3);
-    R3 = LD16(self + oBattleObject_Damage);
-    ST16(col + oCollisionData_SelfDamage, R3);
-
-    /* collision type flag lookup: (alliance, element) */
-    R0 = LD8(self + oBattleObject_Alliance);
-    R1 = ownElement;
-    GUEST_CALL(object_getTableEntry_801A0BA);
-    ST32(col + oCollisionData_SelfCollisionTypeFlags, R0);
-
-    R0 = LD8(self + oBattleObject_Alliance);
-    R1 = otherElement;
-    GUEST_CALL(object_getTableEntry_801A0BA);
-    ST32(col + oCollisionData_TargetCollisionTypeFlags, R0);
-
-    GUEST_CALL(battle_isTimeStop);
-    if (R0 != 0) {
-        R1 = 1 << 16;           /* time-stop marker, still in r1 when sub_8019F44 runs */
-        ST32(col + oCollisionData_SelfCollisionTypeFlags,
-             LD32(col + oCollisionData_SelfCollisionTypeFlags) | 0x10000);
-    }
-
-    R0 = col;
-    GUEST_CALL(sub_8019F44);
-
-    R4 = inR4;
-    R7 = inR7;
-    RETURN_TO_CALLER();
-}
-
 /* ── object_getTableEntry_801A0BA ── */
 /* object_getTableEntry_801A0BA(r0 = column index, r1 = row index):
  * fetch one 32-bit entry from the two-dimensional table at byte_8019C7C

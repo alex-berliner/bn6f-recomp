@@ -209,49 +209,6 @@ Next sub_803A878(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── objectStepTable_803A886 ── */
-/* objectStepTable_803A886(r0 = step-index field, r1 = countdown field, r5 = object base):
- *   Advance a multi-step table-driven action. If the step index is non-zero,
- *   tick the countdown and step through the {word, byte} pairs at off_803A910
- *   (8 bytes per entry). When the countdown expires, advance the index and
- *   either reload the next countdown from the table or clear both fields if
- *   the table entry's first word is zero (end of sequence). */
-Next objectStepTable_803A886(void) {
-    u8 index = LD8(R5 + R0);
-    SET_FLAGS_NZ(index);
-
-    if (index != 0) {
-        u8 counter = LD8(R5 + R1);
-        counter -= 1;
-        SET_FLAGS_CMP((u32)counter, 1);
-        ST8(R5 + R1, counter);
-
-        /* Original `bgt` after `sub r2, #1` skips when the 32-bit signed
-         * result > 0. For a zero-extended byte minus 1, only the original
-         * values 0 (result 0xFFFFFFFF) and 1 (result 0) are non-positive;
-         * everything in [2..0xFF] takes the branch. After storing, the
-         * post-decrement counter is therefore 0xFF (was 0) or 0 (was 1)
-         * exactly when the step should advance. */
-        if (counter == 0 || counter == 0xFF) {
-            u8 newIndex = index + 1;
-            ST8(R5 + R0, newIndex);
-
-            u32 slotAddr = A_off_803A910 + ((u32)newIndex << 3);
-            u32 firstWord = LD32(slotAddr);
-            SET_FLAGS_NZ(firstWord);
-
-            if (firstWord == 0) {
-                ST8(R5 + R0, 0);
-                ST8(R5 + R1, 0);
-            } else {
-                ST8(R5 + R1, (u8)LD32(slotAddr + 4));
-            }
-        }
-    }
-
-    RETURN_TO_CALLER();
-}
-
 /* ── handleExitSubmenu_803AA24 ── */
 /* handleExitSubmenu_803AA24: Exit-submenu handler.
  * - inputs:  r2, r5, lr
