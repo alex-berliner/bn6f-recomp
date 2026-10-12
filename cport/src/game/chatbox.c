@@ -1632,6 +1632,86 @@ Next chatbox_EF_checkflag(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_80416C4 ── */
+/* chatbox_80416C4(r4 = chatbox entry, r10 = toolkit):
+ * Checks the current map number against the entry's map range (bytes +2 = min,
+ * +3 = max) and picks the script byte for it: +4 when the map is inside the
+ * range, +5 when it is outside. If that script slot is empty (0xFF), the entry
+ * is skipped by advancing r4 to the next entry; otherwise the script is run
+ * through chatbox_config_80408D0. Always returns r0 = 1.
+ * Also passes back r2 = max map, r3 = current map, r4 = (possibly advanced)
+ * entry pointer, and leaves NZ reflecting r0 = 1. */
+Next chatbox_80416C4(void) {
+    u32 entry = R4;
+    u8 minMap = LD8(entry + 2);
+    u8 maxMap = LD8(entry + 3);
+    u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
+    u8 mapNumber = LD8(gameState + oGameState_MapNumber);
+
+    /* Byte +4 holds the script for maps in range, +5 for maps out of range. */
+    u32 scriptOffset = 5;
+    if (mapNumber >= minMap && mapNumber <= maxMap)
+        scriptOffset = 4;
+
+    u8 scriptID = LD8(entry + scriptOffset);
+
+    /* These are live outputs for the caller, kept across the callee. */
+    R2 = maxMap;
+    R3 = mapNumber;
+
+    if (scriptID == 0xFF) {
+        /* No script for this map: skip to the next 6-byte entry. */
+        SET_FLAGS_ADD(entry, 6);
+        R4 = entry + 6;
+        R0 = 1;
+    } else {
+        R1 = scriptID;
+        GUEST_CALL(chatbox_config_80408D0);
+        R0 = 1;
+    }
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_80416F0 ── */
+/* chatbox_80416F0(r4 = chatbox script entry, r10 = toolkit):
+ * Executes one 6-byte chatbox script entry. Bytes 2/3 of the entry bound the
+ * map group; byte 4 holds the script ID to use when the current map group is
+ * inside that range, byte 5 the one for when it is not. A script ID of 0xFF
+ * means "no script here" — skip to the next entry instead. Always returns 1
+ * in r0; r4 is left pointing past the entry on the skip path. */
+Next chatbox_80416F0(void) {
+    u32 entry = R4;
+    u32 mapLow = LD8(entry + 2);
+    u32 mapHigh = LD8(entry + 3);
+
+    u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
+    u32 mapGroup = LD8(gameState + oGameState_MapGroup);
+
+    /* Pick which of the entry's two script IDs applies here. */
+    u32 slot = 5;
+    if ((s32)mapGroup >= (s32)mapLow && (s32)mapGroup <= (s32)mapHigh)
+        slot = 4;
+
+    u32 scriptID = LD8(entry + slot);
+
+    /* These stay live across the callee, matching the original's registers. */
+    R2 = mapHigh;
+    R3 = mapGroup;
+
+    if (scriptID != 0xFF) {
+        R0 = 0;                 /* unused argument */
+        R1 = scriptID;
+        GUEST_CALL(chatbox_config_80408D0);
+    } else {
+        entry += 6;             /* no script: advance to the next entry */
+        R4 = entry;
+    }
+
+    R0 = 1;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_cmdRunScriptByGameProgress_8041748 ── */
 /* chatbox_cmdRunScriptByGameProgress_8041748: chatbox script command "run script depending on game progress".
  *

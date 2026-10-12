@@ -64,6 +64,53 @@ Next sub_810DA00(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_810DA24 ── */
+/* sub_810DA24: AI state dispatcher.
+ * R6 points to the AI state struct; the byte at offset oAIState_Unk_02
+ * selects the per-state handler via the jump table at off_810DA44
+ * (0 -> sub_810DA4C, 1 -> sub_810DAAA). The handler is called and returns
+ * back here; whatever registers it leaves behind (r1, r5, r8-r12) are
+ * handed straight on to our caller. */
+Next sub_810DA24(void) {
+    u32 state = LD8(R6 + oAIState_Unk_02);
+
+    if (state == 0)
+        GUEST_CALL(sub_810DA4C);
+    else
+        GUEST_CALL(sub_810DAAA);
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_810DCCE ── */
+/* sub_810DCCE(r5 = battle object):
+ * Lazily creates the object's auxiliary entity (type 4, parameter table 0x10B04)
+ * on first call and stores its handle in ExtraVars+8; does nothing if it already
+ * exists. r4 is saved/restored around the call, so it always passes through
+ * unchanged. On the "already exists" path the flags are those of the handle
+ * test; on the creation path they are whatever the creator call left. */
+Next sub_810DCCE(void) {
+    u32 savedR4 = R4;
+    u32 handle = LD32(R5 + oBattleObject_ExtraVars + 8);
+
+    if (handle == 0) {
+        R0 = 0;
+        R1 = 0;
+        R2 = 4;
+        R3 = 0;
+        R4 = 0x10B04; /* creation parameter table */
+        GUEST_CALL(sub_80C4038);
+        ST32(R5 + oBattleObject_ExtraVars + 8, R0);
+    } else {
+        /* Already created: expose the handle and leave its comparison flags. */
+        R0 = handle;
+        SET_FLAGS_CMP(handle, 0);
+    }
+
+    R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_DealQueuedAttackDamage_8112F34 ── */
 /* ai_DealQueuedAttackDamage_8112F34(r7 = AI attack vars):
  * Fire one of the AI opponent's queued attacks: hand the attack's target

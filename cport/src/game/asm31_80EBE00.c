@@ -662,6 +662,33 @@ Next aiAttack_tickTimerAndExitWhenDone_80ECA0C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80ECA34 ── */
+/* sub_80ECA34: battle-AI attack dispatcher. The AI attack state block pointed
+ * to by R7 holds a selector byte (oAIAttackVars_Unk_00) used as a word offset
+ * into the two-entry handler table at off_80ECA48 (so the stored value is
+ * 0 or 4):
+ *   entry 0 -> sub_80ECA50
+ *   entry 4 -> sub_80ECAA4
+ * The selected handler is invoked with the selector byte in r0 and its own
+ * Thumb entry address in r1 (the callees read/keep these), with the other
+ * argument registers passing through untouched. The original branches with
+ * LR pointing just past the call, so the handler returns straight back to
+ * this function's caller; its outputs (r1, r5, r8-r12) become ours. */
+Next sub_80ECA34(void) {
+    u32 selector = LD8(R7 + oAIAttackVars_Unk_00);
+    u32 handler = LD32(A_off_80ECA48 + selector);
+
+    R0 = selector;
+    R1 = handler;
+
+    if (selector == 0)
+        GUEST_CALL(sub_80ECA50);
+    else
+        GUEST_CALL(sub_80ECAA4);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80ECAA4 ── */
 /* sub_80ECAA4(r5 = battleObject, r6 = ?, r7 = aiAttackVars):
  * Tick an AI attack-state machine step. On entry, the AI attack vars' state byte
@@ -1154,6 +1181,84 @@ Next sub_80FD4C8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80FD548 ── */
+/* sub_80FD548: AI attack follow-through timer. Counts down the attack cooldown in
+ * oAIAttackVars_Unk_10; once it expires, plays the recovery animation, commits the
+ * object to its planned (future) panel position and switches the AI state machine
+ * to idle-ish values (Unk_10 = 4, Unk_00 = 8). Leaves r1 as the panel-update helper
+ * returned it (or untouched when returning early). */
+Next sub_80FD548(void) {
+    u32 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
+    ST16(R7 + oAIAttackVars_Unk_10, timer);
+
+    if ((s32)timer > 0)
+        RETURN_TO_CALLER(); /* still cooling down */
+
+    /* Recovery: play anim 3 and move onto the panels decided during the attack. */
+    ST8(R5 + oBattleObject_CurAnim, 3);
+    u32 panelX = LD8(R5 + oBattleObject_FuturePanelX);
+    u32 panelY = LD8(R5 + oBattleObject_FuturePanelY);
+    ST8(R5 + oBattleObject_PanelX, panelX);
+    ST8(R5 + oBattleObject_PanelY, panelY);
+
+    R0 = panelX;
+    R1 = panelY;
+    GUEST_CALL(object_removePanelReserve);
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    GUEST_CALL(object_updateCollisionPanels); /* r1 passes through untouched */
+
+    ST16(R7 + oAIAttackVars_Unk_10, 4);
+    ST16(R7 + oAIAttackVars_Unk_00, 8);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD574 ── */
+/* sub_80FD574(r5 = battle object, r7 = AI attack vars):
+ * Ticks down the AI attack timer (oAIAttackVars_Unk_10) once per call.
+ *
+ * While the attack is still winding down (Unk_01 == 0): when the timer
+ * reaches zero, reset the object's animation, clear flag 0x40, mark the
+ * object as currently moving, reload the timer from Unk_18 and advance
+ * the attack state to 4.
+ *
+ * Once in state 4 (Unk_01 != 0): when the timer reaches zero, hand
+ * control back to the AI's normal state machine via object_exitAttackState.
+ */
+Next sub_80FD574(void) {
+    u32 obj = R5;   /* battle object this AI state belongs to */
+    u32 ai  = R7;   /* oAIAttackVars struct */
+
+    if (LD8(ai + oAIAttackVars_Unk_01) == 0) {
+        /* Attack winding down: count the timer down to zero. */
+        u32 timer = (u32)LD16(ai + oAIAttackVars_Unk_10) - 1;
+        ST16(ai + oAIAttackVars_Unk_10, timer);
+        if ((s32)timer > 0)
+            RETURN_TO_CALLER();
+
+        /* Timer expired: restore the idle animation and movement. */
+        ST8(obj + oBattleObject_CurAnim, 0);
+        R0 = 0x40;
+        GUEST_CALL(object_clearFlag);
+        R0 = 1u << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT;
+        GUEST_CALL(object_setFlag1);
+
+        /* Restart the cooldown and switch to attack state 4. */
+        ST16(ai + oAIAttackVars_Unk_10, LD16(ai + oAIAttackVars_Unk_18));
+        ST8(ai + oAIAttackVars_Unk_01, 4);
+        SET_FLAGS_NZ(4); /* from the original's mov r0, #4 */
+        RETURN_TO_CALLER();
+    } else {
+        /* Attack finished: count the timer down, then exit the attack. */
+        u32 timer = (u32)LD16(ai + oAIAttackVars_Unk_10) - 1;
+        ST16(ai + oAIAttackVars_Unk_10, timer);
+        if ((s32)timer > 0)
+            RETURN_TO_CALLER();
+
+        GUEST_CALL(object_exitAttackState);
+        RETURN_TO_CALLER();
+    }
+}
+
 /* ── sub_80FD5AE ── */
 /* AI attack command dispatcher.
  *
@@ -1200,6 +1305,63 @@ static void dispatch_ai_attack(u32 vars, u32 r3, u32 r5, u32 r6, u32 r10,
 
 Next sub_80FD5AE(void) {
     dispatch_ai_attack(R7, R3, R5, R6, R10, LR);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD638 ── */
+/* sub_80FD638(r5 = battle object, r7 = AI attack state):
+ * Wind-up tick for an AI attack. Counts down oAIAttackVars_Unk_10; while it is
+ * still positive there is nothing to do yet. When it expires, switch the object
+ * to its attack animation, commit the reserved panels (FuturePanelX/Y ->
+ * PanelX/Y), refresh the object's position and collision panels from them, and
+ * reset the attack state (Unk_10 = 4 cooldown, Unk_00 = 8). */
+Next sub_80FD638(void) {
+    u32 countdown = LD16(R7 + oAIAttackVars_Unk_10) - 1;
+    ST16(R7 + oAIAttackVars_Unk_10, countdown);
+    if ((s32)countdown > 0)
+        RETURN_TO_CALLER();
+
+    ST8(R5 + oBattleObject_CurAnim, 3);
+
+    u32 panelX = LD8(R5 + oBattleObject_FuturePanelX);
+    u32 panelY = LD8(R5 + oBattleObject_FuturePanelY);
+    ST8(R5 + oBattleObject_PanelX, panelX);
+    ST8(R5 + oBattleObject_PanelY, panelY);
+
+    R0 = panelX;
+    R1 = panelY;
+    GUEST_CALL(object_removePanelReserve);
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    GUEST_CALL(object_updateCollisionPanels);
+
+    ST16(R7 + oAIAttackVars_Unk_10, 4);
+    ST16(R7 + oAIAttackVars_Unk_00, 8);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD664 ── */
+/* sub_80FD664(r7 = attack vars object):
+ * Tick down the AI attack timer (oAIAttackVars_Unk_10). While it is still
+ * nonzero after the decrement, do nothing more. When it reaches zero, clear
+ * the 0x40 bit on the object, mark it as currently moving (flag 1<<19) and
+ * reset the attack state timer oAIAttackVars_Unk_00 to 0xC. */
+Next sub_80FD664(void) {
+    u32 counter = LD16(R7 + oAIAttackVars_Unk_10);
+
+    counter -= 1;
+    ST16(R7 + oAIAttackVars_Unk_10, counter);
+
+    /* bgt on the zero-extended halfword: only an exact 0 falls through. */
+    if ((s32)counter > 0)
+        RETURN_TO_CALLER();
+
+    R0 = 0x40;
+    GUEST_CALL(object_clearFlag);
+
+    R0 = 1u << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT;
+    GUEST_CALL(object_setFlag1);
+
+    ST16(R7 + oAIAttackVars_Unk_00, 0xC);
     RETURN_TO_CALLER();
 }
 
@@ -1364,6 +1526,76 @@ Next sub_80FD7D4(void) {
     ST16(R7 + oAIAttackVars_Unk_00, 0xC);
     SET_FLAGS_NZ(0xC);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD7F2 ── */
+/* sub_80FD7F2 (r5 = battle object, r7 = AI attack vars):
+ * Tick the AI's active attack.
+ *   - First tick (state byte Unk_01 == 0): enter the attack state (Unk_01 = 4),
+ *     reset the object's animation and start a 10-frame attack timer (Unk_10).
+ *   - While the timer runs: on every 8th frame (timer bit 2 clear) call the
+ *     attack handler with the attack's parameter byte (Unk_0c), then count the
+ *     timer down.
+ *   - When the timer expires, load the follow-up delay into Unk_00 (0x10). */
+Next sub_80FD7F2(void) {
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        /* Attack just triggered: set up state, animation and timer. */
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R5 + oBattleObject_CurAnim, 0);
+        ST16(R7 + oAIAttackVars_Unk_10, 10);
+    } else {
+        u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+
+        /* Fire the attack on frames where timer bit 2 is clear. */
+        if (!(timer & 4)) {
+            R0 = LD8(R7 + oAIAttackVars_Unk_0c);
+            GUEST_CALL(sub_80FDCA4);
+        }
+
+        timer--;
+        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        if ((s32)timer <= 0)
+            ST16(R7 + oAIAttackVars_Unk_00, 0x10); /* timer ran out: set delay */
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FD822 ── */
+/* sub_80FD822(r5 = battle object, r7 = AI attack vars):
+ * Per-frame tick of the AI's charge-up attack. The first time it runs (state
+ * byte still zero) it switches the object into the charge animation and
+ * starts a 30-frame countdown; on later frames it fires the attack on every
+ * 8th frame (while bit 2 of the countdown is clear, the carry of "lsr #3")
+ * and, once the countdown expires, stores 0x14 into Unk_00 so the AI goes
+ * back to picking a new action. */
+Next sub_80FD822(void) {
+    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+        /* Begin the attack: enter the charging state, play the charge
+         * animation and start a 30-frame timer. */
+        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R5 + oBattleObject_CurAnim, 7);
+        SET_FLAGS_NZ(0x1E);
+        ST16(R7 + oAIAttackVars_Unk_10, 0x1E);
+        RETURN_TO_CALLER();
+    }
+
+    /* The attack is charging: fire it on frames where bit 2 of the
+     * countdown is clear. */
+    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+    if (!(timer & 4)) {
+        R0 = LD8(R7 + oAIAttackVars_Unk_0c);
+        GUEST_CALL(sub_80FDCA4);
+    }
+
+    /* Count this frame down; while the timer is still positive we're done,
+     * otherwise reset the attack state. */
+    SET_FLAGS_CMP(timer, 1);
+    ST16(R7 + oAIAttackVars_Unk_10, timer - 1);
+    if (ZERO_FLAG() || NEGATIVE_FLAG() != OVERFLOW_FLAG()) {
+        SET_FLAGS_NZ(0x14);
+        ST16(R7 + oAIAttackVars_Unk_00, 0x14);
+    }
     RETURN_TO_CALLER();
 }
 
@@ -1579,6 +1811,31 @@ use_panel:
     R1 = out_y;
     R7 = in_r7;
     SP = buf + 0x24;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80FDCA4 ── */
+/* sub_80FDCA4(r0 = panel count, r5 = battle object):
+ * Starting from the object's own panel, highlight `count` panels in a row,
+ * stepping in the direction the object is facing (object_getFrontDirection).
+ * The last call's r1 is left as object_highlightPanel left it. */
+Next sub_80FDCA4(void) {
+    u32 count = R0;
+    u32 obj = R5;
+
+    u32 step = 1;
+    do {
+        /* Direction the object faces: -1, 0 or +1. */
+        GUEST_CALL(object_getFrontDirection);
+        s32 offset = (s32)R0 * (s32)step;
+
+        R0 = offset + (s32)LD8(obj + oBattleObject_PanelX);
+        R1 = LD8(obj + oBattleObject_PanelY);
+        GUEST_CALL(object_highlightPanel);
+
+        step++;
+    } while ((s32)step <= (s32)count);
+
     RETURN_TO_CALLER();
 }
 
@@ -2215,6 +2472,43 @@ Next nullsub_13(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── highlightPanelIfSomeCondition_8109660 ── */
+/* highlightPanelIfSomeCondition_8109660(r0 = base x, r1 = base y,
+ *                                       r2 = offset-list index, r3 = side):
+ * Walk the s8 (dx, dy) panel-offset list selected by r2 from
+ * PanelOffsetListsPointerTable and highlight every panel (x + dx*dir, y + dy)
+ * that lands on the 6x3 battle grid. The x offsets are mirrored horizontally
+ * according to r3. Each list ends with an x offset of 0x7F; on return
+ * r0 = 0x7F. Preserves r4-r7. */
+Next highlightPanelIfSomeCondition_8109660(void) {
+    u32 baseX = R0;                             /* base column */
+    u32 baseY = R1;                             /* base row */
+
+    R2 <<= 2;                                   /* list index -> word offset */
+    u32 list = LD32(A_PanelOffsetListsPointerTable + R2);
+    s32 xDir = 1 - (s32)(R3 << 1);              /* +1 or -1: mirror the x offsets */
+
+    for (u32 entry = list;; entry += 2) {
+        s32 dx = (s8)LD8(entry);                /* x offset of this entry */
+        R0 = (u32)dx;
+        if (dx == 0x7F) {                       /* 0x7F terminates the list */
+            SET_FLAGS_CMP(dx, 0x7F);
+            break;
+        }
+
+        R0 = (u32)(dx * xDir + (s32)baseX);         /* panel column, mirrored by side */
+        R1 = (u32)((s8)LD8(entry + 1) + (s32)baseY); /* panel row */
+
+        /* highlight the panel only if it is on the 6x3 battle grid */
+        if ((s32)R0 >= 1 && (s32)R0 <= 6 && (s32)R1 >= 1 && (s32)R1 <= 3) {
+            /* r0/r1 already hold the panel coordinates to highlight */
+            GUEST_CALL(object_highlightPanel);
+        }
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── GetAllianceDependentPanelParamArgs ── */
 /* GetAllianceDependentPanelParamArgs(r3 = panel param table base,
  *                                    r5 = battle object):
@@ -2303,6 +2597,27 @@ Next battle_pickRandomRowObjectFields_810971A(void) {
 
     SP += 16;
     R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8109794 ── */
+/* sub_8109794(r0, r1 = object):
+ * If the panel under this object can be cracked (flag 0x40 of its panel
+ * parameters is clear), crack it. r0/r1 are passed through to both calls. */
+Next sub_8109794(void) {
+    u32 objectLo = R0;
+    u32 objectHi = R1;
+
+    R0 = objectLo;
+    R1 = objectHi;
+    GUEST_CALL(object_getPanelParameters);
+
+    if (!(R0 & 0x40)) {
+        R0 = objectLo;
+        R1 = objectHi;
+        GUEST_CALL(object_crackPanel);
+    }
+
     RETURN_TO_CALLER();
 }
 

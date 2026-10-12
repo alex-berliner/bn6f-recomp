@@ -94,6 +94,22 @@ Next battle_setExtraAnimState_80E0F2E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E1332 ── */
+/* sub_80E1332: pure tail call into sub_80C0F52.
+ *
+ * The original pushes its return address, calls sub_80C0F52, then pops that
+ * address straight into the PC, so every register (r1-r7, the c/v flags) and
+ * the eventual return target come straight out of the callee. All arguments
+ * the caller passed in r0-r4 are simply forwarded untouched. */
+Next sub_80E1332(void) {
+    u32 return_addr = LR;
+
+    GUEST_CALL(sub_80C0F52);
+
+    LR = return_addr;
+    RETURN_TO_CALLER();
+}
+
 /* ── t4_0x10_80E17E8 ── */
 /* t4_0x10_80E17E8: state dispatcher for the time-freeze battle object.
  *
@@ -196,6 +212,35 @@ static void run_object_phase_handler(u32 object) {
 
 Next sub_80E1830(void) {
     run_object_phase_handler(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E1854 ── */
+/* sub_80E1854(r5 = battle object):
+ * Phase-4 timing helper. On the first call, set up a 30-frame timer, mark the
+ * phase as initialized, and (unless Unk_19 says otherwise) notify the related
+ * battle object with argument 1. On every call, count the timer down; when it
+ * goes below zero, advance the object to phase 4. */
+Next sub_80E1854(void) {
+    if (LD8(R5 + oBattleObject_PhaseInitialized) == 0) {
+        /* First run: start the 30-frame countdown and flag the phase as set up. */
+        ST16(R5 + oBattleObject_Timer, 30);
+        ST8(R5 + oBattleObject_PhaseInitialized, 4);
+
+        /* Poke the related object, except when Unk_19 holds the value 0x17. */
+        if (LD8(R5 + oBattleObject_Unk_19) != 0x17) {
+            R0 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
+            R1 = 1;
+            GUEST_CALL(sub_80E1332);
+        }
+    }
+
+    /* Tick the countdown; once it goes negative, move to phase 4. */
+    u32 timer = LD16(R5 + oBattleObject_Timer) - 1;
+    ST16(R5 + oBattleObject_Timer, timer);
+    if ((s32)timer < 0)
+        ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+
     RETURN_TO_CALLER();
 }
 
@@ -316,6 +361,54 @@ Next sub_80E18DA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E18F8 ── */
+/* sub_80E18F8(r5 = battle object):
+ * Runs one object's battle "phase" timer. On the phase's first tick it notifies
+ * the related object and arms a 30-frame countdown; on later ticks it just
+ * counts the timer down. When the timer runs out (or the phase can't run at
+ * all) the object's current action is finished and its phase state is reset.
+ * Preserves r4-r7; r5 (the object pointer) is an output. */
+Next sub_80E18F8(void) {
+    u32 self = R5;
+    int endPhase;
+
+    if (LD8(self + oBattleObject_PhaseInitialized) == 0) {
+        u32 unk19 = LD8(self + oBattleObject_Unk_19);
+        if (unk19 == 0 || unk19 == 0x17) {
+            /* The phase cannot run in this state: cut it short right away. */
+            endPhase = 1;
+        } else {
+            /* First tick of the phase: tell the related object, then start
+             * a 30-frame timer and mark the phase as initialized. */
+            R0 = LD32(self + oBattleObject_RelatedObject1Ptr);
+            R1 = 0;
+            GUEST_CALL(sub_80E1332);
+
+            ST16(self + oBattleObject_Timer, 30);
+            ST8(self + oBattleObject_PhaseInitialized, 4);
+
+            /* The original falls straight into the countdown below, so the
+             * very first tick already consumes one frame. */
+            u32 timer = LD16(self + oBattleObject_Timer) - 1;
+            ST16(self + oBattleObject_Timer, timer);
+            endPhase = (s32)timer < 0;
+        }
+    } else {
+        /* Phase already running: count the timer down. */
+        u32 timer = LD16(self + oBattleObject_Timer) - 1;
+        ST16(self + oBattleObject_Timer, timer);
+        endPhase = (s32)timer < 0;
+    }
+
+    if (endPhase) {
+        /* Timer expired: end the current action and reset the phase state. */
+        ST8(self + oBattleObject_CurAction, 0x10);
+        ST16(self + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80E199A ── */
 /* sub_80E199A: maps an attack-bait slot index to a byte offset in the bait table.
  * inputs:  r0 = slot index
@@ -426,6 +519,25 @@ Next sub_80E1A86(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t4_0x12_80E1A90 ── */
+/* t4_0x12_80E1A90(r5 = battle object, r10 = ?):
+ * Per-state update dispatcher for this object type. Runs the handler selected
+ * by the object's CurState (states are stored as 0/4/8, i.e. pre-multiplied
+ * table offsets), then refreshes the object's sprite. */
+Next t4_0x12_80E1A90(void) {
+    u32 state = LD8(R5 + oBattleObject_CurState);
+
+    R0 = state; /* the original enters each handler with r0 = CurState */
+    switch (state) {
+    case 0: GUEST_CALL(sub_80E1AB4); break;
+    case 4: GUEST_CALL(sub_80E1AFA); break;
+    case 8: GUEST_CALL(sub_80E1B0A); break;
+    }
+
+    GUEST_CALL(object_updateSpritePaused);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80E1B0A ── */
 /* sub_80E1B0A:
  *   inputs:  r5 lr
@@ -448,6 +560,41 @@ Next sub_80E1B0A(void) {
 
     /* The original does `pop {pc}`, but the function's caller-return is handled
      * by our convention via RETURN_TO_CALLER(); r5 is preserved by the contract. */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E1B1E ── */
+/* sub_80E1B1E: spawn a battle object of type 0x12 via object_spawnType4 and
+ * hook it up:
+ *   r0/r1 = panel x/y written into the new object
+ *   r2-r4 = additional spawn parameters, passed straight through
+ *   r5    = object whose AllianceAndDirectionFlip word is copied to the spawn
+ *   r7    = extra-vars slot: stored into the new object's ExtraVars, and the
+ *           new object's pointer is stored back into [r7]
+ * If the spawn fails (object pointer == 0) nothing is initialised.
+ * r5 is restored to its entry value; the new object pointer itself is only
+ * visible through memory (the hook slot), not in a register. */
+Next sub_80E1B1E(void) {
+    u32 panelX = R0;
+    u32 panelY = R1;
+    u32 parent = R5;
+    u32 hook   = R7;
+
+    R0 = 0x12;
+    GUEST_CALL(object_spawnType4);
+    u32 obj = R5;               /* object_spawnType4 returns the object in r5 */
+    R5 = parent;                /* pop {r1,r2,r5}: entry r5 lives on */
+    SET_FLAGS_NZ(obj);
+
+    if (obj != 0) {
+        ST8(obj + oBattleObject_PanelX, panelX);
+        ST8(obj + oBattleObject_PanelY, panelY);
+        ST32(obj + oBattleObject_ExtraVars, hook);
+        ST32(hook, obj);        /* two-way link: object <-> hook slot */
+        ST16(obj + oBattleObject_AllianceAndDirectionFlip,
+             LD16(parent + oBattleObject_AllianceAndDirectionFlip));
+    }
+
     RETURN_TO_CALLER();
 }
 
@@ -629,6 +776,81 @@ Next battle_objectUpdatePosAndRunAction_80E3BEA(void) {
     else
         GUEST_CALL(sub_80E3CC4);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486 ── */
+/* ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486
+ *   r0 = panel X, r1 = panel Y, r2 = panel-flag selector, r10 = toolkit.
+ * Checks whether the panel at (X, Y) carries the selected panel flag (the flag bit is
+ * taken from the literal table byte_80E74C4, indexed by the selector), and if so scans
+ * the battle state's alive-actor list for an actor whose collision data places it on
+ * that same panel.
+ * Returns:
+ *   r0 = pointer to the matching actor, or NULL (flag clear, or no actor on the panel),
+ *   r1 = the panel word of the last actor examined — the flag mask if the flag was
+ *        clear, the matching panel word on a hit, or the last examined actor's panel
+ *        word (0 if it had no collision data) after a full scan,
+ *   r3 = the matching alive-actor list slot on a hit, the one-past-the-end slot after a
+ *        full scan, and untouched (as object_getPanelParameters left it) when the flag
+ *        is clear.
+ * c/v are those of object_getPanelParameters on the flag-clear path, and of an "equal"
+ * comparison (c = 1, v = 0) on both exits from the scan. r4/r6 are preserved. */
+Next ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486(void) {
+    u32 flagSelector = R2;
+    u32 savedR4 = R4;
+    u32 savedR6 = R6;
+
+    /* Panels are identified by the word (Y << 8) | X. */
+    u32 panelXY = (R1 << 8) + R0;
+    R4 = flagSelector << 2;
+    R6 = panelXY;
+
+    GUEST_CALL(object_getPanelParameters);
+    u32 panelParams = R0;
+
+    /* byte_80E74C4 holds one panel-flag bit per selector. */
+    u32 flagMask = LD32(A_byte_80E74C4 + R4);
+    if ((panelParams & flagMask) == 0) {
+        /* The panel does not carry the wanted flag: nothing can be standing there. */
+        R0 = 0;
+        R1 = flagMask;
+        R4 = savedR4;
+        R6 = savedR6;
+        RETURN_TO_CALLER();
+    }
+
+    /* Walk the battle state's eight alive-actor slots; empty slots are NULL and are
+     * skipped without touching r1. */
+    u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
+    u32 slot = battleState + oBattleState_AliveBattleActors;
+    u32 i = 0;
+    for (; i < 8; i++) {
+        u32 actor = LD32(slot);
+        if (actor != 0) {
+            R1 = LD32(actor + oBattleObject_CollisionDataPtr);
+            if (R1 != 0) {
+                R1 = LD16(R1 + oCollisionData_PanelXY);
+                if (R1 == panelXY) {
+                    /* Found an actor standing on that panel. */
+                    R0 = actor;
+                    R3 = slot;
+                    SET_FLAGS_CMP(R1, panelXY);
+                    R4 = savedR4;
+                    R6 = savedR6;
+                    RETURN_TO_CALLER();
+                }
+            }
+        }
+        slot += 4;
+    }
+
+    /* No alive actor occupies the panel. */
+    R0 = 0;
+    R3 = slot;
+    SET_FLAGS_CMP(i, 8); /* i == 8 here: same "equal" flags as the original's final cmp */
+    R4 = savedR4;
+    R6 = savedR6;
     RETURN_TO_CALLER();
 }
 

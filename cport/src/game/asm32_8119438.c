@@ -1524,6 +1524,28 @@ Next sub_811A434(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811A4DC ── */
+/* sub_811A4DC(r5 = sprite/object work pointer):
+ * Dispatch to the per-state update handler selected by the state byte at
+ * r5+4 (handler table off_811A4F4), then run the shared sprite update.
+ * The original performs this as a computed call that returns to the
+ * sprite_update call site, so every handler is followed by sprite_update. */
+Next sub_811A4DC(void) {
+    u32 state = LD8(R5 + 4);
+
+    /* Call the handler for this state (table holds one Thumb pointer per
+     * state: sub_811A4FC for state 0, sub_811A500 otherwise). */
+    if (state == 0)
+        GUEST_CALL(sub_811A4FC);
+    else
+        GUEST_CALL(sub_811A500);
+
+    /* Shared sprite update, run after whichever handler executed. */
+    GUEST_CALL(sprite_update);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_811A4FC ── */
 /* sub_811A4FC:
  * Trivial wrapper that pushes LR and pops it into PC, i.e. a no-op tail return. */
@@ -1640,6 +1662,66 @@ Next sprite_setPositionByFlags_811A5BC(void) {
     R1 = (u32)y;
     GUEST_CALL(sprite_setCoordinates);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811A640 ── */
+/* sub_811A640: submenu action dispatcher.
+ *
+ * Looks at the currently open submenu (sSubmenu):
+ *  - if the pressed direction (sSubmenu.jo_01) is 0x1C, runs the d-pad
+ *    "up" helper sub_811A704;
+ *  - otherwise reads the handler address selected by sSubmenu.unk_02
+ *    from the table at dword_811A66C and calls it (entry 0 = no action).
+ *
+ * Both the helper and the handlers are invoked with:
+ *   r0 = the table entry itself (Thumb address; the helper sees jo_01),
+ *   r1 = *(u8*)(r5 + 6),
+ *   r7 = &sSubmenu.
+ * r4-r7 are saved/restored around the dispatch, as the original does
+ * with its push/pop, so the caller's r4-r7 are preserved. */
+
+/* Thumb entry points stored in the handler table dword_811A66C. */
+#define HANDLER_SUB_811A68C 0x0811A68Du /* sub_811A68C+1 */
+#define HANDLER_SUB_811A6A0 0x0811A6A1u /* sub_811A6A0+1 */
+#define HANDLER_SUB_811A6B4 0x0811A6B5u /* sub_811A6B4+1 */
+#define HANDLER_SUB_811A6C8 0x0811A6C9u /* sub_811A6C8+1 */
+#define HANDLER_SUB_811A6DC 0x0811A6DDu /* sub_811A6DC+1, also table entries 5-7 */
+
+Next sub_811A640(void) {
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+    u32 submenu = A_sSubmenu;
+
+    u32 joyDir = LD8(submenu + 1); /* sSubmenu.jo_01 */
+    if (joyDir == 0x1C) {
+        /* D-pad up: dedicated helper. */
+        R0 = joyDir;
+        R1 = LD8(R5 + 6);
+        R7 = submenu;
+        GUEST_CALL(sub_811A704);
+    } else {
+        u32 selection = LD8(submenu + 2); /* sSubmenu.unk_02 */
+        u32 handler = LD32(A_dword_811A66C + selection);
+
+        /* Handlers receive their own table entry in r0. */
+        R0 = handler;
+        if (handler != 0) {
+            R1 = LD8(R5 + 6);
+            R7 = submenu;
+            switch (handler) {
+            case HANDLER_SUB_811A68C: GUEST_CALL(sub_811A68C); break;
+            case HANDLER_SUB_811A6A0: GUEST_CALL(sub_811A6A0); break;
+            case HANDLER_SUB_811A6B4: GUEST_CALL(sub_811A6B4); break;
+            case HANDLER_SUB_811A6C8: GUEST_CALL(sub_811A6C8); break;
+            default:                  GUEST_CALL(sub_811A6DC); break; /* entries 5-7 */
+            }
+        }
+    }
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
     RETURN_TO_CALLER();
 }
 
@@ -2212,6 +2294,64 @@ Next submenu_runModeHandler_811BD64(void) {
     }
 
     R6 = savedR6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811BD88 ── */
+/* sub_811BD88(r5 = PET object state):
+ * Picks the sprite slot of the navi to display on the PET screen and
+ * advances the object to its next state:
+ *   [r5+0x0] = 1   (state: navi display active)
+ *   [r5+0xC] = chosen sprite slot
+ *   [r5+0x8] = 4   (next update handler id)
+ *
+ * Slot selection:
+ *   - If a navi is currently selected (GetCurPETNavi != 0), the slot is
+ *     navi + 0xB (the "selected navi" sprite bank).
+ *   - Otherwise the base slot is the navi stats byte at index 0x17; if
+ *     the byte at 0x200AD04 is nonzero and EVENT_163 has not yet been
+ *     triggered, 0x17 is added (the post-event alternate slot).
+ */
+Next sub_811BD88(void) {
+    u32 callerR4 = R4;
+
+    /* Mark the object as having entered this state. */
+    R0 = 1;
+    ST8(R5, R0);
+
+    GUEST_CALL(GetCurPETNavi);
+
+    if (R0 != 0) {
+        /* Navi selected: its sprites start at slot 0xB. */
+        R0 = R0 + 0xB;
+    } else {
+        /* No navi: take the sprite slot from the navi stats table. */
+        R0 = 0;
+        R1 = 0x17;
+        GUEST_CALL(GetCurPETNaviStatsByte);
+        R4 = R0;
+
+        GUEST_CALL(notZero_eByte200AD04);
+        if (!ZERO_FLAG()) {
+            /* Progress-gated slot: only applies before EVENT_163. */
+            R0 = 1;
+            R1 = EVENT_163;
+            GUEST_CALL(TestEventFlagFromImmediate);
+            if (ZERO_FLAG())        /* event not yet triggered */
+                R4 = R4 + 0x17;
+        }
+        R0 = R4;
+    }
+
+    ST32(R5 + 0xC, R0);
+
+    GUEST_CALL(sub_811BE1C);
+
+    R0 = 4;
+    ST8(R5 + 8, R0);
+    GUEST_CALL(sprite_dispatchObjectUpdate_811BDCC);
+
+    R4 = callerR4;
     RETURN_TO_CALLER();
 }
 

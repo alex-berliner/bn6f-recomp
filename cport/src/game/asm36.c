@@ -1854,6 +1854,19 @@ Next sub_8134F78(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8135244 ── */
+/* sub_8135244(r5 = timer object):
+ * Two-frame countdown. Tick the primary timer at +0x2A each call while it is
+ * nonzero; once it has expired, tick the secondary timer at +0x2E instead.
+ * Both r0-r2 and r5 are preserved. */
+Next sub_8135244(void) {
+    if (LD16(R5 + 0x2A) != 0)
+        ST16(R5 + 0x2A, LD16(R5 + 0x2A) - 1);
+    else if (LD16(R5 + 0x2E) != 0)
+        ST16(R5 + 0x2E, LD16(R5 + 0x2E) - 1);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_clampScrollToTextEnd_813525C ── */
 /* chatbox_clampScrollToTextEnd_813525C: keep the message viewer's scroll position within the last
  * screenful of text. r5 = message window object:

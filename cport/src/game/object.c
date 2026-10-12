@@ -999,6 +999,59 @@ Next object_isPanelSolid(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_getPanelsExceptCurrentFiltered ── */
+/* object_getPanelsExceptCurrentFiltered(r5 = battle object, r2 = required
+ *   panel attributes, r3 = forbidden panel attributes, r7 = output list):
+ * Scan the whole field (x = 6..1, y = 3..1) and record every panel whose
+ * parameters contain all of the required bits, none of the forbidden bits,
+ * and that is not the object's own panel. Each match is written to the list
+ * as (y << 4) | x. Returns the number of entries written (r0); r1 ends 0,
+ * r2/r3/r4/r6/r7 are left as the caller set them. */
+Next object_getPanelsExceptCurrentFiltered(void) {
+    u32 object = R5;
+    u32 requiredAttrs = R2;
+    u32 forbiddenAttrs = R3;
+    u32 list = R7;
+    u32 savedR4 = R4;
+    u32 savedR6 = R6;
+    u32 count = 0;
+
+    for (u32 y = 3; y != 0; y--) {
+        for (u32 x = 6; x != 0; x--) {
+            R0 = x;
+            R1 = y;
+            R2 = requiredAttrs;
+            R3 = forbiddenAttrs;
+            R5 = object;
+            R6 = count;
+            R7 = list;
+            GUEST_CALL(object_getPanelParameters);
+            u32 attrs = R0;
+            R4 = attrs; /* the original keeps the parameters in r4 across calls */
+
+            if ((attrs & forbiddenAttrs) != 0)
+                continue; /* panel carries a forbidden attribute */
+            if ((attrs & requiredAttrs) != requiredAttrs)
+                continue; /* panel is missing a required attribute */
+            if (x == LD8(object + oBattleObject_PanelX) &&
+                y == LD8(object + oBattleObject_PanelY))
+                continue; /* the object's own panel */
+
+            ST8(list + count, (y << 4) | x);
+            count++;
+        }
+    }
+
+    R0 = count;
+    R1 = 0;
+    R2 = requiredAttrs;
+    R3 = forbiddenAttrs;
+    R4 = savedR4;
+    R6 = savedR6;
+    SET_FLAGS_ADD(count, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_getPanelsIgnoreColumnFiltered ── */
 /* register form: calls object_checkPanelParameters outside this file, which has no typed C interface yet */
 static bool panel_param_check(s32 col, s32 row, u32 param_a, u32 param_b) {

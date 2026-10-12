@@ -2407,6 +2407,29 @@ Next battle_countFlaggedActions_81284B4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── HandleKeyItemMenu8128730 ── */
+/* HandleKeyItemMenu8128730 — dispatcher for the key item menu.
+ *
+ * The byte at [r5,#1] is the menu's current step, stored as a byte offset
+ * (0 / 4 / 8) into the handler table at off_8128744. The selected handler
+ * runs with the caller's register state intact; this routine then simply
+ * returns, so the handler's results (r5, r8-r12) pass straight through
+ * to the caller. */
+Next HandleKeyItemMenu8128730(void) {
+    switch (LD8(R5 + 1)) {
+    case 0: /* offset into off_8128744[0] */
+        GUEST_CALL(sub_8128750);
+        break;
+    case 4: /* offset into off_8128744[1] */
+        GUEST_CALL(sub_81287B4);
+        break;
+    case 8: /* offset into off_8128744[2] */
+        GUEST_CALL(sub_81288E4);
+        break;
+    }
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8128750 ── */
 /* sub_8128750: battle/title screen init - clears VRAM/OAM, sets up render info,
  * initialises the toolkit state block, runs the various sub-initialisers and
@@ -2584,6 +2607,19 @@ Next sceneStep_81287DC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81288E4 ── */
+/* sub_81288E4: run the PET menu's closing steps (two cleanup routines), then
+ * back out to the map screen unless a screen fade is still in progress.
+ * Takes no arguments; r5 passes through unchanged. */
+Next sub_81288E4(void) {
+    GUEST_CALL(battleObjectAffineEnqueue_8128B4C);
+    GUEST_CALL(battle_queueHpUpdate_8128C20);
+    GUEST_CALL(IsScreenFadeActive);
+    if (!ZERO_FLAG())
+        GUEST_CALL(pet_menuExitToMap_811F708);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8128AB0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2; } call_HalfwordFill_result;
@@ -2656,6 +2692,28 @@ static void build_tilemap(u32 object) {
 /* sub_8128AB0(r5 = object pointer) -> r5 preserved */
 Next sub_8128AB0(void) {
     build_tilemap(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8128B34 ── */
+/* sub_8128B34: copy the 23x8 tile block at unk_201C040 into background tile
+ * block 2 (a 32x32 tile block), at position j=4, i=3.
+ * CopyBackgroundTiles takes its size arguments in r4/r5 (game's own convention);
+ * r4-r7 must still be preserved for the caller. */
+Next sub_8128B34(void) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    R0 = 4;             /* j */
+    R1 = 3;             /* i */
+    R2 = 2;             /* tileBlock32x32 */
+    R3 = A_unk_201C040; /* tileIds */
+    R4 = 0x17;          /* j_size */
+    R5 = 8;             /* i_size */
+    GUEST_CALL(CopyBackgroundTiles);
+
+    R4 = saved_r4;
+    R5 = saved_r5;
     RETURN_TO_CALLER();
 }
 
@@ -3370,6 +3428,47 @@ intro:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129658 ── */
+/* sub_8129658: battle AI state dispatcher.
+ *
+ * The AI object at R5 keeps its current state id at offset +3. That byte is
+ * already scaled by 4 (states are 0x00, 0x04, ... 0x18) and is used directly
+ * as the offset into the handler table at off_8129670 — the Thumb
+ * `ldr r0, [r0, r1]` does not shift the index register.
+ *
+ * Per this dispatcher family's convention (ldr r0,[table,state]; mov lr,pc;
+ * bx r0), each handler is entered with:
+ *   R0 = the handler's own address exactly as stored in the table
+ *        (Thumb pointer, e.g. sub_812968C+1),
+ *   R1 = the state id,
+ * and it returns back into this dispatcher. Afterwards the battle event
+ * routine sub_812B25C runs with event id 0xE in R0.
+ *
+ * Passes through: in r4 r5 r6 r7 r10, out r5 r8 r9 r10 r11 r12. */
+Next sub_8129658(void) {
+    u32 state = LD8(R5 + 3);
+
+    /* Load the handler pointer with a byte offset (no <<2) and set up the
+     * handler's entry arguments: R0 = own Thumb address, R1 = state id. */
+    R0 = LD32(A_off_8129670 + state);
+    R1 = state;
+
+    switch (state) {
+    case 0x00: GUEST_CALL(sub_812968C); break;
+    case 0x04: GUEST_CALL(sub_81296A0); break;
+    case 0x08: GUEST_CALL(sub_81296D8); break;
+    case 0x0C: GUEST_CALL(battle_object_advanceState3_8129738); break;
+    case 0x10: GUEST_CALL(sub_8129758); break;
+    case 0x14: GUEST_CALL(sub_812977C); break;
+    case 0x18: GUEST_CALL(sub_81297C0); break;
+    }
+
+    R0 = 0xE;
+    GUEST_CALL(sub_812B25C);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_812968C ── */
 /* sub_812968C(r5 -> some struct):
  * If the screen fade is active, clear chatbox flag 0x40 and store 4 at struct+3.
@@ -4075,6 +4174,111 @@ Next chipSelectInit_8129B90(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8129C74 ── */
+/* sub_8129C74(r5 = battle object):
+ * Reconciles the object against a lookup done by sub_812B318:
+ *  - sub_812B318 is called with the byte at +0x1D and reports back a flag in r1
+ *    and a value in r2 (its r0 result is discarded);
+ *  - if the object's state byte at +0x20 is 2 and the flag is 0, there is
+ *    nothing to do;
+ *  - if the reported value differs from the state byte, sub_812B218 fixes the
+ *    object up instead;
+ *  - otherwise store 4 at +0x03 and call sub_811A610 with a selector based on
+ *    the id at +0x02 (0x14 -> 4, 0x18 -> 5, anything else -> 7) and r1 = 0.
+ * The original pushes r4 only to use it as scratch for the compare and pops the
+ * saved value back on return, so r4 leaves this function holding its incoming
+ * value; r5/r6/r7 are untouched throughout. */
+Next sub_8129C74(void) {
+    u32 savedR4 = R4;
+    u32 self = R5;
+
+    R0 = LD8(self + 0x1D);
+    GUEST_CALL(sub_812B318);
+    u32 flag = R1;
+    u32 value = R2;
+
+    R3 = 0x20;
+    R0 = LD8(self + 0x20);
+    u32 state = R0;
+
+    if (state == 2 && flag == 0) {
+        R4 = savedR4;
+        RETURN_TO_CALLER();
+    }
+
+    R4 = value;
+    if (value != state) {
+        GUEST_CALL(sub_812B218);
+        R4 = savedR4;
+        RETURN_TO_CALLER();
+    }
+
+    ST8(self + 3, 4);
+
+    u32 id = LD8(self + 2);
+    u32 selector = 7;
+    if (id == 0x14)
+        selector = 4;
+    else if (id == 0x18)
+        selector = 5;
+
+    R0 = selector;
+    R1 = 0;
+    GUEST_CALL(sub_811A610);
+    R4 = savedR4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129D58 ── */
+/* sub_8129D58(r5 = object): check the object's state at offset 0x20 via
+ * sub_812B318; if it reports "not busy" (returns 0), reset the object into
+ * its initial state (timer mode 3, timer 8, counters cleared). */
+Next sub_8129D58(void) {
+    u32 obj = R5;
+
+    R0 = LD8(obj + 0x20);
+    GUEST_CALL(sub_812B318);
+
+    if (R0 == 0) {
+        ST8(obj + 0x1D, 3);
+        ST8(obj + 0x02, 8);
+        ST8(obj + 0x03, 0);
+        ST8(obj + 0x13, 0);
+    }
+
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129F04 ── */
+/* sub_8129F04: run one step of an eStruct (200BC30) entity.
+ *
+ * The entity's step selector is fetched via eStruct200BC30_getJumpOffset00 and
+ * used to index a small handler table (off_8129F1C):
+ *   entry 0 -> sub_8129F28, entries 1 and 2 -> sub_8129FE0.
+ * After the handler returns, sub_812B26C performs the step's epilogue.
+ *
+ * All other registers (r2-r6, r8-r12) are pass-through inputs to the handler
+ * and its results (r5, r8-r12) flow straight back to the caller. */
+Next sub_8129F04(void) {
+    /* which step does this entity run next? */
+    GUEST_CALL(eStruct200BC30_getJumpOffset00);
+
+    /* dispatch to the selected step handler */
+    switch (R0) {
+    case 0:
+        GUEST_CALL(sub_8129F28);
+        break;
+    default: /* table entries 1 and 2 both point here */
+        GUEST_CALL(sub_8129FE0);
+        break;
+    }
+
+    /* common epilogue after the step handler */
+    GUEST_CALL(sub_812B26C);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8129F28 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sprite_drawIfFlagSet_812B504_result;
@@ -4144,6 +4348,75 @@ Next sub_8129F28(void) {
     R6 = st.r6;
     R10 = st.r10;
     R11 = st.r11;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8129FE0 ── */
+/* sub_8129FE0: dispatch to the current mode handler of the object whose
+ * struct pointer arrives in r5.
+ *
+ * The byte at [r5,#2] is not a plain mode index — the original uses it
+ * directly as a *byte* offset into the handler table at 08129FF4
+ * ("ldrb r1, [r5,#2]; ldr r0, [r0,r1]"), i.e. the object stores its mode
+ * pre-multiplied by 4 (mode 0 -> offset 0, mode 1 -> offset 4, ...).
+ * The call is a tail call in disguise: "mov lr, pc; bx r0" makes the
+ * handler return to the "pop {pc}" right after the bx, which returns
+ * straight to this function's caller.
+ *
+ * Table contents (byte offset -> handler):
+ *   0  -> sub_812A008   (mode 0)
+ *   4  -> sub_812A028   (mode 1)
+ *   8  -> sub_812A058   (mode 2)
+ *  12  -> sub_812A14C   (mode 3)
+ *  16  -> sub_812A0CC   (mode 4)
+ *
+ * Inputs r4, r6 and r10 are forwarded to the handlers simply by leaving
+ * the guest register file untouched; the handlers' results (r5 r6 r10
+ * r11) are likewise left in place. Nothing may touch the registers
+ * between the handler returning and the return to our caller.
+ */
+Next sub_8129FE0(void) {
+    switch (LD8(R5 + 2)) {
+    case 0:
+        GUEST_CALL(sub_812A008);
+        break;
+    case 4:
+        GUEST_CALL(sub_812A028);
+        break;
+    case 8:
+        GUEST_CALL(sub_812A058);
+        break;
+    case 12:
+        GUEST_CALL(sub_812A14C);
+        break;
+    case 16:
+        GUEST_CALL(sub_812A0CC);
+        break;
+    default:
+        /* Unreachable in the real game: the original would load a word
+         * from the ROM bytes at table+offset — past the table for offsets
+         * >= 20, or an address-rotated garbage word for offsets that are
+         * not multiples of 4 — and jump to it. */
+        break;
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812A008 ── */
+/* sub_812A008: redraw the e-Link sprite, run its palette/animation start,
+ * then if something was just received (sub_81465BC != 0) reset the e-Link
+ * state machine and switch it to state 4 with sub-state 3.
+ * r5 points at the e-Link work area; R5 and R6 pass through unchanged. */
+Next sub_812A008(void) {
+    GUEST_CALL(sprite_drawIfFlagSet_812B504);
+    GUEST_CALL(crt0_start_800027C);
+
+    GUEST_CALL(sub_81465BC);
+    if (R0 != 0) {
+        GUEST_CALL(eLinkState_ResetForNewUse_803DE88);
+        ST8(R5 + 2, 4);        /* e-Link state = 4 */
+        ST16(R5 + 0x28, 3);    /* sub-state = 3 */
+    }
     RETURN_TO_CALLER();
 }
 
@@ -4447,6 +4720,34 @@ Next loadEntryPairTable_812B1DC(void) {
             continue;
         }
         break;
+    }
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_812B218 ── */
+/* sub_812B218(r5 = record whose byte at +0x1E selects a slot in unk_20251A0):
+ * If the u32 entry at unk_20251A0[slot] is still empty, request a new entry
+ * from sub_8046670 (r0 = 0x1C, r1 = slot + 1, r2 = (slot << 16) | 0x01000001,
+ * r3 = 1), tag the result with the high bit, store it into the table and bump
+ * the slot counter byte. r4-r7 are saved/restored around the call, and r0
+ * ends up holding the new counter value (or the existing entry). */
+Next sub_812B218(void) {
+    u32 slot = LD8(R5 + 0x1E);
+    u32 entry = LD32(A_unk_20251A0 + slot * 4);
+
+    if (entry == 0) {
+        R0 = 0x1C;
+        R1 = slot + 1;
+        R2 = (slot << 16) | 0x01000001;
+        R3 = 1;
+        GUEST_CALL(sub_8046670);
+        R0 |= 0x80000000;
+        R1 = A_unk_20251A0;
+        ST32(A_unk_20251A0 + slot * 4, R0);
+        R0 = slot + 1;
+        ST8(R5 + 0x1E, R0);
+    } else {
+        R0 = entry;
     }
     RETURN_TO_CALLER();
 }

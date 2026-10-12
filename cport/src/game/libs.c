@@ -1336,6 +1336,36 @@ Next battle_smashFx_SetParams_814E87C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_814E9F0 ── */
+/* sub_814E9F0(r0 = song id):
+ * Look the song up in sound_MusicTable (8 bytes per entry: pointer to the song
+ * header + the index of the music player that plays it). If that player is
+ * already playing this exact song, run sub_814F1E8 on the player (restart it);
+ * otherwise do nothing.
+ *
+ * Register leftovers kept for callers: r1 = player's current song header,
+ * r2 = music player info, r3 = gMPlayTable. r7-r12 pass through untouched. */
+Next sub_814E9F0(void) {
+    /* Each sound_MusicTable entry is 8 bytes; the id arrives in the low halfword
+     * (the original does lsl #16 / lsr #13, i.e. (id & 0xFFFF) * 8). */
+    u32 songEntry = A_sound_MusicTable + ((R0 & 0xFFFF) << 3);
+
+    u16 playerIndex = LD16(songEntry + 4);
+    /* gMPlayTable entries are 12 bytes and hold a pointer to the player info. */
+    u32 player = LD32(A_gMPlayTable + playerIndex * 12);
+
+    R3 = A_gMPlayTable;
+    R2 = player;
+    R1 = LD32(player); /* the song header the player is currently playing */
+
+    if (R1 == LD32(songEntry)) {
+        R0 = player;
+        GUEST_CALL(sub_814F1E8);
+    }
+
+    RETURN_TO_CALLER();
+}
+
 /* ── sound_tickAllMusicPlayers_814EA58 ── */
 /* sound_tickAllMusicPlayers_814EA58: walk the fixed music-player table gMPlayTable (0x20 entries,
  * 12 bytes each, first word is the player info pointer) and call
