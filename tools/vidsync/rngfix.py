@@ -5,8 +5,9 @@ import os, sys, json, base64
 sys.path.insert(0, os.path.dirname(__file__))
 import numpy as np
 import beam as bm
+import syms   # game addresses by name from bn6f
 
-PRIMARY, SECONDARY = 0x020013F0, 0x02001120
+PRIMARY, SECONDARY = syms.PRIMARY_RNG_SEED, syms.SECONDARY_RNG_SEED
 # a frame worse than this counts toward losing the video: real losses score 4-6, while a static, very
 # detailed screen that matches can sit at 2.3 (resampling error)
 LOSS = 2.8      # frame cost above which the sync has lost the video (bright detailed areas match at <= 2.74; a battle gone another way spikes to 3.2+)
@@ -21,10 +22,10 @@ def rng_move(x, j):
     return x
 def spec(addr, val, size=4):
     if addr == PRIMARY:
-        # a battle's intro snapshots the primary seed (sub_800B144 -> the link packet at 0x0203CBE4, looped back
-        # to 0x0203F4A4) and restores it ~62 frames later (battle_copyStructsIncludingBattleStats_800b2d8), even
+        # a battle's intro snapshots the primary seed (sub_800B144 -> the link packet, BATTLE_SEED_COPY_LINK, looped
+        # back to BATTLE_SEED_COPY) and restores it ~62 frames later (battle_copyStructsIncludingBattleStats_800b2d8), even
         # offline: a write in that window must go to the copies too (they are unused outside a battle intro)
-        return f'0x{addr:x}=0x{val:x}/4,0x203cbe4=0x{val:x}/4,0x203f4a4=0x{val:x}/4'
+        return f'0x{addr:x}=0x{val:x}/4,0x{syms.BATTLE_SEED_COPY_LINK:x}=0x{val:x}/4,0x{syms.BATTLE_SEED_COPY:x}=0x{val:x}/4'
     return f'0x{addr:x}=0x{val:x}/{size}'
 
 def run_task(b, ck, extra, until, bad_max=30):

@@ -8,7 +8,7 @@ Writes, as recomp's tools/record does for a recording made by hand:
              order (only if it has any).
 
 How the timelines line up. emu_server's `step KEY` runs hardware frames holding KEY while the game
-frame counter (the u16 at *(u32*)0x020093D4, unwrapped past 65535) still reads the frame it read
+frame counter (the u16 at *(u32*)GAME_FRAME_ADDR, unwrapped past 65535) still reads the frame it read
 before the step; mgba_run --game-frame-addr reads the same counter before every hardware frame and
 holds the key of the last trace line whose game frame is <= it. So "G,K" holds K over every hardware
 frame that starts while the counter reads G..(next line's G - 1): the same hardware frames emu_server
@@ -19,7 +19,7 @@ step(n=press_gf-402): START held on game frames 400 and 401. RESULT's keys[i] is
 press_gf+i; the result ends when the counter reaches END = press_gf+len(keys).
 
 Pokes: emu_server and mgba_run --poke-at (one per .poke line) both write at
-the first entry of main_awaitFrame (0x080003A0) in the first hardware frame that starts on game
+the first entry of main_awaitFrame (AWAIT_FRAME_PC) in the first hardware frame that starts on game
 frame G. A poke at G >= END never happens inside the trace and is left out.
 
 The "# end" line: hw_frames is the hardware frames the replay runs (the hardware frame in which the
@@ -38,9 +38,10 @@ MGBA_RUN, build-tools/mgba_run).
 import argparse, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from emu import Emu, ROM, BIOS, gamepaths
+import syms   # game addresses by name from bn6f
 
-GAME_FRAME_ADDR = 0x020093D4
-AWAIT_FRAME_PC = 0x080003A0       # main_awaitFrame in bn6f.gba: where pokes go in
+GAME_FRAME_ADDR = syms.GAME_FRAME_ADDR
+AWAIT_FRAME_PC = syms.AWAIT_FRAME_PC       # main_awaitFrame in bn6f.gba: where pokes go in
 START = 0x3FF & ~8
 BOOT_IDLE, BOOT_START = 400, 2    # Beam.start: step(n=400); step(START, 2); step(n=press_gf-402)
 SAVE_SIZE = 0x8000

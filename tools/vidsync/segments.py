@@ -23,22 +23,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from emu import Emu
 import rngfix as rf
 import export_trace as ex
+import syms   # game addresses by name from bn6f
 
 NONE, A, B, START, SELECT, UP = 0x3FF, 0x3FF & ~1, 0x3FF & ~2, 0x3FF & ~8, 0x3FF & ~4, 0x3FF & ~0x40
 TEARDOWN = [(NONE, 20), (START, 2), (NONE, 70), (UP, 2), (NONE, 25), (A, 2), (NONE, 70), (A, 2), (NONE, 90),
             (A, 2), (NONE, 200)]
 BRINGUP = [(NONE, 400), (START, 2), (NONE, 60), (A, 2), (NONE, 120)]   # title, CONTINUE (the default), load
-ICURR = 0x0200A210
+ICURR = syms.ICURR_FRAME
 # what a reload does not bring back as the recorded run had it at the checkpoint: the mystery data table (the
 # load rolls it again, as a jack-in does), the overworld counters of eStruct2001c04 (encounter steps,
 # SneakRun, LocEnemy), event flags and the last map; the junction writes the words that differ
-REGIONS = [(0x02004348, 0x480), (0x02001C04, 0x30), (0x02001BA4, 12),   # (GameState.PlayerX/Y/Z)
-           (0x02001C88, 0x400),     # eEventFlags: a load sets some of them its own way
-           (0x02001B8C, 4),         # GameState LastMapGroup/LastMapNumber
-           (0x0200A278, 16)]        # eJoypad+8..+0x17: the keys' held times and the repeat timer (+0x13, 0-4):
+REGIONS = [(syms.MYSTERY_DATA, 0x480), (syms.S2001C04, 0x30), (syms.GS_PLAYER_XYZ, 12),   # (GameState.PlayerX/Y/Z)
+           (syms.EVENT_FLAGS, 0x400),     # eEventFlags: a load sets some of them its own way
+           (syms.GS_LAST_MAP, 4),       # GameState LastMapGroup/LastMapNumber
+           (syms.JOYPAD_HELD_TIMERS, 16)]      # eJoypad+8..+0x17: the keys' held times and the repeat timer (+0x13, 0-4):
                                     # a held key repeats on its phase (written always: they count every frame)
-ALWAYS = {0x0200A278}
-SEEDS = (rf.PRIMARY, 0x0203CBE4, 0x0203F4A4)          # the primary and the battle intro's copies of it
+ALWAYS = {syms.JOYPAD_HELD_TIMERS}
+SEEDS = (rf.PRIMARY, syms.BATTLE_SEED_COPY_LINK, syms.BATTLE_SEED_COPY)          # the primary and the battle intro's copies of it
 
 
 def expand(seq):
@@ -54,9 +55,9 @@ STATE = {}          # the recorded run's game state every 30 game frames (pass 1
 def game_state(e):
     """What a segment must have as the recorded run had it: the RNG seeds, iCurrFrame, the map, MegaMan's place,
     the key-repeat timer."""
-    po = e.u32(0x02001B98)
+    po = e.u32(syms.GS_OW_PLAYER_PTR)
     pos = e.read(po + 0x1C, 8).hex() if 0x02000000 <= po < 0x02040000 else ''
-    return (e.u32(rf.PRIMARY), e.u32(rf.SECONDARY), e.read(ICURR, 2).hex(), e.read(0x02001B84, 2).hex(), pos, e.read(0x0200A283, 1).hex())
+    return (e.u32(rf.PRIMARY), e.u32(rf.SECONDARY), e.read(ICURR, 2).hex(), e.read(syms.GS_MAP, 2).hex(), pos, e.read(syms.JOYPAD_REPEAT_TIMER, 1).hex())
 
 
 def find_checkpoints(R, every, tmp):
@@ -73,9 +74,9 @@ def find_checkpoints(R, every, tmp):
         return e
     e = boot(); info = {}
     for g in range(g0, end):
-        po = e.u32(0x02001B98)
+        po = e.u32(syms.GS_OW_PLAYER_PTR)
         pos = e.read(po + 0x1C, 8) if 0x02000000 <= po < 0x02040000 else b''
-        info[g] = (e.read(0x02001B84, 2), pos, e.read(0x02001B80, 1)[0])
+        info[g] = (e.read(syms.GS_MAP, 2), pos, e.read(syms.GS_SUBSYSTEM, 1)[0])
         if g % 30 == 0: STATE[g] = game_state(e)
         e.step(keys[g - g0])
     e.close()
@@ -104,7 +105,7 @@ def find_checkpoints(R, every, tmp):
         # the junction write goes in at the end of the segment's frame that plays the run's frame g: the
         # values the run has after that frame
         e.step(keys[g - g0])
-        po = e.u32(0x02001B98)
+        po = e.u32(syms.GS_OW_PLAYER_PTR)
         ck = {'g': g, 'seeds': [e.u32(a) for a in SEEDS], 'secondary': e.u32(rf.SECONDARY),
               'icurr': int.from_bytes(e.read(ICURR, 2), 'little'),
               'regions': [(a, e.read(a, n).hex()) for a, n in REGIONS],
@@ -121,7 +122,7 @@ def find_checkpoints(R, every, tmp):
         same = True
         for gg in range(g, min(g + 120, end)):
             t.step(keys[gg - g0])
-            pt = t.u32(0x02001B98)
+            pt = t.u32(syms.GS_OW_PLAYER_PTR)
             if (t.read(pt + 0x1C, 8) if 0x02000000 <= pt < 0x02040000 else b'') != info.get(gg + 1, (0, b''))[1]:
                 same = False; break
         t.close()
@@ -144,7 +145,7 @@ def junction_specs(ck, e):
             if want[k:k + 4] != have[k:k + 4] or a in ALWAYS:
                 w.append(f'{a + k:#x}={int.from_bytes(want[k:k + 4], "little"):#x}/4')
     if ck.get('player'):
-        po = e.u32(0x02001B98); xyz, face = (bytes.fromhex(x) for x in ck['player'])
+        po = e.u32(syms.GS_OW_PLAYER_PTR); xyz, face = (bytes.fromhex(x) for x in ck['player'])
         if 0x02000000 <= po < 0x02040000:
             # X/Y/Z, NextX/Y/Z (where he walks to: the game moves him back towards it) and what follows
             w += [f'{po + 0x1C + k:#x}={int.from_bytes(xyz[k:k + 4], "little"):#x}/4' for k in range(0, len(xyz), 4)]

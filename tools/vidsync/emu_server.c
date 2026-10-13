@@ -71,7 +71,11 @@ static double now_us(void) {
 #define PROF(i, stmt) do { if (prof_on) { double t0_ = now_us(); stmt; prof_t[i] += now_us() - t0_; prof_n[i]++; } \
                            else { stmt; } } while (0)
 
-#define GAME_FRAME_ADDR 0x020093D4u
+/* GAME_FRAME_ADDR (the u32 pointer to the u16 game-frame counter), AWAIT_FRAME_PC (main_awaitFrame) and
+ * PRIMARY_RNG_SEED come from bn6f's symbols: tools/Makefile passes tools/vidsync/syms.py --cflags. */
+#if !defined(GAME_FRAME_ADDR) || !defined(AWAIT_FRAME_PC) || !defined(PRIMARY_RNG_SEED)
+#error "build with make -C tools emu_server (the addresses come from tools/vidsync/syms.py --cflags)"
+#endif
 #define SAVE_SIZE 0x8000
 
 static void log_cb(struct mLogger *l, int c, enum mLogLevel lv, const char *f, va_list a) {
@@ -107,7 +111,6 @@ static unsigned game(void) {
 
 /* ---- pokes: memory writes at given game frames, at main_awaitFrame's entry (the end of a game frame's
  * work) as the route harness applies its .poke lines, so a trace with writes replays the same there */
-#define AWAIT_FRAME_PC 0x080003A0u   /* main_awaitFrame in bn6f.gba */
 typedef struct { unsigned g; char spec[480]; } Poke;
 static Poke *pokes;
 static int npokes, cappokes;
@@ -479,7 +482,7 @@ static void print_hash(void) {
     uint64_t hsh = 0x9E3779B97F4A7C15ull;
     for (size_t i = 0; i < 0x40000 / 8; i++) hsh = (hsh ^ w[i]) * 0x100000001B3ull + (hsh >> 29);
     for (size_t i = 0; i < 0x8000 / 8; i++) hsh = (hsh ^ iw[i]) * 0x100000001B3ull + (hsh >> 29);
-    printf(" %016llx %08x", (unsigned long long)hsh, (unsigned)core->busRead32(core, 0x020013F0));
+    printf(" %016llx %08x", (unsigned long long)hsh, (unsigned)core->busRead32(core, PRIMARY_RNG_SEED));
 }
 
 /* ---- follow: beam.py's Beam.advance() for a single branch, frame after frame, while it stays one branch.

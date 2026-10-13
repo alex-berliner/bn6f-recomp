@@ -21,7 +21,7 @@ it reads its game addresses from bn6f by name (`tools/vidsync/syms.py`).
 | Working directory | `build-vidsync/` (`VIDSYNC` in `tools/paths.env`, git-ignored): run the scripts from there |
 | Data (55 GB: video, thumbnails, runs) | `build-vidsync/data` → `~/Code/vidsync/data` (`VIDSYNC_DATA`); never commit |
 | Exported recording | `build-vidsync/ready/` (`VIDSYNC_READY`); `tools/import_route.py` reads it |
-| Knowledge | `RANDOM_EVENTS.md` (every random decision, from code reading), `SYMBOL_DOSSIER.md` (everything learnt per symbol, with evidence; being recorded into symbols/db) |
+| Knowledge | `RANDOM_EVENTS.md` (every random decision, from code reading), `SYMBOL_DOSSIER.md` (everything learnt per symbol, with evidence; recorded into symbols/db and bn6f on 2026-10-13, kept as the archive) |
 
 Environment overrides, as before: `VIDSYNC_ROM`, `VIDSYNC_BIOS`, `VIDSYNC_EMU`, `VIDSYNC_MGBA_RUN`,
 `VIDSYNC_THUMBS` (`data/full/thumb.u8`), and `VIDSYNC_SYMS` (a `syms.py --json` file, for a machine without
@@ -68,7 +68,7 @@ kill their children.
 
 ## Next (from the transfer plan)
 
-1. Record `SYMBOL_DOSSIER.md` into symbols/db and bn6f (the `record` workflow; its five conflicts first).
+1. (Done 2026-10-13) The dossier went into symbols/db and bn6f; some renames are deferred (its section 3).
 2. A deploy step (tar `tools/vidsync`, `tools/gamepaths.py`, `tools/paths.env`, `tools/mgba_run.c`,
    `tools/Makefile`, and a `syms.py --json` file; build there) and a `vidsync-run` workflow: restart from a
    checkpoint, watch progress ("stuck" = no progress for 30 min), hourly `pathcheck`, open a repair on a stall.

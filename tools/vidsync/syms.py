@@ -100,7 +100,7 @@ SNEAKRUN_STEPS = at("eStruct2001c04", "oS2001c04_Unk_24")   # SneakRun's movemen
 LOCENEMY_STEPS = at("eStruct2001c04", "oS2001c04_Unk_28")   # LocEnemy's movement counter
 EVENT_FLAGS = at("eEventFlags")                             # flag n at byte n >> 3, mask 0x80 >> (n & 7)
 SUBCHIP_FLAGS = EVENT_FLAGS + (0x170A >> 3)                 # flags 0x170A (SneakRun on) and 0x170B (LocEnemy on)
-MYSTERY_DATA = 0x02004348   # TODO: name in bn6f (unk_2004348 now): u16 per mystery data id, rolled at jack-in
+MYSTERY_DATA = at("eMysteryDataRolls")                    # u16 per mystery data id, rolled at jack-in
 
 # ── chips ──
 CHIP_PACK = 0x02002230      # TODO: name in bn6f (unk_2002230 now): a count byte per chip id and code
@@ -126,7 +126,7 @@ ENC_ROOTS = 0x08020170      # TODO: name in bn6f (off_8020170 now): 4 encounter 
 CHIP_DATA = at("ChipDataArr")                                # 44 bytes per chip id: its codes first
 MYSTERY_DATA_GROUPS = at("InternetMysteryDataMapGroupEntries")   # {map group, maps}, ended by 1
 REWARD_TABLES = 0x080AAEA8  # TODO: name in bn6f (byte_80AAEA8 now): 20 u16 rewards per enemy id
-ENEMY_KINDS = 0x080182C4    # TODO: name in bn6f (byte_80182C4 now): version, actor type, AI index per enemy id
+ENEMY_KINDS = at("EnemyVerActorTyAndAIIdxTable")            # version, actor type, AI index per enemy id
 HELD_TABLES = 0x080AED74    # TODO: name in bn6f (off_80AED74 now): the chips a virus can hold
 BATTLE_MYSTERY_DATA = 0x080211A0   # TODO: name in bn6f (byte_80211A0 now): battle-start mystery data rows
 

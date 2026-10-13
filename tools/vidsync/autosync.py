@@ -17,6 +17,7 @@ from multiprocessing import Pool
 import beam as bm
 import rngfix as rf
 from emu import gamepaths
+import syms   # game addresses by name from bn6f
 
 RING_EVERY, RING_LEN = 30, 400
 DISTS = (40, 120, 300, 600, 1200, 2400)
@@ -214,7 +215,7 @@ def events(D, back=2400):
     BIG[:] = [f for f, dp, ds in rows if dp is None or ds is None or (dp or 0) > mp + 3 or (ds or 0) > ms + 6]
     return [(f, dp != mp, ds != ms) for f, dp, ds in rows if dp != mp or ds != ms]
 
-BATTLE_PTR = 0x02001B9C     # GameState.CurBattleDataPtr: an encounter's battle settings, set on the trigger frame
+BATTLE_PTR = syms.GS_BATTLE_PTR     # GameState.CurBattleDataPtr: an encounter's battle settings, set on the trigger frame
 TRIGGERS = []               # (game frame, pointer) where the best path set it, from events()
 EVENTS = []                 # the last events() result
 FORM_TOP = 3
@@ -224,12 +225,12 @@ PARTIAL_EARLY = 150          # a partial fix this far past the loss is taken aft
 OFFSET_COST = 2.5          # the mean cost an offset jump must sync at
 PARTIALS = []                # (reached, w, pokes) of partial fixes found during a repair
 
-ENC_ROOTS = (0x08020170, 0x08020178, 0x08020180, 0x08020188)   # pickBattleSettingsEntry_80AA5F4 picks one by flags
+ENC_ROOTS = tuple(syms.ENC_ROOTS + 8 * k for k in range(4))   # pickBattleSettingsEntry_80AA5F4 picks one by flags
 def battle_table(p):
     """The current map's random-encounter entries (0x10 bytes each, ended by 0xFF), the list holding p, found as
     pickBattleSettingsEntry_80AA5F4 does: root[group >= 0x80][group & 0x7F][map] under each root.
     (Walking back from p runs into other data, and writing that over the pointer crashes the game.)"""
-    grp, mp = b.e.read(0x02001B84, 2)
+    grp, mp = b.e.read(syms.GS_MAP, 2)
     rom = lambda a: 0x08000000 <= a < 0x0A000000
     for r in ENC_ROOTS:
         t = b.e.u32(r + 4 * (grp >= 0x80))
@@ -302,7 +303,7 @@ def try_offset(D, back=40, span=90):
     return (w[0], w[1], w[2], w[3] + d, w[4], w[5]), []
 
 OK_RGB = np.array([247., 135., 114.])   # the custom screen's OK button, mean colour over [115:125, 92:110]
-FOLDER = 0x0203CDB0          # the battle's shuffled folder: 30 u16 chips (id | code << 9); the hand is the first 5
+FOLDER = syms.BATTLE_FOLDER          # the battle's shuffled folder: 30 u16 chips (id | code << 9); the hand is the first 5
 VIDEO = os.path.join(gamepaths.VIDSYNC_DATA, 'full.mp4')
 SMALL = os.path.join(os.path.dirname(VIDEO), 'small.mp4')   # the game screen at 240x160 (job_small.sh): fast
 def _vsrc():
@@ -336,8 +337,8 @@ def video_frames(v0, v1):
 
 def slot_box(i): return (slice(103, 124), slice(4 + 16 * i, 20 + 16 * i))
 
-PACK = 0x02002230             # chip pack: a count byte per chip id (12 bytes) and code index (the chip's 4 codes)
-CHIPDATA = 0x08021DA8         # ChipData, 44 bytes per chip id: its codes first
+PACK = syms.CHIP_PACK             # chip pack: a count byte per chip id (12 bytes) and code index (the chip's 4 codes)
+CHIPDATA = syms.CHIP_DATA         # ChipData, 44 bytes per chip id: its codes first
 def pack_chips():
     """The chips in the pack as folder entries (id | code << 9)."""
     raw = b.e.read(PACK, 12 * 0x140); cd = b.e.read(CHIPDATA, 44 * 0x140); out = set()
@@ -352,10 +353,10 @@ def folder_spec(order, pad=0):
     return ','.join(f'0x{FOLDER + 4 * k:x}=0x{w[2 * k] | (w[2 * k + 1] << 16):x}/4' for k in range(15))
 
 KEEP_NEXT = [False]           # the fix repair returns keeps the pokes after it (they stay valid)
-GMD_GROUPS = 0x080A336C      # InternetMysteryDataMapGroupEntries: {map group, maps}, ended by 1
-EVENT_FLAGS = 0x02001C88      # eEventFlags: flag n at byte n >> 3, mask 0x80 >> (n & 7)
-GMD_BASE = 0x02004348         # u16 per mystery data id (from 0x1400): two picked indexes, rolled at jack-in
-MAP_AT = 0x02001B84           # GameState MapGroup, MapNumber
+GMD_GROUPS = syms.MYSTERY_DATA_GROUPS      # InternetMysteryDataMapGroupEntries: {map group, maps}, ended by 1
+EVENT_FLAGS = syms.EVENT_FLAGS      # eEventFlags: flag n at byte n >> 3, mask 0x80 >> (n & 7)
+GMD_BASE = syms.MYSTERY_DATA         # u16 per mystery data id (from 0x1400): two picked indexes, rolled at jack-in
+MAP_AT = syms.GS_MAP           # GameState MapGroup, MapNumber
 def gmd_records():
     """The current map's green mystery data: [(id, n1, n2)], n1/n2 the sizes of the two tables the jack-in roll
     picks the record's two bytes from (mysteryData_processMapGroups_809F9DC, sub_809FA68)."""
@@ -399,8 +400,8 @@ def path_reach(w, extra, until, D):
         if bad >= 30: set_emu_pokes(); return g - 30, tot / n
     set_emu_pokes(); return until, tot / max(n, 1)
 
-GS_PLAYER = 0x02001BA4          # GameState.PlayerX/Y/Z: where the map (re)load puts MegaMan (after a battle too)
-OW_PLAYER_PTR = 0x02001B98      # GameState.OverworldPlayerObjectPtr: live coords at +0x1C/+0x20/+0x24 (16.16)
+GS_PLAYER = syms.GS_PLAYER_XYZ          # GameState.PlayerX/Y/Z: where the map (re)load puts MegaMan (after a battle too)
+OW_PLAYER_PTR = syms.GS_OW_PLAYER_PTR      # GameState.OverworldPlayerObjectPtr: live coords at +0x1C/+0x20/+0x24 (16.16)
 def try_position(D):
     """Back on the map after a battle, MegaMan stands elsewhere than in the video: the video's encounter came at
     another point of his walk. Write the place the map reload uses (GameState.PlayerX/Y) during the black screen
@@ -412,7 +413,7 @@ def try_position(D):
     for g in range(w[0], D):
         b.e.step(ks[g - p0][0])
         po = b.e.u32(OW_PLAYER_PTR)
-        inb = b.e.read(0x02001B80, 1)[0] == 0x0C         # GameState.SubsystemIndex: 0x0C in battle, 0x04 on the map
+        inb = b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 0x0C         # GameState.SubsystemIndex: 0x0C in battle, 0x04 on the map
         if 0x02000000 <= po < 0x02040000 and not inb:
             xy = (b.e.u32(po + 0x1C), b.e.u32(po + 0x20))
             if not trail or trail[-1][1] != xy: trail.append((g, xy))
@@ -445,7 +446,7 @@ def try_relocate(D):
     w = state_at(D)
     if w is None: return None
     b.e.load(w[1])
-    if b.e.read(0x02001B80, 1)[0] != 4: return None                 # on the map only
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: return None                 # on the map only
     po = b.e.u32(OW_PLAYER_PTR)
     if not 0x02000000 <= po < 0x02040000: return None
     s32 = lambda v: v - (1 << 32) if v >= 1 << 31 else v
@@ -472,7 +473,7 @@ def try_relocate(D):
     if r[0] >= D + 150: KEEP_NEXT[0] = True; return w, [poke]
     return None
 
-MAPOBJS, MAPOBJ_SIZE = 0x02011EE0, 0x78     # eOverworldMapObjects (56): X +0xC, Y +0x10 (s16.16)
+MAPOBJS, MAPOBJ_SIZE = syms.OW_MAP_OBJECTS, syms.OW_MAP_OBJECT_SIZE     # eOverworldMapObjects (56): X +0xC, Y +0x10 (s16.16)
 def try_mapobj(D):
     """A roaming map object (the Weather comp's tornado) goes another way than the video's: for each map object
     that moved in the last 60 frames, the place (16 px steps over +-512 px, then 2 px around the best) whose
@@ -487,7 +488,7 @@ def try_mapobj(D):
     w0 = state_at(max(D - 60, ring[0][0]))
     if w0 is None: return None
     b.e.load(w0[1])
-    if b.e.read(0x02001B80, 1)[0] != 4: return None
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: return None
     before = objs()
     wD = state_at(D); b.e.load(wD[1]); after = objs()
     movers = [n for n in after if n in before and after[n] != before[n]]
@@ -678,7 +679,7 @@ def try_tornado(D):
     log(f'  tornado: take {t[3]} (mean cost {res[t[3]][1]:.3f})')
     return w, [t[1][0]]
 
-ENC_STEPS = 0x02001C16         # eStruct2001c04 Unk_12: walk counter; (>> 6, max 16) picks the encounter odds
+ENC_STEPS = syms.ENC_STEPS         # eStruct2001c04 Unk_12: walk counter; (>> 6, max 16) picks the encounter odds
 def try_encounter(D):
     """The video's random battle starts where ours does not: our walk counter (an earlier route, a relocation)
     makes the odds too low for any RNG value. At each primary-RNG event of the last 64 frames: the counter at
@@ -686,7 +687,7 @@ def try_encounter(D):
     w = state_at(D)
     if w is None: return None
     b.e.load(w[1])
-    if b.e.read(0x02001B80, 1)[0] != 4: return None
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: return None
     rolls = [f for f, p, q in EVENTS if p and D - 64 <= f <= D + 2]
     if not rolls: return None
     tasks = []; ck = None
@@ -809,10 +810,10 @@ def try_gmd(D):
     if res[t[3]][0] >= D + PARTIAL: KEEP_NEXT[0] = True; return w, [t[1][0]]
     return None
 
-GIVEN = 0x0200A00C            # eStruct200A008 Unk04: the battle reward actually given (packed u16)
-SHOWN_Q = 0x020364D4          # the result screen's display queue entry for it
-BSTATE = 0x02034880           # BattleState: enemy lists at +0x4C + 8*side, counts at +8+side
-REWARD_TABLES = 0x080AAEA8    # 20 u16 rewards per enemy id (0x28 bytes)
+GIVEN = syms.REWARD_GIVEN            # eStruct200A008 Unk04: the battle reward actually given (packed u16)
+SHOWN_Q = syms.REWARD_SHOWN          # the result screen's display queue entry for it
+BSTATE = syms.BATTLE_STATE           # BattleState: enemy lists at +0x4C + 8*side, counts at +8+side
+REWARD_TABLES = syms.REWARD_TABLES    # 20 u16 rewards per enemy id (0x28 bytes)
 PANEL = (slice(110, 130), slice(34, 126))  # the result screen's GET DATA name box (its picture follows the other reward too)
 REWARD_SEEN = set()
 REWARD_GAIN = 20              # summed name-box error a reward must remove to replace the game's
@@ -834,10 +835,10 @@ def reward_candidates(v0):
             if v0 in out: REWARD_IDS[:] = ids; return sorted(out)
     return []
 
-ENEMY_KIND = 0x080182C4       # 3 bytes per enemy id: version, actor type, AI index (GetVerActorTyAndAIIdx_80182B4)
-HELD_TABLES = 0x080AED74      # [actor type][AI index] -> 0x20 bytes per version: the chips a virus can hold (sub_80AED50)
+ENEMY_KIND = syms.ENEMY_KINDS       # 3 bytes per enemy id: version, actor type, AI index (GetVerActorTyAndAIIdx_80182B4)
+HELD_TABLES = syms.HELD_TABLES      # [actor type][AI index] -> 0x20 bytes per version: the chips a virus can hold (sub_80AED50)
 REWARD_IDS = []
-BATTLE_MD = 0x080211A0        # battle-start mystery data contents: 8 u16 per row (setup byte 2 >> 4), RNG & 0xE
+BATTLE_MD = syms.BATTLE_MYSTERY_DATA        # battle-start mystery data contents: 8 u16 per row (setup byte 2 >> 4), RNG & 0xE
 def battle_md_candidates(v):
     """Reward 2 can be the battle's mystery data (spawnMysteryData_8007424): the rows of its table holding v."""
     out = set()
@@ -864,7 +865,7 @@ def check_reward(g_lo, D=None):
     """A battle's rewards were given on the best path after game frame g_lo: compare the result screen's GET
     DATA box with the full-size video where each of the (up to) two rewards shows; for each, another reward of
     the battle's tables that matches clearly better is written into the result record before the game copies
-    it to the screen and to what it gives (0x02035268/A, a frame or two before) -> a fix (w, [pokes]) or None."""
+    it to the screen and to what it gives (REWARD_RECORD/+2, a frame or two before) -> a fix (w, [pokes]) or None."""
     gs = [r[0] for r in ring if r[0] <= g_lo]
     if not gs: return None
     w = ancestor(gs[-1])
@@ -895,7 +896,7 @@ def check_reward(g_lo, D=None):
     w = state_at(gc - 3)
     if w is None: return None
     def pk(a, c):
-        return [[gc - 3, f'0x203f4ac={a:#06x}/2,0x203f4ae={c:#06x}/2'], [gc - 2, f'0x2035268={a:#06x}/2,0x203526a={c:#06x}/2']]
+        return [[gc - 3, f'{syms.REWARD_NAVI_STATS:#x}={a:#06x}/2,{syms.REWARD_NAVI_STATS + 2:#x}={c:#06x}/2'], [gc - 2, f'{syms.REWARD_RECORD:#x}={a:#06x}/2,{syms.REWARD_RECORD + 2:#x}={c:#06x}/2']]
     def errs(a, c):
         set_emu_pokes(pk(a, c)); b.e.load(w[1]); out = []; g = gc - 3
         for t in at:
@@ -915,9 +916,9 @@ def check_reward(g_lo, D=None):
     if (a, c) == (r1, r2): return None
     return w, pk(a, c)
 
-T1_OBJS, T1_SIZE = 0x0203A9B0, 0xD8   # battle objects (navis, viruses): HP at +0x24, MaxHP +0x26, Alliance +0x16
+T1_OBJS, T1_SIZE = syms.T1_OBJECTS, 0xD8   # battle objects (navis, viruses): HP at +0x24, MaxHP +0x26, Alliance +0x16
 PANEL_T = (slice(8, 76), slice(12, 108))  # the result panel in a thumbnail (80x120)
-T1_ACTIVE = 0x02034000         # eActiveT1BattleObjectsBitfield: a bit per live battle object
+T1_ACTIVE = syms.T1_ACTIVE         # eActiveT1BattleObjectsBitfield: a bit per live battle object
 def enemies_alive(side=1):
     """Live battle objects of an alliance: 1 the enemies, 0 MegaMan's side."""
     out = []; act = b.e.u32(T1_ACTIVE)
@@ -948,7 +949,7 @@ def try_kill(D, side=1):
         for g in range(wk[0], D):                       # frame by frame: the map between two battles is short
             b.e.step(ks[g - b.press_gf][0])
             # (no live enemy: between two battles of a series, the game stays in battle mode)
-            if b.e.read(0x02001B80, 1)[0] != 0x0C or not enemies_alive(1): back = D - (g + 1)
+            if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C or not enemies_alive(1): back = D - (g + 1)
     w = state_at(D); b.e.load(w[1])     # (state_at keeps one slot)
     log(f"  {'kill' if side else 'die'}: this battle goes back {back} frames (of 600 looked at)")
     kill = ','.join(f'{a + 0x24:#x}=0x0000/2' for a in foes)
@@ -1027,7 +1028,7 @@ def try_kill(D, side=1):
 # subchips with a movement counter (submenu_subchip_8124230 etc.): event flag byte/mask, counter address.
 # When the flag is set and the counter is 0, npc_80350BC clears the flag and runs the "<item> just expired!"
 # cutscene, which pauses the map (roaming objects too)
-SUBCHIPS = {'SneakRun': (0x02001F69, 0x20, 0x02001C28), 'LocEnemy': (0x02001F69, 0x10, 0x02001C2C)}
+SUBCHIPS = {'SneakRun': (syms.SUBCHIP_FLAGS, 0x20, syms.SNEAKRUN_STEPS), 'LocEnemy': (syms.SUBCHIP_FLAGS, 0x10, syms.LOCENEMY_STEPS)}
 def try_subchip(D):
     """The video's subchip ran out at another time than ours (or ours was not on): its expiry, forced on each
     frame around the loss (flag set, counter 0); the sync picks the frame."""
