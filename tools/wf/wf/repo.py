@@ -16,6 +16,7 @@ import gamepaths  # noqa: E402  # tools/gamepaths.py: the game profile (tools/pa
 
 CPORT = REPO / "cport"
 TRACES = Path(gamepaths.TRACES)
+VIDSYNC_READY = Path(gamepaths.VIDSYNC_READY)  # vidsync's exported recording (tools/import_route.py reads it)
 CHECKPOINTS = Path(gamepaths.CHECKPOINTS)  # long routes' checkpoints and window profiles (tools/import_route.py)
 ORIGINAL_ROM = Path(gamepaths.ORIG_ROM)
 TOOLCHAIN_BIN = REPO / "toolchain" / "bin"

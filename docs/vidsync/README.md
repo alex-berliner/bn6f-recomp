@@ -15,7 +15,8 @@ it reads its game addresses from bn6f by name (`tools/vidsync/syms.py`).
 |---|---|
 | Scripts, emulator server source | `tools/vidsync/` (`emu_server.c`, `*.py`, `make_ready.sh`) |
 | Probes (the repro commands of symbols/db entries) | `tools/vidsync/probes/` |
-| Compute-PC job scripts | `tools/vidsync/remote/` (still run from the PCs' `~/vidsync` layout) |
+| Compute-PC job scripts | `tools/vidsync/remote/`, deployed to the PCs by `tools/vidsync/deploy.py` (below) |
+| Repair handlers written for a loss | `tools/vidsync/handlers/NAME.py` (interface: `handlers/__init__.py`; the vidsync-repair workflow) |
 | Game addresses | `tools/vidsync/syms.py`: bn6f's symbols and struct offsets; unnamed ones marked `TODO: name in bn6f` |
 | emu_server, mgba_run | `make -C tools emu_server mgba_run` → `build-tools/` |
 | Working directory | `build-vidsync/` (`VIDSYNC` in `tools/paths.env`, git-ignored): run the scripts from there |
@@ -37,7 +38,7 @@ bn6f).
 | Driver | `autosync.py`, `rngfix.py` | Runs the sync; when the video no longer matches (a loss), runs repair handlers, each a family of candidate RAM writes judged by syncing on. Checkpoints, logs, `loss_D.json`/`result.json` |
 | Workers | `worker_server.py` | Candidate syncs on a second PC over TCP |
 | Checks | `pathcheck.py` | Replays a result with plain steps: does the path hold against the video to the end |
-| Export | `export_trace.py`, `segments.py`, `make_ready.sh` | `ready/`: the trace, pokes and save (verified with `mgba_run`), and save-file segments every ~20k frames for the port validator |
+| Export | `export_trace.py`, `segments.py` (the vidsync-ready workflow) | `ready/`: the trace, pokes and save (verified with `mgba_run`), and save-file segments every ~20k frames for the port validator |
 
 Repair handlers (`autosync.py`), in the order tried at each loss: formations (battle pointer), reward, video
 offset, stream overlay, hand/folder, green mystery data, subchip expiry, position, relocate, Weather tornado,
@@ -54,27 +55,55 @@ same loss is skipped there next time.
 
 ## The compute PCs
 
-Heavy compute runs only on these two, never on the main machine.
+Heavy compute runs only on these two, never on the main machine: this machine sends commands and reads JSON,
+logs and a few pictures back. The LAN is a slow WireGuard link: video never crosses it, each PC keeps its own
+`~/vidsync/data`.
 
-| PC | Role | WSL home | Launch |
-|---|---|---|---|
-| 192.168.1.175 | driver (`supervise.sh` → `autosync.py`, 13 local workers), exports, segment cuts, pathcheck | `/home/alex/vidsync` | `powershell -File C:/Users/alex/launch_auto_175.ps1` (WMI, survives SSH) → `job_auto_175.sh` |
-| 192.168.1.167 | worker server (15 workers, TCP 7777) | `/root/vidsync` | `launch_ws_167.ps1` → `job_ws_167.sh` |
+| PC | Role | WSL home |
+|---|---|---|
+| 192.168.1.175 | driver (`supervise.sh` → `autosync.py`, 13 local workers), exports, segment cuts, pathcheck, handler tests | `/home/alex` |
+| 192.168.1.167 | worker server (15 workers, TCP 7777) | `/root` |
 
-Today the job scripts copy files from `C:/Users/alex/` into `~/vidsync/scripts`, run `make` and start. The run
-name lives in `C:/Users/alex/runbase`; `status.sh` prints the furthest frame, the loss, and how long it has
-been on it. `stop_auto.sh` also kills export and segment jobs. Keep the WMI launch: SSH sessions to Windows
-kill their children.
+**Deploy** (`tools/vidsync/deploy.py`, or the deploy step of `wf vidsync-run`): the part of this tree vidsync
+needs (`tools/vidsync`, `tools/gamepaths.py`, `tools/paths.env`, `tools/mgba_run.c`, `tools/Makefile`, the files
+git tracks or would) plus bn6f's symbols as `syms.py --json` writes them and a `DEPLOYED.json` (commit, whether
+it had uncommitted changes) go to `C:/Users/alex/vidsync_deploy.tgz` on each PC; `remote/install.sh` unpacks it
+beside the old one, links the PC's data in (`bn6f/bn6f.gba`, `roms/gba_bios.bin`, `build-vidsync/data` →
+`~/vidsync/data`), builds `mgba_run` and `emu_server`, and swaps it in as `~/vidsync/recomp` (running jobs keep
+their files; the previous tree stays as `recomp.old`). `remote/env.sh` sets `VIDSYNC_SYMS` (there is no bn6f
+there) and works in `~/vidsync/recomp/build-vidsync`, so `data/...` paths mean what they meant before.
+
+**Jobs.** Anything that must outlive the SSH session goes through WMI (`remote/launch.ps1`, copied to
+`C:/Users/alex/vidsync_launch.ps1`): SSH sessions to Windows kill their children. Short commands go as a bash
+script on stdin (`ssh PC wsl -d Ubuntu -- bash -s`: no quoting through cmd.exe).
+
+| Script (`tools/vidsync/remote/`) | Does |
+|---|---|
+| `job_driver.sh RUN START [REPLAY]` | the driver as `data/auto/RUN.0, .1, ...` from checkpoint START; the run's name to `~/vidsync/runbase`, its start to `data/auto/RUN.start`, its process group to `~/vidsync/driver.pgid` |
+| `job_workers.sh [VDIR]` | the worker server; process group in `~/vidsync/workers.pgid` |
+| `job.sh NAME SCRIPT ARGS` | any script as a job: `~/vidsync/jobs/NAME.log`, `.done` (exit code), `.pgid` |
+| `stop.sh driver\|workers\|JOB` | stops by process group (an export or a segment cut goes on when the driver stops) |
+| `status.py [RUN]`, `status.sh` | the run's state as JSON (furthest game frame, alive, how it ended, the loss, the log's tail) / one screen |
+| `newest.py RUN [MAXG]`, `loss.py RUN [D]`, `render.py` | the newest checkpoint; a loss with a checkpoint before it; the probes' pictures of a loss |
+| `py.sh SCRIPT ARGS` | any `tools/vidsync` script with the PC's environment (`py.sh pathcheck.py X.json`, `py.sh probes/trig.py ...`) |
+| `export.sh`, `segments.sh` | export a checkpoint (verified), cut segments |
+
+By hand: `echo 'bash ~/vidsync/recomp/tools/vidsync/remote/status.sh' | ssh alex@192.168.1.175 wsl -d Ubuntu -- bash -s`,
+or `./wf vidsync-status`.
+
+## Workflows
+
+| Workflow | Does |
+|---|---|
+| `wf vidsync-run --start CHECKPOINT\|RUN` | deploy to both PCs, restart the worker server and the driver (the next run name: run7k → run7l), watch: every 5 min the furthest game frame; stuck = it has not moved for 30 min (not log silence: the driver logs while it searches); hourly `pathcheck` of the newest checkpoint (a path that no longer holds restarts from a clean checkpoint 300 frames before its first loss, `pathcheck.py --save`); a stuck driver (or one that gave up at a loss) opens a `vidsync-repair`. `--no-deploy` without `--start` only watches; `--watch-hours H` ends the watch |
+| `wf vidsync-repair --run RUN [--loss D]` | the loss rendered with the probes (`compare.png`: emulator beside the video before the loss; `video.png`: the video after it) → Claude classifies it (pause: `LossClass`) → a brief with the symbols/db entries and the routines' assembly → an outside model (tier/strong) writes `handlers/NAME.py` → Claude reviews (pause: `HandlerReview`) → test from the loss checkpoint on the driver PC's own workers (`autosync.py --handlers NAME --until D+600`, then `pathcheck`) → Claude records what was learnt (pause: `Findings`; the `record` workflow) → commit, deploy, restart past the loss |
+| `wf vidsync-ready [--checkpoint C\|RUN] [--import]` | export (verified with mgba_run and emu_server), cut segments, check every segment follows the run (long segments and save-chain breaks reported), copy here (`build-vidsync/ready`); `--import` runs `tools/import_route.py` and lockstep on `beastsp` (that replays the route on this machine, so it is asked for) |
 
 ## Next (from the transfer plan)
 
 1. (Done 2026-10-13) The dossier went into symbols/db and bn6f; some renames are deferred (its section 3).
-2. A deploy step (tar `tools/vidsync`, `tools/gamepaths.py`, `tools/paths.env`, `tools/mgba_run.c`,
-   `tools/Makefile`, and a `syms.py --json` file; build there) and a `vidsync-run` workflow: restart from a
-   checkpoint, watch progress ("stuck" = no progress for 30 min), hourly `pathcheck`, open a repair on a stall.
-3. `vidsync-repair` (render the loss with the probes, classify, brief an outside model, test the handler from
-   the loss checkpoint, record new symbols) and `vidsync-ready` (export, check `VERIFY.txt`, import the route).
-4. Retire `~/Code/vidsync` after a full cycle from here (its `data/` stays where it is).
+2. (Done 2026-10-13) The deploy step and the vidsync-run, vidsync-repair and vidsync-ready workflows (above).
+3. Retire `~/Code/vidsync` after a full cycle from here (its `data/` stays where it is).
 
 ## Conventions and pitfalls
 

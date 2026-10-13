@@ -16,6 +16,11 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   (--prompt old: the farm's old-prompt candidates, filed as P/M+old; a convert run installing them queues
    them for retype, tools/abi/retype_queue.tsv)
   python -m wf record  [--symbol NAME]... [--rename OLD NEW]... [--pending] --message-file FILE
+  python -m wf vidsync-run [--start CHECKPOINT|RUN] [--run NAME] [--no-deploy] [--replay PATH] [--watch-hours H]
+                       [--stall-minutes 30] [--pathcheck-minutes 60] [--no-repair]   # docs/vidsync/README.md
+  python -m wf vidsync-repair --run NAME [--loss G] [--model P/M]... [--max-attempts N]
+  python -m wf vidsync-ready [--checkpoint PATH|RUN] [--most G] [--out-dir DIR] [--every N] [--local DIR] [--import]
+  python -m wf vidsync-status [RUN]        # the driver's state on 192.168.1.175 (furthest frame, last event)
   python -m wf waiting RUN_ID              # what a paused run needs
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
   python -m wf retry   RUN_ID              # carry on a failed or interrupted run from where it stopped
@@ -48,6 +53,11 @@ from wf.graphs.farm import FarmBatchState, farm_batch_graph
 from wf.graphs.queue import QueueState, ledger_summary, queue_graph, request_stop
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify, what_it_checks
+from wf.graphs.vidsync_ready import VidsyncReadyState, vidsync_ready_graph
+from wf.graphs.vidsync_repair import VidsyncRepairState, vidsync_repair_graph
+from wf.graphs.vidsync_run import VidsyncRunState, vidsync_run_graph
+from wf.tools.sources import TIERS, Tier
+from wf.tools.vidsync import driver_status
 from wf.repo import REPO, RUNS, SNAPSHOTS
 from wf.tools.archive import ARCHIVE, archive_cited_runs
 from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
@@ -56,7 +66,8 @@ from wf.tools.sources import models_for
 from wf.tools.work_queue import CAP, LANES, STOP, Lane, only_one_queue, read_ledger
 from wf.routes import ALL_ROUTES, LONG_ROUTES, route_named
 from wf.status import all_runs, workflow_of_run
-from wf.types import FunctionName, ModelSpec, Rename, Route, RouteName, SnapshotDir, SymbolName
+from wf.types import (FrameCount, FunctionName, ModelSpec, RemotePath, Rename, Route, RouteName, RunName, SnapshotDir,
+                      SymbolName)
 
 
 class VerifyCommand(BaseModel):
@@ -130,6 +141,43 @@ class RecordCommand(BaseModel):
     message_file: Path
 
 
+class VidsyncRunCommand(BaseModel):
+    command: Literal["vidsync-run"]
+    start: RemotePath | None
+    run: RunName | None
+    no_deploy: bool
+    replay: RemotePath | None
+    watch_hours: float | None
+    poll_minutes: float
+    stall_minutes: float
+    pathcheck_minutes: float
+    no_repair: bool
+
+
+class VidsyncRepairCommand(BaseModel):
+    command: Literal["vidsync-repair"]
+    run: RunName
+    loss: FrameCount | None
+    models: tuple[ModelSpec, ...] = Field(alias="model")
+    max_attempts: int
+
+
+class VidsyncReadyCommand(BaseModel):
+    command: Literal["vidsync-ready"]
+    checkpoint: RemotePath | None
+    most: FrameCount | None
+    out_dir: RemotePath
+    name: str
+    every: int
+    local: Path | None
+    import_route: bool = Field(alias="import")
+
+
+class VidsyncStatusCommand(BaseModel):
+    command: Literal["vidsync-status"]
+    run: RunName | None
+
+
 class WaitingCommand(BaseModel):
     command: Literal["waiting"]
     run_id: str
@@ -170,7 +218,7 @@ class DocsCommand(BaseModel):
 
 
 Command = (VerifyCommand | CaptureCommand | FarmCommand | QueueCommand | DraftsCommand | ConvertCommand | RecordCommand
-           | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
+           | VidsyncRunCommand | VidsyncRepairCommand | VidsyncReadyCommand | VidsyncStatusCommand | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
            | ArchiveCommand | DocsCommand)
 
 
@@ -191,6 +239,14 @@ def main() -> None:
             start_convert(command)
         case RecordCommand():
             start_record(command)
+        case VidsyncRunCommand():
+            start_vidsync_run(command)
+        case VidsyncRepairCommand():
+            start_vidsync_repair(command)
+        case VidsyncReadyCommand():
+            start_vidsync_ready(command)
+        case VidsyncStatusCommand():
+            print(driver_status(command.run).model_dump_json(indent=2))
         case WaitingCommand():
             show_waiting(command.run_id)
         case AnswerCommand():
@@ -298,6 +354,31 @@ def start_record(command: RecordCommand) -> None:
                         commit_message=command.message_file.read_text(),
                         pending_renames=PENDING_RENAMES if command.pending else None)
     print_outcome(record_graph().start(start, run_id))
+
+
+def start_vidsync_run(command: VidsyncRunCommand) -> None:
+    run_id, run_dir = new_run("vidsync-run")
+    start = VidsyncRunState(run_dir=run_dir, deploy=not command.no_deploy, start_from=command.start, run=command.run,
+                            replay=command.replay, watch_hours=command.watch_hours, poll_minutes=command.poll_minutes,
+                            stall_minutes=command.stall_minutes, pathcheck_minutes=command.pathcheck_minutes,
+                            repair=not command.no_repair)
+    print_outcome(vidsync_run_graph().start(start, run_id))
+
+
+def start_vidsync_repair(command: VidsyncRepairCommand) -> None:
+    run_id, run_dir = new_run("vidsync-repair")
+    start = VidsyncRepairState(run_dir=run_dir, run=command.run, loss=command.loss,
+                               models=tuple(dict.fromkeys(model for spec in command.models for model in models_for(spec)))
+                               or TIERS[Tier.STRONG], max_attempts=command.max_attempts)
+    print_outcome(vidsync_repair_graph().start(start, run_id))
+
+
+def start_vidsync_ready(command: VidsyncReadyCommand) -> None:
+    run_id, run_dir = new_run("vidsync-ready")
+    start = VidsyncReadyState(run_dir=run_dir, checkpoint_spec=command.checkpoint, most=command.most,
+                              out_dir=command.out_dir, name=command.name, every=command.every,
+                              local_ready=command.local, import_wanted=command.import_route)
+    print_outcome(vidsync_ready_graph().start(start, run_id))
 
 
 def new_run(workflow: str) -> tuple[str, Path]:
@@ -476,6 +557,37 @@ def parse_command() -> Command:
     record.add_argument("--pending", action="store_true",
                         help="also make the renames convert runs deferred (symbols/pending_renames.txt), emptying it")
     record.add_argument("--message-file", type=Path, required=True)
+
+    vrun = commands.add_parser("vidsync-run", help="deploy vidsync to the compute PCs, (re)start the driver, watch it")
+    vrun.add_argument("--start", help="restart the driver from this checkpoint (data/auto/RUN.N/fix_0003, without "
+                                      ".json) or a run's newest (its name); default: watch the running driver")
+    vrun.add_argument("--run", help="the new run's name (default: the next after the last run's, run7k -> run7l)")
+    vrun.add_argument("--no-deploy", action="store_true", help="do not deploy (nor restart the worker server)")
+    vrun.add_argument("--replay", help="VIDSYNC_REPLAY for the driver: a result/loss json whose path is stepped as it is")
+    vrun.add_argument("--watch-hours", type=float, help="end the watch after this long (default: when stuck or ended)")
+    vrun.add_argument("--poll-minutes", type=float, default=5)
+    vrun.add_argument("--stall-minutes", type=float, default=30, help="stuck: the furthest frame has not moved this long")
+    vrun.add_argument("--pathcheck-minutes", type=float, default=60)
+    vrun.add_argument("--no-repair", action="store_true", help="when stuck, report instead of opening vidsync-repair")
+
+    vrepair = commands.add_parser("vidsync-repair", help="a new repair handler for a loss the driver is stuck on")
+    vrepair.add_argument("--run", required=True, help="the stuck run's name (wf vidsync-status)")
+    vrepair.add_argument("--loss", type=int, help="the loss's game frame (default: the run's newest)")
+    vrepair.add_argument("--model", action="append", default=[], help="models in order (default: tier/strong)")
+    vrepair.add_argument("--max-attempts", type=int, default=4)
+
+    vready = commands.add_parser("vidsync-ready", help="export the sync, cut segments, copy here (and import the route)")
+    vready.add_argument("--checkpoint", help="a checkpoint path, or a run's name for its newest (default: the last run's)")
+    vready.add_argument("--most", type=int, help="the run's newest checkpoint at most this game frame")
+    vready.add_argument("--out-dir", default="data/ready", help="on the driver PC (default data/ready)")
+    vready.add_argument("--name", default="bn6f_beastsp")
+    vready.add_argument("--every", type=int, default=20000, help="a segment about every N game frames")
+    vready.add_argument("--local", type=Path, help="copy it here (default: build-vidsync/ready)")
+    vready.add_argument("--import", action="store_true",
+                        help="then tools/import_route.py and lockstep the port on beastsp (replays it here)")
+
+    vstatus = commands.add_parser("vidsync-status", help="the driver's state on the driver PC")
+    vstatus.add_argument("run", nargs="?")
 
     waiting = commands.add_parser("waiting", help="what a paused run needs")
     waiting.add_argument("run_id")

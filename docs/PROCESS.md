@@ -16,7 +16,9 @@ port 7241). `./wf status` says where every run is.
 | [drafts](workflows/drafts.md) | symbol entries for accepted farm candidates that have none |
 | [convert](workflows/convert.md) | strong models write a subsystem's file (or farm candidates go in as a group); quick test, full verify, review, commit (§4) |
 | [record](workflows/record.md) | symbols/db, renames and comments into bn6f, re-verify, commit (§6) |
-| [vidsync](vidsync/README.md) (tools, no workflow yet) | the `beastsp` route rebuilt from a speedrun video on the two compute PCs: sync, repairs, export (`tools/vidsync`); its findings go through record |
+| [vidsync-run](workflows/vidsync-run.md) | the `beastsp` route rebuilt from a speedrun video ([vidsync](vidsync/README.md)): deploy to the two compute PCs, restart the sync driver, watch it (stuck: no progress for 30 min), hourly pathcheck, a repair when stuck |
+| [vidsync-repair](workflows/vidsync-repair.md) | a new repair handler for a loss: rendered, classified by Claude, written by an outside model from a brief with the symbols/db entries and assembly, reviewed, tested from the loss; findings go through record |
+| [vidsync-ready](workflows/vidsync-ready.md) | the sync exported and cut into segments on the driver PC, checked, copied here; with `--import`, the `beastsp` route grows |
 
 What running them taught about cost and speed: [EFFICIENCY.md](workflows/EFFICIENCY.md).
 
