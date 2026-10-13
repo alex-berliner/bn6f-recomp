@@ -44,7 +44,7 @@ REQUIRED = ("name", "address", "kind", "status", "summary", "evidence")
 KINDS = {"function", "data", "ram", "constant", "struct-field"}
 STATUS = {"confirmed", "probable", "hypothesis"}
 METHODS = {"assembly-reading", "caller-analysis", "cpu-oracle", "difftest", "lockstep", "coverage", "readable-c",
-           "library-match", "data-inspection", "hardware"}
+           "library-match", "data-inspection", "hardware", "runtime"}
 STAMP_REQUIRED = ("rom", "range", "contract", "headers", "lifter", "prompt", "model", "run", "body", "installed")
 
 
