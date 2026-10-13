@@ -1,11 +1,14 @@
 name: battle_rollRandomItemDrops_80AA88C
 address: '0x080AA88C'
 kind: function
+previous_names:
+- sub_80AA88C
 status: confirmed
-summary: Rolls a random item drop for up to four post-battle drop slots and flags the winning slot with
-  the rolled item id.
-interface: 'void battle_rollRandomItemDrops(void) /* in: r10 = toolkit; out: flags C/V from (loop count
-  == 4); clobbers r0-r3 */'
+summary: 'At enemy spawn, gives one enemy a held chip: each alive opponent (battle state +0x90, up to four) draws
+  from its virus''s held-chip table (sub_80AED50) with 4 bits of one RNG value; the last one that draws a chip (not
+  0xFFFF) gets it (+0x2A Chip, +0x1A ChipsHeld = 1).'
+interface: 'void battle_rollRandomItemDrops(void) /* in: r10 = toolkit; out: flags C/V from (loop count == 4); clobbers
+  r0-r3 */'
 details: 'Takes the toolkit''s battle-state pointer (oToolkit_BattleStatePtr via r10), walks a
 
   four-entry array of drop-state pointers starting at battle+0x90 (stride 4). For each
@@ -30,7 +33,14 @@ details: 'Takes the toolkit''s battle-state pointer (oToolkit_BattleStatePtr via
 
   flags of the final `cmp r6, #4`; the pointer result itself is never returned.
 
-  '
+
+
+  Correction (2026-10-13): this is not a post-battle drop roll. Its only caller is battle_SpawnEnemyObjects_8007358,
+  right after SpawnBattleObjectUsingBattleEntityConfig_8007368 spawns the enemies; battle state +0x90 is AliveOpponentActors
+  (BattleState.inc), so the four "slots" are the opponent battle objects, and the halfword read with the name oBattleState_Unk_28
+  is really BattleObject.NameID (0x28); the writes are BattleObject.Chip (0x2A) and ChipsHeld (0x1A). Proposed name
+  battle_rollEnemyHeldChip_80AA88C. The rename waits in symbols/pending_renames.txt: the subsystem farm''s worktrees
+  share bn6f and still hold copies of the C that names this symbol, so renaming now would break their builds.'
 evidence:
 - method: readable-c
   date: '2026-10-11'
@@ -38,16 +48,15 @@ evidence:
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm29.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c
-    sub_80AA88C
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c sub_80AA88C
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
   reproduce: './wf capture --function sub_80AA88C
 
     ./wf verify --function sub_80AA88C --snapshots build-snapshots'
-  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    300 out of domain (verify run convert-20261010-235203-verify-3)'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261010-235203-verify-3)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
@@ -64,9 +73,19 @@ evidence:
   result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
 - method: coverage
   date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
-    story4, story5, story6, story7, story8, story9.'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
   reproduce: grep -l '^080aa88c ' tools/traces/coverage/*.prof
+- method: caller-analysis
+  date: '2026-10-13'
+  detail: 'Settled the vidsync dossier''s section-3 conflict (RANDOM_EVENTS.md section 3 reads it as the enemy held-chip
+    roll at spawn): the caller is battle_SpawnEnemyObjects_8007358 (battle start), the pointers at battle state
+    +0x90 are AliveOpponentActors, and the stored fields are the battle object''s Chip and ChipsHeld.'
+  refs:
+  - ~/Code/vidsync/RANDOM_EVENTS.md
+  - ~/Code/vidsync/SYMBOL_DOSSIER.md
+  reproduce: grep -n -B4 'bl battle_rollRandomItemDrops_80AA88C' bn6f/asm/asm00_1.s; grep -n 'loc=0x1a\|loc=0x28\|loc=0x2a'
+    bn6f/include/structs/BattleObject.inc; grep -n 'loc=0x90' bn6f/include/structs/BattleState.inc
 changes:
 - date: '2026-10-11'
   what: readable C replacement in cport/src/game/asm29.c
@@ -80,6 +99,10 @@ changes:
   what: rename sub_80AA88C -> battle_rollRandomItemDrops_80AA88C
   where: bn6f 4e85acae
   tool: tools/rename_symbol.py
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f bce1cfe1
+  tool: tools/symdoc.py
 readable_c: cport/src/game/asm29.c
 coverage:
 - battle
@@ -98,6 +121,9 @@ coverage:
 - story7
 - story8
 - story9
+related:
+- off_80AED74
+- eBattleState
 open_questions:
 - exact meaning of the kind field at oBattleState_Unk_28 and which table sub_80AED50 indexes per kind
 - what the four slots at battle+0x90 correspond to (per-enemy drops vs. a fixed drop list)
@@ -105,8 +131,8 @@ open_questions:
 sources:
 - tools/wf run convert-20261010-235203
 - recomp 47580ec
-previous_names:
-- sub_80AA88C
+- vidsync ~/Code/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
+- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
 signature:
   c: void battle_rollRandomItemDrops_80AA88C(void)
   params: []

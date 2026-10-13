@@ -1,22 +1,31 @@
 name: damage_jitter_80AAA98
 address: '0x080AAA98'
 kind: function
+previous_names:
+- sub_80AAA98
 status: confirmed
-summary: 'Rolls per-hit damage jitter: picks a base byte from a 16-entry table indexed by (param1, low-nibble
-  of RNG), adds a ±2-style step, then adds a bonus capped by an attack-raw/8*3 threshold.'
-interface: 'u32 sub_80AAA98(u32 param1 /*r0*/, s32 bonus /*r1*/, u32 raw_mag /*r2*/, u32 mode /*r3*/)
-  -> u32 (NZCV flags from final ADD r0, r0, #0; r4 preserved)'
+summary: 'Picks the battle reward: returns a byte offset into the enemy''s 20-entry reward table (byte_80AAEA8 +
+  id * 0x28) from a base table byte_8020B9C[r0 * 16 + RNG nibble], an RNG bit * 2 and +0x14 (the table''s second
+  half) when r1 <= (r2 >> 3) * 3. Not a damage jitter.'
+interface: 'u32 sub_80AAA98(u32 param1 /*r0*/, s32 bonus /*r1*/, u32 raw_mag /*r2*/, u32 mode /*r3*/) -> u32 (NZCV
+  flags from final ADD r0, r0, #0; r4 preserved)'
 details: "Stores r0..r2 on stack and keeps r3 as the mode selector in r4.\n\nCap derivation (lines 0x6..0xE):\n\
-  \  cap = 0x14\n  mag_shifted = r2 >> 3\n  cmp_value = (mag_shifted + mag_shifted + mag_shifted)  //\
-  \ i.e. (r2/8)*3\n  if (signed r1 > (signed) cmp_value) cap = 0\n\nRNG (calls GetPositiveSignedRNG outside\
-  \ this file):\n  rng = RNG()\n  step = ((rng >> 8) & 1) << 1     -> values 0 or 2\n  lookup = (rng >>\
-  \ 16) & 0xF       -> 0..15\n\nMode dispatch:\n  mode 0: result = byte_8020B9C[param1 * 16 + lookup]\
-  \ + step + cap\n  mode 1: result = step + cap\n  mode 2: force step = 2, then fall back through mode\
-  \ 0\n  any other mode: infinite loop at loc_80AAAFA (deliberate \"should never happen\")\n\nFlag note:\
-  \ every exit path's final flag-setting op is `ADD(S) r0, r0, r1`,\nbut by that point r1 has been folded\
-  \ into the running sum and r1 holds 0\nwhen control reaches the tail, so NZCV effectively equal `ADDS\
-  \ r0, r0, #0`.\n\nReads: byte_8020B9C (16-byte stride table at 0x8020B9C).\nCalls: GetPositiveSignedRNG.\n\
-  Preserved: r4.\nClobbered: r0 (return), r1, r2, r3, lr, NZ, C, V.\n"
+  \  cap = 0x14\n  mag_shifted = r2 >> 3\n  cmp_value = (mag_shifted + mag_shifted + mag_shifted)  // i.e. (r2/8)*3\n\
+  \  if (signed r1 > (signed) cmp_value) cap = 0\n\nRNG (calls GetPositiveSignedRNG outside this file):\n  rng =\
+  \ RNG()\n  step = ((rng >> 8) & 1) << 1     -> values 0 or 2\n  lookup = (rng >> 16) & 0xF       -> 0..15\n\n\
+  Mode dispatch:\n  mode 0: result = byte_8020B9C[param1 * 16 + lookup] + step + cap\n  mode 1: result = step +\
+  \ cap\n  mode 2: force step = 2, then fall back through mode 0\n  any other mode: infinite loop at loc_80AAAFA\
+  \ (deliberate \"should never happen\")\n\nFlag note: every exit path's final flag-setting op is `ADD(S) r0, r0,\
+  \ r1`,\nbut by that point r1 has been folded into the running sum and r1 holds 0\nwhen control reaches the tail,\
+  \ so NZCV effectively equal `ADDS r0, r0, #0`.\n\nReads: byte_8020B9C (16-byte stride table at 0x8020B9C).\nCalls:\
+  \ GetPositiveSignedRNG.\nPreserved: r4.\nClobbered: r0 (return), r1, r2, r3, lr, NZ, C, V.\n\n\nCorrection (2026-10-13):\
+  \ the mechanics above are right, the meaning was not. Both call sites (in sub_80AA910, reached from sub_80AA8E0,\
+  \ which the battle-end code at loc_802C91A calls with the opponents' list, MegaMan's HP and MaxHP) use the result\
+  \ as `ldrh r0, [r4, r0]` with r4 = sub_80AAE98(id) = byte_80AAEA8 + id * 0x28, the reward table: the value is\
+  \ the offset of the reward entry. Modes: 0 = base + bit * 2 + bonus; 1 = bit * 2 + bonus only; 2 = base + 2 +\
+  \ bonus (the caller then moves to the second half when the result is >= 0x14); others hang. Proposed name battle_pickRewardEntryOffset_80AAA98.\
+  \ The rename waits in symbols/pending_renames.txt: the subsystem farm's worktrees share bn6f and still hold copies\
+  \ of the C that names this symbol, so renaming now would break their builds."
 evidence:
 - method: readable-c
   date: '2026-10-11'
@@ -24,16 +33,15 @@ evidence:
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm29.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 73' --file inbox_farm_73.c
-    sub_80AAA98
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 73' --file inbox_farm_73.c sub_80AAA98
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
   reproduce: './wf capture --function sub_80AAA98
 
     ./wf verify --function sub_80AAA98 --snapshots build-snapshots'
-  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    299 out of domain (verify run convert-20261011-013540-verify-2)'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261011-013540-verify-2)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
@@ -52,6 +60,18 @@ evidence:
   date: '2026-10-11'
   detail: 'Executed by: battles1, battles2, menus3, story2, story4, story5, story6, story7, story8, story9.'
   reproduce: grep -l '^080aaa98 ' tools/traces/coverage/*.prof
+- method: caller-analysis
+  date: '2026-10-13'
+  detail: 'Settled the vidsync dossier''s section-3 conflict (RANDOM_EVENTS.md section 3: it picks the reward table
+    entry): the callers index the reward table byte_80AAEA8 (sub_80AAE98) with its result.'
+  refs:
+  - ~/Code/vidsync/RANDOM_EVENTS.md
+  - ~/Code/vidsync/SYMBOL_DOSSIER.md
+  reproduce: grep -n -B12 -A2 'bl damage_jitter_80AAA98' bn6f/asm/asm29.s; grep -n -A6 '^sub_80AAE98:' bn6f/asm/asm29.s
+- method: runtime
+  date: '2026-10-13'
+  detail: vidsync's reward predictions from the reward tables match the rewards the run gets.
+  reproduce: grep -n 'def check_reward' ~/Code/vidsync/scripts/autosync.py
 changes:
 - date: '2026-10-11'
   what: readable C replacement in cport/src/game/asm29.c
@@ -65,6 +85,10 @@ changes:
   what: rename sub_80AAA98 -> damage_jitter_80AAA98
   where: bn6f 4e85acae
   tool: tools/rename_symbol.py
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f bce1cfe1
+  tool: tools/symdoc.py
 readable_c: cport/src/game/asm29.c
 coverage:
 - battles1
@@ -77,20 +101,22 @@ coverage:
 - story7
 - story8
 - story9
+related:
+- byte_80AAEA8
 open_questions:
-- What is byte_8020B9C indexed by param1? Looks like a per-base/move variability table (multiplied-by-16
-  stride suggests 16 entries per param1 bucket), but its meaning (e.g. base hit damage, status magnitude,
-  panel radius) is unverified.
-- Is "raw_mag" an attack's raw magnitude stat whose /8*3 cap represents the bonus ceiling the bonus value
-  is allowed to cancel out (cap->0)? The signed branch on r1 vs the cap is consistent with that, but in-game
-  semantics are not confirmed.
-- Mode 2 forcing step=2 then re-running mode 0 looks like an "ensure minimum 2 units of jitter" path;
-  which battle caller uses it is unknown.
+- What is byte_8020B9C indexed by param1? Looks like a per-base/move variability table (multiplied-by-16 stride
+  suggests 16 entries per param1 bucket), but its meaning (e.g. base hit damage, status magnitude, panel radius)
+  is unverified.
+- Is "raw_mag" an attack's raw magnitude stat whose /8*3 cap represents the bonus ceiling the bonus value is allowed
+  to cancel out (cap->0)? The signed branch on r1 vs the cap is consistent with that, but in-game semantics are
+  not confirmed.
+- Mode 2 forcing step=2 then re-running mode 0 looks like an "ensure minimum 2 units of jitter" path; which battle
+  caller uses it is unknown.
 sources:
 - tools/wf run convert-20261011-013540
 - recomp cf4c3ee
-previous_names:
-- sub_80AAA98
+- vidsync ~/Code/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
+- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
 signature:
   c: u8 damage_jitter_80AAA98(u8 r0, u8 r1, u8 r2, u32 r3)
   params:

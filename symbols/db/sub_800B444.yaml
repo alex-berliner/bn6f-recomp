@@ -1,9 +1,9 @@
 name: sub_800B444
 address: '0x0800B444'
 kind: function
-status: hypothesis
-summary: Copies two saved 12-byte snapshots back into the working battle data area and then runs sub_802C9EA on
-  the restored data.
+status: probable
+summary: 'Restores the battle result records from the received link payloads: 12 bytes byte_203F4A4 -> unk_2035260
+  and byte_203F5A4 -> unk_203526C, then runs battle_syncEffectSlotBetweenBuffers_802C9EA.'
 interface: void sub_800B444(void)
 details: 'Copies 12 bytes (3 words, via CopyWords) from the saved block at byte_203F4A4 into the working area unk_2035260,
   then 12 bytes from byte_203F5A4 into unk_203526C — i.e. two parallel 12-byte records (a save slot and its live
@@ -14,7 +14,12 @@ details: 'Copies 12 bytes (3 words, via CopyWords) from the saved block at byte_
   a backup/restore pair of buffers, e.g. for a battle retry/undo or state-rollback path; the exact gameplay trigger
   is not visible from this function alone.
 
-  '
+
+
+  Addition (2026-10-13, vidsync dossier section 3, consistent with the above): byte_203F4A4 is the payload of the
+  received (loopback) battle link packet; the 12-byte record is the battle result record whose word +8 (0x0203F4AC
+  -> 0x02035268) is the battle reward that setupNaviDisplay_802C34E puts on the result screen. The caller (battle_waitLinkSync_8009478)
+  runs it once battle_doBothTrackedIdsMatch_800B46C sees marker 0x1f2f3f4f, the one sub_800B428 sends with the record.'
 evidence:
 - method: readable-c
   date: '2026-10-09'
@@ -49,6 +54,15 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battles1, story2.'
   reproduce: grep -l '^0800b444 ' tools/traces/coverage/*.prof
+- method: caller-analysis
+  date: '2026-10-13'
+  detail: Read the caller (battle_waitLinkSync_8009478) and the sender sub_800B428 (sub_802C8FA fills dword_203CBE4,
+    marker 0x1f2f3f4f).
+  reproduce: grep -n -B12 'bl sub_800B444' bn6f/asm/asm00_1.s; grep -n -A10 '^sub_800B428:' bn6f/asm/asm00_1.s
+- method: runtime
+  date: '2026-10-13'
+  detail: The reward was seen arriving at 0x0203F4AC and copied to 0x02035268 by this routine.
+  reproduce: grep -n 'def check_reward' ~/Code/vidsync/scripts/autosync.py
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_6.c
@@ -63,19 +77,31 @@ changes:
   where: bn6f f5b08caa
   tool: tools/symdoc.py
 - date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_6.c to cport/src/game/asm00_1_800801C.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
+  what: moved from cport/src/game/leaves_farm_6.c to cport/src/game/asm00_1_800801C.c by tools/layout.py (the regroup
+    of the model farm's files by bn6f source; the function's text unchanged)
   where: recomp 6836d6c
   tool: tools/layout.py
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f bce1cfe1
+  tool: tools/symdoc.py
 readable_c: cport/src/game/asm00_1_800801C.c
 coverage:
 - battles1
 - story2
+related:
+- byte_203F4A4
+- dword_2035268
+- setupNaviDisplay_802C34E
 open_questions:
 - What sub_802C9EA does with the restored data (recompute? redraw?)
 - Which gameplay feature writes the snapshots at byte_203F4A4 and byte_203F5A4 (retry, undo, mid-battle save?)
-- What the 12-byte records actually contain (three u32s each — counters, flags, or a small struct)
+- Bytes 0..7 of the result record besides the reward word (setupNaviDisplay_802C34E copies bytes 0, 1, 3 and word
+  4 to eS20364C0).
 sources:
 - tools/wf run convert-20261009-003921
+- vidsync ~/Code/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
+- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
 signature:
   c: void sub_800B444(void)
   params: []

@@ -2,23 +2,21 @@ name: refreshChipUseStats_8123A80
 address: '0x08123A80'
 kind: function
 status: confirmed
-summary: Refreshes a chip-use battle record by stamping the current navi's slot into the battle field/order
-  list and caching the sum of two PET-navi stat bytes (Atk + Next) for that slot into the chip-use struct's
-  +0x64 field.
-interface: void sub_8123A80(struct ChipUseState* me /* r5 */); // reads r5+0xC (slot), r5+0x14 (navi id);
-  clobbers r0-r3, r6, lr; preserves r4-r7, NZCV
-details: "Called by NaviAI/battle routines that need to record a chip being used this turn for a given\n\
-  PET navi. Operates on the chip-use record addressed by r5:\n  - off_201D220  -> gBattleFieldState (battle\
-  \ field context blob)\n  - off_20343E0  -> gBattleOrderList (turn-order list)\nStep 1: sub_811FCB8(slot\
-  \ = me->0xC, gBattleFieldState, 1, gBattleOrderList) -- marks/inserts\nthis navi's slot into the active\
-  \ battle field and order list with flag 1 (likely \"this turn's\nactor\" / \"first registration\").\n\
-  Step 3: stat_index = me->0xC * 2 + 0x56 -- a per-slot pair in the PET navi stats table, with\noffset\
-  \ 0x56 baked in (probably a chip-template category header such as \"chip power/element\npairs\"). Two\
-  \ adjacent bytes are fetched:\n  - byte 0  = \"Atk\"   stat for the PET navi\n  - byte 1  = \"Next\"\
-  \  stat for the PET navi\nTheir sum is stored as a 32-bit word at me->0x64. That cached total is presumably\
-  \ the chip's\neffective damage/attack stat used later by the damage formula. The function pops {r4,r6,pc}\n\
-  and does not push r5, so r5 is implicitly preserved across the call (as noted in the register\ncontract);\
-  \ both helpers called internally also preserve r4-r7.\n"
+summary: Refreshes a chip-use battle record by stamping the current navi's slot into the battle field/order list
+  and caching the sum of two PET-navi stat bytes (Atk + Next) for that slot into the chip-use struct's +0x64 field.
+interface: void sub_8123A80(struct ChipUseState* me /* r5 */); // reads r5+0xC (slot), r5+0x14 (navi id); clobbers
+  r0-r3, r6, lr; preserves r4-r7, NZCV
+details: "Called by NaviAI/battle routines that need to record a chip being used this turn for a given\nPET navi.\
+  \ Operates on the chip-use record addressed by r5:\n  - off_201D220  -> gBattleFieldState (battle field context\
+  \ blob)\n  - off_20343E0  -> gBattleOrderList (turn-order list)\nStep 1: sub_811FCB8(slot = me->0xC, gBattleFieldState,\
+  \ 1, gBattleOrderList) -- marks/inserts\nthis navi's slot into the active battle field and order list with flag\
+  \ 1 (likely \"this turn's\nactor\" / \"first registration\").\nStep 3: stat_index = me->0xC * 2 + 0x56 -- a per-slot\
+  \ pair in the PET navi stats table, with\noffset 0x56 baked in (probably a chip-template category header such\
+  \ as \"chip power/element\npairs\"). Two adjacent bytes are fetched:\n  - byte 0  = \"Atk\"   stat for the PET\
+  \ navi\n  - byte 1  = \"Next\"  stat for the PET navi\nTheir sum is stored as a 32-bit word at me->0x64. That\
+  \ cached total is presumably the chip's\neffective damage/attack stat used later by the damage formula. The function\
+  \ pops {r4,r6,pc}\nand does not push r5, so r5 is implicitly preserved across the call (as noted in the register\n\
+  contract); both helpers called internally also preserve r4-r7.\n"
 evidence:
 - method: readable-c
   date: '2026-10-11'
@@ -26,16 +24,15 @@ evidence:
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm33.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c
-    sub_8123A80
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 50' --file inbox_farm_50.c sub_8123A80
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
   reproduce: './wf capture --function sub_8123A80
 
     ./wf verify --function sub_8123A80 --snapshots build-snapshots'
-  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    300 out of domain (verify run convert-20261011-003727-verify-4)'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261011-003727-verify-4)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
@@ -67,6 +64,10 @@ changes:
   what: rename sub_8123A80 -> refreshChipUseStats_8123A80
   where: bn6f 4e85acae
   tool: tools/rename_symbol.py
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f bce1cfe1
+  tool: tools/symdoc.py
 readable_c: cport/src/game/asm33.c
 coverage:
 - battles1
@@ -83,10 +84,10 @@ related:
 - sub_812349C
 open_questions:
 - Exact meaning of flag passed as 1 to sub_811FCB8 (mark as used vs. enqueue vs. clear).
-- Identity of the navi stats table indexed by slot*2 + 0x56; "Atk" and "Next" are best-guess labels based
-  on adjacency and naming in GetCurPETNaviStatsByte.
-- Whether me->0x64 is a u16 stored as u32 (overlap with neighbouring fields) or a true u32 accumulator;
-  the str r0,[r5,#0x64] writes a full word.
+- Identity of the navi stats table indexed by slot*2 + 0x56; "Atk" and "Next" are best-guess labels based on adjacency
+  and naming in GetCurPETNaviStatsByte.
+- Whether me->0x64 is a u16 stored as u32 (overlap with neighbouring fields) or a true u32 accumulator; the str
+  r0,[r5,#0x64] writes a full word.
 sources:
 - tools/wf run convert-20261011-003727
 - recomp bdefe69

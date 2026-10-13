@@ -2,22 +2,21 @@ name: classifyActiveChipElements_8028E4C
 address: '0x08028E4C'
 kind: function
 status: probable
-summary: Walks r5's chip list, classifying chips by element/ID and writing element code and ID sentinel
-  back to r5.
-interface: 'void sub_8028E4C(void);  /* inputs: r2 r4 r5 r6 r7 r10 lr; outputs: r2 r3 r4 r5 r6 r7; clobbers
-  r0 r1 r3 lr */'
-details: "Operates on a caller-supplied struct in r5. Reads [r5+8] as a count of active chips, then\n\
-  iterates chip indices starting at offset 0x48 in the struct. For each chip it calls\ngetLocOfActiveChips_8027E1C\
-  \ to obtain a chip pointer; if [ptr] is non-zero the chip is\nskipped. Otherwise it calls getChipID_802A54E\
-  \ on the chip's id and splits it:\n  - bits >>9 become the element code (r1)\n  - low byte becomes a\
-  \ chip-id discriminator (r0, after the masked shift)\nSkips chips for which chipIDIs13f_8029FF4 returns\
-  \ true. Writes back into r5:\n  - [r5+0xA] = element code if it falls in range \"0x1B-0x1C\" (else left\
-  \ at 0)\n  - [r5+9]   = element-code candidate from the 0x1A-family classifier (initialised to 0x1A,\n\
-  \               overwritten with the first non-0x1A code, or set to 0xFF if two different\n        \
-  \       codes are seen)\n  - [r5+0x20] = u16 sentinel built from r0 (low-byte chip id): -1 sentinel\
-  \ until the first\n               chip sets r6 to its low byte; matching low bytes leave it, mismatches\
-  \ set\n               it to -2. Initial value is \"0:\" style sentinel -1 (no match).\nr4 is the per-chip\
-  \ offset counter (starts at 0x48, increments by 1). r3 is the loop counter\nread from [r5+8]. All loop\
+summary: Walks r5's chip list, classifying chips by element/ID and writing element code and ID sentinel back to
+  r5.
+interface: 'void sub_8028E4C(void);  /* inputs: r2 r4 r5 r6 r7 r10 lr; outputs: r2 r3 r4 r5 r6 r7; clobbers r0 r1
+  r3 lr */'
+details: "Operates on a caller-supplied struct in r5. Reads [r5+8] as a count of active chips, then\niterates chip\
+  \ indices starting at offset 0x48 in the struct. For each chip it calls\ngetLocOfActiveChips_8027E1C to obtain\
+  \ a chip pointer; if [ptr] is non-zero the chip is\nskipped. Otherwise it calls getChipID_802A54E on the chip's\
+  \ id and splits it:\n  - bits >>9 become the element code (r1)\n  - low byte becomes a chip-id discriminator (r0,\
+  \ after the masked shift)\nSkips chips for which chipIDIs13f_8029FF4 returns true. Writes back into r5:\n  - [r5+0xA]\
+  \ = element code if it falls in range \"0x1B-0x1C\" (else left at 0)\n  - [r5+9]   = element-code candidate from\
+  \ the 0x1A-family classifier (initialised to 0x1A,\n               overwritten with the first non-0x1A code, or\
+  \ set to 0xFF if two different\n               codes are seen)\n  - [r5+0x20] = u16 sentinel built from r0 (low-byte\
+  \ chip id): -1 sentinel until the first\n               chip sets r6 to its low byte; matching low bytes leave\
+  \ it, mismatches set\n               it to -2. Initial value is \"0:\" style sentinel -1 (no match).\nr4 is the\
+  \ per-chip offset counter (starts at 0x48, increments by 1). r3 is the loop counter\nread from [r5+8]. All loop\
   \ branches and sentinels are derived purely from the decoded\nchip id, no other r5 fields are touched.\n"
 evidence:
 - method: readable-c
@@ -26,16 +25,15 @@ evidence:
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm03_0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 59' --file inbox_farm_59.c
-    sub_8028E4C
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 59' --file inbox_farm_59.c sub_8028E4C
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
   reproduce: './wf capture --function sub_8028E4C
 
     ./wf verify --function sub_8028E4C --snapshots build-snapshots'
-  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    213 out of domain (verify run convert-20261011-004616-verify-2)'
+  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 213 out
+    of domain (verify run convert-20261011-004616-verify-2)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
@@ -52,8 +50,8 @@ evidence:
   result: 16/16 routes identical (verify run convert-20261011-004616-verify-2)
 - method: coverage
   date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2,
-    story4, story5, story6, story7, story8, story9.'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
   reproduce: grep -l '^08028e4c ' tools/traces/coverage/*.prof
 changes:
 - date: '2026-10-11'
@@ -69,8 +67,16 @@ changes:
   where: bn6f 4e85acae
   tool: tools/rename_symbol.py
 - date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm03_0.c after review against the assembly (the lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code that differs from the original: after chipIDIs13f_8029FF4 the original tests the returned r0 (tst r0, r0); the readable C tests the Z flag the callee leaves, which its contract does not return and its readable version does not set, so chips are skipped or kept wrongly (CPU oracle of verify-20261011-170143: [r5+0xA] port 0, original 0x1b)'
+  what: 'readable C taken out of cport/src/game/asm03_0.c after review against the assembly (the lifted original
+    runs again); status confirmed -> probable, as the checks that confirmed it ran code that differs from the original:
+    after chipIDIs13f_8029FF4 the original tests the returned r0 (tst r0, r0); the readable C tests the Z flag the
+    callee leaves, which its contract does not return and its readable version does not set, so chips are skipped
+    or kept wrongly (CPU oracle of verify-20261011-170143: [r5+0xA] port 0, original 0x1b)'
   tool: review (Claude, workstream J)
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f bce1cfe1
+  tool: tools/symdoc.py
 coverage:
 - battle
 - battles1
@@ -89,8 +95,8 @@ coverage:
 - story8
 - story9
 open_questions:
-- Exact meaning of the "0x1B-0x1C" and "0x1A" element-code ranges (which in-game elements they correspond
-  to, e.g. Null/Elementless vs. specific elements).
+- Exact meaning of the "0x1B-0x1C" and "0x1A" element-code ranges (which in-game elements they correspond to, e.g.
+  Null/Elementless vs. specific elements).
 - Which struct type r5 points to (battle chip-tray / folder / cursor state) and what the offset 0x48 chip-index
   list represents.
 - How [r5+0xA], [r5+9] and [r5+0x20] are consumed downstream (UI highlight? valid-battle guard?).

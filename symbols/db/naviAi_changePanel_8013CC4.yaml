@@ -9,18 +9,17 @@ interface: 'void sub_8013CC4(u32 obj, u32 param, /* via r5 */ u32 battleObject);
   // clobbers r0-r3, r4-r7, r10, lr; flags NZCV
 
   '
-details: "Reads the battle object's AI data; only acts when actor_type == 2\n(i.e. a Navi-controlled battle\
-  \ object). Uses two stat-byte lookups on\nthe Navi via GetBattleNaviStatsByte_AllianceFromBattleObject:\n\
-  \  - stat 0x13: probability gate (a value of 0 disables the behavior)\n  - stat 0x12: target panel type\
-  \ to apply\nRolls (RNG & 7) and skips if the roll exceeds (prob - 1).\nLooks up the panel under (obj,param)\
-  \ via object_getPanelDataOffset;\nbails out if the current panel type is 0 (empty) or 1 (normal).\n\
-  Then dispatches by desired new type:\n  - new_type == 1 -> object_breakPanel_dup2 (break the panel)\n\
-  \  - new_type == 3 -> object_crackPanelDup1 (crack the panel)\n  - otherwise     -> object_setPanelType(obj,param,new_type)\n\
-  If the type actually changed and the per-new-type entry in\nPanelChangeSfxTable (at byte_8013D44, 16\
-  \ halfwords indexed by\nnew_type*2) is non-zero, plays it via PlaySoundEffect. Notable SFX\nids visible:\
-  \ 0x0090 (idx 4), 0x00A4 (idx 6), 0x011B/0x0118/0x011C/\n0x01FC (idx 8..11), 0x00FC (idx 12..15). No\
-  \ SFX for new types 0..3\nand 5/7. r5 (battle object) is preserved across the call; r0/r1\n(obj + param)\
-  \ flow through unchanged.\n"
+details: "Reads the battle object's AI data; only acts when actor_type == 2\n(i.e. a Navi-controlled battle object).\
+  \ Uses two stat-byte lookups on\nthe Navi via GetBattleNaviStatsByte_AllianceFromBattleObject:\n  - stat 0x13:\
+  \ probability gate (a value of 0 disables the behavior)\n  - stat 0x12: target panel type to apply\nRolls (RNG\
+  \ & 7) and skips if the roll exceeds (prob - 1).\nLooks up the panel under (obj,param) via object_getPanelDataOffset;\n\
+  bails out if the current panel type is 0 (empty) or 1 (normal).\nThen dispatches by desired new type:\n  - new_type\
+  \ == 1 -> object_breakPanel_dup2 (break the panel)\n  - new_type == 3 -> object_crackPanelDup1 (crack the panel)\n\
+  \  - otherwise     -> object_setPanelType(obj,param,new_type)\nIf the type actually changed and the per-new-type\
+  \ entry in\nPanelChangeSfxTable (at byte_8013D44, 16 halfwords indexed by\nnew_type*2) is non-zero, plays it via\
+  \ PlaySoundEffect. Notable SFX\nids visible: 0x0090 (idx 4), 0x00A4 (idx 6), 0x011B/0x0118/0x011C/\n0x01FC (idx\
+  \ 8..11), 0x00FC (idx 12..15). No SFX for new types 0..3\nand 5/7. r5 (battle object) is preserved across the\
+  \ call; r0/r1\n(obj + param) flow through unchanged.\n"
 evidence:
 - method: readable-c
   date: '2026-10-11'
@@ -28,16 +27,15 @@ evidence:
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm00_2_8012BA2.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c
-    sub_8013CC4
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 61' --file inbox_farm_61.c sub_8013CC4
 - method: difftest
   date: '2026-10-11'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
   reproduce: './wf capture --function sub_8013CC4
 
     ./wf verify --function sub_8013CC4 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    300 out of domain (verify run convert-20261011-005019-verify-3)'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261011-005019-verify-3)'
 - method: cpu-oracle
   date: '2026-10-11'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
@@ -54,8 +52,8 @@ evidence:
   result: 16/16 routes identical (verify run convert-20261011-005019-verify-3)
 - method: coverage
   date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
-    story4, story5, story6, story7, story8, story9.'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9.'
   reproduce: grep -l '^08013cc4 ' tools/traces/coverage/*.prof
 changes:
 - date: '2026-10-11'
@@ -63,12 +61,12 @@ changes:
   where: recomp 1a91c64
   tool: tools/wf convert (minimax/MiniMax-M3)
 - date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm00_2_8012BA2.c after review against the assembly (the
-    lifted original runs again); status confirmed -> probable, as the checks that confirmed it ran code
-    that differs from the original: The sound-effect table was copied wrongly. Asm: `add r1, r4, r4; ldrh
-    r0, [r0,r1]` reads halfword index new_type from byte_8013D44 (.byte 0,0,0,0,0,0,0,0,0x90,0,0xA4,0,0x1B,1,0x18,1,0x1C,1,0xFC,0,...).
-    So the halfwords are [0..3]=0, [4]=0x90, [5]=0xA4, [6]=0x11B, [7]=0x118, [8]=0x11C, [9..12]=0xFC (13
-    entries). C PanelChangeSfxTable has [4]=0x90, [5]=0, [6]=0xA4, [7]=0, [8]=0x11B, [9]=0x118, [10]=...'
+  what: 'readable C taken out of cport/src/game/asm00_2_8012BA2.c after review against the assembly (the lifted
+    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that differs from
+    the original: The sound-effect table was copied wrongly. Asm: `add r1, r4, r4; ldrh r0, [r0,r1]` reads halfword
+    index new_type from byte_8013D44 (.byte 0,0,0,0,0,0,0,0,0x90,0,0xA4,0,0x1B,1,0x18,1,0x1C,1,0xFC,0,...). So the
+    halfwords are [0..3]=0, [4]=0x90, [5]=0xA4, [6]=0x11B, [7]=0x118, [8]=0x11C, [9..12]=0xFC (13 entries). C PanelChangeSfxTable
+    has [4]=0x90, [5]=0, [6]=0xA4, [7]=0, [8]=0x11B, [9]=0x118, [10]=...'
   tool: review (Claude, workstream J)
 - date: '2026-10-11'
   what: doc comment (symdb block) at the definition
@@ -78,6 +76,10 @@ changes:
   what: rename sub_8013CC4 -> naviAi_changePanel_8013CC4
   where: bn6f 4e85acae
   tool: tools/rename_symbol.py
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f bce1cfe1
+  tool: tools/symdoc.py
 coverage:
 - battle
 - battles1
@@ -95,12 +97,12 @@ coverage:
 - story8
 - story9
 open_questions:
-- What stat 0x12 actually represents (panel-type code? element? team color?) -- its meaning is opaque
-  from this function alone.
-- Whether sub_8013CC4 is called once per step or per chip/cust -- callers all pass obj/param via r0/r1
-  but the call-site context hasn't been examined.
-- 'The exact meaning of actor_type == 2: confirmed-Navi filter, but which byte/struct (oBattleObject_AIDataPtr
-  + oAIData_ActorType) and whether other actor_type values deserve their own variants.'
+- What stat 0x12 actually represents (panel-type code? element? team color?) -- its meaning is opaque from this
+  function alone.
+- Whether sub_8013CC4 is called once per step or per chip/cust -- callers all pass obj/param via r0/r1 but the call-site
+  context hasn't been examined.
+- 'The exact meaning of actor_type == 2: confirmed-Navi filter, but which byte/struct (oBattleObject_AIDataPtr +
+  oAIData_ActorType) and whether other actor_type values deserve their own variants.'
 sources:
 - tools/wf run convert-20261011-005019
 - recomp 1a91c64

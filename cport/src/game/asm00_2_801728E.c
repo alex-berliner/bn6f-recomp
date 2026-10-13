@@ -426,7 +426,7 @@ Next sub_8017A38(void) {
 Next GetVerActorTyAndAIIdx_80182B4(void) {
     u32 enemy_idx = R0;
     u32 offset = enemy_idx * 3;
-    u32 result = (u32)A_byte_80182C4 + offset;
+    u32 result = (u32)A_EnemyVerActorTyAndAIIdxTable + offset;
 
     /* Match the original's flag-setting: ADD computes flags on the
      * (base << 0) + (offset << 0) operation. */

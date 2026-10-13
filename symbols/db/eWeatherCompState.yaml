@@ -1,0 +1,66 @@
+name: eWeatherCompState
+address: '0x02000310'
+kind: ram
+previous_names:
+- unk_2000310
+status: probable
+summary: 'Mr. Weather comp puzzle state (0x60 bytes): reset routine, trigger index, the tornadoes'' saved
+  state (they rebuild from it on a map reload).'
+details: 'Fields: +0x02 step of the reset routine weatherComp_putPlayerBack_808F810; +0x06 (u16) count
+  of map objects 0x1D spawned by weatherComp_spawnObject1DNearPlayer_80900C8 near MegaMan; +0x0E trigger
+  index (code - 0x70 or - 0x60, weatherComp_checkTrigger70_8090004 / weatherComp_checkTrigger60_8090020);
+  +0x0F / +0x10 animation and facing the reset gives MegaMan; +0x12 / +0x14 (u16) the point the reset
+  puts MegaMan back at; +0x16 (byte) starts at 3 and is decremented by weatherComp_pickScript_8090104
+  each time flag 0xBE6 (tornado hit) is seen, the palette index +0x1C = 3 - it; +0x19+i the direction
+  before last (owMapObject_weatherTornado_repickDirection_80A90E4); +0x28.. +0x47 the tornadoes'' saved
+  state (above).'
+evidence:
+- method: runtime
+  date: '2026-10-13'
+  detail: 'One-off emulator probe: +0x06 rises by 1 every 6 frames while MegaMan''s rainbow-orb trail
+    grows (0x08 -> 0x10); the run''s loss at 432736 is the frame it reaches 0x10.'
+  reproduce: 'python3 ~/Code/vidsync/scripts/probes/trig.py RESULT STATE G   # on the PC with the vidsync
+    data: RESULT/STATE from ~/Code/vidsync/data/auto/, wrapper like ~/Code/vidsync/scripts/probes/fcmpj.sh;
+    see ~/Code/vidsync/SYMBOL_DOSSIER.md'
+- method: runtime
+  date: '2026-10-13'
+  detail: 'One-off emulator probe: +0x40/+0x46 hold tornado 0''s X/Y; writing +0x38 does not change the
+    tornado.'
+  reproduce: 'python3 ~/Code/vidsync/scripts/probes/dump300.py RESULT STATE G   # on the PC with the vidsync
+    data: RESULT/STATE from ~/Code/vidsync/data/auto/, wrapper like ~/Code/vidsync/scripts/probes/fcmpj.sh;
+    see ~/Code/vidsync/SYMBOL_DOSSIER.md'
+- method: assembly-reading
+  date: '2026-10-13'
+  detail: 'weatherComp_init_808FDC0 zero-fills 0x60 bytes here while flag 0xBFB is clear and sets +4 =
+    0xFF, +0x20 = 0xFF (word), +8 = 1, +0x16 = 3. The tornado (owMapObject_weatherTornado_80A8E74, r6
+    = this block) saves its state every active frame (owMapObject_weatherTornado_saveState_80A9218) and
+    restores it on init when flag 0xBFB is set (owMapObject_weatherTornado_restoreState_80A9268), per
+    instance i: +0x28+i mode, +0x31+i direction, +0x37+i move countdown, +0x3A+i pause countdown, +0x3D+i
+    moves since the last pause, +0x40+2i / +0x46+2i X / Y (s16 pixels). That explains the probe: +0x38
+    is tornado 1''s saved move countdown, a copy only read on a reload, and +0x40/+0x46 are tornado 0''s
+    current X/Y.'
+  reproduce: grep -n -A50 '^owMapObject_weatherTornado_saveState_80A9218:' bn6f/asm/asm29.s; grep -n -A30
+    '^weatherComp_init_808FDC0:' bn6f/asm/asm25.s
+related:
+- owMapObject_weatherTornado_80A8E74
+- weatherComp_init_808FDC0
+- weatherComp_putPlayerBack_808F810
+- weatherComp_pickScript_8090104
+open_questions:
+- Fields +0x04, +0x08, +0x16, +0x20 and +0x31.. are set or used but their meaning in the puzzle is not
+  understood (dossier section 4; not worked on).
+- 'The comp outcome at game frame 432736 (rainbow meter empties and the view moves in the video, not in
+  the run): likely weatherComp_putPlayerBack_808F810 or a sibling started from weatherComp_pickScript_8090104''s
+  other branches (sub_80902DC, sub_808FF8C); open (dossier section 4).'
+sources:
+- vidsync ~/Code/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
+- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+changes:
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f bce1cfe1
+  tool: tools/symdoc.py
+- date: '2026-10-13'
+  what: rename unk_2000310 -> eWeatherCompState
+  where: bn6f e40ea42f
+  tool: tools/rename_symbol.py
