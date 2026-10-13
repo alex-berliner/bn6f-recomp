@@ -292,7 +292,17 @@ def check(job: str, tree: str, file: str, entries: list[str], members: list[str]
             notes.append("  " + " | ".join(l.strip() for l in out.splitlines()[:6]))
     if fails:
         return fails, notes
-    pf, pn = probe(tree, file, entries, env, denv, members)
+    table_path = os.path.join(tree, "build/sys/protos.json")
+    if os.path.exists(table_path) and read().get(job, {}).get("mode") == "chunked":
+        path = os.path.join(tree, "cport/src/game", file)
+        code = open(path).read()
+        extra, names = adapters_from_protos(json.load(open(table_path)), [m for m in members if m not in entries])
+        pf, note = probe_names(tree, path, code, extra, names, env, denv)
+        sh(f"python3 tools/lifter/lift.py --bn6f {MAIN}/bn6f --out cport/src/lifted --inc cport/include "
+           f"--overrides cport/src/game", tree, env=env, timeout=1800)
+        pn = [note]
+    else:
+        pf, pn = probe(tree, file, entries, env, denv, members)
     notes += pn
     if pf:
         return pf, notes
@@ -732,6 +742,221 @@ def finish(name: str, tree: str, file: str, members: list[str], entries: list[st
     log(name, "verified")
 
 
+CHUNK_SIZE, CHUNK_ROUNDS = 10, 3
+REPAIR_CHUNK = """
+## Your previous answer for these functions, and what the checks found
+{problems}
+
+Answer again with these functions only (complete, corrected), in one ```c block:
+```c
+{code}```
+"""
+
+
+def callees_first(members: list[str], g: dict) -> list[str]:
+    inside = set(members)
+    calls: dict[str, list[str]] = {m: [] for m in members}
+    for site in g["sites"]:
+        if site["caller"] in inside and site.get("target") in inside and site["target"] != site["caller"]:
+            calls[site["caller"]].append(site["target"])
+    for e in g["edges"]:
+        if e.get("site_unit") in inside and e.get("target") in inside and e["target"] != e["site_unit"]:
+            calls[e["site_unit"]].append(e["target"])
+    order, seen = [], set()
+
+    def visit(m: str, stack: set[str]) -> None:
+        if m in seen or m in stack:
+            return
+        stack.add(m)
+        for c in calls[m]:
+            visit(c, stack)
+        stack.discard(m)
+        seen.add(m)
+        order.append(m)
+    for m in sorted(members, key=lambda x: g["entries"][x]["addr"]):
+        visit(m, set())
+    return order
+
+
+def adapters_from_protos(table: dict, names: list[str]) -> tuple[str, list[str]]:
+    """Probe adapters (DIFFTEST only) built from the tool's own prototypes: no guessing."""
+    out, done = [], []
+    for game in names:
+        t = table.get(game)
+        if not t:
+            continue
+        pre, args, post = [], [], []
+        for q in t["params"]:
+            reg, ty = q["reg"].upper(), q["type"]
+            val = f"G({ty[:-1].strip().replace('const ', '')}, {reg})" if ty.endswith("*") else f"({ty}){reg}"
+            if q["io"]:
+                pre.append(f"{ty} v_{reg} = {val};")
+                args.append(f"&v_{reg}")
+                post.append(f"{reg} = (u32)(uintptr_t)v_{reg};" if ty.endswith("*") else f"{reg} = (u32)v_{reg};")
+            else:
+                args.append(val)
+        call = f"{t['cname']}({', '.join(args)})"
+        rt, r = t["ret"]["type"], t["ret"]["reg"]
+        if r in ("r0",) and rt not in ("void", "U32Pair"):
+            call = f"R0 = (u32)(uintptr_t){call}" if rt.endswith("*") else f"R0 = (u32){call}"
+            RESULTS[game] = ["r0"]
+        elif rt == "U32Pair":
+            call = f"U32Pair p_ = {call}; R0 = p_.r0; R1 = p_.r1"
+            RESULTS[game] = ["r0", "r1"]
+        RESULTS.setdefault(game, [])
+        RESULTS[game] = RESULTS[game] + [q["reg"] for q in t["params"] if q["io"]]
+        out.append(f"Next {game}(void) {{ {' '.join(pre)} {call}; {' '.join(post)} RETURN_TO_CALLER(); }}")
+        done.append(game)
+    return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n", done
+
+
+def probe_names(tree: str, path: str, code: str, extra: str, names: list[str], env: dict, denv: dict) -> tuple[list[str], str]:
+    """The probe on given adapters (see probe())."""
+    names = [n for n in names if os.path.isdir(os.path.join(tree, "build-snapshots", n))]
+    if not names:
+        return [], "probe: none of them has captured calls"
+    open(path, "w").write(code + extra)
+    try:
+        rc, out = sh(f"python3 tools/lifter/lift.py --bn6f {MAIN}/bn6f --out cport/src/lifted --inc cport/include "
+                     f"--overrides cport/src/game && nice make -C cport/host BUILD=build-probe-host -j12", tree,
+                     env=env, timeout=5400)
+        if rc:
+            lines = [l for l in out.splitlines() if "error" in l.lower() or "override" in l]
+            return ["the probe build failed:\n" + "\n".join((lines or out.splitlines())[-15:])], "probe: no build"
+        diff = os.path.join(tree, "cport/host/build-probe-host/difftest")
+        bad = []
+        for n in names:
+            rc, out = sh([diff, "-S", os.path.join(tree, "build-snapshots", n), n], os.path.join(tree, "cport"),
+                         env=denv, timeout=1800)
+            lines = out.splitlines()
+            real = [l.strip() for l in lines if re.search(r"trial \d+: (guest memory|return target|SP) differs", l)]
+            for i, l in enumerate(lines):
+                if re.search(r"trial \d+: register differs", l):
+                    regs = [re.match(r"\s+(r\d+): lifted", x) for x in lines[i + 1:i + 4]]
+                    if any(r and r.group(1) in RESULTS.get(n, []) for r in regs):
+                        real.append(l.strip() + " (its result or an in/out register)")
+            if real:
+                detail = [l.strip() for l in lines if "first diff" in l or "differs" in l or re.match(r"\s+r\d+: lifted", l)
+                          or "inputs:" in l][:8]
+                bad.append(f"{n}: {len(real)} of its captured calls end differently from the original: " + " | ".join(detail))
+        return ([f"Functions that do not do what their assembly does (each run alone from the original game's "
+                 f"captured calls of it, against its lifted original; `lifted` is the original's value, `hand` "
+                 f"yours):\n" + "\n".join(bad)] if bad else []), f"probe: {len(names) - len(bad)}/{len(names)} match"
+    finally:
+        open(path, "w").write(code)
+
+
+def static_checks(tree: str, rel: str) -> list[str]:
+    """Compile (a prototype not yet defined is fine) and lint, reported together."""
+    cport = os.path.join(tree, "cport")
+    rc, out = sh(["gcc", "-O1", "-c", "-DTARGET_FLAT", "-DDIFFTEST", "-Iinclude", "-Ihost", "-fno-strict-aliasing",
+                  "-Werror=implicit-function-declaration", "-Werror=return-type", "-Werror=int-conversion",
+                  "-Werror=incompatible-pointer-types", "-Werror=overflow", "-Werror=int-to-pointer-cast",
+                  "-Wall", "-Wno-unused-function", "-Wno-unused-variable", "-o", "/dev/null", rel], cport)
+    fails = []
+    if rc or re.search(r"\berror\b", out):
+        hints = [h for k, h in HINTS.items() if k in out]
+        fails.append("compile, with gcc's source lines:\n" + "\n".join(out.splitlines()[:50]) + ("\n" + "\n".join(hints) if hints else ""))
+    r = subprocess.run([sys.executable, "tools/abi/lint.py", f"cport/{rel}"], cwd=tree, capture_output=True, text=True)
+    try:
+        lint = json.loads(r.stdout)
+        src = open(os.path.join(cport, rel)).read().splitlines()
+        bad = [f"{x['name']}" + (" (a `Next` adapter that does work itself: move the work into its typed function)"
+                                 if x["kind"] == "next" else "") + ": " + "; ".join(
+                   f"line {ln}: {src[ln - 1].strip()}" for ln in sorted({n for v in x["lines"].values() for n in v})[:4])
+               for xs in lint["files"].values() for x in xs if x["violation"]]
+    except (ValueError, KeyError, IndexError):
+        bad = []
+    if bad:
+        fails.append("register-level code (R0..R12, GUEST_CALL, flags) outside the generated wrappers and the entry "
+                     "adapters; everything else must be typed C (call the wrappers):\n" + "\n".join(bad[:15]))
+    return fails
+
+
+def run_job_chunked(name: str) -> None:
+    job = read()[name]
+    update(name, state="converting", began=job.get("began") or now(), mode="chunked")
+    tree = worktree(name)
+    members, entries, skip, g = members_of(name, tree)
+    file, sl = job["file"], slug(name)
+    base = os.path.join(tree, "build/sys")
+    os.makedirs(base, exist_ok=True)
+    pre_path, protos_path = os.path.join(base, "preamble.c"), os.path.join(base, "protos.json")
+    folds = FOLDS.get(name, [])
+    common = [sys.executable, os.path.join(ROOT, "tools/sig/subsys_prompt.py"), name, "--file", file, "--skip", *skip,
+              "--entries", *entries, "--fold", *folds, "--preamble", pre_path, "--protos-json", protos_path]
+    rc, out = sh(common + ["--only", members[0]], tree)
+    if rc:
+        update(name, state="failed", verdict=f"prompt: {out[-300:]}")
+        return
+    table = json.load(open(protos_path))
+    pre = open(pre_path).read()
+    removed = remove_parts(tree, set(members) | {n for n, e in g["entries"].items() if e["unit"] in members})
+    order = [m for m in callees_first(members, g) if m not in folds]
+    chunks = [order[i:i + CHUNK_SIZE] for i in range(0, len(order), CHUNK_SIZE)]
+    log(name, f"chunked: {len(order)} functions in {len(chunks)} chunks; entries {entries}; took out {len(removed)} parts")
+    update(name, members=len(members), entries=entries, skipped=skip, chunks=len(chunks))
+    env = {"PATH": f"{MAIN}/toolchain/bin:{os.environ['PATH']}"}
+    denv = {"BN6F_ROM": f"{MAIN}/bn6f/bn6f.gba"}
+    path = os.path.join(tree, "cport/src/game", file)
+    body_path = os.path.join(base, "body.c")
+    body = open(body_path).read() if os.path.exists(body_path) and job.get("resume") else ""
+    done = set(job.get("chunks_done", [])) if job.get("resume") else set()
+    route = [m for m in job["route"] if m not in job.get("tried", [])]
+    for k, chunk in enumerate(chunks):
+        if str(k) in done:
+            continue
+        with_folds = chunk + [f for f in folds if any(c["caller"] in chunk for c in g["sites"] if c.get("target") == f)]
+        rc, prompt = sh(common + ["--only", *with_folds], tree)
+        passed = False
+        for model in route:
+            feedback, code = None, ""
+            for rnd in range(CHUNK_ROUNDS + 1):
+                text = prompt if not feedback else prompt + REPAIR_CHUNK.format(
+                    problems="\n".join(f"{i + 1}. {p}" for i, p in enumerate(feedback)), code=code)
+                pp = os.path.join(base, f"chunk{k}-{model.split('/')[-1]}-{rnd}.txt")
+                open(pp, "w").write(text)
+                ok, msg = model_call(model, pp, pp[:-4] + ".c", f"sys {sl} {model} c{k} r{rnd}")
+                update(name, rounds=read()[name].get("rounds", 0) + 1, spent=tokens(f"sys {sl} "))
+                if not ok:
+                    log(name, f"chunk {k} {model} round {rnd}: no answer ({msg[-120:]})")
+                    break
+                code = assemble(pre, open(pp[:-4] + ".c").read())[len(pre):].strip("\n") + "\n"
+                code = PROTO.sub(lambda m: "" if m.group(1) in {t["cname"] for t in table.values()} else m.group(0), code)
+                cur = pre + body + "\n" + code
+                open(path, "w").write(cur)
+                fails = static_checks(tree, f"src/game/{file}")
+                note = ""
+                if not fails:
+                    extra, names = adapters_from_protos(table, [n for n in chunk if n not in entries])
+                    pf, note = probe_names(tree, path, cur, extra, names, env, denv)
+                    fails += pf
+                log(name, f"chunk {k} ({len(chunk)}) {model} round {rnd}: {'pass' if not fails else 'fail: ' + fails[0][:160]} {note}")
+                if not fails:
+                    passed = True
+                    break
+                feedback = fails
+            if passed:
+                break
+        if not passed:
+            update(name, state="failed", verdict=f"chunk {k} did not pass with any model of its route")
+            return
+        body += "\n" + code
+        open(body_path, "w").write(body)
+        done.add(str(k))
+        update(name, chunks_done=sorted(done))
+    # the whole file, once: build, entry difftest, probe of everything, lockstep, oracle
+    open(path, "w").write(pre + body)
+    update(name, state="checking")
+    fails, notes = check(name, tree, file, entries, members)
+    log(name, f"whole file: {'pass' if not fails else 'fail: ' + fails[0][:300]}")
+    log(name, "  notes: " + " | ".join(notes)[:1500])
+    if fails:
+        update(name, state="failed", verdict="whole file: " + fails[0][:300], whole_file_failures=fails)
+        return
+    finish(name, tree, file, members, entries, route[0], notes)
+
+
 def run(a) -> None:
     deadline = time.time() + a.hours * 3600
     def todo():
@@ -744,7 +969,7 @@ def run(a) -> None:
                     break
                 if n not in futures.values():
                     update(n, state="converting")
-                    futures[ex.submit(run_job, n)] = n
+                    futures[ex.submit(run_job_chunked if a.chunked else run_job, n)] = n
             if not futures:
                 break
             done, _ = cf.wait(futures, timeout=60, return_when=cf.FIRST_COMPLETED)
@@ -790,6 +1015,7 @@ def main() -> None:
     r.add_argument("--workers", type=int, default=2)
     r.add_argument("--only", nargs="*")
     r.add_argument("--hours", type=float, default=24)
+    r.add_argument("--chunked", action="store_true", help="about 10 functions a request, callees first")
     sub.add_parser("status")
     i = sub.add_parser("install")
     i.add_argument("name")

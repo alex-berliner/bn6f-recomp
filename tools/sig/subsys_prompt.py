@@ -120,6 +120,62 @@ def bounds_of(name: str) -> dict:
     return _BOUNDS.get(name, {}).get("final", {})
 
 
+def snake(name: str) -> str:
+    base = re.sub(r"_[0-9A-Fa-f]{7}$", "", name)
+    base = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", base).lower()
+    return re.sub(r"_+", "_", base)
+
+
+def prototypes(members: list[str], sigs: dict, local: set[str], taken: set[str], entries: dict | None = None) -> dict:
+    """The C function of each member: a name (the game's in snake case, its address kept where needed),
+    parameters from the signature (a register its callers read back after the call, e.g. a script
+    cursor it advances, becomes an in/out pointer), the result."""
+    out, used = {}, set()
+    for n in members:
+        cname = snake(n)
+        if cname in taken or cname in used or cname == n:
+            cname = snake(n) + "_" + n[-7:].lower() if re.search(r"_[0-9A-Fa-f]{7}$", n) else snake(n) + "_c"
+        while cname in taken or cname in used:
+            cname += "_c"
+        used.add(cname)
+        ps, ret = chosen(sigs[n])
+        e = (entries or {}).get(n, {})
+        # a register callers read back that the function changes (not one it restores): in/out
+        keep = set(sigs[n].get("keep") or []) - set(e.get("preserved") or [])
+        params = []
+        for p in ps:
+            if p["reg"] in ("r8", "r9", "r10", "r11", "r12"):
+                continue          # high registers pass through the guest; C code never provides them
+            t = ctype(p.get("type") or "u32", local)
+            nm = p.get("name") or p["reg"]
+            if re.fullmatch(r"r\d+", nm):
+                m = re.fullmatch(r"(?:const\s+)?(\w+)\s*\*", t)
+                nm = "self" if m and m.group(1) in local and p["reg"] == "r5" else f"arg_{p['reg']}"
+            io = p["reg"] in keep
+            params.append({"reg": p["reg"], "type": t, "name": nm, "io": io})
+        r = (ret or {}).get("reg", "none")
+        rt = {"none": "void", "r0:r1": "U32Pair"}.get(r, "bool" if r.startswith("flag:") else ctype(ret.get("type") or "u32", local))
+        if rt.startswith("u64"):
+            rt = "U32Pair"
+        args = ", ".join((f"{q['type']}{'' if q['type'].endswith('*') else ' '}*{q['name']}" if q["io"]
+                          else f"{q['type']}{'' if q['type'].endswith('*') else ' '}{q['name']}") for q in params) or "void"
+        out[n] = {"cname": cname, "params": params, "ret": {"reg": r, "type": rt},
+                  "decl": f"static {rt} {cname}({args})"}
+    return out
+
+
+CHUNK = """
+## This request: some of the functions
+The tool has fixed every function's C name and prototype (in the start of the file above): use them exactly,
+and call the other functions of the subsystem by those names. An in/out parameter (`T *p` where the
+signature has a plain value) is a register the original updates for its caller, e.g. a script cursor it
+advances: read it with `*p` and store the new value back. Write ONLY these functions, each complete with a
+one-line comment naming the game function and saying what it does in game terms, plus the `Next` adapter of
+each one that is an ENTRY POINT: {names}. The others are written in other requests (callees first).
+Answer with those definitions in one ```c block, nothing else.
+"""
+
+
 def part_of(name: str) -> str | None:
     for p in glob.glob(os.path.join(ROOT, "cport/src/game/*.c")):
         text = open(p).read()
@@ -148,6 +204,9 @@ def main() -> None:
     ap.add_argument("--no-readable", action="store_true", help="leave out today's readable C (repair prompts)")
     ap.add_argument("--preamble", help="write the file's start (includes, structs, wrappers) here; the model "
                     "writes only what follows")
+    ap.add_argument("--only", nargs="*", help="chunk mode: write the blocks of these functions only")
+    ap.add_argument("--protos-json", help="chunk mode: the tool's prototypes of every member (written here, and "
+                    "into the preamble)")
     ap.add_argument("--fold", nargs="*", default=[], help="members that return to their caller's caller (they pop "
                     "the caller's frame): written inside their caller's C function, never called on their own")
     a = ap.parse_args()
@@ -197,9 +256,15 @@ def main() -> None:
     out = [PROMPT_HEAD.format(file=a.file, n=len(members), subsystem=a.subsystem,
                               entries=", ".join(entries), extra=extra)]
     structs_c = "\n".join(struct_block(s) for s in sorted(own_structs))
+    proto_c = ""
+    if a.protos_json:
+        table = prototypes([m for m in members if m not in a.fold], sigs, own_structs, set(g["entries"]), g["entries"])
+        json.dump(table, open(a.protos_json, "w"), indent=1)
+        proto_c = ("/* the subsystem's own functions (prototypes by the tool, tools/sig/subsys_prompt.py) */\n"
+                   + "\n".join(f"{t['decl']};   /* {n} */" for n, t in table.items()) + "\n")
     if a.preamble:
         pre = (f"#include <stddef.h>\n#include <stdint.h>\n#include \"game.h\"\n\n"
-               f"#define G(T, addr) ((T *)(uintptr_t)(u32)(addr))\n\n{structs_c}\n{wrappers}\n"
+               f"#define G(T, addr) ((T *)(uintptr_t)(u32)(addr))\n\n{structs_c}\n{wrappers}\n{proto_c}\n"
                f"/* ── {a.subsystem}: the subsystem's own code ── */\n")
         open(a.preamble, "w").write(pre)
         out.append("## The start of the file, written by the tool: the includes, the struct types and the generated "
@@ -209,8 +274,10 @@ def main() -> None:
         out.append("## Struct types (copy these into the file as they are)\n```c\n" + structs_c + "```\n")
         out.append("## Generated wrappers of the functions it calls outside the subsystem (copy these as they are)\n"
                    "```c\n" + wrappers + "```\n")
+    if a.only:
+        out.append(CHUNK.format(names=", ".join(table[n]["cname"] if a.protos_json and n in table else n for n in a.only)))
     out.append("## The functions\n")
-    for n in members:
+    for n in (a.only or members):
         s = sigs[n]
         ps, ret = chosen(s)
         sig = ", ".join(f"{p.get('type')} {p.get('name')} ({p.get('reg')})" for p in ps) or "none"
@@ -223,8 +290,8 @@ def main() -> None:
                f"its caller's caller. Write its code inside the C function of its caller "
                f"({', '.join(sorted(set(c['caller'] for c in g['sites'] if c.get('target') == n)))}): where it returns, "
                f"the caller returns. It has no C function or wrapper of its own.\n" if n in a.fold else "")
-            + 
-            f"signature ({s['confidence']}, {s.get('decided_by', '-')}): args {sig}; result "
+            + (f"its C function (fixed by the tool): `{table[n]['decl']}`\n" if a.protos_json and n in table else "")
+            + f"signature ({s['confidence']}, {s.get('decided_by', '-')}): args {sig}; result "
             f"{ret.get('reg', 'none')} {ret.get('type', '')}\n"
             f"contract: inputs {' '.join(e.get('inputs_final', []))}; outputs {' '.join(e.get('outputs_final', [])) or '-'}; "
             f"preserved {' '.join(e.get('preserved', [])) or '-'}\n"
