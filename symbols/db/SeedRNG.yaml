@@ -4,10 +4,12 @@ kind: function
 status: confirmed
 summary: Resets the primary RNG seed variable to its fixed initial value 0xA338244F.
 interface: void SeedRNG(void)
-details: Writes the constant 0xA338244F into the 32-bit primary RNG seed variable (ePrimaryRngSeed), presumably
-  at boot or when a seeded run starts, so the game's random sequence begins from a known state. Only touches that
-  one global; no other state, no stack use, and it returns via mov pc, lr. The seed value likely feeds the game's
-  RNG update routine elsewhere.
+details: 'Writes the constant 0xA338244F into the 32-bit primary RNG seed variable (ePrimaryRngSeed),
+  presumably at boot or when a seeded run starts, so the game''s random sequence begins from a known state.
+  Only touches that one global; no other state, no stack use, and it returns via mov pc, lr. The seed
+  value likely feeds the game''s RNG update routine elsewhere. Callers: main calls it once at boot; on
+  a save load, loc_803F870''s branch (asm03_1_1.s) calls it only when the save checksum or timestamp check
+  fails, so a good restore keeps the saved seed.'
 evidence:
 - method: readable-c
   date: '2026-10-09'
@@ -15,15 +17,16 @@ evidence:
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm00_0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 9' --file leaves_farm_9.c SeedRNG
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 9' --file leaves_farm_9.c
+    SeedRNG
 - method: difftest
   date: '2026-10-09'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
   reproduce: './wf capture --function SeedRNG
 
     ./wf verify --function SeedRNG --snapshots build-snapshots'
-  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
-    domain (verify run convert-20261009-010742-verify-7)'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261009-010742-verify-7)'
 - method: cpu-oracle
   date: '2026-10-09'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
@@ -42,6 +45,15 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story1, story2, story3, wander.'
   reproduce: grep -l '^08001514 ' tools/traces/coverage/*.prof
+- method: assembly-reading
+  date: '2026-10-13'
+  detail: 'BN6F_SYMBOLS.md section 1: boot call from main confirmed; on load it runs only from the save-checksum/timestamp-fail
+    branch at loc_803F870.'
+  refs:
+  - bn6f/asm/main.s
+  - bn6f/asm/asm03_1_1.s
+  - docs/vidsync/BN6F_SYMBOLS.md
+  reproduce: grep -n 'bl SeedRNG' bn6f/asm/main.s bn6f/asm/asm03_1_1.s
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_9.c
@@ -52,7 +64,8 @@ changes:
   where: bn6f 220cf4fd
   tool: tools/symdoc.py
 - date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_9.c to cport/src/game/asm00_0.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
+  what: moved from cport/src/game/leaves_farm_9.c to cport/src/game/asm00_0.c by tools/layout.py (the
+    regroup of the model farm's files by bn6f source; the function's text unchanged)
   where: recomp 6836d6c
   tool: tools/layout.py
 readable_c: cport/src/game/asm00_0.c
@@ -81,8 +94,8 @@ signature:
   evidence:
   - 'contract (lifter, refined): may read nothing; result none'
   - 'liveness over the assembly and callees (tools/sig/derive.py): reads nothing'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
+  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run
+    && python3 tools/sig/ask.py merge
   derived: '2026-10-12'
 stamp:
   rom: rom:6b594c9dc873d9b2
