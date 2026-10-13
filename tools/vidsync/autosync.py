@@ -27,7 +27,11 @@ ap = argparse.ArgumentParser()
 ap.add_argument('vdir'); ap.add_argument('start'); ap.add_argument('out')
 ap.add_argument('--remote'); ap.add_argument('--workers', type=int, default=14)
 ap.add_argument('--every', type=int, default=5000)
+ap.add_argument('--until', type=int, help='stop once the sync reaches this game frame (a handler test)')
+ap.add_argument('--handlers', help='only these repair handlers, comma-separated (built-in names or handlers/ '
+                'modules), and no RNG search: a handler test from a loss checkpoint (vidsync-repair)')
 A = ap.parse_args()
+ONLY = set(A.handlers.split(',')) if A.handlers else None
 os.makedirs(A.out, exist_ok=True)
 LOG = open(os.path.join(A.out, 'auto.log'), 'a')
 def log(*a):
@@ -515,7 +519,8 @@ def try_mapobj(D):
             log(f'  map object {n} at {W}: +({best[1]}, {best[2]}) px matches the video ({best[0]:.2f}; where it is {e0:.2f})')
             if (best[1], best[2]) != (0, 0) and best[0] < e0 - 0.05 and (best_all is None or best[0] < best_all[0]):
                 spec = f'{a + 0xC:#x}={(x0 + (best[1] << 16)) & 0xFFFFFFFF:#x}/4,{a + 0x10:#x}={(y0 + (best[2] << 16)) & 0xFFFFFFFF:#x}/4'
-                # its home/target as s16 copies elsewhere (the tornado's at 0x2000350 / 0x2000356): moved with it
+                # its home/target as s16 copies elsewhere (the tornado's saved X/Y, eWeatherCompState +0x40 / +0x46):
+                # moved with it
                 b.e.load(w[1]); low = b.e.read(0x02000000, 0x2000); home = []
                 for k in range(0, 0x2000 - 8, 2):
                     if int.from_bytes(low[k:k + 2], 'little', signed=True) == x0 >> 16:
@@ -537,9 +542,9 @@ def try_mapobj(D):
 
 def try_tornado(D):
     """The Weather comp's tornado (map object 0, id 0x2000100): it stands at a place of its own and, when its
-    countdown (0x02000348, s16.16, copied at object +0x25) runs out, drifts: ours stands elsewhere and on another
-    phase than the video's. Its place matched to the video's picture 90 frames before the loss (as try_mapobj),
-    then every countdown value with it; the sync picks."""
+    countdown (object +0x24/+0x25; eWeatherCompState keeps saved copies, read only on a map reload) runs out,
+    drifts: ours stands elsewhere and on another phase than the video's. Its place matched to the video's
+    picture 90 frames before the loss (as try_mapobj), then every countdown value with it; the sync picks."""
     W = D - 90
     w = state_at(max(W, ring[0][0]))
     if w is None: return None
@@ -560,8 +565,9 @@ def try_tornado(D):
     pos = f'{MAPOBJS + 0xC:#x}={(x0 + (best[1] << 16)) & 0xFFFFFFFF:#x}/4,{MAPOBJS + 0x10:#x}={(y0 + (best[2] << 16)) & 0xFFFFFFFF:#x}/4'
     log(f'  tornado: +({best[1]}, {best[2]}) px at {W} ({best[0]:.2f})')
     w = state_at(W); ck = ck_file(w)
-    # its state (sub_80A8E74, state 4: sub_80A8F48): +9 mode (0 moving, 1 paused), +0x25 the pause left (of +0x27),
-    # +5 the direction (0..7, sub_80A9038) and +0x24 the frames to the next random one (of +0x26)
+    # its state (owMapObject_weatherTornado_80A8E74, state 4: owMapObject_weatherTornado_moveOrPause_80A8F48):
+    # +9 mode (0 moving, 1 paused), +0x25 the pause left (of +0x27), +5 the direction (0..7,
+    # owMapObject_weatherTornado_step_80A9038) and +0x24 the frames to the next random one (of +0x26)
     o = MAPOBJS
     tasks = [(ck, [[W, pos + f',{o + 9:#x}=0x1/1,{o + 0x25:#x}={t:#x}/1']], D + 300, f'P{t}') for t in range(1, 201, 3)]
     tasks += [(ck, [[W, pos + f',{o + 9:#x}=0x0/1,{o + 5:#x}={d:#x}/1,{o + 0x24:#x}={t:#x}/1']], D + 300, f'M{d}:{t}')
@@ -588,8 +594,9 @@ def try_tornado(D):
         if rf_[bf[3]][0] > res[top[3]][0]:
             top = bf; res[bf[3]] = rf_[bf[3]]; top = (bf[0], bf[1], bf[2], 'M' + f'{d0}:{int(bf[3].split(":")[2])}')
             res[top[3]] = rf_[bf[3]]
-        # caught: MegaMan's orb ring closed around it in the video (sub_80A8FA0 tests flag 0xBE9 + its index,
-        # sub_80A91D4, set elsewhere when the ring closes): with the best start, the flag set at each frame near
+        # caught: MegaMan's orb ring closed around it in the video (owMapObject_weatherTornado_caught_80A8FA0 tests
+        # flag 0xBE9 + its index, owMapObject_weatherTornado_isCaught_80A91D4, set elsewhere when the ring closes):
+        # with the best start, the flag set at each frame near
         # the loss
         fl = 0xBE9 + b.e.read(o + 4, 1)[0]; fa, fm = EVENT_FLAGS + (fl >> 3), 0x80 >> (fl & 7)
         b.e.load(w[1]); fb = b.e.read(fa, 1)[0] | fm
@@ -601,7 +608,8 @@ def try_tornado(D):
         if okc:
             t = min(okc, key=lambda t: rc[t[3]][1]); log(f'  tornado: take {t[3]} (mean cost {rc[t[3]][1]:.3f})')
             return w, t[1]
-        # it hit MegaMan in the video (sub_80A91A4: within 20 px sets flag 0xBE6; he is put back at the ring's
+        # it hit MegaMan in the video (owMapObject_weatherTornado_checkHitPlayer_80A91A4: within 20 px sets flag
+        # 0xBE6; he is put back at the ring's
         # start, the meter emptied): put on MegaMan at each frame near the loss, with and without the best start
         th_ = []
         for base in ([], list(top[1])):
@@ -657,7 +665,8 @@ def try_tornado(D):
         if okg:
             t = min(okg, key=lambda t: rg[t[3]][1]); log(f'  tornado: take {t[3]} (mean cost {rg[t[3]][1]:.3f})')
             return w, t[1]
-        # moving, it takes a random direction every +0x26 (60) frames (sub_80A90E4, GetRNG): the best start,
+        # moving, it takes a random direction every +0x26 (60) frames
+        # (owMapObject_weatherTornado_repickDirection_80A90E4, GetRNG): the best start,
         # then each next direction written just after it is drawn, the one that holds furthest each time
         d0, t0 = map(int, top[3][1:].split(':'))
         pokes = list(top[1]); reach = res[top[3]][0]
@@ -1221,6 +1230,16 @@ def try_at(w, D, which, jmax, base=()):
     log(f'  W={w[0]} ({which}, |j| <= {jmax}): furthest {top[0]}, synced {nsync} of {len(cands)}')
     return None
 
+# repair handlers outside this file (handlers/NAME.py, handlers/__init__.py): tried after the built-in ones,
+# before the RNG search
+import importlib.util, glob as _glob
+PLUGINS = []
+for _path in sorted(_glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'handlers', '[!_]*.py'))):
+    _spec = importlib.util.spec_from_file_location('vidsync_handler_' + os.path.basename(_path)[:-3], _path)
+    _mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
+    PLUGINS.append((_mod.NAME, lambda D, _m=_mod: _m.try_fix(D, sys.modules[__name__])))
+if PLUGINS: log('handlers from handlers/:', ' '.join(name for name, _ in PLUGINS))
+
 LAST_FIX = [None, None]       # (loss, handler) of the last fix
 FAILED = {}                   # loss -> handlers whose fix there came back to it
 def repair(D):
@@ -1230,10 +1249,10 @@ def repair(D):
     ev = events(D); EVENTS[:] = ev
     last = max([p[0] for p in b.pokes] + [0])      # encounters before the last write held to there already
     for f, p in reversed(TRIGGERS):
-        if f <= last: continue
+        if f <= last or (ONLY is not None and 'formations' not in ONLY): continue
         r = try_formations(f, p, D)
         if r: return r
-    r = check_reward(max(ring[0][0], D - 900), D)   # a reward given just before the loss (its screen differs)
+    r = None if ONLY is not None and 'reward' not in ONLY else check_reward(max(ring[0][0], D - 900), D)   # a reward given just before the loss (its screen differs)
     if r: KEEP_NEXT[0] = True; return r
     # a handler whose fix came back to the same loss is not asked there again (it would loop)
     if LAST_FIX[0] is not None and abs(LAST_FIX[0] - D) <= 30:
@@ -1244,11 +1263,13 @@ def repair(D):
     skip = set().union(*[v for d, v in FAILED.items() if abs(d - D) <= 30])
     for name, h in (('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('gmd', try_gmd),
                     ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
-                    ('encounter', try_encounter), ('kill', try_kill), ('die', lambda D: try_kill(D, 0))):
-        if name in skip: continue
+                    ('encounter', try_encounter), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)), *PLUGINS):
+        if name in skip or (ONLY is not None and name not in ONLY): continue
         if name == 'die' and 'kill' in skip: continue    # (ending the battle was not it: the video's MegaMan lives)
         r = h(D)
         if r: LAST_FIX[:] = [D, name]; return r
+    if ONLY is not None and 'rng' not in ONLY:
+        log(f'  no handler of {",".join(sorted(ONLY))} fixed it'); return None
     LAST_FIX[:] = [D, 'rng']
     log(f'  RNG events before the loss: {len(ev)}, latest ' + ' '.join(f'{f}{"P" if p else ""}{"S" if q else ""}' for f, p, q in ev[-12:]))
     PARTIALS.clear()
@@ -1347,6 +1368,8 @@ while True:
             lost = True; break
         if v >= b.N - bm.K - 2:
             end = True; break
+        if A.until is not None and g >= A.until:
+            end = True; status = f'reached game {g}'; break
     fix = None; keep_later = False     # a reward fix keeps the pokes after it (a resumed path's later fixes)
     if not lost and not end:
         # a battle reward given on the best path (the sync hardly sees the GET DATA box): checked once the
