@@ -8,8 +8,9 @@ score against the video, mostly where a random outcome showed (the tail).
   stream_search.py run PREP.npz STATE N_FROM N_TO OUT.jsonl [WORKERS]
 """
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 import numpy as np
-SEED_ADDR = 0x020013F0
+SEED_ADDR = syms.PRIMARY_RNG_SEED
 BOOT_SEED = 0xA338244F
 
 def seed_at(n):

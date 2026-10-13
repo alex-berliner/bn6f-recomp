@@ -1,7 +1,8 @@
 """rng_shift.py: does pressing NEW GAME d frames later only move the RNG d steps along its sequence?"""
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 from emu import Emu
-SEED = 0x020013F0
+SEED = syms.PRIMARY_RNG_SEED
 def nxt(x):
     return (((x << 1) | (x >> 31)) + 1 ^ 0x873CA9E5) & 0xFFFFFFFF
 r = json.load(open('data/full/run1.json')); keys = r['keys'][:9400]

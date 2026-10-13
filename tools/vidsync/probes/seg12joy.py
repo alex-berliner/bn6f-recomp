@@ -1,5 +1,6 @@
 import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # tools/vidsync
+import syms   # game addresses by name from bn6f
 from emu import Emu
 import rngfix as rf
 R = json.load(open('data/ready/bn6f_beastsp.result.json')); g0 = R['press_gf']
@@ -34,6 +35,6 @@ def key_at(f):
 for g in range(lo, 325626):
     s.step(key_at(s.gf()[0])); m.step(R['keys'][g - g0])
     if g + 1 >= 325618:
-        print(g + 1, hex(R['keys'][g - g0]), hex(key_at(s.gf()[0] - 1)), 'joy run', m.read(0x0200A270, 0x20).hex(), 'seg', s.read(0x0200A270, 0x20).hex(), 'gf', m.gf(), s.gf())
+        print(g + 1, hex(R['keys'][g - g0]), hex(key_at(s.gf()[0] - 1)), 'joy run', m.read(syms.JOYPAD, 0x20).hex(), 'seg', s.read(syms.JOYPAD, 0x20).hex(), 'gf', m.gf(), s.gf())
 A = m.read(0x02000000, 0x40000); B = s.read(0x02000000, 0x40000)
 print([hex(0x02000000 + k) + ':' + A[k:k+1].hex() + '/' + B[k:k+1].hex() for k in range(0x40000) if A[k] != B[k] and not (0xDF40 <= k < 0xE000)][:120])

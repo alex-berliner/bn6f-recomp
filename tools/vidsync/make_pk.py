@@ -3,6 +3,7 @@ game frame P, then RUN's keys with K frames of no input in Lan's room before the
 there), stopping at game frame G of RUN's original timeline. The video mapping repeats the last frame over
 inserted waits and drops it over removed ones."""
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 import beam as bm
 from emu import Emu
 from pk_search import AT, BASE_K
@@ -22,6 +23,6 @@ v0 = vid[-1] - bm.RATE * (h - 1)
 e.savef(out + '.state')
 json.dump({'press_gf': P, 'g': g, 'h': h, 'v0': v0, 'cost': [0.5 * abs(o) for o in bm.OFFS],
            'keys': keys, 'vid': vid, 'frame_cost': [], 'pk': [P, K]}, open(out + '.json', 'w'))
-print('checkpoint at game frame', g, 'hw', h, 'video', vid[-1], '| GMD bytes', e.read(0x0200434C, 4).hex(),
-      'secondary', hex(e.u32(0x02001120)))
+print('checkpoint at game frame', g, 'hw', h, 'video', vid[-1], '| GMD bytes', e.read(syms.MYSTERY_DATA + 4, 4).hex(),
+      'secondary', hex(e.u32(syms.SECONDARY_RNG_SEED)))
 e.close()

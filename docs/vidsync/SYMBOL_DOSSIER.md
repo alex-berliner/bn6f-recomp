@@ -22,7 +22,7 @@ Because a fix is kept only when hundreds of frames afterwards match the video, e
 | **probe** | Shown by a one-off emulator probe (repro given) |
 | **read** | Read from the assembly only; not run |
 
-Repro scripts are in `tools/vidsync/probes/` (copied from the session). They run on a PC with the vidsync data, through a wrapper like `tools/vidsync/probes/fcmpj.sh`, against a result or loss json and a state from `data/auto/`.
+Repro scripts are in `tools/vidsync/probes/` (copied from the session). They run on a PC with the vidsync data, through `tools/vidsync/remote/py.sh` (`py.sh probes/NAME.py ARGS`), against a result or loss json and a state from `data/auto/`.
 
 `RANDOM_EVENTS.md` is an earlier code-reading catalogue of every random decision; its entries are **read** level unless the tables below upgrade them.
 

@@ -1,5 +1,5 @@
-"""sec_search.py: which secondary-RNG position deals the video's hand? (The secondary RNG, eSecondaryRngSeed
-0x02001120, starts at 0 at power-on, steps with the same rule as the primary, and deals the battle chips.)
+"""sec_search.py: which secondary-RNG position deals the video's hand? (The secondary RNG, eSecondaryRngSeed,
+starts at 0 at power-on, steps with the same rule as the primary, and deals the battle chips.)
 
   sec_search.py state RESULT.json G OUT      replay RESULT straight to game frame G and save (OUT.state/.json)
   sec_search.py run STATE REF.png D N_FROM N_TO OUT.jsonl [WORKERS]
@@ -7,8 +7,9 @@
        custom screen's chip panel (x<118, y<128) with REF (the video's open custom screen at 240x160)
 """
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 import numpy as np
-S_ADDR = 0x02001120
+S_ADDR = syms.SECONDARY_RNG_SEED
 def nxt(x): return ((((x << 1) + (x >> 31)) + 1) ^ 0x873CA9E5) & 0xFFFFFFFF
 def seed_at(n):
     x = 0

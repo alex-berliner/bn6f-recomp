@@ -4,6 +4,7 @@ frames (no input) before game frame AT. RESULT's keys are used with KEYS_SHIFT f
 roll (after the jack-in) and the first frame from game frame 10900 on (original timeline) where the screen
 turns white (a battle transition)."""
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 import numpy as np
 from multiprocessing import Pool
 res, AT, SH, KMAX, GEND, out = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), sys.argv[6]
@@ -28,7 +29,7 @@ def run(k):
             j = i
             while AT + j < stop and AFTER[j] == AFTER[i]: j += 1
             e.step(AFTER[i], j - i); g += j - i; i = j
-            if g == 10300 and gmd is None: gmd = e.read(0x0200434C, 4).hex()
+            if g == 10300 and gmd is None: gmd = e.read(syms.MYSTERY_DATA + 4, 4).hex()
             continue
         e.step(AFTER[i]); i += 1; g += 1
         if e.shot().mean() > 200: white = g - 1; break

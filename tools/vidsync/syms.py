@@ -92,6 +92,7 @@ GS_LAST_MAP = at("eGameState", "oGameState_LastMapGroup")                # LastM
 GS_OW_PLAYER_PTR = at("eGameState", "oGameState_OverworldPlayerObjectPtr")
 GS_BATTLE_PTR = at("eGameState", "oGameState_CurBattleDataPtr")
 GS_PLAYER_XYZ = at("eGameState", "oGameState_PlayerX")                   # PlayerX/Y/Z (u32 each)
+GS_COORD_INTERACTION = at("eGameState_CoordInteractionValue")         # the map's trigger code under MegaMan
 
 # ── overworld counters, event flags, mystery data ──
 S2001C04 = at("eStruct2001c04")
@@ -110,14 +111,22 @@ BATTLE_FOLDER = at("eBattleFolder")                          # 30 u16 chips (id 
 BATTLE_STATE = at("eBattleState")                            # enemy lists at +0x4C + 8*side, counts at +8+side
 T1_OBJECTS = at("eT1BattleObject0")
 T1_ACTIVE = at("eActiveT1BattleObjectsBitfield")
+T1_OBJECT_SIZE = at("oT1BattleObject_Size")
 REWARD_GIVEN = 0x0200A00C   # TODO: name in bn6f (word_200A00C now): the battle reward actually given
 REWARD_SHOWN = at("eS20364C0", "oS20364C0_Unk_14")           # the result screen's display queue entry for it
 REWARD_NAVI_STATS = at("eBattleNaviStats203F4AC")            # rewards written here (and below) before the screen
 REWARD_RECORD = 0x02035268  # TODO: name in bn6f (dword_2035268 now): the reward record sub_800B444 copies back
 
-# ── overworld objects, joypad ──
+# ── overworld objects, joypad, the PET menu ──
 OW_MAP_OBJECTS = at("eOverworldMapObjects")
 OW_MAP_OBJECT_SIZE = at("oOverworldMapObject_Size")
+OW_NPC_OBJECTS = at("eOverworldNPCObjects")
+OW_NPC_OBJECT_SIZE = at("oOverworldNPCObject_Size")
+OW_NPC_ACTIVE = at("eActiveOverworldNPCObjectsBitfield")    # bit n: NPC object n is active
+WEATHER_COMP_STATE = at("eWeatherCompState")                 # the Mr. Weather comp (symbols/db/eWeatherCompState.yaml):
+                                                             # +0x28.. the tornadoes' saved state, +0x40/+0x46 tornado 0's X/Y
+PET_MENU_DATA = at("ePETMenuData")
+JOYPAD = at("eJoypad")
 JOYPAD_HELD_TIMERS = at("eJoypad", "oJoypad_AHeldTimer")    # +8..+0x11 held times, +0x13 the repeat phase
 JOYPAD_REPEAT_TIMER = at("eJoypad", "oJoypad_LowSensitivityTimer")
 

@@ -1,5 +1,6 @@
 import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # tools/vidsync
+import syms   # game addresses by name from bn6f
 from emu import Emu
 import rngfix as rf
 R = json.load(open('data/ready/bn6f_beastsp.result.json')); g0 = R['press_gf']
@@ -34,4 +35,4 @@ def key_at(f):
 for g in range(lo, 326170):
     s.step(key_at(s.gf()[0])); m.step(R['keys'][g - g0])
     if g + 1 >= 326100 and (g + 1) % 5 == 0:
-        print(g + 1, 'run', hex(m.u32(rf.PRIMARY)), 'seg', hex(s.u32(rf.PRIMARY)), 'map', m.read(0x02001B84, 2).hex(), s.read(0x02001B84, 2).hex(), 'sub', m.read(0x02001B80,1).hex(), s.read(0x02001B80,1).hex())
+        print(g + 1, 'run', hex(m.u32(rf.PRIMARY)), 'seg', hex(s.u32(rf.PRIMARY)), 'map', m.read(syms.GS_MAP, 2).hex(), s.read(syms.GS_MAP, 2).hex(), 'sub', m.read(syms.GS_SUBSYSTEM,1).hex(), s.read(syms.GS_SUBSYSTEM,1).hex())

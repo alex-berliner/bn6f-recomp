@@ -8,6 +8,7 @@ jack-in's R press) for which both RNGs match the video at the first random battl
   pk_search.py run RUN.json SEC_GOOD.json P_FROM P_TO OUT.jsonl [WORKERS]
 """
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 AT, BASE_P, BASE_K, S0, ENC = 9760, 600, 1826, 23931, 10964
 def run_p(p):
     from emu import Emu
@@ -33,14 +34,14 @@ def run_p(p):
                 j = i
                 while AT + j < stop and after[j] == after[i]: j += 1
                 e.step(after[i], j - i); g += j - i; i = j
-            if stop == 10300 and e.read(0x0200434C, 2).hex() != '0005': ok = False; break
+            if stop == 10300 and e.read(syms.MYSTERY_DATA + 4, 2).hex() != '0005': ok = False; break
         if not ok: continue
         white = None
         while g < 11040:
             e.step(after[i]); i += 1; g += 1
             if e.shot().mean() > 200: white = g - 1; break
         if white is not None and abs(white - ENC) <= 1:
-            hits.append([p, k, white, e.u32(0x02001120)])
+            hits.append([p, k, white, e.u32(syms.SECONDARY_RNG_SEED)])
     e.close()
     return p, len(ks), hits
 if __name__ == '__main__':

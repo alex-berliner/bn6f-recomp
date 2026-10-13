@@ -1,6 +1,7 @@
 """stream_pos.py PRESS...: the primary RNG's position (calls since the boot seed 0xA338244F) at game frame
 10000 when NEW GAME is pressed on each given game frame and run1's keys follow."""
 import sys, os, json, subprocess; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 from multiprocessing import Pool
 from emu import Emu
 R = json.load(open('data/full/run1.json')); P0 = R['press_gf']; K = R['keys']
@@ -11,7 +12,7 @@ def pos(press):
         j = i
         while j < n and K[j] == K[i]: j += 1
         e.step(K[i], j - i); i = j
-    seed = e.u32(0x020013F0); e.close()
+    seed = e.u32(syms.PRIMARY_RNG_SEED); e.close()
     d = subprocess.run(['build/rng_dist', 'a338244f', f'{seed:08x}', '2000000000'], capture_output=True, text=True).stdout.strip()
     return press, f'{seed:08x}', int(d)
 if __name__ == '__main__':

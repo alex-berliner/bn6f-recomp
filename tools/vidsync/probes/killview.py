@@ -1,6 +1,7 @@
 """killview.py RESULT STATE D OUT: our screen after deleting the enemies at D (no keys) | the video around D."""
 import os, sys, json, subprocess, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # tools/vidsync
+import syms   # game addresses by name from bn6f
 from PIL import Image
 from emu import Emu
 r = json.load(open(sys.argv[1])); g0 = r['press_gf']; D = int(sys.argv[3])
@@ -12,10 +13,10 @@ e = Emu(); e.loadf(sys.argv[2]); g, _ = e.gf()
 for p in r['pokes']:
     if p[0] >= g: e.poke(*p)
 for gg in range(g, D): e.step(r['keys'][gg - g0])
-act = e.u32(0x02034000); foes = []
+act = e.u32(syms.T1_ACTIVE); foes = []
 for n in range(16):
     if not act >> (31 - n) & 1: continue
-    a = 0x0203A9B0 + n * 0xD8
+    a = syms.T1_OBJECTS + n * syms.T1_OBJECT_SIZE
     if e.read(a + 0x24, 2) != b'\0\0' and e.read(a + 0x16, 1)[0] == 1: foes.append(a)
 print('foes', [hex(a) for a in foes])
 e.poke(D, ','.join(f'{a + 0x24:#x}=0x0/2' for a in foes))

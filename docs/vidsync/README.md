@@ -69,8 +69,9 @@ needs (`tools/vidsync`, `tools/gamepaths.py`, `tools/paths.env`, `tools/mgba_run
 git tracks or would) plus bn6f's symbols as `syms.py --json` writes them and a `DEPLOYED.json` (commit, whether
 it had uncommitted changes) go to `C:/Users/alex/vidsync_deploy.tgz` on each PC; `remote/install.sh` unpacks it
 beside the old one, links the PC's data in (`bn6f/bn6f.gba`, `roms/gba_bios.bin`, `build-vidsync/data` →
-`~/vidsync/data`), builds `mgba_run` and `emu_server`, and swaps it in as `~/vidsync/recomp` (running jobs keep
-their files; the previous tree stays as `recomp.old`). `remote/env.sh` sets `VIDSYNC_SYMS` (there is no bn6f
+`~/vidsync/data`), builds `mgba_run` and `emu_server` in `~/vidsync/deploys/STAMP`, and points the link
+`~/vidsync/recomp` at it (running jobs keep their own tree; WSL1 on .167 cannot rename a directory in use; the
+three newest deploys are kept). `remote/env.sh` sets `VIDSYNC_SYMS` (there is no bn6f
 there) and works in `~/vidsync/recomp/build-vidsync`, so `data/...` paths mean what they meant before.
 
 **Jobs.** Anything that must outlive the SSH session goes through WMI (`remote/launch.ps1`, copied to

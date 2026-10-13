@@ -1,5 +1,6 @@
 import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # tools/vidsync
+import syms   # game addresses by name from bn6f
 from emu import Emu
 import rngfix as rf
 R = json.load(open('data/ready/bn6f_beastsp.result.json')); g0 = R['press_gf']
@@ -34,7 +35,7 @@ def key_at(f):
 n = 0; prev = None; hist = []
 for g in range(lo, 326001):
     s.step(key_at(s.gf()[0])); m.step(R['keys'][g - g0])
-    a = m.read(0x0200DF20, 0x18); c = s.read(0x0200DF20, 0x18)
+    a = m.read(syms.PET_MENU_DATA, 0x18); c = s.read(syms.PET_MENU_DATA, 0x18)
     ka = (a[4], a[5], a[0xA:0x10]); kc = (c[4], c[5], c[0xA:0x10])
     hist = (hist + [(g + 1, hex(R['keys'][g - g0]), a.hex(), c.hex())])[-6:] if 'hist' in dir() else []
     if a != c and g > 312320:

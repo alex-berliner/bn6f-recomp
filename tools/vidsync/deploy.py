@@ -5,8 +5,9 @@ It tars the part of the recomp tree vidsync needs there (tools/vidsync, tools/ga
 tools/mgba_run.c, tools/Makefile; the files git tracks or would, so no build output), adds bn6f's symbols as
 `syms.py --json` writes them (the PCs have no bn6f: VIDSYNC_SYMS points there) and a DEPLOYED.json saying
 which commit it is, copies it and remote/launch.ps1 to C:/Users/alex on each PC, and installs it in WSL as
-~/vidsync/recomp (remote/install.sh: link the PC's own data in, build mgba_run and emu_server, swap). The
-PCs' data stays where it is (the LAN is a slow WireGuard link: never copy video over it). Restarting the
+~/vidsync/deploys/STAMP with the link ~/vidsync/recomp pointing at it (remote/install.sh: link the PC's own
+data in, build mgba_run and emu_server, move the link; running jobs keep their own tree). The PCs' data
+stays where it is (the LAN is a slow WireGuard link: never copy video over it). Restarting the
 driver or the worker server is separate (the vidsync-run workflow, or remote/launch.ps1).
 
 Default PCs: 192.168.1.175 (the driver) and 192.168.1.167 (the worker server), in parallel. --json prints

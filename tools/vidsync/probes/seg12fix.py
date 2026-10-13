@@ -1,5 +1,6 @@
 import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # tools/vidsync
+import syms   # game addresses by name from bn6f
 from emu import Emu
 import rngfix as rf
 R = json.load(open('data/ready/bn6f_beastsp.result.json')); g0 = R['press_gf']
@@ -31,11 +32,11 @@ gs = [g for g, k in tl]
 def key_at(f):
     i = bisect.bisect_right(gs, f) - 1
     return tl[i][1] if i >= 0 else 0x3FF
-m.save(1); m.step(R['keys'][lo - g0]); mm = m.read(0x0200A278, 16); m.load(1)
-s.poke(s.gf()[0], ','.join(f'{0x0200A278 + k:#x}={int.from_bytes(mm[k:k+4], "little"):#x}/4' for k in range(0, 16, 4)))
+m.save(1); m.step(R['keys'][lo - g0]); mm = m.read(syms.JOYPAD_HELD_TIMERS, 16); m.load(1)
+s.poke(s.gf()[0], ','.join(f'{syms.JOYPAD_HELD_TIMERS + k:#x}={int.from_bytes(mm[k:k+4], "little"):#x}/4' for k in range(0, 16, 4)))
 n = 0
 for g in range(lo, 326200):
     s.step(key_at(s.gf()[0])); m.step(R['keys'][g - g0])
-    a = m.read(0x0200A270, 0x18); c = s.read(0x0200A270, 0x18)
+    a = m.read(syms.JOYPAD, 0x18); c = s.read(syms.JOYPAD, 0x18)
     if a != c and n < 6: print(g + 1, 'joy', a.hex(), c.hex()); n += 1
     if (g + 1) % 4000 == 0 or g + 1 in (326140, 326160, 326199): print(g + 1, 'rng', hex(m.u32(rf.PRIMARY)), hex(s.u32(rf.PRIMARY)), flush=True)

@@ -4,8 +4,9 @@ at each k).
   pk2_search.py run RUN.json SEC_GOOD.json P_FROM P_TO OUT.jsonl [WORKERS] [KMAX]
 A hit: [p, k, white frame, secondary, primary] at the encounter."""
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 from pk_search import AT, BASE_P, BASE_K, S0, ENC
-GMD = {0x0200434C: '0005', 0x0200435E: '0106'}
+GMD = {syms.MYSTERY_DATA + 4: '0005', syms.MYSTERY_DATA + 0x16: '0106'}
 CACHE, STATS = {}, [0, 0, 0]   # skipped, rechecked, recheck found the cache wrong
 def run_p(p):
     from emu import Emu
@@ -27,7 +28,7 @@ def run_p(p):
         if k > kat: e.step(0x3FF, k - kat); kat = k; e.save(0)
         # the rolls take only the primary and iCurrFrame & 3 at the jack-in: skip a known failure (and
         # recheck one in 16 of them, to see the cache is right)
-        key = (e.u32(0x020013F0), e.u32(0x0200A210) & 3)
+        key = (e.u32(syms.PRIMARY_RNG_SEED), e.u32(syms.ICURR_FRAME) & 3)
         if CACHE.get(key) is False:
             STATS[0] += 1
             if STATS[0] % 16: continue
@@ -50,7 +51,7 @@ def run_p(p):
             e.step(after[i]); i += 1; g += 1
             if e.shot().mean() > 200: white = g - 1; break
         if white is not None and abs(white - ENC) <= 1:
-            hits.append([p, k, white, e.u32(0x02001120), e.u32(0x020013F0)])
+            hits.append([p, k, white, e.u32(syms.SECONDARY_RNG_SEED), e.u32(syms.PRIMARY_RNG_SEED)])
     e.close()
     return p, len(ks), gmd_ok, hits, list(STATS)
 if __name__ == '__main__':

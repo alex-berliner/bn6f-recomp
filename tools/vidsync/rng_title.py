@@ -1,6 +1,7 @@
 import sys; sys.path.insert(0, __import__('os').path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 from emu import Emu
-SEED=0x020013F0
+SEED=syms.PRIMARY_RNG_SEED
 START=0x3FF & ~(1<<3); A=0x3FF & ~1
 e=Emu()
 for i in range(12):

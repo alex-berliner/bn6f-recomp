@@ -9,8 +9,9 @@ encounter take only the primary and iCurrFrame & 3, so:
   pt_table.py press RUN.json P_FROM P_TO OUT.jsonl [WORKERS]
     for each NEW GAME press p: [p, c(p), s(p), secondary step per frame in the room, game frame at k=0]."""
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 from pk_search import AT, BASE_P, BASE_K, ENC
-GMD = {0x0200434C: '0005', 0x0200435E: '0106'}
+GMD = {syms.MYSTERY_DATA + 4: '0005', syms.MYSTERY_DATA + 0x16: '0106'}
 def step(x): return (((((x << 1) | (x >> 31)) & 0xffffffff) + 1) & 0xffffffff) ^ 0x873CA9E5
 def stream(seed, n):
     out, x = [], seed
@@ -43,7 +44,7 @@ def table_chunk(xs):
                 j = i
                 while AT + j < 10300 and AFTER[j] == AFTER[i]: j += 1
                 e.step(AFTER[i], j - i); g += j - i; i = j
-            b = e.read(0x0200434C, 20).hex()
+            b = e.read(syms.MYSTERY_DATA + 4, 20).hex()
             if any(e.read(a, 2).hex() != v for a, v in GMD.items()): continue
             while g < 10900:
                 j = i
@@ -53,14 +54,14 @@ def table_chunk(xs):
             while g < 11040:
                 e.step(AFTER[i]); i += 1; g += 1
                 if e.shot().mean() > 200: white = g - 1; break
-            out.append([x, f, b, white, POS1.get(e.u32(0x020013F0))])
+            out.append([x, f, b, white, POS1.get(e.u32(syms.PRIMARY_RNG_SEED))])
     e.close()
     return out
 def press_one(p):
     from emu import Emu
     e = Emu(); to_r_press(e, PRE, p)
-    c = POS1.get(e.u32(0x020013F0)); s = POS2.get(e.u32(0x02001120)); g, _ = e.gf()
-    e.step(0x3FF, 4); s4 = POS2.get(e.u32(0x02001120)); e.close()
+    c = POS1.get(e.u32(syms.PRIMARY_RNG_SEED)); s = POS2.get(e.u32(syms.SECONDARY_RNG_SEED)); g, _ = e.gf()
+    e.step(0x3FF, 4); s4 = POS2.get(e.u32(syms.SECONDARY_RNG_SEED)); e.close()
     return [p, None if c is None else c, s, None if s is None or s4 is None else (s4 - s) / 4, g]
 if __name__ == '__main__':
     from multiprocessing import Pool

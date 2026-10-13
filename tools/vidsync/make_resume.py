@@ -3,6 +3,7 @@ with K frames of no input inserted before game frame AT (a wait that steers a ra
 at game frame G of the original timeline (G+K after the wait). The video mapping is shifted by the
 inserted frames, which the video never had."""
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 import numpy as np
 import beam as bm
 from emu import Emu
@@ -21,4 +22,4 @@ v0 = vid[-1] - bm.RATE * (h - 1)
 e.savef(out + '.state')
 json.dump({'press_gf': P0, 'g': g, 'h': h, 'v0': v0, 'cost': [0.5 * abs(o) for o in bm.OFFS],
            'keys': keys, 'vid': vid, 'frame_cost': [], 'inserted': [[AT, K]]}, open(out + '.json', 'w'))
-print('checkpoint at game frame', g, 'hw', h, 'video', vid[-1], '->', out, '| GMD bytes', e.read(0x0200434C, 4).hex())
+print('checkpoint at game frame', g, 'hw', h, 'video', vid[-1], '->', out, '| GMD bytes', e.read(syms.MYSTERY_DATA + 4, 4).hex())

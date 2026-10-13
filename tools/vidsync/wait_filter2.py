@@ -10,6 +10,7 @@ match, how well the battle's first ~200 frames (virus layout, chip draw) match t
 from the video's input display.
 """
 import sys, os, json; sys.path.insert(0, os.path.dirname(__file__))
+import syms   # game addresses by name from bn6f
 import numpy as np
 AT = 9760              # the R press
 ENC_G, ENC_V = 10965, 10821   # the video's battle transition: game frame (original timeline), video frame
@@ -59,7 +60,7 @@ def run_k(k):
         while AT + j < stop and after[j] == after[i]: j += 1
         e.step(int(after[i]), j - i); g += j - i; i = j
         if g == 10300 and gmd is None:
-            gmd = e.read(0x0200434C, 4).hex()
+            gmd = e.read(syms.MYSTERY_DATA + 4, 4).hex()
             if gmd[:4] != '0005': return k, gmd, None, None
     while g < 11040:
         e.step(int(after[i])); i += 1; g += 1
