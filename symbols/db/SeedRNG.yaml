@@ -7,9 +7,9 @@ interface: void SeedRNG(void)
 details: 'Writes the constant 0xA338244F into the 32-bit primary RNG seed variable (ePrimaryRngSeed),
   presumably at boot or when a seeded run starts, so the game''s random sequence begins from a known state.
   Only touches that one global; no other state, no stack use, and it returns via mov pc, lr. The seed
-  value likely feeds the game''s RNG update routine elsewhere. Callers: main calls it once at boot; on
-  a save load, loc_803F870''s branch (asm03_1_1.s) calls it only when the save checksum or timestamp check
-  fails, so a good restore keeps the saved seed.'
+  value likely feeds the game''s RNG update routine elsewhere. Callers: main calls it once at boot
+  (main.s:5); the only other caller is the save routine sub_803F838, whose loc_803F870 branch runs it
+  when the post-copy EWRAM-checksum or timestamp verification fails (asm03_1_1.s:13808).'
 evidence:
 - method: readable-c
   date: '2026-10-09'
@@ -45,15 +45,20 @@ evidence:
   date: '2026-10-09'
   detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story1, story2, story3, wander.'
   reproduce: grep -l '^08001514 ' tools/traces/coverage/*.prof
+  result: '19 route profiles (battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2,
+    menus3, story1-story9, wander).'
 - method: assembly-reading
   date: '2026-10-13'
-  detail: 'BN6F_SYMBOLS.md section 1: boot call from main confirmed; on load it runs only from the save-checksum/timestamp-fail
-    branch at loc_803F870.'
+  detail: 'BN6F_SYMBOLS.md section 1: boot call from main confirmed; the only other caller is the save
+    routine sub_803F838, whose loc_803F870 branch runs it when the post-copy EWRAM-checksum or timestamp
+    verification fails (not a load path, as the doc''s wording suggests).'
   refs:
   - bn6f/asm/main.s
   - bn6f/asm/asm03_1_1.s
   - docs/vidsync/BN6F_SYMBOLS.md
   reproduce: grep -n 'bl SeedRNG' bn6f/asm/main.s bn6f/asm/asm03_1_1.s
+  result: 'exactly 2 bl SeedRNG: main.s:5 (the boot call) and asm03_1_1.s:13808 (sub_803F838''s
+    loc_803F870 branch).'
 changes:
 - date: '2026-10-09'
   what: readable C replacement in cport/src/game/leaves_farm_9.c

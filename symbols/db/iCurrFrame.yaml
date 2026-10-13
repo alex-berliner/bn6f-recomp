@@ -12,18 +12,29 @@ evidence:
     and mystery-data rolls to match (vidsync: a RAM fix is kept only when the sync then follows the video
     for hundreds of frames; writes land at main_awaitFrame''s entry, the end of a game frame).'
   reproduce: grep -n 'ICURR' tools/vidsync/segments.py
+  result: 'ICURR = syms.ICURR_FRAME at segments.py:32; read in the per-junction check (lines 60 and 110)
+    and rewritten after a reload (line 141).'
 - method: assembly-reading
   date: '2026-10-13'
-  detail: 'BN6F_SYMBOLS.md section 2 review: only the power-on RAM clear zeroes it; the save block (0x6710
-    bytes from 0x02000000) does not include it; the gameplay readers are the encounter formation pick,
-    the weighted mystery-data pick and chatbox_F0_jump.'
+  detail: 'BN6F_SYMBOLS.md section 2 review: only the power-on RAM clear zeroes it (start.s clears
+    0x02000000-0x0203FFFF with start_clearMemory, which covers 0x0200A210); the save block (0x6710 bytes
+    from 0x02000000) does not include it. The main loop advances it through oToolkit_CurFramePtr
+    (main.s:26-30). The doc''s "no literal pool reference" is wrong in one place: pickBattleSettingsEntry_80AA5F4
+    loads iCurrFrame through its own literal off_80AA884 (asm29.s:10627, pool entry at 10950); the
+    ToolkitPointers table entry at asm00_1.s:7802 is what fills oToolkit_CurFramePtr. The gameplay readers
+    are the encounter formation pick, the weighted mystery-data pick and chatbox_F0_jump.'
   refs:
   - bn6f/asm/start.s
   - bn6f/asm/main.s
+  - bn6f/asm/asm29.s
+  - bn6f/asm/asm00_1.s
   - bn6f/asm/chatbox.s
   - docs/vidsync/BN6F_SYMBOLS.md
-  reproduce: grep -n 'iCurrFrame' bn6f/asm/start.s; grep -n -B2 -A6 'oToolkit_CurFramePtr' bn6f/asm/main.s
-    | head -20
+  reproduce: grep -n 'start_clearMemory' bn6f/asm/start.s; grep -rn '.word iCurrFrame' bn6f/asm/asm00_1.s
+    bn6f/asm/asm29.s; grep -n -B2 -A6 'oToolkit_CurFramePtr' bn6f/asm/main.s | head -20
+  result: 'start.s clears timer_2000000 (0x02000000) for 0x40000 bytes, covering 0x0200A210; .word
+    iCurrFrame at asm00_1.s:7802 (the ToolkitPointers table) and asm29.s:10950 (off_80AA884 in
+    pickBattleSettingsEntry_80AA5F4); main.s:26-30 adds 1 per pass through oToolkit_CurFramePtr.'
 related:
 - pickBattleSettingsEntry_80AA5F4
 open_questions: []
@@ -35,9 +46,11 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f bce1cfe1
   tool: tools/symdoc.py
-details: 'Zeroed only by the power-on RAM clear (start.s), never saved (outside the 0x6710-byte save block),
-  so it survives a soft reset; a lag frame still adds 1. Reached only through oToolkit_CurFramePtr (no
-  literal pool reference). Gameplay readers: the encounter formation pick battle_pickRandomRowObjectFields/pickBattleSettingsEntry_80AA5F4
+details: 'Zeroed only by the power-on RAM clear (start.s clears 0x02000000-0x0203FFFF), never saved
+  (outside the 0x6710-byte save block), so it survives a soft reset; a lag frame still adds 1. Reached
+  through oToolkit_CurFramePtr (filled from the ToolkitPointers table, asm00_1.s:7802) and, once, through
+  its own literal: pickBattleSettingsEntry_80AA5F4 loads it directly (off_80AA884, asm29.s:10627). Gameplay
+  readers: the encounter formation pick battle_pickRandomRowObjectFields/pickBattleSettingsEntry_80AA5F4
   ((u16)iCurrFrame % eligible), the weighted mystery-data pick pickWeightedIndex_8000E3A and the chatbox
-  random branch chatbox_F0_jump ((iCurrFrame&3)+2 draws); everything else is blinking/animation (battle_pickObjectAnimState_802BF0C
-  and the like).'
+  random branch chatbox_F0_jump ((iCurrFrame&3)+2 draws); everything else is blinking/animation
+  (battle_pickObjectAnimState_802BF0C and the like).'

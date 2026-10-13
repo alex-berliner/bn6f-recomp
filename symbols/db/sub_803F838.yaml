@@ -3,11 +3,13 @@ address: '0x0803F838'
 kind: function
 status: probable
 summary: 'Saves the game: copies the 0x6710-byte EWRAM block 0x02000000-0x0200670F (both RNG seeds, mystery
-  data, event flags, chip pack, ...) to the save.'
-details: 'The main save routine: sub_814D8F0 copies 0x6710 bytes from timer_2000000 to the save destination
-  (0x0E001000 area), covering everything the game persists - both RNG seeds, mystery-data rolls, event
-  flags, the chip pack and the rest of the 0x02000000-0x0200670F window. iCurrFrame (0x0200A210) lies
-  outside the block and is not saved.'
+  data, event flags, chip pack, ...) to 0x0E000100.'
+details: 'The main save routine: sub_814D8F0 copies 0x6710 bytes from timer_2000000 to 0x0E000100, covering
+  everything the game persists - both RNG seeds, mystery-data rolls, event flags, the chip pack and the
+  rest of the 0x02000000-0x0200670F window. iCurrFrame (0x0200A210) lies outside the block and is not
+  saved. After the copy it re-verifies the EWRAM checksum and the save timestamp; when either fails it
+  clears EVENT_1704 and reseeds the primary RNG (the loc_803F870 branch - the only SeedRNG caller besides
+  main''s boot call).'
 evidence:
 - method: assembly-reading
   date: '2026-10-13'
@@ -15,8 +17,11 @@ evidence:
   refs:
   - bn6f/asm/asm03_1_1.s
   - docs/vidsync/BN6F_SYMBOLS.md
-  reproduce: grep -n -A14 '^sub_803F838:' bn6f/asm/asm03_1_1.s
-  result: size 0x6710 from 0x02000000 confirmed in the body
+  reproduce: awk 'index($0,"sub_803F838:")==1{f=1} f{print} f&&/thumb_func_end/{exit}'
+    bn6f/asm/asm03_1_1.s | grep -nE 'sub_814D8F0|0x6710|0xe000100|SeedRNG|Checksum|Timestamp'
+  result: 'r0/r1/r2 = 0x0E000100 / timer_2000000 / 0x6710 into sub_814D8F0 (literals dword_803F88C and
+    dword_803F890, asm03_1_1.s:13780ff); bl SeedRNG only in the loc_803F870 branch, after
+    verifyEwramWorkAreaChecksum_803F8C4 or infoText_IsTimestampUnchanged_803F8F4 failed.'
 related:
 - ePrimaryRngSeed
 - eSecondaryRngSeed

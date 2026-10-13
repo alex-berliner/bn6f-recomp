@@ -4,9 +4,11 @@ kind: function
 status: probable
 summary: 'MegaMan''s charge shot: burns one primary RNG draw per shot and, stat-gated, runs sub_8013D5E
   (a weighted 1/2 pick) whose outcome sends the shot down a second RNG-consuming path.'
-details: One GetPositiveSignedRNG per charge shot. It first calls sub_8013D5E; outcome 0 skips, 1 goes
-  to sub_8011ADA, other values continue directly - so a navi stat can add a second random decision (and
-  RNG consumption) to the shot.
+details: 'One GetPositiveSignedRNG in this body, plus the draw inside sub_8013D5E when its stats
+  are nonzero. It first calls sub_8013D5E and branches on the outcome: 1 goes to sub_8011ADA, 2 to
+  busterBugChargeShotDamageCalcHappensHere_8011A7E, every other value (0 included) continues. It then
+  reads navi stat 0x4D and, when it is nonzero, draws once (mask 1, or 7 when the stat is >= 0x1E) into
+  AIAttackVars+0x0C.'
 evidence:
 - method: assembly-reading
   date: '2026-10-13'
@@ -14,8 +16,11 @@ evidence:
   refs:
   - bn6f/asm/asm00_2.s
   - docs/vidsync/BN6F_SYMBOLS.md
-  reproduce: grep -n -A14 '^megamanChargeShotBPwrAtk_init_8011A26:' bn6f/asm/asm00_2.s
-  result: 1 GetPositiveSignedRNG; sub_8013D5E called first with a 0/1/other branch
+  reproduce: awk 'index($0,"megamanChargeShotBPwrAtk_init_8011A26:")==1{f=1} f{print}
+    f&&/thumb_func_end/{exit}' bn6f/asm/asm00_2.s | grep -cn 'GetPositiveSignedRNG'
+  result: '1 GetPositiveSignedRNG in the body (asm00_2.s:6221, the draw navi stat 0x4D gates); sub_8013D5E
+    is called first (6195), sub_8011ADA on outcome 1 (6200), busterBugChargeShotDamageCalcHappensHere_8011A7E
+    on 2 (6205), every other outcome continues.'
 related:
 - sub_8013D5E
 - busterBugChargeShotDamageCalcHappensHere_8011A7E

@@ -13,9 +13,11 @@ details: 'BIOS Div takes r0 = numerator, r1 = denominator and returns r0 = quoti
   in asm29.s, e.g. the Mr. Weather comp tornado draws its direction with reqBBS_81409D0(8) (owMapObject_weatherTornado_pickDirection_80A9004).
   Proposed name randomBelow_81409D0. The rename waits in symbols/pending_renames.txt: the subsystem farm''s
   worktrees share bn6f and still hold copies of the C that names this symbol, so renaming now would break
-  their builds. Callers: the overworld map object routines in asm29.s (the tornado''s direction among
-  them), map object types 5 and 0x11 - the JudgeMan trial sub_808CBD8 calls it as random(n) (BN6F_SYMBOLS.md
-  section 1).'
+  their builds. Callers (all 4 bl sites): pickBBSMsgForMapGroup_80A5764 as random(4),
+  branched on MapGroup 0x85 (the JudgeMan trial''s map group); sub_80A8394 as random(8) into the
+  byte_80A8510 table; and the type-0x1A tornado''s pick/repick as random(8). The doc''s claim that map
+  object types 5/0x11 call it is unverified: sub_808CBD8 (the type-0x11 spawner) calls
+  reqBBS_setFlag_e17b0f7_8140A00, not this routine (BN6F_SYMBOLS.md section 1).'
 evidence:
 - method: readable-c
   date: '2026-10-11'
@@ -51,6 +53,7 @@ evidence:
   date: '2026-10-11'
   detail: 'Executed by: story5, story6.'
   reproduce: grep -l '^081409d0 ' tools/traces/coverage/*.prof
+  result: '3 route profiles: beastsp, story5, story6.'
 - method: assembly-reading
   date: '2026-10-13'
   detail: 'Settled the vidsync dossier''s section-3 conflict: mov r6, r0; bl GetRNG; and r0 with 0xFF;
@@ -66,14 +69,25 @@ evidence:
   detail: vidsync's tornado path search, which models the tornado's direction as random(8) in 0..7 through
     this helper, follows the video.
   reproduce: grep -n 'def try_tornado' tools/vidsync/autosync.py
+  result: 'def try_tornado(D) at autosync.py:543.'
 - method: assembly-reading
   date: '2026-10-13'
-  detail: 'The BN6F_SYMBOLS.md review adds two more caller families: map object types 5 and 0x11 (the
-    JudgeMan trial sub_808CBD8) call it as random(n), besides the type-0x1A tornado direction.'
+  detail: 'The BN6F_SYMBOLS.md review''s caller list corrected: bn6f/asm has exactly 4 bl reqBBS_81409D0
+    sites, all in asm29.s - pickBBSMsgForMapGroup_80A5764(4) (random(4) picks the message entry, branched
+    on MapGroup == 0x85), sub_80A8394 (random(8) indexes byte_80A8510 = {0,0x1F,0x3F,0x7F,0x9F,0xBF,0xDF,0xFF}),
+    and the tornado''s pick/repick (random(8) twice). sub_808CBD8 (the JudgeMan-trial setup) does NOT
+    call it: it spawns map object type 0x11 and calls reqBBS_setFlag_e17b0f7_8140A00 - the doc''s "map
+    object types 5, 0x11" claim is unverified (the type-5 and type-0x11 update handlers are not among
+    the call sites).'
   refs:
   - bn6f/asm/asm29.s
+  - bn6f/asm/asm24.s
   - docs/vidsync/BN6F_SYMBOLS.md
-  reproduce: grep -rn 'bl reqBBS_81409D0' bn6f/asm/asm29.s
+  reproduce: grep -rn 'bl reqBBS_81409D0' bn6f/asm; awk 'index($0,"sub_808CBD8:")==1{f=1} f{print}
+    f&&/thumb_func_end/{exit}' bn6f/asm/asm24.s | grep -c 'reqBBS_81409D0'
+  result: '4 call sites, all in asm29.s (1274 pickBBSMsgForMapGroup_80A5764, 6211 sub_80A8394, 7646 and
+    7807 the tornado pick/repick); 0 reqBBS_81409D0 calls in sub_808CBD8 (it calls
+    reqBBS_setFlag_e17b0f7_8140A00 instead).'
 changes:
 - date: '2026-10-11'
   what: readable C replacement in cport/src/game/reqBBS.c
