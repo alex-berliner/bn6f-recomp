@@ -1,137 +1,25 @@
 name: sub_80FDA62
 address: '0x080FDA62'
 kind: function
-status: confirmed
-summary: Chooses a random valid panel for a panel-targeting AI action, falling back from an ignore-column candidate
-  list to a same-row list, then decodes its packed (column,row) byte into r0/r1 for the actor's action.
-interface: "/* r0 = target object, r2/r3 = filter args, r5 = actor object,\n * lr = return address. clobbers nz/c/v\
-  \ and r2/r3; preserves r4-r7. */\nvoid Next(object *targetObj /*r0*/,\n          u32 filterA /*r2*/, u32 filterB\
-  \ /*r3*/,\n          object *actor /*r5*/);\n/* returns row in r0, column in r1; r5 passed through */\n"
-details: 'Reserves the actor''s panel (actor->0x12 col, actor->0x13 row via
-
-  object_reservePanel) and asks for candidate panels in the stack buffer
-
-  at sp+0xC: first object_getPanelsIgnoreColumnFiltered(target->0x13, r2,
-
-  r3, sp+0xC), and if that list is empty (r0==0), falls back to
-
-  object_getPanelsInRowFiltered with the same args. The non-empty count
-
-  is used as divisor for the BIOS Div (swi 6) modulo the value from
-
-  GetPositiveSignedRNG, picking one byte from the panel list. The byte
-
-  is unpacked as column = high nibble (>>4), row = low 3 bits (<<29>>
-
-  29 / lsl #0x1d lsr #0x1d). object_removePanelReserve releases the
-
-  reservation; r0/r1 are pushed/popped across that call to survive it.
-
-  With no candidate, r0=0 and r1 retains whatever
-
-  object_getPanelsInRowFiltered left in r1. Calls object_reservePanel /
-
-  object_removePanelReserve with r0/r1 = actor''s col/row bytes and r5 =
-
-  actor; calls the panel-list helpers with r0 = target->0x13, r2/r3 as
-
-  passed in, r7 = stack buffer address. Output r0/r1 become (row, col)
-
-  for the panel the action should target. Stack frame: 0x24 bytes of
-
-  locals plus push {r6,r7,lr}.
-
-  '
+previous_names: []
+status: probable
+summary: 'BlastMan panel picker: collects candidate panels on the stack, rolls GetPositiveSignedRNG % count (svc
+  6) and decodes the chosen byte (x = low 3 bits, y = high nibble).'
+details: 'Body: loc_80FDA9C bl GetPositiveSignedRNG / mov r1,r6 / svc 6, then ldrb [sp+0xC, r1] with the lsr-4 /
+  lsl-0x1d decode pair.'
 evidence:
-- method: readable-c
-  date: '2026-10-12'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261012-115808);
-    reviewed by Claude before the commit.
-  refs:
-  - cport/src/game/asm31_80EBE00.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file inbox_farm_93.c sub_80FDA62
-- method: difftest
-  date: '2026-10-12'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_80FDA62
-
-    ./wf verify --function sub_80FDA62 --snapshots build-snapshots'
-  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 258 out
-    of domain (verify run convert-20261012-115808-verify-4)'
-- method: cpu-oracle
-  date: '2026-10-12'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_80FDA62
-
-    ./wf verify --function sub_80FDA62 --snapshots build-snapshots'
-  result: 25 compared, 0 differed, 71 out of domain (verify run convert-20261012-115808-verify-4)
-- method: lockstep
-  date: '2026-10-12'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_80FDA62
-
-    ./wf verify --function sub_80FDA62 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261012-115808-verify-4)
-- method: coverage
-  date: '2026-10-12'
-  detail: 'Executed by: battlesweep, story7.'
-  reproduce: grep -l '^080fda62 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-12'
-  what: readable C replacement in cport/src/game/asm31_80EBE00.c
-  where: recomp a2b4e2c
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-13'
-  what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
-  tool: tools/symdoc.py
-readable_c: cport/src/game/asm31_80EBE00.c
-coverage:
-- battlesweep
-- story7
-open_questions:
-- Exact semantic meaning of the r2/r3 "filter" parameters passed to the panel-list helpers (alignment/team/whatever
-  usual flags).
-- What r1 holds when both filtered lists come back empty (the fall-through path keeps r1 from object_getPanelsInRowFiltered,
-  but documentation of its typical value would clarify).
+- method: assembly-reading
+  date: '2026-10-13'
+  detail: Body lines checked.
+  reproduce: awk 'index($0,"sub_80FDA62:")==1{f=1} f{print} f&&/thumb_func_end/{exit}' bn6f/asm/asm31.s
+  result: the loc_80FDA9C roll+decode above
+refs:
+- docs/vidsync/BN6F_SYMBOLS.md (section 7)
+related:
+- sub_80FDAC4
+open_questions: []
 sources:
-- tools/wf run convert-20261012-115808
-- recomp a2b4e2c
-signature:
-  c: U32Pair sub_80FDA62(u8 unk0, u32 flags, u32 flags2, T1BattleObject *obj)
-  params:
-  - reg: r0
-    type: u8
-    name: unk0
-  - reg: r2
-    type: u32
-    name: flags
-  - reg: r3
-    type: u32
-    name: flags2
-  - reg: r5
-    type: T1BattleObject *
-    name: obj
-  ret:
-    reg: r0:r1
-    type: u8
-  confidence: unsure
-  decided_by: '-'
-  evidence:
-  - 'contract (lifter, refined): may read r0 r2 r3 r5; result r0:r1'
-  - 'liveness: r0 r2 r3 r5, but through a callee it could not narrow'
-  - 'r0: captures: 24 calls, struct eT1BattleObject0'
-  - 'r2: captures: 24 calls, int 0x10020'
-  - 'r3: captures: 24 calls, int 0xf880080'
-  - 'r5: captures: 24 calls, struct eT1BattleObject1'
-  - 'result: captures at exit: r0 int 0x4, 0x5, 0x6'
-  - 'model minimax/MiniMax-M3: Returns a packed panel coordinate (x in r0, y in r1) from the table lookup or 0 if
-    none. All four upper-bound regs are read before any write (own code first reads r0/r2/r3/r5).'
-  - 'disagreement: r0: u8, captures saw pointers (T1BattleObject *)'
-  - 'disagreement: r0: u8, captures pointed at T1BattleObject'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
 stamp:
   rom: rom:d11b9938115b283b
   range: 0x080FDA62-0x080FDAC4
@@ -144,9 +32,14 @@ stamp:
     object_removePanelReserve: nz c v r0 r1 r2 r3 lr
   headers: 2682a9475297
   lifter: 70c8d832ffcf
-  prompt: fd38846da391
-  model: hyper/glm-5.3-flash
-  run: convert-20261012-115808
+  prompt: unknown
+  model: hyper/glm-5.3-flash,minimax/MiniMax-M3,minimax/MiniMax-M3+old
+  run: unknown
   body: d2fe8382ce832fb9
   installed: a2b4e2c
-  stamped: '2026-10-12'
+  stamped: '2026-10-13'
+changes:
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c60545b6
+  tool: tools/symdoc.py

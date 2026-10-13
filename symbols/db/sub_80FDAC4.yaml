@@ -1,123 +1,22 @@
 name: sub_80FDAC4
 address: '0x080FDAC4'
 kind: function
-status: confirmed
-summary: Picks a random reachable target panel for a battle object from its alliance's preferred columns, falling
-  back to its current panel when none qualify.
-interface: void battle_pickTargetPanelForObject_80FDAC4(u32 param0, u32 param2, u32 param3, struct BattleObject*
-  r5); returns r0=chosenPanelX, r1=chosenPanelY; clobbers nz,c,v,r2,r3,lr; preserves r4,r6,r7
-details: 'Reserves the object''s current panel via object_reservePanel at entry so concurrent movement sees it busy,
-  and releases that reservation (object_removePanelReserve) before returning. Walks up to two preferred columns
-  looked up from byte_80FDB80 (table 1,2 / 6,5 indexed by oBattleObject_Alliance). For each column, calls object_checkPanelParameters
-  with the column (r0), param0+0x13 as the row byte (r1), and the caller-supplied param2/param3; on success it stores
-  a packed (row<<4|col) byte in a small stack buffer and increments the candidate count.
-
-
-  If no candidate was accepted, it then either reuses the object''s current panel (when it already sits on the requested
-  row and its column matches a preferred one) or asks object_getPanelsInColumnFiltered per preferred column, passing
-  the running output buffer pointer through r7, to gather per-row candidates. When even that yields nothing it defaults
-  to the object''s own panel coordinates.
-
-
-  Otherwise it picks one of the packed candidates uniformly: calls GetPositiveSignedRNG, then uses SVC 6 (SoftDiv)
-  with r6 as the divisor to get an index, decompresses the packed byte into panelX (low nibble) and panelY (high
-  nibble). The inline push/pop around object_removePanelReserve preserves the chosen panel across the reservation
-  release.
-
-
-  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+previous_names: []
+status: probable
+summary: 'BlastMan panel picker (second): candidate list then one GetPositiveSignedRNG % count roll (svc 6).'
 evidence:
-- method: readable-c
-  date: '2026-10-11'
-  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261011-203743);
-    reviewed by Claude before the commit.
-  refs:
-  - cport/src/game/asm31_80EBE00.c
-  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 13' --file inbox_farm_old_13.c
-    sub_80FDAC4
-- method: difftest
-  date: '2026-10-11'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_80FDAC4
-
-    ./wf verify --function sub_80FDAC4 --snapshots build-snapshots'
-  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 251 out of
-    domain (verify run convert-20261011-203743-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-11'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_80FDAC4
-
-    ./wf verify --function sub_80FDAC4 --snapshots build-snapshots'
-  result: 19 compared, 0 differed, 77 out of domain (verify run convert-20261011-203743-verify-2)
-- method: lockstep
-  date: '2026-10-11'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_80FDAC4
-
-    ./wf verify --function sub_80FDAC4 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-203743-verify-2)
-- method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battlesweep, story7.'
-  reproduce: grep -l '^080fdac4 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-11'
-  what: readable C replacement in cport/src/game/asm31_80EBE00.c
-  where: recomp f0437e6
-  tool: tools/wf convert (minimax/MiniMax-M3+old)
-- date: '2026-10-13'
-  what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
-  tool: tools/symdoc.py
-readable_c: cport/src/game/asm31_80EBE00.c
-coverage:
-- battlesweep
-- story7
-open_questions:
-- What does param0 (struct pointer at offset 0x13) and param2/param3 represent in the caller — likely a target/area
-  descriptor whose row byte and filter parameters gate which panel choices are valid.
-- Whether byte_80FDB80 is a hardcoded alliance→column preference table or a movable pointer accessed through off_80FDB7C.
-- Whether r7's role as an output-buffer pointer to object_getPanelsInColumnFiltered is part of a documented leaf
-  contract or an undocumented quirk being honored here.
-- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
-  C (stages S3/S4)'
+- method: assembly-reading
+  date: '2026-10-13'
+  detail: Body lines checked.
+  reproduce: awk 'index($0,"sub_80FDAC4:")==1{f=1} f{print} f&&/thumb_func_end/{exit}' bn6f/asm/asm31.s
+  result: bl GetPositiveSignedRNG / svc 6 at body lines 77-79
+refs:
+- docs/vidsync/BN6F_SYMBOLS.md (section 7)
+related:
+- sub_80FDA62
+open_questions: []
 sources:
-- tools/wf run convert-20261011-203743
-- recomp f0437e6
-signature:
-  c: U32Pair sub_80FDAC4(T1BattleObject *other, u32 flags1, u32 flags2, T1BattleObject *self)
-  params:
-  - reg: r0
-    type: T1BattleObject *
-    name: other
-  - reg: r2
-    type: u32
-    name: flags1
-  - reg: r3
-    type: u32
-    name: flags2
-  - reg: r5
-    type: T1BattleObject *
-    name: self
-  ret:
-    reg: r0:r1
-    type: void
-  confidence: confident
-  decided_by: model+mechanical (minimax/MiniMax-M3)
-  evidence:
-  - 'contract (lifter, refined): may read r0 r2 r3 r5; result r0:r1'
-  - 'liveness: r0 r2 r3 r5, but through a callee it could not narrow'
-  - 'r0: captures: 6 calls, struct eT1BattleObject0'
-  - 'r2: captures: 6 calls, int 0x10020'
-  - 'r3: captures: 6 calls, int 0xf880080'
-  - 'r5: captures: 6 calls, struct eT1BattleObject1'
-  - 'result: captures at exit: r0 int 0x5, 0x6'
-  - 'model minimax/MiniMax-M3: No drop needed; all four upper-bound registers are read first by this code (r0/r2/r3
-    saved to stack and passed to object_checkPanelParameters/object_getPanelsInColumnFiltered, r5 used directly).'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
 stamp:
   rom: rom:ebb4fc647daac7a4
   range: 0x080FDAC4-0x080FDB84
@@ -131,8 +30,13 @@ stamp:
   headers: 2aa372de5a93
   lifter: 70c8d832ffcf
   prompt: 6505961c4798
-  model: minimax/MiniMax-M3
-  run: convert-20261011-203743
+  model: minimax/MiniMax-M3+old
+  run: unknown
   body: 930d83d118fd9229
   installed: f0437e6
-  stamped: '2026-10-12'
+  stamped: '2026-10-13'
+changes:
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c60545b6
+  tool: tools/symdoc.py
