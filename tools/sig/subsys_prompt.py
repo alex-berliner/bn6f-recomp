@@ -55,19 +55,42 @@ def to_reg(name: str, t: str) -> str:
     return f"(u32)(uintptr_t){name}" if "*" in t else name
 
 
-def wrapper(name: str, s: dict, local_structs: set[str]) -> str:
+def wrapper(name: str, s: dict, local_structs: set[str], set_by_callers: set[str] | None = None) -> str:
+    """set_by_callers: the argument registers every call site in the subsystem writes before the call;
+    the others (high registers always) pass through as the guest has them, as in the original."""
+    passed = []
     if s["confidence"] == "confident":
         ps, ret = chosen(s)
-        note = f"typed wrapper: {name}'s signature is confident (symbols/db {name}.yaml, signature:)"
+        note = f"register form: generated typed wrapper: {name}'s signature is confident (symbols/db {name}.yaml, signature:)"
+        keep = [p for p in ps if p["reg"] in {f"r{i}" for i in range(4)} or
+                (p["reg"] in {f"r{i}" for i in range(4, 8)} and (set_by_callers is None or p["reg"] in set_by_callers))]
+        passed = [p["reg"] for p in ps if p not in keep]
+        ps = keep
+        if passed:
+            note += (f"; {', '.join(passed)} pass through as the guest has them (no call site here sets them: "
+                     f"the original passes its own caller's values on)")
     else:
         ps = [{"reg": r, "type": "u32", "name": r} for r in s["upper_args"] if r != "r10"]
         ret = {"reg": s["ret"]["from"], "type": "u32"}
+        keep = [p for p in ps if p["reg"] in {f"r{i}" for i in range(4)} or
+                (p["reg"] in {f"r{i}" for i in range(4, 8)} and (set_by_callers is None or p["reg"] in set_by_callers))]
+        passed = [p["reg"] for p in ps if p not in keep]
+        ps = keep
         note = (f"register form: generated wrapper: {name}'s signature is unsure, so every register its "
-                f"contract may read is passed")
+                f"contract may read is passed" + (f" ({', '.join(passed)} pass through as the guest has them: "
+                f"no call site here sets them)" if passed else ""))
     args = ", ".join(f"{ctype(p.get('type'), local_structs)} {p.get('name') or p['reg']}" for p in ps) or "void"
     sets = "".join(f"    {p['reg'].upper()} = {to_reg(p.get('name') or p['reg'], ctype(p.get('type'), local_structs))};\n"
                    for p in ps)
     r = (ret or {}).get("reg", "none")
+    conds = set(bounds_of(name).get("flag_conds", []))
+    if "nz" in s.get("flags_out", []) and conds & {"eq", "ne"} and not r.startswith("flag:"):
+        # callers test Z after it (and may use its registers too): return both
+        fields = {"r0": ["r0"], "r0:r1": ["r0", "r1"]}.get(r, [])
+        rt = f"{name}_result"
+        typedef = f"typedef struct {{ {''.join(f'u32 {x}; ' for x in fields)}bool z; }} {rt};   /* z: the Z flag it leaves */\n"
+        back = f"    return ({rt}){{ {''.join(f'R{x[1:]}, ' for x in fields)}ZERO_FLAG() }};\n"
+        return (typedef + f"/* {note} */\nstatic inline {rt} call_{name}({args}) {{\n{sets}    GUEST_CALL({name});\n{back}}}\n")
     if r == "r0":
         rt, back = ctype(ret.get("type") or "u32", local_structs), "    return R0;\n"
         if "*" in rt:
@@ -82,6 +105,15 @@ def wrapper(name: str, s: dict, local_structs: set[str]) -> str:
     else:
         rt, back = "void", ""
     return (f"/* {note} */\nstatic inline {rt} call_{name}({args}) {{\n{sets}    GUEST_CALL({name});\n{back}}}\n")
+
+
+_BOUNDS: dict = {}
+
+
+def bounds_of(name: str) -> dict:
+    if not _BOUNDS:
+        _BOUNDS.update(json.load(open(os.path.join(ROOT, "build/sig/bounds.json"))))
+    return _BOUNDS.get(name, {}).get("final", {})
 
 
 def part_of(name: str) -> str | None:
@@ -136,14 +168,25 @@ def main() -> None:
             m = re.fullmatch(r"(?:const\s+)?(\w+)\s*\*", t.strip())
             if m and m.group(1) in structs:
                 own_structs.add(m.group(1))
-    wrappers = "\n".join(wrapper(c, sigs[c], own_structs) for c in sorted(calls_out, key=lambda c: sigs[c]["addr"]))
+    sets: dict[str, set[str]] = {}
+    for c in calls_out:
+        for m in members:
+            k = asmsrc.written_before_call(asmsrc.asm_of(g["entries"][m].get("src")), c)
+            if k is not None:
+                sets[c] = k if c not in sets else sets[c] & k
+    wrappers = "\n".join(wrapper(c, sigs[c], own_structs, sets.get(c))
+                         for c in sorted(calls_out, key=lambda c: sigs[c]["addr"]))
     if "U32Pair" in wrappers:
         wrappers = "typedef struct { u32 r0, r1; } U32Pair;   /* a result in r0 and r1 */\n\n" + wrappers
     if a.wrappers_only:
         print(wrappers)
         return
+    extra_entries = [(n, e["unit"]) for n, e in g["entries"].items() if e["unit"] in inside and n != e["unit"]]
+    extra = "".join(f"\n{n} is a second entry into {u} (it starts part way into its code): it needs its own "
+                    f"adapter `Next {n}(void)` too, calling the typed function with what that entry sets up."
+                    for n, u in extra_entries if u in entries)
     out = [PROMPT_HEAD.format(file=a.file, n=len(members), subsystem=a.subsystem,
-                              entries=", ".join(entries))]
+                              entries=", ".join(entries), extra=extra)]
     out.append("## Struct types (copy these into the file as they are)\n```c\n"
                + "\n".join(struct_block(s) for s in sorted(own_structs)) + "```\n")
     out.append("## Generated wrappers of the functions it calls outside the subsystem (copy these as they are)\n"
@@ -178,21 +221,29 @@ video memory every frame), so it must behave exactly the same: the same memory w
 order where it matters, the same results, the same calls to the rest of the game with the same arguments.
 
 ## How the file works
-- The file starts with `#include "game.h"` (it brings cpu.h, the A_LABEL address macros, struct field
-  offsets oStruct_Field and assembler constants).
+- The file starts with these lines, as they are:
+  `#include <stddef.h>` / `#include <stdint.h>` / `#include "game.h"` (game.h brings cpu.h, the A_LABEL
+  address macros, struct field offsets oStruct_Field and assembler constants) /
+  `#define G(T, addr) ((T *)(uintptr_t)(u32)(addr))` (a guest address as a typed pointer: guest memory sits
+  at its GBA addresses on the GBA and in the host test build).
 - Every function of the subsystem becomes an ordinary `static` C function with real parameters and a real
   return value: the signature given with it (its arguments arrive in those registers in the original).
+  Give it a descriptive snake_case name (`start_screen_init`), and put the game's name in its comment
+  (`/* startScreen_init_802F668: ... */`): the game's names are already declared elsewhere as
+  `Next NAME(void)` (the original's register-level versions), so a static function cannot reuse them.
   Use the struct types given below for the struct pointers (`StartScreen *self`, `self->CurrCursorPos`).
   Get a struct pointer from a guest address with `G(Type, addr)` (e.g. `G(StartScreen, A_eStartScreen)`);
-  struct fields that hold guest pointers are u32.
+  struct fields that hold guest pointers are u32. Never cast an integer to a pointer any other way
+  (the host test build is 64-bit), and pass a struct pointer to a wrapper parameter of type u32 as
+  `(u32)(uintptr_t)ptr`.
 - Inside the subsystem, functions call each other directly as C functions. A jump table of the
   subsystem's own functions (a `.word fn+1` table indexed by a state byte) becomes a C `switch` or a
   `static` array of function pointers, indexed the same way (state byte values are byte offsets into the
   table: index = offset / 4).
 - Only the ENTRY POINTS (listed below; they are called from the rest of the game) also get a thin
   adapter `Next NAME(void)`: read the arguments from the registers (R0..R12), call the typed function,
-  write its result (R0 = ...), restore the registers the original preserves (its `push {r4-r7,lr}` ...
-  `pop {r4-r7,pc}`) when the subsystem's code calls other game code in between, and
+  write its result (R0 = ...), restore the registers the original preserves (its `push {{r4-r7,lr}}` ...
+  `pop {{r4-r7,pc}}`) when the subsystem's code calls other game code in between, and
   `RETURN_TO_CALLER();`. No control flow, no memory access, at most 8 statements. Save registers in
   locals first: `u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;` ... `R4 = r4; R5 = r5; R6 = r6; R7 = r7;`.
   Non-entry functions get NO `Next` adapter.
@@ -212,6 +263,13 @@ order where it matters, the same results, the same calls to the rest of the game
 - Names: every label of the disassembly is a macro A_LABEL holding its address (A_eStartScreen,
   A_off_802F350; the bare label is not defined), struct field offsets are oStruct_Field, assembler
   constants keep their names. File-scope initializers must be constants (numbers and these macros).
+- bn6f macros in the assembly: `movflag FLAG` sets r0 = FLAG >> 8 and r1 = FLAG & 0xFF (an event flag
+  split in two bytes), so `movflag EVENT_1704; bl SetEventFlagFromImmediate` is
+  `call_SetEventFlagFromImmediate(EVENT_1704 >> 8, EVENT_1704 & 0xFF)`.
+- An entry point's contract "outputs" are the registers its callers read after it returns. The adapter
+  must leave there what the original leaves: a value the original's own code computes last (e.g. a loop
+  pointer left in r3) is returned by the typed function and written by the adapter; one a callee leaves is
+  already there when that callee is the last thing the original does before returning.
 - Condition flags only matter at the entry points if their contract lists nz/c/v as outputs (none here
   unless stated); inside the subsystem results are ordinary C values.
 - Write it the way a careful human porter would: meaningful names (keep the game's function names for the
@@ -219,7 +277,7 @@ order where it matters, the same results, the same calls to the rest of the game
   terms, a one-paragraph comment at the top of the file describing the subsystem. No goto, no copies of
   machine-translated style.
 
-Entry points: {entries}.
+Entry points: {entries}.{extra}
 
 Answer with the complete file in one ```c block, nothing after it.
 """

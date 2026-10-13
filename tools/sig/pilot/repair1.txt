@@ -1,0 +1,2419 @@
+You convert one whole subsystem of the Game Boy Advance game Mega Man Battle Network 6 (Falzar),
+"asm03_0/start_802F544" (32 functions), from its assembly into ONE file of clear, idiomatic C for a source port:
+cport/src/game/start_screen.c. Your file is compiled and tested automatically against the original on real
+game states (captured calls, random inputs, the CPU oracle, and whole-game replays that compare
+video memory every frame), so it must behave exactly the same: the same memory writes in the same
+order where it matters, the same results, the same calls to the rest of the game with the same arguments.
+
+## How the file works
+- The file starts with these lines, as they are:
+  `#include <stddef.h>` / `#include <stdint.h>` / `#include "game.h"` (game.h brings cpu.h, the A_LABEL
+  address macros, struct field offsets oStruct_Field and assembler constants) /
+  `#define G(T, addr) ((T *)(uintptr_t)(u32)(addr))` (a guest address as a typed pointer: guest memory sits
+  at its GBA addresses on the GBA and in the host test build).
+- Every function of the subsystem becomes an ordinary `static` C function with real parameters and a real
+  return value: the signature given with it (its arguments arrive in those registers in the original).
+  Give it a descriptive snake_case name (`start_screen_init`), and put the game's name in its comment
+  (`/* startScreen_init_802F668: ... */`): the game's names are already declared elsewhere as
+  `Next NAME(void)` (the original's register-level versions), so a static function cannot reuse them.
+  Use the struct types given below for the struct pointers (`StartScreen *self`, `self->CurrCursorPos`).
+  Get a struct pointer from a guest address with `G(Type, addr)` (e.g. `G(StartScreen, A_eStartScreen)`);
+  struct fields that hold guest pointers are u32. Never cast an integer to a pointer any other way
+  (the host test build is 64-bit), and pass a struct pointer to a wrapper parameter of type u32 as
+  `(u32)(uintptr_t)ptr`.
+- Inside the subsystem, functions call each other directly as C functions. A jump table of the
+  subsystem's own functions (a `.word fn+1` table indexed by a state byte) becomes a C `switch` or a
+  `static` array of function pointers, indexed the same way (state byte values are byte offsets into the
+  table: index = offset / 4).
+- Only the ENTRY POINTS (listed below; they are called from the rest of the game) also get a thin
+  adapter `Next NAME(void)`: read the arguments from the registers (R0..R12), call the typed function,
+  write its result (R0 = ...), restore the registers the original preserves (its `push {r4-r7,lr}` ...
+  `pop {r4-r7,pc}`) when the subsystem's code calls other game code in between, and
+  `RETURN_TO_CALLER();`. No control flow, no memory access, at most 8 statements. Save registers in
+  locals first: `u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;` ... `R4 = r4; R5 = r5; R6 = r6; R7 = r7;`.
+  Non-entry functions get NO `Next` adapter.
+- Calls out of the subsystem go through the generated wrappers given below, `call_NAME(...)`. Copy them
+  into the file unchanged (before the functions) and call them; never use R0..R12 yourself outside the
+  wrappers and the adapters. A typed wrapper takes the callee's real arguments. A wrapper marked
+  "register form" (the callee's signature is not settled) takes every register the callee's contract may
+  read: pass the value the original has in that register at the call (often a value it loaded for its
+  own use, or the struct pointer in r5); where the original's register holds something that is no
+  longer meaningful at that point, pass what it holds in the original anyway.
+- A call through a code address that is not one of the subsystem's own functions: a small static helper
+  that sets R0.. as the original, calls `GUEST_CALL_ADDR(address)`, and returns R0, marked with
+  `/* register form: call through a code address */`.
+- Guest memory that is not one of the struct types: LD8/LD16/LD32(addr), signed loads (ldrsb/ldrsh)
+  LDS8/LDS16(addr), stores ST8/ST16/ST32(addr, value) (statements). Addresses are u32. The toolkit (r10
+  in the original) is at A_eToolkit: `LD32(A_eToolkit + oToolkit_GameStatePtr)` etc.
+- Names: every label of the disassembly is a macro A_LABEL holding its address (A_eStartScreen,
+  A_off_802F350; the bare label is not defined), struct field offsets are oStruct_Field, assembler
+  constants keep their names. File-scope initializers must be constants (numbers and these macros).
+- bn6f macros in the assembly: `movflag FLAG` sets r0 = FLAG >> 8 and r1 = FLAG & 0xFF (an event flag
+  split in two bytes), so `movflag EVENT_1704; bl SetEventFlagFromImmediate` is
+  `call_SetEventFlagFromImmediate(EVENT_1704 >> 8, EVENT_1704 & 0xFF)`.
+- An entry point's contract "outputs" are the registers its callers read after it returns. The adapter
+  must leave there what the original leaves: a value the original's own code computes last (e.g. a loop
+  pointer left in r3) is returned by the typed function and written by the adapter; one a callee leaves is
+  already there when that callee is the last thing the original does before returning.
+- Condition flags only matter at the entry points if their contract lists nz/c/v as outputs (none here
+  unless stated); inside the subsystem results are ordinary C values.
+- Write it the way a careful human porter would: meaningful names (keep the game's function names for the
+  static functions, they are in the symbol database), structured control flow, short comments in game
+  terms, a one-paragraph comment at the top of the file describing the subsystem. No goto, no copies of
+  machine-translated style.
+
+Entry points: startscreen_render_802F544, sub_802FDB0, copyObjAttributesToIWRAM_802FE0C.
+loc_802FDB4 is a second entry into sub_802FDB0 (it starts part way into its code): it needs its own adapter `Next loc_802FDB4(void)` too, calling the typed function with what that entry sets up.
+
+Answer with the complete file in one ```c block, nothing after it.
+
+## Struct types (copy these into the file as they are)
+```c
+/* oStartScreen: start_screen_struct (bn6f/include/structs/StartScreen.inc) */
+typedef struct StartScreen {
+    u8 JumpTableOff_00;                      /* 0x00 */
+    u8 JumpTableOff_01;                      /* 0x01 */
+    u8 Unk_02;                               /* 0x02 */
+    u8 Unk_03;                               /* 0x03 */
+    u16 LogoShowTimer;                       /* 0x04 */
+    u8 Unk_06;                               /* 0x06 */
+    u8 Unk_07;                               /* 0x07 */
+    u8 CurrCursorPos;                        /* 0x08 */
+    u8 NumChoices;                           /* 0x09 */
+    u16 AchievmentFlags;                     /* 0x0A */
+    u8 Unk_0C;                               /* 0x0C */
+    u8 Und_0D;                               /* 0x0D */
+    u8 Unk_0E;                               /* 0x0E */
+    u8 Unk_0F;                               /* 0x0F */
+    u8 pad_10[0x10];
+} StartScreen;
+_Static_assert(offsetof(StartScreen, JumpTableOff_00) == 0x0, "StartScreen.JumpTableOff_00");
+_Static_assert(offsetof(StartScreen, JumpTableOff_01) == 0x1, "StartScreen.JumpTableOff_01");
+_Static_assert(offsetof(StartScreen, Unk_02) == 0x2, "StartScreen.Unk_02");
+_Static_assert(offsetof(StartScreen, Unk_03) == 0x3, "StartScreen.Unk_03");
+_Static_assert(offsetof(StartScreen, LogoShowTimer) == 0x4, "StartScreen.LogoShowTimer");
+_Static_assert(offsetof(StartScreen, Unk_06) == 0x6, "StartScreen.Unk_06");
+_Static_assert(offsetof(StartScreen, Unk_07) == 0x7, "StartScreen.Unk_07");
+_Static_assert(offsetof(StartScreen, CurrCursorPos) == 0x8, "StartScreen.CurrCursorPos");
+_Static_assert(offsetof(StartScreen, NumChoices) == 0x9, "StartScreen.NumChoices");
+_Static_assert(offsetof(StartScreen, AchievmentFlags) == 0xA, "StartScreen.AchievmentFlags");
+_Static_assert(offsetof(StartScreen, Unk_0C) == 0xC, "StartScreen.Unk_0C");
+_Static_assert(offsetof(StartScreen, Und_0D) == 0xD, "StartScreen.Und_0D");
+_Static_assert(offsetof(StartScreen, Unk_0E) == 0xE, "StartScreen.Unk_0E");
+_Static_assert(offsetof(StartScreen, Unk_0F) == 0xF, "StartScreen.Unk_0F");
+_Static_assert(sizeof(StartScreen) == 0x20, "sizeof StartScreen");
+```
+
+## Generated wrappers of the functions it calls outside the subsystem (copy these as they are)
+```c
+typedef struct { u32 r0, r1; } U32Pair;   /* a result in r0 and r1 */
+
+typedef struct { bool z; } PlaySoundEffect_result;   /* z: the Z flag it leaves */
+/* register form: generated typed wrapper: PlaySoundEffect's signature is confident (symbols/db PlaySoundEffect.yaml, signature:) */
+static inline PlaySoundEffect_result call_PlaySoundEffect(u8 r0) {
+    R0 = r0;
+    GUEST_CALL(PlaySoundEffect);
+    return (PlaySoundEffect_result){ ZERO_FLAG() };
+}
+
+/* register form: generated typed wrapper: music_80005F2's signature is confident (symbols/db music_80005F2.yaml, signature:) */
+static inline void call_music_80005F2(u8 songId) {
+    R0 = songId;
+    GUEST_CALL(music_80005F2);
+}
+
+/* register form: generated typed wrapper: sound_dispatchCueHandler_800068A's signature is confident (symbols/db sound_dispatchCueHandler_800068A.yaml, signature:) */
+static inline void call_sound_dispatchCueHandler_800068A(u32 cueId) {
+    R0 = cueId;
+    GUEST_CALL(sound_dispatchCueHandler_800068A);
+}
+
+/* register form: generated typed wrapper: musicGameState_8000784's signature is confident (symbols/db musicGameState_8000784.yaml, signature:) */
+static inline U32Pair call_musicGameState_8000784(u8 r0) {
+    R0 = r0;
+    GUEST_CALL(musicGameState_8000784);
+    return (U32Pair){ R0, R1 };
+}
+
+/* register form: generated typed wrapper: ZeroFillByEightWords's signature is confident (symbols/db ZeroFillByEightWords.yaml, signature:) */
+static inline void call_ZeroFillByEightWords(u32 r0, u16 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByEightWords);
+}
+
+/* register form: generated typed wrapper: CopyWords's signature is confident (symbols/db CopyWords.yaml, signature:) */
+static inline void call_CopyWords(u32 r0, u32 r1, u8 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyWords);
+}
+
+/* register form: generated typed wrapper: CopyByEightWords's signature is confident (symbols/db CopyByEightWords.yaml, signature:) */
+static inline void call_CopyByEightWords(u32 r0, u32 r1, u16 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyByEightWords);
+}
+
+/* register form: generated typed wrapper: WordFill's signature is confident (symbols/db WordFill.yaml, signature:) */
+static inline void call_WordFill(u32 value, u32 * dest, u32 size) {
+    R0 = value;
+    R1 = (u32)(uintptr_t)dest;
+    R2 = size;
+    GUEST_CALL(WordFill);
+}
+
+/* register form: generated typed wrapper: decompAndCopyData's signature is confident (symbols/db decompAndCopyData.yaml, signature:) */
+static inline void call_decompAndCopyData(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(decompAndCopyData);
+}
+
+/* register form: generated typed wrapper: GetTitleScreenIconCount's signature is confident (symbols/db GetTitleScreenIconCount.yaml, signature:) */
+static inline U32Pair call_GetTitleScreenIconCount(void) {
+    GUEST_CALL(GetTitleScreenIconCount);
+    return (U32Pair){ R0, R1 };
+}
+
+/* register form: generated typed wrapper: scriptListRun_8001158's signature is confident (symbols/db scriptListRun_8001158.yaml, signature:) */
+static inline void call_scriptListRun_8001158(const u8 * r0) {
+    R0 = (u32)(uintptr_t)r0;
+    GUEST_CALL(scriptListRun_8001158);
+}
+
+/* register form: generated typed wrapper: GetRNG's signature is confident (symbols/db GetRNG.yaml, signature:) */
+static inline u32 call_GetRNG(void) {
+    GUEST_CALL(GetRNG);
+    return R0;
+}
+
+/* register form: generated typed wrapper: toolkit_applyOverlayPalette_80015FC's signature is confident (symbols/db toolkit_applyOverlayPalette_80015FC.yaml, signature:) */
+static inline void call_toolkit_applyOverlayPalette_80015FC(u8 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+}
+
+/* register form: generated typed wrapper: SetRenderInfoLCDControl's signature is confident (symbols/db SetRenderInfoLCDControl.yaml, signature:) */
+static inline void call_SetRenderInfoLCDControl(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+/* register form: generated typed wrapper: renderInfo_8001788's signature is confident (symbols/db renderInfo_8001788.yaml, signature:) */
+static inline void call_renderInfo_8001788(void) {
+    GUEST_CALL(renderInfo_8001788);
+}
+
+/* register form: generated typed wrapper: renderInfo_80017A0's signature is confident (symbols/db renderInfo_80017A0.yaml, signature:) */
+static inline void call_renderInfo_80017A0(void) {
+    GUEST_CALL(renderInfo_80017A0);
+}
+
+/* register form: generated typed wrapper: zeroFillVRAM's signature is confident (symbols/db zeroFillVRAM.yaml, signature:) */
+static inline void call_zeroFillVRAM(void) {
+    GUEST_CALL(zeroFillVRAM);
+}
+
+/* register form: generated typed wrapper: ZeroFillGFX30025c0's signature is confident (symbols/db ZeroFillGFX30025c0.yaml, signature:) */
+static inline void call_ZeroFillGFX30025c0(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+/* register form: generated typed wrapper: CopyBackgroundTiles's signature is confident (symbols/db CopyBackgroundTiles.yaml, signature:) */
+static inline void call_CopyBackgroundTiles(u8 r0, u8 r1, u8 r2, u32 r3, u8 r4, u8 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* register form: generated typed wrapper: zeroFill_e20094C0's signature is confident (symbols/db zeroFill_e20094C0.yaml, signature:) */
+static inline void call_zeroFill_e20094C0(void) {
+    GUEST_CALL(zeroFill_e20094C0);
+}
+
+/* register form: generated typed wrapper: LoadGFXAnim's signature is confident (symbols/db LoadGFXAnim.yaml, signature:) */
+static inline void call_LoadGFXAnim(const u8 * r0) {
+    R0 = (u32)(uintptr_t)r0;
+    GUEST_CALL(LoadGFXAnim);
+}
+
+/* register form: generated typed wrapper: LoadGFXAnims's signature is confident (symbols/db LoadGFXAnims.yaml, signature:) */
+static inline void call_LoadGFXAnims(u32 data) {
+    R0 = data;
+    GUEST_CALL(LoadGFXAnims);
+}
+
+/* register form: generated typed wrapper: palette_clearEPalette20097a0_80023A8's signature is confident (symbols/db palette_clearEPalette20097a0_80023A8.yaml, signature:) */
+static inline void call_palette_clearEPalette20097a0_80023A8(void) {
+    GUEST_CALL(palette_clearEPalette20097a0_80023A8);
+}
+
+/* register form: generated typed wrapper: resetOverworldScene_800260C's signature is confident (symbols/db resetOverworldScene_800260C.yaml, signature:) */
+static inline void call_resetOverworldScene_800260C(void) {
+    GUEST_CALL(resetOverworldScene_800260C);
+}
+
+/* register form: generated typed wrapper: scenario_prepareEnterMap_8004D48's signature is confident (symbols/db scenario_prepareEnterMap_8004D48.yaml, signature:) */
+static inline void call_scenario_prepareEnterMap_8004D48(void) {
+    GUEST_CALL(scenario_prepareEnterMap_8004D48);
+}
+
+/* register form: generated wrapper: initNewGameData_8004DF0's signature is unsure, so every register its contract may read is passed (r4, r9, r11, r12 pass through as the guest has them: no call site here sets them) */
+static inline void call_initNewGameData_8004DF0(u32 r7) {
+    R7 = r7;
+    GUEST_CALL(initNewGameData_8004DF0);
+}
+
+typedef struct { u32 r0; u32 r1; bool z; } SetScreenFade_result;   /* z: the Z flag it leaves */
+/* register form: generated typed wrapper: SetScreenFade's signature is confident (symbols/db SetScreenFade.yaml, signature:) */
+static inline SetScreenFade_result call_SetScreenFade(u8 r0, u8 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (SetScreenFade_result){ R0, R1, ZERO_FLAG() };
+}
+
+typedef struct { u32 r0; u32 r1; bool z; } IsScreenFadeActive_result;   /* z: the Z flag it leaves */
+/* register form: generated typed wrapper: IsScreenFadeActive's signature is confident (symbols/db IsScreenFadeActive.yaml, signature:) */
+static inline IsScreenFadeActive_result call_IsScreenFadeActive(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (IsScreenFadeActive_result){ R0, R1, ZERO_FLAG() };
+}
+
+/* register form: generated typed wrapper: SetEventFlagFromImmediate's signature is confident (symbols/db SetEventFlagFromImmediate.yaml, signature:) */
+static inline U32Pair call_SetEventFlagFromImmediate(u8 r0, u8 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetEventFlagFromImmediate);
+    return (U32Pair){ R0, R1 };
+}
+
+/* register form: generated typed wrapper: sub_802FE28's signature is confident (symbols/db sub_802FE28.yaml, signature:) */
+static inline u8 call_sub_802FE28(u32 r0, u16 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sub_802FE28);
+    return R0;
+}
+
+/* register form: generated typed wrapper: sub_8039570's signature is confident (symbols/db sub_8039570.yaml, signature:) */
+static inline U32Pair call_sub_8039570(void) {
+    GUEST_CALL(sub_8039570);
+    return (U32Pair){ R0, R1 };
+}
+
+/* register form: generated typed wrapper: call_803D1AC's signature is confident (symbols/db call_803D1AC.yaml, signature:) */
+static inline U32Pair call_call_803D1AC(void) {
+    GUEST_CALL(call_803D1AC);
+    return (U32Pair){ R0, R1 };
+}
+
+/* register form: generated typed wrapper: init_eStartScreenAnimationControl200B1A0_1's signature is confident (symbols/db init_eStartScreenAnimationControl200B1A0_1.yaml, signature:) */
+static inline void call_init_eStartScreenAnimationControl200B1A0_1(void) {
+    GUEST_CALL(init_eStartScreenAnimationControl200B1A0_1);
+}
+
+/* register form: generated typed wrapper: startScreen_IsTitleAnimationFinished_803E928's signature is confident (symbols/db startScreen_IsTitleAnimationFinished_803E928.yaml, signature:) */
+static inline bool call_startScreen_IsTitleAnimationFinished_803E928(void) {
+    GUEST_CALL(startScreen_IsTitleAnimationFinished_803E928);
+    return ZERO_FLAG();   /* z set */
+}
+
+/* register form: generated typed wrapper: startScreen_TstZero's signature is confident (symbols/db startScreen_TstZero.yaml, signature:) */
+static inline bool call_startScreen_TstZero(void) {
+    GUEST_CALL(startScreen_TstZero);
+    return ZERO_FLAG();   /* z set */
+}
+
+/* register form: generated typed wrapper: startScreen_AnimatePressStart_803E938's signature is confident (symbols/db startScreen_AnimatePressStart_803E938.yaml, signature:) */
+static inline void call_startScreen_AnimatePressStart_803E938(void) {
+    GUEST_CALL(startScreen_AnimatePressStart_803E938);
+}
+
+/* register form: generated typed wrapper: eStruct200BC30_setJumpOffset00's signature is confident (symbols/db eStruct200BC30_setJumpOffset00.yaml, signature:) */
+static inline void call_eStruct200BC30_setJumpOffset00(u8 value) {
+    R0 = value;
+    GUEST_CALL(eStruct200BC30_setJumpOffset00);
+}
+
+/* register form: generated typed wrapper: clearStruct200BC30_803EBAC's signature is confident (symbols/db clearStruct200BC30_803EBAC.yaml, signature:) */
+static inline void call_clearStruct200BC30_803EBAC(void) {
+    GUEST_CALL(clearStruct200BC30_803EBAC);
+}
+
+/* register form: generated typed wrapper: clear_e200AD04's signature is confident (symbols/db clear_e200AD04.yaml, signature:) */
+static inline void call_clear_e200AD04(void) {
+    GUEST_CALL(clear_e200AD04);
+}
+
+/* register form: generated typed wrapper: loc_803F512's signature is confident (symbols/db loc_803F512.yaml, signature:) */
+static inline void call_loc_803F512(void) {
+    GUEST_CALL(loc_803F512);
+}
+
+typedef struct { u32 r0; u32 r1; bool z; } notZero_eByte200AD04_result;   /* z: the Z flag it leaves */
+/* register form: generated typed wrapper: notZero_eByte200AD04's signature is confident (symbols/db notZero_eByte200AD04.yaml, signature:) */
+static inline notZero_eByte200AD04_result call_notZero_eByte200AD04(void) {
+    GUEST_CALL(notZero_eByte200AD04);
+    return (notZero_eByte200AD04_result){ R0, R1, ZERO_FLAG() };
+}
+
+/* register form: generated typed wrapper: sub_803F6B0's signature is confident (symbols/db sub_803F6B0.yaml, signature:) */
+static inline void call_sub_803F6B0(u32 table_index) {
+    R0 = table_index;
+    GUEST_CALL(sub_803F6B0);
+}
+
+/* register form: generated typed wrapper: sub_803F838's signature is confident (symbols/db sub_803F838.yaml, signature:); r7, r8, r9, r11, r12 pass through as the guest has them (no call site here sets them: the original passes its own caller's values on) */
+static inline bool call_sub_803F838(void) {
+    GUEST_CALL(sub_803F838);
+    return ZERO_FLAG();   /* z set */
+}
+
+/* register form: generated typed wrapper: sub_803FA42's signature is confident (symbols/db sub_803FA42.yaml, signature:) */
+static inline void call_sub_803FA42(void) {
+    GUEST_CALL(sub_803FA42);
+}
+
+/* register form: generated typed wrapper: sub_813D90C's signature is confident (symbols/db sub_813D90C.yaml, signature:) */
+static inline void call_sub_813D90C(u8 value) {
+    R0 = value;
+    GUEST_CALL(sub_813D90C);
+}
+
+/* register form: generated typed wrapper: zeroFill_813D960's signature is confident (symbols/db zeroFill_813D960.yaml, signature:) */
+static inline void call_zeroFill_813D960(void) {
+    GUEST_CALL(zeroFill_813D960);
+}
+
+/* register form: generated typed wrapper: sub_81440D8's signature is confident (symbols/db sub_81440D8.yaml, signature:) */
+static inline void call_sub_81440D8(void) {
+    GUEST_CALL(sub_81440D8);
+}
+
+/* register form: generated typed wrapper: rfu_REQ_stopMode's signature is confident (symbols/db rfu_REQ_stopMode.yaml, signature:); r6, r8, r9, r11, r12 pass through as the guest has them (no call site here sets them: the original passes its own caller's values on) */
+static inline void call_rfu_REQ_stopMode(u32 arg) {
+    R7 = arg;
+    GUEST_CALL(rfu_REQ_stopMode);
+}
+```
+
+## The functions
+
+### startscreen_render_802F544 (0x0802F544) ENTRY POINT
+signature (confident, model+mechanical): args StartScreen * self (r5); result none void
+contract: inputs r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 lr; outputs r4 r5 r6 r7 r8 r9 r10 r11 r12; preserved r4 r5 r6 r7
+called from outside: main_
+assembly:
+```
+	push {r4-r7,lr}
+	bl startScreen_AnimatePressStart_803E938
+
+	ldr r5, off_802F570 // =eStartScreen
+	ldr r0, off_802F55C // =jt_802F560 
+
+	ldrb r1, [r5, #oStartScreen_JumpTableOff_00]
+	ldr r0, [r0,r1]
+	
+  mov lr, pc
+  bx r0
+	
+  bl GetRNG // () -> u32?
+  pop {r4-r7,pc}
+  .balign 4, 0
+off_802F55C:
+	.word jt_802F560
+jt_802F560:
+	.word startScreen_initGfx_802F574+1 // (self: *mut StartScreen $r5) -> ()
+	.word startscreen_802F60C+1 // (self: * StartScreen $r5) -> ()
+	.word startScreen_RunStateHandler_802F63C+1 // (self: * StartScreen $r5) -> ()
+	.word load_game_802F756+1 // (self: * StartScreen $r5) -> ()
+off_802F570:
+	.word eStartScreen
+	thumb_func_end startscreen_render_802F544
+```
+
+### startScreen_initGfx_802F574 (0x0802F574)
+signature (unsure, -): args StartScreen * r5 (r5), u8 r7 (r7), u32 r8 (r8), u8 * r9 (r9), u32 r11 (r11), u32 r12 (r12); result none void
+contract: inputs r5 r7 r8 r9 r10 r11 r12 lr; outputs r8 r9 r10 r11 r12; preserved r4 r5
+assembly:
+```
+	push {lr}
+
+	mov r0, #0xb
+	bl toolkit_applyOverlayPalette_80015FC
+
+	ldr r0, off_802F7E4 // =0x1140 
+	bl SetRenderInfoLCDControl // (a_00: u16) -> ()
+
+	bl renderInfo_8001788 // () -> ()
+
+	bl renderInfo_80017A0 // () -> ()
+
+  /// Disabling this causes responsive black start screen with some graphics noise
+	bl startScreen_initGfx_802FCC0
+
+	mov r0, #0xc
+	mov r1, #0xff
+	bl SetScreenFade // (int a1, int a2) -> void
+
+	bl musicGameState_8000784 // () -> void
+
+	ldr r0, off_802F5EC // =pt_802F5F0 
+	bl LoadGFXAnims // (gfx_anim_data_arr: * FFStop32<[GFXAnimScript]>) -> ()
+
+  // trigger startscreen_802F60C via startscreen_render_802F544
+	mov r0, #4
+	strb r0, [r5, #oStartScreen_JumpTableOff_00]
+
+	mov r0, #0
+	strb r0, [r5, #oStartScreen_Unk_02]
+
+	bl sub_803FA42
+
+	bl sub_803F838 // () -> !zf
+	bne loc_802F5BE
+
+	mov r0, #1
+	strb r0, [r5, #oStartScreen_Unk_02]
+
+	bl GetTitleScreenIconCount // () -> (u8, u16)
+	strb r0, [r5, #oStartScreen_Unk_0C]
+	strh r1, [r5, #oStartScreen_AchievmentFlags]
+
+loc_802F5BE:
+	ldrb r0, [r5, #oStartScreen_Unk_02]
+	tst r0, r0
+	bne loc_802F5D4
+
+	mov r6, #0
+	mov r7, #1
+
+  // Was this a condition stubbed out?
+	bl startScreen_TstZero // () -> !zf
+	beq loc_802F5E2
+
+	mov r0, #0
+	mov r7, #2
+	b loc_802F5E2
+loc_802F5D4:
+	mov r6, #1
+	mov r7, #2
+
+	bl startScreen_TstZero // () -> !zf
+	beq loc_802F5E2
+
+	mov r6, #1
+	mov r7, #3
+
+loc_802F5E2:
+	strb r6, [r5,#oStartScreen_CurrCursorPos]
+	strb r7, [r5,#oStartScreen_NumChoices]
+
+	mov r0, #0
+	strb r0, [r5,#oStartScreen_Unk_03]
+
+	pop {pc}
+	.balign 4, 0
+off_802F5EC:
+	.word pt_802F5F0
+pt_802F5F0:
+	.word off_802F350
+	.word off_802F3A0
+	.word off_802F3F0
+	.word off_802F440
+	.word off_802F490
+	.word off_802F4E0
+	.word 0xFFFFFFFF
+	thumb_func_end startScreen_initGfx_802F574
+```
+
+### startscreen_802F60C (0x0802F60C)
+signature (confident, model+mechanical): args StartScreen * self (r5); result none void
+contract: inputs r5 r10 lr; outputs -; preserved -
+assembly:
+```
+	push {lr}
+
+	ldr r0, off_802F61C // =off_802F620 
+
+  // There is only one valid choice!
+	ldrb r1, [r5, #oStartScreen_JumpTableOff_01]
+	ldr r0, [r0,r1]
+
+	mov lr, pc
+	bx r0
+
+	pop {pc}
+	.balign 4, 0x00
+off_802F61C:
+	.word off_802F620
+off_802F620:
+	.word startscreen_render_trigger_802F624+1 // (self: *mut StartScreen $r5) -> ()
+	thumb_func_end startscreen_802F60C
+```
+
+### startscreen_render_trigger_802F624 (0x0802F624)
+signature (confident, model+mechanical): args StartScreen * self (r5); result none void
+contract: inputs r5 r10 lr; outputs -; preserved -
+assembly:
+```
+	push {lr}
+
+	ldr r0, dword_802F638 // =0x1741 
+	bl SetRenderInfoLCDControl // (a_00: u16) -> ()
+
+  // trigger startScreen_RunStateHandler_802F63C via startscreen_render_802F544
+	mov r0, #8
+	strb r0, [r5, #oStartScreen_JumpTableOff_00]
+
+	mov r0, #0
+	strb r0, [r5, #oStartScreen_JumpTableOff_01]
+
+	pop {pc}
+	.balign 4, 0
+dword_802F638:
+	.word 0x1741
+	thumb_func_end startscreen_render_trigger_802F624
+```
+
+### startScreen_RunStateHandler_802F63C (0x0802F63C)
+signature (confident, model+mechanical): args StartScreen * self (r5); result none void
+contract: inputs r2 r3 r4 r5 r6 r7 r10 lr; outputs r8 r9 r10 r12; preserved -
+assembly:
+```
+	push {lr}
+
+	ldr r0, off_802F650 // =jt_802F654 
+
+	ldrb r1, [r5, #oStartScreen_JumpTableOff_01]
+	ldr r0, [r0,r1]
+
+	mov lr, pc
+	bx r0
+
+	bl loadTitleBlob_802FB10 // () -> void
+
+	pop {pc}
+	.balign 4, 0
+off_802F650:
+	.word jt_802F654
+jt_802F654:
+
+  // where is it triggered?
+	.word startScreen_init_802F668+1 // (self: *mut StartScreen $r5) -> ()
+
+	.word sub_802F6A4+1 // (self: *mut StartScreen $r5) -> ()
+	.word sub_802F6B2+1 // (self: *mut StartScreen $r5) -> ()
+
+  // where is it triggered?
+	.word startScreen_UpdateAndRenderFrame_802F704+1 // (self: *mut StartScreen $r5) -> ()
+
+	.word startScreen_update_802F710+1 // (self: *mut StartScreen $r5) -> ()
+	thumb_func_end startScreen_RunStateHandler_802F63C
+```
+
+### startScreen_init_802F668 (0x0802F668)
+signature (confident, model+mechanical): args StartScreen * self (r5); result none void
+contract: inputs r1 r2 r3 r4 r5 r6 r7 r10 lr; outputs r10; preserved r5 r6 r7 r10
+assembly:
+```
+	push {lr}
+
+	mov r0, #0
+	strb r0, [r5,#0xe]
+	strb r0, [r5,#0xf]
+
+	ldr r0, dword_802F69C // =0xa46 
+	strh r0, [r5,#4]
+
+	mov r0, #1
+	bl music_80005F2 // (bg_music_indicator: u8) -> ()
+
+	mov r0, #0xa
+	bl toolkit_applyOverlayPalette_80015FC
+
+	ldr r0, off_802F6A0 // =0x1340 
+	bl SetRenderInfoLCDControl // (a_00: u16) -> ()
+
+	mov r0, #0
+	strb r0, [r5,#6]
+
+	bl copyBGTiles_802FD3C
+
+	mov r0, #8
+	mov r1, #0x10
+	bl SetScreenFade // (int a1, int a2) -> void
+
+  // trigger sub_802F6A4 via startScreen_RunStateHandler_802F63C
+	mov r0, #4
+	strb r0, [r5, #oStartScreen_JumpTableOff_01]
+
+	pop {pc}
+	.balign 4, 0
+dword_802F69C:
+	.word 0xA46
+off_802F6A0:
+	.word 0x1340
+	thumb_func_end startScreen_init_802F668
+```
+
+### sub_802F6A4 (0x0802F6A4)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs -; preserved r4
+assembly:
+```
+	push {r4,lr}
+
+	bl IsScreenFadeActive // () -> zf
+	beq locret_802F6B0
+
+  // trigger sub_802F6B2 via startScreen_RunStateHandler_802F63C
+	mov r0, #8
+	strb r0, [r5, #oStartScreen_JumpTableOff_01]
+
+locret_802F6B0:
+	pop {r4,pc}
+	thumb_func_end sub_802F6A4
+```
+
+### sub_802F6B2 (0x0802F6B2)
+signature (confident, mechanical): args StartScreen * self (r5); result none void
+contract: inputs r2 r5 r10 lr; outputs r8 r9 r10 r12; preserved r4 r5 r6 r8 r9 r12
+assembly:
+```
+	push {r4,lr}
+
+	ldrh r0, [r5,#4]
+	cmp r0, #0
+	bgt loc_802F6C8
+
+  // trigger startScreen_update_802F710 via startScreen_RunStateHandler_802F63C
+	mov r0, #0x10
+	strb r0, [r5, #oStartScreen_JumpTableOff_01]
+
+	mov r0, #0xc
+	mov r1, #0x10
+	bl SetScreenFade // (int a1, int a2) -> void
+
+	b locret_802F6FA
+
+loc_802F6C8:
+
+	sub r0, #1
+	strh r0, [r5,#4]
+
+	ldr r1, off_802F6FC // =0x12c 
+	cmp r0, r1
+	bne loc_802F6E0
+
+	push {r0,r5}
+	mov r0, #0x1f
+	mov r1, #0x10
+	bl sound_dispatchCueHandler_800068A
+
+	pop {r0,r5}
+
+	b locret_802F6FA
+
+loc_802F6E0:
+	ldrh r0, [r5,#4]
+	ldr r1, dword_802F700 // =0xa0a 
+	cmp r0, r1
+	bge locret_802F6FA
+
+	bl startScreen_IsTitleAnimationFinished_803E928
+
+	bne locret_802F6FA
+
+	bl sub_802FD54 // (self: *mut StartScreen $r5) -> ()
+	bl menu_onStartPressBeginTransition_802F7E8
+	bl sub_802F88E
+
+locret_802F6FA:
+	pop {r4,pc}
+	.balign 4, 0
+off_802F6FC:
+	.word 0x12C
+dword_802F700:
+	.word 0xA0A
+	thumb_func_end sub_802F6B2
+```
+
+### startScreen_UpdateAndRenderFrame_802F704 (0x0802F704)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r2 r5 r10 lr; outputs r10; preserved r4 r5 r6 r10
+assembly:
+```
+	push {lr}
+	bl sub_802F81C
+	bl sub_802F8D8 // (self: *mut StartScreen $r5) -> ()
+	pop {pc}
+	thumb_func_end startScreen_UpdateAndRenderFrame_802F704
+```
+
+### startScreen_update_802F710 (0x0802F710)
+signature (confident, model+mechanical): args StartScreen * self (r5); result none void
+contract: inputs r5 r10 lr; outputs -; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+
+	ldrh r0, [r5,#4]
+	cmp r0, #0
+	ble loc_802F71C
+
+	bl sub_802F8D8 // (self: *mut StartScreen $r5) -> ()
+
+loc_802F71C:
+
+	bl IsScreenFadeActive // () -> zf
+	beq locret_802F754
+
+	ldrh r0, [r5,#4]
+	cmp r0, #0
+	ble loc_802F72E
+
+  // This seems to be for quickly writing 0x0C to JO00, and 0x00 to JO01
+  // trigger load_game_802F756 via startscreen_render_802F544
+	mov r0, #0xc
+	strh r0, [r5, #oStartScreen_JumpTableOff_00]
+
+	b locret_802F754
+loc_802F72E:
+	bl zeroFill_e20094C0
+	bl palette_clearEPalette20097a0_80023A8
+	bl call_803D1AC // () -> void
+	bl sub_81440D8 // static () -> void
+	bl zeroFill_813D960
+	bl clear_e200AD04 // () -> ()
+	mov r0, #0
+	bl sub_803F6B0
+	bl loc_803F512
+	bl init_eStartScreenAnimationControl200B1A0_1
+
+locret_802F754:
+	pop {pc}
+	thumb_func_end startScreen_update_802F710
+```
+
+### load_game_802F756 (0x0802F756)
+signature (unsure, -): args u32 r4 (r4), StartScreen * r5 (r5), u16 r6 (r6), u32 r8 (r8), u8 * r9 (r9), u32 r11 (r11), u16 r12 (r12); result none void
+contract: inputs r4 r5 r6 r8 r9 r10 r11 r12 lr; outputs r8 r9 r10 r11 r12; preserved r4 r5
+assembly:
+```
+	push {lr}
+
+	mov r7, r10
+
+  // Disabling this causes "Continue" to click, sound effect to play, but then we get stuck in a black screen.
+  // trigger cbGameState_80050EC via main_
+	ldr r0, [r7,#oToolkit_MainJumptableIndexPtr]
+	mov r1, #4
+	strb r1, [r0]
+
+	ldr r0, off_802F7E4 // =0x1140 
+	bl SetRenderInfoLCDControl // (a_00: u16) -> ()
+
+	bl zeroFill_813D960
+
+	ldrb r0, [r5,#8]
+
+	cmp r0, #FALSE
+	beq loc_802F776
+
+	cmp r0, #TRUE
+	beq loc_802F79A
+
+	b loc_802F7B6
+loc_802F776:
+
+	bl resetOverworldScene_800260C
+
+	bl initNewGameData_8004DF0
+
+  // EnterMap is triggered via cbGameState_80050EC here
+	bl scenario_prepareEnterMap_8004D48
+
+	bl sub_81440D8 // static () -> void
+
+	bl rfu_REQ_stopMode
+
+	ldrb r0, [r5,#2]
+	tst r0, r0
+	beq locret_802F7E0
+
+	movflag EVENT_1704
+	bl SetEventFlagFromImmediate
+	b locret_802F7E0
+loc_802F79A:
+	ldrb r0, [r5,#2]
+	tst r0, r0
+	beq loc_802F7B6
+
+	bl scenario_prepareEnterMap_8004D48
+
+	movflag EVENT_1704
+	bl SetEventFlagFromImmediate
+
+	bl sub_81440D8 // static () -> void
+
+	bl rfu_REQ_stopMode
+
+	b locret_802F7E0
+
+loc_802F7B6:
+	mov r0, #0
+	bl sub_813D90C
+
+	bl scenario_prepareEnterMap_8004D48
+
+	bl sub_8039570
+
+	bl clearStruct200BC30_803EBAC
+
+	mov r0, #0xc
+	bl eStruct200BC30_setJumpOffset00
+
+	ldrb r0, [r5,#2]
+	tst r0, r0
+	beq loc_802F7DC
+
+	movflag EVENT_1704
+	bl SetEventFlagFromImmediate
+loc_802F7DC:
+	bl sub_81440D8 // static () -> void
+locret_802F7E0:
+	pop {pc}
+	.balign 4, 0
+off_802F7E4:
+	.word 0x1140
+	thumb_func_end load_game_802F756
+```
+
+### menu_onStartPressBeginTransition_802F7E8 (0x0802F7E8)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r2 r5 r10 lr; outputs r8 r9 r10 r12; preserved r4 r5 r6 r8 r9 r12
+assembly:
+```
+	push {lr}
+	mov r7, r10
+	ldr r0, [r7,#oToolkit_JoypadPtr]
+	ldrh r0, [r0,#2]
+	mov r1, #8
+	tst r1, r0
+	beq locret_802F810
+	bl zeroFill_813D960
+	mov r0, #0xc
+	strb r0, [r5,#1]
+	mov r0, #SOUND_SELECT_67
+	bl PlaySoundEffect
+	ldr r0, off_802F814 // =byte_802F2E4 
+	bl LoadGFXAnim // (script: * GFXAnimScript) -> ()
+	ldr r0, off_802F818 // =dword_802F334 
+	bl LoadGFXAnim // (script: * GFXAnimScript) -> ()
+locret_802F810:
+	pop {pc}
+	.balign 4, 0
+off_802F814:
+	.word byte_802F2E4
+off_802F818:
+	.word dword_802F334
+	thumb_func_end menu_onStartPressBeginTransition_802F7E8
+```
+
+### sub_802F81C (0x0802F81C)
+signature (confident, mechanical): args StartScreen * menu_state (r5); result none void
+contract: inputs r2 r5 r10 lr; outputs r5 r10; preserved r4 r5 r6 r10
+assembly:
+```
+	push {lr}
+	mov r7, r10
+	ldr r7, [r7,#oToolkit_JoypadPtr]
+	ldrh r0, [r7,#oJoypad_Pressed]
+	mov r1, #9
+	tst r1, r0
+	beq loc_802F848
+	bl IsScreenFadeActive // () -> zf
+	beq locret_802F88C
+	bl musicGameState_8000784 // () -> void
+	mov r0, #0x9d
+	bl PlaySoundEffect
+	mov r0, #0x10
+	strb r0, [r5,#1]
+	mov r0, #0xc
+	mov r1, #0x10
+	bl SetScreenFade // (int a1, int a2) -> void
+	b locret_802F88C
+loc_802F848:
+	ldrh r0, [r7,#4]
+	mov r1, #0x40 
+	tst r1, r0
+	beq loc_802F86A
+	ldrb r0, [r5,#8]
+	mov r1, r0
+	sub r0, #1
+	bge loc_802F85C
+	ldrb r0, [r5,#9]
+	sub r0, #1
+loc_802F85C:
+	strb r0, [r5,#8]
+	cmp r0, r1
+	beq locret_802F88C
+	mov r0, #SOUND_UNK_66
+	bl PlaySoundEffect
+	b locret_802F88C
+loc_802F86A:
+	ldrh r0, [r7,#4]
+	mov r1, #0x80
+	tst r1, r0
+	beq locret_802F88C
+	ldrb r0, [r5,#8]
+	mov r1, r0
+	add r0, #1
+	ldrb r2, [r5,#9]
+	cmp r0, r2
+	blt loc_802F880
+	mov r0, #0
+loc_802F880:
+	strb r0, [r5,#8]
+	cmp r0, r1
+	beq locret_802F88C
+	mov r0, #SOUND_UNK_66
+	bl PlaySoundEffect
+locret_802F88C:
+	pop {pc}
+	thumb_func_end sub_802F81C
+```
+
+### sub_802F88E (0x0802F88E)
+signature (confident, mechanical): args none; result none void
+contract: inputs r10 lr; outputs -; preserved r4 r5 r6 r7
+assembly:
+```
+	push {r4-r7,lr}
+	mov r0, r10
+	ldr r0, [r0,#oToolkit_CurFramePtr]
+	ldrh r0, [r0]
+	mov r1, #0x3f 
+	and r0, r1
+	cmp r0, #0x20 
+	bgt locret_802F8A4
+	ldr r0, off_802F8A8 // =byte_802F8AC
+	bl scriptListRun_8001158 // () -> void
+locret_802F8A4:
+	pop {r4-r7,pc}
+	.balign 4, 0
+off_802F8A8:
+	.word byte_802F8AC
+byte_802F8AC:
+	.byte 0x78, 0x40, 0x34, 0x80, 0x1, 0x20, 0x0, 0x0, 0x78, 0x40
+	.byte 0x54, 0x80, 0x9, 0x20, 0x0, 0x0, 0x78, 0x40, 0x74, 0x80
+	.byte 0x11, 0x20, 0x0, 0x0, 0x78, 0x40, 0x94, 0x80, 0x19, 0x20
+	.byte 0x0, 0x0, 0x78, 0x80, 0xB4, 0x0, 0x21, 0x20, 0x0, 0x0
+	.byte 0x0, 0x0, 0x0, 0x0
+	thumb_func_end sub_802F88E
+```
+
+### sub_802F8D8 (0x0802F8D8)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {r4-r7,lr}
+	ldrb r0, [r5,#6]
+	add r0, #1
+	cmp r0, #0x12
+	blt loc_802F8E4
+	mov r0, #0
+loc_802F8E4:
+	strb r0, [r5,#6]
+	ldrb r0, [r5,#7]
+	add r0, #1
+	cmp r0, #0x40 
+	blt loc_802F8F0
+	mov r0, #0
+loc_802F8F0:
+	strb r0, [r5,#7]
+	ldrb r0, [r5,#6]
+	lsl r0, r0, #1
+	ldr r1, off_802F96C // =byte_802F970
+	ldrh r1, [r1,r0]
+	ldrb r2, [r5,#8]
+	lsl r2, r2, #2
+	ldr r0, off_802F95C // =byte_802F960
+	ldr r0, [r0,r2]
+	mov r2, #0
+	mov r3, #0
+	bl sub_802FE28 // (u32 a1, u16 a2, int notUsed, int a4) -> void
+	ldrb r0, [r5,#8]
+	bl sprite_submitOamSet_802F994
+	ldrb r0, [r5,#2]
+	tst r0, r0
+	bne loc_802F924
+	bl notZero_eByte200AD04
+	bne loc_802F936
+	bl startScreen_TstZero // () -> !zf
+	beq loc_802F936
+	b loc_802F936
+loc_802F924:
+	ldrb r0, [r5,#8]
+	bl playOamSeq_802F9EC
+	bl notZero_eByte200AD04
+	bne loc_802F936
+	bl startScreen_TstZero // () -> !zf
+	beq loc_802F936
+loc_802F936:
+	bl startScreen_runTriggerHandler_802FC9C // (self: *const StartScreen $r5) -> ()
+	bl startScreen_playFlaggedSfx_802FC70 // (self: *const StartScreen $r5) -> ()
+	bl startScreen_playSoundIfFlagSet_802FB64 // (self: *const StartScreen $r5) -> ()
+	bl startScreen_fadeOutUpdateIfFlag40_802FB90 // (self: *const StartScreen $r5) -> ()
+	bl startScreen_dispatchIfFlag20_802FBB4 // (self: *const StartScreen $r5) -> ()
+	bl startScreen_playSoundIfFlagSet_802FBD8 // (self: *const StartScreen $r5) -> ()
+	bl startScreen_printTextIfFlag3_802FBFC // (self: *const StartScreen $r5) -> ()
+	bl startScreen_onStatusBit2_802FC28 // (self: *const StartScreen $r5) -> ()
+	bl startScreen_playSfxIfFlagSet_802FC4C // (self: *const StartScreen $r5) -> ()
+	pop {r4-r7,pc}
+	.balign 4, 0
+off_802F95C:
+	.word byte_802F960
+byte_802F960:
+	.byte 0x71, 0x0, 0x49, 0x40, 0x80, 0x0, 0x49, 0x40, 0x91, 0x0
+	.byte 0x49, 0x40
+off_802F96C:
+	.word byte_802F970
+byte_802F970:
+	.byte 0x40, 0x11, 0x40, 0x11, 0x40, 0x11, 0x40, 0x11, 0x40
+	.byte 0x11, 0x40, 0x11, 0x44, 0x11, 0x44, 0x11, 0x44, 0x11
+	.byte 0x44, 0x11, 0x44, 0x11, 0x44, 0x11, 0x48, 0x11, 0x48
+	.byte 0x11, 0x48, 0x11, 0x48, 0x11, 0x48, 0x11, 0x48, 0x11
+	thumb_func_end sub_802F8D8
+```
+
+### sprite_submitOamSet_802F994 (0x0802F994)
+signature (confident, mechanical): args u32 index (r0); result none void
+contract: inputs r0 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {r4-r7,lr}
+	ldr r1, off_802F9A4 // =off_802F9A8 
+	lsl r0, r0, #2
+	ldr r0, [r0,r1]
+	bl scriptListRun_8001158 // () -> void
+	pop {r4-r7,pc}
+	.balign 4, 0
+off_802F9A4:
+	.word off_802F9A8
+off_802F9A8:
+	.word byte_802F9B4
+	.word byte_802F9D0
+	.word byte_802F9D0
+byte_802F9B4:
+	.byte 0x70, 0x40, 0x58, 0x80, 0x23, 0x30, 0x0, 0x0, 0x70, 0x40
+	.byte 0x78, 0x80, 0x2B, 0x30, 0x0, 0x0, 0x70, 0x0, 0x98, 0x40
+	.byte 0x33, 0x30, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+byte_802F9D0:
+	.byte 0x70, 0x40, 0x58, 0x80, 0x23, 0x40, 0x0, 0x0, 0x70, 0x40
+	.byte 0x78, 0x80, 0x2B, 0x40, 0x0, 0x0, 0x70, 0x0, 0x98, 0x40
+	.byte 0x33, 0x40, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end sprite_submitOamSet_802F994
+```
+
+### playOamSeq_802F9EC (0x0802F9EC)
+signature (confident, mechanical): args u32 index (r0); result none void
+contract: inputs r0 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {r4-r7,lr}
+	ldr r1, off_802F9FC // =off_802FA00 
+	lsl r0, r0, #2
+	ldr r0, [r0,r1]
+	bl scriptListRun_8001158 // () -> void
+	pop {r4-r7,pc}
+	.balign 4, 0
+off_802F9FC:
+	.word off_802FA00
+off_802FA00:
+	.word byte_802FA28
+	.word byte_802FA0C
+	.word byte_802FA28
+byte_802FA0C:
+	.byte 0x7F, 0x40, 0x58, 0x80, 0x37, 0x30, 0x0, 0x0, 0x7F, 0x40
+	.byte 0x78, 0x80, 0x3F, 0x30, 0x0, 0x0, 0x7F, 0x0, 0x98, 0x40
+	.byte 0x47, 0x30, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+byte_802FA28:
+	.byte 0x7F, 0x40, 0x58, 0x80, 0x37, 0x40, 0x0, 0x0, 0x7F, 0x40
+	.byte 0x78, 0x80, 0x3F, 0x40, 0x0, 0x0, 0x7F, 0x0, 0x98, 0x40
+	.byte 0x47, 0x40, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end playOamSeq_802F9EC
+```
+
+### loadTitleBlob_802FB10 (0x0802FB10)
+signature (confident, mechanical): args none; result none void
+contract: inputs lr; outputs -; preserved r4 r5 r6 r7
+assembly:
+```
+	push {r4-r7,lr}
+	ldr r0, off_802FB1C // =byte_802FB20
+	bl scriptListRun_8001158 // () -> void
+	pop {r4-r7,pc}
+	.balign 4, 0
+off_802FB1C:
+	.word byte_802FB20
+byte_802FB20:
+	.byte 0x7E, 0x0, 0x0, 0x80, 0x80, 0x61, 0x0, 0x0, 0x7E, 0x0, 0x20
+	.byte 0x80, 0x90, 0x61, 0x0, 0x0, 0x7E, 0x0, 0x40, 0x80, 0xA0, 0x61
+	.byte 0x0, 0x0, 0x7E, 0x0, 0x60, 0x80, 0xB0, 0x61, 0x0, 0x0, 0x7E
+	.byte 0x0, 0x80, 0x80, 0xC0, 0x61, 0x0, 0x0, 0x7E, 0x0, 0xA0, 0x80
+	.byte 0xD0, 0x61, 0x0, 0x0, 0x7E, 0x0, 0xC0, 0x80, 0xE0, 0x61, 0x0
+	.byte 0x0, 0x7E, 0x0, 0xE0, 0x80, 0xF0, 0x61, 0x0, 0x0, 0x0, 0x0
+	.byte 0x0, 0x0
+	thumb_func_end loadTitleBlob_802FB10
+```
+
+### startScreen_playSoundIfFlagSet_802FB64 (0x0802FB64)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #0x80
+	tst r0, r1
+	beq locret_802FB74
+	ldr r0, off_802FB78 // =byte_802FB7C
+	bl scriptListRun_8001158 // () -> void
+locret_802FB74:
+	pop {pc}
+	.balign 4, 0
+off_802FB78:
+	.word byte_802FB7C
+byte_802FB7C:
+	.byte 0x2, 0x40, 0x4, 0x80, 0x80, 0x92, 0x0, 0x0, 0x12, 0x40, 0x4
+	.byte 0x40, 0x88, 0x92, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end startScreen_playSoundIfFlagSet_802FB64
+```
+
+### startScreen_fadeOutUpdateIfFlag40_802FB90 (0x0802FB90)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #0x40 
+	tst r0, r1
+	beq locret_802FBA0
+	ldr r0, off_802FBA4 // =byte_802FBA8
+	bl scriptListRun_8001158 // () -> void
+locret_802FBA0:
+	pop {pc}
+	.balign 4, 0
+off_802FBA4:
+	.word byte_802FBA8
+byte_802FBA8:
+	.byte 0x4, 0x40, 0x2C, 0x80, 0x20, 0x82, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end startScreen_fadeOutUpdateIfFlag40_802FB90
+```
+
+### startScreen_dispatchIfFlag20_802FBB4 (0x0802FBB4)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #0x20 
+	tst r0, r1
+	beq locret_802FBC4
+	ldr r0, off_802FBC8 // =byte_802FBCC
+	bl scriptListRun_8001158 // () -> void
+locret_802FBC4:
+	pop {pc}
+	.balign 4, 0
+off_802FBC8:
+	.word byte_802FBCC
+byte_802FBCC:
+	.byte 0x4, 0x40, 0x54, 0x80, 0x30, 0x82, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end startScreen_dispatchIfFlag20_802FBB4
+```
+
+### startScreen_playSoundIfFlagSet_802FBD8 (0x0802FBD8)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #0x10
+	tst r0, r1
+	beq locret_802FBE8
+	ldr r0, off_802FBEC // =byte_802FBF0
+	bl scriptListRun_8001158 // () -> void
+locret_802FBE8:
+	pop {pc}
+	.balign 4, 0
+off_802FBEC:
+	.word byte_802FBF0
+byte_802FBF0:
+	.byte 0x4, 0x40, 0x7C, 0x80, 0x40, 0x82, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end startScreen_playSoundIfFlagSet_802FBD8
+```
+
+### startScreen_printTextIfFlag3_802FBFC (0x0802FBFC)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #8
+	tst r0, r1
+	beq locret_802FC0C
+	ldr r0, off_802FC10 // =byte_802FC14
+	bl scriptListRun_8001158 // () -> void
+locret_802FC0C:
+	pop {pc}
+	.balign 4, 0
+off_802FC10:
+	.word byte_802FC14
+byte_802FC14:
+	.byte 0x14, 0x40, 0x8E, 0x80, 0x10, 0x72, 0x0, 0x0, 0x24, 0x40
+	.byte 0x8E, 0x40, 0x18, 0x72, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end startScreen_printTextIfFlag3_802FBFC
+```
+
+### startScreen_onStatusBit2_802FC28 (0x0802FC28)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #4
+	tst r0, r1
+	beq locret_802FC38
+	ldr r0, off_802FC3C // =byte_802FC40
+	bl scriptListRun_8001158 // () -> void
+locret_802FC38:
+	pop {pc}
+	.balign 4, 0
+off_802FC3C:
+	.word byte_802FC40
+byte_802FC40:
+	.byte 0x4, 0x40, 0xA4, 0x80, 0x50, 0x82, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end startScreen_onStatusBit2_802FC28
+```
+
+### startScreen_playSfxIfFlagSet_802FC4C (0x0802FC4C)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs -; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #2
+	tst r0, r1
+	beq locret_802FC5C
+	ldr r0, off_802FC60 // =byte_802FC64
+	bl scriptListRun_8001158 // () -> void
+locret_802FC5C:
+	pop {pc}
+	.balign 4, 0
+off_802FC60:
+	.word byte_802FC64
+byte_802FC64:
+	.byte 0x4, 0x40, 0xCC, 0x80, 0x60, 0x82, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end startScreen_playSfxIfFlagSet_802FC4C
+```
+
+### startScreen_playFlaggedSfx_802FC70 (0x0802FC70)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #0x10
+	lsl r1, r1, #4
+	tst r0, r1
+	beq locret_802FC82
+	ldr r0, off_802FC84 // =byte_802FC88
+	bl scriptListRun_8001158 // () -> void
+locret_802FC82:
+	pop {pc}
+	.balign 4, 0
+off_802FC84:
+	.word byte_802FC88
+byte_802FC88:
+	.byte 0x14, 0x40, 0x40, 0x80, 0x0, 0x72, 0x0, 0x0, 0x24, 0x40
+	.byte 0x40, 0x40, 0x8, 0x72, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+	thumb_func_end startScreen_playFlaggedSfx_802FC70
+```
+
+### startScreen_runTriggerHandler_802FC9C (0x0802FC9C)
+signature (confident, mechanical): args StartScreen * r5 (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {lr}
+	ldrh r0, [r5,#0xa]
+	mov r1, #0x20 
+	lsl r1, r1, #4
+	tst r0, r1
+	beq locret_802FCAE
+	ldr r0, off_802FCB0 // =byte_802FCB4
+	bl scriptListRun_8001158 // () -> void
+locret_802FCAE:
+	pop {pc}
+	.balign 4, 0
+off_802FCB0:
+	.word byte_802FCB4
+byte_802FCB4:
+	.byte 0x16, 0x40, 0x6C, 0x80, 0x70, 0xA2, 0x0, 0x0, 0x0, 0x0, 0x0
+	.byte 0x0
+	thumb_func_end startScreen_runTriggerHandler_802FC9C
+```
+
+### startScreen_initGfx_802FCC0 (0x0802FCC0)
+signature (confident, mechanical): args none; result none void
+contract: inputs r10 lr; outputs r2 r5 r7; preserved r4 r5 r6 r7
+assembly:
+```
+	push {r4-r7,lr}
+	bl zeroFillVRAM // () -> ()
+	// initRefs
+	ldr r0, off_802FCD4 // =initRefs_802FCD8 
+	bl decompAndCopyData // (u32 *initRefs) -> void
+	bl ZeroFillGFX30025c0
+	pop {r4-r7,pc}
+	.balign 4, 0
+off_802FCD4:
+	.word initRefs_802FCD8
+initRefs_802FCD8:
+	.word comp_87F36A0 + COMPRESSED_PTR_FLAG
+	.word 0x6013000
+	.word eDecompBuffer2013A00
+
+	.word byte_87F40F4
+	.word byte_3001610
+	.word 0xA0
+
+	.word comp_87F3370 + COMPRESSED_PTR_FLAG
+	.word 0x6010020
+	.word eDecompBuffer2013A00
+
+	.word dword_87F3620
+	.word byte_3001590
+	.word 0x80
+
+	.word comp_87F4394 + COMPRESSED_PTR_FLAG
+	.word 0x6000000
+	.word eDecompBuffer2013A00
+
+	.word dword_87F4194
+	.word palette_3001960
+	.word 0x1C0
+
+	.word byte_86A48C0
+	.word 0x6012800
+	.word 0x180
+
+	.word dword_86A5500
+	.word byte_3001570
+	.word 0x20
+
+	.word NULL
+	thumb_func_end startScreen_initGfx_802FCC0
+```
+
+### copyBGTiles_802FD3C (0x0802FD3C)
+signature (confident, mechanical): args none; result none void
+contract: inputs r10 lr; outputs r5; preserved r5 r6 r7
+assembly:
+```
+	push {r5,lr}
+	// j
+	mov r0, #0
+	// i
+	mov r1, #0
+	// tileBlock32x32
+	mov r2, #1
+	// tileIds
+	ldr r3, off_802FD50 // =byte_87F8EB0 
+	mov r4, #0x20 
+	mov r5, #0x14
+	bl CopyBackgroundTiles // (j: u32, i: u32, which_tile_block_32x32: u32, tile_ids: *const u16, j_size: u32, i_size: u32 ) -> ()
+	pop {r5,pc}
+	.balign 4, 0
+off_802FD50:
+	.word byte_87F8EB0
+	thumb_func_end copyBGTiles_802FD3C
+```
+
+### sub_802FD54 (0x0802FD54)
+signature (confident, mechanical): args StartScreen * self (r5); result none void
+contract: inputs r5 lr; outputs r5; preserved r4 r5 r6 r7
+assembly:
+```
+	push {r4-r7,lr}
+	bl startScreen_TstZero // () -> !zf
+	beq locret_802FD68
+	mov r1, #2
+	ldrb r0, [r5,#2]
+	tst r0, r0
+	beq loc_802FD66
+	mov r1, #3
+loc_802FD66:
+	strb r1, [r5,#9]
+locret_802FD68:
+	pop {r4-r7,pc}
+	.balign 4, 0
+	.word eStartScreenAnimationControl200B1A0
+off_802FD70::
+	.word unk_30025B0
+dword_802FD74:
+	.word 0x8
+	.word unk_3002580
+	.byte 0x4, 0x0, 0x0, 0x0, 0xB0, 0xE, 0x0, 0x3, 0xA0, 0x2, 0x0, 0x0, 0x70, 0x21
+	.byte 0x0, 0x3, 0x4, 0x0, 0x0, 0x0
+byte_802FD90:
+	.byte 0xB0, 0x25, 0x0, 0x3, 0x8, 0x0, 0x0, 0x0, 0x80, 0x25, 0x0, 0x3, 0x4
+	.byte 0x0, 0x0, 0x0, 0xB0, 0xE, 0x0, 0x3, 0xE0, 0x0, 0x0, 0x0, 0x70, 0x21
+	.byte 0x0, 0x3, 0x4, 0x0, 0x0, 0x0
+	thumb_func_end sub_802FD54
+```
+
+### sub_802FDB0 (0x0802FDB0) ENTRY POINT
+signature (confident, mechanical): args none; result none void
+contract: inputs lr; outputs r2 r3 r4; preserved r4
+called from outside: main_initToolkitAndOtherSubsystems, runSetupStepAndClearWorkArea_8005F6C
+assembly:
+```
+	mov r0, #0
+	b loc_802FDB6
+loc_802FDB4:
+	mov r0, #4
+loc_802FDB6:
+	ldr r1, off_802FDF0 // =off_802FDF4 
+	ldr r0, [r1,r0]
+	push {r4,lr}
+    mov r4, r0
+    
+    ldr r1, off_802FE08 // =iSpriteLayerLists 
+	mov r2, #0x20 
+	bl CopyWords // (src: *const u32, mut_dest: *mut u32, size: u32) -> ()
+	
+    mov r2, #0
+	mvn r2, r2
+	mov r3, r4
+	mov r4, #4
+loc_802FDCE:
+	ldr r0, [r3]
+	ldr r1, [r3,#4]
+	bl WordFill
+	
+    add r3, #8
+	sub r4, #1
+	cmp r4, #0
+	bgt loc_802FDCE
+	
+    ldr r0, off_802FE04 // =iSpritePool 
+	ldr r1, off_802FDFC // =0x400 
+	bl ZeroFillByEightWords // (int a1, int a2) -> void
+
+	ldr r0, off_802FE00 // =iSpritePoolUsed 
+	mov r1, #0
+	str r1, [r0]
+	pop {r4,pc}
+	.balign 4, 0
+off_802FDF0:
+	.word off_802FDF4
+off_802FDF4:
+	.word off_802FD70
+	.word byte_802FD90
+off_802FDFC:
+	.word 0x400
+off_802FE00:
+	.word iSpritePoolUsed
+off_802FE04:
+	.word iSpritePool
+off_802FE08:
+	.word iSpriteLayerLists
+	thumb_func_end sub_802FDB0
+```
+
+### copyObjAttributesToIWRAM_802FE0C (0x0802FE0C) ENTRY POINT
+signature (confident, mechanical): args none; result none void
+contract: inputs lr; outputs -; preserved r3
+called from outside: main_
+assembly:
+```
+	push {lr}
+	ldr r0, off_802FE1C // =iOamShadow
+	ldr r1, dword_802FE20 // =0x7000000 
+	ldr r2, off_802FE24 // =0x400 
+	bl CopyByEightWords // (src: *const u32, mut_dest: *mut u32, size: u32) -> ()
+	pop {pc}
+	.balign 4, 0
+off_802FE1C:
+	.word iOamShadow
+dword_802FE20:
+	.word 0x7000000
+off_802FE24:
+	.word 0x400
+	thumb_func_end copyObjAttributesToIWRAM_802FE0C
+```
+
+
+## Your previous file, and what the checks found
+Your previous version is below. It compiled and most of it behaves like the original, but fix these:
+1. `movflag EVENT_1704` sets r0 = EVENT_1704 >> 8, r1 = EVENT_1704 & 0xFF: the three calls
+   `call_SetEventFlagFromImmediate(EVENT_1704, 1)` pass the wrong arguments (the compiler warns that 0x1704
+   does not fit a u8). Use `call_SetEventFlagFromImmediate(EVENT_1704 >> 8, EVENT_1704 & 0xFF)`.
+2. sub_802FDB0 / loc_802FDB4: callers read r2 and r3 after it returns (its contract outputs). The original
+   leaves r3 pointing just past the four (address, address) pairs its loop walked (the table entry + 32),
+   and r2 as ZeroFillByEightWords leaves it. Return the end pointer from the typed function and set R3 in
+   both adapters (r2 is already right: ZeroFillByEightWords is the last call before the final store).
+   The difftest showed `r3: lifted 0x802fd90 hand <input r3>`.
+3. No ZERO_FLAG()/CARRY_FLAG() or R0..R12 outside the wrappers and adapters (an automatic check rejects
+   them). The wrappers of IsScreenFadeActive and notZero_eByte200AD04 now return a struct with `.z`, the
+   Z flag they leave: use `call_IsScreenFadeActive().z` etc. Use the wrappers exactly as given in this
+   prompt (copy the new set; several changed).
+4. Put a one-paragraph comment at the top of the file describing the subsystem.
+Keep everything else as it is.
+```c
+#include <stddef.h>
+#include <stdint.h>
+#include "game.h"
+#define G(T, addr) ((T *)(uintptr_t)(u32)(addr))
+
+/*
+ * start_screen.c
+ *
+ * Implements the MMBN6 Falzar start-screen state machine.  The main render
+ * loop drives three nested jump tables (initial GFX setup, the title screen,
+ * and then load/new-game dispatch).  Menu movement, animation, OAM submits,
+ * and flag-triggered script lists all live here.
+ */
+
+/* oStartScreen: start_screen_struct (bn6f/include/structs/StartScreen.inc) */
+typedef struct StartScreen {
+    u8 JumpTableOff_00;                      /* 0x00 */
+    u8 JumpTableOff_01;                      /* 0x01 */
+    u8 Unk_02;                               /* 0x02 */
+    u8 Unk_03;                               /* 0x03 */
+    u16 LogoShowTimer;                       /* 0x04 */
+    u8 Unk_06;                               /* 0x06 */
+    u8 Unk_07;                               /* 0x07 */
+    u8 CurrCursorPos;                        /* 0x08 */
+    u8 NumChoices;                           /* 0x09 */
+    u16 AchievmentFlags;                     /* 0x0A */
+    u8 Unk_0C;                               /* 0x0C */
+    u8 Und_0D;                               /* 0x0D */
+    u8 Unk_0E;                               /* 0x0E */
+    u8 Unk_0F;                               /* 0x0F */
+    u8 pad_10[0x10];
+} StartScreen;
+_Static_assert(offsetof(StartScreen, JumpTableOff_00) == 0x0, "StartScreen.JumpTableOff_00");
+_Static_assert(offsetof(StartScreen, JumpTableOff_01) == 0x1, "StartScreen.JumpTableOff_01");
+_Static_assert(offsetof(StartScreen, Unk_02) == 0x2, "StartScreen.Unk_02");
+_Static_assert(offsetof(StartScreen, Unk_03) == 0x3, "StartScreen.Unk_03");
+_Static_assert(offsetof(StartScreen, LogoShowTimer) == 0x4, "StartScreen.LogoShowTimer");
+_Static_assert(offsetof(StartScreen, Unk_06) == 0x6, "StartScreen.Unk_06");
+_Static_assert(offsetof(StartScreen, Unk_07) == 0x7, "StartScreen.Unk_07");
+_Static_assert(offsetof(StartScreen, CurrCursorPos) == 0x8, "StartScreen.CurrCursorPos");
+_Static_assert(offsetof(StartScreen, NumChoices) == 0x9, "StartScreen.NumChoices");
+_Static_assert(offsetof(StartScreen, AchievmentFlags) == 0xA, "StartScreen.AchievmentFlags");
+_Static_assert(offsetof(StartScreen, Unk_0C) == 0xC, "StartScreen.Unk_0C");
+_Static_assert(offsetof(StartScreen, Und_0D) == 0xD, "StartScreen.Und_0D");
+_Static_assert(offsetof(StartScreen, Unk_0E) == 0xE, "StartScreen.Unk_0E");
+_Static_assert(offsetof(StartScreen, Unk_0F) == 0xF, "StartScreen.Unk_0F");
+_Static_assert(sizeof(StartScreen) == 0x20, "sizeof StartScreen");
+
+/* Generated wrappers for functions this subsystem calls outside itself. */
+typedef struct { u32 r0, r1; } U32Pair;   /* a result in r0 and r1 */
+
+static inline void call_PlaySoundEffect(u8 r0) {
+    R0 = r0;
+    GUEST_CALL(PlaySoundEffect);
+}
+
+static inline void call_music_80005F2(u8 songId) {
+    R0 = songId;
+    GUEST_CALL(music_80005F2);
+}
+
+static inline void call_sound_dispatchCueHandler_800068A(u32 cueId) {
+    R0 = cueId;
+    GUEST_CALL(sound_dispatchCueHandler_800068A);
+}
+
+static inline U32Pair call_musicGameState_8000784(u8 r0) {
+    R0 = r0;
+    GUEST_CALL(musicGameState_8000784);
+    return (U32Pair){ R0, R1 };
+}
+
+static inline void call_ZeroFillByEightWords(u32 r0, u16 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByEightWords);
+}
+
+static inline void call_CopyWords(u32 r0, u32 r1, u8 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyWords);
+}
+
+static inline void call_CopyByEightWords(u32 r0, u32 r1, u16 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyByEightWords);
+}
+
+static inline void call_WordFill(u32 value, u32 * dest, u32 size) {
+    R0 = value;
+    R1 = (u32)(uintptr_t)dest;
+    R2 = size;
+    GUEST_CALL(WordFill);
+}
+
+static inline void call_decompAndCopyData(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(decompAndCopyData);
+}
+
+static inline U32Pair call_GetTitleScreenIconCount(void) {
+    GUEST_CALL(GetTitleScreenIconCount);
+    return (U32Pair){ R0, R1 };
+}
+
+static inline void call_scriptListRun_8001158(const u8 * r0) {
+    R0 = (u32)(uintptr_t)r0;
+    GUEST_CALL(scriptListRun_8001158);
+}
+
+static inline u32 call_GetRNG(void) {
+    GUEST_CALL(GetRNG);
+    return R0;
+}
+
+static inline void call_toolkit_applyOverlayPalette_80015FC(u8 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+}
+
+static inline void call_SetRenderInfoLCDControl(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetRenderInfoLCDControl);
+}
+
+static inline void call_renderInfo_8001788(void) {
+    GUEST_CALL(renderInfo_8001788);
+}
+
+static inline void call_renderInfo_80017A0(void) {
+    GUEST_CALL(renderInfo_80017A0);
+}
+
+static inline void call_zeroFillVRAM(void) {
+    GUEST_CALL(zeroFillVRAM);
+}
+
+static inline void call_ZeroFillGFX30025c0(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+static inline void call_CopyBackgroundTiles(u8 r0, u8 r1, u8 r2, u32 r3, u8 r4, u8 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+static inline void call_zeroFill_e20094C0(void) {
+    GUEST_CALL(zeroFill_e20094C0);
+}
+
+static inline void call_LoadGFXAnim(const u8 * r0) {
+    R0 = (u32)(uintptr_t)r0;
+    GUEST_CALL(LoadGFXAnim);
+}
+
+static inline void call_LoadGFXAnims(u32 data) {
+    R0 = data;
+    GUEST_CALL(LoadGFXAnims);
+}
+
+static inline void call_palette_clearEPalette20097a0_80023A8(void) {
+    GUEST_CALL(palette_clearEPalette20097a0_80023A8);
+}
+
+static inline void call_resetOverworldScene_800260C(void) {
+    GUEST_CALL(resetOverworldScene_800260C);
+}
+
+static inline void call_scenario_prepareEnterMap_8004D48(void) {
+    GUEST_CALL(scenario_prepareEnterMap_8004D48);
+}
+
+static inline void call_initNewGameData_8004DF0(u32 r7) {
+    R7 = r7;
+    GUEST_CALL(initNewGameData_8004DF0);
+}
+
+static inline U32Pair call_SetScreenFade(u8 r0, u8 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (U32Pair){ R0, R1 };
+}
+
+static inline U32Pair call_IsScreenFadeActive(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (U32Pair){ R0, R1 };
+}
+
+static inline U32Pair call_SetEventFlagFromImmediate(u8 r0, u8 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetEventFlagFromImmediate);
+    return (U32Pair){ R0, R1 };
+}
+
+static inline u8 call_sub_802FE28(u32 r0, u16 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sub_802FE28);
+    return R0;
+}
+
+static inline U32Pair call_sub_8039570(void) {
+    GUEST_CALL(sub_8039570);
+    return (U32Pair){ R0, R1 };
+}
+
+static inline U32Pair call_call_803D1AC(void) {
+    GUEST_CALL(call_803D1AC);
+    return (U32Pair){ R0, R1 };
+}
+
+static inline void call_init_eStartScreenAnimationControl200B1A0_1(void) {
+    GUEST_CALL(init_eStartScreenAnimationControl200B1A0_1);
+}
+
+static inline bool call_startScreen_IsTitleAnimationFinished_803E928(void) {
+    GUEST_CALL(startScreen_IsTitleAnimationFinished_803E928);
+    return ZERO_FLAG();
+}
+
+static inline bool call_startScreen_TstZero(void) {
+    GUEST_CALL(startScreen_TstZero);
+    return ZERO_FLAG();
+}
+
+static inline void call_startScreen_AnimatePressStart_803E938(void) {
+    GUEST_CALL(startScreen_AnimatePressStart_803E938);
+}
+
+static inline void call_eStruct200BC30_setJumpOffset00(u8 value) {
+    R0 = value;
+    GUEST_CALL(eStruct200BC30_setJumpOffset00);
+}
+
+static inline void call_clearStruct200BC30_803EBAC(void) {
+    GUEST_CALL(clearStruct200BC30_803EBAC);
+}
+
+static inline void call_clear_e200AD04(void) {
+    GUEST_CALL(clear_e200AD04);
+}
+
+static inline void call_loc_803F512(void) {
+    GUEST_CALL(loc_803F512);
+}
+
+static inline U32Pair call_notZero_eByte200AD04(void) {
+    GUEST_CALL(notZero_eByte200AD04);
+    return (U32Pair){ R0, R1 };
+}
+
+static inline void call_sub_803F6B0(u32 table_index) {
+    R0 = table_index;
+    GUEST_CALL(sub_803F6B0);
+}
+
+static inline bool call_sub_803F838(void) {
+    GUEST_CALL(sub_803F838);
+    return ZERO_FLAG();
+}
+
+static inline void call_sub_803FA42(void) {
+    GUEST_CALL(sub_803FA42);
+}
+
+static inline void call_sub_813D90C(u8 value) {
+    R0 = value;
+    GUEST_CALL(sub_813D90C);
+}
+
+static inline void call_zeroFill_813D960(void) {
+    GUEST_CALL(zeroFill_813D960);
+}
+
+static inline void call_sub_81440D8(void) {
+    GUEST_CALL(sub_81440D8);
+}
+
+static inline void call_rfu_REQ_stopMode(u32 arg) {
+    R7 = arg;
+    GUEST_CALL(rfu_REQ_stopMode);
+}
+
+/* Forward declarations for the subsystem's own functions. */
+static void start_screen_render(StartScreen *unused);
+static void start_screen_init_gfx(StartScreen *self);
+static void start_screen_second_render(StartScreen *self);
+static void start_screen_render_trigger(StartScreen *self);
+static void start_screen_run_menu_state(StartScreen *self);
+static void start_screen_menu_init(StartScreen *self);
+static void start_screen_menu_wait_fade(StartScreen *self);
+static void start_screen_menu_title_wait(StartScreen *self);
+static void start_screen_menu_update_render(StartScreen *self);
+static void start_screen_menu_update(StartScreen *self);
+static void start_screen_load_game(StartScreen *self);
+static void menu_on_start_press_begin_transition(StartScreen *self);
+static void start_screen_menu_update_input(StartScreen *self);
+static void start_screen_do_random_script(void);
+static void start_screen_update_frame(StartScreen *self);
+static void start_screen_submit_oam_set(u32 index);
+static void start_screen_play_oam_seq(u32 index);
+static void start_screen_load_title_blob(void);
+static void start_screen_play_sound_if_flag80(StartScreen *self);
+static void start_screen_fade_out_if_flag40(StartScreen *self);
+static void start_screen_dispatch_if_flag20(StartScreen *self);
+static void start_screen_play_sound_if_flag10(StartScreen *self);
+static void start_screen_print_text_if_flag8(StartScreen *self);
+static void start_screen_on_status_if_flag4(StartScreen *self);
+static void start_screen_play_sfx_if_flag2(StartScreen *self);
+static void start_screen_play_flagged_sfx_flag100(StartScreen *self);
+static void start_screen_run_trigger_handler_flag200(StartScreen *self);
+static void start_screen_init_gfx_base(void);
+static void start_screen_copy_bg_tiles(void);
+static void start_screen_set_num_choices(StartScreen *self);
+static void start_screen_init_sprite_pool(u32 table_index);
+static void start_screen_copy_obj_attributes_to_iwram(void);
+
+typedef void (*RenderHandler)(StartScreen *);
+typedef void (*MenuStateHandler)(StartScreen *);
+
+static const RenderHandler jt_802F560[4] = {
+    start_screen_init_gfx,
+    start_screen_second_render,
+    start_screen_run_menu_state,
+    start_screen_load_game,
+};
+
+static const MenuStateHandler jt_802F654[5] = {
+    start_screen_menu_init,
+    start_screen_menu_wait_fade,
+    start_screen_menu_title_wait,
+    start_screen_menu_update_render,
+    start_screen_menu_update,
+};
+
+/* startscreen_render_802F544 */
+static void start_screen_render(StartScreen *unused) {
+    (void)unused;
+    call_startScreen_AnimatePressStart_803E938();
+
+    StartScreen *self = G(StartScreen, A_eStartScreen);
+    u32 index = self->JumpTableOff_00 / 4;
+    if (index < 4) {
+        jt_802F560[index](self);
+    }
+    (void)call_GetRNG();
+}
+
+/* startScreen_initGfx_802F574 */
+static void start_screen_init_gfx(StartScreen *self) {
+    call_toolkit_applyOverlayPalette_80015FC(0xb);
+    call_SetRenderInfoLCDControl(0x1140);
+    call_renderInfo_8001788();
+    call_renderInfo_80017A0();
+    start_screen_init_gfx_base();
+
+    (void)call_SetScreenFade(0xc, 0xff);
+    (void)call_musicGameState_8000784(0);
+    call_LoadGFXAnims(A_pt_802F5F0);
+
+    self->JumpTableOff_00 = 4;
+    self->Unk_02 = 0;
+
+    call_sub_803FA42();
+
+    if (call_sub_803F838()) {
+        self->Unk_02 = 1;
+        U32Pair counts = call_GetTitleScreenIconCount();
+        self->Unk_0C = (u8)counts.r0;
+        self->AchievmentFlags = (u16)counts.r1;
+    }
+
+    u8 r6, r7;
+    if (self->Unk_02 == 0) {
+        r6 = 0;
+        r7 = 1;
+        if (!call_startScreen_TstZero()) {
+            r7 = 2;
+        }
+    } else {
+        r6 = 1;
+        r7 = 2;
+        if (!call_startScreen_TstZero()) {
+            r7 = 3;
+        }
+    }
+
+    self->CurrCursorPos = r6;
+    self->NumChoices = r7;
+    self->Unk_03 = 0;
+}
+
+/* startscreen_802F60C */
+static void start_screen_second_render(StartScreen *self) {
+    /* The only valid entry in this sub-dispatch table is index 0. */
+    if (self->JumpTableOff_01 == 0) {
+        start_screen_render_trigger(self);
+    }
+}
+
+/* startscreen_render_trigger_802F624 */
+static void start_screen_render_trigger(StartScreen *self) {
+    call_SetRenderInfoLCDControl(0x1741);
+    self->JumpTableOff_00 = 8;
+    self->JumpTableOff_01 = 0;
+}
+
+/* startScreen_RunStateHandler_802F63C */
+static void start_screen_run_menu_state(StartScreen *self) {
+    u32 index = self->JumpTableOff_01 / 4;
+    if (index < 5) {
+        jt_802F654[index](self);
+    }
+    start_screen_load_title_blob();
+}
+
+/* startScreen_init_802F668 */
+static void start_screen_menu_init(StartScreen *self) {
+    self->Unk_0E = 0;
+    self->Unk_0F = 0;
+    self->LogoShowTimer = 0xa46;
+
+    call_music_80005F2(1);
+    call_toolkit_applyOverlayPalette_80015FC(0xa);
+    call_SetRenderInfoLCDControl(0x1340);
+    self->Unk_06 = 0;
+    start_screen_copy_bg_tiles();
+    (void)call_SetScreenFade(8, 0x10);
+    self->JumpTableOff_01 = 4;
+}
+
+/* sub_802F6A4 */
+static void start_screen_menu_wait_fade(StartScreen *self) {
+    call_IsScreenFadeActive();
+    if (!ZERO_FLAG()) {
+        self->JumpTableOff_01 = 8;
+    }
+}
+
+/* sub_802F6B2 */
+static void start_screen_menu_title_wait(StartScreen *self) {
+    u16 timer = self->LogoShowTimer;
+    if (timer <= 0) {
+        self->JumpTableOff_01 = 0x10;
+        (void)call_SetScreenFade(0xc, 0x10);
+        return;
+    }
+
+    timer--;
+    self->LogoShowTimer = timer;
+
+    if (timer == 0x12c) {
+        call_sound_dispatchCueHandler_800068A(0x1f);
+        return;
+    }
+
+    if (timer < 0xa0a) {
+        if (call_startScreen_IsTitleAnimationFinished_803E928()) {
+            start_screen_set_num_choices(self);
+            menu_on_start_press_begin_transition(self);
+            start_screen_do_random_script();
+        }
+    }
+}
+
+/* startScreen_UpdateAndRenderFrame_802F704 */
+static void start_screen_menu_update_render(StartScreen *self) {
+    start_screen_menu_update_input(self);
+    start_screen_update_frame(self);
+}
+
+/* startScreen_update_802F710 */
+static void start_screen_menu_update(StartScreen *self) {
+    if (self->LogoShowTimer > 0) {
+        start_screen_update_frame(self);
+    }
+
+    call_IsScreenFadeActive();
+    if (!ZERO_FLAG()) {
+        if (self->LogoShowTimer <= 0) {
+            call_zeroFill_e20094C0();
+            call_palette_clearEPalette20097a0_80023A8();
+            (void)call_call_803D1AC();
+            call_sub_81440D8();
+            call_zeroFill_813D960();
+            call_clear_e200AD04();
+            call_sub_803F6B0(0);
+            call_loc_803F512();
+            call_init_eStartScreenAnimationControl200B1A0_1();
+        } else {
+            /* Original stores a halfword: 0x0C in JumpTableOff_00,
+               0x00 in JumpTableOff_01. */
+            self->JumpTableOff_00 = 0xc;
+            self->JumpTableOff_01 = 0;
+        }
+    }
+}
+
+/* load_game_802F756 */
+static void start_screen_load_game(StartScreen *self) {
+    u32 toolkit = A_eToolkit;
+    u32 main_jt = LD32(toolkit + oToolkit_MainJumptableIndexPtr);
+    ST8(main_jt, 4);
+
+    call_SetRenderInfoLCDControl(0x1140);
+    call_zeroFill_813D960();
+
+    switch (self->CurrCursorPos) {
+        case 0:
+            call_resetOverworldScene_800260C();
+            call_initNewGameData_8004DF0(toolkit);
+            call_scenario_prepareEnterMap_8004D48();
+            call_sub_81440D8();
+            call_rfu_REQ_stopMode(toolkit);
+            if (self->Unk_02 != 0) {
+                (void)call_SetEventFlagFromImmediate(EVENT_1704, 1);
+            }
+            break;
+
+        case 1:
+            if (self->Unk_02 != 0) {
+                call_scenario_prepareEnterMap_8004D48();
+                (void)call_SetEventFlagFromImmediate(EVENT_1704, 1);
+                call_sub_81440D8();
+                call_rfu_REQ_stopMode(toolkit);
+                break;
+            }
+            /* fall through when Unk_02 == 0 */
+
+        default:
+            call_sub_813D90C(0);
+            call_scenario_prepareEnterMap_8004D48();
+            (void)call_sub_8039570();
+            call_clearStruct200BC30_803EBAC();
+            call_eStruct200BC30_setJumpOffset00(0xc);
+            if (self->Unk_02 != 0) {
+                (void)call_SetEventFlagFromImmediate(EVENT_1704, 1);
+            }
+            call_sub_81440D8();
+            break;
+    }
+}
+
+/* menu_onStartPressBeginTransition_802F7E8 */
+static void menu_on_start_press_begin_transition(StartScreen *self) {
+    u32 joypad = LD32(A_eToolkit + oToolkit_JoypadPtr);
+    u16 held_start = LD16(joypad + 2);
+
+    if (held_start & 8) {
+        call_zeroFill_813D960();
+        self->JumpTableOff_01 = 0xc;
+        call_PlaySoundEffect(SOUND_SELECT_67);
+        call_LoadGFXAnim(G(const u8, A_byte_802F2E4));
+        call_LoadGFXAnim(G(const u8, A_dword_802F334));
+    }
+}
+
+/* sub_802F81C */
+static void start_screen_menu_update_input(StartScreen *self) {
+    u32 joypad = LD32(A_eToolkit + oToolkit_JoypadPtr);
+    u16 pressed = LD16(joypad + oJoypad_Pressed);
+
+    if (pressed & 9) {
+        call_IsScreenFadeActive();
+        if (!ZERO_FLAG()) {
+            (void)call_musicGameState_8000784(0);
+            call_PlaySoundEffect(0x9d);
+            self->JumpTableOff_01 = 0x10;
+            (void)call_SetScreenFade(0xc, 0x10);
+        }
+        return;
+    }
+
+    u16 move_buttons = LD16(joypad + 4);
+
+    if (move_buttons & 0x40) {
+        u8 old = self->CurrCursorPos;
+        u8 cur = old - 1;
+        if (cur < 0) {
+            cur = self->NumChoices - 1;
+        }
+        self->CurrCursorPos = cur;
+        if (cur != old) {
+            call_PlaySoundEffect(SOUND_UNK_66);
+        }
+        return;
+    }
+
+    if (move_buttons & 0x80) {
+        u8 old = self->CurrCursorPos;
+        u8 cur = old + 1;
+        if (cur >= self->NumChoices) {
+            cur = 0;
+        }
+        self->CurrCursorPos = cur;
+        if (cur != old) {
+            call_PlaySoundEffect(SOUND_UNK_66);
+        }
+        return;
+    }
+}
+
+/* sub_802F88E */
+static void start_screen_do_random_script(void) {
+    u32 frame_ptr = LD32(A_eToolkit + oToolkit_CurFramePtr);
+    u16 frame = LD16(frame_ptr);
+    if ((frame & 0x3f) <= 0x20) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802F8AC));
+    }
+}
+
+/* sub_802F8D8 */
+static void start_screen_update_frame(StartScreen *self) {
+    u8 v = self->Unk_06 + 1;
+    if (v >= 0x12) {
+        v = 0;
+    }
+    self->Unk_06 = v;
+
+    v = self->Unk_07 + 1;
+    if (v >= 0x40) {
+        v = 0;
+    }
+    self->Unk_07 = v;
+
+    u16 y_offset = LD16(A_byte_802F970 + (self->Unk_06 * 2u));
+    u32 param = LD32(A_byte_802F960 + (self->CurrCursorPos * 4u));
+    (void)call_sub_802FE28(param, y_offset, 0, 0);
+
+    start_screen_submit_oam_set(self->CurrCursorPos);
+
+    if (self->Unk_02 == 0) {
+        call_notZero_eByte200AD04();
+        if (ZERO_FLAG()) {
+            (void)call_startScreen_TstZero();
+        }
+    } else {
+        start_screen_play_oam_seq(self->CurrCursorPos);
+        call_notZero_eByte200AD04();
+        if (ZERO_FLAG()) {
+            (void)call_startScreen_TstZero();
+        }
+    }
+
+    start_screen_run_trigger_handler_flag200(self);
+    start_screen_play_flagged_sfx_flag100(self);
+    start_screen_play_sound_if_flag80(self);
+    start_screen_fade_out_if_flag40(self);
+    start_screen_dispatch_if_flag20(self);
+    start_screen_play_sound_if_flag10(self);
+    start_screen_print_text_if_flag8(self);
+    start_screen_on_status_if_flag4(self);
+    start_screen_play_sfx_if_flag2(self);
+}
+
+/* sprite_submitOamSet_802F994 */
+static void start_screen_submit_oam_set(u32 index) {
+    u32 script_addr = LD32(A_off_802F9A8 + (index * 4u));
+    call_scriptListRun_8001158(G(const u8, script_addr));
+}
+
+/* playOamSeq_802F9EC */
+static void start_screen_play_oam_seq(u32 index) {
+    u32 script_addr = LD32(A_off_802FA00 + (index * 4u));
+    call_scriptListRun_8001158(G(const u8, script_addr));
+}
+
+/* loadTitleBlob_802FB10 */
+static void start_screen_load_title_blob(void) {
+    call_scriptListRun_8001158(G(const u8, A_byte_802FB20));
+}
+
+/* startScreen_playSoundIfFlagSet_802FB64 */
+static void start_screen_play_sound_if_flag80(StartScreen *self) {
+    if (self->AchievmentFlags & 0x80) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FB7C));
+    }
+}
+
+/* startScreen_fadeOutUpdateIfFlag40_802FB90 */
+static void start_screen_fade_out_if_flag40(StartScreen *self) {
+    if (self->AchievmentFlags & 0x40) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FBA8));
+    }
+}
+
+/* startScreen_dispatchIfFlag20_802FBB4 */
+static void start_screen_dispatch_if_flag20(StartScreen *self) {
+    if (self->AchievmentFlags & 0x20) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FBCC));
+    }
+}
+
+/* startScreen_playSoundIfFlagSet_802FBD8 */
+static void start_screen_play_sound_if_flag10(StartScreen *self) {
+    if (self->AchievmentFlags & 0x10) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FBF0));
+    }
+}
+
+/* startScreen_printTextIfFlag3_802FBFC */
+static void start_screen_print_text_if_flag8(StartScreen *self) {
+    if (self->AchievmentFlags & 0x8) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FC14));
+    }
+}
+
+/* startScreen_onStatusBit2_802FC28 */
+static void start_screen_on_status_if_flag4(StartScreen *self) {
+    if (self->AchievmentFlags & 0x4) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FC40));
+    }
+}
+
+/* startScreen_playSfxIfFlagSet_802FC4C */
+static void start_screen_play_sfx_if_flag2(StartScreen *self) {
+    if (self->AchievmentFlags & 0x2) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FC64));
+    }
+}
+
+/* startScreen_playFlaggedSfx_802FC70 */
+static void start_screen_play_flagged_sfx_flag100(StartScreen *self) {
+    if (self->AchievmentFlags & 0x100) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FC88));
+    }
+}
+
+/* startScreen_runTriggerHandler_802FC9C */
+static void start_screen_run_trigger_handler_flag200(StartScreen *self) {
+    if (self->AchievmentFlags & 0x200) {
+        call_scriptListRun_8001158(G(const u8, A_byte_802FCB4));
+    }
+}
+
+/* startScreen_initGfx_802FCC0 */
+static void start_screen_init_gfx_base(void) {
+    call_zeroFillVRAM();
+    call_decompAndCopyData(A_initRefs_802FCD8);
+    call_ZeroFillGFX30025c0();
+}
+
+/* copyBGTiles_802FD3C */
+static void start_screen_copy_bg_tiles(void) {
+    call_CopyBackgroundTiles(0, 0, 1, A_byte_87F8EB0, 0x20, 0x14);
+}
+
+/* sub_802FD54 */
+static void start_screen_set_num_choices(StartScreen *self) {
+    if (call_startScreen_TstZero()) {
+        return;
+    }
+
+    u8 num = 2;
+    if (self->Unk_02 != 0) {
+        num = 3;
+    }
+    self->NumChoices = num;
+}
+
+/* sub_802FDB0 / loc_802FDB4 */
+static void start_screen_init_sprite_pool(u32 table_index) {
+    u32 src = LD32(A_off_802FDF4 + table_index);
+
+    call_CopyWords(src, A_iSpriteLayerLists, 0x20);
+
+    for (u32 i = 0; i < 4; i++) {
+        u32 word0 = LD32(src + (i * 8u));
+        u32 word1 = LD32(src + (i * 8u) + 4u);
+        call_WordFill(word0, G(u32, word1), 0xFFFFFFFFu);
+    }
+
+    call_ZeroFillByEightWords(A_iSpritePool, 0x400);
+    ST32(A_iSpritePoolUsed, 0);
+}
+
+/* copyObjAttributesToIWRAM_802FE0C */
+static void start_screen_copy_obj_attributes_to_iwram(void) {
+    call_CopyByEightWords(A_iOamShadow, 0x7000000, 0x400);
+}
+
+/* Entry point adapters. */
+
+Next startscreen_render_802F544(void) {
+    u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
+    start_screen_render(0);
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    RETURN_TO_CALLER();
+}
+
+Next sub_802FDB0(void) {
+    u32 r4 = R4;
+    start_screen_init_sprite_pool(0);
+    R4 = r4;
+    RETURN_TO_CALLER();
+}
+
+Next loc_802FDB4(void) {
+    u32 r4 = R4;
+    start_screen_init_sprite_pool(4);
+    R4 = r4;
+    RETURN_TO_CALLER();
+}
+
+Next copyObjAttributesToIWRAM_802FE0C(void) {
+    start_screen_copy_obj_attributes_to_iwram();
+    RETURN_TO_CALLER();
+}
+```

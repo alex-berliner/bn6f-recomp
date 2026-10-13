@@ -46,12 +46,67 @@ evidence:
   detail: 'Executed by: battle, battles1, battles2, battlesweep, fuzz, menus2, menus3, story1, story2, story3, story4,
     story5, story6, story7, story8, story9, wander.'
   reproduce: grep -l '^0802f81c ' tools/traces/coverage/*.prof
+- method: readable-c
+  date: '2026-10-12'
+  detail: 'Converted with its whole subsystem (32 functions) in one go by opencode/deepseek-v4-pro from the knowledge
+    layer''s signatures (tools/sig: contract bounds, liveness narrowing, captured calls, model agreement), with
+    one repair round (the movflag arguments of SetEventFlagFromImmediate, sub_802FDB0''s r3 leftover, flags read
+    outside the wrappers); reviewed by Claude. Typed StartScreen struct, the state tables as C arrays of functions,
+    calls out through generated wrappers. This function is internal: the static typed function `start_screen_menu_update_input`,
+    which the subsystem calls directly; no register adapter (the lifted original stays as L_ code for the difftest).'
+  refs:
+  - cport/src/game/start_screen.c
+  reproduce: 'python3 tools/sig/subsys_prompt.py asm03_0/start_802F544 --file start_screen.c --skip dead_802FA44
+    --entries startscreen_render_802F544 sub_802FDB0 copyObjAttributesToIWRAM_802FE0C > build/repro/prompt.txt
+
+    python3 tools/sig/convert.py opencode/deepseek-v4-pro build/repro/prompt.txt build/repro/start_screen.c   #
+    then the repair: tools/sig/pilot/repair1.txt'
+- method: difftest
+  date: '2026-10-12'
+  detail: 'At the subsystem''s boundary (its 4 entry points), readable vs lifted original, on the original''s captured
+    calls, on random inputs, and on a state sweep: the 40 captured calls of startscreen_render_802F544 with the
+    state bytes (JumpTableOff_00/01), LogoShowTimer and the cursor set to every valid value (tools/sig/state_sweep.py),
+    so every state handler runs from real memory.'
+  reproduce: '(cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -S ../build-snapshots/startscreen_render_802F544
+    startscreen_render_802F544)
+
+    python3 tools/sig/state_sweep.py build-snapshots/startscreen_render_802F544 build/repro/sweep/startscreen_render_802F544
+    ''0200AD10:1=0|4|8|12'' ''0200AD11:1=0|4|8|12|16'' ''0200AD14:2=0|1|300|2569|2570'' ''0200AD18:1=0|1|2''
+
+    (cd cport && BN6F_ROM=../bn6f/bn6f.gba build-host/difftest -S ../build/repro/sweep/startscreen_render_802F544
+    startscreen_render_802F544)'
+  result: 'captured: startscreen_render_802F544 40/40, sub_802FDB0 40/40, copyObjAttributesToIWRAM_802FE0C 40/40
+    ok; random 2000 each: sub_802FDB0, loc_802FDB4, copyObjAttributesToIWRAM_802FE0C 0 failures; startscreen_render_802F544
+    17 failures in 17 in-domain trials, all with state bytes the game never holds (the original jumps through its
+    ROM table to whatever lies past it; the old register-form version mirrored that jump), out of domain; state
+    sweep 12000 states, 7625 in domain, 0 failures (worktree q-subsys, 2026-10-12)'
+- method: cpu-oracle
+  date: '2026-10-12'
+  detail: The original (mGBA, real BIOS) vs the readable version from the same real entry states (captured calls,
+    and the state sweep as the base).
+  reproduce: python3 tools/oracle.py --base build-snapshots --states 24 --out build/repro/oracle startscreen_render_802F544
+    sub_802FDB0 loc_802FDB4 copyObjAttributesToIWRAM_802FE0C
+  result: 'no register in the contract differs; every state differs only in r14 (the original''s link register at
+    the return), which the lifted original shows too in this run (an oracle artifact under triage on 2026-10-12):
+    startscreen_render_802F544 18 states, sub_802FDB0 23, copyObjAttributesToIWRAM_802FE0C 24, sweep base 23'
+- method: lockstep
+  date: '2026-10-12'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf verify --function startscreen_render_802F544 --snapshots build-snapshots
+
+    tools/lockstep.sh cport/build/bn6f_lifted.gba tools/traces/beastsp.trace 220000'
+  result: 16/16 routes identical (tools/wf/wf/routes.py, incl. title_mash_a), and beastsp (220000 frames) identical
 changes:
 - date: '2026-10-12'
   what: readable C replacement in cport/src/game/asm03_0_802F2C8.c
   where: recomp e46017f
   tool: tools/wf convert (hyper/qwen3.8-flash)
-readable_c: cport/src/game/asm03_0_802F2C8.c
+- date: '2026-10-12'
+  what: readable C rewritten with its whole subsystem (the title screen, asm03_0/start_802F544 in tools/sig/subsystems.json)
+    in cport/src/game/start_screen.c
+  where: recomp <pending>
+  tool: tools/sig (subsystem pilot)
+readable_c: cport/src/game/start_screen.c
 coverage:
 - battle
 - battles1
@@ -77,20 +132,5 @@ open_questions:
 sources:
 - tools/wf run convert-20261012-121225
 - recomp e46017f
-stamp:
-  rom: rom:68fa54d9fb66fa95
-  range: 0x0802F81C-0x0802F88E
-  contract: r2 r5 r10 lr -> r5 r10; clobbers nz c v r0 r1 r2 r3 r7 lr
-  callees:
-    IsScreenFadeActive: nz c v r0 r1 r3
-    musicGameState_8000784: nz c v r0 r1 r3 r4 r5 r6 r7 r10 lr
-    PlaySoundEffect: nz c v r1 r2 r3 r4 r5 r6 r7 r10 lr
-    SetScreenFade: nz c v r0 r1 r2 r3 r5 lr
-  headers: f8c9e873b4ab
-  lifter: 70c8d832ffcf
-  prompt: fd38846da391
-  model: hyper/qwen3.8-flash
-  run: convert-20261012-121225
-  body: 2bf099988fd7fdc1
-  installed: e46017f
-  stamped: '2026-10-12'
+related:
+- startScreen_UpdateAndRenderFrame_802F704
