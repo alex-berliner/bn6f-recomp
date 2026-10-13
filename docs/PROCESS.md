@@ -200,6 +200,11 @@ Other tools: `tools/speed.sh` (speed vs the original), `tools/profile.sh`
   [convert](workflows/convert.md) workflow). Claude picks the subsystem from
   functions the routes execute and answers the review pause; the review sheet
   carries the reviewer's checklist.
+- **Whole subsystems from the knowledge layer** (docs/reviews/2026-10-12-subsystem-pilot.md):
+  `tools/sig/` derives a signature for every function (`symbols/signatures.tsv`, `signature:` in
+  symbols/db), groups functions into subsystems (`tools/sig/subsystems.json`), and builds one prompt per
+  subsystem (`subsys_prompt.py`): typed functions, direct calls inside, adapters only at entry points.
+  The title screen (`start_screen.c`) is the first.
 - **Small functions in volume:** `wf capture` then `wf farm --model
   hyper/glm-5.3-flash --snapshots DIR FUNCTION...` (one batch per provider, so
   review is not held up by the slowest); accepted candidates land in

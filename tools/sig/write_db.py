@@ -89,6 +89,9 @@ def block(name: str, r: dict) -> dict:
         sig["globals"] = r["globals"]
     if r.get("keep"):
         sig["keep"] = r["keep"]
+    conds = set(BOUNDS.get(name, {}).get("final", {}).get("flag_conds", []))
+    if "nz" in (r.get("flags_out") or []) and conds & {"eq", "ne"} and not str(ret.get("reg", "")).startswith("flag:"):
+        sig["flags"] = "z: callers test the Z flag it leaves (a typed wrapper returns it as .z)"
     sig["confidence"] = r["confidence"]
     sig["decided_by"] = r.get("decided_by", "-") + (f" ({r['model']['by']})" if r.get("decided_by") == "model+mechanical" else "")
     sig["evidence"] = evidence(r)
@@ -116,12 +119,16 @@ def replace_block(text: str, key: str, new: str) -> str:
     return body[:m.start()] + new + body[m.start():] if m else body + new
 
 
+BOUNDS: dict = {}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--final", default=os.path.join(ROOT, "build/sig/final.json"))
     ap.add_argument("--only", nargs="*")
     a = ap.parse_args()
     final = json.load(open(a.final))
+    BOUNDS.update(json.load(open(os.path.join(ROOT, "build/sig/bounds.json"))))
     by_addr = {int(r["addr"], 16): n for n, r in final.items()}
     written = 0
     for path in sorted(glob.glob(os.path.join(DB, "*.yaml"))):
@@ -141,7 +148,7 @@ def main() -> None:
     for n, r in sorted(final.items(), key=lambda kv: int(kv[1]["addr"], 16)):
         ps, ret = chosen(r)
         regs = " ".join(p.get("reg") or "?" for p in ps) + f" -> {ret.get('reg', 'none')}"
-        ev = "; ".join(evidence(r))[:300].replace("\t", " ").replace("\n", " ")
+        ev = "; ".join(evidence(r))[:160].replace("\t", " ").replace("\n", " ")
         c = proto(n, r) if r["confidence"] != "none" else "none"
         rows.append(f"{n}\t{r['addr']}\t{r['confidence']}\t{r.get('decided_by', '-')}\t{c}\t{regs}\t{ev}")
     open(TSV, "w").write("\n".join(rows) + "\n")

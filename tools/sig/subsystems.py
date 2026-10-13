@@ -162,7 +162,7 @@ def main() -> None:
         for u in us:
             e = g["entries"].get(u, {})
             outside = sorted(callers[u] - inside)
-            entry = bool(outside) or not callers[u] or bool(e.get("indirect_target"))
+            entry = bool(outside) or not callers[u]      # an indirect target seen only from inside is internal
             rows.append({"unit": u, "addr": f"{units[u]['addr']:#010x}", "entry": entry,
                          "callers_outside": len(outside), "readable": units[u]["readable"] > 0,
                          "captured": any(n in snaps for n in units[u]["entries"]),
