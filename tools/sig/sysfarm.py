@@ -28,8 +28,8 @@ main tree's commit when it starts:
      tools/abi/retype_queue.tsv rows of the members removed, the lint baseline lowered, stamps for the
      entry points. State `verified`: waiting for Claude's review of what pre-review flagged;
   5. `install`: the commit, rebased onto the main tree's branch, gate, fast-forward under the main-tree lock.
-Routes (by members): up to 30: MiniMax-M3, then deepseek-v4-pro, then hyper/glm-5.3-flash; more:
-deepseek-v4-pro, then MiniMax-M3, then hyper/qwen3.8-flash. Tokens go to build/sig/usage.jsonl, tagged.
+Routes (by members): MiniMax-M3 first, then Hyper (glm-5.3-flash for up to 30, qwen3.8-flash above), then
+zai/glm-5.3 (deepseek-v4-pro, the pilot's model, is out of OpenCode Go's monthly quota). Tokens go to build/sig/usage.jsonl, tagged.
 """
 from __future__ import annotations
 
@@ -56,8 +56,9 @@ USAGE = os.path.join(SIG, "usage.jsonl")
 BRANCH = "wf-burr-demo"
 SHARED = ("bn6f", "roms", "gbarecomp", "build-tools", "toolchain", "build-checkpoints", "build-abi", "build-snapshots")
 ROUTES_FILE = "tools/wf/wf/routes.py"
-SMALL = ("minimax/MiniMax-M3", "opencode/deepseek-v4-pro", "hyper/glm-5.3-flash")
-LARGE = ("opencode/deepseek-v4-pro", "minimax/MiniMax-M3", "hyper/qwen3.8-flash")
+# OpenCode Go (deepseek-v4-pro, the pilot's model) hit its monthly limit on 10-13; Z.ai's week resets 10-14.
+SMALL = ("minimax/MiniMax-M3", "hyper/glm-5.3-flash", "hyper/qwen3.8-flash", "zai/glm-5.3")
+LARGE = ("minimax/MiniMax-M3", "hyper/qwen3.8-flash", "zai/glm-5.3", "hyper/glm-5.3-flash")
 ROUNDS = 5
 PROMPT_TAG = "sig-subsystem-1"
 sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -255,7 +256,9 @@ def check(job: str, tree: str, file: str, entries: list[str], members: list[str]
     try:
         lint = json.loads(r.stdout)
         src = open(os.path.join(cport, rel)).read().splitlines()
-        bad = [f"{x['name']}: " + "; ".join(f"line {ln}: {src[ln - 1].strip()}" for ln in sorted({n for v in x["lines"].values() for n in v})[:4])
+        bad = [f"{x['name']}" + (" (a `Next` adapter that does work itself: move its body into a static typed "
+                                  "function and let the adapter only read registers, call it, write results, "
+                                  "RETURN_TO_CALLER)" if x["kind"] == "next" else "") + ": " + "; ".join(f"line {ln}: {src[ln - 1].strip()}" for ln in sorted({n for v in x["lines"].values() for n in v})[:4])
                for xs in lint["files"].values() for x in xs if x["violation"]]
     except (ValueError, KeyError, IndexError):
         bad = [(r.stdout + r.stderr)[-500:]]
@@ -302,14 +305,16 @@ def check(job: str, tree: str, file: str, entries: list[str], members: list[str]
 
     def one(r):
         rc, out = sh(["tools/lockstep.sh", rom, f"tools/traces/{r[0]}.trace", r[1]], tree, env=lenv, timeout=7200)
-        return r[0], rc, out.strip().splitlines()[-1] if out.strip() else "?"
+        lines = out.strip().splitlines()
+        verdict = next((l for l in reversed(lines) if l.startswith(("OK", "FAIL", "MISMATCH")) or "differ" in l), lines[-1] if lines else "?")
+        return r[0], rc, verdict
     with cf.ThreadPoolExecutor(6) as ex:
         for name, rc, last in ex.map(one, routes):
             if rc != 0 or not last.startswith("OK"):
                 bad.append(f"{name}: {last}")
     notes.append(f"lockstep: {len(routes) - len(bad)}/{len(routes)} routes identical")
     if bad:
-        where = stall_site(tree, rom, routes, bad)
+        where = stall_site(tree, rom, routes, bad) + "\n" + first_divergence(tree, rom, routes, bad)
         return [f"lockstep (whole-game replay against the original; palette, VRAM and OAM): " + "; ".join(bad)
                 + (f"\n{where}" if where else "")], notes
     rc, out = sh([sys.executable, "tools/oracle.py", "--base", "build-snapshots", "--states", "24", "--out",
@@ -456,6 +461,29 @@ def probe(tree: str, file: str, entries: list[str], env: dict, denv: dict, membe
            f"--overrides cport/src/game", tree, env=env, timeout=1800)
 
 
+def first_divergence(tree: str, rom: str, routes: list, bad: list[str]) -> str:
+    """The first checkpoint where the screen differs from the original's, on the shortest failing route."""
+    failing = sorted((int(dict(routes)[b.split(":")[0]]), b.split(":")[0]) for b in bad if b.split(":")[0] in dict(routes))
+    if not failing:
+        return ""
+    n, route = failing[0]
+    out_dir = os.path.join(tree, "build/sys/lockstep-" + route)
+    shutil.rmtree(out_dir, ignore_errors=True)
+    sh(["tools/lockstep.sh", rom, f"tools/traces/{route}.trace", str(n)], tree,
+       env={"LOCKSTEP_CACHE": f"{MAIN}/build-wf-cache/lockstep", "OUT": out_dir}, timeout=3600)
+    try:
+        o = {l.split()[1]: l.split()[4:] for l in open(os.path.join(out_dir, "orig.txt"))}
+        t = {l.split()[1]: l.split()[4:] for l in open(os.path.join(out_dir, "test.txt"))}
+    except OSError:
+        return ""
+    for k in o:
+        if k in t and o[k] != t[k]:
+            what = [x.split("=")[0] for x, y in zip(o[k], t[k]) if x != y]
+            return (f"On route {route} the screen first differs from the original's at {k.replace('=', ' frame ')}: "
+                    f"{', '.join(what)} differ ({'only sprites' if what == ['oam'] else 'tiles or maps' if 'vram' in what else 'colours'}).")
+    return ""
+
+
 def stall_site(tree: str, rom: str, routes: list, bad: list[str]) -> str:
     """Where the tested ROM hangs on the first route that stopped early: the host PC and LR, as C functions."""
     first = next((b.split(":")[0] for b in bad if "stopped early" in b), None)
@@ -516,40 +544,51 @@ def run_job(name: str) -> None:
         update(name, state="failed", verdict=f"prompt: {out[-300:]}")
         return
     open(prompt, "w").write(out)
+    slim = os.path.join(base, "prompt-repair.txt")       # the same without today's readable C
+    rc2, out2 = sh([sys.executable, os.path.join(ROOT, "tools/sig/subsys_prompt.py"), name, "--file", file, "--skip", *skip,
+                    "--entries", *entries, "--fold", *FOLDS.get(name, []), "--no-readable",
+                    "--preamble", os.path.join(base, "preamble.c")], tree)
+    open(slim, "w").write(out2 if rc2 == 0 else out)
     log(name, f"members {len(members)}, entries {entries}, skipped {skip}; prompt {len(out)} chars")
     update(name, members=len(members), entries=entries, skipped=skip)
     removed = remove_parts(tree, set(members) | {n for n, e in g["entries"].items() if e["unit"] in members})
     log(name, f"took out {len(removed)} readable parts")
+    latest = os.path.join(base, "latest.c")       # the job's newest candidate, whichever model wrote it
     for model in [m for m in job["route"] if m not in job.get("tried", [])]:
-        reason = job.get("review_reason")
+        reason = read()[name].get("review_reason")
         cand = os.path.join(base, f"{file}.{model.split('/')[-1]}")
-        feedback, current = None, None
+        feedback = None
         for rnd in range(ROUNDS + 1):
             tag = f"sys {sl} {model} r{rnd}"
-            if rnd == 0 and not reason and os.path.exists(cand) and job.get("resume"):
+            if rnd == 0 and not reason and os.path.exists(latest) and read()[name].get("resume"):
                 ok, msg = True, "kept from the run before"
-            elif rnd == 0 and not reason:
+                shutil.copy(latest, cand)
+                update(name, resume=False)
+            elif rnd == 0 and not (reason and os.path.exists(latest)):
                 ok, msg = model_call(model, prompt, cand, tag)
             else:
                 rp = os.path.join(base, f"repair-{model.split('/')[-1]}-{rnd}.txt")
-                prev = open(current or cand).read() if os.path.exists(current or cand) else ""
-                why = feedback or [f"A reviewer rejected the previous version: {reason}"]
-                open(rp, "w").write(open(prompt).read() + REPAIR.format(problems="\n".join(f"{i + 1}. {p}" for i, p in enumerate(why)),
+                prev = open(latest).read() if os.path.exists(latest) else ""
+                why = feedback or [reason]
+                open(rp, "w").write(open(os.path.join(base, "prompt-repair.txt")).read() + REPAIR.format(problems="\n".join(f"{i + 1}. {p}" for i, p in enumerate(why)),
                                                                      code=prev))
                 ok, msg = model_call(model, rp, cand + ".patch", tag)
-                reason = None
+                if reason:
+                    reason = None
+                    update(name, review_reason=None)
                 if ok:
                     patch = open(cand + ".patch").read()
                     # a whole file back (it repeated everything) replaces; a patch is spliced in
                     whole = len(FUNC.findall(patch)) > 0.8 * max(1, len(FUNC.findall(prev)))
                     open(cand, "w").write(patch if whole else splice(prev, patch))
+            if ok:
+                shutil.copy(cand, latest)
             update(name, rounds=read()[name].get("rounds", 0) + 1, spent=tokens(f"sys {sl} "))
             if not ok:
                 log(name, f"{model} round {rnd}: no file ({msg})")
                 if rnd == 0:
                     break
                 continue
-            current = cand
             open(os.path.join(tree, "cport/src/game", file), "w").write(
                 assemble(open(os.path.join(base, "preamble.c")).read(), open(cand).read()))
             update(name, state="checking", model=model)

@@ -207,3 +207,51 @@ python3 tools/sig/convert.py opencode/deepseek-v4-pro prompt.txt NAME.c
 python3 tools/sig/record_subsystem.py SPEC.json && python3 tools/symdb.py stamp ENTRY...
 python3 tools/sig/write_db.py
 ```
+
+## Addendum, 10-13: the subsystem farm and the chatbox run
+
+`tools/sig/sysfarm.py` runs one job per subsystem. It is a command of its own with its own ledger,
+`build-wf-state/subsystem-jobs.json`, not a `wf queue` lane:
+
+```sh
+tools/sig/sysfarm.py plan|run|status|install|reopen
+```
+
+**What a job does:**
+1. It works in its own worktree.
+2. The tool writes the start of the file itself: the includes, the structs and the generated wrappers.
+   The model writes only the code after it.
+3. Checks run in order:
+   - compile and lint, reported together;
+   - lift and build;
+   - the difftest at the entry points;
+   - **a probe:** every internal function, run alone with a temporary adapter on its own captured
+     calls, against its lifted original. Memory, the return target and its result register are compared;
+   - lockstep on the 16 routes, reporting where it hangs and the first frame whose screen differs;
+   - the oracle.
+4. Repairs are patches: the model sends back only the definitions it changes, and the tool splices
+   them in by name.
+5. When a job passes, it gets outside pre-review (`tools/convert/prereview.py`) per function, then
+   the records: symbols/db, `retype_queue.tsv`, the lint baseline and stamps.
+6. A job ends as `verified`. Claude reads what pre-review flagged, then runs `install`.
+
+**Chatbox (60 units, 1 entry point): not installed.**
+- **deepseek-v4-pro** got its file through compile, lint, the build, the entry difftest and the probe:
+  44 of 44 internal functions match their originals. Lockstep failed on all 16 routes: the first text
+  box stays empty (title_mash_a, game frame 840).
+  - The cause was found in the tool, not the model. The wrappers let r4–r7 "pass through" whenever no
+    call site set them, but r5 holds the Chatbox pointer that the subsystem's entry loaded. Wrappers now
+    pass every low register the signature names.
+  - deepseek then hit OpenCode Go's **monthly limit**.
+- **MiniMax-M3** writes only about 750 tokens of output for a 60-function prompt, so it cannot produce
+  this file. Hyper had no credits until about 10:13; Z.ai is exhausted until 10-14.
+- **Spent:** 3.2M outside tokens over 42 rounds. That is far more than the pilot. Each repair
+  re-sent the whole prompt and file, before slim repair prompts and patch repairs existed.
+
+**A 20-unit test (Give_803CD74) on MiniMax-M3:** 12 rounds and 0.2M tokens. It never passed: it
+oscillated between compile and lint failures.
+
+**Next:**
+- Rerun chatbox on deepseek-v4-pro or zai/glm-5.3 when their quota returns.
+- For flash-class models: generate a subsystem in parts. The tool would fix the internal prototypes
+  first, and the model would write about 10 functions per request.

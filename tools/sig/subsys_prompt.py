@@ -63,22 +63,26 @@ def wrapper(name: str, s: dict, local_structs: set[str], set_by_callers: set[str
         ps, ret = chosen(s)
         note = f"register form: generated typed wrapper: {name}'s signature is confident (symbols/db {name}.yaml, signature:)"
         keep = [p for p in ps if p["reg"] in {f"r{i}" for i in range(4)} or
-                (p["reg"] in {f"r{i}" for i in range(4, 8)} and (set_by_callers is None or p["reg"] in set_by_callers))]
+                p["reg"] in {f"r{i}" for i in range(4, 8)}]
+        # r8-r12 pass through: the subsystem's C never sets guest registers, but r4-r7 (often a struct
+        # pointer the subsystem's entry loaded, e.g. r5) must be passed, or the callee sees whatever was left
         passed = [p["reg"] for p in ps if p not in keep]
         ps = keep
         if passed:
-            note += (f"; {', '.join(passed)} pass through as the guest has them (no call site here sets them: "
-                     f"the original passes its own caller's values on)")
+            note += (f"; {', '.join(passed)} pass through as the guest has them (high registers: the original passes "
+                     f"its own caller's values on)")
     else:
         ps = [{"reg": r, "type": "u32", "name": r} for r in s["upper_args"] if r != "r10"]
         ret = {"reg": s["ret"]["from"], "type": "u32"}
         keep = [p for p in ps if p["reg"] in {f"r{i}" for i in range(4)} or
-                (p["reg"] in {f"r{i}" for i in range(4, 8)} and (set_by_callers is None or p["reg"] in set_by_callers))]
+                p["reg"] in {f"r{i}" for i in range(4, 8)}]
+        # r8-r12 pass through: the subsystem's C never sets guest registers, but r4-r7 (often a struct
+        # pointer the subsystem's entry loaded, e.g. r5) must be passed, or the callee sees whatever was left
         passed = [p["reg"] for p in ps if p not in keep]
         ps = keep
         note = (f"register form: generated wrapper: {name}'s signature is unsure, so every register its "
                 f"contract may read is passed" + (f" ({', '.join(passed)} pass through as the guest has them: "
-                f"no call site here sets them)" if passed else ""))
+                f"high registers)" if passed else ""))
     args = ", ".join(f"{ctype(p.get('type'), local_structs)} {p.get('name') or p['reg']}" for p in ps) or "void"
     sets = "".join(f"    {p['reg'].upper()} = {to_reg(p.get('name') or p['reg'], ctype(p.get('type'), local_structs))};\n"
                    for p in ps)
@@ -141,6 +145,7 @@ def main() -> None:
     ap.add_argument("--skip", nargs="*", default=[], help="members left as they are (e.g. dead code)")
     ap.add_argument("--entries", nargs="*", help="entry points (default: tools/sig/subsystems.json's)")
     ap.add_argument("--wrappers-only", action="store_true")
+    ap.add_argument("--no-readable", action="store_true", help="leave out today's readable C (repair prompts)")
     ap.add_argument("--preamble", help="write the file's start (includes, structs, wrappers) here; the model "
                     "writes only what follows")
     ap.add_argument("--fold", nargs="*", default=[], help="members that return to their caller's caller (they pop "
@@ -225,7 +230,7 @@ def main() -> None:
             f"preserved {' '.join(e.get('preserved', [])) or '-'}\n"
             + (f"called from outside: {', '.join(sorted(set(callers_out)))}\n" if callers_out else "")
             + "assembly:\n```\n" + "\n".join(asmsrc.asm_of(e.get("src"))) + "\n```\n")
-        part = part_of(n)
+        part = None if a.no_readable else part_of(n)
         if part:
             out.append("today's readable C (register form; same behaviour, use it for names and meaning):\n```c\n" + part + "```\n")
     print("\n".join(out))
