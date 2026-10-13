@@ -3584,11 +3584,11 @@ Next sub_8109794(void) {
     R1 = objectHi;
     GUEST_CALL(object_getPanelParameters);
 
-    if (!(R0 & 0x40)) {
-        R0 = objectLo;
-        R1 = objectHi;
+    u32 params = R0;
+    R0 = objectLo;   /* pop {r0,r1}: both paths leave the inputs (or crackPanel's results) */
+    R1 = objectHi;
+    if (!(params & 0x40))
         GUEST_CALL(object_crackPanel);
-    }
 
     RETURN_TO_CALLER();
 }
