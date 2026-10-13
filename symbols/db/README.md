@@ -127,7 +127,7 @@ readable version exists (say who wrote it: model and run, or by hand);
 game running under an emulator (mGBA, real BIOS): RAM read or written at a known point (e.g. the
 end of a frame, `main_awaitFrame`) and the effect seen, such as the vidsync project's sync driver,
 whose RAM fixes are kept only when hundreds of frames afterwards match the video, or a one-off
-probe (say which in `detail`; `reproduce` names the script, under `~/Code/vidsync` for vidsync).
+probe (say which in `detail`; `reproduce` names the script, under `tools/vidsync` for vidsync).
 
 Status: **confirmed** = established from the code and checked against the
 original (oracle, lockstep or a readable replacement verified both ways);
