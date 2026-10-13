@@ -141,6 +141,10 @@ def main() -> None:
     ap.add_argument("--skip", nargs="*", default=[], help="members left as they are (e.g. dead code)")
     ap.add_argument("--entries", nargs="*", help="entry points (default: tools/sig/subsystems.json's)")
     ap.add_argument("--wrappers-only", action="store_true")
+    ap.add_argument("--preamble", help="write the file's start (includes, structs, wrappers) here; the model "
+                    "writes only what follows")
+    ap.add_argument("--fold", nargs="*", default=[], help="members that return to their caller's caller (they pop "
+                    "the caller's frame): written inside their caller's C function, never called on their own")
     a = ap.parse_args()
     sigs = json.load(open(FINAL))
     sub = next(s for s in json.load(open(SUBS))["subsystems"] if s["name"] == a.subsystem)
@@ -187,10 +191,19 @@ def main() -> None:
                     for n, u in extra_entries if u in entries)
     out = [PROMPT_HEAD.format(file=a.file, n=len(members), subsystem=a.subsystem,
                               entries=", ".join(entries), extra=extra)]
-    out.append("## Struct types (copy these into the file as they are)\n```c\n"
-               + "\n".join(struct_block(s) for s in sorted(own_structs)) + "```\n")
-    out.append("## Generated wrappers of the functions it calls outside the subsystem (copy these as they are)\n"
-               "```c\n" + wrappers + "```\n")
+    structs_c = "\n".join(struct_block(s) for s in sorted(own_structs))
+    if a.preamble:
+        pre = (f"#include <stddef.h>\n#include <stdint.h>\n#include \"game.h\"\n\n"
+               f"#define G(T, addr) ((T *)(uintptr_t)(u32)(addr))\n\n{structs_c}\n{wrappers}\n"
+               f"/* ── {a.subsystem}: the subsystem's own code ── */\n")
+        open(a.preamble, "w").write(pre)
+        out.append("## The start of the file, written by the tool: the includes, the struct types and the generated "
+                   "wrappers of the functions it calls outside the subsystem. It comes before your code: do NOT repeat "
+                   "any of it, start right after it.\n```c\n" + pre + "```\n")
+    else:
+        out.append("## Struct types (copy these into the file as they are)\n```c\n" + structs_c + "```\n")
+        out.append("## Generated wrappers of the functions it calls outside the subsystem (copy these as they are)\n"
+                   "```c\n" + wrappers + "```\n")
     out.append("## The functions\n")
     for n in members:
         s = sigs[n]
@@ -201,6 +214,11 @@ def main() -> None:
         e = g["entries"][n]
         out.append(
             f"### {n} ({s['addr']}){' ENTRY POINT' if n in entries else ''}\n"
+            + (f"FOLD: {n} ends by popping its caller's frame (`pop {{pc}}` with no push of its own), so it returns to "
+               f"its caller's caller. Write its code inside the C function of its caller "
+               f"({', '.join(sorted(set(c['caller'] for c in g['sites'] if c.get('target') == n)))}): where it returns, "
+               f"the caller returns. It has no C function or wrapper of its own.\n" if n in a.fold else "")
+            + 
             f"signature ({s['confidence']}, {s.get('decided_by', '-')}): args {sig}; result "
             f"{ret.get('reg', 'none')} {ret.get('type', '')}\n"
             f"contract: inputs {' '.join(e.get('inputs_final', []))}; outputs {' '.join(e.get('outputs_final', [])) or '-'}; "
