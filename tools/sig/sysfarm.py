@@ -296,7 +296,14 @@ def check(job: str, tree: str, file: str, entries: list[str], members: list[str]
     if os.path.exists(table_path) and read().get(job, {}).get("mode") == "chunked":
         path = os.path.join(tree, "cport/src/game", file)
         code = open(path).read()
-        extra, names = adapters_from_protos(json.load(open(table_path)), [m for m in members if m not in entries])
+        g = json.load(open(os.path.join(tree, "build-abi/graph.json")))
+        covered = {m for m in members if m not in entries} | {n for n in g["entries"]
+                                                              if re.search(rf"^Next {n}\(void\)", code, re.M)}
+        unit_entries: dict[str, set[str]] = {}
+        for n, e in g["entries"].items():
+            unit_entries.setdefault(e["unit"], set()).add(n)
+        extra, names = adapters_from_protos(json.load(open(table_path)), [m for m in members if m not in entries],
+                                            unit_entries, covered)
         pf, note = probe_names(tree, path, code, extra, names, env, denv)
         sh(f"python3 tools/lifter/lift.py --bn6f {MAIN}/bn6f --out cport/src/lifted --inc cport/include "
            f"--overrides cport/src/game", tree, env=env, timeout=1800)
@@ -778,12 +785,17 @@ def callees_first(members: list[str], g: dict) -> list[str]:
     return order
 
 
-def adapters_from_protos(table: dict, names: list[str]) -> tuple[str, list[str]]:
-    """Probe adapters (DIFFTEST only) built from the tool's own prototypes: no guessing."""
+def adapters_from_protos(table: dict, names: list[str], unit_entries: dict[str, set[str]] | None = None,
+                         covered: set[str] | None = None) -> tuple[str, list[str]]:
+    """Probe adapters (DIFFTEST only) built from the tool's own prototypes: no guessing. A member whose
+    unit has more entries than the adapters at hand cover (a second entry the subsystem never enters from
+    outside) is left out: the lifter refuses an override that does not define every entry of its unit."""
     out, done = [], []
     for game in names:
         t = table.get(game)
         if not t:
+            continue
+        if unit_entries and covered is not None and unit_entries.get(game, {game}) - covered:
             continue
         pre, args, post = [], [], []
         for q in t["params"]:
@@ -808,6 +820,44 @@ def adapters_from_protos(table: dict, names: list[str]) -> tuple[str, list[str]]
         out.append(f"Next {game}(void) {{ {' '.join(pre)} {call}; {' '.join(post)} RETURN_TO_CALLER(); }}")
         done.append(game)
     return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n", done
+
+
+def stubs_from_protos(table: dict, pending: list[str], code: str) -> str:
+    """DIFFTEST-only forwarders for the members not written yet (a later chunk's): the callees-first order
+    comes from the captured calls and the routes' edges, which do not see every call the assembly makes, so
+    a chunk's code may call a function a later chunk writes. Each stub has the tool's own prototype and
+    hands its arguments to the lifted original the way the generated wrappers do (GUEST_CALL), so the
+    chunk's probe build links and tests what is written so far against the original's behaviour."""
+    out = []
+    for game in pending:
+        t = table.get(game)
+        if not t or re.search(rf"\b{re.escape(t['cname'])}\s*\([^;{{}}]*\)\s*\{{", code):
+            continue
+        sets, posts = [], []
+        for q in t["params"]:
+            reg, ty, nm = q["reg"].upper(), q["type"], q["name"]
+            if reg in ("R8", "R9", "R10", "R11", "R12"):
+                continue          # pass-through: the C prototype has no such parameter
+            if q["io"]:
+                sets.append(f"{reg} = (u32)(uintptr_t)*{nm};" if ty.endswith("*") else f"{reg} = (u32)*{nm};")
+                base = ty[:-1].strip().replace("const ", "")
+                posts.append(f"*{nm} = G({base}, {reg});" if ty.endswith("*") else f"*{nm} = ({ty}){reg};")
+            elif ty.endswith("*"):
+                sets.append(f"{reg} = (u32)(uintptr_t){nm};")
+            else:
+                sets.append(f"{reg} = (u32){nm};")
+        r, rt = t["ret"]["reg"], t["ret"]["type"]
+        ret = ""
+        if r == "r0" and rt == "U32Pair":
+            ret = "return (U32Pair){ R0, R1 };"
+        elif r == "r0":
+            ret = f"return ({rt})(uintptr_t)R0;" if rt.endswith("*") else f"return ({rt})R0;"
+        elif r.startswith("flag:"):
+            ret = "return ZERO_FLAG();"
+        out.append(f"{t['decl']} {{ {' '.join(sets)} GUEST_CALL({game}); {' '.join(posts)} {ret} }}")
+    if not out:
+        return ""
+    return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n"
 
 
 def probe_names(tree: str, path: str, code: str, extra: str, names: list[str], env: dict, denv: dict) -> tuple[list[str], str]:
@@ -928,8 +978,16 @@ def run_job_chunked(name: str) -> None:
                 fails = static_checks(tree, f"src/game/{file}")
                 note = ""
                 if not fails:
-                    extra, names = adapters_from_protos(table, [n for n in chunk if n not in entries])
-                    pf, note = probe_names(tree, path, cur, extra, names, env, denv)
+                    covered = set(chunk) | {n for n in g["entries"]
+                                            if re.search(rf"^Next {n}\(void\)", cur, re.M)}
+                    unit_entries: dict[str, set[str]] = {}
+                    for n, e in g["entries"].items():
+                        unit_entries.setdefault(e["unit"], set()).add(n)
+                    pending = [n for n in table if n not in chunk]
+                    extra, names = adapters_from_protos(table, [n for n in chunk if n not in entries],
+                                                        unit_entries, covered)
+                    pf, note = probe_names(tree, path, cur, extra + stubs_from_protos(table, pending, cur),
+                                           names, env, denv)
                     fails += pf
                 log(name, f"chunk {k} ({len(chunk)}) {model} round {rnd}: {'pass' if not fails else 'fail: ' + fails[0][:160]} {note}")
                 if not fails:
