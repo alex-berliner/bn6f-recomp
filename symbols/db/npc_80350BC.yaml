@@ -2,14 +2,19 @@ name: npc_80350BC
 address: '0x080350BC'
 kind: function
 previous_names: []
-status: hypothesis
+status: probable
 summary: Runs the "<item> just expired!" cutscene when SneakRun (flag 0x170A) or LocEnemy (0x170B) is on and its
-  steps left (eStruct2001c04 +0x24 / +0x28) reached 0.
+  steps left (eStruct2001c04 +0x24 / +0x28) reached 0; on EVENT_1708 it instead starts cutscene byte_8099E04, and
+  it only acts in Internet maps (MapGroup >= 0x80) while no Slip/cutscene is running.
 evidence:
 - method: assembly-reading
   date: '2026-10-13'
-  detail: vidsync's reading of the assembly (dossier section 1); not re-read here.
-  reproduce: grep -n -A40 '^npc_80350BC:' bn6f/asm/asm03_1_0.s
+  detail: 'Body re-read (upgrades the dossier''s not-re-read hypothesis): after the MapGroup >= 0x80 and IsNotSlipRunningAndNotInCutscene
+    guards, EVENT_1708 short-circuits into StartCutscene(byte_8099E04); otherwise EVENT_170A with eStruct2001c04
+    +0x24 == 0 clears 0x170A and returns 1, and the 0x170B half does the same with +0x28.'
+  reproduce: awk 'index($0,"npc_80350BC:")==1{f=1} f{print} f&&/thumb_func_end/{exit}' bn6f/asm/asm03_1_0.s
+  result: the body (asm03_1_0.s:2692..) shows cmp r0,#0x80 / blt, IsNotSlipRunningAndNotInCutscene, EVENT_1708 ->
+    StartCutscene(off_8035130 = byte_8099E04), then the EVENT_170A / eStruct2001c04+0x24 and EVENT_170B halves
 related:
 - eStruct2001c04
 open_questions: []
@@ -20,4 +25,8 @@ changes:
 - date: '2026-10-13'
   what: doc comment (symdb block) at the definition
   where: bn6f bce1cfe1
+  tool: tools/symdoc.py
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45a8dbe9
   tool: tools/symdoc.py

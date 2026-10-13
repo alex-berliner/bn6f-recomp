@@ -6,7 +6,9 @@ status: confirmed
 summary: 'Game state: +0 subsystem (0x04 overworld, 0x0C battle, 0x18 PET menu), +4/+5 map, +0xC last map, +0xE
   MegaMan''s tile trigger, +0x18 player object, +0x1C current battle settings, +0x24 player spawn point.'
 details: 'Field names: include/structs/GameState.inc (SubsystemIndex, MapGroup, MapNumber, LastMapGroup, CoordInteractionValue,
-  OverworldPlayerObjectPtr -> eOWPlayerObject, CurBattleDataPtr, PlayerX).'
+  OverworldPlayerObjectPtr -> eOWPlayerObject, CurBattleDataPtr, PlayerX). Internet maps have MapGroup >= 0x80 (the
+  InternetMysteryDataMapGroupEntries table lists only groups 0x80-0x96, and npc_80350BC gates on MapGroup >= 0x80
+  to mean "in the net").'
 evidence:
 - method: runtime
   date: '2026-10-13'
@@ -14,17 +16,26 @@ evidence:
     (a reload sets them its own way, so junctions write them), PlayerX/Y/Z at +0x24 (where a map reload puts MegaMan),
     and CurBattleDataPtr at +0x1C (set on an encounter''s trigger frame; writing another table entry picks the formation).'
   reproduce: grep -n 'def try_formations' tools/vidsync/autosync.py; grep -n 'def try_relocate' tools/vidsync/autosync.py
+- method: data-inspection
+  date: '2026-10-13'
+  detail: The internet mystery-data group table lists only groups >= 0x80 — the data behind the rule that Internet
+    maps have MapGroup >= 0x80.
+  reproduce: awk '/^InternetMysteryDataMapGroupEntries:/{f=1;next} f&&/\.word/{v=sprintf("%d",$2); if (v>=128) printf
+    "%s ",$2}' bn6f/data/dat28.s
+  result: 0x80 0x81 0x82 0x83 0x85 0x88 0x8D 0x91 0x92 0x93 0x94 0x95 0x96 0x290  — every group word in the table
+    is >= 0x80 (the trailing 0x290 belongs to a following dword)
 - method: runtime
   date: '2026-10-13'
   detail: 'One-off emulator probe: +0 = 0x18 in the PET menu; +0x0E is the trigger code of MegaMan''s tile.'
-  reproduce: 'python3 tools/vidsync/probes/trig.py RESULT STATE G   # on the PC with the vidsync data:
-    RESULT/STATE from build-vidsync/data/auto/, run there through tools/vidsync/remote/py.sh; see docs/vidsync/SYMBOL_DOSSIER.md'
+  reproduce: 'python3 tools/vidsync/probes/trig.py RESULT STATE G   # on the PC with the vidsync data: RESULT/STATE
+    from build-vidsync/data/auto/, run there through tools/vidsync/remote/py.sh; see docs/vidsync/SYMBOL_DOSSIER.md'
 related:
 - eOWPlayerObject
 open_questions: []
 sources:
 - vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
 - Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
 changes:
 - date: '2026-10-13'
   what: doc comment (symdb block) at the definition

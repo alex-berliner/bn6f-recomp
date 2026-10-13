@@ -2,21 +2,36 @@ name: eCamera
 address: '0x02009980'
 kind: ram
 previous_names: []
-status: hypothesis
-summary: Camera; +0x30/+0x34 look like the camera X/Y following MegaMan (s16.16), duplicated at +0x3C/+0x40.
+status: probable
+summary: Camera; +0x30/+0x34 the camera X/Y following MegaMan (s16.16), +0x3C/+0x40 the next-frame targets the shake
+  and follow code writes them from.
+details: The camera-shake code (camera_doShakeEffect_80301e8, asm03_0.s:21649-21665) reads +0x30 (oCamera_X) and
+  +0x34 (oCamera_Y) and writes the shaken values to +0x3C (oCamera_nextX_3c) and +0x40 (oCamera_nextY_40), so the
+  pairs are current value vs. next-frame target, both live.
 evidence:
 - method: runtime
   date: '2026-10-13'
   detail: 'One-off emulator probe: a search for moving map coordinates in EWRAM found these pairs following MegaMan.'
-  reproduce: 'python3 tools/vidsync/probes/movers.py RESULT STATE G   # on the PC with the vidsync data:
-    RESULT/STATE from build-vidsync/data/auto/, run there through tools/vidsync/remote/py.sh; see docs/vidsync/SYMBOL_DOSSIER.md'
-open_questions:
-- Which of the two pairs the camera code reads; not checked in the assembly.
+  reproduce: 'python3 tools/vidsync/probes/movers.py RESULT STATE G   # on the PC with the vidsync data: RESULT/STATE
+    from build-vidsync/data/auto/, run there through tools/vidsync/remote/py.sh; see docs/vidsync/SYMBOL_DOSSIER.md'
+- method: assembly-reading
+  date: '2026-10-13'
+  detail: 'Answers the open question "which pair the camera code reads": the shake code reads oCamera_X / oCamera_Y
+    and writes oCamera_nextX_3c / oCamera_nextY_40.'
+  reproduce: sed -n '21649,21665p' bn6f/asm/asm03_0.s
+  result: ldr r2,[r5,#oCamera_X]; add r2,r2,r0; str r2,[r5,#oCamera_nextX_3c] ... bl GetRNGSecondary ... ldr r2,[r5,#oCamera_Y];
+    add r2,r2,r0; str r2,[r5,#oCamera_nextY_40]
+open_questions: []
 sources:
 - vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
 - Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
 changes:
 - date: '2026-10-13'
   what: doc comment (symdb block) at the definition
   where: bn6f bce1cfe1
+  tool: tools/symdoc.py
+- date: '2026-10-13'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45a8dbe9
   tool: tools/symdoc.py
