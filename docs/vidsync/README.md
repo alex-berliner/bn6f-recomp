@@ -49,7 +49,10 @@ same loss is skipped there next time.
 ## State (2026-10-13)
 
 - The sync stopped at game frame 432,728 (22.7%), run `run7k` (`data/auto/` on .175), at the Mr. Weather comp:
-  the rainbow-orb trail and tornado outcome is not reproduced (`SYMBOL_DOSSIER.md` §4).
+  the rainbow-orb trail and tornado outcome is not reproduced (`SYMBOL_DOSSIER.md` §4). Since the move,
+  `wf vidsync-run` restarted it from `data/auto/run6y.0/fix_0026` (game 432,312) as `run7m` (`run7l` crashed
+  when a deploy deleted the tree it ran in; install.sh no longer does that); it reaches the same loss within
+  minutes and searches RNG writes until it gives up, as before. A repair is `wf vidsync-repair --run run7m`.
 - `ready/` holds the recording to game frame 330,000 and 13 save-file segments with `VERIFY.txt`; the save
   chain holds except at seg 4→5. `tools/traces/beastsp.*` is at 220,000.
 

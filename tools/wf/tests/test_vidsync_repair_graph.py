@@ -36,8 +36,13 @@ class Fakes:
 
     def install(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         results = iter(self.tests_pass)
+        # handlers/ lives in the main checkout (WF_REPO, tools/vidsync/handlers), which a checkout of tools/wf
+        # alone (the commit gate's) does not have: the tests give both readers a fake one in tmp_path
         monkeypatch.setattr(vidsync_repair, "HANDLERS", tmp_path / "handlers")
+        monkeypatch.setattr(vidsync_brief, "HANDLERS", tmp_path / "handlers")
         (tmp_path / "handlers").mkdir()
+        _ = (tmp_path / "handlers" / "__init__.py").write_text(
+            '"""A repair handler: NAME, and try_fix(D, sync) -> writes | None, called at a loss."""\n')
 
         def find_loss(run: RunName, loss: FrameCount | None = None) -> LossCase:
             return CASE
@@ -149,6 +154,10 @@ def test_the_brief_carries_the_entries_and_the_assembly(monkeypatch: pytest.Monk
     database.mkdir()
     _ = (database / "eWeatherCompState.yaml").write_text("name: eWeatherCompState\nstatus: probable\n")
     monkeypatch.setattr(vidsync_brief, "DATABASE", database)
+    monkeypatch.setattr(vidsync_brief, "HANDLERS", tmp_path / "handlers")
+    (tmp_path / "handlers").mkdir()
+    _ = (tmp_path / "handlers" / "__init__.py").write_text(
+        '"""A repair handler: NAME, and try_fix(D, sync) -> writes | None, called at a loss."""\n')
     def find_asm(name: str) -> str:
         return f"{name}:\n\tpush {{r4, lr}}"
 
