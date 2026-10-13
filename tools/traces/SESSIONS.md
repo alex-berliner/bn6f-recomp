@@ -26,12 +26,12 @@ ending save (`NAME.end.sav`), so they form a chain through the game.
 
 `beastsp` is not a tools/record session: it is Komari's BeastSP run of BN6 Falzar (YouTube
 `tAicOP_JS4A`) rebuilt frame by frame from the video, from power-on with a blank save, in
-~/Code/vidsync (its `ready/README.md` says how). The video can't show the run's luck, so
+tools/vidsync (docs/vidsync/README.md; build-vidsync/ready/README.md says how). The video can't show the run's luck, so
 `beastsp.poke` writes it in (RNG seeds, battle setups, rewards, and enemies' HP at 0 where the
 video's battle ends), one line per game frame. It is long, and grows as the sync goes on: 220000
 game frames (about an hour of the 8 h 44 min run) when it came in.
 
-- Bring it in or refresh it: `tools/import_route.py [~/Code/vidsync/ready]`. It copies the trace,
+- Bring it in or refresh it: `tools/import_route.py [build-vidsync/ready]`. It copies the trace,
   .poke and .sav, replays them on the original to the trace's `# end` digest, saves a checkpoint
   every 10000 game frames in build-checkpoints/beastsp/ (game RAM, never committed), profiles and
   observes call edges window by window from them (coverage/beastsp.prof, .edges), and sets the

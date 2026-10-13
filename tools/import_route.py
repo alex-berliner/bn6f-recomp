@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Bring in, or refresh, a long recorded route made outside this repo: the BN6 Falzar BeastSP
-recording rebuilt from a speedrun video (~/Code/vidsync/ready, see its README.md).
+"""Bring in, or refresh, a long recorded route made by vidsync (tools/vidsync, docs/vidsync): the BN6
+Falzar BeastSP recording rebuilt from a speedrun video. READY_DIR defaults to VIDSYNC_READY
+(build-vidsync/ready, tools/paths.env; its README.md says what is in it).
 
     tools/import_route.py [READY_DIR] [--name beastsp] [--source bn6f_beastsp] [--jobs 6]
 
@@ -197,7 +198,7 @@ def set_route_length(name: str, length: int) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("ready", nargs="?", default=os.path.expanduser("~/Code/vidsync/ready"))
+    ap.add_argument("ready", nargs="?", default=gamepaths.VIDSYNC_READY)
     ap.add_argument("--name", default="beastsp", help="the route's name here")
     ap.add_argument("--source", default="bn6f_beastsp", help="the recording's name in READY")
     ap.add_argument("--jobs", type=int, default=6)

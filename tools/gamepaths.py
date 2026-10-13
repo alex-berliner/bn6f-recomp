@@ -1,5 +1,5 @@
 """The game profile, tools/paths.env, for Python: where the game, the BIOS, the test harness and the
-lifter's ABI export are, and the game's frame-counter address. The one reader of paths.env in Python.
+lifter's ABI export and vidsync's directories are, and the game's frame-counter address. The one reader of paths.env in Python.
 
     import gamepaths                          # scripts in tools/ (others put tools/ on sys.path first)
     gamepaths.ORIG_ROM, gamepaths.GBA_BIOS    # absolute paths, as str
@@ -37,3 +37,7 @@ TRACES = _profile["TRACES"]
 CHECKPOINTS = _profile["CHECKPOINTS"]
 ABI_DIR = _profile["ABI_DIR"]
 ABI_GRAPH = _profile["ABI_GRAPH"]
+VIDSYNC = _profile["VIDSYNC"]
+VIDSYNC_DATA = _profile["VIDSYNC_DATA"]
+VIDSYNC_READY = _profile["VIDSYNC_READY"]
+EMU_SERVER = _profile["EMU_SERVER"]
