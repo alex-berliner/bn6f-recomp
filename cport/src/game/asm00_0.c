@@ -1278,13 +1278,13 @@ Next sub_80010EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8001172 ── */
-/* sub_8001172(r0 = value, r10 = toolkit):
+/* ── gameState_setUnk09_8001172 ── */
+/* gameState_setUnk09_8001172(r0 = value, r10 = toolkit):
  * Store the byte value into the game state at offset 9 (field after
  * oGameState_Unk_15's group; no named macro exists for this offset),
  * with the game state pointer read from the toolkit struct.
  * Leaves the game state pointer in r3. */
-Next sub_8001172(void) {
+Next gameState_setUnk09_8001172(void) {
     u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
 
     ST8(gameState + 9, R0);

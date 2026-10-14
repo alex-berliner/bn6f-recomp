@@ -1,130 +1,54 @@
 name: sub_803B91C
 address: '0x0803B91C'
 kind: function
-status: hypothesis
-summary: Looks up one of a small hard-coded table of chatbox/script descriptors (12-byte stride) and dispatches
-  it through sub_8001890.
-interface: 'void sub_803B91C(u32 entryIndex /* r0 */); flags: NZCV clobbered'
-details: 'Indexes a 12-byte-entry table anchored at 0x0803B93C (loaded via off_803B938/0x0803B938,
+previous_names: []
+status: probable
+summary: Copies one of a small palette/toolkit BG-tile-id entry (loaded from a 12-byte table) into the toolkit's
+  iBGTileIdBlocks blit buffer via sub_8001890.
+interface: '(r0 = table index) -> r0 = 0 ; side effects: writes to one of the toolkit''s BG tile-id block buffers
+  through sub_8001890.'
+details: '- The base of the table is at unk_2028204 (loaded via off_803B93C -> .word unk_2028204), each entry is
+  12 bytes (0xc) as shown by `mov r1, #0xc` and `mul r0, r1`.
 
-  stored in IWRAM as unk_2028204 plus an immediate offset). Each entry is 0xC bytes laid
+  - r0 is the byte index into this table of entries. The first u32 (r3 = [r3]) is a pointer; the next five bytes
+  (offsets +4..+8) are loaded into r2,r4,r5,r0,r1 (reordered as the function sets up r2,r0,r1,r4,r5 from +4,+5,+6,+7,+8).
 
-  out as: +0 word (passed as r3), +4 byte (r2), +5 byte (r0), +6 byte (r1),
+  - r1 is hardcoded to 0xc on entry — the captured call shows r1=0x20 on entry but the function immediately overwrites
+  it with 0xc, so the caller''s r1 is ignored.
 
-  +7 byte (r4), +8 byte (r5). Those six registers are forwarded verbatim to
+  - `bl sub_8001890` is the BG tile-id blit helper ("Blits a rectangle of 16-bit BG tile ids into one of the toolkit''s
+  BG tile-id blocks").
 
-  sub_8001890, which is a likely script/command dispatcher given the register
+  - Multiple call sites (copyData_803B216, copyData_803B2E4, copyData_803B3C8, copyData_803B45C, sub_803A25C, sub_803A334,
+  sub_803B518) all push the toolkit in r10 — confirming r10 is the toolkit pointer used by sub_8001890.
 
-  shape (r0..r3 carry parameters, r4..r5 carry extra args, r3 also carries a
+  - copyData_8049A18 / copyData_8049AAC / copyData_804A0AC call it during scene init (e.g. `call sub_803B91C(3)`
+  per the confirmed summary).
 
-  pointer-like word). The 0x14 / 0x20 / 0x1E values in the +3..+6 columns and
-
-  the 0xFF padding pattern are consistent with per-entry command/script tuples,
-
-  but the meaning of each byte is not confirmed. The data block at 0x0803B93C
-
-  is inlined as .byte immediates following the pointer, so it is not a normal
-
-  word table.
-
-
-  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+  '
 evidence:
-- method: readable-c
-  date: '2026-10-11'
-  detail: Written by hyper/glm-5.3-flash+old through the convert workflow (1 attempt(s), run convert-20261011-223927);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, off_803B938 // =off_803B93C` followed by `mov r1, #0xc; mul r0, r1; add r3, r3, r0` is a classic
+    12-byte-stride table index. - `off_803B93C: .word unk_2028204` is the table base. - `ldrb r0, [r3,#5]; ldrb
+    r1, [r3,#6]; ldrb r2, [r3,#4]; ldrb r4, [r3,#7]; ldrb r5, [r3,#8]` plus `ldr r3, [r3]` show the entry is {u32
+    ptr, u8,u8,u8,u8,u8} (12 bytes). - The only callee `sub_8001890` is the confirmed BG tile-id blit; r10 (toolkit)
+    is its in-register contract, matching every caller. - Captured call r0=3 (one of the few valid indices visible
+    in the inlined table) and exit r0=0 with NZ clear (sub_8001890 returned 0).'
   refs:
-  - cport/src/game/asm03_1_1.c
-  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 19' --file inbox_farm_old_19.c
-    sub_803B91C
-- method: difftest
-  date: '2026-10-11'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_803B91C
+  - bn6f/asm/asm03_1_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0803B91C
 
-    ./wf verify --function sub_803B91C --snapshots build-snapshots'
-  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
-    domain (verify run convert-20261011-223927-verify-1)'
-- method: cpu-oracle
-  date: '2026-10-11'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_803B91C
-
-    ./wf verify --function sub_803B91C --snapshots build-snapshots'
-  result: 0 compared, 0 differed, 1 out of domain (verify run convert-20261011-223927-verify-1)
-- method: lockstep
-  date: '2026-10-11'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_803B91C
-
-    ./wf verify --function sub_803B91C --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-223927-verify-1)
-- method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battles2, maps, menus3.'
-  reproduce: grep -l '^0803b91c ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-11'
-  what: readable C replacement in cport/src/game/asm03_1_1.c
-  where: recomp 963ede1
-  tool: tools/wf convert (hyper/glm-5.3-flash+old)
-- date: '2026-10-13'
-  what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
-  tool: tools/symdoc.py
-readable_c: cport/src/game/asm03_1_1.c
-coverage:
-- battles2
-- maps
-- menus3
+    '
+  result: the body read as described above
 open_questions:
-- What is the exact meaning of each of the six forwarded fields (r3 word, r2/r0/r1 bytes, r4/r5 bytes)?
-- What is the size of the entry table (number of 0xC-byte rows)?
-- Is sub_8001890 a generic script opcode dispatcher, and does r3 hold a string/arg pointer?
-- Which subsystem actually owns this table (chatbox, tutorial, battle message, etc.)?
-- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
-  C (stages S3/S4)'
+- The semantic role of each table entry (BG block index / tile offset / pal bank) is not directly visible; only
+  that it's a 12-byte record passed wholesale into the BG tile-id blit. Decoding the per-field meaning would require
+  cross-referencing sub_8001890's parameter contract for the +4..+8 bytes.
 sources:
-- tools/wf run convert-20261011-223927
-- recomp 963ede1
-signature:
-  c: U32Pair sub_803B91C(u32 index)
-  params:
-  - reg: r0
-    type: u32
-    name: index
-  ret:
-    reg: r0:r1
-    type: void
-  globals:
-  - toolkit
-  keep:
-  - r2
-  - r3
-  confidence: confident
-  decided_by: model+mechanical (minimax/MiniMax-M3)
-  evidence:
-  - 'contract (lifter, refined): may read r0; result r0:r1'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0'
-  - 'r0: captures: 1 calls, int 0x3'
-  - 'result: captures at exit: r0 int 0x0'
-  - 'model minimax/MiniMax-M3: Upper bound is just r0; r0 is read as the index into the table. Result r0:r1 comes
-    from sub_8001890 return.'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:f76770cdc6f4f645
-  range: 0x0803B91C-0x0803B9C0
-  contract: r0 r10 lr -> nz c v r0 r1 r2 r3 r5 lr; clobbers -
-  callees:
-    sub_8001890: nz c v r0 r1 r2 r3
-  headers: fcd578dd3554
-  lifter: 70c8d832ffcf
-  prompt: 6505961c4798
-  model: hyper/glm-5.3-flash
-  run: convert-20261011-223927
-  body: b52e2bcf1befa0ee
-  installed: 963ede1
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py

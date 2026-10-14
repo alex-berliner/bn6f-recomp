@@ -1,0 +1,78 @@
+name: object_checkEnemyOrAllyPanel_800E680
+address: '0x0800E680'
+kind: function
+previous_names:
+- sub_800E680
+status: probable
+summary: Picks panel-state mask/anti-mask pair for an object's alliance and tests whether the panel at
+  (col,row) of a battle grid matches that pair, returning 1/0.
+interface: (r0 = panelColumn, r1 = panelRow, r5 = BattleObject*) -> r0 = 1 if panel matches the alliance
+  pair, 0 otherwise ; r2/r3/r4-r7 callee-saved
+details: '1. Saves r6/r7/lr; r6 = col, r7 = row.
+
+  2. Calls object_isValidPanel(r6,r7); if invalid, returns 0 directly (loc_800E6BE).
+
+  3. Calls object_getFlag() to read the first object-flag word (ObjectFlags1) of the battle object in
+  r5.
+
+  4. If bit 0x10 (OBJECT_FLAGS_AIRSHOE) is clear, falls through; otherwise jumps to loc_800E6A4 with r0=0x10.
+
+  5. Otherwise reads PanelX/PanelY (oBattleObject_PanelX/Y, 0x12/0x13) and calls object_isPanelSolid;
+  if the panel is solid, jumps to loc_800E6A4 with r0=0x10; otherwise r0=0.
+
+  6. After loc_800E6A4/6A6, picks a base value (0x10 or 0x00) and adds (Alliance << 3) (oBattleObject_Alliance
+  at 0x16) to it, producing one of four 8-byte stride offsets into the inline table byte_800E6C8 (the
+  four entries at +0, +8, +16, +24).
+
+  7. Each entry is two u32s (mask, anti-mask) — the inline bytes are 0x10000000,0x00000000,0x00078000,0x00000000
+  (entry 0, alliance 0, base 0); 0x10000000,0x00000000,0x000B8000,0x00000000 (entry 1, alliance 0, base
+  0x10); 0x00000000,0x00000000,0x00078000,0x00000000 (entry 2, alliance 1, base 0); 0x00000000,0x00000000,0x000B8000,0x00000000
+  (entry 3, alliance 1, base 0x10). These correspond to PanelData.Flags (e.g. enemy/ally-panel bits 0x08000000
+  ally / 0x04000000 enemy, attack bits 0x80000000 ally / 0x40000000 enemy) combined with the solid (0x10000000)
+  or non-solid (no solid bit) variant.
+
+  8. Loads r2 = mask, r3 = anti-mask; restores r0 = col, r1 = row from r6/r7; tails into object_checkPanelParameters
+  which performs the actual (mask, anti-mask) test.
+
+  9. Net effect: returns 1 if the panel at (r0,r1) is a "friendly" panel for this object''s alliance,
+  otherwise 0; an invalid (col,row) is treated as not matching. The AirShoe short-circuit forces the "solid"
+  variant regardless of whether the object is actually on a solid panel.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r6/r7 save + later `mov r0,r6; mov r1,r7` (sub_800E680 entry) shows the col/row are the actual
+    test coords, not the object''s panel. - `bl object_isValidPanel` followed by `beq loc_800E6BE` ->
+    0 means out-of-grid panels never match. - `bl object_getFlag` then `tst r0,#0x10` tests OBJECT_FLAGS_AIRSHOE
+    (`OBJECT_FLAGS_AIRSHOE = 0x00000010` in ObjectFlags1); if set, base is forced to 0x10 (solid variant).
+    - When airshoe is clear, the function falls through to read `oBattleObject_PanelX/Y` (offsets 0x12/0x13)
+    and calls `object_isPanelSolid`; equal path to loc_800E6A4 also forces base 0x10. - `ldrb r1,[r5,#oBattleObject_Alliance]`
+    (offset 0x16) plus `lsl r1,r1,#3` plus `add r0,r0,r1` computes the per-alliance 8-byte stride inside
+    byte_800E6C8; the inline 32 bytes contain exactly four 8-byte (mask,anti-mask) records and the high
+    bits of each (0x10000000 or 0; 0x00078000 or 0x000B8000 in the anti-mask) match the PanelData.Flags
+    bits documented for solid, enemy-alliance, ally-alliance, etc. - The two loaded values go into r2/r3
+    and `bl object_checkPanelParameters` (whose contract is `tests whether the panel at given coordinates
+    matches a required flag state`) returns the 1/0 answer.'
+  refs:
+  - bn6f/asm/object.s
+  reproduce: 'python3 tools/asmcat.py 0x0800E680
+
+    '
+  result: the body read as described above
+open_questions:
+- Why the AirShoe path skips the isPanelSolid check (perhaps AirShoe lets the object be treated as standing
+  on a solid panel even when its recorded panel is empty/non-solid). Without seeing the call sites that
+  interpret the return value in game terms, the semantic label ("ally panel" vs "valid placement panel")
+  is a best guess.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800E680 -> object_checkEnemyOrAllyPanel_800E680
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

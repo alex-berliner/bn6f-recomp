@@ -1,0 +1,70 @@
+name: save_writeAndVerifyEWRAMToSRAM_803F79E
+address: '0x0803F79E'
+kind: function
+previous_names:
+- sub_803F79E
+status: probable
+summary: Mirrors the 0x10-byte EWRAM work buffer (0x2000000..0x6710) to Game Pak SRAM, verifying the round-trip
+  checksum before committing and toggling event flag 0x1704.
+interface: (r0..r3 ignored) -> r0 = 1 on successful verify-write-clear, 0 on verify-fail-then-set-flag
+  retry
+details: "- Walks toolkit->S2001c04 via r10 (lifecycle handed in by the caller).\n- First call to save_BackupToGamePakWithRetry_803FAB4;\
+  \ bne loc_803F808 means if the backup\n  succeeded (or returned a value indicating a non-fail), we jump\
+  \ to the early-exit that\n  clears event flag 0x1704 via ClearEventFlagFromImmediate and returns r0=1.\n\
+  - Otherwise (r4==1), does NOT copy player coords (the tst r4,r4 / bne loc_803F7C2 branch\n  is skipped,\
+  \ so the player->GameState sync is bypassed).\n- Then: rollRngSeedIntoExtraToolkitPtrs_8006e26 (RNG\
+  \ seed advance), info_copyTimestampToWorkArea_803F8B2\n  (stamp timestamp into S2001c04+0x6C), s2001c04_ComputeChecksumOfEwramRegion_803F894\
+  \ (compute new\n  checksum into r0 of the 16 bytes at 0x2006700..0x6710 and store it in the S2001c04\
+  \ work area's\n  +0x68 field), then save_CommitWorkBufferToGamePak_803FB04 (which the callee describes\
+  \ as\n  \"writes the caller's value into the save work buffer at dword_20067C0 and flushes the 0x80-byte\n\
+  \  buffer to the Game Pak save area at 0xE007F80\"). Note: that callee takes r0 as the byte to\n  embed;\
+  \ here r0 is the freshly computed checksum, so the *checksum* is being committed to\n  dword_20067C0\
+  \ along with the rest of the 0x80-byte save block.\n- encryption_xorBufferWithKey_8006df6 is called\
+  \ on 0x2000000 / 0x6710 — the \"decrypt\" the EWRAM\n  work buffer that was written in obfuscated form\
+  \ so the SRAM copy below transfers plaintext.\n- The loc_803F7DC loop (up to 3 times): libSave_CopyToGamePak\
+  \ copies 0x6710 bytes from 0x2000000\n  to SRAM 0xE000100 (Game Pak save area), then sub_814D9C4 (likely\
+  \ a verify/compare against the\n  expected write). r4 holds the per-iteration result; r7 counts 0..2.\
+  \ If all 3 attempts report\n  non-zero (suspicious) it falls through to the encryption_save_memSetFlags_8006E0E\
+  \ re-encrypt\n  branch and falls back to ClearEventFlagFromImmediate / r0=1 (treats persistent failure\
+  \ as\n  \"clear flag, give up\").\n- If a sub_814D9C4 call returns 0, re-encrypt with the obfuscation\
+  \ key, then re-read the\n  checksum at S2001c04->+0x68, recompute via s2001c04_ComputeChecksumOfEwramRegion_803F894,\n\
+  \  and if equal SetEventFlagFromImmediate flag 0x1704 and return r0=0. The flag 0x1704 toggle\n  thus\
+  \ encodes \"this run successfully wrote SRAM and verified\" vs. \"fell back to backup-only\".\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- mov r4, #1; tst r4,r4; bne loc_803F7C2 — only on r4==1 (initial) does the body run; r4 is\
+    \ the\n  \"first attempt?\" / skip-player-sync toggle.\n- bne loc_803F808 right after save_BackupToGamePakWithRetry_803FAB4\
+    \ — backup success jumps to\n  the early-exit that calls ClearEventFlagFromImmediate EVENT_1704 and\
+    \ returns 1.\n- The block at loc_803F7A2..loc_803F7C2 writes GameState->PlayerX/Y/Z/FacingDirectionAfterWarp\n\
+    \  from OverworldPlayerObject (offsets oGameState_PlayerX=0x24, oOWPlayerObject_X=0x1c, etc.) but\n\
+    \  is skipped the first time (r4==1) — implies this is the \"post-jack-in / first call\" path.\n-\
+    \ ldr r0, off_803F888 // =timer_2000000 and ldr r1, dword_803F890 // =0x6710 with\n  encryption_xorBufferWithKey_8006df6\
+    \ — this matches the project's \"decrypt for SRAM write\"\n  helper: the EWRAM is held XOR-obfuscated;\
+    \ decrypt in place, then copy.\n- libSave_CopyToGamePak is called with r0=timer_2000000, r1=0xE000100,\
+    \ r2=0x6710 — copying the\n  0x6710-byte EWRAM region to Game Pak SRAM slot 1. The project comment\
+    \ for the callee says it\n  forces WS0=3 and returns r3=-1 (the caller's blx setup then unpushes around\
+    \ it).\n- s2001c04_ComputeChecksumOfEwramRegion_803F894 description matches: 16-byte checksum over\n\
+    \  0x2006700 stored at S2001c04+0x68; verified by re-reading [r4]+0x68 after the SRAM write.\n- The\
+    \ two EVENT_1704 calls: ClearEventFlagFromImmediate on the early-out, SetEventFlagFromImmediate\n\
+    \  on the verified-success path. This is the only flag touched.\n- The contract's r4/r5/.../lr in/out\
+    \ reflects only the save-pushed/popped {r1-r7,lr}, the\n  pushed/popped {r0-r3,r7} around sub_814D9C4,\
+    \ and the {r0-r2} saves around the two\n  encryption_save_memSetFlags_8006E0E calls — i.e. the function\
+    \ returns through the chatbox\n  handler's tail, restoring lr from {r1-r7,pc}."
+  refs:
+  - bn6f/asm/asm03_1_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0803F79E
+
+    '
+  result: the body read as described above
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803F79E -> save_writeAndVerifyEWRAMToSRAM_803F79E
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

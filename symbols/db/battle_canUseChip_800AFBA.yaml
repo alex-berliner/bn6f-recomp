@@ -1,0 +1,92 @@
+name: battle_canUseChip_800AFBA
+address: '0x0800AFBA'
+kind: function
+previous_names:
+- sub_800AFBA
+status: probable
+summary: Returns whether the chosen chip (low byte of input word) can be used in the current battle, considering
+  navi level, dark chips, and pack integrity.
+interface: (r0 = chip_and_flags_word, r10 = toolkit) -> r0 = 0 (usable) or 1 (blocked); flags NZ
+details: '1. Saves the input word in r4 and initializes r6 = 0.
+
+  2. Calls GetBattleEffects and sets r6 = 1 if battle-effect bit 0x08 is set (DarkChip/Shadow effect).
+
+  3. Calls TestBattleFlag_0x40 and ORs the masked bit into r6; r6 now accumulates "battle context disables
+  chip" reasons (saved on stack).
+
+  5. `lsr r0, r4, #9` then `cmp r0, #0x1b` / `#0x1c`: when the high 7 bits (chip-id shifted to upper bits
+  of `lsr r4,#9`) are 0x1B or 0x1C (Buster-equivalents / `PA` chips in getChip8021DA8 indexing terms),
+  the function bypasses navi-level checks and goes to the pack-test path.
+
+  6. Otherwise masks the low 9 bits (`lsl r4,#0x17; lsr r0,r0,#0x17` ⇒ low 9 bits = chip id) and looks
+  the chip up via getChip8021DA8; reads byte 7 of the ChipData record (a "level requirement" or damage-class
+  byte), expecting value 1 or 2.
+
+  7. If byte 7 is not 1 or 2, also bypasses to the pack test. If it is 1 or 2, loads `BattleStatePtr->Unk_0d`
+  from the toolkit (a navi index/byte) and reads `GetBattleNaviStatsByte(state, 0xa + r6)` (with r6 =
+  the dark-chip flag set above), i.e. one of the navi stats/cure offsets offset by whether DarkChips are
+  present.
+
+  8. Loads `off_800B108` (=`dword_20367E0`) and indexes it by r6 to compare against the navi-stat value;
+  if the per-navi threshold exceeds the navi stat, the chip is blocked and returns 0 (`r0 = 0; cmp r0,#1;
+  b loc_800B01C`).
+
+  9. Otherwise falls through to `loc_800B00C`: extracts the chip id (low 9 bits), compares against 0x19B
+  (411 decimal — chip-id boundary). If id < 411, calls encryption_testPack_8006e84 to verify the obfuscated
+  pack copy in IWRAM matches the live pack in the toolkit buffer; the function returns its result directly
+  (1 on mismatch).
+
+  10. Final block: `cmp r0, r0` sets the Z flag deterministically so callers get consistent NZ. The pushed
+  r6 is restored as the function''s return value in r0 via `pop {r0}` before the epilogue.
+
+  Callers appear to invoke this in the chip-selection screen to decide whether to grey out a chip.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r1-r7,lr}`; `mov r4, r0` keeps the input word across helper calls. - `bl GetBattleEffects`;
+    `mov r1,#8; tst r0,r1; beq ...; mov r6,#1` ⇒ bit 0x08 of battle effects sets a flag in r6. - `bl TestBattleFlag_0x40`;
+    `orr r6, r0` ⇒ bit 0x40 of battle flags merges into r6. - `push {r6}` before the early-exit branches
+    ⇒ r6 is the chosen "block reason" value used later for indexing NaviStats at offset `0xa + r6` (`add
+    r1, r1, r6`). - `ldr r0, [r10,#oToolkit_BattleStatePtr]; ldrb r0,[r0,#oBattleState_Unk_0d]` ⇒ BattleState
+    byte 0xD used as a side/navi selector. - `bl GetBattleNaviStatsByte` with r0 = that byte, r1 = `0xa
+    + r6` ⇒ reads navi-stat byte at offset 0xA (when r6==0) or 0xB (when dark-chip bit is set). - `ldr
+    r1, off_800B108 // =dword_20367E0`; `ldrb r1,[r1,r6]` ⇒ indexed into a 2-entry global table by r6
+    to compare against the navi stat. - `cmp r1, r0; ble loc_800B00C; mov r0,#0; cmp r0,#1; b loc_800B01C`
+    ⇒ when threshold > navi-stat, sets r0=0 and jumps to the final compare (sets Z flag for callers).
+    - `lsr r0, r4, #9; cmp r0,#0x1b; beq loc_800B00C; cmp r0,#0x1c; beq loc_800B00C` ⇒ buster/PA chips
+    bypass level checks (tested bit layout of the input word: bits 9..15 == 0x1B/0x1C). - `lsl r0, r4,
+    #0x17; lsr r0, r0, #0x17` ⇒ mask isolating low 9 bits as the chip id passed to getChip8021DA8. - `ldrb
+    r6,[r0,#7]` ⇒ reads the chip-data byte 7 (the level/damage-class byte). - `cmp r6,#1 / #2` ⇒ allowed
+    branches that gate the navi-level test. - `lsl r0, r4, #0x17; lsr r0, r0, #0x17` reused at `loc_800B00C`
+    to redo the chip-id mask for the pack-check branch. - `ldr r1, dword_800B104 // =0x19b; cmp r0, r1;
+    bge loc_800B01C` ⇒ ids >= 0x19B skip pack test (no need to verify higher IDs). - `bl encryption_testPack_8006e84`
+    at the bottom of the level-pass path ⇒ verifies the obfuscated pack entry against the live toolkit
+    buffer. - `pop {r0}` restores r6 (the saved block-reason) into r0, so the return value is the "battle-context
+    flag" (DarkChip bit OR flag-0x40 bit); `pop {r1-r7,pc}`; `cmp r0, r0` at loc_800B01C sets the Z flag
+    cleanly.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0800AFBA
+
+    '
+  result: the body read as described above
+open_questions:
+- The exact meaning of BattleState `Unk_0d` (a navi-side selector) and the two-byte global table at `dword_20367E0`
+  are not pinned to fields in any struct, so the precise "dark-chip threshold" semantics are inferred.
+  - Why the input word uses bits 9..15 as a chip-class selector (rather than just bits 0..8) is not visible
+  here; this likely comes from how the chip-select UI packs the chip ID and category, but the encoder
+  side is unknown. - The threshold of 0x19B (411) for skipping pack test is the only boundary constant
+  observed; whether it is a chip-ID max or an offset into the pack is unclear.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800AFBA -> battle_canUseChip_800AFBA
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

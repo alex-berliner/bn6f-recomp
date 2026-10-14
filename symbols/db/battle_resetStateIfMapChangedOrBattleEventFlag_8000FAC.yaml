@@ -1,0 +1,55 @@
+name: battle_resetStateIfMapChangedOrBattleEventFlag_8000FAC
+address: '0x08000FAC'
+kind: function
+previous_names:
+- sub_8000FAC
+status: probable
+summary: On entering a map, if the destination differs from the last map, or event flag 0x170C is set,
+  clear the current battle data pointer and three overworld walk-step counters, then always clear flag
+  0x170C.
+interface: '() -> ; side effects: may zero GameState.CurBattleDataPtr and three counters in S2001c04;
+  clears event flag 0x170C'
+details: 'Reads GameState from the Toolkit (r10). Tests event flag 0x170C; if set, jumps to the cleanup
+  path.
+
+  Otherwise compares GameState.MapGroup/MapNumber against LastMapGroup/LastMapNumber; if they differ,
+  also
+
+  takes the cleanup path. The cleanup writes 0 to GameState.CurBattleDataPtr (offset 0x1c), then to
+
+  S2001c04+0x1c, +0x2c and +0x28 (via oToolkit_S2001c04_Ptr). Finally, ClearEventFlagFromImmediate(0x170C)
+
+  is always called. The captured calls show r0=0x40/0x50/0x64 (fade params) with r3=020047CC (the S20047CC
+
+  pointer used by the caller EnterMap); exit always sets Z flag with r0=0.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}; mov r5, r10; ldr r5,[r5,#oToolkit_GameStatePtr]` — load the GameState pointer.
+    - `movflag EVENT_170C; bl TestEventFlagFromImmediate; bne loc_8000FCE` — if event flag 0x170C is set,
+    jump to cleanup. - `ldrb r0,[r5,#oGameState_MapGroup]; ldrb r1,[r5,#oGameState_LastMapGroup]; cmp
+    r0,r1; bne loc_8000FCE` — bail to cleanup if MapGroup changed. - `ldrb r0,[r5,#oGameState_MapNumber];
+    ldrb r1,[r5,#oGameState_LastMapNumber]; cmp r0,r1; bne loc_8000FCE` — also if MapNumber changed; otherwise
+    fall through. - cleanup path: `mov r0,#0; str r0,[r5,#oGameState_CurBattleDataPtr]` zeros CurBattleDataPtr.
+    - `mov r6,r10; ldr r6,[r6,#oToolkit_S2001c04_Ptr]; str r0,[r6,#0x1c]; str r0,[r6,#0x2c]; str r0,[r6,#0x28]`
+    zeros three fields in the S2001c04 record. - `movflag EVENT_170C; bl ClearEventFlagFromImmediate`
+    is unconditional — always clear flag 0x170C. - exit: `pop {r4-r7,pc}`.'
+  refs:
+  - bn6f/asm/asm00_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08000FAC
+
+    '
+  result: the body matches the description above
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8000FAC -> battle_resetStateIfMapChangedOrBattleEventFlag_8000FAC
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

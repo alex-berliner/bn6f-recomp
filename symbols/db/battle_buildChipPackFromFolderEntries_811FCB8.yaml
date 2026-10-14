@@ -1,0 +1,70 @@
+name: battle_buildChipPackFromFolderEntries_811FCB8
+address: '0x0811FCB8'
+kind: function
+previous_names:
+- sub_811FCB8
+status: probable
+summary: Fills a 30-slot chip-pack buffer from the folder's chip-use stats and records hit counters for
+  the chosen chips
+interface: (r0 = folderIndex, r1 = *ChipPackOut, r2 = takeFromPackFlag, r3 = *HitCounters) -> r0 = 0 success
+  / 1 empty
+details: "1. Loads toolkit->S_Chip_2002178_Ptr (r10) and treats r0 as a 0x3C-byte entry index: r7 = base\
+  \ + 0x3C * folderIndex.\n2. Saves r2 (takeFlag) at sp+0x10, r1 (out) at sp+0xC, r3 (hitCounters) at\
+  \ sp+0x14, base at sp+8.\n3. battle_ClearBuffer_811FE34 (r0 = r1) zeros a 0x3C0-byte chip-pack buffer;\
+  \ ZeroFillByEightWords (r0 = hitCounters, r1 = 0x78) clears the hit-counter array.\n4. Outer loop (loc_811FCDE\
+  \ -> loc_811FD82) walks 30 entries (0x1E) in the 0x3C-stride folder record. For each entry:\n   - split9BitsFromBitfield:\
+  \ r0/r1 = id/code OR-ed into a 0x20-bit packed word.\n   - id is OR-ed into a 1-bit-per-idx bitmap at\
+  \ out->0x1C (so 0x1C is a present-mask built from folder entries).\n   - getChip8021DA8 resolves the\
+  \ 44-byte ChipData; code (r1) is matched against chip[0..3] element/keyword bytes to determine a \"\
+  slot\" of the chip-pack (a BattleObject/Element byte?). On a miss (or id==0), goto loc_811FDB0 (skip).\n\
+  \   - When takeFlag is 0, TakeChips(id, code, 1) is called to consume one from the player's chip folder.\n\
+  \   - Writes a 0x20-byte chip-pack record at out+0x00..0x18 packed as (id<<7 | code) + (code<<0x10):\n\
+  \       * +0x00/0x08: pack (id<<7)|code in low word; (code<<0x10) in high word\n       * +0x04: (chip+0x18)\
+  \ << 0x10 merged into the same word\n       * +0x10: battle_synthesizePackEntryFromChipSearchResult_811FF54(chip[6])\
+  \ merged in\n       * +0x18: chip[8] merged in\n       * +0x0C: sub_811FF80(id) category/flag merged\
+  \ in\n       * +0x14: constant 0x10000 merged in\n     Then registerHitCounter_811FE48(hitCounters)\
+  \ is called to record the hit on that chip.\n   - out += 0x20, folderPtr += 2, until folderPtr == folderBase\
+  \ + 30 * 0x3C.\n5. Final pass (loc_811FD84, count = 0x1E) walks the built pack and for each slot searches\
+  \ the hit-counters array for an entry whose low halfword matches the pack slot's stored id; when found,\
+  \ OR-s the counter's high halfword into the pack's +0x14 field (so chip-use counter values are stamped\
+  \ into the pack).\n6. Returns 0 normally; returns 1 from loc_811FDB0 when an entry was skipped (used\
+  \ as \"no chips available\" status).\nContract out is only r0; the rest are restored from sp/pop. Status\
+  \ field bit +0x1C is a 30-bit \"present\" mask for the pack slots.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- toolkit load `mov r7, r10; ldr r7, [r7,#oToolkit_S_Chip_2002178_Ptr]` then `mul r0, r2=0x3C`
+    (loc_811FCC8..811FCD0) identifies r0 as a 0x3C-stride folder/save index. - `bl battle_ClearBuffer_811FE34`
+    on the out pointer zero-fills the standard chip-pack 0x3C0 buffer (30 slots * 0x20). - `bl ZeroFillByEightWords`
+    with r1=0x78 matches the 30-slot hit-counter array described for registerHitCounter_811FE48. - The
+    30-iteration loops (`cmp r4, #0x1e; blt loc_811FD84` and the `r7<r0` bound derived from `0x3c*30`)
+    match 30 chips. - The early `tst r0, r0; beq loc_811FDB0` on `id` skips empty entries; `loc_811FDB0`
+    returns r0=1 to signal "no chip". - The matching loop at loc_811FD02 scans chip[0..3] looking for
+    the code value (r1), confirming this is a chip-search-style pack builder. - TakeChips is only called
+    when the takeFlag (r2) is 0; the takeFlag is preserved across the call. - The 0x20-byte stride between
+    successive writes (`add r5, #0x20`) and the 0x3C-byte stride between folder entries (`add r7, #2`
+    in halfwords) line up exactly. - The final loop OR-s a 16-bit counter from the hit-counters array
+    into each pack slot''s high halfword at +0x14 (`orr r2, r1`).'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811FCB8
+
+    '
+  result: the body read as described above
+open_questions:
+- Exact meaning of the +0x10..+0x18 chip-pack word fields (which chip byte becomes which field) is partially
+  inferred from the offsets used; would settle with the consumer at 0x8123A80 / 0x81304BC / 0x8133228.
+  - Whether the +0x1C bitmap accumulates across calls (it is OR-ed with `r1 = prevMask | (1<<slot)`) and
+  what its semantic role is in callers. - The exact "category" returned by sub_811FF80 and whether r0=1
+  is treated as "no chip loaded" or as a real failure by the callers.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811FCB8 -> battle_buildChipPackFromFolderEntries_811FCB8
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

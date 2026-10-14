@@ -1,0 +1,73 @@
+name: battleObject_runPerFrameUpdate_801AA48
+address: '0x0801AA48'
+kind: function
+previous_names:
+- sub_801AA48
+status: probable
+summary: Per-frame battle-object update driver that clears leftover hit-flash palette and, when its barrier/collision-data
+  is gone, bails out early; otherwise fans out into the object's panel/status/damage/AI/impact handlers.
+interface: '(r5 = *BattleObject, r10 = *Toolkit) -> void ; side effects: clears sprite high-palette nibble,
+  tears down collision data when its Enable bit + DEAD flag are set, then runs ~20 child handlers updating
+  collision damage, hit-flash timer, status effect, counter timer, AI self-drain, impact, hive, alliance
+  stats, etc.'
+details: "0. Always calls sprite_clearFinalPalette on the object to wipe the high nibble of its final-palette\
+  \ byte (start of every frame).\n1. Loads the object's CollisionDataPtr into r7, then reads the battle-state\
+  \ flag word via battle_getFlags; if (flags & 0x1) is set, branch to the pop/return at locret_801AABE\
+  \ — that's the \"collision data already removed, don't run handlers\" early-out.\n2. Calls object_removeCollisionData\
+  \ when (flags & 0x1) is clear but the object's own ObjectFlags1 has bit 0x100 (DEAD) set — i.e. it died\
+  \ this frame, so the collision payload is torn down.\n3. Calls battle_isBattleOver; if non-zero (battle\
+  \ hasn't ended yet) and the object isn't DEAD, falls through into the handler chain.\n4. Runs the listed\
+  \ handlers in order:\n     - battleObject_updateBarrierStatus_801A802 — barrier tick\n     - object_updatePoisonPanelStatus_801A186\
+  \ — poison panel timer\n     - object_tickIcePanelFreeze_801A36A — ice/freeze panel\n     - battle_tickAiSelfDrain_8010230\
+  \ — periodic 1 HP self-drain\n     - battleObject_handleImpact_802CFF8 — shockwave/impact SFX\n    \
+  \ - hiveBlockHappensHere_802CEF4 — hive / AntiSword special\n     - battle_incrementAllianceStatOnCollisionHit_801A6B4\
+  \ — Atk alliance stat += 1 (capped 7)\n     - battle_buffTwoStatsPlus2OnEventF6_801A720 — both alliance\
+  \ stats += 2 on event F6\n     - applyChipAllianceEffect_8013AE4 — chip-level alliance bonus\n     -\
+  \ sub_801AF0E — miscellaneous handler\n     - battle_applyFlattenHitStatus_800EB26 — post-flatten status\
+  \ reset\n     - battleObject_applyStatusEffect_801A554 — write current status effect\n     - battleObject_clearChipSelectionOnAirShoe_801A2CC\
+  \ — air-shoe chip cancel\n     - battle_toggleAllianceAndAccumulateCollisionToAiData_801A308 — flip\
+  \ alliance, feed AI data\n     - object_calculateFinalDamage1 — sum panel damages → FinalDamage (holy-panel\
+  \ half, clamped)\n     - battleObject_tickCounterTimer_801A420 — collision CounterTimer tick\n     -\
+  \ battle_objectClearPendingHitIfCollisionProcessed_8010198 — clear pending-hit counter\n     - battle_clearInvisFlashTimer_801A648\
+  \ — end post-hit invisibility\n     - object_spawnHiteffect — play SFX + spawn hit-spark (effect 8)\n\
+  5. Function returns void via `pop {r4,r7,pc}` after the last callee. r7 is preserved across the body\
+  \ only because it holds CollisionDataPtr and would otherwise be clobbered by sub_801A802 (which is also\
+  \ a callee that takes r5) — but callee contracts restore r7 where they use it.\n6. No called function\
+  \ is given any meaning to the return value; the driver itself is a void tick that the battle main loop\
+  \ invokes once per object each frame.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,r7,lr}` / `pop {r4,r7,pc}` plus r5/r10/lr in the contract identify it as a Tail-call-style
+    battle helper with r5 = BattleObject, r10 = Toolkit. - `bl sprite_clearFinalPalette` immediately at
+    function entry — palette hygiene every frame. - `bl battle_getFlags` + `tst r0, #1` + `beq` past the
+    early-out matches an `oBattleState_Unk_32 & 1` "collision data removed" gate. - `bl object_removeCollisionData`
+    followed by `bl object_getFlag` then `tst r0, #0x100` (DEAD bit) gates dead-object teardown against
+    live ones. - `bl battle_isBattleOver` after teardown ensures dead objects don''t keep firing handlers
+    when the battle is finishing. - The huge sequence of unconditional `bl` calls between `bl battleObject_updateBarrierStatus_801A802`
+    and `bl object_spawnHiteffect` is exactly the per-frame chip/collision/status/damage/AI/visual pipeline
+    — child summaries confirm each step. - All 22 callee contracts have in=[''r5'',''lr''] (Toolkit r10
+    only for some), no out registers that the driver needs to thread, so the function can be void.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801AA48
+
+    '
+  result: the body read as described above
+open_questions:
+- Whether the early-out before object_removeCollisionData is intended (the assembly has two near-identical
+  `beq locret_801AABE` jumps; the second is gated on the DEAD flag, the first appears to gate on the halfword-flag
+  & 1 alone). Either ordering would still match "remove collision data when present, then bail if battle
+  over or flag set" but exactly which condition triggers which branch needs more callee context. Tracking
+  the r0 write between the two `bne`s (post-remove) would settle it.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801AA48 -> battleObject_runPerFrameUpdate_801AA48
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

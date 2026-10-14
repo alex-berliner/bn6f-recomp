@@ -1,0 +1,56 @@
+name: battleObject_initAIChipQueueSlot_80468C6
+address: '0x080468C6'
+kind: function
+previous_names:
+- sub_80468C6
+status: probable
+summary: Initializes a 0x58-byte AI chip-queue slot in EWRAM at 0x02011860 for a given actor slot index
+interface: (r0 = ActorType (1=virus, 2=player), r1 = slot index, r2 = BattleObject ptr) -> r0 = pointer
+  to initialized 0x58-byte slot
+details: 'Loads the base pointer 0x02011860 (battle AI queue area) into r5, scales slot index by 0x58
+
+  (mul r1, r4 with r4=0x58) to pick the per-actor slot. Stores ActorType at +1, writes the
+
+  magic byte 0x09 at +0 (chip-queue state/sentinel), the passed BattleObject pointer at +4, and
+
+  zero at +8 (counter/queue head). Returns the slot pointer in r0. The function is a leaf
+
+  (pop {r4-r7,pc}), used by battle init flows (sub_81419A0 family, sub_8089D26/44, sub_808FF30/44,
+
+  sub_8093212, sub_80467FC) to set up one actor''s chip-queue workspace before AI runs.
+
+  The 0x58 stride and the 0x09 state byte match the layout of an "AI chip queue" record that
+
+  downstream AI opcode handlers index by slot.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r5, off_8046928 // byte_2011860 -> base of EWRAM table at 0x02011860 - mov r4, #0x58;
+    mul r1, r4 -> slot stride 0x58, indexed by r1 - strb r0, [r5,#1] -> stores ActorType (1 or 2 in captured
+    calls) at +1 - mov r0, #9; strb r0, [r5] -> sentinel/state byte 0x09 at +0 - str r2, [r5,#4] -> saves
+    BattleObject* r2 at +4 - mov r0, #0; str r0, [r5,#8] -> clears counter at +8 - Return r0 = r5 = the
+    computed slot pointer; matches exit r0 = 0x02011860 / 0x020118b8 in captures - Caller sub_80467FC
+    pattern (pre-init hook) and sub_81419A0 (battle step) match AI setup timing'
+  refs:
+  - bn6f/asm/asm03_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080468C6
+
+    '
+  result: the body read as described above
+open_questions:
+- Exact meaning of the 0x09 byte at +0 and the counter at +8; no struct definition matches a 0x58-byte
+  AI chip record directly in the provided headers. Confirming the struct semantics would settle the verb
+  in the name.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80468C6 -> battleObject_initAIChipQueueSlot_80468C6
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

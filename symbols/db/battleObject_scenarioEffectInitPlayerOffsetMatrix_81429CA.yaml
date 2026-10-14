@@ -1,0 +1,76 @@
+name: battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA
+address: '0x081429CA'
+kind: function
+previous_names:
+- sub_81429CA
+status: probable
+summary: Writes the per-direction player-coordinate delta table into a scenario-effect buffer, indexed
+  by the player's overworld facing direction.
+interface: '(no explicit r0/r1) -> r0 = nothing to caller (out is only r3/r5 which the caller restores);
+  side effects: writes a variable number of u32 entries to *r6 = buffer returned from battleObject_scenarioEffectStateAddr_81421D8,
+  indexed by player''s facing direction'
+details: '1. Calls sub_81421D8 to get a pointer to the scenario-effect state (r6 = dst buffer).
+
+  2. Zeroes 0x10 bytes at some other scratch pointer (ZeroFillByWord with r1=0x10).
+
+  3. Calls sub_8142990 to get a base u32 in r4 (looks like a base/camera/pivot value).
+
+  4. Calls battle_getScenarioEffectStateField_81421D0 to get an index 0..3, used to pick one of four delta
+  tables (off_8142A1C -> byte_8142A2C/byte_8142A3C/byte_8142A54/byte_8142A74).
+
+  5. Calls GetOWPlayerFacingDirection; the returned direction is shifted right by 1 then left by 1 (i.e.
+  cleared to even), then used to add 0/2/4/6 to r7 to seek into the chosen table (each entry is 8 bytes:
+  2 s8 signed deltas).
+
+  6. Loop at loc_81429F2 walks the table: reads two signed bytes (dx, dy), stops when dx==0x7F (sentinel
+  in every table), otherwise writes packed u32 = (r4_low8 + dx) | ((r4_high8 + dy) << 8) into *r6 and
+  advances r6+=4 and r7+=8.
+
+  7. No return value; the contract''s `out=[r3, r5]` are just caller-saved scratch (and r3 is read as
+  the second byte in the loop).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r6 = return of sub_81421D8 ("scenarioEffectStateAddr") and is the destination of `str r0,
+    [r6]` then `add r6, #4` (the loop) → this builds a u32 array in scenario-effect state. - `lsl r0,
+    r0, #2` over the return of sub_81421D0 → mode*4 → word index into off_8142A1C, whose 4 entries are
+    the four byte_* table pointers. - `lsr r0, r0, #1; lsl r0, r0, #1` followed by `add r7, r7, r0` →
+    facing direction masked to even multiples of 2 and added to table base; entries are 8 bytes apart
+    → direction-select inside a table. - `ldrsb r2, [r7,r2]` with r2=0; `ldrsb r3, [r7,r3]` with r3=1;
+    `cmp r2, #0x7f; beq locret_8142A14` → 0x7F is the per-table terminator sentinel seen at the end of
+    every byte_* table. - `mov r0, #0xff; and r0, r4; lsr r1, r4, #8; add r0, r0, r2; add r1, r1, r3;
+    lsl r1, r1, #8; orr r0, r1` → packed u32 = (r4_lo + dx) | ((r4_hi + dy) << 8); confirms the table
+    entries are (dx, dy) signed bytes. - `add r6, #4; add r7, #8; b loc_81429F2` → 4-byte stride on the
+    output buffer (one u32 per direction step) and 8-byte stride on the input table (2 s8 per entry).
+    - GetOWPlayerFacingDirection callee provides the facing direction value that is then masked → confirms
+    overworld player facing drives the table index.'
+  refs:
+  - bn6f/asm/asm37_1.s
+  reproduce: 'python3 tools/asmcat.py 0x081429CA
+
+    '
+  result: the body read as described above
+open_questions:
+- 'The exact semantic of r4 (returned by sub_8142990) — likely a base (camera or pivot) 16-bit X/Y pair;
+  only the low and next byte are used, so it is probably a (low, high) = (x_lo, y_lo) or similar. - Which
+  "scenario effect" this feeds — without seeing the callee sub_8142990 / sub_81421D0 / sub_81421D8 implementations
+  we can''t be sure this is the *initial* setup vs a re-trigger. - The purpose of the intermediate ZeroFillByWord(r0,
+  0x10) is opaque: r0 was the address returned by sub_81421D8 too? Looking again, r6 was the ZeroFillByWord
+  destination''s caller return — actually r0 is set after the `mov r6, r0` from sub_81421D8 then `mov
+  r1, #0x10; bl ZeroFillByWord` → so it zero-fills the *same* buffer that gets the entries written into.
+  That may be how the trailing padding of the offset list is ensured. - Whether the four embedded tables
+  map to specific scenarios (e.g. Falzar beast-out jump, warp, map-specific intro) is not derivable from
+  this function alone; would need the caller sub_8089CC4 to disambiguate.'
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81429CA -> battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

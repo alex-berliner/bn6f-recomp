@@ -1,0 +1,62 @@
+name: mapName_runSequence_811EC50
+address: '0x0811EC50'
+kind: function
+previous_names:
+- sub_811EC50
+status: probable
+summary: 'Runs the per-frame map-name display sequence: queues GFX transfers, updates the map-name display,
+  and renders the map-name screens.'
+interface: '(r10 = toolkit ptr, lr = return addr) -> r4-r6/r8-r9 preserved ; side effects: submits GFX
+  transfers, updates map-name VRAM/tilemap and renders current map name'
+details: "- Only the `push {lr}` ... `pop {pc}` wrapper is visible; everything else is tail calls into\n\
+  \  callees. No own logic, no parameter marshalling beyond letting the toolkit ptr (r10) flow\n  into\
+  \ the callees.\n- Order of calls (per the assembly listing at 0x0811ec50..0x0811ec64):\n    1. `bl queueGFXTransfersFromTable_811EC68`\
+  \  -- builds/submits the per-frame GFX transfer list.\n    2. `bl sub_811EFB8`                     \
+  \    -- unnamed but called from the same map-name\n                                                \
+  \ path, likely an \"init/update\" step.\n    3. `bl updateMapNameDisplay_811F014`        -- refreshes\
+  \ the on-screen map-name buffers.\n    4. `bl drawMapNamesScreen_811F050`         -- renders the \"\
+  map names\" text screen into VRAM.\n    5. `bl drawCurrentMapName_811F08C`          -- renders the player's\
+  \ current map name into VRAM.\n- The captured calls all show r0=1, r1=0x18 (= panel width?) and sp=0x03007de4\
+  \ from one\n  caller, but those are set by the caller (sub_8005462) and are not part of this function's\n\
+  \  contract (this function's in-contract regs are only r10 and lr). r0 at exit (0x0200c920)\n  is the\
+  \ live value left by the final callee, also not part of this function's own contract.\n- Callee contracts\
+  \ all match: they take r10 (toolkit) and lr, restore r4-r6/r8-r9. So this\n  function correctly composes\
+  \ them as a sequence; it is \"void\" from the caller's POV.\n- Name: the only caller (sub_8005462) is\
+  \ the overworld subsystem's per-frame loop (it\n  preserves a large register set across subsystems and\
+  \ is called from the main\n  subswitch). Calling this a `mapName_` subsystem is consistent with every\
+  \ callee being a\n  map-name helper. Keeping the `_811EC50` suffix because the function is purely a\
+  \ \"sequence\n  runner\" - the role is inferred from the five callee summaries.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `push {lr}` / `pop {pc}` (asm32.s:33484..33490) confirms this is a pure trampoline with no\n\
+    \  local state of its own.\n- All five callees take `in=['r10', 'lr']`, identical to this function's\
+    \ in-contract regs,\n  showing r10 is the toolkit ptr threaded straight through.\n- The five callee\
+    \ names from the project (`queueGFXTransfersFromTable`, `sub_811EFB8`,\n  `updateMapNameDisplay`,\
+    \ `drawMapNamesScreen`, `drawCurrentMapName`) all describe map-name\n  / GFX upload work, and the\
+    \ project tags `drawMapNamesScreen` and `drawCurrentMapName` as\n  the two text-screen renders.\n\
+    - The single caller (sub_8005462) is an unnamed per-frame dispatcher that itself has\n  out=['r8','r9','r10','r11','r12'],\
+    \ i.e. an \"outer\" sub-routine that calls this map-name\n  sequence each frame.\n- Captured-call\
+    \ r0 (0x0200c920) matches the pointer the last callee would plausibly keep in\n  r0 (a work buffer\
+    \ / font ptr), confirming the tail of this function is the\n  `drawCurrentMapName_811F08C` return."
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811EC50
+
+    '
+  result: the body read as described above
+open_questions:
+- Exact role of `sub_811EFB8` (still unnamed) is not pinned down by this function alone; its summary will
+  need to be settled by examining its own callees/body. The name `mapName_runSequence_811EC50` will need
+  to be revisited only if that callee turns out to be unrelated to the map-name pipeline.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811EC50 -> mapName_runSequence_811EC50
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

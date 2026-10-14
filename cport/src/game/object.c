@@ -2418,7 +2418,7 @@ Next selectVirusOrNaviNamesAndWhich_800EC56(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800EC80 ── */
+/* ── battle_computeEnemyEncounterRarity_800EC80 ── */
 /* register form: calls stub_returnZero_8000E30 outside this file, which has no typed C interface yet */
 static s32 stub_returnZero(void) {
     GUEST_CALL(stub_returnZero_8000E30);
@@ -2463,8 +2463,8 @@ static u32 adjust_enemy_index(u32 enemy_idx) {
     return enemy_idx + (u32)doubled;
 }
 
-/* sub_800EC80(r0 = enemy_idx) -> r0 (r4/r5/r6/r7 preserved) */
-Next sub_800EC80(void) {
+/* battle_computeEnemyEncounterRarity_800EC80(r0 = enemy_idx) -> r0 (r4/r5/r6/r7 preserved) */
+Next battle_computeEnemyEncounterRarity_800EC80(void) {
     R0 = adjust_enemy_index(R0);
     RETURN_TO_CALLER();
 }

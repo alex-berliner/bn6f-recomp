@@ -295,14 +295,14 @@ static void call_sub_8123AB8(void) {
     GUEST_CALL(drawBattleBackground_8123AB8);
 }
 
-/* register form: calls sub_81352A0 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_handleMoveAlignment_81352A0 outside this file, which has no typed C interface yet */
 static void call_sub_81352A0(u32 dst, u32 src, u32 x, u32 y, u32 param) {
     R0 = dst;
     R1 = src;
     R2 = x;
     R3 = y;
     R4 = param;
-    GUEST_CALL(sub_81352A0);
+    GUEST_CALL(battleObject_handleMoveAlignment_81352A0);
 }
 
 /* register form: calls battle_setupPETNavis_8135314 outside this file, which has no typed C interface yet */
@@ -374,10 +374,10 @@ static void call_sub_8123AB8_sub_812349C(void) {
     GUEST_CALL(drawBattleBackground_8123AB8);
 }
 
-/* register form: calls sub_81352A0 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_handleMoveAlignment_81352A0 outside this file, which has no typed C interface yet */
 static void call_sub_81352A0_sub_812349C(u32 a1, u32 a2, u32 a3, u32 a4, u32 a5) {
     R0 = a1; R1 = a2; R2 = a3; R3 = a4; R4 = a5;
-    GUEST_CALL(sub_81352A0);
+    GUEST_CALL(battleObject_handleMoveAlignment_81352A0);
 }
 
 /* register form: calls battle_setupPETNavis_8135314 outside this file, which has no typed C interface yet */
@@ -1134,13 +1134,13 @@ Next sfx_playChipUseSound_8123A50(void) {
 #define gBattleFieldState A_unk_201D220
 #define gBattleOrderList   A_unk_20343E0
 
-/* register form: calls sub_811FCB8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_buildChipPackFromFolderEntries_811FCB8 outside this file, which has no typed C interface yet */
 static void call_sub_811FCB8(u32 slot, u32 field_state, u32 one, u32 order_list) {
     R0 = slot;
     R1 = field_state;
     R2 = one;
     R3 = order_list;
-    GUEST_CALL(sub_811FCB8);
+    GUEST_CALL(battle_buildChipPackFromFolderEntries_811FCB8);
 }
 
 /* register form: calls GetCurPETNaviStatsByte outside this file, which has no typed C interface yet */

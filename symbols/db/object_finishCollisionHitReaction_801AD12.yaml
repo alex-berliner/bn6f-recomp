@@ -1,0 +1,76 @@
+name: object_finishCollisionHitReaction_801AD12
+address: '0x0801AD12'
+kind: function
+previous_names:
+- sub_801AD12
+status: probable
+summary: Tear down / wind down a battle object's collision after a hit, applying the flag-0x100 shield
+  effect when applicable, then recompute final damage and spawn the hit spark.
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: clears sprite final-palette high
+  nibble, frees or mutates CollisionData, sets ObjectFlags2 bits 0x100 / clears bit 0x4, writes object/0x0F
+  = 1, recomputes FinalDamage, may spawn hit effect'
+details: '1. sprite_clearFinalPalette(r5) - clears the high nibble of the object''s sprite final-palette
+  byte (matches `sprite_clearFinalPalette_08002dd8`).
+
+  2. Loads r7 = [r5 + oBattleObject_CollisionDataPtr] (CollisionData pointer).
+
+  3. Reads battle flags via battle_getFlags; if bit 0x1 is set, jumps to object_removeCollisionData +
+  early-exit branch.
+
+  4. If the battle isn''t over (battle_isBattleOver == 0), and object_getFlag bit 0x100 (OBJECT_FLAGS_DEAD)
+  is clear, proceeds to read CollisionData.HitModifierFinal (r4) and re-call object_getFlag.
+
+  5. Test object flag bit 0x40 (OBJECT_FLAGS_CANNOT_SLIDE) and HitModifierFinal bit 0x40: if object_getFlag
+  has 0x40 AND stored HitModifierFinal has 0x40, sets ObjectFlags2 bit 0x100 (OBJECT_FLAGS_2_UNK_BIT_08)
+  via object_setFlag2 and clears bit 0x4 via object_clearFlag2, and writes 1 to object+0x0F (oBattleObject_Unk_0f).
+
+  6. Always (path taken): object_calculateFinalDamage2(r5) to recompute PanelDamage/FinalDamage accounting
+  for holy panel halving.
+
+  7. Then object_spawnHiteffect (effect type 8 + hit SFX) over the object.
+
+  8. Common early-exit path at locret_801AD68 just pops {r4,r7,pc}.
+
+  Callers are 12 unnamed subroutines in the 0x080cbc38-0x080da108 range; all share the (r2,r4,r5,r8..r12,lr)
+  entry contract typical of battle-object collision response handlers that iterate the battle-object list.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,r7,lr}` then `bl sprite_clearFinalPalette` at 0x801ad14 - first action is clearing
+    final-palette high nibble. - `ldr r7, [r5,#oBattleObject_CollisionDataPtr]` then `bl battle_getFlags`
+    followed by `tst r0, #1` and `beq ... bl object_removeCollisionData` - the r5 BattleObject pointer
+    and CollisionDataPtr access pattern are explicit. - `bl battle_isBattleOver` then `tst r0, r0` / `bne
+    locret` confirms the "skip when battle over" early-out. - `bl object_getFlag` with `mov r1, #1; lsl
+    r1, r1, #8` (bit 0x100 = OBJECT_FLAGS_DEAD) and the subsequent `bne locret` shows the dead-skip. -
+    `ldrb r4, [r7,#oCollisionData_HitModifierFinal]` (CollisionData offset 0x0f = HitModifierFinal per
+    the struct). - Two `tst r0, #0x40` and `tst r4, #0x40` with branch `beq loc_801AD60` followed by `bl
+    object_setFlag2` with `r0 = 1<<8 = 0x100` and `bl object_clearFlag2` with `r0 = 4` - matches setting
+    ObjectFlags2 bit 0x100 and clearing bit 0x04. - `strb r0, [r5,#oBattleObject_Unk_0f]` (object + 0x0F
+    = Element/Unk_0f, here Unk_0f written to 1). - Tail `bl object_calculateFinalDamage2` then `bl object_spawnHiteffect`
+    (effects type 8) before pop. - All 12 callers have identical `in=[''r2'',''r4'',''r5'',''r8'',...,''lr'']`
+    shape consistent with per-object collision handlers driven by r5=object, r10=toolkit, r4=other/param,
+    r2=state.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801AD12
+
+    '
+  result: the body read as described above
+open_questions:
+- The exact semantic meaning of OBJECT_FLAGS_2 bit 0x08 (0x100) and the cleared bit 0x04 is unclear; naming
+  it "finishCollisionHitReaction" reflects the inferred role of "end-of-collision handling that updates
+  flags and spawns the hit effect" but the gameplay tag (e.g., shield / barrier break / panel modifier
+  lock) needs another battle-state reverse engineering pass.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801AD12 -> object_finishCollisionHitReaction_801AD12
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

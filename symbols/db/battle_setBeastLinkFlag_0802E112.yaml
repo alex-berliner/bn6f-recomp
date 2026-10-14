@@ -1,0 +1,61 @@
+name: battle_setBeastLinkFlag_0802E112
+address: '0x0802E112'
+kind: function
+previous_names:
+- sub_802E112
+status: probable
+summary: In real (non-minigame, non-crossover) link battles, sets the 0x40 battle flag (a "Beast Link"/link-battle
+  related state bit) so the battle can take the link-battle code path.
+interface: '() -> void ; side effects: may OR 0x40 into BattleState.flags via battle_setFlags'
+details: "1. Reads GetBattleMode() into r0 and bails out at locret_802E154 if mode is 1 (crossover), 7\n\
+  \   (tomahawk minigame), 9 (dustman minigame), or 6 (virus battler). These are the modes that\n   must\
+  \ not be treated as a real link battle.\n2. Calls GetBattleEffects() and tests bit 0x200000 of the battle\
+  \ effects bitmask; if set, returns\n   (tst r0, r1 / bne locret_802E154 with r1 = dword_802E22C = 0x200000).\
+  \ This appears to be a\n   \"real-world beast-link gate / suppress link flag\" mask.\n3. If notZero_eByte200AD04\
+  \ is non-zero, jumps straight to setting the flag. Otherwise calls\n   GetBattleEffects() again, this\
+  \ time testing bit 0x8 (\"network battle\"); if it is clear, returns\n   with no flag set.\n4. If the\
+  \ network bit is set, calls TestEventFlagFromImmediate on EVENT_1722_BEAST_LINK_GATE_RELATED\n   and\
+  \ returns if the event flag is clear.\n5. On the success path, calls battle_setFlags(0x40), ORing the\
+  \ 0x40 bit into BattleState.flags\n   (the halfword at oBattleState_Unk_04_05 per battle_setFlags).\
+  \ The function then returns via\n   pop {pc}, with no r0/flags preserved.\n6. Single direct caller is\
+  \ sub_800794C; the lifter shows r10 (Toolkit) and lr as the live-in\n   callee-saved register contract,\
+  \ matching the GetBattleMode/GetBattleEffects/battle_setFlags\n   helpers that all use r10 as the toolkit\
+  \ pointer.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `cmp r0, #1 / beq locret_802E154` etc. explicitly enumerates the four excluded battle modes\n\
+    \  (1, 7, 9, 6) with mode comments already in the asm source.\n- `ldr r1, dword_802E22C // =0x200000`\
+    \ followed by `tst r0, r1` masks GetBattleEffects() with\n  0x200000; non-zero skips the setFlags.\n\
+    - `bl notZero_eByte200AD04` + `cmp r0, #0` + `bne loc_802E14E` short-circuits to setting the\n  flag\
+    \ when the eByte200AD04 byte is non-zero.\n- `mov r1, #8` / `tst r0, r1` / `beq locret_802E154` checks\
+    \ the \"network battle\" bit\n  (battle effects bit 0x8).\n- `movflag EVENT_1722_BEAST_LINK_GATE_RELATED`\
+    \ + `bl TestEventFlagFromImmediate` + `beq\n  locret_802E154` requires story event 0x1722 to be set.\n\
+    - `mov r0, #0x40` / `bl battle_setFlags` is the final action, ORing 0x40 into the battle flags\n \
+    \ halfword via the confirmed battle_setFlags helper.\n- Caller sub_800794C has the matching r10/lr-in\
+    \ / r5-r12-out contract consistent with a battle\n  subsystem routine that touches battle state via\
+    \ the toolkit in r10."
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'python3 tools/asmcat.py 0x0802E112
+
+    '
+  result: the body read as described above
+open_questions:
+- The semantic meaning of 0x40 in the battle flags halfword is not named anywhere in the provided struct/header
+  docs (oBattleState_Unk_04_05 is unnamed). Settling the flag's role (e.g. "Beast Link allowed", "link
+  battle active") would require either matching the battle_setFlags constant against a name table or finding
+  a read-site that branches on bit 0x40 of the same halfword. The two-step gate (eByte200AD04 OR (network
+  bit AND event 0x1722)) also has no comment explaining what the eByte200AD04 counter tracks, so the "is
+  this a beast-link-eligible link battle" label is partly inferred from the event flag name EVENT_1722_BEAST_LINK_GATE_RELATED.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802E112 -> battle_setBeastLinkFlag_0802E112
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

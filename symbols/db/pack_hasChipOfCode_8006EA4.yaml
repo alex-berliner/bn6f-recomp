@@ -1,0 +1,65 @@
+name: pack_hasChipOfCode_8006EA4
+address: '0x08006EA4'
+kind: function
+previous_names:
+- sub_8006EA4
+status: probable
+summary: Returns true if the player holds one or more of `chip_id` in the pack with the requested `code`
+  letter (A/B/C/D… or any, 0xFF).
+interface: '(r0 = chip_id, r1 = code letter, r10 = toolkit) -> r0 = 0 or 1 ; side effects: clobbers r2–r7'
+details: 'This is the per-chip, per-code check behind GetChipCountOfCode. It first calls
+
+  `encryption_testPack_8006e84`; if the toolkit pack fails integrity it returns 1 (i.e. treat as
+
+  "no stock"). Otherwise it looks up the chip record via `getChip8021DA8(r7=chip_id)` and scans
+
+  the four code-letter slots (offsets 0..3 of the 44-byte record). If none of them match the
+
+  requested `code` (and `code != 0xFF`, which short-circuits to true/0), it returns 1. If the
+
+  code matches, it calls `getOffsetToQuantityOfChipCodeMaybe_8021c7c(chip_id, code)` and
+
+  dereferences the returned pack-stock byte: zero → return 1 (none in pack), non-zero → return 0
+
+  (at least one present). The two early-exit paths (`encryption_testPack_8006e84` mismatch or
+
+  `code == 0xFF`) both return 0 from loc_8006EE0. Note the inverted return convention: 0 means
+
+  "yes, the chip+code exists in the pack", 1 means "no". Callers (`GetChipCountOfCode`,
+
+  `sub_8021C02`) use this as a gate before they read the actual quantity byte themselves.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `bl encryption_testPack_8006e84` + `bne loc_8006EE4` jumps to the r0=1 path on a mismatch,\n\
+    \  showing the integrity check is a precondition.\n- `cmp r4, #0xff` / `beq loc_8006EE0` is the \"\
+    any code\" shortcut that returns 0 (the\n  \"present\" answer).\n- The `ldrb r3,[r0]; cmp r3,r4` block\
+    \ repeated for offsets 0,1,2,3 scans the four code\n  letters of the chip record returned by `getChip8021DA8`.\n\
+    - `bl getOffsetToQuantityOfChipCodeMaybe_8021c7c` followed by `ldrb r0,[r0]; tst r0,r0;\n  beq loc_8006EE4`\
+    \ reads the pack stock byte and uses zero as \"absent\".\n- `push {r1-r7,lr}` / `pop {r1-r7,pc}` and\
+    \ the in/out contract show only r0 is returned. - All captured-call entries (r0 = small chip id, r1\
+    \ = code letter or 0xFF) match this\n  interpretation; six samples shown all return r0=1 with flags=----."
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x08006EA4
+
+    '
+  result: the body read as described above
+open_questions:
+- The exact semantics of the inverted 0/1 return vs the caller's use (whether callers treat r0==1 as "not
+  found" or as an error) is not visible from this function alone; reading the post-call branch in `GetChipCountOfCode`
+  would confirm. Whether 0xFF is a sentinel for "any code" vs "no code" in the project's chip-code vocabulary
+  also warrants a look at the callers.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8006EA4 -> pack_hasChipOfCode_8006EA4
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

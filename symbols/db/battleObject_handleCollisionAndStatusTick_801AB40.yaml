@@ -1,0 +1,71 @@
+name: battleObject_handleCollisionAndStatusTick_801AB40
+address: '0x0801AB40'
+kind: function
+previous_names:
+- sub_801AB40
+status: probable
+summary: 'Per-frame battle object update: clear final palette, optionally tear down collision data, and
+  run the full per-tick pipeline (barrier/poison/ice, impact, hive, alliance stats, alliance flip, damage,
+  flatten, counter, hit-effect).'
+interface: (r5 = BattleObject*, r10 = Toolkit*) -> void ; r4/r7 preserved
+details: '- `push {r4,r7,lr}` only (lr saved, so it is a leaf with no inlined call stack cleanup here).
+  r5 is the battle object, r10 is the toolkit.
+
+  - First calls `sprite_clearFinalPalette(r5)` to zero the high nibble of the sprite''s final-palette
+  byte; the returned r7 is then used to fetch the object''s CollisionDataPtr via `ldr r7, [r5,#oBattleObject_CollisionDataPtr]`.
+
+  - Reads `battle_getFlags()` (oBattleState_Unk_32) and bails to `locret_801ABB6` if bit 0x1 is set: when
+  that flag is on, the object is removed from the simulation before any per-tick work runs.
+
+  - If still active, calls `object_removeCollisionData(r5)` (trampoline to ARM), then `battle_isBattleOver()`
+  — if the battle is already over, also bails out.
+
+  - Reads `object_getFlag` (CollisionData''s first ObjectFlags1 word) and bails out early if bit 0x100
+  (OBJECT_FLAGS_DEAD) is set, so dead objects skip the whole per-tick pipeline.
+
+  - Then runs the canonical per-tick sequence (≈22 calls): barrier refresh, poison/ice panel handling,
+  AI self-drain, impact/shockwave, hive/AntiSword resolution, alliance-stat increment/buff, chip-alliance
+  effect, an unnamed sub_801AF0E handler, flatten-hit status, sub_801A58E, AirShoe chip-select clear,
+  alliance flip + AI data accumulation, final-damage sum, counter-timer tick, pending-hit clear, invis-flash
+  clear, and finally the hit-spark + SFX effect.
+
+  - Popping {r4,r7,pc} means callers cannot rely on r0/r1/r2/r3 — callees clobber them. This is the standard
+  per-frame battle object hook.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sprite_clearFinalPalette` then `ldr r7, [r5,#oBattleObject_CollisionDataPtr]` — assembly
+    pairs the palette clear with loading the collision pointer. - `bl battle_getFlags; mov r1,#1; tst
+    r0,r1; beq locret_801ABB6` — the early-out is gated on bit 0 of `oBattleState_Unk_32`. - `bl object_removeCollisionData;
+    bl battle_isBattleOver; tst r0,r0; bne locret_801ABB6` — second early-out after collision teardown
+    when the battle is over. - `bl object_getFlag; mov r1,#1; lsl r1,r1,#8; tst r0,r1; bne locret_801ABB6`
+    — early-out when OBJECT_FLAGS_DEAD (0x100) is set in CollisionData ObjectFlags1. - The long bl list
+    (battleObject_updateBarrierStatus_801A802, object_updatePoisonPanelStatus_801A186, object_tickIcePanelFreeze_801A36A,
+    battle_tickAiSelfDrain_8010230, battleObject_handleImpact_802CFF8, hiveBlockHappensHere_802CEF4, battle_incrementAllianceStatOnCollisionHit_801A6B4,
+    battle_buffTwoStatsPlus2OnEventF6_801A720, applyChipAllianceEffect_8013AE4, sub_801AF0E, battle_applyFlattenHitStatus_800EB26,
+    sub_801A58E, battleObject_clearChipSelectionOnAirShoe_801A2CC, battle_toggleAllianceAndAccumulateCollisionToAiData_801A308,
+    object_calculateFinalDamage1, battleObject_tickCounterTimer_801A420, battle_objectClearPendingHitIfCollisionProcessed_8010198,
+    battle_clearInvisFlashTimer_801A648, object_spawnHiteffect) is the entire per-tick pipeline. - `pop
+    {r4,r7,pc}` — only r4/r7 are saved; r0..r3/r5/r6/r10 are caller-saved/clobbered, matching a void tick.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801AB40
+
+    '
+  result: the body read as described above
+open_questions:
+- Which subsystem calls this — the per-frame battle object iteration caller is not in the captured call
+  graph, so we do not see the immediate caller.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801AB40 -> battleObject_handleCollisionAndStatusTick_801AB40
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

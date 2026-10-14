@@ -2263,12 +2263,12 @@ static void sprite_clearMosaic_guest(void) {
     GUEST_CALL(sprite_clearMosaic);
 }
 
-/* register form: calls sub_800AA40 outside this file, which has no typed C interface yet.
+/* register form: calls battleObject_removeFromNextList_800AA40 outside this file, which has no typed C interface yet.
  * Original captures this callee's final C/V (they survive to the end of
  * battle_object_tickHitFlashAlpha_801641A because MOV/STRH don't touch flags), so forward them. */
 static u32 sub_800AA40_guest(u32 r0, bool *out_c, bool *out_v) {
     R0 = r0;
-    GUEST_CALL(sub_800AA40);
+    GUEST_CALL(battleObject_removeFromNextList_800AA40);
     *out_c = CARRY_FLAG();
     *out_v = OVERFLOW_FLAG();
     return R1;
@@ -2284,7 +2284,7 @@ struct sub_801641A_out {
 /* Per-tick update for a battle object. Decrements the frame timer; when
  * it elapses, plays the hit-flash (mosaic + alpha) for `timer2` frames
  * with the in-flash flag set, then on expiry clears the flash effects,
- * runs sub_800AA40(0), and advances the phase word to 8. */
+ * runs battleObject_removeFromNextList_800AA40(0), and advances the phase word to 8. */
 static struct sub_801641A_out sub_801641A_impl(u32 r5, u32 in_r1) {
     struct sub_801641A_out res;
     res.r1 = in_r1;
@@ -2311,8 +2311,8 @@ static struct sub_801641A_out sub_801641A_impl(u32 r5, u32 in_r1) {
     ST16(r5 + oBattleObject_Timer2, timer2);
 
     if (timer2 == 0) {
-        /* Flash done: clear visual effects, run sub_800AA40(0), then
-         * store 8 into the phase word. Final flags = sub_800AA40's. */
+        /* Flash done: clear visual effects, run battleObject_removeFromNextList_800AA40(0), then
+         * store 8 into the phase word. Final flags = battleObject_removeFromNextList_800AA40's. */
         sprite_disableAlpha_guest();
         sprite_clearMosaic_guest();
         res.r1 = sub_800AA40_guest(0, &res.c, &res.v);

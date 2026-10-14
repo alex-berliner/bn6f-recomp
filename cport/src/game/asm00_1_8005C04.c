@@ -1755,7 +1755,7 @@ Next spawnEnemy_80073E2(void) {
     R5 = 0; /* extra argument to battle_spawnEnemyObject_800768C */
 
     /* Ask for the current battle effects; unless bit 15 is set, the enemy id
-     * is first run through sub_800EC80 (which may substitute a different id). */
+     * is first run through battle_computeEnemyEncounterRarity_800EC80 (which may substitute a different id). */
     R0 = enemy_idx;
     R1 = panel_x;
     R2 = panel_y;
@@ -1763,7 +1763,7 @@ Next spawnEnemy_80073E2(void) {
     GUEST_CALL(GetBattleEffects);
     if (!(R0 & 0x8000)) {
         R0 = enemy_idx;
-        GUEST_CALL(sub_800EC80);
+        GUEST_CALL(battle_computeEnemyEncounterRarity_800EC80);
         enemy_idx = R0;
     }
 

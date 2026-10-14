@@ -1,0 +1,71 @@
+name: battleObject_removeFromNextList_800AA40
+address: '0x0800AA40'
+kind: function
+previous_names:
+- sub_800AA40
+status: probable
+summary: Removes a battle object's AI attack reference from the "Next" entries list at 0x2038170, then
+  compacts the entry.
+interface: (r5 = u32 value to remove) -> side effects only; r0/r1/r3/r4/lr clobbered, no return
+details: 'The function pushes r0 (as a placeholder) and lr, then calls
+
+  getNextEntryAddress_800AAAE to look up the "Next" entry index currently
+
+  in r0 (the pushed placeholder value is the index, since the real argument
+
+  is r0 originally). It then walks the 8 words of the 0x20-byte entry at
+
+  the returned address (r3), and for any word equal to r5 it stores 0 in
+
+  that slot, removing the reference. After the scan, it restores r0 (now
+
+  the original index argument) and calls compactEntryWords_800AA64 to slide
+
+  any remaining non-zero words to the front and zero the tail. The two
+
+  direct callees are deliberately ordered: scan-with-zeros, then compact.
+
+  All work is on the EWRAM Next array at 0x02038170 (size 0x20 per entry).
+
+  Callers are battle-object lifecycle helpers (attack timer, action-8
+
+  cleanup, hit-flash tick) and the extra-handler phase-0 dispatcher; in
+
+  every case r5 carries the AIData/AIData pointer or related handle that
+
+  should no longer appear in the Next list.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `bl getNextEntryAddress_800AAAE` then `mov r3, r0` returns the entry base\n  at 0x2038170\
+    \ (per callee contract).\n- The loop `loc_800AA4C` iterates r0 = 0,4,8,...,0x1C (8 word slots) and\n\
+    \  does `cmp r1, r5; bne ...; mov r1,#0; str r1,[r3,r0]`, exactly zeroing\n  slots that hold r5.\n\
+    - Final `bl compactEntryWords_800AA64` (confirmed to compact the 7-word\n  payload to remove holes)\
+    \ is called with the original index in r0.\n- All 5 callers are battle-object tick/teardown helpers;\
+    \ every captured\n  r5 is a pointer/handle to AI/state data (0x0203ab18 / 0x0203abf0 in\n  calls from\
+    \ 0x0801641a and 0x0810a0fa-style sites) consistent with\n  \"drop this reference from the Next list\"\
+    .\n- Exit r0=0 and ZC flags indicate no value is returned; function is void."
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0800AA40
+
+    '
+  result: the body read as described above
+open_questions:
+- Whether the "Next" array here is the same Next list as the broader `getNextEntryAddress_800AAAE` (confirmed
+  base 0x2038170) or a per-table variant; the entry index source is the pushed r0 whose origin across
+  callers is not fully traced. The semantics of "value to remove" being either an AIData pointer or a
+  related handle would settle naming.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800AA40 -> battleObject_removeFromNextList_800AA40
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

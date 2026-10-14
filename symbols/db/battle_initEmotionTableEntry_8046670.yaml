@@ -1,0 +1,62 @@
+name: battle_initEmotionTableEntry_8046670
+address: '0x08046670'
+kind: function
+previous_names:
+- sub_8046670
+status: probable
+summary: Initialises one EmotionData slot in the 0x58-byte EWRAM array at 0x02008450 with a type byte,
+  a fixed 0x09 tag, and a flags value.
+interface: '(r0 = actorType/AIIndex?, r1 = slotIndex, r2 = flags) -> r0 = pointer to the 0x58-byte slot
+  at 0x02008450 + slotIndex*0x58 ; side effects: writes slot bytes [0]=9, [1]=r0, [4]=r2, [8]=0'
+details: 'ldr r5, off_80466D4 pulls the base of an EWRAM table at 0x02008450 (eStructArr2008450).
+
+  r4=0x58 is the per-slot stride, so r5 = 0x02008450 + r1*0x58 indexes the chosen entry.
+
+  strb r0,[r5,#1] stores the supplied type/AIIndex into the second byte of the slot.
+
+  mov r0,#9; strb r0,[r5] writes the literal 9 (a fixed tag) at offset 0 of the slot.
+
+  str r2,[r5,#4] stores the 32-bit r2 argument at offset 4 of the slot.
+
+  mov r0,#0; str r0,[r5,#8] zeroes offset 8 of the slot.
+
+  Returns r5 in r0 so the caller can keep mutating the same slot; the function is the
+
+  per-slot initialiser used by emotion/setup table loaders (loadEntryPairTable_812B1DC
+
+  and friends), where every pair of (type, flags) input is one slot.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_80466D4 // =eStructArr2008450` at the function head shows the EWRAM base is
+    0x02008450. - `mov r4, #0x58 ; mul r1, r4 ; add r5, r5, r1` gives r5 = 0x02008450 + r1*0x58, i.e.
+    a 0x58-byte per-slot stride. - Captured exit r0 values 0x02008450 / 0x020084a8 / 0x02008500 / 0x02008558
+    match exactly 0x02008450 + slot*0x58, confirming both the base and the stride. - `strb r0, [r5,#1]`
+    then `mov r0,#9 ; strb r0, [r5]` shows the caller''s r0 is written at offset 1 and a constant 9 is
+    forced at offset 0. - `str r2, [r5,#4]` shows r2 is stored verbatim at offset 4 of the slot. - `str
+    r0, [r5,#8]` (with r0=0) zeroes offset 8 of the slot. - The caller `loadEntryPairTable_812B1DC` calls
+    it while decoding a "4-byte-per-entry table", matching the (type,flag) packing into offsets 0/1/4.'
+  refs:
+  - bn6f/asm/asm03_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08046670
+
+    '
+  result: the body read as described above
+open_questions:
+- 'What the 0x09 tag and the cleared word at +8 represent in higher-level game terms (likely an emotion
+  state machine: kind, sub-state, flags, counter); the exact meaning of the byte stored at +1 (AIIndex-style
+  vs actor type) would settle whether this is a true emotion table or a more general 0x58-byte per-actor
+  setup record.'
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8046670 -> battle_initEmotionTableEntry_8046670
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

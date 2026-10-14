@@ -2383,11 +2383,11 @@ static void reload_cur_navi_stat_boosts_EnterMap(void) {
     GUEST_CALL(reloadCurNaviStatBoosts_813c3ac);
 }
 
-/* register form: calls sub_8000FAC outside this file, which has no typed C interface yet;
+/* register form: calls battle_resetStateIfMapChangedOrBattleEventFlag_8000FAC outside this file, which has no typed C interface yet;
  * it takes the game state in r5 */
 static void init_map_state_8000FAC(u32 game_state) {
     R5 = game_state;
-    GUEST_CALL(sub_8000FAC);
+    GUEST_CALL(battle_resetStateIfMapChangedOrBattleEventFlag_8000FAC);
 }
 
 /* register form: calls sub_80355EC outside this file, which has no typed C interface yet */
@@ -2395,10 +2395,10 @@ static void call_sub_80355EC(void) {
     GUEST_CALL(sub_80355EC);
 }
 
-/* register form: calls sub_8001172 outside this file, which has no typed C interface yet */
+/* register form: calls gameState_setUnk09_8001172 outside this file, which has no typed C interface yet */
 static void call_sub_8001172(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_8001172);
+    GUEST_CALL(gameState_setUnk09_8001172);
 }
 
 /* register form: calls triggerSomeUpdateForInternetOrRealWorld_8033948 outside this file, which has no typed C interface yet */

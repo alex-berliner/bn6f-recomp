@@ -1,0 +1,73 @@
+name: gameState_setUnk09_8001172
+address: '0x08001172'
+kind: function
+previous_names:
+- sub_8001172
+status: probable
+summary: Sets GameState's Unk_09 byte (related to "can't jack out" / L-button-message-style control flag)
+  to the given u8
+interface: '(r0 = value) -> void ; side effects: writes Toolkit->GameStatePtr->Unk_09 (a single byte at
+  offset 0x9)'
+details: 'The function is a 3-instruction Thumb leaf: r3 is loaded from the GameState pointer
+
+  stored inside the Toolkit (r10 is the project''s designated Toolkit register). The
+
+  Toolkit->GameStatePtr slot is at offset 0x3C (oToolkit_GameStatePtr), and the byte
+
+  being written is at offset 0x9 inside the GameState struct, which corresponds to
+
+  the field labelled `Unk_09 // loc=0x9 // 03 = can''t jack out` in GameState.inc.
+
+  It then returns via `mov pc, lr` (true Thumb tail-call), so r0..r3 are caller-saved
+
+  in the AAPCS sense, but no meaningful output is produced. Out-of-band the contract
+
+  reports r3 in `out`/`may_write`, which is just the trampoline through r3 used to
+
+  reach the store (it is not a real return value for the caller).
+
+  Callers pass values such as 0x00, 0x22, 0x80, all of which are written to that
+
+  one GameState byte. In context (EnterMap, resetPetNaviSetup_8033FDC, the
+
+  sub_808C*** bunch, the sub_809E*** pair, sub_80A8484, sub_8141F7C) it is used
+
+  as a generic setter for this particular game-state control byte rather than
+
+  anything battle- or map-specific, so a generic `gameState_setUnk09` name fits.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `mov r3, r10` then `ldr r3, [r3,#oToolkit_GameStatePtr]` at 0x08001174 reads the\n  GameState\
+    \ pointer through the Toolkit register r10; offset matches the\n  Toolkit struct's GameStatePtr field\
+    \ at loc=0x3C.\n- `strb r0, [r3,#oGameState_Unk_09]` at 0x08001178 writes r0 as a single byte at\n\
+    \  offset 0x9 inside GameState, which the struct comment labels as\n  \"03 = can't jack out\" (an\
+    \ L-button/jack-out-style control flag).\n- `mov pc, lr` is a Thumb tail-return, confirming there\
+    \ is no real return value\n  and that r0..r3 are scratch for the caller; this matches the captured\
+    \ calls\n  where r0 exits unchanged and only Z is preserved on flags.\n- All 26 captured calls pass\
+    \ small u8-like values (0x00, 0x22, 0x80) in r0 with\n  r2 == 0, consistent with a one-byte setter\
+    \ rather than a 32-bit field update."
+  refs:
+  - bn6f/asm/asm00_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08001172
+
+    '
+  result: the body read as described above
+open_questions:
+- The semantic meaning of the byte (the comment says "03 = can't jack out") is not directly visible from
+  this function; it would be confirmed by checking which callers use 0x03 vs 0x00 and which transitions
+  they accompany. - Whether the field is really "can't jack out" or some other L-button/scenario gate,
+  since the struct comment is the only hint we have here.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8001172 -> gameState_setUnk09_8001172
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

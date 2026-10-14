@@ -1,0 +1,59 @@
+name: battle_computeEnemyEncounterRarity_800EC80
+address: '0x0800EC80'
+kind: function
+previous_names:
+- sub_800EC80
+status: probable
+summary: Computes an enemy-encounter rarity tier for a given enemy index by clamping the current PET Navi
+  stat tier against the version's virus or navi tier cap, then adding the clamped tier to the base enemy
+  id.
+interface: '(r0 = enemy_idx) -> r0 = enemy_idx + clamped_tier ; side effects: calls getCurNaviStatTier_8014150,
+  GetVerActorTyAndAIIdx_80182B4, stub_returnZero_8000E30'
+details: "1. Pushes the original r0 (enemy id) onto the stack and saves r4/r5/r7/lr.\n2. Calls stub_returnZero_8000E30\
+  \ -> r0 = 0, stored in r7 (the baseline tier, currently always 0).\n3. Calls getCurNaviStatTier_8014150\
+  \ (r10 has the toolkit, which the callee uses) to get the equipped Navi's tier (0/1/2) into r0.\n4.\
+  \ Takes the min of r0 (Navi tier) and r7 (zero) via `cmp r0, r7; ble` — so r7 ends up as min(NaviTier,\
+  \ 0) = 0 here, but the slot exists for when the stub starts returning non-zero.\n5. Pops the original\
+  \ enemy id back into r4 and calls GetVerActorTyAndAIIdx_80182B4 to fetch the per-version record (r5\
+  \ = ptr to {version, actor_type, ai_index}).\n6. Switches on actor_type at r5+1:\n   - 0x02 (ACTOR_TYPE_PLAYER)\
+  \ and 0x00 (ACTOR_TYPE_VIRUS): cap = 5 - version; the tier r7 is doubled (`add r7,r7,r7`) then clamped\
+  \ to that cap, and r0 = enemy_idx + r7.\n   - 0x01 (ACTOR_TYPE_NAVI): cap = 2 - version; tier r7 is\
+  \ clamped to that cap (no doubling), and r0 = enemy_idx + r7.\n   - any other actor_type: returns r0\
+  \ = enemy_idx unchanged (loc_800ECD2).\n7. The clamping uses `ble` followed by `mov r7, r0`, so r7 is\
+  \ set to the cap whenever the doubled/clamped value exceeds it.\n8. Restores r4/r5/r7 and returns the\
+  \ new r0 in r0.\nCaptured calls show entry r1=0x8000 (always), which is unused inside the function (only\
+  \ r0 matters); all 22 calls exit with r0 = the original enemy id (clamped tier 0 in observed recordings).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl stub_returnZero_8000E30` at 0x800ec86 then `mov r7, r0` establishes a baseline tier that
+    today is 0; the min-then-clamp pattern (`cmp r0, r7; ble loc_800EC94`) is the function''s only purpose
+    for it. - `bl getCurNaviStatTier_8014150` is the only call that reads r10 (the toolkit), matching
+    the callee''s `in=[''r10'', ...]` contract. - The two `cmp r1, #2` / `cmp r1, #0` / `cmp r1, #1` branches
+    read r5+1, which is `ActorType` per the AIData/Versions layout used by GetVerActorTyAndAIIdx_80182B4.
+    - `ldrb r1, [r5]` (offset 0) is the version byte, used as `5 - version` or `2 - version`; this matches
+    the per-version tier cap pattern. - `add r7, r7, r7` only in the virus/player branch, not in the navi
+    branch, so virus-tier is doubled but navi-tier is not. - Captured calls (6 of 22 shown) all return
+    r0 = the input enemy id, consistent with stub_returnZero_8000E30 == 0 in this build. - Only caller
+    is spawnEnemy_80073E2, which calls it before spawning an enemy to derive a likely-rarity-elevated
+    enemy id.'
+  refs:
+  - bn6f/asm/object.s
+  reproduce: 'python3 tools/asmcat.py 0x0800EC80
+
+    '
+  result: the body read as described above
+open_questions:
+- Whether `stub_returnZero_8000E30` is a placeholder for a true baseline value (e.g. encounter-zone tier)
+  in another build/region — would settle by checking its callers or its other live uses.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800EC80 -> battle_computeEnemyEncounterRarity_800EC80
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

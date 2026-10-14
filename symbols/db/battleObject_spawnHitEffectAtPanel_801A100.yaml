@@ -1,0 +1,67 @@
+name: battleObject_spawnHitEffectAtPanel_801A100
+address: '0x0801A100'
+kind: function
+previous_names:
+- sub_801A100
+status: probable
+summary: Spawns the visual hit-effect child object at the panel the battle object currently occupies,
+  jittered around the panel center.
+interface: '(r5 = BattleObject*) -> r0 = 0x2 (seldomly read) ; side effects: may spawn a child effect
+  object'
+details: 'Pulls the BattleObject''s CollisionDataPtr from r5+oBattleObject_CollisionDataPtr and reads
+  its
+
+  oCollisionData_FlagsFromCollision. Bails out if bit 0x3F800000 is set OR if bit 0x1 is set OR if
+
+  oCollisionData_HitEffect == 0xFF (no hit effect defined). Otherwise it takes the battle object''s
+
+  16.16 X/Y, runs them through convertXYToPanelXY_800E258 to get panel coords, runs them back through
+
+  object_getCoordinatesForPanels to get center pixel coords, then calls AddRandomVarianceToTwoCoords
+
+  with mask 0xF and shift 0x10 to jitter both coords around the panel center. Finally it calls
+
+  sub_80E08C4 (object_spawnRelatedChildEffect_80E08C4 in the callees'' shorthand) to spawn the actual
+
+  HitEffect child object at the jittered location, with r4 holding the HitEffect index that gets
+
+  passed along. Pop restores r4/r6/pc.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, [r5,#oBattleObject_CollisionDataPtr]` then `ldr r6, [r3,#oCollisionData_FlagsFromCollision]`
+    dereferences the CollisionData struct of the battle object - `tst r6, r1` with r1 = 0x3F800000 (loaded
+    from dword_801A13C) early-returns: a "shield"/no-effect flag set in FlagsFromCollision skips the spawn
+    - `tst r6, r1` with r1 = 1 also early-returns: another FlagsFromCollision bit suppresses the spawn
+    - `ldrb r0, [r3,#oCollisionData_HitEffect]` then `cmp r0, #0xff` early-returns when no hit effect
+    is configured (0xFF = none) - `ldr r0, [r5,#oBattleObject_X]`/`Y` then `bl convertXYToPanelXY_800E258`
+    and `bl object_getCoordinatesForPanels` round-trip pixel→panel→pixel to anchor the spawn on the current
+    panel center - `mov r3, #0x10; lsl r3, r3, #0x10` + `mov r0, #0xf` then `bl AddRandomVarianceToTwoCoords`
+    jitters both 16.16 coords in the sub-pixel range within the panel - `bl sub_80E08C4` finally spawns
+    the related child effect; r4 still holds the HitEffect index from the earlier read - callee summaries
+    confirm: `convertXYToPanelXY_800E258` converts screen pixels to panel (col,row); `object_getCoordinatesForPanels`
+    does the inverse; `AddRandomVarianceToTwoCoords` jitters two coords'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A100
+
+    '
+  result: the body read as described above
+open_questions:
+- The exact bit meaning of 0x3F800000 in FlagsFromCollision (looks like a non-standard "in mid-effect"
+  / "frozen" style guard; could be checked by correlating with neighbouring handlers). - sub_80E08C4's
+  exact contract for the r4 HitEffect argument — likely passed through to identify which child object
+  to spawn but not directly confirmed by the captured calls.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A100 -> battleObject_spawnHitEffectAtPanel_801A100
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

@@ -1,0 +1,66 @@
+name: battleObject_stepSnakeArm_800BA8A
+address: '0x0800BA8A'
+kind: function
+previous_names:
+- sub_800BA8A
+status: probable
+summary: 'Per-tick handler for the "SnakeArm" battle object: when not initialized, checks if a chip can
+  be triggered and queues a 0x4C/0x50 battle effect; once initialized, waits for cross-net readiness and
+  then advances the action/phase state machine.'
+interface: '(r5 = *BattleObject) -> void ; side effects: clears/dispatches 0x10000 flag, plays SE 0x73,
+  mutates CurAction/CurPhaseAndPhaseInitialized on r5, writes dword_200F3B8[Alliance]'
+details: "- r5 is the BattleObject pointer (in from contract, live for caller).\n- First check `oBattleObject_PhaseInitialized`\
+  \ (offset 0xb). When zero (initial entry), inspect the\n  owner's alliance and the opponent's flag/state\
+  \ via sub_800B892/sub_800B884/sub_800B8C2 helpers.\n  If opponent is in a \"blocking\" state (sub_800B892\
+  \ returns 4) or this side is not in a recognized\n  pairing (xor yields 3 or 0), abort to the tail.\n\
+  - Otherwise clear flag 0x10000 in dword_20352C0, dispatch the same 0x10000 mask via dispatch_801DACC,\n\
+  \  fetch the chip record for `Unk_30` (chip id), and pass chip id + Damage/Unk_32 (when a target-bit\n\
+  \  is set in chip[9]) plus the inverted-alliance index to battle_dispatchKindEffect_801E792 with\n \
+  \ kind 0x4C (when not network-inverted) or 0x50 (when inverted). Plays SE 0x73 and sets\n  PhaseInitialized\
+  \ = 4.\n- On the second entry (PhaseInitialized != 0), poll comm_checkCrossNetBattleReady_801E754; if\n\
+  \  the partner is not yet ready, bail. Otherwise, choose between two flows based on the\n  sub_800B8C2\
+  \ result on the object's alliance: one path increments CurAction by 4, the other\n  by 8, both reset\
+  \ CurPhaseAndPhaseInitialized to 0. A separate branch checks for a chip id in\n  [0xDD, 0x118] against\
+  \ the opponent's first field at table 0x2036720; on match (0xba) CurAction\n  is decremented by 4 instead.\n\
+  - The dword_200F3B8[Alliance<<2] = 1 write appears to mark a per-alliance \"snake arm acted\" slot.\n\
+  - sub_800B892/sub_800B884/sub_800B8C2 are likely per-actor state setters/getters accessed via\n  byte_203CF00\
+  \ (see the confirmed entry-ptr helper).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `ldrb r0, [r5,#oBattleObject_PhaseInitialized]; tst r0, r0; bne loc_800BB08` shows two\n\
+    \  entry branches keyed off the phase-init byte at 0xb of the BattleObject.\n- `ldrh r0, [r5,#oBattleObject_Unk_30];\
+    \ bl getChip8021DA8` plus `bl battle_dispatchKindEffect_801E792`\n  with r0 = 0x4C / 0x50 indicates\
+    \ the chip id and the effect dispatch both come from the\n  BattleObject's stored fields.\n- `bl battle_networkInvert`\
+    \ after loading `oBattleObject_Alliance` (0x16) shows the alliance\n  byte selects between the 0x4C\
+    \ and 0x50 effect kinds.\n- `bl comm_checkCrossNetBattleReady_801E754` followed by a return path on\
+    \ non-zero shows the\n  function gates on link partner readiness.\n- `ldr r0, off_800BBA4 // =dword_200F3B8`\
+    \ with `lsl r1, r1, #2; str r2, [r0,r1]` shows the\n  per-alliance flag slot is a 4-byte-per-alliance\
+    \ table at 0x200F3B8.\n- `strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]` after `add r0,\
+    \ #4`/`#8` to\n  `CurAction` shows the action-byte/phase-halfword state machine at 0x8..0xb of the\
+    \ BattleObject.\n- 0x73 = 0x74 + 0xFF (`add r0, #0xff`) and the immediate `bl PlaySoundEffect` after\
+    \ the\n  effect dispatch indicate the SE is played on successful trigger."
+  refs:
+  - bn6f/asm/object.s
+  reproduce: 'python3 tools/asmcat.py 0x0800BA8A
+
+    '
+  result: the body read as described above
+open_questions:
+- What battle "kind effect" 0x4C/0x50 represent (the game's chip-effect dispatch opcode table would confirm);
+  the "_SnakeArm" name is inferred from SNAKEARM_EV_1..0x20 constants in the struct header — the chip-id
+  range check [0xDD, 0x118] plus the alliance-conditioned effect kind 0x4C/0x50 strongly suggest a snake-style
+  arm/coil chip, but the precise mapping is not proven by this function alone. - The meaning of dword_200F3B8[Alliance]
+  (whether it's a "ready to retract" flag, an animation trigger, or a per-side counter) is unknown; the
+  value 1 is written but never read here.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800BA8A -> battleObject_stepSnakeArm_800BA8A
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

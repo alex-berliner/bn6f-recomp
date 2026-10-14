@@ -1,0 +1,61 @@
+name: battle_playBeastOutSequence_801E15C
+address: '0x0801E15C'
+kind: function
+previous_names:
+- sub_801E15C
+status: probable
+summary: 'Plays the "Beast Out" transformation transition: clears/loads beast-out graphics, fires dispatch
+  effects, and plays the SE 0x9f jingle.'
+interface: '(r10 = toolkit) -> side effects only; side effects: clears bit 0x10000 of dword_20352C0, dispatches
+  flags 0x10000 and 0x200, queues a 3-entry GFX transfer list, plays sound 0x9f'
+details: "Five-step sequence run inside a captured \"beast sp\" (sp = special) scenario:\n1. `flags_clearBits_eStruct2035280_801BED6(0x10000)`\
+  \ — clears bit 0x10000 (likely the\n   \"beast-out active\" toggle, also matches dispatch mask in step\
+  \ 4) on the flags field\n   of eStruct2035280 (the field at offset 0x44 in that struct, called UnkFlags_44).\n\
+  2. `dispatch_801DACC(0x10000)` — calls the dispatch/effect handler with mask 0x10000;\n   the matching\
+  \ `flags_clearBits_eStruct2035280_801BED6` is named in the project as\n   clearing exactly this bit\
+  \ in the same struct, so the two calls are paired.\n3. `QueueGFXTransfersInList(off_801E188)` — walks\
+  \ a 12-byte/entry list at dword_86E611C\n   that pushes three graphics chunks: tiles 0x6016E00 size\
+  \ 0x140, palette/byte_86F2900 at\n   0x30016B0 size 0x20, and a null terminator. These are the beast-out\
+  \ battle sprites\n   and palette for the player's Navi transformation.\n4. `dispatch_801DA48(0x200)`\
+  \ — triggers another effect handler with mask 0x200 (likely a\n   beast-out visual/blast flag, one bit\
+  \ of the same UnkFlags_44 field).\n5. `PlaySoundEffect(0x9f)` — the M4A SE id 0x9f is the player's \"\
+  Beast Out!\" voice clip\n   / jingle in BN6 (confirmed by the captured r0=0x9f exit values in both beastsp\
+  \ snapshots).\nThe function takes no register args (only `r10` toolkit via the project calling convention,\n\
+  used by the leaf `PlaySoundEffect` wrapper), saves only `lr`, and returns via `pop pc`. All\ncallers\
+  \ in `sub_80080D2 / 855E / 89CC / 8DDC` are themselves unnamed; given the surrounding\ncontext, they\
+  \ are the four battle state-update dispatchers that handle the player transforming\ninto the beast form,\
+  \ and this function is the one-shot effect that fires when the transition\nis triggered.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- Captured calls show this fires from r0=0x1c (an event/state value) inside the \"beastsp\"\
+    \ trace\n  with r10 toolkit visible at sp=0x03007dbc; r1=0x02001b80 is an EWRAM object (likely a\n\
+    \  battle actor / struct) used by the caller, not by this function.\n- Exit r0=0x9f in BOTH snapshots\
+    \ exactly matches `mov r0, #0x9f` immediately before\n  `bl PlaySoundEffect` (asm line \"mov r0, #0x9f\
+    \ / bl PlaySoundEffect\"), so the function\n  ends with sound id 0x9f being played.\n- The four calls\
+    \ inside — `flags_clearBits_eStruct2035280_801BED6`, `dispatch_801DACC`,\n  `dispatch_801DA48`, `QueueGFXTransfersInList`\
+    \ — and their 0x10000/0x200 constants are\n  directly visible in the asm body, and the gfx list at\
+    \ off_801E188 pushes palette/tiles\n  for the beast form.\n- All four callers are unnamed but live\
+    \ in the same battle-update block (sub_80080D2 et al.)\n  that the rest of the beast-out pipeline\
+    \ uses, consistent with this being a one-shot\n  battle transition effect."
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801E15C
+
+    '
+  result: the body read as described above
+open_questions:
+- Exact meaning of dispatch masks 0x10000 and 0x200 on eStruct2035280 (UnkFlags_44). The constants are
+  visible; the semantic name "Beast Out" rests on the SE id 0x9f convention and the 3-entry beast sprite/palette
+  gfx list. Settling it would require matching sound id 0x9f against the BN6 SE table.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801E15C -> battle_playBeastOutSequence_801E15C
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

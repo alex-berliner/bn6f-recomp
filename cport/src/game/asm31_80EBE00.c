@@ -531,7 +531,7 @@ Next sub_80EC844(void) {
     /* Attempt to apply the value; result is ignored on failure. */
     R0 = amount;
     R1 = 1;
-    GUEST_CALL(sub_800E2FC);
+    GUEST_CALL(battleObject_applyHPAndHandleSpecial_800E2FC);
     /* Original does TST r0,r0; BNE loc_80EC85A — both paths land at the same label. */
 
     /* Add 5 (capped) to the battle object's alliance byte, then leave attack state. */
@@ -3769,7 +3769,7 @@ Next battle_attackTimerTick_8109CBC(void) {
     R0 = LD32(statePtr);
     if (R0 != 0) {
         R0 = LD32(R5 + oBattleObject_ExtraVars + 4);
-        GUEST_CALL(sub_800AA40);
+        GUEST_CALL(battleObject_removeFromNextList_800AA40);
         R0 = LD32(R5 + oBattleObject_ExtraVars + 4);
         GUEST_CALL(list_tryAddUniqueEntry_800AA1A);
         R0 = 0;
@@ -3923,10 +3923,10 @@ Next aiAttackDispatch_8109DD2(void) {
 }
 
 /* ── aiAttackTimer_tick_8109E4A ── */
-/* register form: calls sub_800AA40 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_removeFromNextList_800AA40 outside this file, which has no typed C interface yet */
 static void ai_recalc(u32 extra_vars) {
     R0 = extra_vars;
-    GUEST_CALL(sub_800AA40);
+    GUEST_CALL(battleObject_removeFromNextList_800AA40);
 }
 
 /* register form: calls list_tryAddUniqueEntry_800AA1A outside this file, which has no typed C interface yet */
@@ -4032,7 +4032,7 @@ Next battle_objFirstPhaseInitAndCommonUpdate_8109F4C(void) {
 Next battle_objectTickWithExtraHandler_8109F6A(void) {
     if (LD8(R5 + oBattleObject_CurPhase) == 0) {
         R0 = LD32(R5 + oBattleObject_ExtraVars + 4);
-        GUEST_CALL(sub_800AA40);
+        GUEST_CALL(battleObject_removeFromNextList_800AA40);
     }
     GUEST_CALL(battle_objectUpdateDispatchPhase_80165C2);
     RETURN_TO_CALLER();
@@ -4074,7 +4074,7 @@ Next battle_object_onAction8EndClearExtraVars_8109FA2(void) {
      * object list it references (the pointer is reloaded in case the
      * first call modified it). */
     R0 = LD32(R5 + oBattleObject_ExtraVars + 4);
-    GUEST_CALL(sub_800AA40);
+    GUEST_CALL(battleObject_removeFromNextList_800AA40);
 
     R0 = LD32(R5 + oBattleObject_ExtraVars + 4);
     GUEST_CALL(list_tryAddUniqueEntry_800AA1A);

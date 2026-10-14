@@ -607,7 +607,7 @@ Next applyNaviStatsMaybe_813C458(void) {
     R0 = naviId;
     GUEST_CALL(SetCurPETNavi);
 
-    GUEST_CALL(sub_803CE44);
+    GUEST_CALL(pet_syncNaviActiveNaviMaxHP_803CE44);
 
     R4 = callerR4; /* pop {r4} */
     RETURN_TO_CALLER();

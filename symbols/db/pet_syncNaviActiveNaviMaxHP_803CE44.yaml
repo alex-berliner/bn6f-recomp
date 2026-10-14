@@ -1,0 +1,67 @@
+name: pet_syncNaviActiveNaviMaxHP_803CE44
+address: '0x0803CE44'
+kind: function
+previous_names:
+- sub_803CE44
+status: probable
+summary: Syncs the Active Navi's MaxHP (stat 0x42) and CurHP copy into the toolkit's NaviStats entry,
+  only when MapGroup < 0x80 and a "PET navi active" event flag is set.
+interface: '(no args; uses r10 = Toolkit) -> r0 = 0x90 (unused by caller) ; side effect: writes 0x3e/0x40/0x42
+  fields of the current PET Navi''s NaviStats entry'
+details: '1. Reads GameState via tk->GameStatePtr; if MapGroup >= 0x80, returns immediately (no battle/overlay).
+
+  2. Reads the current PET navi''s NaviStats field 0x3e (MaxBaseHP) into r7, then adds a u16 at tk->Unk2004334_Ptr
+  (the PET''s "active navi" u16) to r7, storing the sum back in r7.
+
+  3. Writes that sum to field 0x42 (MaxHP) and 0x40 (CurHP) of the current PET navi''s NaviStats via SetCurPETNaviStatsHword(navi=0,stat=0x42/0x40,val=r7).
+  Both copies are seeded with the same value, so CurHP is forced to MaxHP.
+
+  4. Tests flag EVENT_PET_NAVI_ACTIVE via TestEventFlagFromImmediate; if not set, returns.
+
+  5. Otherwise calls GetCurPETNavi and, if non-zero, does the same write for that navi: read its field
+  0x3e into r7, then write r7 to its own fields 0x42 (MaxHP) and 0x40 (CurHP).
+
+  6. In the non-active branch the writes are skipped entirely, so the function is a "no-op except possibly
+  one navi''s stats" when the flag is clear.
+
+  7. Field 0x3e is MaxBaseHP and 0x42 is MaxHP per NaviStats.inc; 0x40 is CurHP. The added value from
+  tk->Unk2004334_Ptr is therefore a bonus to MaxHP applied to both stock and active PET navis.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- MapGroup < 0x80 early-out: `ldrb r0,[r0,#oGameState_MapGroup]; cmp r0,#0x80; bge locret_803CEB4`
+    at sub_803CE44:7-10. - Read MaxBaseHP for navi 0, field 0x3e: `mov r0,#0; mov r1,#0x3e; bl GetCurPETNaviStatsHword;
+    mov r7,r0` at :12-15. - Add u16 from tk->Unk2004334_Ptr[0]: `ldr r2,[r10,#oToolkit_Unk2004334_Ptr];
+    ldrh r2,[r2]; add r2,r2,r7; mov r7,r2` at :16-19. - Write r7 to navi 0''s MaxHP (0x42) then CurHP
+    (0x40): `mov r0,#0; mov r1,#0x42; mov r2,r7; bl SetCurPETNaviStatsHword` and again with r1=0x40 at
+    :20-25. - Gate by event flag: `movflag EVENT_PET_NAVI_ACTIVE; bl TestEventFlagFromImmediate; beq locret_803CEB4`
+    at :26-28. - When flag set, repeat for GetCurPETNavi(): read its 0x3e and write 0x42 then 0x40 with
+    the same r7, but only if non-zero (`cmp r0,#0; beq locret_803CEB4`) at :29-44. - NaviStats struct
+    offsets 0x3e/0x40/0x42 are MaxBaseHP/CurHP/MaxHP per NaviStats.inc. - Only confirmed caller is `applyNaviStatsMaybe_813C458`,
+    which per its summary "rebuilds and re-applies the equipped NaviCust programs and stock PET navi stats"
+    - consistent with re-seeding MaxHP after NaviCust re-evaluation.'
+  refs:
+  - bn6f/asm/asm03_1_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0803CE44
+
+    '
+  result: the body read as described above
+open_questions:
+- Exact meaning of the bonus u16 at tk->Unk2004334_Ptr (it is added to MaxBaseHP before re-seeding both
+  MaxHP and CurHP). It might be a NaviCust HP+ bonus or similar; checking what writes that u16 would confirm.
+  - The 0x90 value returned in r0 in captured calls does not appear consumed by the only known caller;
+  it is likely an artifact of the last SetCurPETNaviStatsHword or related helper rather than a meaningful
+  return.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803CE44 -> pet_syncNaviActiveNaviMaxHP_803CE44
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

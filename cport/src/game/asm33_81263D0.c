@@ -5841,7 +5841,7 @@ Next bg_LoadFullScreenTilesAndSetup_812AFB0(void) {
  *
  * Walks a small packed array starting at *r0 of records of the form
  * { u8 a, u8 b, u16 c }; the array ends with a sentinel byte 0xFF.
- * Each record is decoded via sub_8046670(a, b, c) and the result is
+ * Each record is decoded via battle_initEmotionTableEntry_8046670(a, b, c) and the result is
  * stored into the 4-slot scratch buffer at unk_20251A0, indexed by slot
  * number (0..3). The scratch buffer is zeroed up to 0x10 bytes first.
  *
@@ -5862,7 +5862,7 @@ Next loadEntryPairTable_812B1DC(void) {
     u32 r1 = (u32)LD8(entries + 1);
     u32 r0 = (u32)LD8(entries);
     R0 = r0; R1 = r1; R2 = r2;
-    GUEST_CALL(sub_8046670);
+    GUEST_CALL(battle_initEmotionTableEntry_8046670);
 
     /* Walk the rest of the table; each record's result lands in the
      * scratch buffer at slot i. The loop terminates when the byte at
@@ -5875,7 +5875,7 @@ Next loadEntryPairTable_812B1DC(void) {
         r1 = (u32)LD8(walker + 1);
         r0 = (u32)LD8(walker);
         R0 = r0; R1 = r1; R2 = r2;
-        GUEST_CALL(sub_8046670);
+        GUEST_CALL(battle_initEmotionTableEntry_8046670);
         ST32(scratch + (slot << 2), R0);
 
         slot += 1;
@@ -5893,7 +5893,7 @@ Next loadEntryPairTable_812B1DC(void) {
 /* ── sub_812B218 ── */
 /* sub_812B218(r5 = record whose byte at +0x1E selects a slot in unk_20251A0):
  * If the u32 entry at unk_20251A0[slot] is still empty, request a new entry
- * from sub_8046670 (r0 = 0x1C, r1 = slot + 1, r2 = (slot << 16) | 0x01000001,
+ * from battle_initEmotionTableEntry_8046670 (r0 = 0x1C, r1 = slot + 1, r2 = (slot << 16) | 0x01000001,
  * r3 = 1), tag the result with the high bit, store it into the table and bump
  * the slot counter byte. r4-r7 are saved/restored around the call, and r0
  * ends up holding the new counter value (or the existing entry). */
@@ -5906,7 +5906,7 @@ Next sub_812B218(void) {
         R1 = slot + 1;
         R2 = (slot << 16) | 0x01000001;
         R3 = 1;
-        GUEST_CALL(sub_8046670);
+        GUEST_CALL(battle_initEmotionTableEntry_8046670);
         R0 |= 0x80000000;
         R1 = A_unk_20251A0;
         ST32(A_unk_20251A0 + slot * 4, R0);

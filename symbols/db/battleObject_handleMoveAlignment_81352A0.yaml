@@ -1,0 +1,80 @@
+name: battleObject_handleMoveAlignment_81352A0
+address: '0x081352A0'
+kind: function
+previous_names:
+- sub_81352A0
+status: probable
+summary: Repositions a battle object to the correct column based on its row, or resets its column counter
+  when misaligned, also clearing a chip-related stats byte in that case.
+interface: (r0 = battle-object/row param table ptr, r1 = ?, r2 = row index, r3 = row param, r4 = alignment
+  arg, r5 = ? control struct, r7 = PetStats field offset, r10 = toolkit) -> r0 = 0xff or 1 ; side effects
+  writes [r5+0x14], [r5+0x1c], [r5+0x4c], NaviStats byte
+details: '- Saves r4-r7, lr and a 0x14-byte stack frame holding r0, r1, r2, r3, r4.
+
+  - Reads r5+0xc as an index into the small table at `dword_8135310` (=0x302F2E, three bytes 0x2E,0x2F,0x30),
+  then calls `GetCurPETNavi` to get the navi ID and `GetCurPETNaviStatsByte(0, index)` to get a 0xff-sentinel
+  "stage"/phase byte.
+
+  - If the returned byte equals 0xff (i.e. no valid pet entry), the function simply returns without doing
+  any object work.
+
+  - Otherwise multiplies that index by 0x20 to step through an array of 0x20-byte entries starting at
+  the table pointer (r0 = sp[0]). Reads offset 0x18 (a halfword? u16) and keeps only the high 16 bits
+  (`lsr r4, r0, #0x10`) -- the upper half of an entry''s 32-bit field at +0x18, treated as a column/panel
+  count.
+
+  - Re-reads cur-PET-navi stats byte at offset 9 (`GetCurPETNaviStatsByte(0, 9)`) which is `NaviStats.SlipRun`
+  per the struct (offset 0x35 in NaviStats, but here used as the "current column"); compares that with
+  r4.
+
+  - If r4 > slip-run (i.e. misaligned/lagging): writes r5+0x14 (the row/level byte) to PetStats field
+  at r7 with value 0xff via `SetCurPETNaviStatsByte`, then bails to the return.
+
+  - If aligned: calls the spawn/struct-init routine `battle_spawnEStructRecordsFromTable_80465A0(r0=sp[4])`,
+  writes the captured index into `[r5+0x1c]` as a halfword, then runs `battle_alignRowCheck_81348DC(r0=0x24,
+  r1=row index, r2=row param, r3=alignment arg, r4=6)` to commit the row realignment.
+
+  - Finally sets bit 0 of `[r5+0x4c]` (`orr r1, #1`) -- a "row/alignment completed" flag in the caller''s
+  per-object scratch struct.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#0xc]` then `ldrb r1, [r1,r0]` on `dword_8135310` (=0x302F2E): clearly a 3-byte
+    table indexing r5+0xc. - Two `bl GetCurPETNavi` + `bl GetCurPETNaviStatsByte` calls; the second passes
+    `mov r1, #9`, exactly the SlipRun field offset documented in NaviStats. - `mul r0, r1` with `r1 =
+    #0x20` then `[r0, #0x18]` and `lsr r4, r0, #0x10` show iteration over a 0x20-stride record and reading
+    the upper 16 bits of a u32 at offset 0x18. - `cmp r0, #0xff` / `beq loc_8135306` is the "no valid
+    pet entry" early-out. - Misaligned branch: `SetCurPETNaviStatsByte(r0=r5+0x14, r1=r7, r2=0xff)` resets
+    the pet stats byte at field r7 to 0xff. - Aligned branch: `bl sub_80465A0` (named `battle_spawnEStructRecordsFromTable_80465A0`),
+    `strh r6, [r5,#0x1c]`, `bl battle_alignRowCheck_81348DC` with `r0=0x24` and `r4=6` matches the row/align
+    helper signature. - Final `orr r1, r0` (with `r0=#1`) into `[r5,#0x4c]` sets a "done" flag bit. -
+    All three callers are in the chip-folder subsystem (`chipFolder_init_812349C`, `chipFolder_screenInit_812345C`,
+    unnamed `sub_8133228`), so r5 is some chipFolder scratch struct (offsets 0xc/0x14/0x1c/0x4c unknown
+    but consistent across the family).'
+  refs:
+  - bn6f/asm/asm36.s
+  reproduce: 'python3 tools/asmcat.py 0x081352A0
+
+    '
+  result: the body read as described above
+open_questions:
+- The exact type of the r5 struct (chip folder scratch vs. some other per-state buffer) -- identifying
+  the chipFolder struct (likely oSubMenu or a sibling) would settle it. - The exact meaning of `[r5+0x14]`
+  and `[r5+0x1c]`. The value 0xff written to a NaviStats field on misalignment may be clearing/resetting
+  a column-progress counter vs. disabling something; without more callers' context we can't be sure which
+  NaviStats field r7 points at. - Whether the 0x20-stride table is a chip-template list, an encounter
+  table, or a row-data list -- the callers' r1 values (0x081233d8, 0x08133154) are ROM pointers, so the
+  table is read-only and probably a battle/row layout descriptor.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81352A0 -> battleObject_handleMoveAlignment_81352A0
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

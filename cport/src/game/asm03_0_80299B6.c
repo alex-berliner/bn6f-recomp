@@ -3249,7 +3249,7 @@ Next TestBattleFlag_0x40(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802E112 ── */
+/* ── battle_setBeastLinkFlag_0802E112 ── */
 /* Flag bit (from battle_setFlags) set on the battle state when the run qualifies. */
 #define BATTLE_FLAG_0x40  0x40
 
@@ -3319,12 +3319,12 @@ static void maybe_set_battle_flag_0x40(void) {
     call_battle_setFlags(BATTLE_FLAG_0x40);
 }
 
-/* sub_802E112: gate control for setting battle flag 0x40.
+/* battle_setBeastLinkFlag_0802E112: gate control for setting battle flag 0x40.
  *   Skips in crossover, tomahawk, dustman, or virus-battler modes, and while the
  *   0x200000 battle effect is active. Otherwise sets flag 0x40 via battle_setFlags,
  *   either immediately (if the gate byte is non-zero) or after confirming this is a
  *   network battle with event flag 0x1722 set. */
-Next sub_802E112(void) {
+Next battle_setBeastLinkFlag_0802E112(void) {
     maybe_set_battle_flag_0x40();
     RETURN_TO_CALLER();
 }

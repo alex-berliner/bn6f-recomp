@@ -293,11 +293,11 @@ Next pet_initMenu_811EC10(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811EC50 ── */
-/* sub_811EC50: run the full batch of per-frame updates for this subsystem.
+/* ── mapName_runSequence_811EC50 ── */
+/* mapName_runSequence_811EC50: run the full batch of per-frame updates for this subsystem.
  * Calls the five update steps in order; register and flag state on return
  * is whatever drawCurrentMapName_811F08C (the last callee) leaves behind. */
-Next sub_811EC50(void) {
+Next mapName_runSequence_811EC50(void) {
     GUEST_CALL(queueGFXTransfersFromTable_811EC68);
     GUEST_CALL(sub_811EFB8);
     GUEST_CALL(updateMapNameDisplay_811F014);

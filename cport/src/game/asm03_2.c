@@ -367,12 +367,12 @@ Next battle_resetEStructRecords_8046664(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8046670 ── */
-/* sub_8046670(r0 = id byte, r1 = slot index, r2 = param word):
+/* ── battle_initEmotionTableEntry_8046670 ── */
+/* battle_initEmotionTableEntry_8046670(r0 = id byte, r1 = slot index, r2 = param word):
  * initialize one 0x58-byte entry of eStructArr2008450 for r1*0x58:
  * set the entry's id byte, type 9 marker, param word, and clear its counter.
  * Returns r0 = pointer to the entry, r1 = r1*0x58, flags from ADDS r0, entry, #0. */
-Next sub_8046670(void) {
+Next battle_initEmotionTableEntry_8046670(void) {
     u32 entry = A_eStructArr2008450 + R1 * 0x58;
 
     ST8(entry + 1, R0);   /* id byte            */
@@ -2618,7 +2618,7 @@ Next chatbox_closeFadeHandler_80499CE(void) {
         GUEST_CALL(sub_8049D70);
         GUEST_CALL(sub_8049D4A);
         GUEST_CALL(sub_8049D3A);
-        GUEST_CALL(sub_803F79E);
+        GUEST_CALL(save_writeAndVerifyEWRAMToSRAM_803F79E);
         GUEST_CALL(zeroFillVRAM);
         GUEST_CALL(ZeroFillGFX30025c0);
         GUEST_CALL(copyMemory_8001850);

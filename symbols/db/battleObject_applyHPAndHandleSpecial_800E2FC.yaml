@@ -1,0 +1,67 @@
+name: battleObject_applyHPAndHandleSpecial_800E2FC
+address: '0x0800E2FC'
+kind: function
+previous_names:
+- sub_800E2FC
+status: probable
+summary: Applies an HP delta to the current battle object and dispatches special-case handling for name
+  ID 0xBD (likely a heal/revive or split-damage effect)
+interface: '(r0 = HP delta, r1 = flag meaning "skip the 0xBD special"; r5 = battle object pointer) ->
+  r0 = 0 on default path, 1 when 0xBD special path was taken ; side effects: mutates HP on r5, spawns
+  a type-4 effect object, plays sound 0x8A, calls several sub_80E37D2/sub_800BF16/sub_800ABC6/sub_802CEA6
+  with attacker panel coords + alliance'
+details: "Entry r0 holds the HP amount to apply (forwarded to object_addHP at 0x0800E2EC, which\nclamps\
+  \ to MaxHP and returns the new HP in r1). r1 acts as a boolean — if zero, the\nfunction takes the default\
+  \ path (no special handling); if non-zero, it reads\noBattleObject_Alliance from r5, flips it (eor r0,\
+  \ #1), looks up 0x2036720[r0]'s first\nfield via getTable2036720EntryFields_802CE78, and compares that\
+  \ field to 0xBD.\n- If the looked-up NameID/element is 0xBD, control falls through to loc_800E330\n\
+  \  (the \"special\" branch): reads PanelX/PanelY from r5, computes\n  r6 = r6 + 0x1E0000 (adds 0x1E\
+  \ in 16.16 fixed-point to the HP-delta value),\n  then calls sub_80E37D2 with that new fixed-point value,\
+  \ alliance, and flag.\n  The return becomes r2, then sub_800BF16 / sub_800ABC6 / sub_802CEA6 are called\n\
+  \  using PanelX/PanelY and Alliance; r0 is set to 1 before returning.\n- Otherwise (the default branch\
+  \ at loc_800E314): object_addHP is called with the\n  original r6 delta, then a 12-byte block from r5+0x34\
+  \ (the Coords {X,X16,Y,Y16,Z,Z16}\n  field of BattleObject) is loaded into r1-r3 and forwarded to\n\
+  \  spawn_t1_0x0_EffectObject along with #4 in r4 (spawning a \"type-1 battle object\"\n  with effect\
+  \ type 0x0 — a heal/recovery VFX). PlaySoundEffect(0x8A) is then\n  invoked. Returns r0 = 0.\n\nThe\
+  \ captive calls (snap_story9_*) all show r0=0x1E (30 HP), r1=1 (skip\ndefault path / try the 0xBD check)\
+  \ and exit with r0=0 — meaning the looked-up\nNameID was NOT 0xBD in those captures, so the default\
+  \ branch was taken\n(object_addHP(0x1E) + heal VFX + sound 0x8A).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `tst r1, r1` / `beq loc_800E314` shows r1 controls which branch is taken. - `eor r0, r1`\
+    \ on oBattleObject_Alliance with r1=#1 toggles alliance to the\n  opposing side, then `getTable2036720EntryFields_802CE78`\
+    \ reads that side's\n  record and returns its first field (interpreted as a NameID) into r7.\n- `cmp\
+    \ r0, #0xbd` / `beq loc_800E330` is the explicit special-case gate. - Default branch: `bl object_addHP`\
+    \ then `ldmia r0!, {r1-r3}` reads Coords from\n  r5+0x34 (BattleObject Coords struct), `mov r4, #6`\
+    \ followed by\n  `bl spawn_t1_0x0_EffectObject` — the 0x6 is the prototype's `r4` argument;\n  the\
+    \ function comment confirms it spawns a type-4 object with effect 0.\n- `mov r0, #SOUND_UNK_8A` /\
+    \ `bl PlaySoundEffect` plays sound 0x8A. - 0xBD branch: `add r6, r6, r2` with r2=0x1e<<16 builds a\
+    \ fixed-point HP\n  delta; then sub_80E37D2 (PanelX/PanelY, that fixed-point, alliance,\n  flipped-alliance\
+    \ flag), sub_800BF16 (PanelX/PanelY), sub_800ABC6\n  (PanelX/PanelY), and sub_802CEA6 (flipped alliance)\
+    \ are called.\n- Captured calls all return r0=0 with input r0=0x1E, r1=1, matching the\n  default-branch\
+    \ contract (non-0xBD NameID → fall-through to the heal path).\n- push/pop {r4,r6,r7,lr} and the out\
+    \ register list show r5 is preserved\n  by the caller convention (r5 is the standard battle-object\
+    \ pointer in\n  this codebase), which is why the function reads/writes through r5 freely."
+  refs:
+  - bn6f/asm/object.s
+  reproduce: 'python3 tools/asmcat.py 0x0800E2FC
+
+    '
+  result: the body read as described above
+open_questions:
+- The exact identity of NameID 0xBD (what battle actor/move it represents and what the four callees on
+  the 0xBD path actually do). - Whether r6+0x34 in the default branch is really oBattleObject_Coords (the
+  ldmia loads 12 bytes = 3 words = X,X16,Y16,Y,Z,Z16 — yes, this is exactly the Coords field's layout).
+  - What the "flag" parameters passed to sub_80E37D2/sub_800BF16/sub_800ABC6 /sub_802CEA6 mean semantically.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800E2FC -> battleObject_applyHPAndHandleSpecial_800E2FC
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py

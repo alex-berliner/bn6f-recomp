@@ -286,11 +286,11 @@ Next TakeChips(void) {
 }
 
 /* ── GetChipCountOfCode ── */
-/* register form: calls sub_8006EA4 outside this file, which has no typed C interface yet */
+/* register form: calls pack_hasChipOfCode_8006EA4 outside this file, which has no typed C interface yet */
 static bool chip_code_is_valid(u32 chip_idx, u32 search_item) {
     R0 = chip_idx;
     R1 = search_item;
-    GUEST_CALL(sub_8006EA4);
+    GUEST_CALL(pack_hasChipOfCode_8006EA4);
     return ZERO_FLAG();          /* Z set ⇒ code is recognised; fall through to count path */
 }
 

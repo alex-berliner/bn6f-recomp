@@ -609,10 +609,10 @@ static void call_sub_800A908(void) {
     GUEST_CALL(clearBattleStateCounter_800A908);
 }
 
-/* register form: calls sub_8001172 outside this file, which has no typed C interface yet */
+/* register form: calls gameState_setUnk09_8001172 outside this file, which has no typed C interface yet */
 static void call_sub_8001172(u32 arg0) {
     R0 = arg0;
-    GUEST_CALL(sub_8001172);
+    GUEST_CALL(gameState_setUnk09_8001172);
 }
 
 /* Fully reset the PET Nav state: heal, reload boosts, clear all "active" flags,
@@ -657,7 +657,7 @@ static void reset_pet_navi_setup(u32 toolkit) {
     ST16(s2001c04 + 0x12, 0);
     ST16(s2001c04 + 0x14, 0);
 
-    /* Reset navi data via sub_8001172 */
+    /* Reset navi data via gameState_setUnk09_8001172 */
     call_sub_8001172(0);
 
     /* Set "navi initialized" flag and clear session-state flags */

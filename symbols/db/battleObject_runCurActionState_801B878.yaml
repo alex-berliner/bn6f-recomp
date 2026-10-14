@@ -1,0 +1,80 @@
+name: battleObject_runCurActionState_801B878
+address: '0x0801B878'
+kind: function
+previous_names:
+- sub_801B878
+status: probable
+summary: 'Per-frame per-object "action state machine" step for a battle object: handles freeze/sleep/paralysis/flash
+  damage reactions, then dispatches to a per-CurAction handler via the jump table in r0.'
+interface: '(r0 = ptr to per-CurAction function table, r5 = BattleObject*) -> r0 = void ; side effects:
+  writes to BattleObject (HP, CurAction, CurPhase, flags, PreventAnim, AIData+0x5c, etc.), plays sound
+  0x85 on hit, may re-white-palette/zero-shader via sprite helpers, tail-calls one of the CurAction handlers.'
+details: '1. Saves r0 (action table) on stack; caches CollisionDataPtr (r6) and AIDataPtr (r7) from r5.
+
+  2. If CollisionData.FinalDamage (offset 0x80) is non-zero, force white palette, play sound 0x85, then
+  call object_subtractHP — when subtractHP returns non-zero result (i.e. damage actually applied) it skips
+  the "auto-kill via collision flag" branch.
+
+  3. Otherwise checks CollisionData.FlagsFromCollision & 0x0C800002 with ExtraVars+4 == 0 → zeros HP directly
+  (e.g. instakill conditions like Columns-type panel); if not, falls through.
+
+  4. If ObjectFlags2 bit 0x8000 set, skip phase reset; else if HP==0, set ObjectFlags2 bit 1 (mark for
+  destruction via object_setFlag2(1)).
+
+  5. Test ObjectFlags1 bit 0x100 (DEAD): if not set, branch into a long state-machine on ObjectFlags2
+  bits (0x01, 0xC00, ObjectFlags1 LCDControl-related bits, 0x3000, 0x30000000) plus battle_isTimeStop
+  + CurAction==0 → tail-calls sub_8018002 / sub_801813A / sub_801823C, or rewrites CurAction to 2/5 and
+  CurPhase to 0 to reset/begin destruction/animation.
+
+  6. If time-stop active and CurAction!=0, calls sub_801823C (per-action handler during freeze).
+
+  7. Otherwise clears PreventAnim, and if ObjectFlags2 bit 0x100 (CANCEL_ACTION) set: clears it, snapshots
+  CurStateActionPhaseAndPhaseInitialized into AIData+0x5c the first time, sets CurAction=5, CurPhase=0,
+  Unk_0d=0 (begin a "pre-action init" re-entry).
+
+  8. Else if ObjectFlags1 bit 0x100000 (USING_ACTION) set, sets CurAction=5.
+
+  9. Finally calls sprite_zeroColorShader + hideSummonsWhenBlind_80181F6, reads new CurAction, indexes
+  the table stored in the original r0 (ldr r0,[r1,r0,lsl#2]; bx r0) to tail-call the CurAction handler.
+
+  10. Reads/writes many BattleObject offsets: 0x9 (CurAction), 0xa (CurPhase), 0x0a/0x0b (CurPhaseAndPhaseInitialized),
+  0x18 (PreventAnim), 0x24 (HP), 0x5c (AIData scratch), 0x60+4 (ExtraVars+4), and CollisionData 0x70/0x80/0x3c/0x40
+  via object_getFlag/Flag2.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub sp,#4; str r0,[sp]` + tail `ldrb r0,[r5,#oBattleObject_CurAction]; lsl r0,#2; ldr r1,[sp];
+    ldr r0,[r1,r0]; bx r0` is a classic jump-table dispatch using the saved r0 as the table base. - `mov
+    r0,#0x80; ldrh r0,[r6,r0]` reads CollisionData+0x80 (FinalDamage); non-zero branches to subtractHP
+    path. - `bl PlaySoundEffect` with `mov r0,#SOUND_UNK_85` shows a constant sound effect id on damage
+    application. - `ldr r0,[r5,#oBattleObject_ExtraVars+4]; cmp r0,#0` plus `mov r0,#0; strh r0,[r5,#oBattleObject_HP]`
+    implements the "extra-vars instakill" path. - State cascade of `object_getFlag` / `object_getFlag2`
+    / `object_clearFlag2` / `object_setFlag1` / `object_setFlag2` with bit tests 0x100, 0x01, 0xC00, 0x3000,
+    0x8000, 0x100000, 0x100 maps directly to named OBJECT_FLAGS_* constants (DEAD, INVULNERABLE, BLIND/CONFUSED-bits,
+    etc.). - `bl battle_isTimeStop` is used to gate the sub_801823C call and to bypass the CurAction rewrite
+    below it. - `bl sprite_forceWhitePalette` immediately after detecting FinalDamage matches the "hit
+    flash" effect. - Caller sub_80D774C is the per-frame object loop (in/out keep r5 = cur object and
+    r10 = toolkit), and feeds the action jump table in r0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801B878
+
+    '
+  result: the body read as described above
+open_questions:
+- Exact semantic of each "CurAction" handler at sub_8018002 / sub_801813A / sub_801823C (idle/reaction/post-flinch)
+  and the layout of the action table passed in r0. - Whether the 0xC800002 mask + ExtraVars+4==0 instakill
+  is a generic "death check from collision" or specific to one object type.
+sources:
+- discovery session 2026-10-14 batch 36 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 0673b3be
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801B878 -> battleObject_runCurActionState_801B878
+  where: bn6f 98444f5f
+  tool: tools/rename_symbol.py
