@@ -1,0 +1,76 @@
+name: battleObject_collectTargetsInRegion_813BD90
+address: '0x0813BD90'
+kind: function
+previous_names:
+- sub_813BD90
+status: probable
+summary: Scan a 7x7 panel region around a battle object and append valid targets to the AI target list.
+interface: '(r0 = actorIndex, r1 = centerPanelX, r2 = centerPanelY, r3 = ?, r6 = ?, r8 = outListPtr, r10
+  = toolkit) -> r0 = updated outListPtr ; side effects: writes through byte_2006C50 (r0..r0+0x31) and
+  through the toolkit''s Unk200414c_Ptr panel grid'
+details: "1. Saves r0..r2 and r8 onto a 0x20-byte stack frame along with r6+1 (column extent) and a zero.\n\
+  \  2. Calls sub_813B7A0 (battleObject_runAIDispatchTable) with the actor index and r3 to obtain the\
+  \ actor's\n     AI table pointer in r7; this gives a 7x7 byte AI table referenced by r7 throughout.\n\
+  \  3. Computes an offset into the toolkit's Unk200414c_Ptr grid: r3 = (panelY-3)*7 + (panelX-3); adds\n\
+  \     r6 (panelY) later to slide the row by row (r6 += 7 each row, r2 += 1).\n  4. Iterates a 7x7 window\
+  \ (r2 in [-3, +3], r1 in [-3, +3]) clamped by the panel grid bounds at\n     loc_813BDD4 (cmp r1,#0\
+  \ / cmp r1,#7 with blt/bge) and loc_813BE1E.\n  5. For each cell (r3 = AI byte, r6 = panel-state byte),\
+  \ only when both are non-zero:\n     - Reads a 0x31-byte slot at byte_2006C50 (loaded via off_813BE88).\
+  \ If the AI cell value equals the\n       current counter (r5 = r6+1), or is already present in byte_2006C50[0..0x31],\
+  \ the cell is skipped\n       (likely \"don't add duplicates of the actor itself or already-seen enemies\"\
+  ).\n     - Calls sub_813C624(r1=panelX, r2=panelY) to check if the panel is actually a valid enemy target;\n\
+  \       a non-zero return skips the append.\n     - On accept, stores the panel value into [r8] and\
+  \ increments r8 (this is the running output\n       pointer the caller reads on entry from r8).\n  6.\
+  \ After the inner loop, advances r6 by 7 (panel grid row stride), r7 by 7 (AI table row stride),\n \
+  \    r2 by 1, and r5 (row counter) by 1; loops while r5 < 7.\n  7. Returns r0 = updated r8 (pointer\
+  \ just past the last appended entry); the caller reads it from\n     r8 after the call (visible from\
+  \ the contract: r8 is in/out).\n  Captured entry r0 values 0x34/0x90/0x... look like BattleObject Index_00\
+  \ / Param1-ish fields, and\n  r8 entries 0x02006C50/0x02006C51 line up with byte_2006C50 (the seen-set\
+  \ buffer).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battleObject_runAIDispatchTable_813B7A0` early in the function establishes r7 as the
+    per-actor AI 7x7 buffer. - `ldr r6, [r10,#oToolkit_Unk200414c_Ptr]` confirms r10 is the toolkit and
+    r6 is a panel-state grid. - `mul r3, r2` / `add r3, r3, r1` with `r2 -= 3; r1 -= 3` derives a (y-3)*7
+    + (x-3) index into the grid. - Bounds checks `cmp r1,#0`/`cmp r1,#7` (loc_813BDD4) and the matching
+    column-loop guard `cmp r3,#7` bound the inner scan to a 7x7 window centred on the object''s panel.
+    - `ldrb r4, [r7,r3]` reads AI-target flags; `ldrb r0, [r6,r3]` reads panel-state; both must be non-zero.
+    - `ldr r4, off_813BE88 // =byte_2006C50` plus the scan loop `cmp r5, r0`/`cmp r1, #0x31` implement
+    a de-duplication / actor-skip against a 0x31-byte "already listed" buffer. - `bl sub_813C624` with
+    r1=panelX, r2=panelY is the per-panel validity check; non-zero result skips append. - `strb r0, [r4]`
+    then `add r4, #1` / `str r4, [sp,#0x10]` appends the accepted panel value through r8. - Final `mov
+    r8, r0` / `ldr r0, [sp,#0x10]` returns the new write pointer in r0 to the caller. - Caller sub_813BD24
+    uses r10 and r7/r8 the same way, consistent with running this scan per active actor.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813BD90
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813bd90 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of r0 on entry (actor index vs BattleObject field) - captured values 0x34/0x90 suggest
+- a packed field, not directly an array index. Could be unpacked by the callee.
+- Whether the appended byte is the panel type, an enemy ID, or something derived from sub_813C624's
+- return value (the function stores r0 from before the call, after the new r1 load - need to read
+- sub_813C624's contract).
+- The 0x31 cap on the seen-set and the special-case compare against `r5 = r6+1` (the column index)
+- suggest a "skip the centre actor" rule but the precise semantics are not in the assembly alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813BD90 -> battleObject_collectTargetsInRegion_813BD90
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

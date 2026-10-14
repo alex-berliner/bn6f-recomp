@@ -1,0 +1,66 @@
+name: battle_scrollTickStepOrStop_80313FC
+address: '0x080313FC'
+kind: function
+previous_names:
+- sub_80313FC
+status: probable
+summary: 'Per-frame step for the scrolling battlefield: collects a scroll delta, tests the wedge clamp,
+  and either nudges the camera or sets the "arrived at target" bit.'
+interface: (r0 = BattleObject*, r5 = ?, r12 = BattleObject*'s header/state word, lr = ret) -> r0 = BattleObject*
+  (unchanged), r12 = header/state word with bit 0x2 OR'd in ; flags clobbered
+details: "- Pushes r0, r1, r2, r5, lr (the prologue) and forwards the saved BattleObject* (r0) plus r5\
+  \ into\n    battle_scrollAccumulateStep_8031176, which appears to advance a per-frame scroll counter\
+  \ and\n    return the target offset / cross value.\n  - Sets up a wedge test for sub_8030F7C (segment-vs-wedge\
+  \ intersection): r2=0, r3=r4=r5=0x20\n    (typical \"32/32\" step pair), r6=1. The line segment to test\
+  \ is derived from r5 plus the BattleObject's\n    X/Y (r0 + 0x34..0x3a from `BattleObject.Coompetds`\
+  \ per the struct).\n  - If the line is outside the wedge, sub_8030F7C returns (0,0) and camera_moveByDelta_80310B0\
+  \ is called\n    with r0=0 (no delta), so the camera is not nudged this frame.\n  - In every case, the\
+  \ function finishes by reading r12, OR'ing 0x2 into it, and storing it back into\n    r12. The bit 0x2\
+  \ of the BattleObject header/flags word therefore signals \"scroll step done / at\n    scroll target\"\
+  \ to the caller (BattleObject.Flags bit 1 of the lower byte, near OBJECT_FLAG_* in the\n    header).\n\
+  \  - It is invoked from r0/r5/r12 in the contract and from the caller frame (lr=0x08030bfc), strongly\n\
+  \    suggesting it runs as the per-frame update entry for a \"scrolling background\" object.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r0-r2,r5,lr}` saves the caller-supplied BattleObject* and the caller''s BattleObject
+    header word held in r12 across the call. - `bl battle_scrollAccumulateStep_8031176` consumes r0/r5
+    and is the only consumer of those scratch inputs; it matches the "accumulate a scroll step" behaviour
+    (sub_8031176 has the same callee contract in r0/r5 and writes r0 as the new step). - The wedge clamp
+    (r3=r4=r5=0x20) is a fixed-size box around the panel grid; sub_8030F7C''s contract "tests whether
+    a line segment crosses a two-edge wedge... and returns (0,0) on no-cross" matches "no movement this
+    frame". - `mov r0, #0 ; bl camera_moveByDelta_80310B0` is the "don''t actually scroll" branch taken
+    when the wedge test says we''re already at/near the target. - The trailing `mov r0, r12 ; orr r0,
+    r1(=#2) ; mov r12, r0 ; pop ... pc` unconditionally sets bit 0x2 of the BattleObject header word before
+    returning; this is the "finished a scroll step" flag.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080313FC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, beastsp, chips, fuzz, maps, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^080313fc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, beastsp, chips, fuzz, maps, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9, wander
+open_questions:
+- Which exact header bit 0x2 corresponds to in the BattleObject.Flags byte (OBJECT_FLAG_* set
+- list) -- only the higher-level behaviour "set a 'reached target' bit on the object" is certain.
+- What r5 carries into the function on entry (probably a scroll-state/timer slot; battle_scrollAccumulateStep_8031176
+  reads r5 too but its internals weren't lifted here).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80313FC -> battle_scrollTickStepOrStop_80313FC
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

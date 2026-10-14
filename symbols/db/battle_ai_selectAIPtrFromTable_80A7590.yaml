@@ -1,0 +1,60 @@
+name: battle_ai_selectAIPtrFromTable_80A7590
+address: '0x080A7590'
+kind: function
+previous_names:
+- sub_80A7590
+status: probable
+summary: Loads a 4-byte AI routine pointer from a packed u16-indexed table and stores it into the battle
+  object's AIData+0x28 slot.
+interface: '(r5 = BattleObject*) -> r0 = ptr read from table; side effect: writes that ptr into r5->AIData+0x28'
+details: "- r5 holds a BattleObject; reads its AIData pointer field at r5+0x2c (which the BattleObject\
+  \ struct places at AIDataPtr, but here it is interpreted as a u16 lookup index).\n  - Scales the 16-bit\
+  \ value at r5+0x2c by 4 (lsl #2) to index an array of u32 pointers anchored by `byte_8140C60` (loaded\
+  \ via literal-pool pair off_80A75A0 / 0x8140C60).\n  - Loads the indexed u32 from that table into r0,\
+  \ then stores it into r5+0x28, overwriting whatever was previously at that slot (AIData->Unk_28 by the\
+  \ AIData layout).\n  - Returns r0 (the just-loaded pointer) as a side return value, but the caller treats\
+  \ this as void.\n  - Captured-call entry r0/r1/r2/r3 look like fractional screen coords (16.16) being\
+  \ passed by the caller; r5 is preserved across the call. The exit values 0x00015000 / 0x00018000 are\
+  \ consistent with a packed 16.16 (0x150 = 1.3125, 0x180 = 1.5) — these are almost certainly the same\
+  \ `lsl r1,#2` result of `byte_8140C60` table entries reused as scalar data, not actually coordinates.\n\
+  \  - File path \"beastsp\" in snap names suggests a Beast-form/spirit beast animation path, where picking\
+  \ the AI script by AIData->Unk_2c index is the only computed step.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, [r5,#0x2c]` followed by `lsl r1, r1, #2` makes the value at +0x2c act as a word-table
+    index. - `ldr r0, off_80A75A0` / `ldr r0, [r0,r1]` is the standard Thumb pattern for `table[shifted_index]`.
+    - `str r0, [r5,#0x28]` is the only memory store; only r5+0x28 is written. - `pop {r4,pc}` makes this
+    a one-instruction tail-call helper with no callee-save requirement beyond r4 preservation. - The captured
+    lr=0x080a73e9 in every sample is consistent with the lone caller `sub_80A73A0` (its `bl` lands at
+    0x80a73e9+4 in the snake-arm subarea).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7590
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7590 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic name of the table at 0x8140C60 and whether the entries are AI main loop pointers, AI state
+  jump table entries, or animation callbacks. Knowing what the caller does with r0 after this returns
+  (and what r5+0x28 is consumed as) would pin the role.
+- Whether r5 is a BattleObject or an AIData struct here — the offsets 0x28 / 0x2c fit both, but only one
+  is correct.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7590 -> battle_ai_selectAIPtrFromTable_80A7590
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

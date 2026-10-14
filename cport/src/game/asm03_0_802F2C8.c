@@ -1945,12 +1945,12 @@ Next battle_runTextboxUpdateAndSetStateBit1_80313D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80313FC ── */
-/* sub_80313FC: runs a three-step sequence (battle_scrollAccumulateStep_8031176; sub_8030F7C with a fixed
+/* ── battle_scrollTickStepOrStop_80313FC ── */
+/* battle_scrollTickStepOrStop_80313FC: runs a three-step sequence (battle_scrollAccumulateStep_8031176; sub_8030F7C with a fixed
  * parameter set of 0x20/0x20/0x20/1; camera_moveByDelta_80310B0 with 0) and then sets bit 1 of
  * the state word passed in r12.  The caller's r0, r1, r2 and r5 are preserved
  * across the calls; the Z/N flags reflect the updated r12 value. */
-Next sub_80313FC(void) {
+Next battle_scrollTickStepOrStop_80313FC(void) {
     u32 inR0 = R0, inR1 = R1, inR2 = R2, inR5 = R5;
     u32 state = R12;
 
@@ -2453,7 +2453,7 @@ Next text_setupTextboxAndStartPrint_8031BB2(void) {
     R4 = 0;
     R3 = 8;
     R5 = 0x10;
-    GUEST_CALL(sub_80315B8); /* open the message window box */
+    GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8); /* open the message window box */
 
     GUEST_CALL(sub_8031B7C); /* start the text print */
 
@@ -2475,7 +2475,7 @@ Next textbox_StepAndRefreshWindow_8031BCA(void) {
     R4 = 8;
     R3 = 0x10;
     R5 = 8;
-    GUEST_CALL(sub_80315B8);
+    GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8);
 
     /* Redraw/refresh the text box using the blit results in r2..r5. */
     GUEST_CALL(sub_8031B7C);
@@ -2483,8 +2483,8 @@ Next textbox_StepAndRefreshWindow_8031BCA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031BE2 ── */
-/* sub_8031BE2: sequence of three setup/update calls.
+/* ── battleObject_checkInAttackRange_08031BE2 ── */
+/* battleObject_checkInAttackRange_08031BE2: sequence of three setup/update calls.
  *
  * R0 and R5 arrive as arguments. The first callee (battle_calcRelPosToTarget_803172E) is invoked
  * with them unchanged. Then fixed tile/map parameters are loaded into
@@ -2492,7 +2492,7 @@ Next textbox_StepAndRefreshWindow_8031BCA(void) {
  * called with whatever registers math_pointCrossHalfPlaneTest_8031594 left behind (r0 and r5 are
  * carried through). All register and flag effects on return come from the
  * last callee, so nothing needs to be set explicitly here. */
-Next sub_8031BE2(void) {
+Next battleObject_checkInAttackRange_08031BE2(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0;
@@ -2530,7 +2530,7 @@ Next sub_8031BFA(void) {
 /* ── sub_8031C2A ── */
 /* sub_8031C2A(r0, r5 = context):
  * Runs a short helper sequence: first battle_calcRelPosToTarget_803172E on the incoming context,
- * then sub_80315B8 with the fixed arguments (r2 = 1, r3 = 0x10, r4 = 1,
+ * then textbox_computeCursorBlinkAdvance_80315B8 with the fixed arguments (r2 = 1, r3 = 0x10, r4 = 1,
  * r5 = 0x10), and finally sub_8031B7C. The caller sees whatever registers
  * and flags sub_8031B7C leaves behind. */
 Next sub_8031C2A(void) {
@@ -2540,7 +2540,7 @@ Next sub_8031C2A(void) {
     R4 = 1;
     R3 = 0x10;
     R5 = 0x10;
-    GUEST_CALL(sub_80315B8);
+    GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8);
 
     GUEST_CALL(sub_8031B7C);
     RETURN_TO_CALLER();
@@ -2624,7 +2624,7 @@ Next sub_8031C5A(void) {
 /* ── sub_8031C7C ── */
 /* sub_8031C7C — battle helper that runs a short setup sequence:
  * 1. battle_calcRelPosToTarget_803172E with the caller's r0/r5 arguments,
- * 2. sub_80315B8 with a fixed parameter set (14, 14, 0, 16),
+ * 2. textbox_computeCursorBlinkAdvance_80315B8 with a fixed parameter set (14, 14, 0, 16),
  * 3. sub_8031B7C to finish.
  * All results (r0, r2-r7) and the NZCV flags are whatever the last
  * callee leaves behind. */
@@ -2636,7 +2636,7 @@ Next sub_8031C7C(void) {
     R3 = 0xE;
     R5 = 0x10;
 
-    GUEST_CALL(sub_80315B8);
+    GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8);
     GUEST_CALL(sub_8031B7C);
 
     RETURN_TO_CALLER();
@@ -2644,9 +2644,9 @@ Next sub_8031C7C(void) {
 
 /* ── sub_8031C94 ── */
 /* sub_8031C94: run a three-step sequence on the object passed in r0/r5.
- * Calls battle_calcRelPosToTarget_803172E first, then sub_80315B8 with a fixed parameter set
+ * Calls battle_calcRelPosToTarget_803172E first, then textbox_computeCursorBlinkAdvance_80315B8 with a fixed parameter set
  * (r2=0, r3=0x10, r4=2, r5=2), then sub_8031B7C, which picks up whatever
- * r2/r5 sub_80315B8 left behind. r3/r4 must survive the final call.
+ * r2/r5 textbox_computeCursorBlinkAdvance_80315B8 left behind. r3/r4 must survive the final call.
  * Everything (registers and flags) is simply passed through to the caller. */
 Next sub_8031C94(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
@@ -2655,7 +2655,7 @@ Next sub_8031C94(void) {
     R4 = 2;
     R3 = 0x10;
     R5 = 2;
-    GUEST_CALL(sub_80315B8);
+    GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8);
 
     GUEST_CALL(sub_8031B7C);
 

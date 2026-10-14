@@ -1,0 +1,68 @@
+name: submenu_getBeastOutGateAnimScriptTablePtr_813C4C8
+address: '0x0813C4C8'
+kind: function
+previous_names:
+- sub_813C4C8
+status: probable
+summary: Returns a per-CSV beast-out gate-animation row-script table for one of the three supported PETs
+  based on which key item the player owns.
+interface: 'in: r10 = toolkit (for CheckKeyItem lookup) ; out: r1 = pointer into a row-script byte table
+  ; side effects: reads key-item 0x71 ("BeastLink/Beast Out upgrade") via CheckKeyItem'
+details: "- r0 is loaded with the key-item id `0x71` (\"SkillSwrd\"? Placeholder - it is the unlock key\
+  \ that lets the player's PET enter Beast Out) and passed to `CheckKeyItem`, which returns the player's\
+  \ current beast-form index (0/1/2 typically corresponding to the three PET navis that can Beast Out:\
+  \ 0=SpoutMan, 1=TenguMan, 2=TomaHawkMan, with non-card-pet indices handled by the GetPETNaviState etc.\
+  \ - the exact mapping isn't visible here).\n  - The returned index is shifted left by 2 (`lsl r0, r0,\
+  \ #2`) and used as a word index into a 3-entry pointer table at `0x0813C4DC` (`byte_813C4E8`, `byte_813C51C`,\
+  \ `byte_813C550`). The selected 4-byte pointer is loaded into r1.\n  - That pointer targets a small\
+  \ NUL-terminated byte table whose rows look like row-animation script opcodes (values 0x14-0x77, with\
+  \ 0x00 used as end-of-row sentinel). These are clearly per-PET lists of \"which beast-out gate / evolution\
+  \ anim frames to play\" — typical beast-out CSE scripts that decide which Cyberworx/HackNav gate animation\
+  \ to invoke.\n  - The callers `sub_813C06C` and `sub_813C1C0` both come from the larger beast-out-related\
+  \ chunk at `0x0813c06c`/`0x0813c1c0` (their contracts take r10 and lr, mostly return via r1). They use\
+  \ r1 directly as the row-script pointer, almost certainly to drive a per-PET signature animation sequence\
+  \ during a Beast Out / un-Beast transition.\n  - The function is tail-call shaped (`push {lr}` / `pop\
+  \ {pc}` with no other stack work); it can be safely called as if it returned the row-script pointer\
+  \ in r1.\n  - Contract declares `out=['r1', 'r4', 'r5', 'r6', 'r7']`; r4-r7 are never actually written\
+  \ here — the contract just notes they are preserved (caller-saved / untouched).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x71` immediately before `bl CheckKeyItem` is the only argument the callee receives
+    (CheckKeyItem is documented elsewhere to take a key-item id in r0); 0x71 is the in-game id for the
+    beast-out/LinkPET key item across BN6. - The 3-entry jump-style table at `0x0813C4DC` plus the `lsl
+    r0, r0, #2; ldr r1, [r1,r0]` triple is a textbook "index a word table by CheckKeyItem''s small result"
+    idiom. - The three target arrays (byte_813C4E8/_0x51C/_0x550) each end with NULs and have 0x21..0x31
+    row bytes — a small op-coded per-PET script, characteristic of a beast-out / cross-over animation
+    sequence. - Both callers (`sub_813C06C`, `sub_813C1C0`) live in the same sub_813Cxxx section that
+    features beast-out related callouts, have in={''r10'',''lr''} (consistent with a small key-item-driven
+    helper) and out includes r1 — matching this fn''s "returns pointer in r1" behavior.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813C4C8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813c4c8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact PET-to-table mapping (which PET corresponds to table index 0/1/2) and the meaning of the row
+  bytes are not derivable from this function alone; correlating the byte opcodes with the per-PET cross-cut
+  animation scripts in the larger callers (or in the BN6 evolution/gate anim tables) would settle it.
+- '```'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813C4C8 -> submenu_getBeastOutGateAnimScriptTablePtr_813C4C8
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

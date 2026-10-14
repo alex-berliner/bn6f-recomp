@@ -1,0 +1,57 @@
+name: battle_getBeastOutAPwrAtkHandlerByItemCheck_813C4A8
+address: '0x0813C4A8'
+kind: function
+previous_names:
+- sub_813C4A8
+status: probable
+summary: Look up the beast-out A-press power attack handler index from a 0x71 key-item check and return
+  its handler pointer
+interface: (r10 = toolkit) -> r0 = handler function pointer ; r1 preserved
+details: "Calls CheckKeyItem(0x71) to query ownership/quantity of key item id 0x71, uses the\n  returned\
+  \ index << 2 as an offset into a 3-entry jump table at pt_813C4BC, and\n  returns the word at that slot\
+  \ in r0. The function is a leaf (push {lr} / pop {pc})\n  and restores r1 from a constant table base.\
+  \ The three handler targets resolve\n  to byte_813B3AE+225, +274, +323, suggesting three tiered beast-out\
+  \ A-button\n  power attack handlers (e.g., per beast level / element). The caller in\n  sub_813C06C\
+  \ passes the toolkit in r10 (no other args), and the other caller\n  sub_813C1C0 appears to be a similar\
+  \ dispatch; the returned handler pointer is\n  ultimately used to install/select an A-button power attack\
+  \ for beast-out states.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x71` then `bl CheckKeyItem` at the entry: the function uses the standard 0x71
+    key-item probe, consistent with key item 0x71 being a beast-tier marker. - `lsl r0, r0, #2` and `ldr
+    r1, [r1,r0]` with r1 = pt_813C4BC shows the index from CheckKeyItem is a direct table index into a
+    3-entry word table. - The table contents: byte_813B3AE+225 (0x0813b48f), +274 (0x0813b4c0), +323 (0x0813b4f1)
+    — three contiguous handlers within the same 0x813Bxxx region that holds the beast-out action scripts.
+    - The function is a leaf (`push {lr}` / `pop {pc}`) and writes only r0 out, matching a pure pointer-returning
+    helper. - Callers sub_813C06C and sub_813C1C0 take r10 (toolkit) and use the returned value as a battle
+    handler; both live in the same battle AI / beast-out'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813C4A8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813c4a8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of the three handler entries (e.g., whether +0/+1/+2
+- correspond to beast levels, elements, or owned/equipped flags). Settled by
+- disassembling the three target handlers at byte_813B3AE+225/+274/+323 and
+- seeing which AIData fields (BeastOutAPwrAtk, APwrAtk, etc.) they read.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813C4A8 -> battle_getBeastOutAPwrAtkHandlerByItemCheck_813C4A8
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

@@ -1,0 +1,53 @@
+name: battleObject_dispatchUpdateByCurAction_80A8654
+address: '0x080A8654'
+kind: function
+previous_names:
+- sub_80A8654
+status: probable
+summary: Dispatches a battle object's per-action update by jumping through a small table keyed off its
+  CurAction byte.
+interface: '(r5 = BattleObject*, r2 = ?, lr = caller) -> r0 = 0x2f8, NZ set; side effects: tail-calls
+  one of three updaters via off_80A8668'
+details: "Prologue saves r4-r7 and lr; loads the dispatcher base pointer off_80A8664, then reads\n  r5[0x8]\
+  \ (the object header? actually CurState per battle_object_struct - but entry shows\n  return uses this\
+  \ byte as an index 0..2). It indexes off_80A8668 with r5[0x8], sets lr=pc\n  and bx r0 to thunk into\
+  \ one of: sub_80A8674, sub_80A86A0, sub_80A86AC (entries 0,1,2).\n  Because lr was overwritten with\
+  \ pc before bx r0, the callee returns via the pop {pc}, so\n  this is effectively a tail-call dispatcher.\
+  \ Called during the captured \"beastsp\" beats\n  from 0x08004916 (lr on entry).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` reads the dispatch index from the object''s byte at offset 0x8 (CurState/CurAction
+    per battle_object_struct). - `ldr r0, [r0,r1]` then `mov lr, pc; bx r0` is the textbook Thumb thumb-veneer
+    tail-call. - off_80A8668 lists exactly three pointers, all `+1` (THUMB bit set), confirming three
+    distinct handler slots keyed by 0,1,2. - Captured r5 is the battle object and r0 on entry is 0x080a8655
+    (the THUMB bit of the function base) showing lr was set to the caller''s return address before the
+    dispatch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A8654
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a8654 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which struct member at r5[0x8] the index really is - CurState vs CurAction - and the
+- semantics of each of the three handlers (sub_80A8674, sub_80A86A0, sub_80A86AC) is not
+- knowable from this trampoline alone; analyzing the three callees would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A8654 -> battleObject_dispatchUpdateByCurAction_80A8654
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

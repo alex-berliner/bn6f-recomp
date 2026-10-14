@@ -1,0 +1,66 @@
+name: battle_setObjectChargeParamsFromTable_80A6FDC
+address: '0x080A6FDC'
+kind: function
+previous_names:
+- sub_80A6FDC
+status: probable
+summary: Looks up a charge/attack parameter pair (u16,u16) for a battle object from a 3-level data table
+  and stores them at object+0x24/0x28.
+interface: (r5 = battle object pointer) -> void ; side effects clobbers r0-r3, lr
+details: "- r5 holds a battle object. Offsets +4, +5, +6 are used as three indices into a 3-level table.\n\
+  \  - off_80A7010 is an array of 4 row pointers (off_80A7020/702C/7038/7044) indexed by object+5 (Param2).\n\
+  \  - Each row points to 3 sub-arrays of u16 pairs (data at 0x8140C68..0x8140D58) indexed by object+4\
+  \ (Param1).\n  - Each sub-array entry is { u16 param0, u16 param1 } in 16.16 fixed-point form (read\
+  \ as halfwords, then shifted left 16 to build u32 16.16 values).\n  - The final pointer is then advanced\
+  \ by (object+6) * 4 bytes, indexing a third-level array of u16 pairs within that sub-array.\n  - If\
+  \ the param0 halfword at the resolved slot is 0x00FF, the function clears object+6 to 0 and loops back,\
+  \ re-doing the lookup (handles a sentinel/wrap-around in the third-level index).\n  - On success, it\
+  \ stores the pair as 16.16 u32s into the battle object at offsets +0x24 and +0x28 (these are u16 fields\
+  \ per the battle_object_struct definition; here stored as full u32s that overwrite two u16s each).\n\
+  \  - Returns by popping {pc}; out contract is empty, so this is void-like to its single caller.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r3, [r5,#5]` / `ldrb r3, [r5,#4]` / `ldrb r3, [r5,#6]` use Param2/Param1/Param3 from
+    the battle object (offset_struct entry at +4..+7). - `lsl r3, r3, #2` followed by `ldr r2, [r2,r3]`
+    performs a 4-byte table walk matching the `off_80A7010..off_80A7044` layout in the data pool. - `ldrh
+    r0, [r2]` / `ldrh r1, [r2,#2]` then `lsl r0, r0, #0x10` / `lsl r1, r1, #0x10` shows each entry is
+    a (u16,u16) pair that becomes a 16.16 fixed-point u32. - `cmp r0, #0xff` / `strb r0, [r5,#6]` with
+    branch back to `loc_80A6FDE` implements the sentinel-0xFF wrap on the +6 (Param3) index. - `str r0,
+    [r5,#0x24]` / `str r1, [r5,#0x28]` writes the resolved pair at battle object offsets 0x24/0x28 (which
+    sit inside the battle_object post-coords block; nearest documented u16 fields there are the HP/MaxHP
+    region but treated here as raw storage). - The lone caller sub_80A6F78 passes r5 from its frame; 40
+    captured invocations all enter with r5 = battle object and r1 = 0x080988E4 (likely a data-pointer
+    cache from the caller). - 0x080988E4 in r1 across all calls and the `snap_beastsp_*` log names suggest
+    this runs every frame inside the beast-out / special-attack path, consistent with charging / timer
+    state writes.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A6FDC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a6fdc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the two stored values represent semantically (charge time vs. duration? attack parameters?) — assembly
+  gives structure but no symbol. Naming them as "charge params" is a best guess from the beast-sp call
+  site.
+- Whether the object at +0x24/+0x28 is reused for HP in some objects; the function writes full u32s so
+  the layout here may not match BattleObject verbatim and could be a different struct sized like one.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A6FDC -> battle_setObjectChargeParamsFromTable_80A6FDC
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

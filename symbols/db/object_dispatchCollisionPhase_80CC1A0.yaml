@@ -1,0 +1,84 @@
+name: object_dispatchCollisionPhase_80CC1A0
+address: '0x080CC1A0'
+kind: function
+previous_names:
+- sub_80CC1A0
+status: probable
+summary: 'Per-frame dispatch for a battle object''s collision phase: tears down current collision data,
+  spawns the post-hit effect, then either marks the object destroyed (battle over), clears its region
+  and forces a phase re-init (self-hit), or runs the per-action handler (or the shared collision present
+  handler if time-stopped).'
+interface: '(r5 = BattleObject*) -> void ; side effects: writes [r5+oBattleObject_CurPhaseAndPhaseInitialized]
+  (also CurStateActionPhaseAndPhaseInitialized), reads/writes CollisionDataPtr/FlagsFromCollision/Alliance/CurAction,
+  tail-calls via bx through the CurAction table at 0x80CC1F0.'
+details: "- Push {lr} only (no callee-saved register save beyond lr via pop {pc}), so the function relies\
+  \ on the caller preserving r5-r12. It tail-pops {pc}, so lr is the return into the caller (i.e. this\
+  \ is a state handler invoked through a curstate jumptable that hands back control).\n  - Always tears\
+  \ down current collision data first: `bl object_removeCollisionData` then `bl object_spawnCollisionEffect`,\
+  \ mirroring the helpers' confirmed contracts (rm collision, spawn visual effect).\n  - Branches on `battle_isBattleOver`:\
+  \ if true, jumps to loc_80CC1E0, which `object_clearCollisionRegion` and writes `CUR_STATE_DESTROY`\
+  \ (0x8) into CurStateActionPhaseAndPhaseInitialized (offset 0x8, the full u32 view, since `str r0,[r5,#0x8]`\
+  \ is used). After this the function returns.\n  - Otherwise, loads `CollisionDataPtr->FlagsFromCollision`\
+  \ (offset 0x70 of CollisionData per the struct) and tests a per-alliance mask from the 8-byte table\
+  \ at `byte_80CC200`. The mask is fetched via `Alliance << 2` so each alliance gets its own 4-byte lane\
+  \ (`0x0000, 0x05808000, 0x0000`).\n  - If any bit overlaps, the object took a self-inflicted hit (e.g.\
+  \ flag 0x80000000 BUBBLED, 0x100 DEAD, etc.): clear the collision region, then write 0xc into CurPhaseAndPhaseInitialized\
+  \ (the u16 view at offset 0xa), which forces a re-initialization of the next phase.\n  - Then runs `battle_isTimeStop`.\
+  \ If time-stop is active, jump straight to `object_presentCollisionData` (the shared handler that does\
+  \ the actual collision work for frozen turns). Otherwise index `off_80CC1F0` by `CurAction` (the byte\
+  \ at offset 0x9) and `bx` into one of `sub_80CC208`, `sub_80CC23E`, or `sub_80CC3B8` (note the +1 low\
+  \ bit set to switch to Thumb). Those are the per-cur-action phase handlers for this collision state.\n\
+  \  - The structure touched is `BattleObject`: CollisionDataPtr at 0x54, Alliance at 0x16 (loaded as\
+  \ byte then shifted), CurAction at 0x9, CurPhaseAndPhaseInitialized at 0xa, CurStateActionPhaseAndPhaseInitialized\
+  \ at 0x8.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- The very first instructions `bl object_removeCollisionData; bl object_spawnCollisionEffect`
+    match the confirmed callee roles and are unconditional, putting collision teardown before any branching.
+    - `bl battle_isBattleOver; tst r0,r0; bne loc_80CC1E0` is the canonical guard; the loc_80CC1E0 path
+    then `str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` with r0=#0x8 (CUR_STATE_DESTROY
+    from the struct enum). - `ldr r2,[r5,#oBattleObject_CollisionDataPtr]; ldr r2,[r2,#oCollisionData_FlagsFromCollision]`
+    exactly matches offsets 0x54 and 0x70. - `ldrb r0,[r5,#oBattleObject_Alliance]; lsl r0,r0,#2; ldr
+    r1,off_80CC1FC; ldr r0,[r1,r0]` plus `byte_80CC200: .byte 0x0,0x0,0x80,0x5, 0x0,0x0,0x80,0xA` shows
+    a per-alliance 32-bit mask table; the `tst r0,r2` then isolates the "this object hit itself" bits.
+    - `mov r0,#0xc; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]` writes 0x000c (PhaseInitialized=1,
+    CurPhase=0x6? or vice-versa) to force the next action phase to reinitialize; 0xc is the strh size
+    + offset pair for the halfword at 0xa. - The `ldr r1,off_80CC1EC; ldrb r0,[r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; mov lr,pc; bx r1` block dispatches on CurAction through a 4-byte-per-entry table at
+    off_80CC1F0 with two entries (the table only contains two addresses even though space for three is
+    allocated), routing to `sub_80CC208`, `sub_80CC23E`, `sub_80CC3B8`. The +1 low bit marks Thumb targets.
+    - `battle_isTimeStop` branch to `object_presentCollisionData` matches the helper summary ("Refreshes
+    a battle object''s collision state... (unless time is stopped)").'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080CC1A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips'
+  reproduce: 'grep -l ''^080cc1a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips
+open_questions:
+- What the three sub-actions sub_80CC208/23E/3B8 actually do (move, hit-stop, etc.); the function only
+  chooses between them. Inspecting those would pin down the CurAction enum meanings.
+- The semantic of writing 0xc into the halfword at offset 0xa is "force phase reinit" but the precise
+  interpretation of the low/high nibbles (CurPhase vs PhaseInitialized) isn't directly stated by the code
+  at this site.
+- Why the dispatch table off_80CC1F0 has space for a third entry (the .word after sub_80CC23E+1 is sub_80CC3B8+1,
+  only 2 entries are stored despite the surrounding word suggesting more) is unclear without context.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CC1A0 -> object_dispatchCollisionPhase_80CC1A0
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

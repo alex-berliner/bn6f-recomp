@@ -1,0 +1,58 @@
+name: battleObject_clearAIDataUnknown_80E1662
+address: '0x080E1662'
+kind: function
+previous_names:
+- sub_80E1662
+status: probable
+summary: Clears AIData fields (Unk_40 → 0 at +0x64, Unk_10 = 0) on the AI block of the BattleObject pointed
+  to by r5
+interface: (r5 = BattleObject*) -> r0 = 0 ; r1 = AIData ptr ; sets Z flag
+details: "1. `ldr r1, [r5,#oBattleObject_AIDataPtr]` — read the AIDataPtr field from the\n     BattleObject\
+  \ header (offset 0x58 per the struct).\n  2. `ldr r1, [r1,#oAIData_Unk_40]` — follow AIData's `Unk_40`\
+  \ (a `ptr` at +0x40)\n     to a secondary buffer.\n  3. `mov r0, #0; str r0, [r1,#0x64]` — zero a u32\
+  \ at offset 0x64 inside that buffer\n     (likely a field on a sub-struct such as AIState or AIAttackVars).\n\
+  \  4. `mov r0, #0; strb r0, [r1,#0x10]` — zero a single byte at offset 0x10 in the\n     same buffer\
+  \ (AIData.Unk_10, the generic AI state slot).\n  5. Returns with r0=0, Z flag set.\n  No stack frame\
+  \ is allocated (leaf function using `mov pc, lr`).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly at 0x080e1662 walks exactly `BattleObject.AIDataPtr → AIData.Unk_40` before writing
+    to that buffer; that two-step indirection is required to reach the inner struct that gets cleared.
+    - `str r0,[r1,#0x64]` (u32 zero) and `strb r0,[r1,#0x10]` (u8 zero) directly match the documented
+    offsets 0x64 and 0x10 of whatever `Unk_40` points at (likely AIState; AIState itself is 0x20 bytes,
+    but the buffer pointed to by AIData.Unk_40 is presumably larger — possibly AIData+AIState concatenated,
+    putting 0x10 inside AIState and 0x64 at AIData+Unk_24/Unk_68 territory). - Contract `in=[''r5'',''lr'']`
+    matches a typical BattleObject-in-r5 leaf. - Called from sub_801011A and sub_80EAF36, both with r5-in
+    contracts.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E1662
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080e1662 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact meaning of the cleared fields; we don't know which buffer
+- '`AIData.Unk_40` ultimately points to in this build, so the'
+- '`AIState`/`AIAttackVars` attribution is a guess. The function name''s'
+- '"Unknown" suffix reflects that.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E1662 -> battleObject_clearAIDataUnknown_80E1662
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

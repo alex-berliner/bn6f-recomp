@@ -1,0 +1,70 @@
+name: beastOutOrProgramAdvanceSetTransform_811842C
+address: '0x0811842C'
+kind: function
+previous_names:
+- sub_811842C
+status: probable
+summary: 'BeastOut/ProgramAdvance sprite initialization step: writes a state byte and CurAnim into the
+  beast-sprite object, then snaps its position and resets palette/alpha effects.'
+interface: (r5 = beast sprite object ptr, r6 = parent battle object / AIData ptr, r10 = toolkit) -> void
+details: "Sets r4 to 1, then branches:\n    - if r6[0] (battle object CurState?) == 0x28, skip the chatbox-flag\
+  \ check and fall through.\n    - else read eFlags2009F38 with mask 0x80; if that flag is clear, also\
+  \ fall through.\n  In the \"fall through\" branch it inspects r6[0xc] (AIData->Unk_0c, secondary-element/element\
+  \ byte area),\n  bailing if r6[0xc] == 0xc, and otherwise compares (r6->TotalDamageTaken at 0x20) +\
+  \ (r6->JoypadPressed at 0x24)\n  against r6->PwrAtkCurChargeTime at 0x1e - 1. If the sum equals the\
+  \ charge time, the bail path is also taken\n  (r4 = 0x23 in that case). Otherwise r4 stays 1.\n  Result\
+  \ byte in r4 is stored to r5[0] (sprite's CurAnim? or some state byte), and a hard-coded 4 is written\n\
+  \  to r5[0xc] (sprite sub-anim/timer). It then calls sprite_setCoordinates with hard-coded origin\n\
+  \  (0xe6, 0x1b) plus r6->TotalDamageTaken*0x12 as the x offset, then disables alpha and zeroes the color\n\
+  \  shader on the beast sprite via sprite_disableAlpha/sprite_zeroColorShader, and finally calls the\n\
+  \  adjacent sub_81185E4 and sub_8118604. The captured-return r0 = 0x7f7bffff corresponds to the live\n\
+  \  return of the last helper (sub_8118604) being captured post-bl; the function itself is void in contract.\n\
+  \  The 0x40 captured r0/r1 at entry were r0=0x0811842d (Thumb PC of the next instruction) and small\n\
+  \  constants; nothing meaningful in the pointer dump.\n  This is one of the \"Beast Out / Program Advance\"\
+  \ sprite update frames: it chooses between the regular\n  pose (r4=1) and an \"evolution\" / PA pose\
+  \ (r4=0x23) based on whether the charge window has expired or\n  the eFlags2009F38 chatbox/evolution\
+  \ flag is set.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r6]` then `cmp r0, #0x28; beq loc_811843E` reads the battle object byte 0 and
+    jumps to the state-write block when it equals 0x28 (Beast Out / "transform" state). - `bl chatbox_mask_eFlags2009F38`
+    with r0=0x80 and `bne loc_8118454` short-circuits the state-write path when the chatbox bit is set
+    (so an in-progress chatbox keeps the beast pose). - `ldrh r0, [r6,#0x20]; ldrh r1, [r6,#0x24]; add
+    r0, r0, r1; ldrh r1, [r6,#0x1e]; sub r1, #1; cmp r0, r1; beq loc_8118454` is the AIData->TotalDamageTaken
+    + JoypadPressed vs PwrAtkCurChargeTime-1 guard, matching AIData layout (TotalDamageTaken=0x20, JoypadPressed=0x24,
+    PwrAtkCurChargeTime=0x1e). - `strb r4, [r5]; mov r0, #4; strb r0, [r5,#0xc]` writes the chosen anim
+    byte and 0x04 to the beast sprite object at offsets 0x0 and 0xc (the standard CurAnim / sub-anim positions
+    in BattleObject). - `mov r0, #0xe6; mov r1, #0x1b; ldrh r2, [r6,#0x20]; mov r3, #0x12; mul r2, r3;
+    add r1, r1, r2; bl sprite_setCoordinates` places the sprite at fixed origin (0xe6, 0x1b) shifted by
+    TotalDamageTaken*0x12 - the PA panel-shift math.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811842C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811842c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What sub_81185E4 and sub_8118604 do (and so what state 0x04 / CurAnim 0x23 actually means
+- visually) is unknown; their bodies would pin the role of this function.
+- The exact semantic of byte 0x28 in the parent object (r6[0]) and of AIData->Unk_0c == 0xc is
+- unclear; they are being used as a "in Beast Out phase already" and "not a particular element"
+- guard, but the field names are not in the struct comments.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811842C -> beastOutOrProgramAdvanceSetTransform_811842C
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

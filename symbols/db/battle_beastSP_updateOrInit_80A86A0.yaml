@@ -1,0 +1,63 @@
+name: battle_beastSP_updateOrInit_80A86A0
+address: '0x080A86A0'
+kind: function
+previous_names:
+- sub_80A86A0
+status: probable
+summary: 'BeastSP secondary object tick: initialise/update the BeastSP object state, then drive its sprite.'
+interface: '(no meaningful args passed via regs; the BeastSP object is reached through r10-derived pointers
+  the callees know about) -> (no return; caller restores r4–r7); side effects: writes the BeastSP object
+  and its sprite'
+details: "This is a tiny trampoline: it pushes r4–r7 and lr, calls `sub_80A86B4` (initialise/update\n\
+  \  the BeastSP object given the active secondary object), then calls `sprite_update` on the\n  resulting\
+  \ sprite, then pops r4–r7 and pc.\n  The contract reads in `r2`, `r5`, `r10`, `lr` and writes back `r2`,\
+  \ `r3`, `r8–r10`, `r12`;\n  r10 is the Toolkit pointer (per the project convention `r10 = &Toolkit`),\
+  \ so the callees\n  walk `Toolkit` to reach the BeastSP-related object. `r5` and `r8/r9` are the secondary\n\
+  \  ObjectHeader/BattleObject pair passed up from the caller (sub_80A8674). r2 is a flag/arg\n  that\
+  \ the callees interpret (consistent with the recorded entry r2=08373234 or 02039368 –\n  EWRAM pointers\
+  \ shared with the BeastSP subsystem).\n  Captured calls all show exit r0=0x2f8 with Z set, and the value\
+  \ 0x2f8 is the constant\n  returned by `sprite_update` (it ends with `mov r0, #0x2f8`), confirming `sprite_update`\n\
+  \  is reached on the BeastSP path. Recorded lr values 080a869f (= sub_80A86A0+1, i.e. the\n  return-after-bl)\
+  \ and 080a8660 (return into the calling dispatcher sub_80A8674) confirm\n  this function is invoked\
+  \ both directly and after its sibling initialiser.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm at 0x080a86a0: `push {r4-r7,lr}; bl sub_80A86B4; bl sprite_update; pop {r4-r7,pc}` -
+    the BeastSP directory contains this function and its sibling initialiser `sub_80A86B4` (asm29.s:6588),
+    and the captured `snap_beastsp_0180000_*` snapshots come from BeastSP runs - sprite_update returns
+    r0 = 0x2f8 (visible in every captured exit r0); this matches the function''s last move-immediate -
+    the only caller `sub_80A8674` has an identical in/out contract and lives in the same BeastSP module,
+    so 80A8674 is the per-frame dispatcher that calls this trampoline - r10 is preserved through the function
+    (in/out both list r10) which is consistent with the project-wide convention that r10 holds the Toolkit
+    pointer'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A86A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a86a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether `sub_80A86B4` is the "init" arm of the same pair versus another update step. The
+- function name "initOrUpdate" is taken from the project's notes on the sibling; settled
+- only by reading 80A86B4's body. The captured r2 values vary between 08373234 and 02039368,
+- so r2 looks like an object/event pointer the callee walks – its meaning would be confirmed
+- by 80A86B4.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A86A0 -> battle_beastSP_updateOrInit_80A86A0
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

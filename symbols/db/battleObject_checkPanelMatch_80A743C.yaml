@@ -1,0 +1,57 @@
+name: battleObject_checkPanelMatch_80A743C
+address: '0x080A743C'
+kind: function
+previous_names:
+- sub_80A743C
+status: probable
+summary: Returns 1 if the battle object's two (FuturePanelX,FuturePanelY) pairs (r5+0x18/0x1c) match its
+  (PanelX,PanelY) pair (r5+0xc/0x10), else 0
+interface: '(r5 = BattleObject*) -> r0 = 0|1 ; side effects: none'
+details: "Pushes only lr. Default r0 = 0. Loads [r5+0x18] and [r5+0xc], compares; if unequal returns 0.\n\
+  \  Otherwise loads [r5+0x1c] and [r5+0x10], compares; if unequal returns 0.\n  Otherwise sets r0 = 1\
+  \ and returns via pop {pc}.\n  The offsets line up exactly with BattleObject.NextPanelX/NextPanelY at\
+  \ +0x14/+0x15 vs PanelX/PanelY at +0x12/+0x13 — but 0x18/0x1c and 0xc/0x10 are the FuturePanelXY/PanelXY\
+  \ u16 halves when read as bytes (FuturePanelXY at 0x14, PanelXY at 0x12), the ldr after a u16 load will\
+  \ pick up the high byte +1 position; effectively this is testing whether the object's current (PanelX,PanelY)\
+  \ already matches its (FuturePanelX,FuturePanelY), i.e. has the panel-swap finished.\n  Caller (sub_80A73A0)\
+  \ iterates battle objects; the captured r1,r2,r3 wildcards look like (damage, hit) data from the surrounding\
+  \ helper loop. Per returned 1, swaps are complete.\n  Likely used to gate panel-step animations or damage\
+  \ hit-frame application when the object is already on the destination panel.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0` then `mov r0, #1` only on the equal path - Two pairs compared: `[r5+0x18] vs
+    [r5+0xc]` and `[r5+0x1c] vs [r5+0x10]` - Bytes at 0x12/0x13 = PanelX/Y; 0x14/0x15 = FuturePanelX/Y;
+    with `ldr` (word) the +0x10 vs +0x18 effectively cover the u16 halves, so each comparison reads the
+    X then Y byte of the two packed u16 fields - Pure leaf: only `push {lr}` / `pop {pc}`, no callees,
+    no memory writes - Single caller sub_80A73A0 loops across battle objects'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A743C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a743c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact alignment of how the u16 PanelXY/FuturePanelXY fields are read via `ldr r1,[r5+0xc]` (cross-field
+  read) needs confirmation against disassembly of callers — what is at r5+0xc/0xd/0xe/0xf on the real
+  object (the ldr grabs a word so it pulls PanelXY low byte + FuturePanelXY low byte into r1, then compares
+  same to r2 which is r5+0x10..0x13, i.e. word at 0x10 = FuturePanelXY,u16 padding/NextX part). The intended
+  semantic ("moved to destination panel?") is hypothesis until that struct path is verified.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A743C -> battleObject_checkPanelMatch_80A743C
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

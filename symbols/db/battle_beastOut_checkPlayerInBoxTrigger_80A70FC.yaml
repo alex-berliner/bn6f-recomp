@@ -1,0 +1,64 @@
+name: battle_beastOut_checkPlayerInBoxTrigger_80A70FC
+address: '0x080A70FC'
+kind: function
+previous_names:
+- sub_80A70FC
+status: probable
+summary: 'Beast-Out check: if EVENT_5F1 unset and player is within a trigger box, set EVENT_5F1 and raise
+  a flag.'
+interface: (in r5 = some struct ptr, r6 = another struct ptr) -> void ; may set EVENT_5F1 and write [r5+0x34]
+details: "- On entry, r5 holds a context whose +0xC/+0x10 are two signed coords (used as the box center\
+  \ in one branch, plain in another); r6+0x7C (then +8 = 0x84) holds a 32-bit value compared against zero.\n\
+  \  - First, calls TestEventFlagFromImmediate(EVENT_5F1); if the flag is already set, the routine returns\
+  \ without doing anything (`bne locret_80A715C`).\n  - Reads player OW coords via ReadOWPlayerObjectCoords\
+  \ (r0=ptr,r1=X,r2=Y,r3=Z). If r2==0 (i.e. player Y/Z missing), branch is taken: it then tests whether\
+  \ player (using r0/r1 as player X/Y) lies within the box r5+0xC/r5+0x10 with size 0x120000 via withinBoxCheck_signed_80011D6.\n\
+  \  - If that check returns 1, jumps to the SUCCESS path.\n  - Otherwise (fallthrough at loc_80A712E),\
+  \ it reloads r5+0xC and r5+0x10, re-reads [r6+0x84], and if that is non-zero returns; else it loads\
+  \ two more coords from r6+0x7C and r6+0x80 (the +4 = +4 of +0x7C area giving offset 0x80) and runs the\
+  \ same withinBoxCheck against the player coords with size 0x120000.\n  - On success at loc_80A7150,\
+  \ calls SetEventFlagFromImmediate(EVENT_5F1) and stores 1 at [r5+0x34] (the \"Anger\" field of AIData,\
+  \ or analogous state). Side effect is one-time Beast-Out enablement state.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `movflag EVENT_5F1` then `bl TestEventFlagFromImmediate` at function head, early return if
+    already set (`bne locret_80A715C`). - `bl ReadOWPlayerObjectCoords` returns player object pointer
+    in r0 and X/Y/Z in r1/r2/r3. - `cmp r2, #0` / `bne loc_80A712E` branches when player Z is zero (likely
+    fall-back to first box). - `mov r4, #0x12; lsl r4, r4, #0x10` sets box extent to 0x00120000 (half-side
+    0x12 units in 16.16). - `bl overworldObject_withinBoxCheck_signed_80011D6` called twice with r0/r1
+    as player coords and r2/r3 as box edges. - On both successful checks the code reaches `movflag EVENT_5F1;
+    bl SetEventFlagFromImmediate; mov r0, #1; str r0, [r5,#0x34]` — sets the one-shot flag and a state
+    word. - Captured-call r5/r6 route is from `sub_80A6F2C` (file `snap_beastsp_*`), which covers ~40
+    call sites consistent with a per-frame overworld Beast-Out enable checker. - Caller is single: `sub_80A6F2C`
+    is the beast-spawn driver; calling profile line says LR=080A6F67.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A70FC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a70fc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'Exact identity of r5 and r6: r5+0x34 looks like AIData.Anger but r5+0xC/+0x10 don''t fit AIData; r5
+  is more likely an overworld context (possibly the BeastOut related struct), r6 is some spawn region.
+  Would settle by inspecting sub_80A6F2C and the r6+0x7C area assignment.'
+- The semantic meaning of "EVENT_5F1" and box coordinates (r5+0xC vs r6+0x7C/+0x80) is unknown; both checks
+  use the same 0x120000 half-extent suggesting two named spawn boxes.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A70FC -> battle_beastOut_checkPlayerInBoxTrigger_80A70FC
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

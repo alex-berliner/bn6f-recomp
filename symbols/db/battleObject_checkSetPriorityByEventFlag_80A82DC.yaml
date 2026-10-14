@@ -1,0 +1,61 @@
+name: battleObject_checkSetPriorityByEventFlag_80A82DC
+address: '0x080A82DC'
+kind: function
+previous_names:
+- sub_80A82DC
+status: probable
+summary: Checks a per-map/event-flag pair to decide if a battle object's sprite should be raised to OAM
+  priority 3, returning a bool.
+interface: (r5 = BattleObjectPtr, r10 = ToolkitPtr) -> r0 = 1 if priority was raised else 0
+details: 'Loads the active MapGroup/MapNumber from the GameState pointed to by r10 (the standard toolkit->GameStatePtr
+  at oToolkit_GameStatePtr). When MapGroup == 0x85 it uses a hardcoded MapNumber of 3; otherwise it reads
+  MapNumber from GameState. The MapNumber is shifted left 2 and used to index a small table of event-flag
+  u16 arrays at off_80A8314 (entries byte_80A81BE / byte_80A81CC / byte_80A81DE / byte_80A81F0). It then
+  takes BattleObject byte at offset 4 (ListIndex per ObjectHeader) as an index into that array, reads
+  the u16 event-flag id, and calls TestEventFlag. If the flag is set, it sets r4=1, calls sprite_setPriority_8002E14
+  with r0=3 on the BattleObject (r5), and returns 1 in r0; otherwise it leaves r4=0 and returns 0. The
+  return value signals the caller whether the priority bump was applied. The MapGroup==0x85 special case
+  is a single grey-area map group (likely an underground/secret map in BN6) whose MapNumber is treated
+  as a fixed value rather than read from GameState.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, [r10,#oToolkit_GameStatePtr]` then `ldrb r1, [r0,#oGameState_MapGroup]` (lines `mov
+    r0,r10` / `ldrb r1,[r0,#oGameState_MapGroup]`): pulls GameState from r10 toolkit. - `cmp r1, #0x85
+    / mov r1, #3` vs `ldrb r1, [r0,#oGameState_MapNumber]`: explicit MapGroup 0x85 override forces MapNumber=3.
+    - `lsl r1,r1,#2 / ldr r2,[pc] / ldr r0,[r2,r1]` plus the off_80A8314 word list of four pointers: per-MapNumber
+    dispatch into one of four flag arrays. - `ldrb r2,[r5,#4] / lsl r2,r2,#1 / ldrh r3,[r0,r2]`: index
+    into the chosen array by the object''s ListIndex (offset 4) and load the u16 flag id. - `bl TestEventFlag`
+    + `beq loc_80A830C`: standard flag test; zf clear means the flag is set. - On set: `mov r4,#1 / mov
+    r0,#3 / bl sprite_setPriority_8002E14`: only on success does the sprite priority bump happen. - Return:
+    `mov r0,r4 / pop {r4,pc}` returns the boolean to caller; out=r0 only.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A82DC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a82dc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Why MapGroup 0x85 is special-cased (which map it represents); the precise meaning of the four flag arrays
+  (likely per-chapter story flags gating a particular visual layer or object); which BattleObject fields
+  the priority 3 actually affects in-game (e.g. drawing order vs. a battle background layer).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A82DC -> battleObject_checkSetPriorityByEventFlag_80A82DC
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

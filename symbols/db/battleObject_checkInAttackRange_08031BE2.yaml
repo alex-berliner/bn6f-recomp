@@ -1,0 +1,69 @@
+name: battleObject_checkInAttackRange_08031BE2
+address: '0x08031BE2'
+kind: function
+previous_names:
+- sub_8031BE2
+status: probable
+summary: Tests whether a battle object is within attack range of its target by computing position relative
+  to a doubled target reference point and performing a half-plane intersection test.
+interface: '(r0 = BattleObjectPtr, r5 = saved, lr = ret) -> r0 = 0 or 1 (boolean result) ; side effects:
+  may read/write structure fields via the called helpers'
+details: "The function tail-calls three helpers:\n\n  1. `battle_calcRelPosToTarget_803172E` is invoked\
+  \ first with the incoming BattleObject pointer. Per its contract, it computes the entity's and its next-position\
+  \ coordinates relative to a doubled target reference, storing results in a scratch buffer.\n\n  2. Immediately\
+  \ afterward, the function sets r2=0, r4=0xc, r3=0x10, r5=0xc. These are the parameters consumed by `math_pointCrossHalfPlaneTest_8031594`,\
+  \ which is a cross-product / half-plane test used as the inner step of polygon or attack-area overlap\
+  \ checks.\n\n  3. The return value from the cross test is passed (still in r0) to `sub_8031B7C`, which\
+  \ returns either the value or 0 depending on some condition (byte at [[dword_2013920] + 0x14]). The\
+  \ final return value is the boolean 0 or 1 returned by this chain.\n\n  The leaf assembly (`push {lr}`\
+  \ / `pop {pc}`, no own stack frame) shows this is a pure dispatcher wrapper that strings three existing\
+  \ helpers together to implement a single check. The Tail-call pattern (`bl` followed by `pop {pc}`)\
+  \ means each callee returns directly into the caller's caller.\n\n  Caller (lr=0x08031ad0 in all captured\
+  \ samples) drives this in story2 battle contexts with the same BattleObject pointer and a uniform r1=0x7687\
+  \ (likely a panel/AI-AttackVar index or field ID).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}; bl battle_calcRelPosToTarget_803172E; ... bl math_pointCrossHalfPlaneTest_8031594;
+    bl sub_8031B7C; pop {pc}` (asm lines) shows a 3-helper wrapper that tail-calls - Hard-coded constants
+    in setup (`mov r2, #0`, `mov r4, #0xc`, `mov r3, #0x10`, `mov r5, #0xc`) feed directly into the cross-half-plane
+    helper''s documented parameter shape - `math_pointCrossHalfPlaneTest_8031594` description explicitly
+    says it "returns 1 when the point falls on the negative (clockwise) side, used as the inner test of
+    a polygon/hit-area fill routine" - fits an attack-range test - All 6 captured calls share lr=0x08031ad0,
+    r0=0x02009f5c (EWRAM), r1=0x7687 - stable caller invoking a stable object handle suggests a state-driven
+    per-frame range check - Final `r0 = 0` with `-Z--` flags across all captures indicates the boolean
+    false branch dominates, consistent with a periodic proximity check - 40 recorded captured calls shows
+    this is a hot/hit routine in the story2 script'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031BE2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles2, beastsp, fuzz, maps, story2, story3, story4, story5, story8, story9'
+  reproduce: 'grep -l ''^08031be2 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles2, beastsp, fuzz, maps, story2, story3, story4, story5, story8, story9
+open_questions:
+- 'What stays unknown:'
+- Exact semantic of the boolean (inside-attack-arc vs inside-attack-area-grid vs inside-avoid-zone); without
+  a wider view of sub_8031B7C's callers and the constants 0xc/0x10, we can't say which polygon the half-plane
+  is testing
+- What r1=0x7687 represents - it's a stable small positive value across all observed invocations, may
+  be an attack/template index, an AIData Unk_xx field index, or an attack-range constant
+- Settling these would need either the caller 0x08031ad0's body or the literal tables that 0xc/0x10/0x7687
+  resolve to in context
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031BE2 -> battleObject_checkInAttackRange_08031BE2
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

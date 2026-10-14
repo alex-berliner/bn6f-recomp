@@ -1,0 +1,59 @@
+name: battle_calcAngleOctant_800118A
+address: '0x0800118A'
+kind: function
+previous_names:
+- sub_800118A
+status: probable
+summary: Wraps calcAngle_800117C into one of four octant buckets (1..4) for AI/range logic, returning
+  0 when the input vector is zero.
+interface: (r0 = dx, r1 = dy) -> r0 = 0 when r0|r1==0, else a value in {1,2,3,4} (octant bucket derived
+  from the 0..255 angle)
+details: "Pushes lr and copies r0 into r2 (mov r2,r0) so it can OR with r1 (orr r2,r1)\n  to test the\
+  \ dy|dx pair for zero (`beq locret_800119E` falls through to the pop\n  with r0 still 0 from the entry\
+  \ value). Otherwise calls the already-confirmed\n  helper `calcAngle_800117C` (BIOS ArcTan2 returning\
+  \ 0..255 over a full\n  rotation), adds 0x20 to bias the angle past the octant boundaries, shifts\n\
+  \  left by 24 / right by 30 to isolate the two high bits, and adds 1 so the\n  result sits in {1..4}.\
+  \ No memory is read/written; callee is only calcAngle.\n  All listed callers (sub_808FA38, sub_80A5974,\
+  \ sub_80A5A1C, sub_80A5E08,\n  sub_80A5E44, sub_80A704C, sub_80A7454, sub_80A74A8, sub_80A8518) live\
+  \ in\n  the 0x0808/0x080A range which is the AI handler area, so this is the\n  AI's \"which cardinal/diagonal\
+  \ octant is this delta in\" helper, used by\n  the captured beastsp demo where r0=r1=0 (\"no target\
+  \ / zero delta\").\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `orr r2,r1` then `beq locret_800119E` -> if both dx and dy are zero, skip the calcAngle call
+    and return r0 untouched (observed entry r0=0 yields exit r0=0). - `bl calcAngle_800117C` returns the
+    canonical 0..255 angle (helper''s confirmed contract). - `add r0,#0x20` followed by `lsl r0,#0x18;
+    lsr r0,#0x1e` reduces the angle to its top two bits -> one of 0..3 (offset to align octant boundaries).
+    - Final `add r0,#1` shifts 0..3 to 1..4, matching an octant id rather than 0..3 angle units. - All
+    captured calls show r0=r1=0 -> the early-out is the only path that fired during the beastsp sample
+    (exit r0=0, Z flag set).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800118A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^0800118a '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Whether callers really use this as a coarse octant for tile-distance checks
+- versus e.g. an animation direction id is not pinned down by the snippet alone;
+- seeing r0!=r1!=0 capture would settle it. The 0x20 bias choice suggests the
+- goal is "snap to NSEW/octant grid" rather than "0..3 angle slice".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800118A -> battle_calcAngleOctant_800118A
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py

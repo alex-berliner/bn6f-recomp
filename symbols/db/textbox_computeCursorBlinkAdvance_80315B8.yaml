@@ -1,0 +1,64 @@
+name: textbox_computeCursorBlinkAdvance_80315B8
+address: '0x080315B8'
+kind: function
+previous_names:
+- sub_80315B8
+status: probable
+summary: Computes whether the textbox cursor blink should advance this step, returning 1 if so and 0 otherwise.
+interface: '(r0 = textbox-like struct ptr, r2 = step? delta, r3 = step? delta, r4 = step? delta, r5 =
+  step? delta) -> r0 = 0 or 1 ; side effects: none observed'
+details: "Loads two u32s from [r0] and [r0+4] (offset 0 and 4 of the passed EWRAM struct, both observed\n\
+  \  as ~0x00080000..0x00800000 style packed s16.8.6 or similar fixed-point values in the captures).\n\
+  \  Computes r6 = r5 - r4, r7 = r2 - r3, then `mul r3,r4` / `mul r2,r5`, builds\n  `r5 = r2*r3 - r3*r4\
+  \ + r4*(r5-r4) + r6*(r2-r3)` style cross-term (a 2D delta cross product,\n  classic inside-rect test).\
+  \ Returns r0=1 when the resulting accumulator is > 0, else 0.\n\n  The captured calls show the same\
+  \ struct at 0x0200f3e0 with two pairs of fixed-point\n  fields (offsets 0x00 and 0x0C, each a packed\
+  \ pair). The function returns 1 when the\n  cursor-blink cursor crosses the blink threshold and 0 otherwise\
+  \ — i.e. a blink-advance\n  predicate that callers (e.g. `textbox_StepAndRefreshWindow_8031BCA`, textbox\
+  \ setup helpers\n  `sub_80317A6` / `sub_80317C2` / `sub_80319B6` / `sub_80319CE` / `sub_8031A2E` / `sub_8031C2A`\n\
+  \  / `sub_8031C7C` / `sub_8031C94` / `text_setupTextboxAndStartPrint_8031BB2`) use to decide\n  whether\
+  \ to flip the textbox cursor tile this step.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub r6, r5, r4` / `sub r7, r2, r3` are a classic 2D delta decomposition at offset 80315B8.
+    - `mul r3, r4` then `mul r2, r5` followed by `sub r2, r3, r2` builds `r2*r5 - r3*r4` (cross product).
+    - `ldr r3,[r0]` and `ldr r4,[r0,#4]` pull two u32s from the first 8 bytes of the struct at @0200f3e0
+    (captures consistently show two pairs of values at offset 0x0 and 0x0C, e.g. `0x00000003,0x00000008`
+    and `0x0000000B,0x00000008`). - Return is exactly `r0 = (accumulator > 0) ? 1 : 0` via `ble`/`mov
+    r0,#0` vs `mov r0,#1`. - Captured call sites all pass r0 = the chatbox/textbox-related EWRAM struct
+    0x0200f3e0 (the `ChatboxPtr` from the toolkit, judging by pointer identity). - Callers (10+ sites
+    in the `textbox_/text_setupTextboxAndStartPrint_/textbox_StepAndRefreshWindow` family) strongly suggest
+    a per-tick textbox predicate.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080315B8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles2, beastsp, chips, fuzz, maps, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080315b8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles2, beastsp, chips, fuzz, maps, story1, story2, story3, story4, story5, story6, story7,
+    story8, story9
+open_questions:
+- The exact struct field semantics (likely Chatbox cursor X/Y or a fixed-point cursor-blink
+- accumulator) and the meaning of the four input u32s (r2..r5) are inferred from the cross-
+- product shape; tracing what the callers put in r2..r5 would settle it. The `0x6fd6` and
+- '`0x7a7f` short values in r1 across captures look like dialog text-script IDs — useful'
+- confirmation this lives in the textbox pipeline but not the cursor math itself.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80315B8 -> textbox_computeCursorBlinkAdvance_80315B8
+  where: bn6f dd2771d5
+  tool: tools/rename_symbol.py
