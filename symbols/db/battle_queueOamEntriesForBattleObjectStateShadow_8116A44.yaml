@@ -1,0 +1,67 @@
+name: battle_queueOamEntriesForBattleObjectStateShadow_8116A44
+address: '0x08116A44'
+kind: function
+previous_names:
+- sub_8116A44
+status: probable
+summary: Queues a fixed set of sprite/OAM entries (3 + 3 + 2 entries) into OAM using sprite_queueOamEntryThunk_802FE28,
+  presumably redrawing/rehiding battle object/shadow tiles when an object's state transitions to 8.
+interface: '() -> r0 = 0xFF (NZ-C-) ; side effects: writes OAM via sub_802FE28'
+details: "- No inputs from r0-r3 are read; the function ignores entry arguments and only consults three\n\
+  \    embedded ROM data tables (dword_8116A94, dword_8116AB0, dword_8116ACC), each consisting of 8-byte\n\
+  \    records (u32 tile/attr, u16 oam-related halfword).\n  - Loop 1 (loc_8116A4A) walks the first table\
+  \ for 3 iterations (cmp r6, #3 / blt), calling\n    sub_802FE28 with r0=[r7], r1=[r7+4], r2=0, r3=1.\n\
+  \  - Loop 2 (loc_8116A62) walks the second table for 3 iterations.\n  - Loop 3 (loc_8116A7A) walks the\
+  \ third table for 2 iterations (cmp r6, #2 / blt).\n  - Total 8 sprite_queueOamEntryThunk calls queued\
+  \ per invocation. The signature for r0/r1 (the two\n    args passed to 802FE28) matches sprite_queueOamEntryThunk_802FE28\
+  \ which is described as\n    \"(u32 a1, u16 a2, int notUsed, int a4) -> void\".\n  - Callee sub_8116A28\
+  \ tail-calls in once a battle object has reached state 8 (CUR_STATE_DESTROY);\n    caller battle_reloadObjectSprite_8116A04\
+  \ invokes it after a sprite (re)load has been triggered\n    (after hiding the shadow and running follow-up\
+  \ setup). So this function is the \"redraw queue\"\n    step that fires during/around state-8 transitions\
+  \ for an object whose animation was just reset.\n  - Return r0=0xFF in every captured call; the contract\
+  \ says no caller-visible return is meaningful\n    (out is r5), so callers treat it as void-like.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm: `bl sprite_queueOamEntryThunk_802FE28` invoked 8 times across three near-identical loops
+    over ROM tables at 0x8116A94, 0x8116AB0, 0x8116ACC (each entry is u32 + u16 = 8 bytes; stride `add
+    r7, #8`). - asm: r2=#0 and r3=#1 are the documented "notUsed/a4" args of sub_802FE28 on every call.
+    - asm: third loop uses `cmp r6, #2` while the first two use `cmp r6, #3`, confirming 3+3+2 entries.
+    - callers: sub_8116A28 (hypothesis) keeps two bytes in sync once a counter reaches 8 and then tail-calls
+    into this function with the same r5 (battle object pointer); battle_reloadObjectSprite_8116A04 calls
+    it after restarting anim 0, hiding the shadow and setting CurState=8. - captured calls: r0/r1/r2/r3
+    on entry do not affect the body (no read), and exit r0=0xFF is consistent across all snapshots (snap_story2_*),
+    matching a void-like helper whose r0 is just whatever sub_802FE28 left behind.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08116A44
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08116a44 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Which exact OAM tiles/attrs each of the 8 entries corresponds to (need to decode the three
+- ROM tables into OAM attribute words and match them against known battle object/shadow tiles).
+- Why exactly 3+3+2 entries and which battle object type this is specific to; the embedded
+- constants (e.g., 0x80904022, 0x80A0403A, 0x80A84052 in the table base words) likely encode
+- tile-id+affine bits but I haven't decoded the layout. Settling this requires mapping these
+- u32s against the GBA OAM attribute encoding.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8116A44 -> battle_queueOamEntriesForBattleObjectStateShadow_8116A44
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

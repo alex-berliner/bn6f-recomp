@@ -191,7 +191,7 @@ Next object_runFrameUpdate_8026A6C(void) {
 /* ── custMenuMainMaybe_8026A88 ── */
 /* Register contract for the custom-menu state machine step:
  * dispatches the handler selected by oS20364C0_JumpOffset01 from the table at
- * off_8026AA4, then runs the shared per-frame update sub_802A2B0. Both are
+ * off_8026AA4, then runs the shared per-frame update custMenu_dispatchState_802A2B0. Both are
  * called with the menu work area (0x020364C0) in r5; the state handler also
  * receives the raw table offset in r0 and its own table entry in r1, exactly
  * as the original's jump-table dispatch leaves the registers. */
@@ -243,10 +243,10 @@ static void run_state_handler(u32 state_offset, u32 self) {
     }
 }
 
-/* register form: calls sub_802A2B0 outside this file, which has no typed C interface yet */
+/* register form: calls custMenu_dispatchState_802A2B0 outside this file, which has no typed C interface yet */
 static void run_menu_update(u32 self) {
-    R5 = self;  /* sub_802A2B0 receives the menu work area in r5 */
-    GUEST_CALL(sub_802A2B0);
+    R5 = self;  /* custMenu_dispatchState_802A2B0 receives the menu work area in r5 */
+    GUEST_CALL(custMenu_dispatchState_802A2B0);
 }
 
 typedef struct CustMenuStepResult {
@@ -305,11 +305,11 @@ static void play_sound_effect(u32 sound_id) {
     GUEST_CALL(PlaySoundEffect);
 }
 
-/* register form: calls sub_801E71C outside this file, which has no typed C interface yet */
+/* register form: calls battle_setNaviStatusGfx_801E71C outside this file, which has no typed C interface yet */
 static void bg_scroll_apply(u32 scroll_delta, u32 progress) {
     R0 = scroll_delta;
     R1 = progress;
-    GUEST_CALL(sub_801E71C);
+    GUEST_CALL(battle_setNaviStatusGfx_801E71C);
 }
 
 /* register form: calls dispatch_801DACC outside this file, which has no typed C interface yet */
@@ -490,11 +490,11 @@ static u32 call_get_battle_mode(void) {
     return R0;
 }
 
-/* register form: calls sub_801E71C outside this file, which has no typed C interface yet */
+/* register form: calls battle_setNaviStatusGfx_801E71C outside this file, which has no typed C interface yet */
 static void call_sub_801E71C(u32 delta, u32 value) {
     R0 = delta;
     R1 = value;
-    GUEST_CALL(sub_801E71C);
+    GUEST_CALL(battle_setNaviStatusGfx_801E71C);
 }
 
 /* register form: battleObject_chipSelectAnimTick_8029C08 takes R2-R7 as register context. R2/R3 carry either
@@ -1292,10 +1292,10 @@ Next battle_countFolderChips_8027D58(void) {
 
 /* ── battle_customGauge_EndTurn_8027D78 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
-/* register form: generated wrapper: sub_801E71C has no typed C interface yet */
+/* register form: generated wrapper: battle_setNaviStatusGfx_801E71C has no typed C interface yet */
 static inline void call_sub_801E71C_battle_customGauge_EndTurn_8027D78(u32 r0) {
     R0 = r0;
-    GUEST_CALL(sub_801E71C);
+    GUEST_CALL(battle_setNaviStatusGfx_801E71C);
 }
 
 typedef struct { u32 r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_dispatch_801DACC_result_battle_customGauge_EndTurn_8027D78;
@@ -1997,7 +1997,7 @@ Next battle_endActionSetup_8028310(void) {
  * R7 == 1: queue an eight-word-aligned GFX transfer of a 0x100-byte block
  *          (the graphics chunk at byte_86E79CC + 0x300) into the destination
  *          buffer passed in R1.
- * R7 != 1: run sub_802868C on the data table at byte_802A700 with selector
+ * R7 != 1: run battle_loadGfxChunkBySelectorWithRows_802868C on the data table at byte_802A700 with selector
  *          R3 = 3, then advance the destination pointer in R1 by 0xC0
  *          (the size of one loaded chunk), setting the flags from that add.
  *
@@ -2012,7 +2012,7 @@ Next battle_loadGfxChunkBySelector_8028320(void) {
     } else {
         R0 = A_byte_802A700;
         R3 = 3;
-        GUEST_CALL(sub_802868C);
+        GUEST_CALL(battle_loadGfxChunkBySelectorWithRows_802868C);
         u32 bumped = R1 + 0xC0;
         SET_FLAGS_ADD(R1, 0xC0);      /* flags of ADDS r1, r1, #0xC0 */
         R1 = bumped;
@@ -2280,9 +2280,9 @@ Next sub_8028476(void) {
 
 /* ── beastout_LoadSelectionScreenSpriteSheets_802869E ── */
 /* beastout_LoadSelectionScreenSpriteSheets_802869E: load the three sprite sheets of the Beast Out selection screen
- * into VRAM by calling sub_802868C once per sheet.
+ * into VRAM by calling battle_loadGfxChunkBySelectorWithRows_802868C once per sheet.
  *   r0 = graphics source data, r1 = VRAM destination, r3 = sheet slot.
- * r2 is an extra argument for sub_802868C that this function passes through
+ * r2 is an extra argument for battle_loadGfxChunkBySelectorWithRows_802868C that this function passes through
  * untouched (it is listed as preserved), so each call sees the caller's value.
  * On return r1 = 0x6009B60 and r3 = 3 from the last setup, matching the original. */
 Next beastout_LoadSelectionScreenSpriteSheets_802869E(void) {
@@ -2290,19 +2290,19 @@ Next beastout_LoadSelectionScreenSpriteSheets_802869E(void) {
     R0 = A_byte_802A6C0;
     R1 = 0x6009AA0;
     R3 = 1;
-    GUEST_CALL(sub_802868C);
+    GUEST_CALL(battle_loadGfxChunkBySelectorWithRows_802868C);
 
     /* Sheet 2: byte_802A680 graphics -> 0x6009AE0, slot 2 */
     R0 = A_byte_802A680;
     R1 = 0x6009AE0;
     R3 = 2;
-    GUEST_CALL(sub_802868C);
+    GUEST_CALL(battle_loadGfxChunkBySelectorWithRows_802868C);
 
     /* Sheet 3: byte_802A6C0 graphics again -> 0x6009B60, slot 3 */
     R0 = A_byte_802A6C0;
     R1 = 0x6009B60;
     R3 = 3;
-    GUEST_CALL(sub_802868C);
+    GUEST_CALL(battle_loadGfxChunkBySelectorWithRows_802868C);
 
     RETURN_TO_CALLER();
 }
@@ -2344,14 +2344,14 @@ Next beastout_QueuePaletteGFXAndSheets_80286D4(void) {
 }
 
 /* ── loadOneSpriteTileRow_80287D2 ── */
-/* register form: calls sub_802868C outside this file, which has no typed C interface yet */
+/* register form: calls battle_loadGfxChunkBySelectorWithRows_802868C outside this file, which has no typed C interface yet */
 static void sprite_descriptor_fill(void) {
     /* Copy 8 bytes of sprite descriptor table (byte_802A6C0) into the
      * engine's 8-byte sprite descriptor slot at 0x6009360. */
     R0 = (u32)A_byte_802A6C0;
     R1 = 0x6009360;
     R3 = 8;
-    GUEST_CALL(sub_802868C);
+    GUEST_CALL(battle_loadGfxChunkBySelectorWithRows_802868C);
 }
 
 /* register form: calls QueueEightWordAlignedGFXTransfer outside this file,

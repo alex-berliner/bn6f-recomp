@@ -1,0 +1,70 @@
+name: battle_setNaviStatusGfx_801E71C
+address: '0x0801E71C'
+kind: function
+previous_names:
+- sub_801E71C
+status: probable
+summary: Writes a one-byte value into oStruct2035280 + 0x12 (the Navi status GFX index slot) and returns
+  the input untouched.
+interface: '(r0 = new GFX index byte, lr = return) -> r0 = unchanged ; side effect: strb r0 to (off_801E77C
+  + 0x12) [byte_2035292]'
+details: "- Single instruction in the body: `strb r0, [r1, #0x12]` where r1 = `off_801E77C` = &eStruct2035280\n\
+  \    (the project symbol resolves this to 0x02035280, so the write target is 0x02035292 = byte_2035292).\n\
+  \  - The struct comment hints `NaviStatusGfxIdx` lives at offset 0x17 in eStruct2035280, but the assembly\n\
+  \    clearly writes to offset 0x12 (one of the `Unk_12`/`Unk_13` bytes), so this is NOT updating that\
+  \ field\n    — likely an \"index into the navi status GFX palette/animation slot\" or a sibling control\
+  \ byte. The 0x17\n    field is named by `RetrieveAndRenderEnemyVirusNamesInBattle_801E574`, while 0x12\
+  \ is unnamed, so the\n    name should not over-commit.\n  - `push {r1, lr}` / `pop {r1, pc}` is the\
+  \ common Thumb one-instruction tail-call form: r1 is saved only\n    because the function immediately\
+  \ overwrites it with the global pointer, and lr is rewritten to pc on\n    return so the caller's lr\
+  \ stays live. No actual outgoing r1 is preserved for the caller; the contract's\n    `may_write=['r1']`\
+  \ reflects that.\n  - r0 is untouched: every captured call exits with r0 equal to the entry value (0x00,\
+  \ 0x0c, 0x78, 0x6c,\n    0x60, 0x54 in the samples), and the body never reads from or writes to r0.\n\
+  \  - The captured-call r0 values are small (< 0x80), consistent with a GFX/index code passed in by the\n\
+  \    Custom Gauge / scroll strip machinery (e.g., the selected Navi icon or a status-gfx enum).\n  -\
+  \ The `off_801E77C` constant in the disassembly is resolved to `eStruct2035280` by the project; the\n\
+  \    computed address 0x02035280 + 0x12 = 0x02035292, which the source labels `byte_2035292`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_801E77C // =eStruct2035280` — the project resolves this to 0x02035280, so r1
+    = &eStruct2035280. - `strb r0, [r1,#0x12]` — single byte store at offset 0x12 of eStruct2035280 (i.e.
+    byte_2035292). - `pop {r1,pc}` — return keeps lr but discards r1 (r1 is clobbered as stated in `may_write`).
+    - Captured exits preserve r0 across the call (e.g. snap_story2_0 entry 0x0 -> exit 0x0; snap_story2_1
+    entry 0xC -> exit 0xC; snap_story2_10 entry 0x78 -> exit 0x78), confirming r0 is pass-through. - Callers
+    are battle UI/state consumers (battle_customGauge_EndTurn_8027D78, scrollStrip_update_8026BF4, sub_8026B04,
+    sub_8026D06), so the value being written is some navi/battle GFX index slot rather than a wholly unrelated
+    control byte.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801E71C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801e71c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The semantic meaning of byte 0x12 in eStruct2035280 — the struct definition lists it as `Unk_12` (next
+- to `Unk_13`) and the named `NaviStatusGfxIdx` is actually at 0x17. Settling whether 0x12 is the "index
+- used by the status GFX slot", a sub-index, or an animation-related byte requires tracing readers of
+- byte_2035292 in the consumer functions.
+- Whether the r0 argument is the GFX index directly, or an enum the consumer translates before calling,
+- is not deducible from this function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801E71C -> battle_setNaviStatusGfx_801E71C
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

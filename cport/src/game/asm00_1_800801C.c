@@ -11,15 +11,15 @@
 /* ── battle_runMainStep_800801C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_802DE5C_result;
-/* register form: generated wrapper: sub_802DE5C has no typed C interface yet */
+/* register form: generated wrapper: battleObject_runAIScript_802DE5C has no typed C interface yet */
 static inline call_sub_802DE5C_result call_sub_802DE5C(void) {
-    GUEST_CALL(sub_802DE5C);
+    GUEST_CALL(battleObject_runAIScript_802DE5C);
     return (call_sub_802DE5C_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
 }
 
 /* Battle-object state dispatcher: reads the current state byte from the object's
  * base pointer, jumps to the matching handler in a table of ten, runs the shared
- * post-processing routine sub_802DE5C, then loads the result byte. */
+ * post-processing routine battleObject_runAIScript_802DE5C, then loads the result byte. */
 
 /* register form: dispatches through the jump table at off_8008038 whose byte-
  * scaled index comes from the object's state byte; the handler expects R0 and R5
@@ -171,7 +171,7 @@ Next sub_800825A(void) {
 /* ── sub_800840C ── */
 /* sub_800840C: pre-battle intro step; driven by a small state byte at r5.
  * On the first call it copies some preloaded graphics to two VRAM buffers and
- * marks that step done. When the global "intro busy" flag (sub_801483C) clears
+ * marks that step done. When the global "intro busy" flag (battle_runControllerStep_801483C) clears
  * it either arms a 4-tick local timer or, once that has elapsed, finds both
  * players' BattleObjects, runs them through sub_8015A38, and writes 4 into [r5]. */
 Next sub_800840C(void) {
@@ -184,7 +184,7 @@ Next sub_800840C(void) {
         ST8(R5 + 3, 4);
     }
 
-    GUEST_CALL(sub_801483C);
+    GUEST_CALL(battle_runControllerStep_801483C);
     if (R0 != 0) {
         RETURN_TO_CALLER();
     }
@@ -211,13 +211,13 @@ Next sub_800840C(void) {
 /* battle_objAdvanceStateTimer_8008492: advance the per-object battle state byte of the object in r5.
  *
  * - In battle mode 5, or when the 0x40 battle flag is clear, the object is
- *   driven by sub_801483C: once it reports "done" (r0 == 0) and the object's
+ *   driven by battle_runControllerStep_801483C: once it reports "done" (r0 == 0) and the object's
  *   state byte at +2 is still zero, restart the timer and store state 4.
  * - In every other case (flag test passes, or the state byte was already
  *   non-zero) store state 6 at +4 instead.
  *
  * Flags on return follow the original's last flag-setting instruction on
- * each path: tst r0 (sub_801483C result) or the mov of the stored constant.
+ * each path: tst r0 (battle_runControllerStep_801483C result) or the mov of the stored constant.
  * c/v are left as the last callee left them, matching the original. */
 Next battle_objAdvanceStateTimer_8008492(void) {
     GUEST_CALL(GetBattleMode);
@@ -232,7 +232,7 @@ Next battle_objAdvanceStateTimer_8008492(void) {
         }
     }
 
-    GUEST_CALL(sub_801483C);
+    GUEST_CALL(battle_runControllerStep_801483C);
     SET_FLAGS_NZ(R0);                   /* tst r0, r0 */
     if (R0 != 0)
         RETURN_TO_CALLER();

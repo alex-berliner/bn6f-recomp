@@ -1,0 +1,53 @@
+name: battle_aiIndexToActorCount_8031980
+address: '0x08031980'
+kind: function
+previous_names:
+- sub_8031980
+status: probable
+summary: Returns the per-actor count for an AI sub-state (3 for AIIndex 1, else 2).
+interface: (r0 = AIIndex selector) -> r0 = 2 or 3 ; clobbers r5, flags
+details: "Pushes lr (tail-call pattern via pop {pc}). Loads a constant dword_2013940 into r5 but\n  never\
+  \ uses it before returning, so it's effectively a dead load (or a planned hook slot).\n  Compares r0\
+  \ against 1; if equal, returns 3, otherwise returns 2. The captured calls all\n  pass r0=1 and exit\
+  \ with r0=3 and the C flag set (from the `mov r0,#3` immediately before\n  `pop {pc}`), matching the\
+  \ assembly exactly.\n  Called by 9 sibling thunks spaced 0x18 bytes apart (0x0803199E..0x08031A5E) which\
+  \ look\n  like a dispatch/jump table; each passes a different AIData sub-state selector plus r5,\n \
+  \ and the value returned (2 or 3) is then used as an init selector downstream.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm `cmp r0, #1; beq loc_803198A; b loc_803198E` shows a 1-vs-not-1 branch. - asm `mov r0,
+    #3 / mov r0, #2` then `pop {pc}` shows the return value and tail-call form. - All 6 captured calls
+    enter with r0=1 and exit with r0=3, consistent with the AIIndex==1 path. - Caller sub_8031A5E is hypothesized
+    to be a type-3 AI init helper, fitting a "count of actors" return. - r5 is loaded with dword_2013940
+    but never read; this is likely an unused thunk or hook placeholder.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031980
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08031980 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The real meaning of the returned 2/3 (likely "number of sub-entries in the AI sub-state
+- block for the given AIIndex") cannot be confirmed from this function alone; a callee that
+- uses the result as an index/loop bound would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031980 -> battle_aiIndexToActorCount_8031980
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

@@ -214,7 +214,7 @@ Next checkLayerPriority_80318b0(void) {
             case 10: GUEST_CALL(sub_8031A16); break;
             case 11: GUEST_CALL(sub_8031A2E); break;
             case 12: GUEST_CALL(sub_8031A46); break;
-            case 17: GUEST_CALL(sub_8031A5E); break;
+            case 17: GUEST_CALL(battleObject_getChipLockColourOne_8031A5E); break;
             default: break;         /* table slot is NULL; never taken */
             }
             /* r0 already holds the handler's result. */

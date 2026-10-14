@@ -1,0 +1,64 @@
+name: battle_clampCameraToBounds_80300AC
+address: '0x080300AC'
+kind: function
+previous_names:
+- sub_80300AC
+status: probable
+summary: Clamps the battle camera's next (X, Y, Z) position into allowed ranges derived from fields on
+  the Camera struct, then stores the clamped 16.16 values and their 16-bit integer halves back.
+interface: '(r5 = &Camera) -> none (void); side effects: writes to Camera fields 0x04, 0x06, 0x18..0x24,
+  0x28, 0x2c, 0x3c..0x44'
+details: "Reads Camera.nextX_3c and clamps it between the bounds stored at Camera+0x18 and Camera+0x1c\n\
+  \  (using signed compares `bge`/`ble`), writing the clamped value back to nextX_3c and its top\n  16\
+  \ bits (>>16) to Camera+0x04. Then loads nextY_40 and nextZ_44; for nextY it forms\n  `(Camera+0x24)+r6`\
+  \ and `(Camera+0x20)+r6` (r6 = original nextZ_44) as upper/lower bounds\n  and clamps the read nextY_40\
+  \ between them, storing back to nextY_40. For nextZ_44 it\n  similarly forms bounds from Camera+0x24/0x20\
+  \ plus the (now-clamped) nextY, computes\n  intermediate values that it stores to Camera+0x2c and 0x28,\
+  \ then clamps nextZ_44 between\n  them and stores back; finally writes `(nextY - nextZ) >> 16` to Camera+0x06.\
+  \ The captured\n  return r0 = 0x080300ad is the caller's saved lr (i.e. caller returns lr+1 to stay\
+  \ in Thumb)\n  so r0 is not meaningful here. The function is `void`-like: no useful output registers\
+  \ for\n  callers; callee-saved r4/r5/r6 are restored by the caller (the contract lists them in `out`\n\
+  \  only as caller-restored scratch).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1,[r5,#oCamera_nextX_3c]` / `oCamera_Unk_18` / `oCamera_Unk_1c` and the symmetric `cmp/bge;
+    mov r1,r2` / `cmp/ble; mov r1,r2` clamps nextX to [Unk_18, Unk_1c]. - `str r1,[r5,#oCamera_nextX_3c];
+    asr r1,r1,#0x10; strh r1,[r5,#oCamera_Unk_04]` writes nextX back and its integer part into the 16-bit
+    field at +0x04. - `ldr r2,[r5,#oCamera_Unk_24]; add r2,r2,r6` / `ldr r2,[r5,#oCamera_Unk_20]; add
+    r2,r2,r6` show that nextY bounds are Unk_24+nextZ, Unk_20+nextZ (i.e. two planes offset by Z). - `ldr
+    r2,[r5,#oCamera_Unk_24]; add r2,r2,r6; str r2,[r5,#oCamera_Unk_2c]` and the matching pair into +0x28
+    produce intermediate camera-y/z derived offsets, consistent with a camera frustum clamp. - Final `sub
+    r6,r6,r4; asr r6,r6,#0x10; strh r6,[r5,#oCamera_Unk_06]` produces a height-of-camera integer half
+    written to +0x06. - 40 captured calls from `snap_story2_*.bin` all enter with `r5` not shown but consistent'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080300AC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080300ac '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact semantic of fields 0x18/0x1c/0x20/0x24 (named `Unk_*`); the "two-plane offset by Z"
+- shape suggests min/max X/Y/Z bounds stored as scalars that get a Z offset added at runtime,
+- but no caller was provided to confirm. Drop `_ADDRESS` once a battle-camera subsystem
+- utility file owns this function and the role is confirmed.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80300AC -> battle_clampCameraToBounds_80300AC
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

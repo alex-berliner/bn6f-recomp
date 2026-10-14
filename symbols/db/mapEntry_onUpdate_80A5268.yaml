@@ -1,0 +1,67 @@
+name: mapEntry_onUpdate_80A5268
+address: '0x080A5268'
+kind: function
+previous_names:
+- sub_80A5268
+status: probable
+summary: 'Step the overworld map-entry object''s show/hide FSM: gate on event flag + screen fade, set/clear
+  flags, swap animation, drive state to 3 (shown), 8 (idle) or 0x10 (hidden), then tick the sprite.'
+interface: '(r5 = map-entry object, r7 = entry sub-struct, r10 = toolkit) -> void ; side effects: event
+  flag set/cleared, PlaySoundEffect, sprite animation swapped, sprite_loadAnimationData + sprite_update'
+details: "- Function is only ever called from `mapEntry_update_80A51F8`; the entry it operates on is in\
+  \ r7, the parent object (whose CurState lives at +8) is in r5.\n  - First branches on `TestEventFlag(r7->trigger_flag_word_0)`:\
+  \ when *not* set, the object is supposed to be hidden.\n  - In the not-shown branch, if the screen-fade\
+  \ mode (from `screenFade_80062C8`, shifted right by 2) has bit 0 clear, we set the entry's \"active\"\
+  \ flag (`SetEventFlag(r7->+4)`), zero the parent timer (`+0x24`), and stamp `0x0c` into CurState. Otherwise\
+  \ we still call `SetEventFlag(r7->+4)` and fall through to the second block.\n  - In the shown branch,\
+  \ sets `r7->+4` flag; if the loaded animation index (`[r7,+8]`) equals the requested one (`[r7,+9]`),\
+  \ it sets the \"done\" event flag (`[r7,+2]`) and writes state `0x10` (hidden). Otherwise it pushes\
+  \ the animation, loads its data, and writes state `8`.\n  - On a still-not-shown path, the `0xFFFF`\
+  \ sentinel at `r7+0xe` is the per-entry \"play this SFX when appearing\" sound ID; if it isn't the sentinel,\
+  \ `PlaySoundEffect` is called.\n  - Either way the function ends by calling `sprite_update` on r5.\n\
+  \  - CurState values (0x0c, 0x08, 0x10) are written into `BattleObject.CurState`/`OverworldMapObject`\
+  \ — i.e. the parent object's `+8` byte — matching the FSM in the caller.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Caller is `mapEntry_update_80A51F8` with the same r5/r7/r10 register contract (0x080a51f8).
+    - `ldrh r0,[r7]` / `bl TestEventFlag` / `bne loc_80A52DA` is the gating event-flag test (line "ldrh
+    r0, [r7]"). - `bl screenFade_80062C8` / `lsr r0,#2` / `tst r0,#1` reads the global screen-fade mode
+    and tests bit 0 to skip the appear-work. - `ldrb r0,[r7,#7]` / `cmp r0,#1` then `ldrb r1,[r7,#8]`
+    / `ldrb r0,[r7,#9]` / `bl sprite_setAnimation` select/load the per-entry animation when the entry''s
+    `+7` field is 1. - `ldrh r0,[r7,#4]` / `bl SetEventFlag` is the "entry is active" flag; `ldrh r0,[r7,#2]`
+    / `bl SetEventFlag` is the "shown/done" flag. - `strb r0,[r5,#8]` writes 0x0c, 0x08, or 0x10 — three
+    discrete FSM states into the object''s CurState slot. - `ldrh r0,[r7,#0xe]` / `ldr r1,dword_80A52E0`
+    (0xFFFF) / `cmp r0,r1` / `beq …` is the sentinel check for the SFX field, matching `PlaySoundEffect(r0)`
+    on the non-sentinel path. - `bl sprite_update` at the end runs every iteration, hence the captured
+    exit r0/flags from sprite_update''s return.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5268
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus3, story1, story2, story5, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^080a5268 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, menus3, story1, story2, story5, story6, story8, story9
+open_questions:
+- Exact meaning of the `0x0c` vs `0x08` vs `0x10` CurState values in the parent object (init vs idle vs
+  hidden) is inferred from the caller's state machine; the asm only proves the byte values are written.
+- What `r7+0x7` encodes (the assembly treats it as a "should re-set animation" bool but no struct field
+  maps to it in the provided definitions).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5268 -> mapEntry_onUpdate_80A5268
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

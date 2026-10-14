@@ -1,0 +1,63 @@
+name: battle_loadGfxChunkBySelectorWithRows_802868C
+address: '0x0802868C'
+kind: function
+previous_names:
+- sub_802868C
+status: probable
+summary: Queues N successive 0x40-byte GFX chunks from a ROM source (r0) into a destination buffer (r1),
+  advancing the destination by 0x40 each step.
+interface: '(r0 = queued_src_ptr, r1 = mut_queued_dest_ptr, r2 = ?, r3 = row_count, lr = return_addr)
+  -> r0 = src_ptr (preserved), r1 = dest advanced by row_count*0x40, r2..r7 = clobbered, NZCV clobbered,
+  PC = lr ; side effect: enqueues (row_count) GFX DMA transfers via QueueEightWordAlignedGFXTransfer'
+details: "- Saves r0-r4 and lr onto the stack, copies r3 into r4 as the row counter.\n  - Loads r2 with\
+  \ the fixed step value 0x40 (\"mov r2, #0x40\"), which becomes the per-row byte count handed to the\
+  \ DMA helper.\n  - Each loop iteration calls QueueEightWordAlignedGFXTransfer(r0, r1, r2), then advances\
+  \ r1 by r2 (\"add r1, r1, r2\"), decrements r4 (\"sub r4, #1\"), and branches back while r4 != 0 (BNE\
+  \ loc_8028692).\n  - Because the source pointer (r0) is preserved across the loop and r1 advances, the\
+  \ helper is fed a fixed chunk size of 0x40 = 32 bytes * 2 (eight 32-bit words) per row.\n  - Caller\
+  \ battle_loadGfxChunkBySelector_8028320 queues either a fixed chunk or a table-driven one with r3 usually\
+  \ 1..3; beastout_LoadSelectionScreenSpriteSheets_802869E calls this three times with r3 = 1..3 and r2\
+  \ = 0x40 (or 0x10/0x80 for the beast-out sheet-loaders) — those differing r2 values are computed in\
+  \ the caller and represent the per-row size; here it is hardcoded to 0x40.\n  - Returns with the original\
+  \ r0 (source pointer) intact and r1 advanced by row_count * 0x40; callee-saved r4-r7 are popped via\
+  \ \"pop {r0-r4,pc}\".\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "mov r4, r3" at loc_8028692 entry saves the loop counter. - "mov r2, #0x40" sets the per-row
+    byte count to 0x40. - "bl QueueEightWordAlignedGFXTransfer" enqueues one GFX DMA chunk per iteration.
+    - "add r1, r1, r2" advances dest by 0x40 each iteration while r0 (src) is untouched. - "sub r4, #1"
+    / "bne loc_8028692" implement the row-count loop. - Caller name "battle_loadGfxChunkBySelector_8028320"
+    + comment ("Queues a chunk of battle graphics into a destination buffer") matches the behaviour; "beastout_LoadSelectionScreenSpriteSheets_802869E"
+    loads three sprite sheets via this routine, and "loadOneSpriteTileRow_80287D2" queues a 0x20-byte
+    tile row through this wrapper. - Captured r0=0x0802a700 (ROM chunk address) and r1=0x0600xxxx (VRAM
+    dest) confirm src=ROM, dest=VRAM.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802868C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802868c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether the helper takes the destination pointer as the *VRAM* address or as a DMA-queue slot offset;
+  the capture values land in the 0x0600xxxx VRAM range, which is consistent with direct VRAM addressing.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802868C -> battle_loadGfxChunkBySelectorWithRows_802868C
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

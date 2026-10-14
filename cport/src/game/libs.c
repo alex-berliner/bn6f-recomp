@@ -1265,14 +1265,14 @@ Next sprite_moveYUp64AndMarkDirty_814E1D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E1E8 ── */
-/* sub_814E1E8: run the check performed by battleObject_runUpdateRoutineAndAdvancePC_814E0D0, then record its
+/* ── battleObject_removeElementAndFlagFromUpdateRoutine_814E1E8 ── */
+/* battleObject_removeElementAndFlagFromUpdateRoutine_814E1E8: run the check performed by battleObject_runUpdateRoutineAndAdvancePC_814E0D0, then record its
  * outcome in the state struct whose address is left in r1:
  *   - the status byte returned in r3, biased down by 0x40, is stored
  *     as the result field at offset 0x0E;
  *   - the flag bits 0x0C are set in the header byte at offset 0x00.
  * Returns to the caller through r12, like the original. */
-Next sub_814E1E8(void) {
+Next battleObject_removeElementAndFlagFromUpdateRoutine_814E1E8(void) {
     R12 = LR; /* the original branches back through r12 */
 
     GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);

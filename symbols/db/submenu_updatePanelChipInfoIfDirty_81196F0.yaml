@@ -1,0 +1,67 @@
+name: submenu_updatePanelChipInfoIfDirty_81196F0
+address: '0x081196F0'
+kind: function
+previous_names:
+- sub_81196F0
+status: probable
+summary: Refreshes the active submenu panel's chip visuals/text and copies status fields forward when
+  the chip selection has changed.
+interface: '(r5 = SubMenu*, r10 = Toolkit*) -> r5 preserved ; side effects: may redraw chip gfx/text via
+  chipPanel_renderChipGfxAndText_8119438 and writes fields (+0x9, +0x10, +0x1a) on the submenu struct.'
+details: "Called when the nz flag is set coming in (i.e. the caller's compare in sub_8119880 came back\
+  \ unequal). The helper\n  sub_8119880 re-checks two status bytes at r5+0xE and r5+0xF; if they still\
+  \ differ (branch at `beq loc_811970A`\n  falls through), the function unconditionally calls chipPanel_renderChipGfxAndText_8119438\
+  \ to redraw the chip, then\n  mirrors r5+0xE -> r5+0x10, r5+0xC -> r5+0xD, r5+0x18 -> r5+0x1A (storing\
+  \ the previously-displayed values so the\n  next call can detect a change), and returns.\n  When the\
+  \ bytes are equal (loc_811970A path), it loads the cached pairs (r5+0xE/r5+0x10 word, r5+0xC byte, r5+0x18/r5+0x1A\n\
+  \  word). If either the chip id (r5+0xE vs r5+0x10) or the word at +0x18 vs cached +0x1A changed, it\
+  \ falls through to the\n  store block which caches the current values and writes 0x04 into r5+9 (the\
+  \ byte CurAction / next-state slot). If\n  nothing changed, control falls straight through to the pop\
+  \ and return. Captured calls show exit r0 of 0x04 in the\n  dirty path and 0xff in the unchanged path,\
+  \ matching the literal `mov r0, #4 ; strb r0,[r5,#9]` block.\n  Given the chipPanel_renderChipGfxAndText\
+  \ callee, r5 is the active SubMenu panel struct (around 0x1c+ bytes used here);\n  `sub_8119880` is\
+  \ implicitly a dirty-check against the currently displayed chip vs the new chip.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sub_8119880 ; beq loc_811970A` at start: only the not-equal branch redraws, so sub_8119880
+    is the dirty test. - `bl chipPanel_renderChipGfxAndText_8119438` only runs in the not-equal branch
+    (nz path). - Mirror stores `ldrh r0,[r5,#0xe]; strh r0,[r5,#0x10]` etc. clearly cache currently-displayed
+    chip fields for next call. - `mov r0, #4 ; strb r0,[r5,#9]` writes the literal 4 into r5+0x9 (CurAction)
+    in the changed path; captured exit r0 = 4 confirms. - `cmp r3,r1` / `cmp r4,r0` / `cmp r6,r0` cover
+    +0x18 vs +0x1a, +0xe vs +0x10, +0xc vs +0xd; if any differ the cache/store path runs. - Captured exits
+    of 0xFF correspond to the unchanged branch''s fall-through after `beq locret_811972C`, indicating
+    r0/flags were clobbered by sub_8119880''s last compare (returning -1 vs prior cache) and no further
+    writes occurred.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081196F0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081196f0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9
+open_questions:
+- The exact semantics of r5+0x9=0x04; it looks like a CurAction kick (compare with sub_menu_struct CurAction
+  enum) but the struct mapping to SubMenu offsets above is thin, so the meaning is inferred.
+- 'The 0xFF exit r0 in unchanged path: probably an artifact of sub_8119880 leaving r0=0xFF; whether that''s
+  a sentinel or just dead return is unclear from this function alone.'
+- Whether sub_8119880 truly compares +0xE to +0xF rather than +0xE to itself in a different slot — the
+  contract summary claims +0xE vs +0xF but the assembly here only touches +0xE/+0xF via that helper and
+  the local cache uses +0xC/+0xD/+0x10/+0x18/+0x1A.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81196F0 -> submenu_updatePanelChipInfoIfDirty_81196F0
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

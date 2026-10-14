@@ -948,7 +948,7 @@ Next battle_dispatchObjectUpdateOrEffect_81333A0(void) {
         /* Default / type-4-with-other-sub-type: spawn fixed effects */
         GUEST_CALL(sub_81345D4);
         GUEST_CALL(battle_spawnFixedArgEffect_wrapper_81345E8);
-        GUEST_CALL(sub_8134610);
+        GUEST_CALL(battleObject_queueOamPanelGrid_8134610);
     }
 
     RETURN_TO_CALLER();
@@ -966,9 +966,9 @@ static void call_update_battle_logic(void) {
     GUEST_CALL(submenu_clearBgIfClosed_8134594);
 }
 
-/* register form: calls sub_8134538 outside this file, which has no typed C interface yet */
+/* register form: calls object_resolveTableEntryByIndex_8134538 outside this file, which has no typed C interface yet */
 static void call_update_animations(void) {
-    GUEST_CALL(sub_8134538);
+    GUEST_CALL(object_resolveTableEntryByIndex_8134538);
 }
 
 /* register form: calls battleObject_submenuRenderFolderAndChips_81341A0 outside this file, which has no typed C interface yet */
@@ -1182,10 +1182,10 @@ static inline call_submenu_clearBgIfClosed_8134594_result call_submenu_clearBgIf
 }
 
 typedef struct { u32 r4, r5, r6, r7; } call_sub_8134538_result;
-/* register form: generated wrapper: sub_8134538 has no typed C interface yet */
+/* register form: generated wrapper: object_resolveTableEntryByIndex_8134538 has no typed C interface yet */
 static inline call_sub_8134538_result call_sub_8134538(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_8134538);
+    GUEST_CALL(object_resolveTableEntryByIndex_8134538);
     return (call_sub_8134538_result){ R4, R5, R6, R7 };
 }
 
@@ -1434,7 +1434,7 @@ Next sub_8133944(void) {
     /* Always-run scene updates. */
     GUEST_CALL(submenu_clearBgIfClosed_8134594);
     GUEST_CALL(sub_81345B0);
-    GUEST_CALL(sub_8134538);
+    GUEST_CALL(object_resolveTableEntryByIndex_8134538);
     GUEST_CALL(sub_8134548);
     GUEST_CALL(battleObject_submenuRenderFolderAndChips_81341A0);
     GUEST_CALL(battleObject_drawFolderEditScreenGfx_8134310);
@@ -1540,9 +1540,9 @@ static void sub_8134594_call(void) {
     GUEST_CALL(submenu_clearBgIfClosed_8134594);
 }
 
-/* register form: calls sub_8134538 outside this file, which has no typed C interface yet */
+/* register form: calls object_resolveTableEntryByIndex_8134538 outside this file, which has no typed C interface yet */
 static void sub_8134538_call(void) {
-    GUEST_CALL(sub_8134538);
+    GUEST_CALL(object_resolveTableEntryByIndex_8134538);
 }
 
 /* register form: calls sub_81345B0 outside this file, which has no typed C interface yet */
@@ -2169,11 +2169,11 @@ Next chatbox_runScript_803FD9C_on_eTextScript2028A20(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8134538 ── */
-/* sub_8134538: thin wrapper that invokes object_resolveTableEntry_8134558 with the fixed argument
+/* ── object_resolveTableEntryByIndex_8134538 ── */
+/* object_resolveTableEntryByIndex_8134538: thin wrapper that invokes object_resolveTableEntry_8134558 with the fixed argument
  * set (226, 28, 30, 36); result and condition flags are whatever the callee
  * leaves behind. r4-r7 pass through untouched. */
-Next sub_8134538(void) {
+Next object_resolveTableEntryByIndex_8134538(void) {
     R0 = 0xE2;
     R1 = 0x1C;
     R2 = 0x1E;

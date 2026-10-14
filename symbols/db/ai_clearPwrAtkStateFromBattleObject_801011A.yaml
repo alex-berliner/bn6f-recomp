@@ -1,0 +1,64 @@
+name: ai_clearPwrAtkStateFromBattleObject_801011A
+address: '0x0801011A'
+kind: function
+previous_names:
+- sub_801011A
+status: probable
+summary: Clears the Power Attack (PwrAtk) state and button fields in the battle object's AIAttackVars
+  sub-struct and then runs the lone helper sub_80E1662.
+interface: (r5 = BattleObject*) -> void ; clears AIAttackVars.Unk_1d = 0, AIAttackVars.Unk_1e = 0 (u16),
+  then tail-calls sub_80E1662 with r5 preserved
+details: "Pushes lr, loads the AI data pointer via `[r5, #oBattleObject_AIDataPtr]` (=+0x58) into r0,\
+  \ then advances by 0xa0 to land on the AIAttackVars byte-array that starts at AIData+0xA0 (struct_org\
+  \ 0xa0, AttackVars). Stores 0 into the single byte at offset 0x1d relative to that (=PwrAtkState) with\
+  \ strb and 0 into the u16 at +0x1e relative to that (=PwrAtkButton) with strh. Calls sub_80E1662 with\
+  \ r0 still = AIAttackVars base (caller contract in=['r5','lr'] out includes only r0/r1 from sub_80E1662,\
+  \ plus the obvious Z/C/V from the stores), then pops {pc} to return.\n  The captured-call snapshots\
+  \ consistently show AIDataPtr+0xA0 as the start of an array of u8 with byte 0x1d = 0x1e (which is read\
+  \ here as the literal 0x1e constant? actually a u8 value) right up to a save/load pointer pair at +0x44/+0x48;\
+  \ combined with the struct, the function is clearing the fresh PwrAtk bookkeeping at the moment a PwrAtk\
+  \ action finishes, before invoking a cleanup helper.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, [r5,#oBattleObject_AIDataPtr]` with `oBattleObject_AIDataPtr` = 0x58 per BattleObject.inc
+    loads the AI data pointer from the battle object in r5. - `add r0, #0xa0` matches `struct_org 0xa0
+    u8_arr AttackVars, 0x50` in AIData.inc — the AIAttackVars array. - `strb r1, [r0,#0x1d]` clears AIAttackVars+0x1d;
+    in ai_attack_vars_struct Unk_1d is the byte right before Unk_1e, and the struct comment notes PwrAtk-related
+    fields live around there (PwrAtkState/PwrAtkButton). - `strh r1, [r0,#0x1e]` clears the u16 AIAttackVars+0x1e.
+    - `bl sub_80E1662` takes the AIAttackVars pointer in r0 and only reads/writes r0/r1, consistent with
+    a small per-attack cleanup helper. - `pop {pc}` after only one bl means sub_80E1662 is allowed to
+    clobber r0/r1 freely; lr was pushed so this is a tail-return. - Callers confirm a battle/AIAttack
+    context: `ai_eventuallyRunsAIAttack_801AF44` (AI-attack scheduler), `object_setAttack5` (object-side
+    attack setter), and the wrapper `sub_80EAF36`.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801011A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801011a '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact field semantics ("PwrAtkState"/"PwrAtkButton") are inferred from a comment in AIData.inc that
+  says "ai state and ai attack vars might be swapped"; verifying whether +0x1d is really PwrAtkState or
+  rather a generic state byte would settle the name.
+- The role of sub_80E1662 is unknown; without seeing its body the "cleanup helper" wording is best-effort.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801011A -> ai_clearPwrAtkStateFromBattleObject_801011A
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

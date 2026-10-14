@@ -1,0 +1,77 @@
+name: battleObject_queueOamPanelGrid_8134610
+address: '0x08134610'
+kind: function
+previous_names:
+- sub_8134610
+status: probable
+summary: Per-battle-object sprite OAM queueing for the panel grid (allocates one OAM row per object, with
+  row index advancement every 7 frames).
+interface: '(r5 = BattleObject*, r10 = Toolkit*, lr = return) -> r0 = 0 (preserved through callee), flags
+  NZCV clobbered ; side effect: writes back object 0x16/0x17 ("AllianceAndDirectionFlip" packed byte)
+  with a new row index'
+details: "Reads `r5` as a `BattleObject*` (low nibble of `r5` not used; `ldrb r0,[r5,r0]` with `#0x44`\
+  \ looks at `BattleObject+0x44`, but the assembly checks `[r5+0x44]` first and bails out with `beq loc_8134686`\
+  \ — that early-out guards the rest). When `+0x44` is nonzero:\n    1. Loads an entry from `byte_813470C`\
+  \ indexed by `[r5+0x40]` (= `XVelocity` slot, repurposed here as a sprite-table index 0..3), subtracts\
+  \ the object's `PanelXY` (r5+0x12, via `ldrsh`) <<3 to compute a base OAM row X coord.\n    2. Computes\
+  \ the OAM Y as `([r5+0x3E] + [r5+0x3C]) - R4`, with R4 defaulting to `[r5+0x2E]` (`StaminaDamageCounterDisabler`)\
+  \ but **swapped to `[r5+0x24]` (`HP`) when `[r5+0x40] == 2`** (a third sprite variant). The result must\
+  \ lie in `[0,6]` inclusive (signed `blt`/`bgt` rejects and bails out), giving the panel row index.\n\
+  \    3. Clamps the row index to one of 7 Y-positions and packs `(Y<<4) | low16(baseX)` into the OAM\
+  \ attr0 `orr r0,r1`. Calls `battleObject_queueOamFromTableRow_811FAF4` with palette bank taken from\
+  \ `[r5+0x16]` low nibble (`r2 = bank | (1<<31)`), passing through `dword_81346F8=0x20003` (OBJ-affine\
+  \ + enable bits) and table at `byte_81331F4`.\n    4. Every **7th** call (driven by `[r5+0x16]` bits\
+  \ 4..7 acting as a frame counter — `lsr r1,r1,#4; sub r1,#1; bne` skips unless counter==1), it asks\
+  \ `sub_8120CC8` for the next palette bank from `dword_81331FC` and stores it into the low nibble of\
+  \ `[r5+0x16]`.\n    5. Packs the updated row index into bits 4..7 of `[r5+0x16]` (`lsl r1,r1,#4; orr\
+  \ r0,r1; strb r0,[r5,#0x16]`) so next frame's row position is preserved across calls.\n  Net effect:\
+  \ walks a per-battle-object \"panel sprite\" through the 7 panel rows of the player's view once every\
+  \ 7 frames, picking from one of three sprite variants. The `r5` shape matches `BattleObject` perfectly\
+  \ (0x16 is `AllianceAndDirectionFlip` but is being repurposed as `(bankNibble | rowNibble)`).\n  No\
+  \ caller-readable value is returned; `r0` ends as 0 because the callee returns 0 and is the last setter\
+  \ of `r0` here.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,r0]` then `cmp r3,#2` / `beq` near offset 0x8134642 show `r5` is being indexed
+    as a struct with fields at +0x40, +0x3E, +0x3C, +0x2E, +0x24, +0x16, +0x12 — all BattleObject offsets.
+    - `blt`/`bgt` on the computed `(Z+pad)-R4` constrains the value to `[0..6]`; `mov r3,#0x10; mul r2,r3;
+    add r1,r1,r2; orr r0,r1` produces a packed (X<<16)|Y16 OAM attr0. - `bl battleObject_queueOamFromTableRow_811FAF4`
+    is the only OAM-pushing callee. - The `lsr r1,r1,#4; sub r1,#1; bne loc_813467A` sequence is the classic
+    "every Nth call" gate; combined with `lsl r1,r1,#4` to repack, this is a 7-frame-per-row stepping
+    counter. - `sub_8120CC8` is confirmed as the lookup-table wrapper, called with palette-table arg `dword_81331FC`;
+    result stored into the low nibble of `+0x16`. - Captured calls all share `r0,r1 ∈ {0x40..0x62}`, `r2
+    = 0x13`, `r3 = 0x0f`, `lr = 0x081333d9` (the caller sub_81333A0 path). All exits return `r0=0` with
+    `-Z--` — matches a function that always falls through `loc_8134686`. - Only caller `sub_81333A0` reads
+    `r5` (BattleObject), `r10` (Toolkit), `lr` — matches the in-contract exactly.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08134610
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08134610 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Exact semantics of `[r5+0x44]` gate (never nonzero in captured runs) — likely an "object type/phase"
+  flag controlling whether this object draws a panel sprite at all.
+- Identity of `byte_813470C` (a 3- or 4-entry u32 table, indexed via `Unk_40` 0..3) — probably per-`Team`
+  panel-side base-X for navi vs virus.
+- Whether the `r0/r1 = 0x50/0x40`-style captures represent object index or panel position is not directly
+  verifiable; values stay in a small range and the caller `sub_81333A0` is the dispatcher.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8134610 -> battleObject_queueOamPanelGrid_8134610
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

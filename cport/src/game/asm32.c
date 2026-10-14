@@ -860,7 +860,7 @@ Next npc_tickDisappearTimer_81169D8(void) {
  * Refresh the object's sprite from its current frame parameters.
  * If the frame parameters report that the animation must be (re)loaded
  * (bits 0xC0 set), restart it: select animation 0, load its data, remove
- * the shadow, run the follow-up setup in sub_8116A44, and mark the object
+ * the shadow, run the follow-up setup in battle_queueOamEntriesForBattleObjectStateShadow_8116A44, and mark the object
  * state byte at +9 as 8 (also leaving that value in r0). Flags are left
  * from the last flag-setting instruction (TST r0, 0xC0 on the skip path,
  * MOV r0, #8 otherwise). */
@@ -882,10 +882,10 @@ Next battle_reloadObjectSprite_8116A04(void) {
     GUEST_CALL(sprite_setAnimation);        /* sprite_setAnimation(0) */
     GUEST_CALL(sprite_loadAnimationData);
     GUEST_CALL(sprite_noShadow);
-    GUEST_CALL(sub_8116A44);
+    GUEST_CALL(battle_queueOamEntriesForBattleObjectStateShadow_8116A44);
 
     /* obj->state = 8 (MOV #8 is flag-setting in Thumb); r0 ends as 8 too,
-     * regardless of what sub_8116A44 left in it. */
+     * regardless of what battle_queueOamEntriesForBattleObjectStateShadow_8116A44 left in it. */
     R0 = 8;
     SET_FLAGS_NZ(8);
     ST8(R5 + 9, 8);
@@ -893,18 +893,18 @@ Next battle_reloadObjectSprite_8116A04(void) {
 }
 
 /* ── sub_8116A28 ── */
-/* sub_8116A28: conditionally fix up a state byte, then continue into sub_8116A44.
+/* sub_8116A28: conditionally fix up a state byte, then continue into battle_queueOamEntriesForBattleObjectStateShadow_8116A44.
  * If the counter byte pointed to by r7 has reached 8, the byte at r5+8 is also
- * set to 8 (both are kept in sync). Flags/results come from sub_8116A44. */
+ * set to 8 (both are kept in sync). Flags/results come from battle_queueOamEntriesForBattleObjectStateShadow_8116A44. */
 Next sub_8116A28(void) {
     if (LD8(R7) == 8)
         ST8(R5 + 8, 8);
 
-    GUEST_CALL(sub_8116A44);
+    GUEST_CALL(battle_queueOamEntriesForBattleObjectStateShadow_8116A44);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116A44 ── */
+/* ── battle_queueOamEntriesForBattleObjectStateShadow_8116A44 ── */
 /* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet */
 static void call_sub_802FE28(u32 a1, u32 a2, u32 notUsed, u32 a4) {
     R0 = a1;
@@ -930,7 +930,7 @@ static void init_three_tables(void) {
     run_table(A_dword_8116ACC, 2);
 }
 
-Next sub_8116A44(void) {
+Next battle_queueOamEntriesForBattleObjectStateShadow_8116A44(void) {
     init_three_tables();
     SET_FLAGS_CMP(2, 2);
     RETURN_TO_CALLER();

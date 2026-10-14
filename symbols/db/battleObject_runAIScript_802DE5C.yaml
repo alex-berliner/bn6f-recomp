@@ -1,0 +1,55 @@
+name: battleObject_runAIScript_802DE5C
+address: '0x0802DE5C'
+kind: function
+previous_names:
+- sub_802DE5C
+status: probable
+summary: Runs two consecutive sub-steps of an AI script step when battle flag 0x40 is clear
+interface: () -> void ; tests battle flag 0x40 via r10
+details: "Leaf with no inputs/outputs of its own. Pushes lr; calls TestBattleFlag_0x40 which returns\n\
+  \  r0==0 when the 0x40 bit of the current battle flags word is set (per the callee's summary);\n  if\
+  \ bit is set (Z==1 from bl/contrary), it branches to locret_802DE70 and pops pc without\n  doing anything.\
+  \ If bit is clear, it loads r0=0 and calls sub_802E2C4, then loads r0=1 and\n  calls sub_802E2C4 again,\
+  \ then pops pc. So when the test fails the function fires two\n  sub-steps of sub_802E2C4 in sequence\
+  \ with arg values 0 and 1, otherwise it's a no-op.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at 0x0802de5c and 0x0802de70 -> trivial leaf wrapper. - `bl TestBattleFlag_0x40`
+    immediately followed by `beq locret_802DE70` -> when the test returns 0 (Z set, meaning bit 0x40 is
+    set), function returns without side effects. - Fallthrough: `mov r0, #0` / `bl sub_802E2C4` then `mov
+    r0, #1` / `bl sub_802E2C4` -> two sequential sub_802E2C4 invocations with arg 0 then 1. - Callee sub_802E2C4
+    contract reads r0 and r10 and clobbers many regs, matching the may_write list; r10 is read from the
+    toolkit via the project-wide "always in r10" rule. - Captured calls all return r0=0 with various Z
+    flags set, consistent with the test branch usually being taken in the captured story2 traces (only
+    some get past the beq).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802DE5C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802de5c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What sub_802E2C4 does with r0=0 vs r0=1 and what the "0x40" battle flag semantically gates
+- (story-mode specific event? a turn-end hook?) would settle the why; that requires reading
+- sub_802E2C4 itself plus what writes the flag.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802DE5C -> battleObject_runAIScript_802DE5C
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

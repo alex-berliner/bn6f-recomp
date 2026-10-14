@@ -1,0 +1,64 @@
+name: battle_initObjectStoryFlags_801C984
+address: '0x0801C984'
+kind: function
+previous_names:
+- sub_801C984
+status: probable
+summary: Initializes an AIData struct's BLeftAbility (offset 0x7) and Unk_09 (offset 0x9) from story flags
+  0 and 1.
+interface: '(r5 = AIDataPtr, r10 = ToolkitPtr) -> void ; side effects: writes [r5+7] and [r5+9]'
+details: "The function reads two story-flag values via battle_getStoryFlagFromBattleState_802CE60 and\
+  \ stores their boolean\n  state (0/1) into bytes at offsets 7 and 9 of the AIData struct pointed at\
+  \ by r5. The struct offsets 0x7 (BLeftAbility)\n  and 0x9 (Unk_09) of the AIData layout correspond to\
+  \ these stores. Captured-call traces show r1 = 0x64 (flag 0), r2 = 0x19 (flag 1?),\n  r3 = 0x64, and\
+  \ lr 0x0801BEF8 — strongly suggesting it is invoked during story-battle object construction\n  (snap_story2_*.bin\
+  \ frames), where each actor's AI data needs to remember which story-flags the player has already\n \
+  \ triggered (e.g., tutorial/intro flags 0 and 1). It is a leaf void helper called once per battle object\
+  \ created.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_801C984` body uses r5 as a struct pointer (`strb r0, [r5,#7]` and `strb r0, [r5,#9]`).
+    - Two identical patterns: `mov r0, #0 / bl battle_getStoryFlagFromBattleState_802CE60 / cmp r0, #0
+    / beq / mov r0, #1`, then store byte to r5 offset. - The first call uses r0=0 (story flag 0); although
+    r0 is not explicitly reloaded between the two calls in the disasm, the callee contract (`in=[''r0'',''r10'',''lr'']`)
+    consumes r0, and captured calls show r1=0x64, r2=0x19, r3=0x64 indicating story-flag reads 0 and 0x19
+    (or possibly 0 and 1 — the captured values are parameters to the *caller*, not the callee here). -
+    Only direct callee is `battle_getStoryFlagFromBattleState_802CE60`, called twice with different r0
+    values (0 then 1, per the symmetric pattern). - Stored offsets 0x7 and 0x9 match the AIData struct
+    fields `BLeftAbility` and `Unk_09` in `include/structs/AIData.inc`. - `push {lr}` / `pop {pc}` indicates
+    a tail-call/leaf with r5/r10 saved implicitly; contract shows no out registers, consistent with void
+    helper. - 40 captured calls all show identical entry r1=0x64/r2=0x19/r3=0x64/lr=0x0801BEF8, suggesting
+    it is called in a tight loop from a single story-battle init site.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C984
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c984 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- 'Whether r0 for the second call is literally 1 vs. some other flag index — the disassembly does not
+  show an explicit `mov r0, #1` between the two bl''s, but the function pattern strongly implies two different
+  indices. Tracing r0 across the call boundary or comparing to 802CE60''s internals would settle it.'
+- Whether the story flags being queried actually represent "intro/tutorial completed" vs. some other semantic
+  — game-side scripting would tell.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C984 -> battle_initObjectStoryFlags_801C984
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

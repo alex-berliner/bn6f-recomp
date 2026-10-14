@@ -1363,13 +1363,13 @@ Next sub_801C906(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801C984 ── */
-/* sub_801C984: query battle_getStoryFlagFromBattleState_802CE60 twice and store the answers as 0/1 flags:
+/* ── battle_initObjectStoryFlags_801C984 ── */
+/* battle_initObjectStoryFlags_801C984: query battle_getStoryFlagFromBattleState_802CE60 twice and store the answers as 0/1 flags:
  *   [r5+7] = (battle_getStoryFlagFromBattleState_802CE60(0) != 0)
  *   [r5+9] = (battle_getStoryFlagFromBattleState_802CE60(1) != 0)
  * The result of the second query is also left in r0, with flags matching
  * the original's final CMP/MOVS. */
-Next sub_801C984(void) {
+Next battle_initObjectStoryFlags_801C984(void) {
     u32 flag;
 
     /* First query, normalize the answer to 0/1 and store it. */
@@ -3420,11 +3420,11 @@ Next battle_initSceneStart_801E5F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E71C ── */
-/* sub_801E71C(r0 = value):
+/* ── battle_setNaviStatusGfx_801E71C ── */
+/* battle_setNaviStatusGfx_801E71C(r0 = value):
  * Stores the byte in r0 into byte_2035292 (field 0x12 of eStruct2035280).
  * r1 is preserved; r0's incoming value is not meaningful afterwards. */
-Next sub_801E71C(void) {
+Next battle_setNaviStatusGfx_801E71C(void) {
     ST8(A_eStruct2035280 + 0x12, R0);
     RETURN_TO_CALLER();
 }

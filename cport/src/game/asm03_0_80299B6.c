@@ -3153,10 +3153,10 @@ Next sub_802DD1E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802DE5C ── */
-/* sub_802DE5C: if test battle flag 0x40 is set, run sub_802E2C4 for
+/* ── battleObject_runAIScript_802DE5C ── */
+/* battleObject_runAIScript_802DE5C: if test battle flag 0x40 is set, run sub_802E2C4 for
  * indices 0 and 1. Otherwise do nothing. */
-Next sub_802DE5C(void) {
+Next battleObject_runAIScript_802DE5C(void) {
     GUEST_CALL(TestBattleFlag_0x40); /* answers in Z; the original branches on it */
     if (!ZERO_FLAG()) { /* the flag is set */
         R0 = 0;

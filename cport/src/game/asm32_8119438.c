@@ -260,7 +260,7 @@ Next sub_81195E4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81196F0 ── */
+/* ── submenu_updatePanelChipInfoIfDirty_81196F0 ── */
 /* register form: path-dependent condition flag propagation — gate-pass inherits flags
  * from chipPanel_renderChipGfxAndText_8119438 (opaque callee result) while gate-fail sets them from local CMP;
  * a no-branch thin adapter cannot express both without overwriting callee flags. */
@@ -330,8 +330,8 @@ static void sync_battle_state_regs(void) {
     R6 = save_r6;
 }
 
-/* sub_81196F0(r5 = battle object) -> r0, r1, r3, flags */
-Next sub_81196F0(void) {
+/* submenu_updatePanelChipInfoIfDirty_81196F0(r5 = battle object) -> r0, r1, r3, flags */
+Next submenu_updatePanelChipInfoIfDirty_81196F0(void) {
     sync_battle_state_regs();
     RETURN_TO_CALLER();
 }

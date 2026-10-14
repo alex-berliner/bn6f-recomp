@@ -1,0 +1,67 @@
+name: battleObject_collisionProjectRay_8031048
+address: '0x08031048'
+kind: function
+previous_names:
+- sub_8031048
+status: probable
+summary: A small tail routine for the line/point hit-test helpers that returns the projected (dx, dy)
+  along a ray, with both components made positive (the ray is normalized so the longer axis of (r6, r7)
+  goes into r7 and the shorter remains in r6).
+interface: (r6 = |dy|, r7 = |dx|, r2 = scratch, r3 = sign) -> r6 = shorter-leg remainder, r7 = longer-leg
+  steps; pushes/pops {r2, r3, lr} and returns via `pop {pc}`.
+details: "- Saves r2/r3/lr on the stack. Clears r2 and r3.\n  - If r7 == 0 it jumps to the final fold.\
+  \ Otherwise it forces r6, r7 to be non-negative; for each input that is negative it negates it and flips\
+  \ r3 with `mvn r3, r3` (so r3 ends up as 0 if both inputs were already non-negative, 0xFFFFFFFF if both\
+  \ were, and the mixed case never arises given the call sites).\n  - Runs a classic Bresenham-style \"\
+  subtract the smaller axis\" loop at loc_8031062: while r6 < r7 it does `r6 = r6 - r7; r2 += 1;` (and\
+  \ on the next iteration, `r6 = r6 - r7` becomes `r6 = r6 + r7` after the swap) so r2 accumulates how\
+  \ many r7-width steps fit into r6. The loop exits when r6 >= r7.\n  - At the bottom it stores the step\
+  \ count back into r7 and, if r3's sign-bit is set (mvn result), negates both r7 and r6 so the magnitudes\
+  \ are returned in the standard positive form. The result is returned through r6 (shorter leg) and r7\
+  \ (longer leg / step count); r0/r1 from the caller are preserved because the function uses its own push/pop\
+  \ of r2/r3 around the body.\n  - This is a leaf helper called immediately after the line-vs-point and\
+  \ line-vs-wedge intersection tests in sub_8030E14, sub_8030E8C, sub_8030F04, sub_8030F7C, and is responsible\
+  \ for converting the raw (rx, ry) returned by those tests into the normalized \"delta along the ray\"\
+  \ form that the callers then store at +0x04 / +0x14 in the destination object buffer.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly body: `sub_8031048` immediately follows each of the four "intersection" helpers
+    and is a leaf (no BL targets inside it), and the captured-call `lr` values (0x08030e61, 0x08030e7b,
+    0x08030fc9, 0x08030fe3) are all `bl`-return sites in those callers. - The `mvn r3, r3` after each
+    `neg` is the standard "fold two signs into one bit-mask" trick; final `neg r7, r7 / neg r6, r6` only
+    runs when r3''s high bit is set, restoring a positive answer. - Captured memory at `0x0200f3e0` shows
+    the function reading two words at offsets +0x04 and +0x14 (r1 = 0x79a7 vs 0x7b82/0x7b81) that the
+    surrounding call sites deposit there, consistent with rx/ry output pairs. - r0 is preserved across
+    the call (every captured exit shows r0 unchanged from the entry r0 = 0x0200f3e0), matching the {r2,r3,lr}-only
+    push/pop prologue.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031048
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, beastsp, chips, fuzz, maps, menus2, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08031048 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, beastsp, chips, fuzz, maps, menus2, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact semantic name of (r6, r7) at exit (steps-along-ray vs. shorter-leg-magnitude) is the only
+  thing not fully pinned down; the assembly is small enough that the call sites in sub_8030E14/...F7C
+  would disambiguate it on disassembly.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031048 -> battleObject_collisionProjectRay_8031048
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

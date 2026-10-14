@@ -1,0 +1,65 @@
+name: custMenu_dispatchState_802A2B0
+address: '0x0802A2B0'
+kind: function
+previous_names:
+- sub_802A2B0
+status: probable
+summary: 'Per-frame step of the custom-menu (chip select) state machine: dispatches the current state''s
+  handler, then advances an internal counter and rolls over state when applicable.'
+interface: (r5 = *S20364C0) -> (void, scratch clobbered; out r2/r3/r4/r6)
+details: "- Reads oS20364C0_JumpOffset12 (the \"state\" byte at offset 0x12) and indexes a 4-entry\n \
+  \   function-pointer table at off_802A2D8 to call the current state handler.\n  - Table entries point\
+  \ at fadeScreenAndAdvanceState_802A2E8, sub_802A30C, sub_802A33E,\n    sub_802A362 (likely init / fade-out\
+  \ / chip-select input / confirm states).\n  - After dispatch, increments oS20364C0_Unk_14 (offset 0x14)\
+  \ modulo 0x40 (6-bit down/up\n    counter, value 0x3f used as AND mask) — likely a per-state timer.\n\
+  \  - When Unk_14 wraps to 0, AND when JumpOffset12 is neither 0 nor 3, execution continues;\n    this\
+  \ pair of checks together is \"if the timer expired and we are in a non-terminal,\n    non-init state,\
+  \ fall through to advance the state\". In the snap_story2 captures,\n    JumpOffset12 at entry is 0..4\
+  \ and the timer is 0x08, so on return r0 carries the next\n    JumpOffset12 (= entry+1): 0->1, 1->2,\
+  \ ... 4->5 (matches captures 0xb, 0xc, 0xd, 0xe).\n  - r5 is the S20364C0 chip-select scratch state\
+  \ block held by the caller (Toolkit does\n    not contain it; only custMenuMainMaybe_8026A88 uses it).\
+  \ r10 is also live in/out\n    per the contract — held by the caller across the call.\n  - pop {pc}\
+  \ tail (no bx lr / no saved lr) is a Thumb-1 idiom for \"tail-call-safe leaf\";\n    if a state handler\
+  \ returns to here, control resumes just after the bx.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldrb r0, [r5,#oS20364C0_JumpOffset12] reads the dispatch index from the chip-select struct
+    - ldr r1, [r1,r0] / mov lr,pc / bx r1 is the classic Thumb table-jump (indirect call) - off_802A2D8
+    lists 4 handlers: fadeScreenAndAdvanceState_802A2E8, sub_802A30C, sub_802A33E, sub_802A362 - add r0,#1
+    / and r0,#0x3f / strb r0,[r5,#oS20364C0_Unk_14] is the modulo-0x40 counter on Unk_14 - cmp r0,#0 /
+    bne locret + cmp r0,#0 / beq locret + cmp r0,#3 / beq locret structure is "if (timer==0 && state!=0
+    && state!=3) advance state"; captures show exit r0 = entry state + 1 for states 1..4 - snap_story2_0
+    captures entry JumpOffset12=0 exit r0=1 (timer wasn''t 0x3f, no advance path); the others advance
+    1->2, 2->3... consistent with the table indices'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802A2B0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802a2b0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The four callees' roles (which is init / input / confirm / exit-fade) — none have summaries provided
+  yet.
+- Whether oS20364C0_Unk_14 is an up-counter or down-counter and what its units are (frames? ticks?). Comparing
+  wrap rate across captures would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802A2B0 -> custMenu_dispatchState_802A2B0
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

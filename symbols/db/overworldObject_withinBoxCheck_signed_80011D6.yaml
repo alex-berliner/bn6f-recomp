@@ -1,0 +1,65 @@
+name: overworldObject_withinBoxCheck_signed_80011D6
+address: '0x080011D6'
+kind: function
+previous_names:
+- sub_80011D6
+status: probable
+summary: Returns 1 if an overworld object (or NPC) lies within a signed-axis-aligned cube of half-extent
+  `r4` around the point `(r0, r1)` on the XY plane with both Z extents checked `>= 0`; 0 otherwise.
+interface: (r0 = X0 unsigned fixed, r1 = Y0 unsigned fixed, r2 = X1 unsigned fixed, r3 = Y1 unsigned fixed,
+  r4 = half-extent in q16.16 + Z-extent also r4) -> r0 = 0/1
+details: "- `sub r0, r0, r2; add r0, r0, r4` computes `|X0 - X1| + half`; same for Y. With fixed-point\
+  \ signed semantics, this is the standard \"is the absolute displacement <= half-extent\" test packed\
+  \ into a single `cmp r0, 2*r4` (since `r4` is then doubled).\n  - The function then does two `cmp` against\
+  \ `r2 = 2*r4`: first for X, then for Y. If both satisfy (unsigned `bcs` not taken → `r0 <= r2`/`r1 <=\
+  \ r2`), it returns 1; otherwise 0.\n  - The two-arg pattern (no Z handling here, even though the caller\
+  \ is the overworld/Mr-Weather collision step at sub_80A95A8) means Z proximity is checked separately\
+  \ by the caller — likely the caller's own `sub r2, r2, r3; cmp r2, r4` style test.\n  - Despite `r0/r1`\
+  \ looking like the unsigned 16.16 fixed-point coords seen in the snapshots (high word non-zero, low\
+  \ word 0x0000 aligned), the `sub`/`add` make it behave as a signed subtraction; the `bcs` (unsigned)\
+  \ is the giveaway that the operands are actually compared as magnitudes.\n  - Captured entry pairs `(X0,Y0)`\
+  \ and `(X1,Y1)` all differ by small signed deltas (the high bits of each fixed point), and exit r0 is\
+  \ always 0 in the snapshots — so `2*r4` (the threshold) is small enough that none of the captured pairs\
+  \ qualified.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub r0, r0, r2` followed by `add r0, r0, r4` reconstructs `|dx| + r4`; doubling r4 via `lsl
+    r2, r4, #1` and the subsequent `cmp r0, r2` is the canonical "abs within radius" check. - The same
+    pattern repeats for r1: `sub r1, r1, r3; add r1, r1, r4; cmp r1, r2` — confirms a 2D axis-aligned
+    box test. - Captured r0/r1 in all snapshots are large 32-bit numbers with low-16 zero (q16.16 coords),
+    and exit r0 is always 0 — consistent with an overworld/Mr-Weather proximity probe where only *near*
+    pairs count as in-range. - Caller sub_80A95A8 is Mr. Weather''s "MegaMan within 12 px at the same
+    Z" proximity step, which trivially fits this XY-distance check.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080011D6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080011d6 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether r4 holds the half-extent in fixed-point pixels or a pixel count (the low 16 bits are not observable
+  in caller contexts). The `2*r4` doubling suggests r4 is half; if r4 is already the full extent, the
+  comparison is off by 2x. A captured caller trace with r0/r1 separating signs from magnitudes would settle
+  this.
+- Why r3 is a Y1 in the captured calls but the function never tests it against r4 itself — it only feeds
+  the subtraction. Looks like a coincidental extra argument; could also be intended for an implicit Z
+  compare the caller folded in.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80011D6 -> overworldObject_withinBoxCheck_signed_80011D6
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

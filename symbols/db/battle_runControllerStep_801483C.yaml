@@ -1,0 +1,59 @@
+name: battle_runControllerStep_801483C
+address: '0x0801483C'
+kind: function
+previous_names:
+- sub_801483C
+status: probable
+summary: Dispatches a battle controller state to one of three step handlers indexed by an internal byte.
+interface: '(no caller-supplied inputs) -> r0 = sub-handler''s r0 ; side effects: reads controller-state
+  byte at dword_20367F0, calls one of three handlers, returns handler''s r0 and writes handler''s r0 back
+  to dword_20367F0+4.'
+details: "Loads a base pointer (r5) from dword_20367F0, then uses the byte at [r5] as an\n  index into\
+  \ a 3-entry table at off_8014860. With r0 holding the table and r1 the\n  index, it does `ldr r1, [r1,\
+  \ r0]; bx r1` — a Thumb->Thumb dispatch via Thumb\n  bx. After the dispatched routine returns, it reads\
+  \ byte [r5, #4] (i.e. the\n  next state slot in the controller struct) and pops with lr as the return.\n\
+  \  The controller struct base is shared between two callers (both in the pre-battle\n  intro step at\
+  \ 0x0800840c and 0x08008492), so r5/byte_0 and byte_4 belong to the\n  same per-controller state block.\
+  \ The three dispatch targets are\n  sub_801486C (case 0), sub_80148CC (case 1), and sub_8014A00 (case\
+  \ 2). Return\n  values seen in captured calls are 0/1 (boolean-looking), matching typical\n  \"did the\
+  \ controller finish a step\" semantics. The function is `void`-shaped\n  from the caller contract perspective:\
+  \ r0 is read by callers as a result, but\n  the contract lists it as out, and sub-handlers are responsible\
+  \ for it.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_801485C // =dword_20367F0` is the controller state pointer. - `ldrb r0, [r5]`
+    and `ldr r1, [r1, r0]; mov lr, pc; bx r1` is a 3-entry Thumb jumptable dispatch (off_8014860 holds
+    sub_801486C+1, sub_80148CC+1, sub_8014A00+1). - `ldrb r0, [r5, #0x4]` after the call writes/returns
+    the controller struct''s next-state byte; the captured r0 values 0/1 across 40 calls match this byte.
+    - Both callers (sub_800840C and battle_objAdvanceStateTimer_8008492) sit in the pre-battle intro controller
+    flow, consistent with a controller step dispatcher.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801483C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801483c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Exact field names of the controller struct at dword_20367F0 (we infer size >= 5).
+- Whether r0 is meaningful to callers or just an incidental scratch return.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801483C -> battle_runControllerStep_801483C
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

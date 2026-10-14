@@ -1,0 +1,57 @@
+name: object_resolveTableEntryByIndex_8134538
+address: '0x08134538'
+kind: function
+previous_names:
+- sub_8134538
+status: probable
+summary: Thin wrapper that resolves a fixed (0xE2/0x1C/0x1E/0x24) object-table entry via object_resolveTableEntry_8134558
+  and returns its byte in r0.
+interface: '() -> r0 = resolved byte (0xFF in captured calls) ; side effects: none within this function
+  (no stack writes beyond lr)'
+details: "The function is a single-call tail: it pushes lr, loads four small immediates into r0-r3\n \
+  \ (r0=0xE2, r1=0x1C, r2=0x1E, r3=0x24, per `mov r0,#0xe2; mov r1,#0x1c; mov r2,#0x1e; mov r3,#0x24`),\n\
+  \  branches into object_resolveTableEntry_8134558, then returns via `pop {pc}` reusing that saved lr.\n\
+  \  The chosen indices correspond to a particular row/sub-column inside the object table; by\n  inlining\
+  \ different constants the engine reuses 8134558 to look up distinct object archetypes\n  (compare sibling\
+  \ wrappers elsewhere in this subsystem). Captured calls show entry r0..r3 are\n  ignored (the function\
+  \ overwrites them with 0xE2/0x1C/0x1E/0x24) and exit r0 carries the resolved\n  attribute byte (concretely\
+  \ 0xFF in the snapshots), while the caller-visible saved registers\n  (r4..r7, per the contract `out=['r4','r5','r6','r7']`)\
+  \ are clobbered inside 8134558 and must\n  not be assumed live across the call.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at 0x8134538 and 0x8134548 show it is a leaf thunk (asm36.s:8751).
+    - The four `mov` instructions (r0=0xE2, r1=0x1C, r2=0x1E, r3=0x24) hardcode the lookup key. - Sole
+    direct callee is object_resolveTableEntry_8134558, whose confirmed summary is "Computes a a packed
+    object ID from a table-index and sub-identifier, reads two 16-bit attributes from the referenced entry,
+    and delegates resolution to sub_811FA98." - Captured exits all return 0x000000FF in r0, consistent
+    with 8134558''s read-and-mask behaviour. - caller battle_objectUpdate_8133400 and petNavi_perFrameUpdate_81339BC
+    both treat r4..r7 as scratch across the call, matching the contract `may_write=[''r4'',''r5'',''r6'',''r7'']`.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08134538
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08134538 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact gameplay meaning of indices 0xE2/0x1C/0x1E/0x24 (which chip/battle-object archetype,
+- which attribute offset) is not derivable from this thunk alone; reading sub_811FA98's table or
+- a higher-level caller that interprets the returned byte would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8134538 -> object_resolveTableEntryByIndex_8134538
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py

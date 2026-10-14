@@ -427,7 +427,7 @@ Next sub_80A4C5C(void) {
  * the byte at r5+4, then calls one of five handlers selected by the byte at
  * r5+8, which indexes the table at off_80A51E0 bytewise (entries are 4 bytes
  * apart, so the selector holds 0x00/0x04/0x08/0x0C/0x10):
- *   +0x00 mapEntry_update_80A51F8   +0x04 sub_80A5268   +0x08 sub_80A52E4
+ *   +0x00 mapEntry_update_80A51F8   +0x04 mapEntry_onUpdate_80A5268   +0x08 sub_80A52E4
  *   +0x0C sub_80A5304   +0x10 sub_80A5350
  * The original branches through r0, so the handler is entered with
  * r0 = handler address, r1 = raw selector byte, r7 = selected record. */
@@ -446,7 +446,7 @@ Next npc_stateDispatchStep_80A51C4(void) {
 
     switch (sel) {
     case 0x00: GUEST_CALL(mapEntry_update_80A51F8); break;
-    case 0x04: GUEST_CALL(sub_80A5268); break;
+    case 0x04: GUEST_CALL(mapEntry_onUpdate_80A5268); break;
     case 0x08: GUEST_CALL(sub_80A52E4); break;
     case 0x0C: GUEST_CALL(sub_80A5304); break;
     case 0x10: GUEST_CALL(sub_80A5350); break;
@@ -521,11 +521,11 @@ static void set_event_flag_register(u16 flag) {
     GUEST_CALL(SetEventFlag);
 }
 
-/* register form: calls sub_80A5268 outside this file, which has no typed C interface yet */
-/* leftover unused: sub_80A5268's r0 (it becomes mapEntry_update_80A51F8's r0 and flags, which its callers
+/* register form: calls mapEntry_onUpdate_80A5268 outside this file, which has no typed C interface yet */
+/* leftover unused: mapEntry_onUpdate_80A5268's r0 (it becomes mapEntry_update_80A51F8's r0 and flags, which its callers
  * do not read) */
 static u32 call_sub_80A5268(void) {
-    GUEST_CALL(sub_80A5268);
+    GUEST_CALL(mapEntry_onUpdate_80A5268);
     return R0;
 }
 
@@ -540,7 +540,7 @@ static u32 call_sub_80A5350(void) {
 /* ---------- typed function ---------- */
 
 /* Entry-controller update. If the entry's trigger flag is set, load the sprite for it,
- * clear its two associated flags, and call sub_80A5268. Otherwise set those flags,
+ * clear its two associated flags, and call mapEntry_onUpdate_80A5268. Otherwise set those flags,
  * mark the entry hidden, and call sub_80A5350.
  * The output r0/flags come from whichever tail subroutine was called. */
 static u32 update_entry(u32 ctrl_addr, u32 entry_addr) {
@@ -588,7 +588,7 @@ Next mapEntry_update_80A51F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A5268 ── */
+/* ── mapEntry_onUpdate_80A5268 ── */
 /* Sub-object struct accessed via r7:
  *   +0x0: u16 flag_a
  *   +0x2: u16 flag_b
@@ -693,8 +693,8 @@ done:
     sprite_update_fn();
 }
 
-/* sub_80A5268(r2, r4, r5=parent, r6, r7=sub, r10, lr) -> preserved */
-Next sub_80A5268(void) {
+/* mapEntry_onUpdate_80A5268(r2, r4, r5=parent, r6, r7=sub, r10, lr) -> preserved */
+Next mapEntry_onUpdate_80A5268(void) {
     /* r7/r5 are inputs the typed function consumes; lr is left as-is by the original
      * (`pop {pc}` returns via the saved lr). No other output is computed here. */
     sub_80A5268_impl(R7, R5);

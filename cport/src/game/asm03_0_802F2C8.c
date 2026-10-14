@@ -241,7 +241,7 @@ Next camera_init_802FF4C(void) {
  * handler to run; it acts as a byte offset into the handler table at
  * off_8030068, whose entries are:
  *   0x00, 0x04, 0x10 -> camera_updateDerivedOffsets_803007C (default/idle camera update)
- *   0x08             -> sub_80300AC
+ *   0x08             -> battle_clampCameraToBounds_80300AC
  *   0x0C             -> sub_8030104
  *
  * The original clobbers r0/r1 before jumping: it loads the selected handler
@@ -264,7 +264,7 @@ Next camera_dispatchUpdate_8030054(void) {
         break;
 
     case 0x08:
-        GUEST_CALL(sub_80300AC);
+        GUEST_CALL(battle_clampCameraToBounds_80300AC);
         break;
 
     case 0x0C:
@@ -1232,12 +1232,12 @@ Next sub_8030DA2(void) {
  * segment's (extended) line and, unless mode is 1, reference point 1 not on
  * that side.  On a hit each axis of the crossing point is solved by dividing
  * the line equation at reference point 0 by the other axis's delta
- * (sub_8031048) and un-biasing by reference point 0's coordinates; a miss
+ * (battleObject_collisionProjectRay_8031048) and un-biasing by reference point 0's coordinates; a miss
  * answers (0,0).  The remaining output registers carry the working values
  * the original leaves behind on each path. */
 
 typedef struct {
-    u32 quotient;  /* sub_8031048's result, left in r7 */
+    u32 quotient;  /* battleObject_collisionProjectRay_8031048's result, left in r7 */
     u32 remainder; /* what it leaves in r6 (becomes this function's r6 output) */
 } DivideResult;
 
@@ -1246,7 +1246,7 @@ typedef struct {
     u32 reg4, reg6, reg7, reg8, reg9;  /* the other listed output registers */
 } SegmentHit;
 
-/* register form: calls sub_8031048 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_collisionProjectRay_8031048 outside this file, which has no typed C interface yet */
 static DivideResult axis_divide(u32 matrix, u32 cross, u32 side, u32 dividend, u32 divisor)
 {
     DivideResult out;
@@ -1257,7 +1257,7 @@ static DivideResult axis_divide(u32 matrix, u32 cross, u32 side, u32 dividend, u
     R5 = side;      /* sign value still live in r5 at the call site */
     R6 = dividend;
     R7 = divisor;
-    GUEST_CALL(sub_8031048);
+    GUEST_CALL(battleObject_collisionProjectRay_8031048);
     out.quotient  = R7;
     out.remainder = R6;
     return out;
@@ -1351,13 +1351,13 @@ Next sub_8030E14(void) {
 /* ── sub_8030F7C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r6, r7; } call_sub_8031048_result;
-/* register form: generated wrapper: sub_8031048 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_collisionProjectRay_8031048 has no typed C interface yet */
 static inline call_sub_8031048_result call_sub_8031048(u32 r2, u32 r3, u32 r6, u32 r7) {
     R2 = r2;
     R3 = r3;
     R6 = r6;
     R7 = r7;
-    GUEST_CALL(sub_8031048);
+    GUEST_CALL(battleObject_collisionProjectRay_8031048);
     return (call_sub_8031048_result){ R2, R6, R7 };
 }
 
@@ -1366,7 +1366,7 @@ static inline call_sub_8031048_result call_sub_8031048(u32 r2, u32 r3, u32 r6, u
  *   edge 0 = (LD32(obj), LD32(obj+4)),  edge 1 = (LD32(obj+0xC), LD32(obj+0x10)).
  * A segment is defined by two points (xA,yA)→(xB,yB).
  * Compute signed distance from each endpoint to the separating edge via
- * sub_8031048.  On failure (no edge separates) return 0 in r0/r1.
+ * battleObject_collisionProjectRay_8031048.  On failure (no edge separates) return 0 in r0/r1.
  * mode == 1 tests only edge 0; otherwise both edges must have the right sign. */
 typedef struct {
     u32 r0, r1, r4, r6, r7, r8, r9;
@@ -1403,7 +1403,7 @@ static seg_result seg_intersect(u32 obj, u32 xA, u32 yA, u32 xB, u32 yB,
         }
     }
 
-    /* Success: intersect with edge 0, then edge 1, via sub_8031048 */
+    /* Success: intersect with edge 0, then edge 1, via battleObject_collisionProjectRay_8031048 */
     u32 s1 = -(ax * dy + cross);
     call_sub_8031048_result res1 = call_sub_8031048(cross, s1, s1, dx);
     u32 r8 = res1.r7 - LD32(obj + 4);
@@ -2366,13 +2366,13 @@ Next chatbox_loadScriptWordAndResetScroll_803189C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031980 ── */
-/* sub_8031980(r0 = selector):
+/* ── battle_aiIndexToActorCount_8031980 ── */
+/* battle_aiIndexToActorCount_8031980(r0 = selector):
  * Loads the address of dword_2013940 into r5 and returns a small mode id
  * in r0: 3 when the selector is 1, otherwise 2. The caller can also branch
  * on the flags left behind: n/z come from the returned value, c/v from the
  * comparison against 1. */
-Next sub_8031980(void) {
+Next battle_aiIndexToActorCount_8031980(void) {
     R5 = A_dword_2013940;
 
     SET_FLAGS_CMP(R0, 1);
@@ -2383,13 +2383,13 @@ Next sub_8031980(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031A5E ── */
-/* sub_8031A5E: trivial wrapper that calls sub_8031980 with r0 = 1.
+/* ── battleObject_getChipLockColourOne_8031A5E ── */
+/* battleObject_getChipLockColourOne_8031A5E: trivial wrapper that calls battle_aiIndexToActorCount_8031980 with r0 = 1.
  * Everything the callee leaves behind (r0, r5, flags, lr at the return
  * address) is passed straight through to our caller. */
-Next sub_8031A5E(void) {
+Next battleObject_getChipLockColourOne_8031A5E(void) {
     R0 = 1;
-    GUEST_CALL(sub_8031980);
+    GUEST_CALL(battle_aiIndexToActorCount_8031980);
     RETURN_TO_CALLER();
 }
 

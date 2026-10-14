@@ -1,0 +1,65 @@
+name: battleObject_removeElementAndFlagFromUpdateRoutine_814E1E8
+address: '0x0814E1E8'
+kind: function
+previous_names:
+- sub_814E1E8
+status: probable
+summary: One-shot update routine that bumps the battle object's element index and marks the routine as
+  finished
+interface: (r0 = BattleObject*, r1 = AIData*) -> r0 = BattleObject* ; sets Element, ORs flags, returns
+  same BattleObject
+details: "Called as the handler of a battle object's update routine when a routine finishes (lifts a routine\
+  \ PC by 0x40 via `battleObject_runUpdateRoutineAndAdvancePC_814E0D0`).\n  Immediately afterwards it\
+  \ stores `r3 - 0x40` into `[r1+0xe]` (which is AIData.Element by the AIData struct: `Element` is at\
+  \ offset 0xe on the captured EWRAM object at 0x02010890's relative offsets — the struct offsets confirm\
+  \ `Unk_0e`/`Element` is 0xe in AIData when read as BattleObject.Element context, but here r1 is the\
+  \ AIData 0x100-byte struct, so 0xe lands on `Unk_0e`). It then reads `[r1]` and ORs 0x0C into it, then\
+  \ writes the byte back — bit 0x04 (UPDATE) and bit 0x08 (DESTROY), which marks the routine as finished/destroyed.\n\
+  \  Function is a `bx r12` tail-call — r12 was saved as `lr` at entry, so it returns to the caller's\
+  \ saved LR (the LR captured in the traces is 0x0814e36d, one of the routine dispatchers).\n  All high\
+  \ registers r4–r11 are preserved by convention; the contract lists only them as live-out, and `out`\
+  \ does not include r0/r1, meaning the caller already knows r0/r1 are still the BattleObject and AIData.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r12, lr` then `bx r12` (sub_814E1E8 prologue/epilogue) shows this is invoked through
+    a `blx r12` dispatch from the routine runner, with r0=object and r1=AIData. - `bl battleObject_runUpdateRoutineAndAdvancePC_814E0D0`
+    is the only callee; that helper bumps the routine PC by 0x40 (`sub r3, #0x40` on return), explaining
+    the `-0x40` here. - `strb r3, [r1,#0xe]` writes the decremented value to the AIData byte 0xe (`Element`/Unk_0e).
+    - `ldrb r3, [r1]` then `orr r3, #0xc` then `strb r3, [r1]` ORs 0x0C into the first byte of the AIData,
+    flipping the two low bits of the AIState/status byte; in context this flags the routine as completed.
+    - All captured traces have r1 ∈ {0x02008028, 0x02008078, 0x02007f38}, the AIData pools whose first
+    byte changes value across calls but always ends with bits 0x4 and 0x8 set after this routine runs
+    (e.g. snap_story2_13 ends `...00 00 00 00 00 f0 02 75 20 4b` vs entry `00 00 00 00 00 00`). - r0 always
+    returns to 0x02010890 (the BattleObject pointer), and the caller 0x0814e36d reads r0 to continue iterating.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E1E8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e1e8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Which exact AI state byte is being OR'd — the caller's frame suggests `[r1]` is the AIState pointer
+  (the function below `battleObject_runUpdateRoutineAndAdvancePC` likely walks a sub-state). Whether 0xC
+  means "finished and ready to free" vs "go to destroy phase" depends on how 0x0814e36d interprets it.
+  Looking at the dispatch loop would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E1E8 -> battleObject_removeElementAndFlagFromUpdateRoutine_814E1E8
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py
