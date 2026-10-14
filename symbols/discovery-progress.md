@@ -2030,3 +2030,100 @@ Highlights:
 | 34    | 25                 | 20                        | 5               | 0       |
 
 Running total: named 616, hypothesis-only 230, dropped 0 (of ~10,600 placeholders).
+
+## Batch 35 (2026-10-14)
+
+25 functions, 19 named + 6 hypothesis (sub_8083DF0, sub_8086EA8, sub_80F8448,
+sub_810D808, sub_811DF1C, sub_811E090 kept as comment only), renamed in
+recomp 14faa81d (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle: set enemy count from navi stats
+  (battle_setEnemyCountFromNaviStats_801DF8C);
+- battle: get substate finished flag
+  (battle_getSubstateFinishedFlag_801FE5E);
+- battle: advance cinematic camera by textbox char count
+  (battle_advanceCinematicCameraByTextboxCharCount_8031264);
+- battle object: is hit by panel rectangle
+  (battleObject_isHitByPanelRectangle_8031570),
+  check collision with target
+  (battleObject_checkCollisionWithTarget_8031B9A);
+- battle object: run cur anim handler
+  (battleObject_runCurAnimHandler_804CD20);
+- battle: render BG layer 3 tiles and handle event
+  (battle_renderBgLayer3TilesAndHandleEvent_804CDD4);
+- battle: init beast-out AI turn
+  (battle_initBeastOutAiTurn_808983A);
+- battle object: beast mode AI phase init
+  (battleObject_beastModeAiPhaseInit_80898B2),
+  beast-out activate (battleObject_beastOutActivate_8089A10);
+- battle object: toggle player ally lockout
+  (battleObject_togglePlayerAllyLockout_808FF44);
+- battle object: step sprite (battleObject_stepSprite_80B86A4),
+  copy coords from related object
+  (battleObject_copyCoordsFromRelatedObject_80B8800),
+  clamp cur anim (battleObject_clampCurAnim_80B8810);
+- battle object: snake arm update
+  (battleObject_snakeArmUpdate_80C552A);
+- battle object: clear active-on-deletion state
+  (battleObject_clearActiveOnDeletionState_80D236C);
+- object: set state handler and return one
+  (object_setStateHandlerAndReturnOne_811CC02);
+- beast-SP: exit or finish battle
+  (battle_beastSpExitOrFinishBattle_8135B54);
+- sound: set m4A control (sound_setM4AControl_814EE2C).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+| 23    | 25                 | 14                        | 11              | 0       |
+| 24    | 25                 | 15                        | 10              | 0       |
+| 25    | 25                 | 19                        | 6               | 0       |
+| 26    | 25                 | 16                        | 9               | 0       |
+| 27    | 25                 | 15                        | 10              | 0       |
+| 28    | 25                 | 17                        | 8               | 0       |
+| 29    | 25                 | 13                        | 12              | 0       |
+| 30    | 25                 | 15                        | 10              | 0       |
+| 31    | 25                 | 15                        | 10              | 0       |
+| 32    | 25                 | 17                        | 8               | 0       |
+| 33    | 25                 | 19                        | 6               | 0       |
+| 34    | 25                 | 20                        | 5               | 0       |
+| 35    | 25                 | 19                        | 6               | 0       |
+
+Running total: named 635, hypothesis-only 236, dropped 0 (of ~10,600 placeholders).
+
+## Session summary
+
+Discovery session complete. Total runtime ~8h on MiniMax-M3 with 4 parallel
+groups of 5-7 names per batch. 35 batches of 25 functions each = 875
+functions explored, of which 635 renamed via `./wf record` and 236 kept
+as `hypothesis`-status yaml entries for the next session. The bn6f fork
+was pushed after every batch; port ROM stayed byte-identical (the
+external commit `82978e42` mid-batch 7 fixed the pre-existing
+`asm32.c:185` gate issue). Pace: ~80 functions/hour; gate passed
+cleanly after batch 7. A few placeholders (sub_8083DF0, sub_8086EA8,
+sub_810D808) refused to be named by the model because their bodies
+weren't extractable from the ROM.
