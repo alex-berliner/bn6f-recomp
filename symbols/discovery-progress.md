@@ -1035,3 +1035,68 @@ Highlights:
 | 20    | 25                 | 15                        | 10              | 0       |
 
 Running total: named 386, hypothesis-only 110, dropped 0 (of ~10,600 placeholders).
+
+## Batch 21 (2026-10-14)
+
+25 functions, 18 named + 7 hypothesis (sub_8031388, sub_803DEB4, sub_8083DF0,
+sub_8086EA8, sub_80897A6, sub_80E1670, sub_8112A78 kept as comment only),
+renamed in recomp 6011da2c (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle: calc angle octant (battle_calcAngleOctant_800118A);
+- battle scroll: tick step or stop (battle_scrollTickStepOrStop_80313FC);
+- textbox: compute cursor blink advance
+  (textbox_computeCursorBlinkAdvance_80315B8);
+- battle object: check in attack range
+  (battleObject_checkInAttackRange_8031BE2);
+- battle: set object charge params from table
+  (battle_setObjectChargeParamsFromTable_80A6FDC);
+- battle beast-out: check player in box trigger
+  (battle_beastOut_checkPlayerInBoxTrigger_80A70FC);
+- battle object: check panel match (battleObject_checkPanelMatch_80A743C);
+- battle AI: select AI ptr from table (battle_ai_selectAIPtrFromTable_80A7590);
+- battle object: check set priority by event flag
+  (battleObject_checkSetPriorityByEventFlag_80A82DC),
+  dispatch update by cur action
+  (battleObject_dispatchUpdateByCurAction_80A8654);
+- battle beast-SP: update or init (battle_beastSP_updateOrInit_80A86A0);
+- battle object: step sprite if alive and unfrozen
+  (battleObject_stepSpriteIfAliveAndUnfrozen_80B881E);
+- object: dispatch collision phase (object_dispatchCollisionPhase_80CC1A0);
+- battle object: clear AI data unknown
+  (battleObject_clearAIDataUnknown_80E1662);
+- beast-out: advance set transform (beastOutOrProgramAdvanceSetTransform_811842C);
+- battle object: collect targets in region
+  (battleObject_collectTargetsInRegion_813BD90);
+- battle: get beast-out A-PwrAtk handler by item check
+  (battle_getBeastOutAPwrAtkHandlerByItemCheck_813C4A8);
+- submenu: get beast-out gate anim script table ptr
+  (submenu_getBeastOutGateAnimScriptTablePtr_813C4C8).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+
+Running total: named 404, hypothesis-only 117, dropped 0 (of ~10,600 placeholders).
