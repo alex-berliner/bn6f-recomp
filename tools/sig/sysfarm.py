@@ -8,6 +8,7 @@ model from the knowledge layer, checked, pre-reviewed by outside models, and ins
     tools/sig/sysfarm.py install NAME                                     land a reviewed job (main-tree lock)
     tools/sig/sysfarm.py reopen NAME [--why TEXT]                         back to open (a review's reason
                                                                           becomes the next repair's report)
+    tools/sig/sysfarm.py selfcheck                                        the tool's own logic, checked
 
 A job (build-wf-state/subsystem-jobs.json) works in its own worktree, build-wf-worktrees/sys-SLUG, at the
 main tree's commit when it starts:
@@ -22,7 +23,10 @@ main tree's commit when it starts:
      wrappers and adapters (tools/abi/lint.py); the lifter accepts it and both builds link; the difftest at
      every entry point (captured calls, then random inputs: a random failure — the lifted original
      completed the same trial and the hand-written version crashed or diverged — is a real divergence and
-     blocks, unlike out-of-domain trials where the original itself faults); lockstep on the 16 routes;
+     blocks, unlike out-of-domain trials where the original itself faults); between the builds a per-function
+     probe runs each converted member against its lifted original on its own captured calls, comparing the
+     member's whole contract (every register and flag its callers rely on, farm.contract_of) as the verify
+     difftest does; lockstep on the 16 routes;
      the CPU oracle at the entry points (reported);
   4. on a pass: tools/convert/prereview.py on each member's function (outside models), then a commit in the
      worktree with symbols/db (tools/sig/record_subsystem.py, new entries for members that had none),
@@ -379,7 +383,57 @@ HINTS = {
 }
 
 
-RESULTS: dict[str, list[str]] = {}     # probe: the result registers each adapter writes (compared)
+def contract_of(name: str, tree: str) -> tuple[set[str], set[str]] | None:
+    """NAME's contract as the verify difftest compares it (tools/lifter's difftest_pairs.h, from the
+    lifter's contract of the original): the registers callers rely on after the call and the flags
+    they read. None when there is no line for NAME (then the probe counts every difference)."""
+    path = os.path.join(tree, "cport/include/difftest_pairs.h")
+    m = re.search(rf"^PAIR\({re.escape(name)}, (0x[0-9A-Fa-f]+), (\d+), \d\)", open(path).read(), re.M) \
+        if os.path.exists(path) else None
+    if not m:
+        return None
+    fl = int(m.group(2))
+    return ({f"r{n}" for n in range(13) if int(m.group(1), 16) >> n & 1},
+            {f for bit, f in ((1, "nz"), (2, "c"), (4, "v")) if fl & bit})
+
+
+WHY = re.compile(r": (guest memory|return target|SP|register|N/Z flags?|C flag|V flag) differs?\b"
+                 r"|hand-written version crashed")
+
+
+def probe_fails(name: str, lines: list[str], tree: str) -> list[str]:
+    """The trials of a difftest run (captured or random) that are real divergences. The difftest
+    compares exactly the function's contract (farm.contract_of): guest memory, the return target, SP,
+    and the registers and flags the contract gives the callers — so the probe counts them all, not
+    only the result registers the adapter writes (chatbox_checkAdvanceTextPrint_8040154's original
+    always leaves r2 = 1 or 2, its callers read it; the C never set r2, a probe that forgave r2 passed
+    it, and the whole verify's difftest caught it on 104/300 random trials). A trial line names its
+    trial (random) or its captured state; the differing registers follow it."""
+    ct = contract_of(name, tree)
+    regs, flags = ct if ct else ({f"r{n}" for n in range(13)}, {"nz", "c", "v"})
+    real = []
+    for i, l in enumerate(lines):
+        m = WHY.search(l)
+        if not m:
+            continue
+        what, tag = m.group(1), l.strip()
+        if what == "register":
+            got = []
+            for x in lines[i + 1:]:
+                r = re.match(r"\s+(r\d+): lifted", x)
+                if r:
+                    got.append(r.group(1))
+                elif not x.strip().startswith("inputs:") or got:
+                    break
+            if got and not set(got) & regs:
+                continue                     # a register the contract leaves free: no caller reads it
+            if got:
+                tag += f" ({', '.join(sorted(set(got) & regs))} is a contract output)"
+        elif what in ("N/Z flag", "N/Z flags", "C flag", "V flag") and \
+                {"N/Z flag": "nz", "N/Z flags": "nz", "C flag": "c", "V flag": "v"}[what] not in flags:
+            continue                         # a flag the contract leaves free
+        real.append(tag)
+    return real
 
 
 def probe_adapters(code: str, skip: set[str], members: list[str]) -> tuple[str, list[str]]:
@@ -435,18 +489,19 @@ def probe_adapters(code: str, skip: set[str], members: list[str]) -> tuple[str, 
         call = f"{fn}({', '.join(args)})"
         if rt != "void" and ret in ("r0", "r0:r1") and rt in ("u8", "u16", "u32", "s8", "s16", "s32", "bool", "int", "unsigned"):
             call = f"R0 = (u32){call}"
-            RESULTS[game] = ["r0"]
         elif rt == "U32Pair" and ret == "r0:r1":
             call = f"U32Pair p_ = {call}; R0 = p_.r0; R1 = p_.r1"
-            RESULTS[game] = ["r0", "r1"]
         out.append(f"Next {game}(void) {{ {' '.join(pre)} {call}; {' '.join(post)} RETURN_TO_CALLER(); }}")
         names.append(game)
     return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n", names
 
 
 def probe(tree: str, file: str, entries: list[str], env: dict, denv: dict, members: list[str]) -> tuple[list[str], list[str]]:
-    """Each internal function against its lifted original on its own captured calls: only memory, the
-    return target and SP count (an internal function's registers are its callers' business, now C)."""
+    """Each internal function against its lifted original on its own captured calls. What counts as a
+    divergence is the function's contract (farm.contract_of, what the verify difftest compares):
+    memory, the return target, SP, and every register and flag the contract gives the callers — not
+    only the result registers the adapter writes (an internal function's registers are its callers'
+    business, and the callers read them)."""
     path = os.path.join(tree, "cport/src/game", file)
     code = open(path).read()
     extra, names = probe_adapters(code, set(entries), members)
@@ -465,18 +520,12 @@ def probe(tree: str, file: str, entries: list[str], env: dict, denv: dict, membe
         for n in names:
             rc, out = sh([diff, "-S", os.path.join(tree, "build-snapshots", n), n], os.path.join(tree, "cport"),
                          env=denv, timeout=1800)
-            lines = out.splitlines()
-            real = [l.strip() for l in lines if re.search(r"trial \d+: (guest memory|return target|SP) differs", l)]
-            for i, l in enumerate(lines):      # a wrong result: the result register differs
-                if re.search(r"trial \d+: register differs", l):
-                    regs = [re.match(r"\s+(r\d+): lifted", x) for x in lines[i + 1:i + 4]]
-                    if any(r and r.group(1) in RESULTS.get(n, []) for r in regs):
-                        real.append(l.strip() + " (its result)")
+            real = probe_fails(n, out.splitlines(), tree)
             if real:
                 detail = [l.strip() for l in out.splitlines() if "first diff" in l or "differs" in l
                           or re.match(r"\s+r\d+: lifted", l)][:6]
-                bad.append(f"{n} (captured calls of the original): {len(real)} calls write memory differently or return "
-                           f"elsewhere; " + " | ".join(detail))
+                bad.append(f"{n} (captured calls of the original): {len(real)} calls end differently from "
+                           f"the original; " + " | ".join(detail))
             else:
                 ok += 1
         note = f"probe: {ok}/{len(names)} internal functions match their originals on their own captured calls"
@@ -821,12 +870,8 @@ def adapters_from_protos(table: dict, names: list[str], unit_entries: dict[str, 
         rt, r = t["ret"]["type"], t["ret"]["reg"]
         if r in ("r0",) and rt not in ("void", "U32Pair"):
             call = f"R0 = (u32)(uintptr_t){call}" if rt.endswith("*") else f"R0 = (u32){call}"
-            RESULTS[game] = ["r0"]
         elif rt == "U32Pair":
             call = f"U32Pair p_ = {call}; R0 = p_.r0; R1 = p_.r1"
-            RESULTS[game] = ["r0", "r1"]
-        RESULTS.setdefault(game, [])
-        RESULTS[game] = RESULTS[game] + [q["reg"] for q in t["params"] if q["io"]]
         out.append(f"Next {game}(void) {{ {' '.join(pre)} {call}; {' '.join(post)} RETURN_TO_CALLER(); }}")
         done.append(game)
     return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n", done
@@ -888,16 +933,10 @@ def probe_names(tree: str, path: str, code: str, extra: str, names: list[str], e
         for n in names:
             rc, out = sh([diff, "-S", os.path.join(tree, "build-snapshots", n), n], os.path.join(tree, "cport"),
                          env=denv, timeout=1800)
-            lines = out.splitlines()
-            real = [l.strip() for l in lines if re.search(r"trial \d+: (guest memory|return target|SP) differs", l)]
-            for i, l in enumerate(lines):
-                if re.search(r"trial \d+: register differs", l):
-                    regs = [re.match(r"\s+(r\d+): lifted", x) for x in lines[i + 1:i + 4]]
-                    if any(r and r.group(1) in RESULTS.get(n, []) for r in regs):
-                        real.append(l.strip() + " (its result or an in/out register)")
+            real = probe_fails(n, out.splitlines(), tree)
             if real:
-                detail = [l.strip() for l in lines if "first diff" in l or "differs" in l or re.match(r"\s+r\d+: lifted", l)
-                          or "inputs:" in l][:8]
+                detail = [l.strip() for l in out.splitlines() if "first diff" in l or "differs" in l
+                          or re.match(r"\s+r\d+: lifted", l) or "inputs:" in l][:8]
                 bad.append(f"{n}: {len(real)} of its captured calls end differently from the original: " + " | ".join(detail))
         return ([f"Functions that do not do what their assembly does (each run alone from the original game's "
                  f"captured calls of it, against its lifted original; `lifted` is the original's value, `hand` "
@@ -1078,6 +1117,70 @@ def install(a) -> None:
     print(f"{a.name}: installed at {read()[a.name]['installed']}")
 
 
+def selfcheck(_a) -> None:
+    """The tool's own logic, checked (no builds, no models, no game)."""
+    import tempfile
+    bad = []
+
+    def eq(what: str, got, want) -> None:
+        if got != want:
+            bad.append(f"{what}: got {got!r}, want {want!r}")
+
+    with tempfile.TemporaryDirectory() as tree:
+        os.makedirs(os.path.join(tree, "cport/include"))
+        open(os.path.join(tree, "cport/include/difftest_pairs.h"), "w").write(
+            "/* Generated by tools/lifter. */\n"
+            "PAIR(probe_a, 0x0004, 0, 1)  /* free: nz c v r0 r1 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12; flags: - */\n"
+            "PAIR(probe_b, 0x1FFF, 7, 1)  /* free: -; flags: nz c v */\n")
+        eq("contract_of: the contract's registers and flags",
+           contract_of("probe_a", tree), ({"r2"}, set()))
+        eq("contract_of: everything compared",
+           contract_of("probe_b", tree), ({f"r{n}" for n in range(13)}, {"nz", "c", "v"}))
+        eq("contract_of: no line for the name", contract_of("probe_none", tree), None)
+        eq("contract_of: no file", contract_of("probe_a", os.path.join(tree, "elsewhere")), None)
+
+        def fails(name: str, lines: list[str]) -> list[str]:
+            return probe_fails(name, lines, tree)
+
+        # a register the contract gives the callers counts (r2 for probe_a); one it leaves free does not
+        eq("probe: a contract output differing counts",
+           fails("probe_a", ["  f /t/snap_1.bin: register differs", "    inputs: r0=0x1 r1=0x2",
+                             "    r2: lifted 0x2 hand 0x0"]),
+           ["f /t/snap_1.bin: register differs (r2 is a contract output)"])
+        eq("probe: registers the contract leaves free do not",
+           fails("probe_a", ["  f trial 7: register differs", "    inputs: r0=0x1",
+                             "    r0: lifted 0x1 hand 0x0", "    r1: lifted 0x2 hand 0x3"]), [])
+        eq("probe: among differing registers, the contract's counts",
+           fails("probe_a", ["  f trial 8: register differs", "    inputs: r0=0x1",
+                             "    r1: lifted 0x1 hand 0x2", "    r2: lifted 0x1 hand 0x0"]),
+           ["f trial 8: register differs (r2 is a contract output)"])
+        eq("probe: a trial the difftest compared with no register detail counts",
+           fails("probe_a", ["  f trial 9: register differs", "    inputs: r0=0x1"]),
+           ["f trial 9: register differs"])
+        # memory, return target, SP and a crash of the hand-written side always count
+        eq("probe: memory counts",
+           fails("probe_a", ["  f trial 1: guest memory differs", "    inputs: r0=0x1",
+                             "    first diff at 0x2000000: lifted 00 hand 01"]),
+           ["f trial 1: guest memory differs"])
+        eq("probe: the return target counts", fails("probe_a", ["  f trial 2: return target differs"]),
+           ["f trial 2: return target differs"])
+        eq("probe: SP counts", fails("probe_a", ["  f snap_2.bin: SP differs"]), ["f snap_2.bin: SP differs"])
+        eq("probe: a crash counts", fails("probe_b", ["  f trial 3: hand-written version crashed"]),
+           ["f trial 3: hand-written version crashed"])
+        # flags: only the ones the contract gives the callers
+        eq("probe: a contract flag counts", fails("probe_b", ["  f trial 4: N/Z flags differ"]),
+           ["f trial 4: N/Z flags differ"])
+        eq("probe: a flag the contract leaves free does not",
+           fails("probe_a", ["  f trial 5: C flag differs"]), [])
+        eq("probe: other lines stay out",
+           fails("probe_a", ["probe: 3/3 internal functions match", "f: ok  (3 snapshots, 3 runs, 0 failures, 0 out-of-domain)"]), [])
+    if bad:
+        for b in bad:
+            print("selfcheck: " + b)
+        sys.exit(f"selfcheck: {len(bad)} failures")
+    print("selfcheck: ok")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1097,8 +1200,10 @@ def main() -> None:
     o = sub.add_parser("reopen")
     o.add_argument("name")
     o.add_argument("--why")
+    sub.add_parser("selfcheck")
     a = ap.parse_args()
-    {"plan": plan, "run": run, "status": status, "install": install, "reopen": reopen}[a.cmd](a)
+    {"plan": plan, "run": run, "status": status, "install": install, "reopen": reopen,
+     "selfcheck": selfcheck}[a.cmd](a)
 
 
 if __name__ == "__main__":
