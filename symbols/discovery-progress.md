@@ -854,3 +854,66 @@ Highlights:
 | 17    | 25                 | 21                        | 4               | 0       |
 
 Running total: named 334, hypothesis-only 87, dropped 0 (of ~10,600 placeholders).
+
+## Batch 18 (2026-10-14)
+
+25 functions, 20 named + 5 hypothesis (sub_8083DF0, sub_80A5C9C, sub_80A82DC,
+sub_80E1670, sub_81421D0 kept as comment only), renamed in recomp 7911de90
+(bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle object: try get next panel in facing direction
+  (battleObject_tryGetNextPanelInFacingDirection_800F964);
+- battle AI attack: init vars and start (aiAttack_initVarsAndStart_80116AE);
+- object: AI attack vars exit state (object_aiAttackVarsExitState_8014F04);
+- battle chip-select: handle up-down input
+  (battle_chipSelect_handleUpDownInput_802C460);
+- battle: calc panel distance (battle_calcPanelDistance_803182A);
+- battle object: run update jumptable
+  (battleObject_runUpdateJumpTable_80895A8);
+- battle AI: dispatch beast-SP (battle_ai_dispatchBeastSp_80A6E98);
+- battle object: update animation (battleObject_updateAnimation_80A6F2C),
+  update from cur action (battleObject_updateFromCurAction_80A7354);
+- overworld map object: event 5F1 trigger
+  (owMapObject_event5F1Trigger_80A75DC);
+- battle object: dispatch on subtype (battleObject_dispatchOnSubtype_80A781C);
+- sprite: setup beast-out sprite (sprite_setupBeastOutSprite_80A786C);
+- battle object: update sprite and maybe reload anim
+  (battleObject_updateSpriteAndMaybeReloadAnim_80A827C);
+- battle object: aura update or destroy
+  (battleObject_auraUpdateOrDestroy_80C5886),
+  run update actions and collisions
+  (battleObject_runUpdateActionsAndCollisions_80D2320);
+- object: destroy phase (object_destroyPhase_80D4A98);
+- battle object: AI attack tick charge (battleObject_aiAttackTickCharge_80EBEB2);
+- battle: get AI data for enemy index
+  (battle_getAIDataForEnemyIndex_8142050);
+- overworld map object: count by chip or something
+  (owMapObject_countByChipOrSomething_8142B04);
+- sound: music player set stop flag
+  (sound_musicPlayerSetStopFlag_814F1E8).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+
+Running total: named 354, hypothesis-only 92, dropped 0 (of ~10,600 placeholders).
