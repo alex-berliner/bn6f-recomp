@@ -20,8 +20,9 @@ main tree's commit when it starts:
   3. checks, in order, each failure fed back to the same model as a repair (3 rounds, then the route's next
      model): the file compiles with no warning that changes a value; no register-level code outside the
      wrappers and adapters (tools/abi/lint.py); the lifter accepts it and both builds link; the difftest at
-     every entry point (captured calls; random inputs, whose failures are reported but do not block: a
-     dispatcher's random state bytes are mostly ones the game never holds); lockstep on the 16 routes;
+     every entry point (captured calls, then random inputs: a random failure — the lifted original
+     completed the same trial and the hand-written version crashed or diverged — is a real divergence and
+     blocks, unlike out-of-domain trials where the original itself faults); lockstep on the 16 routes;
      the CPU oracle at the entry points (reported);
   4. on a pass: tools/convert/prereview.py on each member's function (outside models), then a commit in the
      worktree with symbols/db (tools/sig/record_subsystem.py, new entries for members that had none),
@@ -289,6 +290,15 @@ def check(job: str, tree: str, file: str, entries: list[str], members: list[str]
         summary = [l for l in out.splitlines() if l.startswith(e + " ")]
         notes.append(f"random {e}: {(summary or ['?'])[-1].split(None, 1)[-1].strip()}")
         if "FAIL" in " ".join(summary):
+            # A random trial only counts as failed when the lifted original completed it (a trial the
+            # original itself faults on is out of domain, not a failure). So a failure is a state the
+            # original survives and the hand-written version crashed on or diverged from — a faithful
+            # port can never produce one, so it blocks even though the state may be one the game never
+            # holds (sys chatbox_803FEB4: an invented entry dispatcher passed every captured snapshot
+            # — all 40 had the chatbox hidden — and failed only random trial 142, as a note; lockstep
+            # then burned a whole-file bisect to find it).
+            fails.append(f"difftest {e} on random inputs: {summary[-1].strip()}\n"
+                         + "\n".join(l.strip() for l in out.splitlines()[:8]))
             notes.append("  " + " | ".join(l.strip() for l in out.splitlines()[:6]))
     if fails:
         return fails, notes
@@ -615,7 +625,7 @@ def run_job(name: str) -> None:
             if not fails:
                 finish(name, tree, file, members, entries, model, notes)
                 return
-            feedback = fails + [n for n in notes if n.startswith("random") and "FAIL" in n]
+            feedback = fails   # random-input difftest failures are among them (they block, in check)
             update(name, state="converting", verdict=fails[0][:200])
         update(name, tried=read()[name].get("tried", []) + [model])
     update(name, state="failed", verdict="every model of its route tried")
