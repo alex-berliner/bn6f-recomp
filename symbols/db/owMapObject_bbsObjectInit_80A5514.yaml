@@ -1,0 +1,81 @@
+name: owMapObject_bbsObjectInit_80A5514
+address: '0x080A5514'
+kind: function
+previous_names:
+- sub_80A5514
+status: probable
+summary: 'CurState=0 initialiser for the BBS overworld map object: sets CurState=3, picks a sprite, kicks
+  off sub-state 4 BBS logic and an optional exclamation/SE cue.'
+interface: '(r5 = OW NPC object ptr, r6 = related object ptr, r10 = toolkit ptr, lr = ret) -> r0 = 0x71c
+  ; side effects: writes to *r5 sprite/header fields, may play SE 0x17F, writes *r6 byte 0xF, schedules
+  *r5 byte 8 = 4 then jumps into owMapObject_bbsObjectUpdate_80A5588.'
+details: "Entry contract reads r5/r6/r10/lr and out lists r4-r10/r12 as callee-saved, so the function\
+  \ is\nessentially void-like, even though the lifter reports r0=0x71c at exit (that's the ldr literal\n\
+  for \"0x71c ≈ 1820\" residue from the last ldr r0,[r5,#0x2c] in the path - it's the\nCurState value\
+  \ loaded back into r0 on the way out via owMapObject_bbsObjectUpdate_80A5588,\nbut OwMapObject_bbsObjectUpdate_80A5588\
+  \ is a tail-call-ish here, so callers effectively get\nwhatever it returns). Captured snap_story5_*\
+  \ entries all show `lr=0x080a54fe` pointing at the\nshared \"call CurState=0 initialiser\" dispatcher\
+  \ right before this function, and r0 entry is\nalways the thumb-bit address of this very function +\
+  \ 0x85 -> confirms this is the per-object\ninit trampoline that the dispatcher forwards into.\nSteps\
+  \ (each instruction cited):\n  1. `strb r0,#3` with r0=3 -> writes `CurState=3` at byte 3 of the OW\
+  \ map object (header's\n     Index slot, but actually the CurState slot at oOverworldMapObject+0x3 since\
+  \ the header\n     union has ListIndex at 0x3 and the project's struct leaves CurState of the wrapping\n\
+  \     NPC object implied here). Sets the SM to \"running\" before the seam.\n  2. Reads `toolkit.GameStatePtr->MapGroup`\
+  \ and branches: if MapGroup==0x85 use sprite 0x4E\n     else 0x0B. So on the Expo map (0x85) one variant\
+  \ of the BBS is shown, default maps use\n     the other.\n  3. `sprite_load(0x80, 0x1c, spriteId)` then\
+  \ `sprite_setAnimation(r6[5])` and\n     `sprite_loadAnimationData()` and `sprite_noShadow()` -> mount\
+  \ the per-variant sprite\n     sheets onto the OW object, inherit the chosen anim index from r6, and\
+  \ disable the shadow.\n  4. `applyLayerEffectToOWObject_8035694(r5+0xc)` and `sprite_setPriority_8002E14(0)`\
+  \ ->\n     decide BG layer and OAM priority using the object's coords.\n  5. Snapshot `r5[0xc]..r5[0x10]`\
+  \ (coords x/y) into `r5[0x24]..r5[0x28]` (the \"SavedNext\"\n     slots) so the BBS sub-state 4 has\
+  \ a stable origin to compare against.\n  6. Zero `r5[5]=0` (probably AnimationSelectUpdate / CurAnimCopy),\
+  \ `r5[6]=0`, set\n     `r5[0x2c]=0x12` (a small timer, matches an alarm counter on the OW object), and\
+  \ copy\n     `r6[5] -> r5[7]` (carry an animation hint from the related object across).\n  7. Test `r5[4]\
+  \ & 1`: if bit 0 of ObjectID is clear, call `PlaySoundEffect(0x17F)` (a \"ping\"\n     chirp), and only\
+  \ if `r5[4]==0` (i.e. the BBS object was newly spawned, not just refreshed)\n     also poke `r6[0xF]=0x0A`\
+  \ -- almost certainly the partner NPC's \"exclamation\" timer slot.\n  8. `strb r0,#8` with r0=4 ->\
+  \ sets `CurState=4` (CUR_STATE_UPDATE in the project's battle/\n     object SM but here re-used as the\
+  \ \"BBS poll loop\" sub-state).\n  9. `bl owMapObject_bbsObjectUpdate_80A5588` and `pop {pc}`, so the\
+  \ immediate next SM phase\n     is `bbsObjectUpdate`.\nQuirks:\n  - The single OAM object is shared\
+  \ with the related object (r6) via the `[r6,#5]` and `[r6,#0xF]`\n    sites - this init propagates both\
+  \ the initial anim and an \"!\" indicator hint.\n  - Captured exit r0=0x71c is just `0x12 | (some higher\
+  \ bits)` accumulated by stray data; the\n    route treats the call as void.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `strb r0,[r5]` with `mov r0,#3` at 0x080a551a sets the SM step to 3 right at entry. - `ldrb\
+    \ r0,[r10,#oToolkit_GameStatePtr]` indirection chain then `[+oGameState_MapGroup]` is\n  `0x85` vs\
+    \ `mov r2,#0xB` selects sprite id.\n- `bl sprite_load(0x80,0x1c, spriteId)`, `sprite_setAnimation(r6[5])`,\n\
+    \  `sprite_loadAnimationData`, `sprite_noShadow` literally mount the sprite variant.\n- `str r0,[r5,#0x24];\
+    \ str r1,[r5,#0x28]` after copying `[r5,#0xc]/[r5,#0x10]` archives the\n  spawn coords into the saved-slot\
+    \ so BBS sub-state 4 can read them.\n- `strb r0,[r5,#8]` with `mov r0,#4` then `bl owMapObject_bbsObjectUpdate_80A5588`\
+    \ is the\n  hand-off into the polling loop.\n- All six captured snap entries feed it with the same\
+    \ dispatcher LR 0x080a54fe and entry\n  r0 = function+1, confirming this is the CurState=0 init trampoline\
+    \ for the BBS OW object."
+  refs:
+  - bn6f/asm/asm29.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5514
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): owMapObject_bbsObjectInit_80A5514
+
+    '
+open_questions:
+- Exact object layout (the function indexes r5 byte 3, 4, 5, 6, 7, 8 as separate fields; the struct only
+  documents up to byte 4 for OverworldMapObject). Settled by figuring out which OW object slot r5 actually
+  points to.
+- The true meaning of `str r0,[r5,#0x2c]` = 0x12 (looks like a short frame timer).
+- Why the SE 0x17F + !-indicator branch gates on bit0 of `r5[4]` and on equality with 0 -- probably distinguishes
+  "first time the BBS appears on this map" vs "still around".
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5514 -> owMapObject_bbsObjectInit_80A5514
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

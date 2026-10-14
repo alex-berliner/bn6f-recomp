@@ -1,0 +1,85 @@
+name: battle_beastOutInitSprite_811E048
+address: '0x0811E048'
+kind: function
+previous_names:
+- sub_811E048
+status: probable
+summary: Initialise a Beast-out navi's battle sprite (animation 0, palette bank 0xB, OAM priority 1, palette
+  0, no shadow) and chain into the Beast-out per-frame sprite update hook.
+interface: '(r5 = battle object) -> void ; side effects: writes object header flags byte at [r5]+0 (0x23),
+  object CurState at [r5,#8] = 0x4, sprite sub-record nibbles/palettes; called from one Beast-out caller
+  at 0x0811E032.'
+details: '- Entry `r0=0811e049` is the standard Thumb-mode LR+1 sentinel (function is called via `bl`);
+  `r1=0`, `r2=0`. `r5` is the battle object, but no EWRAM/IWRAM pointer was provided in `r0`/`r1` for
+  the captured snapshots, so the object address is not visible.
+
+  - `strb r0, #0x23, [r5]` sets the object''s header Flags to 0x23 = OBJECT_FLAG_ACTIVE (0x01) | OBJECT_FLAG_VISIBLE
+  (0x02) | OBJECT_FLAG_PAUSE_UPDATE (0x04) | OBJECT_FLAG_STOP_SPRITE_UPDATE (0x08) | OBJECT_FLAG_UPDATE_DURING_TIMESTOP
+  (0x10); in other words the object is alive and visible but its update loop and sprite update are paused
+  (typical Beast-out pre-spawn state) and timestop immunity is on.
+
+  - `initGuiSprite_8002770(0x31)` initialises the object''s GUI sprite with value 0x31 (per the callee''s
+  documented `(a1, a2)` contract).
+
+  - `sprite_setAnimation(0)`, `sprite_loadAnimationData()`, `sprite_noShadow()` reset the sprite to animation
+  0, load its anim data, and disable shadow rendering.
+
+  - `sprite_setSubEntryPaletteBank_800304A(0xB)` sets the high nibble of the sprite sub-entry''s +0x15
+  byte to 0xB (palette bank 11).
+
+  - `slotList_storeHalfwordAndClearField_800306C(0x298)` stores halfword 0x298 in the slot picked from
+  the object''s bank/index nibble (per the callee''s contract) and zeroes an adjacent field.
+
+  - `sprite_setSubRecordFieldA_8003060(0)` writes 0 into +0xA of the same sub-record.
+
+  - `sprite_setPriority_8002E14(1)` sets OAM priority to 1; `sprite_setPalette(0)` sets base palette to
+  0.
+
+  - `strb r0, #4, [r5,#8]` writes 4 into the object''s `CurState` (i.e. `CUR_STATE_UPDATE`, since 0x4
+  is the documented update-state value), kicking the object into its update phase.
+
+  - Tail-calls `sub_811E090` (the Beast-out per-frame sprite-update hook) before returning via `pop {pc}`.
+
+  - No callers are listed; the function is presumably invoked from the Beast-out init code at the captured
+  `lr=0x0811E032`.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x23; strb r0, [r5]` writes the header Flags byte at object offset 0; 0x23 matches
+    OBJECT_FLAG_ACTIVE|OBJECT_FLAG_VISIBLE|OBJECT_FLAG_PAUSE_UPDATE|OBJECT_FLAG_STOP_SPRITE_UPDATE|OBJECT_FLAG_UPDATE_DURING_TIMESTOP
+    per `ObjectHeader.inc`. - `mov r0, #0x31; bl initGuiSprite_8002770` matches the callee''s documented
+    contract `(a1=0x31, a2=?)`. - The chained sprite calls (`setAnimation 0`, `loadAnimationData`, `noShadow`,
+    palette bank 0xB, priority 1, palette 0) all match the per-callee documented contracts in the callee
+    list. - `mov r0, #4; strb r0, [r5,#8]` writes 4 at offset 0x8 of the object, which is `CurState` per
+    `BattleObject.inc`; value 4 is `CUR_STATE_UPDATE`. - Tail-call `bl sub_811E090` immediately before
+    `pop {pc}` shows this routine ends by handing off to the per-frame Beast-out hook. - The single caller
+    context (`lr=0811E032`, repeated for all 6 snapshots) confirms a single Beast-out init site.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E048
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_beastOutInitSprite_811E048
+
+    '
+open_questions:
+- The exact value of `initGuiSprite_8002770`'s second argument (`a2`) on entry is unknown (r1 was captured
+  as 0, but the callee contract mentions two args).
+- The semantic meaning of the 0x298 halfword written by `slotList_storeHalfwordAndClearField_800306C`
+  is unknown (likely a sprite/OAM slot config word specific to the Beast-out).
+- Whether `CurState = 4` here really is the Beast-out *first-update* or a "spin up / wait one frame" sentinel
+  depends on caller behaviour at 0x0811E032.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E048 -> battle_beastOutInitSprite_811E048
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

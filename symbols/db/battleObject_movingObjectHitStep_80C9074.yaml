@@ -1,0 +1,80 @@
+name: battleObject_movingObjectHitStep_80C9074
+address: '0x080C9074'
+kind: function
+previous_names:
+- sub_80C9074
+status: probable
+summary: 'Per-frame update for a moving battle object: drops collision, walks one panel using XVelocity,
+  and either bounces off walls into a self-destroy sequence or re-registers collision when the new panel
+  is valid.'
+interface: (r5 = oBattleObjectPtr) -> void ; writes r5/r10 object's panel X, anim bytes, timer, CurStateActionPhaseAndPhaseInitialized,
+  header Flags, and CollisionDataPtr-derived state.
+details: '- Always begins by calling object_removeCollisionData() to drop the object''s current collision
+  record.
+
+  - Loads CollisionDataPtr''s `FlagsFromCollision` (offset 0x70) and branches: if non-zero, the object
+  collided this frame and the function jumps to the `loc_80C90A6` "bounce/destroy" path; otherwise it
+  tries to advance the object.
+
+  - Normal advance path bails out (jumps to `loc_80C90CA`) if battle_isBattleOver() returns non-zero;
+  otherwise reads `oBattleObject_XVelocity`, adds it to `oBattleObject_PanelX`, stores it back, then calls
+  object_setCoordinatesFromPanels / object_updateCollisionPanels / object_isCurrentPanelValid. If the
+  panel is invalid, falls through to the cleanup tail; otherwise calls object_presentCollisionData to
+  re-insert the object and returns.
+
+  - Collision path (`loc_80C90A6`): plays SFX 0xBD (a collision-impact sound), clears the collision region,
+  then calls sub_80C913C to look for a "related" battle object on the same panel. If one is found (`tst
+  r0, r0` not zero), it triggers a self-destruct sequence: sets CurAnim = 0x0B (and CurAnimCopy = 0xFF),
+  Timer = 0xB4, and CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY. If no related object,
+  falls through to the cleanup tail.
+
+  - Cleanup tail (`loc_80C90CA`): clears OBJECT_FLAG_VISIBLE (bit 1 of header Flags) by BIC with #2, then
+  writes 0x0C (CUR_STATE_UPDATE with action=4, phase=0) into CurStateActionPhaseAndPhaseInitialized -
+  i.e. stops moving but stays alive.
+
+  - Function is void-like: no register value is returned to callers (out list contains only r5/r8/r10,
+  which are callee-saved and not propagated).
+
+  - The constant `0x4050001` at the end is padding/data after the function body, not code.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,r6,r7,lr}` / `pop {r4,r6,r7,pc}` confirms r5/r8/r10 are callee-saved only, no return
+    value. - `ldr r7,[r5,#oBattleObject_CollisionDataPtr]` and `ldr r0,[r7,#oCollisionData_FlagsFromCollision]`
+    (offset 0x70) gates the entire collision branch - direct match to the struct definition. - `add r0,
+    r0, r1` where r1 = `[r5,#oBattleObject_XVelocity]` (offset 0x40) and r0 = `ldrb [r5,#oBattleObject_PanelX]`
+    (offset 0x12) is clearly a "walk one panel" step. - `mov r0,#0xbd; bl PlaySoundEffect` and the choice
+    of 0xBD as the impact SFX in the collision branch. - `str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    with `r0 = #CUR_STATE_DESTROY (=8)` in the self-destruct path - matches the enum comment. - `bic r0,
+    r1; strb r0,[r5,#oObjectHeader_Flags]` with r1=#2 clears OBJECT_FLAG_VISIBLE (header flag bit 1).
+    - `str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` with r0=#0xC in the tail sets
+    CUR_STATE_UPDATE(0x04) action 4 / phase 0. - Captured calls all have r5 pointing into EWRAM battle-object
+    range (0x02036778 + offsets) and lr=0x080c9008, consistent with a per-object state-machine step called
+    from the battle object update dispatch loop.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C9074
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_movingObjectHitStep_80C9074
+
+    '
+open_questions:
+- The exact meaning of the related-object lookup (sub_80C913C) - whether finding one triggers destruction
+  because the object walked INTO another object vs. just collided with a wall - is not fully pinned down
+  from this function alone; tracing the chain through object_presentCollisionData and sub_80C913C would
+  settle it.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C9074 -> battleObject_movingObjectHitStep_80C9074
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

@@ -1,0 +1,73 @@
+name: battle_initBGScrollAndAnimForPuzzleField_8080DA0
+address: '0x08080DA0'
+kind: function
+previous_names:
+- sub_8080DA0
+status: probable
+summary: Installs the BG scroll callbacks, BG-anim data and per-puzzle-field GFX anim scripts for the
+  current battle, then conditionally loads the death GFX.
+interface: '(r10 = toolkit) -> void ; side effects: writes DISPCNT via SetRenderInfoLCDControl, arms IRQ4
+  HBlank via SetBGScrollCallbacks, queues GFX anim scripts via LoadGFXAnims, and conditionally loads battle-loadDeathAnims_8035424
+  when battle mode != 1.'
+details: 'Computes a "puzzle status" via sub_8081308; the returned byte (r4) is used as an
+
+  index into a packed-by-0x10 table at off_8080E34 (entries of {BGScrollCallbacks,
+
+  LCDControlMask}), and into a u32 table at off_8080F98 of BGAnimData pointers, and
+
+  into a table at off_8081220 of GFXAnimScript arrays. SetBGScrollCallbacks is called
+
+  with (r0,r1,r2) = (Callback0,HBlankCallback,Callback1) from the per-index entry; the
+
+  OR''d HBlank+LCD bits from the entry''s word at +0xc are merged into the current frame''s
+
+  DISPCNT via SetRenderInfoLCDControl. LoadBGAnimData installs the BGAnimData for the
+
+  field. LoadGFXAnims installs the matching array of GFXAnimScripts. If
+
+  GetBattleMode() != 1, sub_803537C is run (re-arm EVENT_28 from a built-in
+
+  auto-increment table) and battle_loadDeathAnims_8035424 loads the alternate-death
+
+  GFX/Anims. Return contract has only callee-saved r4-r9 and r12, so it is void-like
+
+  from the caller''s view.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `bl sub_8081308` at 0x08080da4 returns r0 used as `lsl r1, r4, #4` indexing into\n  off_8080E34\
+    \ entry table.\n- `ldr r0,[r7]; ldr r1,[r7,#4]; ldr r2,[r7,#8]; bl SetBGScrollCallbacks` at 0x08080db0\n\
+    \  shows three args sourced from the indexed entry — exactly the\n  {Callback0,HBlankCallback,Callback1}\
+    \ layout from BGScrollCallbacks.inc.\n- `bl GetRenderInfoLCDControl`/`orr r0,r1`/`bl SetRenderInfoLCDControl`\
+    \ at 0x08080db6\n  merges the entry's +0xc word into DISPCNT.\n- `ldr r6,[r6,r1]; bl LoadBGAnimData`\
+    \ at 0x08080dc2 indexes a u32 array of BGAnimData\n  by puzzle byte, scaled by 2 (lsl #2).\n- `ldr\
+    \ r0,[r0,r1]; bl LoadGFXAnims` at 0x08080dcc indexes a u32 array of\n  GFXAnimScript arrays by puzzle\
+    \ byte.\n- `bl GetBattleMode; cmp r0,#1; beq locret_8080DE8` at 0x08080dd4-0x08080dd8 confirms\n \
+    \ the death-load path is skipped when battle mode == 1.\n- `bl sub_803537C` followed by `bl battle_loadDeathAnims_8035424`\
+    \ matches their\n  confirmed summaries."
+  refs:
+  - bn6f/asm/asm21.s
+  reproduce: 'python3 tools/asmcat.py 0x08080DA0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_initBGScrollAndAnimForPuzzleField_8080DA0
+
+    '
+open_questions:
+- Exact meaning of the index returned by sub_8081308 across the four values it can return (7 / raw byte
+  / 0x15 / 0x10) and how each maps to entries in the three parallel tables — would be settled by inspecting
+  off_8080E34/off_8080F98/off_8081220.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8080DA0 -> battle_initBGScrollAndAnimForPuzzleField_8080DA0
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

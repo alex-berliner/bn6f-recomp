@@ -1,0 +1,53 @@
+name: battleObject_runCustomScreenChipPickerEffect_8028476
+address: '0x08028476'
+kind: function
+previous_names:
+- sub_8028476
+status: probable
+summary: 'Custom-screen chip-use dispatcher: reads the active chip''s kind byte and invokes the matching
+  panel/GFX/handler routine for the selected battle object.'
+interface: (r5 -> r0 via [r5,#7]) -> r0 ; r5 = source struct ptr (battle object / chip-slot context)
+details: "Pushes {lr}; loads a u8 field at [r5,#7] (the \"active chip entry index/type byte\"), calls\n\
+  getLocOfActiveChips_8027E1C(r0=that-byte) which returns a pointer to an active-chip slot\ndescriptor.\
+  \ The first byte (r1=[r0]) is then dispatched:\n  0 -> getChipID_802A54E(ldrh r0,[r0,#8]) then battleObject_loadChipPanelGfx_80284E2\n\
+  \      (normal chip-use panel gfx load path)\n  1 -> beastout_QueuePaletteGFXAndSheets_80286D4 (Beast-Out\
+  \ variant)\n  2 -> sub_802871C\n  4,5 -> sub_80287A4\n  6,7 -> ldrh r0,[r0,#8]; sub_80285FE\n  3 ->\
+  \ sub_8028754\n  8,9 -> sub_802877C\n  fallthrough -> ret\nCaller chain shows it is invoked during custom-screen\
+  \ (chip-select) lifecycle from\nbattle_initCustomScreen_8026840, custMenuSomeHandler_8028B74, customScreen_ExitAction_8029032\n\
+  and other sub_8027xxx handlers, so the \"active chip entry\" is the slot picked in the\ncustom-screen\
+  \ UI.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- Entry contract reads r5 and uses [r5,#7] (asm: `ldrb r0,[r5,#7]`) showing it indexes\n  a\
+    \ chip-slot/cursor struct held in r5.\n- getLocOfActiveChips_8027E1C is the listed helper that returns\
+    \ a per-chip descriptor. - Switch on the descriptor's byte [r0] handles cases 0,1,2,3,4,5,6,7,8,9\
+    \ specifically:\n  `cmp r1,#0`, `#1`, `#2`, `#3`, `#4`, `#5`, `#6`, `#7`, `#8`, `#9`.\n- Case 0/1\
+    \ reuse chip-panel/beastout loaded routines (callee contracts already\n  mention panel-gfx streams\
+    \ and selection-screen GFX DMAs).\n- Caller customScreen_ExitAction_8029032 confirms this lives inside\
+    \ the custom-screen\n  pipeline (entry LR points back from chip-select code regions; one captured\
+    \ call has\n  r0=0000948a, r1=ffffffff, r3=08029d18 — typical S20364C0-style chip-screen state)."
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08028476
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_runCustomScreenChipPickerEffect_8028476
+
+    '
+open_questions:
+- Exact meaning of cases 2/3/4/5/6/7/8/9 (other than 0=chip, 1=beastout) is unknown; they reach unnamed
+  sub_802871C/8028754/802877C/80287A4/80285FE. Tracking those bodies would settle whether they are MegaChip/NaviCust/SoulWeapons/Put
+  variants.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8028476 -> battleObject_runCustomScreenChipPickerEffect_8028476
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

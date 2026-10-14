@@ -1,0 +1,86 @@
+name: toolkit_initAndVerifyWorkArea_0803F838
+address: '0x0803F838'
+kind: function
+previous_names:
+- sub_803F838
+status: probable
+summary: 'Re-initialise the save/toolkit work area: zero and checksum the 0x6710-byte EWRAM buffer, re-seed
+  RNG and the extra-toolkit pointer block, and set EVENT_1704 to reflect whether the on-disk save was
+  tampered with or outdated.'
+interface: (r10 = Toolkit, plus any caller globals) -> r0 = bool (FALSE if work area + info-text are still
+  current, TRUE if either failed); ZF cleared/!ZF based on r0 (tst r0,r0 then pop with PC); side effects
+  clobber r0..r3 (toolkit/callee state).
+details: '1. Push r0..r3 with the params for a 4-arg helper: r0=0xE000100, r1=timer_2000000, r2=0x6710,
+  r3=0; bl sub_814D8F0 (timed wait/sync that consumes those four args) then pop the original r0..r3 back.
+
+  2. Pop r0..r2 into the right slots and bl encryption_save_memSetFlags_8006E0E(r0=ptr, r1=size=0x6710)
+  — XORs the whole 0x6710-byte EWRAM work-area buffer with the save obfuscation key (which both decrypts
+  the freshly-read save and re-encrypts the in-memory copy).
+
+  3. bl SetExtraToolkitPointers — installs the 22 absolute toolkit pointer slots used by the rest of the
+  engine (BattleState, Chatbox, NaviStats, ...).
+
+  4. bl verifyEwramWorkAreaChecksum_803F8C4 — recomputes the byte-sum checksum over the 0x6710-byte buffer;
+  returns !ZF=1 on mismatch (tampered/cleared store), !ZF=0 on match.
+
+  5. On mismatch, bne to loc_803F870 (the "tampered" path).
+
+  6. If checksum matched, bl infoText_IsTimestampUnchanged_803F8F4 — compares the 20-byte info-text timestamp
+  embedded in the save buffer against the master copy; non-current returns !ZF=1, again branching to the
+  tampered path.
+
+  7. Both checks OK: r4=FALSE; movflag EVENT_1704; bl SetEventFlagFromImmediate — flag 1704 means "save
+  is trustworthy / no tampering / info text still current".
+
+  8. Tampered branch (loc_803F870): r4=TRUE; movflag EVENT_1704; bl ClearEventFlagFromImmediate; bl SeedRNG
+  — also resets the primary RNG seed (0xA338244F), forcing the in-game RNG to a known state since the
+  saved RNG stream may be junk.
+
+  9. loc_803F87E (merge): bl RandomizeExtraToolkitPointers — rebuilds the trailing extra-toolkit pointer
+  slots from the base pointer saved at the eUnusedExtraToolkitPtrsOffset (confirmed by its callee summary).
+
+  10. Return r0 = r4 (the BOOL above) and pop {r1..r7, pc}. Note r10 (Toolkit) is preserved by the callee
+  convention, which is why sub_814D8F0 and the other helpers can take it implicitly.
+
+  EVENT_1704 is used as the "save is clean / current" flag (TRUE = clean); the function returns that same
+  boolean, so callers can branch on r0 to decide whether to re-prompt for info text, force a re-seed,
+  etc.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- dword_803F890 = 0x6710 matches the size of the EWRAM work area handled by verifyEwramWorkAreaChecksum_803F8C4
+    (confirmed). - The decrypt-then-recompute-checksum dance plus dword_803F88C (timer_2000000) + 0xE000100
+    pushed before bl sub_814D8F0 is a "sync to VBlank then decrypt" idiom typical of save-load handlers.
+    - movflag EVENT_1704 immediately preceding each of SetEventFlagFromImmediate and ClearEventFlagFromImmediate
+    shows flag 1704 is being toggled between "save-valid" and "save-tampered". - Both verifyEwramWorkAreaChecksum_803F8C4
+    and infoText_IsTimestampUnchanged_803F8F4 return !ZF=1 to mean "needs re-init" and they bne into the
+    same loc_803F870 re-seed path, indicating they are OR-style freshness checks. - The two callers (startScreen_initGfx_802F574
+    and sub_8000F86) consume r0 as the BOOL, consistent with returning the tamper flag.'
+  refs:
+  - bn6f/asm/asm03_1_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0803F838
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): toolkit_initAndVerifyWorkArea_0803F838
+
+    '
+open_questions:
+- The exact semantics of EVENT_1704 (it could be either "save is current" or "save is tainted") — the
+  Set/Clear pairing with the matched/mismatched branch suggests it is the "save-current" flag, but the
+  precise name in-game is unknown.
+- What sub_814D8F0 actually does with (0xE000100, timer_2000000, 0x6710) — likely a VBlank wait or DMA-style
+  sync gated by those constants, but the helper is unnamed and unconfirmed.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803F838 -> toolkit_initAndVerifyWorkArea_0803F838
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

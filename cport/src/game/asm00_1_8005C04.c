@@ -2628,7 +2628,7 @@ Next eStruct200BC30_dispatchJumpOffset00_8007BF0(void) {
  * the state is kept alive: on its first step it is initialized by
  * sub_803DDA4 and marked with sub-state 4; afterwards sub_803DE24 is polled
  * and, unless it reports completion for an object of kind 2 (byte at R4+1),
- * the state is torn down (sub_81440D8, sub_801FE64). Once the state ends
+ * the state is torn down (link_resetHardwareAndClearLinkBuffers_81440D8, sub_801FE64). Once the state ends
  * (or the handler already reported idle), control passes to battle state 4
  * by updating the state fields at R5.
  *
@@ -2659,7 +2659,7 @@ Next battle_stepSubstateToState4_8007C14(void) {
         }
 
         /* State is over: clean up and notify the handler. */
-        GUEST_CALL(sub_81440D8);
+        GUEST_CALL(link_resetHardwareAndClearLinkBuffers_81440D8);
         GUEST_CALL(sub_801FE64);
     }
 

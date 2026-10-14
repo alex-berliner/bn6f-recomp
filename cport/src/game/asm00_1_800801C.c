@@ -47,8 +47,8 @@ Next battle_runMainStep_800801C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800825A ── */
-/* sub_800825A: once-per-frame update of the post-battle wait state.
+/* ── battle_runLoserSequence_800825A ── */
+/* battle_runLoserSequence_800825A: once-per-frame update of the post-battle wait state.
  * controller: block with the oEndCtrl_* fields; toolkit: Toolkit holding the
  * battle and game state pointers. preserved_r4 is the caller's r4, which the
  * original keeps in a stack slot across the update and pops on return, so the
@@ -162,8 +162,8 @@ static u32 update_battle_end_wait(u32 controller, u32 toolkit, u32 preserved_r4)
     return preserved_r4;
 }
 
-/* sub_800825A(r5 = controller, r10 = toolkit); r4 leaves as the caller passed it */
-Next sub_800825A(void) {
+/* battle_runLoserSequence_800825A(r5 = controller, r10 = toolkit); r4 leaves as the caller passed it */
+Next battle_runLoserSequence_800825A(void) {
     R4 = update_battle_end_wait(R5, R10, R4);
     RETURN_TO_CALLER();
 }

@@ -1,0 +1,67 @@
+name: battleObject_applyVerticalMovement_8017992
+address: '0x08017992'
+kind: function
+previous_names:
+- sub_8017992
+status: probable
+summary: Ticks one battle object's per-frame kinematic motion toward its FuturePanel, updating panel reservation/state
+  when arrival or blocking panel conditions occur.
+interface: (r5 = oBattleObject *) -> void ; side effects on oBattleObject_(FuturePanelX/Y, X, Y, Timer,
+  Timer2, Unk_0d) and on the underlying PanelData (reserve/release)
+details: "1. Converts the object's FuturePanelX/Y into target world (x, y) via `object_getCoordinatesForPanels`,\
+  \ saving the values in r2 (target x) and r4 (target y).\n2. Adds XVelocity into `oBattleObject_X` (16.16\
+  \ fixed) and calls `IsR2BetweenR0AndR1` with target x vs new x; if not between, does the same for Y\
+  \ using YVelocity and the saved r4.\n3. If the new (X, Y) lies between the previous and target coordinates\
+  \ on both axes, the object has reached its FuturePanel:\n   - Releases the FuturePanel reservation with\
+  \ `object_removePanelReserve`, looks up the target panel via `object_getPanelDataOffset`, reads its\
+  \ `Type`.\n   - Special-cases panels with Type==7: if the object's CollisionData.PrimaryElement != 2,\
+  \ increments `Timer2` (lets the panel keep affecting it).\n   - Otherwise decrements `Timer2`; if it\
+  \ stays > 0, the object tries to step one panel further in a direction read from r5 offsets 0x1c/0x1d\
+  \ (signed bytes, likely FuturePanel deltas); after gating by `battle_objectCheckPanelByAlliance_800E5AC`,\
+  \ writes that as the new FuturePanel and re-reserves via `object_reservePanel`.\n   - If the decrement\
+  \ reaches zero (or alliance check fails), copies FuturePanelXY into PanelXY, recomputes screen coordinates\
+  \ and collision via `object_setCoordinatesFromPanels` + `object_updateCollisionPanels`, writes Timer=0x14\
+  \ and Unk_0d=8, then returns.\n4. If the new X,Y is NOT between previous and target, the object is still\
+  \ in flight: recomputes panels from current world coords with `object_setPanelsFromCoordinates` and\
+  \ refreshes its collision panels, then returns.\n5. Captured-call exit values (0, 3, 0, 8) correspond\
+  \ to whatever the leaf `bl`'d last (e.g. `object_reservePanel` returns a status code), not a meaningful\
+  \ return; the function is effectively void from the caller's perspective.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_FuturePanelX]` / `FuturePanelY` at function head is the only
+    input and matches a per-object routine. - `bl object_getCoordinatesForPanels` then `add r0, r1 ->
+    str r0, [r5,#oBattleObject_X]` (symmetric Y branch) directly mutates oBattleObject_X/Y with XVelocity/YVelocity.
+    - `bl IsR2BetweenR0AndR1` + `tst r0, r0` together gate "arrived at FuturePanel". - `bl object_removePanelReserve`,
+    `bl object_getPanelDataOffset`, `ldrb r4, [r0,#oPanelData_Type]` + `cmp r4, #7` are textbook reservation/finalization
+    logic. - `ldrsh`-via-`ldrsb r2, [r5,#0x1c/#0x1d]` plus `add`/`strb` to FuturePanelX/Y then `bl object_reservePanel`
+    matches a "slide one further panel" branch. - Fall-through path uses `strh r0, [r5,#oBattleObject_PanelXY]`
+    (FuturePanelXY -> PanelXY), `bl object_setCoordinatesFromPanels`, `bl object_updateCollisionPanels`,
+    writes `mov r0, #0x14 ; strh r0, [r5,#oBattleObject_Timer]` and `mov r0, #8 ; strb r0, [r5,#oBattleObject_Unk_0d]`
+    then returns. - The "still moving" path calls `object_setPanelsFromCoordinates` followed by `object_updateCollisionPanels`
+    and returns — this is exactly what the contract says: writes panel/X/Y, sync collision, no return.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08017992
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_applyVerticalMovement_8017992
+
+    '
+open_questions:
+- 'Which chip/category this is associated with: the Y-velocity delta at r5+0x1c/0x1d (`ldrsb`) hints at
+  sliding/snake-arm, but a name confirming the chip wasn''t cross-referenced from here. Captured exit
+  r0 (0/3/0/8) varies by branch but isn''t documented; could be returned r0 of `object_reservePanel` (success
+  vs status).'
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8017992 -> battleObject_applyVerticalMovement_8017992
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

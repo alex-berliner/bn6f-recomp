@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_81440D8 ── */
+/* ── link_resetHardwareAndClearLinkBuffers_81440D8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3; } call_SWI_CpuSet_result;
 /* register form: generated wrapper: SWI_CpuSet has no typed C interface yet */
@@ -20,7 +20,7 @@ static inline call_SWI_CpuSet_result call_SWI_CpuSet(u32 r0, u32 r1, u32 r2) {
     return (call_SWI_CpuSet_result){ R1, R2, R3 };
 }
 
-/* sub_81440D8 - shut down the link-communication hardware (run before the
+/* link_resetHardwareAndClearLinkBuffers_81440D8 - shut down the link-communication hardware (run before the
  * game hands control over to different hardware/mode): back up and mask the
  * interrupt state, stop SIO and Timer 3, then BIOS-zero the timer-enable
  * block and the SIO buffer at 0x200F44C.
@@ -70,7 +70,7 @@ static call_SWI_CpuSet_result reset_comm_hardware(void) {
  * body) and leaves lr alone, so the adapter does not touch them. Its last
  * flag-setting instruction is "mov r1, r4" (= adds r1, r4, #0) with
  * r4 = 0x200F44C, i.e. C = 0, V = 0 (and N = 0, Z = 0). */
-Next sub_81440D8(void) {
+Next link_resetHardwareAndClearLinkBuffers_81440D8(void) {
     call_SWI_CpuSet_result out = reset_comm_hardware();
     R1 = out.r1;
     R2 = out.r2;
@@ -161,11 +161,11 @@ Next link_initAndClear_8144158(void) {
 
 /* ── sub_8144240 ── */
 /* sub_8144240: run both steps of the (likely per-frame) update for this
- * subsystem: link_initAndClear_8144158 followed by sub_81440D8. Neither takes arguments;
+ * subsystem: link_initAndClear_8144158 followed by link_resetHardwareAndClearLinkBuffers_81440D8. Neither takes arguments;
  * whatever the callees leave in r2/r3 is passed through to the caller. */
 Next sub_8144240(void) {
     GUEST_CALL(link_initAndClear_8144158);
-    GUEST_CALL(sub_81440D8);
+    GUEST_CALL(link_resetHardwareAndClearLinkBuffers_81440D8);
     RETURN_TO_CALLER();
 }
 

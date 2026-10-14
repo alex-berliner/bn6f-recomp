@@ -1,0 +1,60 @@
+name: ai_attackVars_runMoveStep_8115272
+address: '0x08115272'
+kind: function
+previous_names:
+- sub_8115272
+status: probable
+summary: One step of an AI battle object's scripted panel-by-panel move along the field
+interface: (r5 = battleObject, r7 = aiAttackVars) -> void ; advances PanelXY/XY, decrements step counter,
+  syncs collision
+details: "Called repeatedly during an AI scripted slide/walk. Each call:\n- If the cached collision flags\
+  \ carry bit pattern 0x0c000000 (\"currently moving\" / \"freeze\" pair),\n  drop the collision region\
+  \ and stash the current PanelXY at AIAttackVars_Unk_38.\n- If the PanelXY has changed since the last\
+  \ stashed value, re-join region 1 via object_setCollisionRegion.\n- First call (Unk_01 == 0): set Unk_01\
+  \ = 1, compute the next panel in front of the object\n  (using object_getFrontDirection and PanelX/PanelY),\
+  \ look up its alliance-keyed flags via\n  GetAllianceDependentPanelParamArgs + object_checkPanelParameters,\
+  \ and store the resulting panel X/Y\n  into Unk_16/Unk_17 plus an RNG-derived step count (0x280000 +\
+  \ Unk_30, halved) into Unk_10/Unk_12.\n- Optional sub-step (Unk_0c == 1): invoke sub_8115466.\n- Per-frame:\
+  \ sub_81154B8 then sub_8115432, add XVelocity to X, and when Unk_10 == Unk_12 finalize:\n  object_setPanelsFromCoordinates\
+  \ + object_updateCollisionPanels.\n- Decrement Unk_10; once it goes negative, snap PanelX/PanelY to\
+  \ the cached Unk_16/Unk_17,\n  recompute world coords (object_setCoordinatesFromPanels + object_setCollisionPanelsToCurrent),\n\
+  \  decrement Unk_0c, and on the last sub-step clear Unk_01 so the next call resets the move.\n- If PanelXY\
+  \ never advanced, the function writes 0 into Unk_10 and 0xc into Unk_00 (likely\n  an \"idle\" sub-state\
+  \ for the AI attack state machine).\n- Always calls sub_8115492 before returning.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Direct offset uses `oAIAttackVars_Unk_38`, `oAIAttackVars_Unk_01`, `oAIAttackVars_Unk_0c`,
+    `oAIAttackVars_Unk_16/17/10/12/18/00` against r7, matching the AIAttackVars struct layout. - `object_getFrontDirection`
+    + PanelX/PanelY access at the first-call branch (`add r0, r0, r1`) picks a neighbour panel. - `object_checkPanelParameters`
+    is used with the alliance-dependent panel flags table at `allianceDependentPanelFlags_8115330` (entries
+    0x10 / 0x03800000). - Step count computed from `0x280000 + [r7+0x30]`, halved and stored in Unk_10/Unk_12;
+    Unk_10 is decremented each frame, matching a counted move. - `object_setPanelsFromCoordinates` + `object_updateCollisionPanels`
+    at `loc_81152F4` indicate panel/world sync on step boundary. - `object_setCoordinatesFromPanels` +
+    `object_setCollisionPanelsToCurrent` at end-of-move snap to the recorded Unk_16/Unk_17 panel. - `svc
+    6` (divmod) used to `0x280000 + RNG-derived Unk_30` to derive the step count.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x08115272
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): ai_attackVars_runMoveStep_8115272
+
+    '
+open_questions:
+- Exact meaning of the cached flags 0x0c000000 (likely "currently moving" / "frozen" pair from OBJECT_FLAGS_2)
+  - resolving would let the function lose the `_ADDRESS` suffix.
+- What sub_8115432/466/4b8/492 do; they sit in the same AI/movement object code module and appear to be
+  other per-frame or per-step helpers.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8115272 -> ai_attackVars_runMoveStep_8115272
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

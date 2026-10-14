@@ -907,7 +907,7 @@ Next lookupMapEntryPair_80A54A4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A5514 ── */
+/* ── owMapObject_bbsObjectInit_80A5514 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5; } call_sprite_load_result_sub_80A5514;
 /* register form: generated wrapper: sprite_load has no typed C interface yet */
@@ -1055,8 +1055,8 @@ static sub_80A5514_result ow_obj_spawn_setup(u32 ow_obj, u32 src_obj, u32 toolki
     return res;
 }
 
-/* sub_80A5514(r5 = ow_object, r6 = source_object, r10 = toolkit) -> r2 r5 r10 r11 */
-Next sub_80A5514(void) {
+/* owMapObject_bbsObjectInit_80A5514(r5 = ow_object, r6 = source_object, r10 = toolkit) -> r2 r5 r10 r11 */
+Next owMapObject_bbsObjectInit_80A5514(void) {
     sub_80A5514_result res = ow_obj_spawn_setup(R5, R6, R10);
     R2 = res.r2;
     R5 = res.r5;

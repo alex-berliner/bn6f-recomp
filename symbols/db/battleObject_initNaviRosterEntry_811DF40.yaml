@@ -1,0 +1,73 @@
+name: battleObject_initNaviRosterEntry_811DF40
+address: '0x0811DF40'
+kind: function
+previous_names:
+- sub_811DF40
+status: probable
+summary: Initialise a battle object's sprite + position for one of the pre-battle Navi roster tiles (e.g.
+  the lineup icon shown at the start of a NetBattle).
+interface: '(r5 = BattleObject*, r10 = is the Toolkit) -> void ; side effects: clobbers r0-r6, sprite
+  sub-state and sprite slot fields, then tail-calls sub_811DF94.'
+details: '1. Sets [r5+0] = 0x23 (ObjectHeader byte 0; matches CurState 0x20 | INITIALIZE pattern but the
+  value 0x23 looks like a direct opcode/state for an init entry).
+
+  2. Calls loc_8002774 with r0=0x3B (probably a sprite/animation resource ID) to populate the sprite sub-record.
+
+  3. Loads animation 0 into the sprite (sprite_setAnimation), then loads its animation-data tables (sprite_loadAnimationData),
+  and clears the shadow (sprite_noShadow).
+
+  4. Configures palette: sub-entry palette bank = 0xB (sprite_setSubEntryPaletteBank_800304A), palette
+  index = 0 (sprite_setPalette), sprite +0xA field = 0 (sprite_setSubRecordFieldA_8003060).
+
+  5. Stores halfword 0x270 into the slot (slotList_storeHalfwordAndClearField_800306C) — likely a "kind"
+  tag such as roster icon / sub-marker.
+
+  6. Sets OAM priority = 1 (sprite_setPriority_8002E14), then places the sprite at (x=0xD2, y=0x0A) via
+  sprite_setCoordinates.
+
+  7. Writes [r5+9] = 0 (CurAction) and [r5+8] = 4 (CurState = CUR_STATE_UPDATE); CurPhase byte untouched.
+
+  8. Tail-calls sub_811DF94 to continue the per-object init for the roster tile.
+
+  This is a thin constructor used during battle init for one of the lineup/roster objects; the position
+  0xD2,0x0A is the far-right roster slot.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5]` with r0=0x23 right at the start sets the ObjectHeader first byte to a fixed
+    value (asm32.s:31860). - The chain `sprite_setAnimation(0) -> sprite_loadAnimationData() -> sprite_noShadow()`
+    (asm32.s:31864-31866) shows a brand-new sprite with default anim and no shadow. - Palette configuration
+    uses three palette calls in sequence (asm32.s:31867-31872), all to zero or to the same sub-entry.
+    - `slotList_storeHalfwordAndClearField_800306C` is given constant 0x270 (off_811DF90 = 0x270), a roster-tag-like
+    value (asm32.s:31874-31876). - `sprite_setCoordinates(0xD2, 0x0A)` (asm32.s:31879-31880) hard-codes
+    the position; 0xD2 is well off the right side of the battle panel grid, consistent with the roster
+    strip in the NetBattle pre-battle screen. - `strb r0, [r5,#9]` (CurAction = 0) and `strb r0, [r5,#8]`
+    with r0=4 set CurState = CUR_STATE_UPDATE (asm32.s:31882-31883) before tail-calling sub_811DF94.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811DF40
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initNaviRosterEntry_811DF40
+
+    '
+open_questions:
+- Exact role of constant 0x270 and whether it identifies which roster slot this is.
+- Whether r5 is a NaviCustomize/roster object (no BattleObject* in battle) or a regular BattleObject —
+  position suggests a UI lineup object rather than an on-grid actor.
+- What sub_811DF94 then does (likely more per-object init such as filling AIData, Unk_5c, sprite coordinates
+  for sub-objects).
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811DF40 -> battleObject_initNaviRosterEntry_811DF40
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

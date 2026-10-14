@@ -1,0 +1,78 @@
+name: battleObject_submenuHandleBPress_8133BB4
+address: '0x08133BB4'
+kind: function
+previous_names:
+- sub_8133BB4
+status: probable
+summary: In the in-battle custom-screen submenu object, handles a newly pressed B button by either reversing
+  a previous "yes/no to exit" prompt, running the "can't jack out" rejection when the player tries to
+  exit but isn't allowed, or running the standard "confirm exit and fade" submenu teardown.
+interface: '() -> r0 = 2 (handled flag) ; side effects: clobbers r5, r10, plays SOUND_EXIT_SUBMENU or
+  SOUND_CANT_JACK_IN, runs text script 2 in the chatbox, calls submenu_ConfirmExitAndFade_811FB64, writes
+  submenu object''s 0x02/0x03/0x0d/0x17/0x44'
+details: '- Caller contract: r5 = submenu object, r10 = Toolkit.
+
+  - On entry: tests IsButtonPressed with JOYPAD_B (0x0002). If B is not newly pressed, returns immediately
+  with r0=2 still set by IsButtonPressed.
+
+  - If [r5+0x44] is nonzero, that means a previous frame already set "user wants to exit" - so this frame
+  clears [r5+0x44]=0 and plays SOUND_EXIT_SUBMENU, returning r0=2.
+
+  - Else: reads [r5+0x17] (which holds the "can the player jack out right now?" value, compared against
+  0x1e). If == 0x1e, the player is allowed to exit: calls submenu_ConfirmExitAndFade_811FB64(r0=8) which
+  plays SOUND_EXIT_SUBMENU and starts a fade, then clears submenu object +0x02 (state) to 0.
+
+  - If != 0x1e, the player is not allowed to exit: copies [r5+0x03] into [r5+0x0d], sets [r5+0x02]=8 (a
+  "rejected exit" substate), loads [r5+0x1e] into chatbox+0x4c (text-script param / mugshot color), runs
+  chatbox text-script index 2 (the "cannot jack out" message), and plays SOUND_CANT_JACK_IN. Returns r0=2
+  (=handled).
+
+  - Always returns r0 = 2 (handled). The contract says nothing is returned for callers because both callers
+  treat the result as a "handled/return-2" sentinel for the input-dispatch table they sit in.
+
+  - The two callers sit on the B-button branch of their respective per-frame input dispatchers (the in-battle
+  custom-screen submenu and the folder-edit object).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #JOYPAD_B; bl IsButtonPressed; beq locret_8133C0A` checks for newly pressed B and
+    bails if not pressed. - `ldrb r0, [r5,r0]; tst r0, r0; beq loc_8133BD4` reads submenu byte at +0x44
+    and branches when zero - that byte is the "user already requested exit" latch. - At loc_8133BD4 the
+    fall-through branch clears `[r5+0x44]` and plays `SOUND_EXIT_SUBMENU`, confirming +0x44 is the pending-exit
+    flag. - `ldrb r1, [r5,#0x17]; cmp r1, #0x1e; beq loc_8133BFC` tests the "can jack out" allow-byte
+    against 0x1e (the only "allowed" value seen); the two branch outcomes match "jack-out allowed" vs
+    "jack-out forbidden". - The "forbidden" arm writes submenu +0x03 into +0x0d (typical MMBN pattern
+    of remembering the previous cursor/state), sets +0x02 to 8 (rejected-exit substate), loads +0x1e into
+    chatbox+0x4c (per-chatbox-struct field), runs `chatbox_runScript_803FD9C_on_eTextScript2028A20` with
+    index 2 (the "can''t jack out" line) and plays `SOUND_CANT_JACK_IN`. - The "allowed" arm calls `submenu_ConfirmExitAndFade_811FB64(8)`
+    then clears submenu +0x02 to 0, which matches the caller''s one-line summary "Confirms the highlighted
+    submenu entry, plays the ''exit submenu'' sound, and starts a screen fade to leave the submenu." -
+    Return value is r0=2 (either the IsButtonPressed result on the no-B path or a constant `mov r0,#1;
+    tst r0,r0` on the handled paths); both callers chain this into their per-frame input dispatch.'
+  refs:
+  - bn6f/asm/asm36.s
+  reproduce: 'python3 tools/asmcat.py 0x08133BB4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_submenuHandleBPress_8133BB4
+
+    '
+open_questions:
+- The exact semantic of submenu object +0x44 (it is the "B already pressed once / confirm exit" latch,
+  but the surrounding struct for the submenu object isn't in the include dump).
+- The meaning of +0x17==0x1e as the "jack out allowed" sentinel - presumably some GameState flag ("can't
+  jack out" indicator), but the value 0x1e isn't enumerated in the project structs I've been shown.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8133BB4 -> battleObject_submenuHandleBPress_8133BB4
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

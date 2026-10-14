@@ -1317,7 +1317,7 @@ Next battle_resetSpritePaletteCount_8003C70(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8003E18 ── */
+/* ── battleObject_projectAndQueueSprites_8003E18 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sprite_recordPaletteCountToGroupSlot_80028C0 has no typed C interface yet */
 static inline void call_sub_80028C0(u32 r0) {
@@ -1408,8 +1408,8 @@ static void update_sprites(void) {
     R12 = save_r12;
 }
 
-/* sub_8003E18 -> (void); clobbers r0-r2, r3, flags, lr; preserves r4-r9, r10-r12 */
-Next sub_8003E18(void) {
+/* battleObject_projectAndQueueSprites_8003E18 -> (void); clobbers r0-r2, r3, flags, lr; preserves r4-r9, r10-r12 */
+Next battleObject_projectAndQueueSprites_8003E18(void) {
     update_sprites();
     RETURN_TO_CALLER();
 }

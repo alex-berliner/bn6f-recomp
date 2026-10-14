@@ -1,0 +1,72 @@
+name: battleObject_initBeastSp_80E39D0
+address: '0x080E39D0'
+kind: function
+previous_names:
+- sub_80E39D0
+status: probable
+summary: Beast-SP battle object first-state (CurState==INITIALIZE) handler — picks a sprite, sets animation,
+  flips it correctly, then jumps into the per-CurAction Beast-SP dispatcher.
+interface: '(r5 = battleObjectPtr, r10 = toolkit, lr) -> void ; side effects: writes Z16/Y16/Flags/CurAnim/CurAnimCopy/CurState
+  of r5, loads a sprite, then enters runBeastSpActionHandler'
+details: "Called with the battle object's CurState == CUR_STATE_INITIALIZE (r5 holds the object pointer;\
+  \ visible in caller return chain via `lr=0x080e39ac` and the function using `oBattleObject_*` field\
+  \ offsets throughout).\nStep by step:\n  1. Recompute pixel X/Y from current panel coords via `object_setCoordinatesFromPanels`.\n\
+  \  2. Clear Z16 to 0, then add +2 to both Z16 and the lower 16 bits of Y (Y16) — lifts the object slightly\
+  \ above its panel Y.\n  3. `sprite_load(0x10, 0x20, 0x80)` — load the Beast-SP sprite at the appropriate\
+  \ VRAM tile slot. (The captured calls show r2 = 0x0203ca7c on one path and 0x02036830 on the other,\
+  \ both OAM/tile descriptors used by sprite_load.)\n  4. `sprite_loadAnimationData()` then `sprite_noShadow()`\
+  \ — install animation tables and disable the drop shadow (signature visual of Beast-SP summons).\n \
+  \ 5. OR 0x02 into `oObjectHeader_Flags` — sets the OBJECT_FLAG_VISIBLE bit.\n  6. Look up a per-state\
+  \ animation table indexed by `oBattleObject_Param1`: load the byte at `word_80E3A30[Param1]` and store\
+  \ it into both `oBattleObject_CurAnim` and `oBattleObject_CurAnimCopy`. The table is a 2-entry `.hword\
+  \ 0x201` blob (just one entry seen, replicated), so this essentially sets CurAnim = 1 (or 0x20) depending\
+  \ on Param1 — a single anim frame is being applied.\n  7. `sprite_setAnimation` then `sprite_loadAnimationData`\
+  \ again to bind the selected animation.\n  8. `sprite_setPalette(0)` — apply palette index 0.\n  9.\
+  \ `object_getFlip()` -> `sprite_setFlip` — face the sprite in the correct horizontal direction.\n  10.\
+  \ Write `CUR_STATE_UPDATE` (0x04) to `oBattleObject_CurStateActionPhaseAndPhaseInitialized`, transitioning\
+  \ into the update phase.\n  11. Tail-call `battleObject_runBeastSpActionHandler_80E3A32` (which dispatches\
+  \ by CurAction; the action=0xB branch is documented there).\nReads 0x4F on exit (`r0=0x0000004f`) likely\
+  \ comes from the tail callee preserving a status code through the link register; the captured r1 entry\
+  \ = 0x080e39d1 (=return-to-self-thumb-bit) shows callers tail-bounce through here.\nCalibration value\
+  \ 0x4F seen on every snapshot suggests it's a stable constant from the action-handler tail, not a meaningful\
+  \ return.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Snap files are named `snap_beastsp_*` so this lives in the Beast-SP code path. - Animation
+    table at `word_80E3A30` is `.hword 0x201` (1-byte entries); assembly indexes it via `ldrb r0,[r5,#oBattleObject_Param1]`
+    then `ldrb r0,[r1,r0]`. - `strh r0,[r5,#oBattleObject_Z16]` after `mov r0,#0` then add of `#2` shows
+    Z16 = 2; subsequent identical add into Y16 raises the sprite two pixels above the panel center. -
+    `object_setCoordinatesFromPanels` is called first and the function writes its new Z16/Y16 after —
+    consistent with INITIALIZE recomputing position. - `bl object_getFlip` immediately followed by `bl
+    sprite_setFlip` is the canonical pattern (no other callees between) and matches how other battle objects
+    enter face-correct sprites. - `CUR_STATE_UPDATE` (0x04) written into `oBattleObject_CurStateActionPhaseAndPhaseInitialized`
+    is the standard INITIALIZE->UPDATE transition. - Tail call `bl battleObject_runBeastSpActionHandler_80E3A32`
+    and `pop {pc}` indicate this function''s role ends once CurState is UPDATE; the rest is the per-CurAction
+    dispatcher. - `sprite_noShadow` is unique to the Beast-SP spawn (other battle objects keep their shadow)
+    — strong signal this is the beast summon init.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080E39D0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initBeastSp_80E39D0
+
+    '
+open_questions:
+- What the single-byte table at 80E3A30 actually represents (only one .hword 0x201 visible — may be a
+  partial table or repeat); and what Param1's possible range maps to. Identifying the exact rendered sprite
+  id (0x10/0x20/0x80 to sprite_load) is also unclear — likely VRAM-base/slot but needs a cross-reference
+  to sprite_load's internals.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E39D0 -> battleObject_initBeastSp_80E39D0
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

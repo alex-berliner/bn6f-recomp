@@ -1,0 +1,59 @@
+name: battleObject_initFromRelatedAndLoadSprite_80C4550
+address: '0x080C4550'
+kind: function
+previous_names:
+- sub_80C4550
+status: probable
+summary: Initialize a battle object's sprite (load, palette, animation) by copying parameters and anim
+  index from its RelatedObject1Ptr, then transition into CUR_STATE_UPDATE.
+interface: '(r5 = BattleObject*) -> void ; side effects: loads a sprite, sets palette/animation, writes
+  CurState/CurAction/CurPhase/PhaseInitialized'
+details: '1. Loads a sprite id 0x80 with the object''s Param1/Param2 via sprite_load, then runs sprite_loadAnimationData,
+  sprite_noShadow, and computes element/palette via battleObject_getDamageElementOrPalette_80C46CC into
+  sprite_setPalette.
+
+  2. Reads CurAnim from RelatedObject1Ptr and Param4 from self, adds them and stores the u16 sum at oBattleObject_CurAnimAndCurAnimCopy
+  (offset 0x10), then calls sprite_setAnimation and reloads/updates the sprite.
+
+  3. Forces CurStateActionPhaseAndPhaseInitialized (=0x8) to CUR_STATE_UPDATE (0x4) and tail-calls battleObject_copyStateAndSyncSpriteFromRelated_80C458C
+  which copies further state and re-syncs the sprite.
+
+  4. Saves only lr (pop {pc}); uses r5 as the implicit battle-object pointer per the standard battle-object
+  register convention; no args/return for callers.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80; ldrb r1, [r5,#oBattleObject_Param1]; ldrb r2, [r5,#oBattleObject_Param2];
+    bl sprite_load` shows sprite id 0x80 loaded with Param1/Param2. - `bl battleObject_getDamageElementOrPalette_80C46CC
+    ... bl sprite_setPalette` shows palette chosen from element/palette helper. - `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr];
+    ldrb r0, [r0,#oBattleObject_CurAnim]; ldrb r1, [r5,#oBattleObject_Param4]; add r0,r0,r1; strh r0,
+    [r5,#oBattleObject_CurAnimAndCurAnimCopy]` derives a frame index from Related + Param4. - `mov r0,
+    #CUR_STATE_UPDATE; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` writes CUR_STATE_UPDATE.
+    - Final `bl battleObject_copyStateAndSyncSpriteFromRelated_80C458C; pop {pc}` tail-calls the per-action
+    handler.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C4550
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initFromRelatedAndLoadSprite_80C4550
+
+    '
+open_questions:
+- Why 0x80 is the sprite id (chip/code id? type-derived constant?) and whether CurAnim+Param4 indexing
+  is into a damage/spell effect frame array rather than sprite animation; nothing in the function itself
+  disambiguates.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C4550 -> battleObject_initFromRelatedAndLoadSprite_80C4550
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

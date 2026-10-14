@@ -1094,12 +1094,12 @@ static inline call_PlaySoundEffect_result_sub_81337E8 call_PlaySoundEffect_sub_8
 }
 
 typedef struct { u32 r2, r5, r10; bool z, n; } call_sub_8133BB4_result;
-/* register form: generated wrapper: sub_8133BB4 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_submenuHandleBPress_8133BB4 has no typed C interface yet */
 static inline call_sub_8133BB4_result call_sub_8133BB4(u32 r2, u32 r4, u32 r5) {
     R2 = r2;
     R4 = r4;
     R5 = r5;
-    GUEST_CALL(sub_8133BB4);
+    GUEST_CALL(battleObject_submenuHandleBPress_8133BB4);
     return (call_sub_8133BB4_result){ R2, R5, R10, ZERO_FLAG(), NEGATIVE_FLAG() };
 }
 
@@ -1320,9 +1320,9 @@ Next battleObject_runSubmenuInputHandler_81337E8(void) {
 }
 
 /* ── folderEdit_step_813388C ── */
-/* register form: calls sub_8133BB4 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_submenuHandleBPress_8133BB4 outside this file, which has no typed C interface yet */
 static bool guard_8133BB4_passed(void) {
-    GUEST_CALL(sub_8133BB4);
+    GUEST_CALL(battleObject_submenuHandleBPress_8133BB4);
     return ZERO_FLAG();          /* Z set: returned 0, continue past guard */
 }
 
@@ -1623,7 +1623,7 @@ Next petNavi_perFrameUpdate_81339BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8133BB4 ── */
+/* ── battleObject_submenuHandleBPress_8133BB4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_sub_8133BB4;
 /* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
@@ -1720,8 +1720,8 @@ static struct b_submenu_out navi_submenu_handle_b(u32 r2, u32 r4, u32 r5, u32 r1
     return out;
 }
 
-/* sub_8133BB4(r2, r4, r5, r10) -> nz, r2, r5, r10 */
-Next sub_8133BB4(void) {
+/* battleObject_submenuHandleBPress_8133BB4(r2, r4, r5, r10) -> nz, r2, r5, r10 */
+Next battleObject_submenuHandleBPress_8133BB4(void) {
     struct b_submenu_out res = navi_submenu_handle_b(R2, R4, R5, R10);
     R2 = res.r2;
     R5 = res.r5;

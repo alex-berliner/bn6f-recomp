@@ -1,0 +1,62 @@
+name: object_mrWeatherProximityTrigger_80A95A8
+address: '0x080A95A8'
+kind: function
+previous_names:
+- sub_80A95A8
+status: probable
+summary: 'Mr. Weather comp map object''s proximity trigger: if the player is on the same Z and within
+  ±0xC0000 of the object''s (X,Y), set story event 0xBFC, copy the object index into r6, mark the per-instance
+  event flag, hide the shadow, force state byte to 8 and play sound 0x1A4.'
+interface: '(r5 = Mr. Weather object ptr, r6 = other object, r10 = Toolkit) -> void ; side effects: event
+  flag 0xBFC, per-instance flag 0x0BF4+idx, r6+4 byte, sprite shadow cleared, [r5+8]=8, SFX 0x1A4'
+details: 'Pushes {r4,lr}. Calls ReadOWPlayerObjectCoords returning (r0,r1)=X,Y and r2=Z. Compared object''s
+  Z ([r5+0x14]) to player Z (r2); on mismatch, returns early (locret_80A95E6).
+
+  On Z match, takes object''s X ([r5+0xC]) and Y ([r5+0x10]), keeps player (r0,r1), sets r4=0xC0000 and
+  calls overworldObject_withinBoxCheck_signed_80011D6 — that helper returns 1 iff the player lies inside
+  the ±0xC0000 box.
+
+  If r0==1: SetEventFlagFromImmediate with EVENT_BFC (= 0xBFC), ldrb r0,[r5+4]; strb r0,[r6+4] (copying
+  the Mr. Weather object''s index into a sibling object header''s Index slot), bl sub_80A9614 to mark
+  0x0BF4+idx, sprite_removeShadow, mov r0,#8; strb r0,[r5+8] (force CurState-like byte to 8), PlaySoundEffect(0x1A4).
+  Otherwise just pops and returns.
+
+  Out registers from contract are r5/r10 only; function is void-like.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl ReadOWPlayerObjectCoords` then `ldr r3,[r5,#0x14]; cmp r2,r3; bne locret_80A95E6` shows
+    the Z-match early-out at 0x80A95B4. - `mov r4,#0xc; lsl r4,r4,#0x10` then `bl overworldObject_withinBoxCheck_signed_80011D6`
+    constructs the ±0xC0000 box half-extent; helper description matches. - `cmp r0,#1; bne locret_80A95E6`
+    requires the helper to return exactly 1 to pass. - `movflag EVENT_BFC; bl SetEventFlagFromImmediate`
+    with the function expecting event flag ID in r0/r1 — sets story flag 0xBFC. - `ldrb r0,[r5,#4]; strb
+    r0,[r6,#4]` copies the byte at object+4 (header `Index`) into another object''s header. - `bl sub_80A9614`
+    per its one-liner marks the per-instance flag 0x0BF4+idx. - `bl sprite_removeShadow` clears the shadow
+    as described. - `mov r0,#8; strb r0,[r5,#8]` writes 8 into the object''s state-like byte. - `ldr r0,off_80A95E8
+    (=0x1A4); bl PlaySoundEffect` plays SFX 0x1A4.'
+  refs:
+  - bn6f/asm/asm29.s
+  reproduce: 'python3 tools/asmcat.py 0x080A95A8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_mrWeatherProximityTrigger_80A95A8
+
+    '
+open_questions:
+- None of substance; the only unverified bit is the precise game semantics of byte+4/index copy and the
+  state byte forced to 8 — those would settle by reading the Mr. Weather object's surrounding struct or
+  the per-map event script that runs on EVENT_BFC.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A95A8 -> object_mrWeatherProximityTrigger_80A95A8
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

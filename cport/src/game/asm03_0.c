@@ -2148,8 +2148,8 @@ Next sub_80283C8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8028476 ── */
-/* sub_8028476 - run whatever is recorded as the "active" chip entry for the side
+/* ── battleObject_runCustomScreenChipPickerEffect_8028476 ── */
+/* battleObject_runCustomScreenChipPickerEffect_8028476 - run whatever is recorded as the "active" chip entry for the side
  * the given battle object fights on.  getLocOfActiveChips returns the side's
  * active-chip record; the record's first byte (the entry kind) picks the
  * handler.  That kind byte is also loaded into r1 before the dispatch, so it is
@@ -2271,9 +2271,9 @@ static void run_active_chip(u32 object) {
     }
 }
 
-/* sub_8028476(r5 = battle object).  All outputs (r1-r12, lr) are whatever the
+/* battleObject_runCustomScreenChipPickerEffect_8028476(r5 = battle object).  All outputs (r1-r12, lr) are whatever the
  * guest handlers left in the register file; the port computes none itself. */
-Next sub_8028476(void) {
+Next battleObject_runCustomScreenChipPickerEffect_8028476(void) {
     run_active_chip(R5);
     RETURN_TO_CALLER();
 }
@@ -2804,9 +2804,9 @@ static void exit_custom_screen(void) {
     GUEST_CALL(customScreen_ExitSequence_8028E32);
 }
 
-/* register form: calls sub_8028476 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_runCustomScreenChipPickerEffect_8028476 outside this file, which has no typed C interface yet */
 static void post_exit_cleanup(void) {
-    GUEST_CALL(sub_8028476);
+    GUEST_CALL(battleObject_runCustomScreenChipPickerEffect_8028476);
 }
 
 /* Handle the confirm/exit action on the custom battle-screen chip submenu.

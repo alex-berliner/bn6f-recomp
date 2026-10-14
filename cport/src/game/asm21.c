@@ -17,15 +17,15 @@ Next bgScroll_ResetScrollCBCounters_8080D90(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8080DA0 ── */
-/* sub_8080DA0: load the BG scroll/GFX-anim/LCD-control data for the current battle field
+/* ── battle_initBGScrollAndAnimForPuzzleField_8080DA0 ── */
+/* battle_initBGScrollAndAnimForPuzzleField_8080DA0: load the BG scroll/GFX-anim/LCD-control data for the current battle field
  * and, in non-battle mode (i.e. story/custom), preload the death animations.
  *
  * Inputs:  r10 = select index into the field tables (passed through from caller)
  * Outputs: r6, r7, r8, r9, r10, r11, r12 (per the disassembly contract)
  * Clobbers: nz, c, v, r0..r3, lr
  */
-Next sub_8080DA0(void) {
+Next battle_initBGScrollAndAnimForPuzzleField_8080DA0(void) {
     /* sub_8081308 returns the field index used to look up everything else. */
     GUEST_CALL(sub_8081308);
     u32 field = R0;

@@ -1,0 +1,81 @@
+name: battle_runLoserSequence_800825A
+address: '0x0800825A'
+kind: function
+previous_names:
+- sub_800825A
+status: probable
+summary: 'Drives the post-loss/lose-screen battle sequence: clears the eStruct flag, flips a battle-state
+  byte, swaps to the loser BGM, picks an effect timer, kicks off the "lose"-style battle intro effect,
+  then finishes by flipping game-state + OW-player flags and notifying overworld state once the timer/cross-net
+  gate lets it.'
+interface: '(r5 = per-actor local state, r10 = ToolkitPtr) -> void ; side effects: eStruct2035280+0x40
+  cleared; BattleState->Unk_10 toggled vs Unk_0d; music changed to SONG_LOSER if effects bit 0x8 set;
+  battle intro effect kind 0x18 (else kind 0) dispatched; r5[+0x3] set to 4; r5[+0x8] set to 0x66 or 0x5e;
+  r5[+0x4] = 2, GameState->Unk_14 = 2, eStruct200A008+0x2 = 1 on exit'
+details: '- `r5` is a small per-caller state struct. Byte `r5+3` is a stage guard: when 0, the function
+  runs the one-shot setup below and writes it to 4; on later calls with stage already 4 it just ticks
+  the timer at `r5+8` (u16 countdown) and checks the gate at the bottom.
+
+  - Setup: `dispatch_801DACC(0xe4c53)` then `flags_clearBits_eStruct2035280_801BED6(0xe4c53)` clears that
+  eStruct flag word. Loads `Toolkit->BattleStatePtr` (offset 0x18), reads `BattleState->Unk_0d`, XORs
+  with 1 and stores to `BattleState->Unk_10` (so Unk_10 = Unk_0d ^ 1).
+
+  - Music branch: `GetBattleEffects() & 8` ⇒ `PlayMusic(SONG_LOSER)`.
+
+  - Timer branch: `GetBattleEffects() & 2` selects the countdown at `[r5+8]`: 0x5e (94) when bit 2 is
+  set, otherwise 0x66 (102). This is the wait before flipping the game-state byte.
+
+  - Effect kickoff: `battle_getPhaseMode_800A152` → mode id saved in r4, `sub_800A8B2()` called, and if
+  mode == 7 the effect kind passed to `battle_dispatchKindEffect_801E792` becomes 0x18 (the "lose/intro"
+  sub-effect handler); otherwise kind 0 is used. Then `[r5+3] = 4` arms the tick-only path.
+
+  - Tick path: decrements `[r5+8]`; if `comm_checkCrossNetBattleReady_801E754()` returns nonzero OR the
+  countdown is still positive, returns. Otherwise writes 2 to `[r5+4]`, `GameState->Unk_14` (Toolkit offset
+  0x3c + 0x14), and calls `eStruct200A008_setUnk02(1)` so the overworld side flips its loss flag.
+
+  - The "f2" caller-state struct at r5 looks like: byte 0x3 stage (0→4), byte 0x4 result (set to 2 on
+  completion), u16 at 0x8 countdown.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#3]` / `tst r0, r0` / `bne loc_80082B4` is the only guard into the init branch
+    (`asm00_1.s:11256-11258`); `[r5+3] = 4` at `0x80082B0` arms the tick path. - `[r5+8]` countdown written
+    as `0x66`/`0x5e` and decremented by 1 (`0x800829A`, `0x80082B6`); ldrsh + tst + bgt gate the "completed"
+    branch. - BattleState access: `ldr r0, [r10,#oToolkit_BattleStatePtr]` then `ldrb r1, [r0,#oBattleState_Unk_0d]`
+    / `strb r1, [r0,#oBattleState_Unk_10]` with `eor r1, #1` (`0x800826A-0x8008272`). - Music/Effects:
+    `GetBattleEffects() & 8` → `PlayMusic(SONG_LOSER)` (`0x8008278-0x8008286`); the same call again masked
+    by 2 selects the 0x5e vs 0x66 timer (`0x800828A-0x800829A`). - Mode-7 → kind 0x18: `cmp r4, #7 ; bne
+    loc_80082AC ; mov r0, #0x18` (`0x80082A0-0x80082AC`) before `bl battle_dispatchKindEffect_801E792`.
+    - Finish: writes 2 to `[r5+4]`, `GameState->Unk_14`, and calls `eStruct200A008_setUnk02(1)` once `comm_checkCrossNetBattleReady_801E754`
+    is 0 and the countdown sign-flip has hit (`0x80082BC-0x80082D8`). - All 40 captured snap-battle entries
+    pass the same r0..r3 (`r0=0x10`, `r1=0x0800825b`, `r2=0xffff`, `r3=0x02036828`) and return `r0=1`
+    with C set, consistent with a polled per-frame loser-state machine.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0800825A
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_runLoserSequence_800825A
+
+    '
+open_questions:
+- The exact role of `r5` (caller struct, EWRAM? IWRAM? who owns it). Settling it would require the single
+  caller.
+- Why `Unk_10 = Unk_0d ^ 1` — toggle of a battle-state pair used by the post-loss path. Knowing the meaning
+  of Unk_0d/Unk_10 would explain it.
+- Why mode 7 specifically maps to kind 0x18 in `battle_dispatchKindEffect_801E792` (i.e. which sub-effect
+  0x18 is).
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800825A -> battle_runLoserSequence_800825A
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

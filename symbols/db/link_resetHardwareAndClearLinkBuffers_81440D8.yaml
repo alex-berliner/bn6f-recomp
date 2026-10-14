@@ -1,0 +1,79 @@
+name: link_resetHardwareAndClearLinkBuffers_81440D8
+address: '0x081440D8'
+kind: function
+previous_names:
+- sub_81440D8
+status: probable
+summary: Resets GBA link-cable/SIO/Timer3 hardware and zeroes the link subsystem's IWRAM state (200F44C
+  block, eTimerEnable200F460) then tail-pops the saved LR to caller.
+interface: '() -> r0 = saved LR (jump target); side effects: clobbers IME/IE/SIOCNT/TM3CNT/RTC and clears
+  0x200F44C..0x200F4xx + eTimerEnable200F460 area; pops original LR into PC (tail-call trampoline).'
+details: "Step by step the function does:\n  1. Saves IME (InterruptMasterEnableRegister) to word_2006DFC\
+  \ and then writes 0 to IME, masking all IRQs while it touches hardware (`ldrh r4,[r2]` ; `strh r4,[r0]`\
+  \ ; `strh r5,[r2]`).\n  2. Reads IE (InterruptEnableRegister), ANDs with mask 0xFF3F (clearing bits\
+  \ 6,7 - i.e. SIO/RCNT related interrupts), writes it back; then restores IME from r4 (`ldrh r1,[r3]`\
+  \ ; `ldr r0,dword_814413C` ; `and r0,r1` ; `strh r0,[r3]` ; `strh r4,[r2]`).\n  3. Disables SIO: writes\
+  \ 0x2000 (R_COMM bit) to SIOControlRegister (`mov r2,#0x80 ; lsl r2,r2,#6` -> 0x2000 ; `strh r0,[r1]`)\
+  \ and clears Timer3Control (`strh r5,[r0]`).\n  4. Writes 0xC0 to a register at SIOControlRegister+0xDA\
+  \ (looks like RCNT/R transfer-related) and writes 0x00 onto stack as a 4-byte source for a fill (`mov\
+  \ r4,#0 ; str r4,[sp]`).\n  5. Calls SWI_CpuSet with src=sp, dst=eTimerEnable200F460, mode=0x5000266\
+  \ (CPU 32bit fill, fixed source for 0x13 words i.e. ~0x4C bytes) - this zeroes the eTimerEnable200F460\
+  \ block.\n  6. Zeros a halfword at sp+4 then calls SWI_CpuSet with src=sp(0), dst=unk_200F44C, mode=0x01000002\
+  \ (CPU 16bit fill, 1 word) - fills a small chunk at 0x200F44C.\n  7. Stores 0 into `[r4+0x1]` which\
+  \ is `byte_200F44D` (the link subsystem state byte).\n  8. Restores sp, pops {r4,r5}, pops the saved\
+  \ LR into r0 then `bx r0` - i.e. a tail-pop: returns control by jumping to the caller-supplied LR rather\
+  \ than `bx lr`. The caller 0x0814424B / 0x08127023 visible in the captured calls matches the LR values\
+  \ being passed through.\nNamed callers are the per-frame drivers: link_stateMachineRunStep_8144250 (its\
+  \ LR 0x0814424B dominates), battle/PET/overworld subsystem ticks (start_screen_update, load_game, pet_menuScreenTick,\
+  \ battle_finishBattle, battle_stepSubstateToState4, and several sub_ routines) all kick this path with\
+  \ their own LR, which is then chain-restored by the tail-pop. The sibling hypothesis sub_8144158 + driver\
+  \ sub_8144240 fit the \"reset/teardown half\" of a two-phase tick.\nQuirk: r0 returned to callers is\
+  \ not a real return value - it is the LR stored in r0 by `pop {r0}` for the `bx r0` tail-return; the\
+  \ lifter mistakenly records that as the return. Callers do not consume it.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strh r5,[r2]` after reading IME, then later `strh r4,[r2]` to restore, with r2=InterruptMasterEnableRegister:
+    shows IME save/disable/restore wrapper. - `and r0,r1` with mask 0xFF3F and r3=InterruptEnableRegister:
+    clears bits 6,7 of IE (the SIO IRQ bits). - `mov r2,#0x80 ; lsl r2,#6` = 0x2000 written to SIOControlRegister:
+    writes R to clear/disable SIO. - `strh r5,[r0]` with r0=Timer3Control: stops timer 3. - `add r1,#0xda
+    ; mov r0,#0xc0 ; strh r0,[r1]`: writes 0xC0 to R+0xDA (a SIO/transfer-mode register offset). - `bl
+    SWI_CpuSet` with r1=eTimerEnable200F460, r2=0x5000266 (`0x5...26` lower bits -> 32-bit fill, count
+    0x26/8 words): zeroes the link subsystem timers/state in IWRAM. - Second SWI_CpuSet with r1=unk_200F44C,
+    r2=0x01000002 (16-bit fill, 1 u16): zeros the link state word at 0x200F44C. - `strb r5,[r4,#0x1]`
+    where r4=unk_200F44C and r5=0: clears `byte_200F44D` (the running-state byte the link SM at +8144250
+    reads as its current state). - `pop {r0} ; bx r0`: classic Thumb tail-pop (register contract lists
+    `lr` in `may_write`/`out` because the saved LR is consumed by `bx r0`, not returned to caller). -
+    Captured-entry `r0=0x08144247 r1=0x0200f44c r2=0x01000002 r3=0x00000170` matches r1=r4=unk_200F44C
+    and r2=0x01000002 coming from a previous SWI_CpuSet prep; `[r1]` is zeroed in the captured runs, confirming
+    the routine just wiped it. - Sibling `sub_8144158` (called immediately before this in `sub_8144240`)
+    plus the per-frame dispatch call sites (link_stateMachineRunStep_8144250, start_screen_update_802F710,
+    pet_menuScreenTick_8126FF0, battle_*) match a "reset link hardware between ticks" role.'
+  refs:
+  - bn6f/asm/libs.s
+  reproduce: 'python3 tools/asmcat.py 0x081440D8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): link_resetHardwareAndClearLinkBuffers_81440D8
+
+    '
+open_questions:
+- The exact meaning of the 0xC0 write to SIOControlRegister+0xDA (RCNT vs joy-bus vs multi-player) - need
+  the register map for bn6f to confirm.
+- Whether the eTimerEnable200F460 CpuSet count of 0x26 bytes covers all link substate or leaves tail bytes
+  untouched (mode field 0x5000266 is fill-by-32 of 0x26/4 words? 0x26/2? - that depends on how SWI_CpuSet
+  mode word is encoded on this BIOS build).
+- Why 14 different caller sites call this rather than once from a top-of-frame dispatcher - possibly matches
+  different reset/stop opportunities (entering battle, finishing battle, subsys switch).
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81440D8 -> link_resetHardwareAndClearLinkBuffers_81440D8
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

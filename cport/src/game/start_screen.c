@@ -314,9 +314,9 @@ static inline void call_sub_803F6B0(u32 table_index) {
     GUEST_CALL(sub_803F6B0);
 }
 
-/* register form: generated typed wrapper: sub_803F838's signature is confident (symbols/db sub_803F838.yaml, signature:); r7, r8, r9, r11, r12 pass through as the guest has them (no call site here sets them: the original passes its own caller's values on) */
+/* register form: generated typed wrapper: toolkit_initAndVerifyWorkArea_0803F838's signature is confident (symbols/db toolkit_initAndVerifyWorkArea_0803F838.yaml, signature:); r7, r8, r9, r11, r12 pass through as the guest has them (no call site here sets them: the original passes its own caller's values on) */
 static inline bool call_sub_803F838(void) {
-    GUEST_CALL(sub_803F838);
+    GUEST_CALL(toolkit_initAndVerifyWorkArea_0803F838);
     return ZERO_FLAG();   /* z set */
 }
 
@@ -336,9 +336,9 @@ static inline void call_zeroFill_813D960(void) {
     GUEST_CALL(zeroFill_813D960);
 }
 
-/* register form: generated typed wrapper: sub_81440D8's signature is confident (symbols/db sub_81440D8.yaml, signature:) */
+/* register form: generated typed wrapper: link_resetHardwareAndClearLinkBuffers_81440D8's signature is confident (symbols/db link_resetHardwareAndClearLinkBuffers_81440D8.yaml, signature:) */
 static inline void call_sub_81440D8(void) {
-    GUEST_CALL(sub_81440D8);
+    GUEST_CALL(link_resetHardwareAndClearLinkBuffers_81440D8);
 }
 
 /* register form: generated typed wrapper: rfu_REQ_stopMode's signature is confident (symbols/db rfu_REQ_stopMode.yaml, signature:); r6, r8, r9, r11, r12 pass through as the guest has them (no call site here sets them: the original passes its own caller's values on) */

@@ -1,0 +1,61 @@
+name: battle_object_spawnBeast_80C40F8
+address: '0x080C40F8'
+kind: function
+previous_names:
+- sub_80C40F8
+status: probable
+summary: Initializes a beast-spawned megaman's sprite state, palette, flip and panel position from Param1,
+  then queues the UPDATE phase.
+interface: '(r5 = BattleObject*) -> void ; side effects: writes object state/sprite/header fields, queues
+  CUR_STATE_UPDATE'
+details: 'Recomputes PanelX/PanelY from current world coordinates via object_setPanelsFromCoordinates.
+
+  Reads oBattleObject_Param1, doubles it, indexes a 2-byte entry table at dword_80C40D4 (sprite load args),
+
+  then sprite_load(sprite_id | 0x80, arg0, arg1). Loads animation data, clears shadow, sets header
+
+  flag bit 0x2 (OBJECT_FLAG_VISIBLE), zeros CurAnim/CurAnimCopy, sets current animation, and copies
+
+  the linked RelatedObject1Ptr''s palette via sprite_getPalette/sprite_setPalette. Mirrors the object''s
+
+  facing via object_getFlip + sprite_setFlip. Finally writes CUR_STATE_UPDATE (0x4) into the object''s
+
+  CurStateActionPhaseAndPhaseInitialized word, then `pop {pc}` (tail-call idiom of the routine).
+
+  Snapshots show r0=0 / r1=this/2+1 (lr) at entry, exit r0=4.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_setPanelsFromCoordinates` recomputes panel position from coords (offset 0x12/0x13).
+    - `ldrb r0,[r5,#oBattleObject_Param1]; add r0,r0,r0; ldr r1,=dword_80C40D4; add r0,r0,r1` shows Param1
+    indexing a 2-byte sprite-table. - `ldrb r1,[r0]; ldrb r2,[r0,#1]; mov r0,#0x80; bl sprite_load` loads
+    sprite 0x80 with those two args. - `orr r0,r1; strb r0,[r5,#oObjectHeader_Flags]` sets bit 0x2 (OBJECT_FLAG_VISIBLE)
+    on the object header. - `strb r0,[r5,#oBattleObject_CurAnim]` / `[r5,#oBattleObject_CurAnimCopy]`
+    both zeroed -> idle anim idx 0. - `bl sprite_setPalette` after `bl sprite_getPalette` on `[r5,#oBattleObject_RelatedObject1Ptr]`
+    propagates palette from referenced (megaman?) object. - `bl object_getFlip` -> `bl sprite_setFlip`
+    mirrors for enemy alliance. - `mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    queues the UPDATE phase after init. - Captured calls lr=0x080c40e4 (= sub_80C40E4, presumably the
+    battle-spawn dispatcher) repeated 5x. - `pop {pc}` instead of standard `pop {pc}` epilogue chain keeps
+    r5 preserved for caller.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C40F8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_object_spawnBeast_80C40F8
+
+    '
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C40F8 -> battle_object_spawnBeast_80C40F8
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

@@ -1,0 +1,55 @@
+name: battleObject_projectAndQueueSprites_8003E18
+address: '0x08003E18'
+kind: function
+previous_names:
+- sub_8003E18
+status: probable
+summary: Walks all alive battle objects, projects/culls + uploads GFX + queues OAM for visible ones
+interface: (none) -> (none) ; consumes r10 (toolkit pointer) and walks the battle-object pointer table;
+  OAM is queued
+details: "Reads the alive-battle-object count from byte_2036778 and the per-frame pointer table at\ndword_2039A10\
+  \ (4 bytes per object slot). Iterates from the highest index down to 0:\n  - if the top two bits of\
+  \ the object's Flags byte (offset 0) are 0b11, treat it as hidden-with-\n    ready-gfx: project/cull\
+  \ via sprite_projectAndCull, then sprite_ensureGfxResident (r0 = #1),\n    then queue frame pieces with\
+  \ sprite_queueFramePieces (r0 = #2, r1 = #0x40).\n  - if only bit 0 is set (active), zero [r0+0x90+0x24]\
+  \ then skip all sprite work.\n  - otherwise (bit 1 set, bit 0 clear): project/cull then skip ensureGfx/queue.\n\
+  After the loop calls sprite_recordPaletteCountToGroupSlot_80028C0(r0=1), saving the current\nqueued-sprite\
+  \ palette count at group-slot 1 of byte_200F389. r10 is the Toolkit (via\nCurFramePtr etc.) but here\
+  \ only the battle-object table globals are read.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Loop counter `ldrb r6, [byte_2036778]` then `sub r6, #1; blt loc_8003E7A` (iterate slots).
+    - Pointer table `ldr r7, [dword_2039A10]` then `add r7, #4` per iteration. - Hidden-with-gfx path:
+    `ldrb r2, [r5]; tst r2, #2; beq ...; ... mov r0, #1 ... sprite_ensureGfxResident+1` and `mov r0, #2
+    ... sprite_queueFramePieces+1`. - Mid branch: `str r3, [r0,#0x24]` where r0 = r5 + #0x90 (sprite substruct),
+    clearing OAM-slot count for inactive objects. - Visible-only branch: `tst r2, #1; beq loc_8003E76`
+    then call sprite_projectAndCull only. - Final call to `sprite_recordPaletteCountToGroupSlot_80028C0`
+    with r0 = #1, which the callee summary ties to byte_200F389 group slot indexing dword_200F340. - Callers
+    are battle_update_8007A44 and two battle-internal sub_8007E62/sub_8007F4E, fitting the per-frame battle
+    hook role.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x08003E18
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_projectAndQueueSprites_8003E18
+
+    '
+open_questions:
+- Exact meaning of the three flag-bit combinations (flag bits 0 and 1 at the object header) is inferred
+  from the conditional structure; the assembly only proves a tri-branch on those two bits, not the semantics.
+  Binding each branch to a precise "hidden / inactive / off-screen" meaning would need a backtrace of
+  who sets those flags.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8003E18 -> battleObject_projectAndQueueSprites_8003E18
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

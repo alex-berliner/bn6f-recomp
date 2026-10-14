@@ -827,7 +827,7 @@ Next battle_runObjects_80C8368(void) {
  * The state byte is stored pre-multiplied by 4, so it indexes the handler
  * table at off_80C9014 (one word per state) directly:
  *   state 0  -> battleObject_initSnakeArmMover_80C9024
- *   state 4  -> sub_80C9074
+ *   state 4  -> battleObject_movingObjectHitStep_80C9074
  *   state 8  -> sub_80C90DC
  *   state 12 -> object_genericDestroy
  * Afterwards it refreshes the object's sprite, exactly as the original's
@@ -842,7 +842,7 @@ Next t3_0x28_80C8FFC(void) {
         GUEST_CALL(battleObject_initSnakeArmMover_80C9024);
         break;
     case 4:
-        GUEST_CALL(sub_80C9074);
+        GUEST_CALL(battleObject_movingObjectHitStep_80C9074);
         break;
     case 8:
         GUEST_CALL(sub_80C90DC);

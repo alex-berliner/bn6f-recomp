@@ -999,9 +999,9 @@ static void clear_chatbox_eflags(u32 mask) {
     GUEST_CALL(chatbox_clear_eFlags2009F38);
 }
 
-/* register form: calls sub_81440D8 outside this file, which has no typed C interface yet */
+/* register form: calls link_resetHardwareAndClearLinkBuffers_81440D8 outside this file, which has no typed C interface yet */
 static void sub_81440D8_call(void) {
-    GUEST_CALL(sub_81440D8);
+    GUEST_CALL(link_resetHardwareAndClearLinkBuffers_81440D8);
 }
 
 /* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
@@ -5508,7 +5508,7 @@ Next sub_8129F48(void) {
  * straight to this function's caller.
  *
  * Table contents (byte offset -> handler):
- *   0  -> sub_812A008   (mode 0)
+ *   0  -> menu_subMenu_dispatchByIndex_812A008   (mode 0)
  *   4  -> sub_812A028   (mode 1)
  *   8  -> sub_812A058   (mode 2)
  *  12  -> sub_812A14C   (mode 3)
@@ -5522,7 +5522,7 @@ Next sub_8129F48(void) {
 Next sub_8129FE0(void) {
     switch (LD8(R5 + 2)) {
     case 0:
-        GUEST_CALL(sub_812A008);
+        GUEST_CALL(menu_subMenu_dispatchByIndex_812A008);
         break;
     case 4:
         GUEST_CALL(sub_812A028);
@@ -5546,12 +5546,12 @@ Next sub_8129FE0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812A008 ── */
-/* sub_812A008: redraw the e-Link sprite, run its palette/animation start,
+/* ── menu_subMenu_dispatchByIndex_812A008 ── */
+/* menu_subMenu_dispatchByIndex_812A008: redraw the e-Link sprite, run its palette/animation start,
  * then if something was just received (sub_81465BC != 0) reset the e-Link
  * state machine and switch it to state 4 with sub-state 3.
  * r5 points at the e-Link work area; R5 and R6 pass through unchanged. */
-Next sub_812A008(void) {
+Next menu_subMenu_dispatchByIndex_812A008(void) {
     GUEST_CALL(sprite_drawIfFlagSet_812B504);
     GUEST_CALL(crt0_start_800027C);
 

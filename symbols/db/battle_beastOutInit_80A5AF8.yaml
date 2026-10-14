@@ -1,0 +1,62 @@
+name: battle_beastOutInit_80A5AF8
+address: '0x080A5AF8'
+kind: function
+previous_names:
+- sub_80A5AF8
+status: probable
+summary: Initialize a player's Beast Out transformation BattleObject (sprite, anim, OAM layer, then hand
+  off to the per-frame driver).
+interface: 'r5 = player BattleObject (BattleObject*) ; r10 = toolkit ; side effects: writes fields at
+  offsets 0,5,6,7,8,0xc,0xd,0xe,0x10,0x24,0x34 of the object and schedules its first tick.'
+details: 'Sets the object''s CurState (offset 0) to 3 (probably BEAST_OUT_INIT phase). It calls sub_80A5D0C,
+  which appears to resolve a per-Navi/Beast-Out parameter record into r4 (the caller bails if this returns
+  0). From that record it copies three u16s (offset 0/2/4) into the object''s fixed-point X/Y/Z slots
+  at 0xc/0x10/0x14 as 16.16 values (each lsl #0x10). It then loads sprite #0x80 at VRAM bank 0x18 / tile
+  slot 0x3c via sprite_load, and pulls the initial CurAnim (u16 at r4+6) into both Param5 (object+5) and
+  Timer (object+0x34) before calling sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow. The
+  (r5+0xc) pointer is passed to applyLayerEffectToOWObject_8035694 to lock the OAM layer, then sprite_setPriority_8002E14
+  picks the BG priority from the r4+7 byte, which is also stored as Param3 (object+6). Param1 (object+7)
+  is forced to 1 and a u32 at offset 0x24 is cleared. After sub_80A5F84, an event flag (EVENT_5F2 / 0x5F2)
+  is tested — if set, sub_80A5FD0 is invoked. Finally CurState (object+8) is set to 4 (CUR_STATE_UPDATE)
+  and battle_beastOutTick_80A5B70 is called once to drive the first frame. Captured calls show r2 alternating
+  between two EWRAM BattleObject pointers (0x084450a0 / 0x08445230) with r3=0x40 (object stride).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- strb r0, [r5] with r0=3 (CUR_STATE_INITIALIZE in BattleObject sense, but the per-object CurState
+    is then bumped to 4 at the end) at 0x80a5afe. - ldrh ... lsl #0x10 then str at r5+0xc/0x10/0x14 converts
+    u16 records from r4 into the 16.16 Coords fields (Coords offset 0x34 in struct; here writes to 0xc/0x10/0x14
+    per BattleObject.inc). - sprite_load called with r0=0x80, r1=0x18, r2=0x3c immediately after the coordinate
+    copy. - r4+6 (CurAnim) stored both to object+5 (Param2) and to object+0x34 (Timer2 region) then passed
+    to sprite_setAnimation. - applyLayerEffectToOWObject_8035694 called on (r5+0xc) and sprite_setPriority_8002E14
+    set with the r4+7 byte. - movflag EVENT_5F2 / bl TestEventFlagFromImmediate / beq ... bl sub_80A5FD0
+    — event-gated side init. - Tail: mov r0,#4 ; strb r0,[r5,#8] ; bl battle_beastOutTick_80A5B70 — bumps
+    CurState to UPDATE and runs the per-frame driver once. - Captured entry r1=0 (object slot index from
+    r5 by caller) and r2 alternate between 0x084450a0/0x08445230, r3=0x40 (BattleObject stride).'
+  refs:
+  - bn6f/asm/asm29.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5AF8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_beastOutInit_80A5AF8
+
+    '
+open_questions:
+- 'The 16.16 "lsl #16" stores target +0xc/+0x10/+0x14, not the documented Coords @ 0x34; mapping of these
+  offsets to BattleObject fields is inferred.'
+- Whether the r4 record lives in a per-Navi table or in the navi_stats extension.
+- Role of EVENT_5F2 and what sub_80A5FD0 toggles — possibly CrossMergerBeastOut or Beast-Out unlock flag.
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5AF8 -> battle_beastOutInit_80A5AF8
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py

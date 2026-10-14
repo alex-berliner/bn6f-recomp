@@ -1,0 +1,79 @@
+name: menu_subMenu_dispatchByIndex_812A008
+address: '0x0812A008'
+kind: function
+previous_names:
+- sub_812A008
+status: probable
+summary: SubMenu state handler — draws the sub-menu sprite, then runs `sub_81465BC` and on success (r0
+  != 0) resets the eLink state, sets the sub-menu phase byte to 4 and the sub-menu counter to 3.
+interface: '(r5 = *SubMenu, r10 = *Toolkit) -> r0 = result of sub_81465BC (0 if unchanged, 3 otherwise)
+  ; side effects: may reset eLink state and patch [r5+2] = 4, [r5+0x28] = 3'
+details: '1. Pushes only lr (leaf-ish; r5/r10 are callee-saved and restored implicitly by the absence
+  of pushes — they live in the caller).
+
+  2. Calls `sprite_drawIfFlagSet_812B504(r5, r10)` first; this draws the sub-menu sprite if its flag bit
+  is set.
+
+  3. Calls `crt0_start_800027C` — the standard boot/trampoline helper the project uses as a no-op retargeter.
+
+  4. Calls the unnamed `sub_81465BC` and branches on r0==0 to `locret_812A026` (early exit, pop {pc},
+  r0 left as 0).
+
+  5. When `sub_81465BC` returned non-zero, calls `eLinkState_ResetForNewUse_803DE88` — note it is called
+  without an explicit r0, so r0 was just the non-zero result of sub_81465BC; the callee treats that as
+  the caller''s eLink state pointer (per its confirmed contract).
+
+  6. Stores 4 at `*subMenu + 0x2` (sub-menu phase / jump-table offset) and 3 at `*subMenu + 0x28` (u16
+  sub-menu counter/timer).
+
+  7. Exits via `pop {pc}` with r0 = 3 (the value that was just strh''d back into [r5+0x28], having been
+  moved into r0 by the final mov).
+
+  The captured r0=0x0812a009 (i.e. address+1, Thumb bit set) at entry and the consistent exit r0=3 confirm
+  the function is being entered via BX-style dispatch on the SubMenu jumptable (idx=0 → off+1); that plus
+  the [r5+2] / [r5+0x28] writes and the eLink reset makes this a "link-battle / PET-link sub-menu: confirm
+  & initialize" handler at jumptable index 0.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sprite_drawIfFlagSet_812B504` (asm33.s:14266): standard SubMenu sprite-draw preamble
+    used by sibling SubMenu handlers. - `bl sub_81465BC` followed by `tst r0, r0 / beq locret_812A026`
+    (asm33.s:14270-14271): r0 is the only checked return value; non-zero ⇒ continue with init. - `bl eLinkState_ResetForNewUse_803DE88`
+    (asm33.s:14273): resets eLink/link-battle state block per its confirmed contract; r0 at this point
+    is sub_81465BC''s non-zero return (treated as the eLink caller pointer). - `mov r0, #4; strb r0, [r5,#2]`
+    (asm33.s:14274): writes jump-table phase byte 4 into SubMenu; consistent with `oSubMenu.idx_00` being
+    the jumptable index and 0x02 being the dispatch offset. - `mov r0, #3; strh r0, [r5,#0x28]` (asm33.s:14276):
+    writes the value 3 into a u16 at offset 0x28; 0x28 is past the declared `Size=0x50` of SubMenu so
+    this is into extra/larger SubMenu state used in this link path. - `pop {pc}` at locret_812A026 with
+    r0 = 3 in the taken branch matches the captured exit r0 = 3. - Captured entry r0 = 0x0812a009 across
+    all four snaps (a Thumb-set address of this function) plus r3 = 0x02001c04 (S2001c04 / encounter-state
+    struct the toolkit points at) confirms the dispatch is via BX r0 (Thumb bit set) from a jumptable
+    that the SubMenu subsystem owns.'
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x0812A008
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): menu_subMenu_dispatchByIndex_812A008
+
+    '
+open_questions:
+- The exact meaning of `sub_81465BC` (unnamed) — it gates the rest of the function and likely checks some
+  "are we in a state to launch the link battle / link PET" precondition. Reading it would settle whether
+  this is "user-confirmed" vs "auto-confirmed on entry".
+- Whether `[r5+0x28]` is a frame/animation timer or a u16 state counter for the link handshake (its semantic
+  name in SubMenu would be more informative).
+sources:
+- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f beefd19e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_812A008 -> menu_subMenu_dispatchByIndex_812A008
+  where: bn6f c4e8f87c
+  tool: tools/rename_symbol.py
