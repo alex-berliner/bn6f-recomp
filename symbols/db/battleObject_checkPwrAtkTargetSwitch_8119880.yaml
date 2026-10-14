@@ -1,0 +1,66 @@
+name: battleObject_checkPwrAtkTargetSwitch_8119880
+address: '0x08119880'
+kind: function
+previous_names:
+- sub_8119880
+status: probable
+summary: Battle-object helper that returns 0/1 based on whether the current "select" / "switch" submenu
+  slots differ while a submenu other than 0x20 is open, using the B-press data at r5+5.
+interface: (r5 = AIDataPtr-in-BattleObject?) -> r0 = 0/1 in Z ; sets Z on the return path; clobbers r0,
+  r1, r6
+details: "Loads r0 = byte [r5+5] (AIData.BButton, the button-trigger byte) and indexes a small\n  table\
+  \ at byte_811935C to derive a comparison value. If the table lookup is zero the\n  function returns\
+  \ 0 immediately (locret_811989E, leaving Z set).\n  Otherwise it loads sSubmenu (the SubMenu struct\
+  \ pointer), calls submenu_isOpen_81355D8,\n  and if a non-0x20 submenu is open, calls sub_81312F4 to\
+  \ obtain a second submenu pointer\n  into r6. The active submenu pointer is then sSubmenu (r6 stays\
+  \ as-is when no secondary\n  call happened). It compares bytes at r6+0xe and r6+0xf and returns 0 (Z)\
+  \ if equal, 1\n  (NZ, with r0=1 and a tst r0,r0) if they differ.\n  The caller is sub_81196F0 (the AI/joypad\
+  \ dispatcher during BattleObject action\n  updates). r5 is the AIData pointer (offset 0x5 is the BButton\
+  \ / B-press trigger).\n  Returned r0 acts as a boolean \"should we switch targeting?\" flag the caller\
+  \ consumes.\ndetails-step:\n  1. push {lr}; r0 = AIData.BButton (r5+5); r1 = byte_811935C\n  2. ldrb\
+  \ r0, [r1,r0]; beq locret_811989E -- if table[idx]==0, return 0\n  3. r6 = sSubmenu; submenu_isOpen_81355D8\
+  \ -> if not open, skip\n  4. if open: r6 = sub_81312F4()  (a different submenu slot/pointer)\n  5. cmp\
+  \ r6[0xe], r6[0xf]; pop {pc}  (Z=1 means equal, return 0)\n  6. fallthrough: r0=1; tst r0,r0; pop {pc}\
+  \  (return 1)\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "ldrb r0, [r5,#5]" with r5 caller-saved and the AIData layout in `bn6f/include/structs/AIData.inc`
+    makes 0x5 the BButton field. - The callee `submenu_isOpen_81355D8` is named "Returns whether any submenu
+    other than the main/no-submenu state (0x20) is currently open." - r6 is loaded from `sSubmenu` (off_81198A8)
+    before the submenu check and only rewritten with the result of `sub_81312F4` when a submenu is open.
+    - The fallthrough path explicitly does `mov r0,#1; tst r0,r0; pop {pc}`, producing NZ while the early
+    `beq locret_811989E` keeps Z set on the zero path. - Captured calls all show entry lr=081196f7, exit
+    r0=0 with Z set, consistent with the "table index was 0" path for those stories. - `byte_811935C`
+    is referenced via `off_81198AC` immediately after the r5+5 load; its size and contents unknown.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08119880
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08119880 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9
+open_questions:
+- What `sub_81312F4` returns and what bytes 0xe/0xf in the submenu struct mean; no S200* struct in the
+  provided list matches offsets 0xe/0xf cleanly.
+- What `byte_811935C` actually indexes; the function is in the AI/B-press path, so the table likely maps
+  BButton state to a per-action "compare this submenu field" check, but the values are unknown.
+- The exact name of the boolean (likely a "did the player change cursor between two submenu slots?" check
+  for an AI subaction), so the _ADDRESS suffix is kept.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8119880 -> battleObject_checkPwrAtkTargetSwitch_8119880
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

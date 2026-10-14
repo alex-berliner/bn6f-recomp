@@ -1,0 +1,65 @@
+name: beastSP_initOrUpdate_80A86B4
+address: '0x080A86B4'
+kind: function
+previous_names:
+- sub_80A86B4
+status: probable
+summary: 'Initialize-or-update step for a "Beast SP" overworld cursor/indicator object: picks sprite/palette/priority
+  by SoulWeaponCursorCameraCoords and (rarely) plays a one-shot SE.'
+interface: (r5 = object, r10 = toolkit) -> r0 = palette index (4 or 5)
+details: "Called once per frame on the OW Beast SP cursor object (pointer in r5). It first asks sub_81421D8\
+  \ for a table and indexes it by object[0x4] (Index) to obtain a u32 tag/value in r6 (looks like a SoulWeapon\
+  \ cursor descriptor); if r6 is non-NULL, it then calls sub_81421D0 / battle_checkScenarioEffectActive_8142190,\
+  \ and on the \"player NAVI with no Unk_24 flag set\" branch it stores 1 into obj[0x24] and plays sound\
+  \ effect 0xBD once.\n\n  After that bookkeeping, it always:\n  - sets obj[0] = r4 (cur state; 1, 3,\
+  \ 4, or 5 depending on branch),\n  - reads GetSoulWeaponCursorCameraCoords(r6) -> (r0,r1) and stores\
+  \ them as obj[0xC]/obj[0x10] (X/Y for the cursor sprite),\n  - reads ReadOWPlayerObjectCoords -> (r0..r3)\
+  \ and stores r2 as obj[0x14] (the Z coord of the sprite, with later add 0xC00000 to push it in front\
+  \ of the player),\n  - runs applyLayerEffectToOWObject_8035694 on &(obj+0xC) so the sprite follows the\
+  \ layer rules,\n  - calls sprite_setPriority_8002E14 and then sub_8142B04 with r6; depending on the\
+  \ boolean result it picks palette 4 (default) or 5 (special, when the \"Soul Weapon cursor descriptor\"\
+  \ is alive),\n  - writes that palette via sprite_setPalette.\n\n  So r4 (return) is 4 in the default\
+  \ case and 5 in the \"found\" case. The captured-call snapshots show exit r0 = 4 or 5 across runs, matching\
+  \ the strb r4 / mov r0, r4 / bl sprite_setPalette epilogue.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 carries the OW object throughout; loads from [r5,#4] (Index), [r5], [r5,#0x24], [r5,#0xC],
+    [r5,#0x10], [r5,#0x14]. - sub_81421D8 returns a table; `ldrb r1,[r5,#4]; lsl r1,r1,#2; ldr r0,[r0,r1]`
+    is a classic `tbl[obj.Index]` lookup, result kept in r6 and used as the first arg to GetSoulWeaponCursorCameraCoords
+    and sub_8142B04. - `mov r0,#1; str r0,[r5,#0x24]` then `mov r0,#0xbd; bl PlaySoundEffect` is the one-shot
+    SE path guarded by `ldrb r0,[r5,#4]; cmp r0,#0` (Index == 0, i.e. the MegaMan NAVI cursor) and `ldr
+    r0,[r5,#0x24]; tst r0,r0` (flag not yet set). - `add r0,r0,r2` after `mov r0,#0xc; lsl r0,r0,#0x10`
+    adds 0xC00000 to the player Z to bias the sprite in front; this matches Z_3c/Z in BattleObject/OWObject
+    coord layout. - exit `r0 = 4` or `5` (captured snapshots snap_beastsp_0180000_10/11/12/13) matches
+    `mov r4,#4; ... mov r4,#5; mov r0,r4; bl sprite_setPalette`. - Two callers (sub_80A8674, sub_80A86A0)
+    bracket this routine as part of a small state machine for the BeastSP OW object; nothing else in the
+    project''s "sub_80A867*" chain suggests battle code.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A86B4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a86b4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the u32 tag in r6 actually represents (a "SoulWeapon cursor camera" descriptor?) and what sub_8142B04
+  checks; whether obj[0x24] is an "has-played-SE" flag or an "is-active" flag. Inspecting sub_81421D8
+  / sub_8142B04 bodies would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A86B4 -> beastSP_initOrUpdate_80A86B4
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

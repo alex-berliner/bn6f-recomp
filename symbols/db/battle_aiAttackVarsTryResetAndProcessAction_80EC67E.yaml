@@ -1,0 +1,79 @@
+name: battle_aiAttackVarsTryResetAndProcessAction_80EC67E
+address: '0x080EC67E'
+kind: function
+previous_names:
+- sub_80EC67E
+status: probable
+summary: Advances the AI AttackVars counter, falls through to process an attack action when the timer
+  runs out, and resets the state if interrupted by invalid conditions.
+interface: '(r5 = current BattleObject, r7 = AI AttackVars block, r10 = toolkit) -> r0/r1/r2/r3 = scratch/clobbered
+  ; side effects: writes to AIData->Unk_44 bit, AIData->Unk_30/Unk_00, AttackVars->Unk_01/10/30, and jumps
+  into sub_80EC792/sub_80116AE'
+details: "- If `oAIAttackVars_Unk_01` is 0, this is the entry of the state: copies `oAIAttackVars_Unk_12`\
+  \ (16-bit) into `oAIAttackVars_Unk_10`, and sets `Unk_01 = 4`.\n  - Always decrements `oAIAttackVars_Unk_10`\
+  \ (16-bit). If the counter is still >= 0 (timer not expired), proceeds to the \"happy path\" at loc_80EC6D6.\n\
+  \  - On timer expiry: if `oAIAttackVars_Unk_0d != 0`, it is decremented and execution continues only\
+  \ if it reaches 0.\n  - Once `Unk_0d == 0` it calls `GetBattleNaviStatsByte_AllianceFromBattleObject(0x2c)`.\
+  \ Comparing the result to `0x18` (the Transformation/ProcessingBug range) and short-circuits if equal.\n\
+  \  - Then tests `AIData->Unk_44` against bit `0x10000` (the AI attack vars \"doodle\" / Busy-Doodle\
+  \ flag) via `GetAIData_Unk_44_Flag`. If the bit is set, control jumps to loc_80EC6D0 (sub_80EC792).\n\
+  \  - Then checks `AIData->ActorType == 2` (ACTOR_TYPE_PLAYER) and JoypadHeld bit 0x2 (B button). If\
+  \ not a player or B is not held, jumps to loc_80EC6D0.\n  - Otherwise (loc_80EC6C6): writes `4` to `AttackVars->Unk_30`,\
+  \ clears `AttackVars->Unk_00`, returns.\n  - Happy path (loc_80EC6D6): if `object_canMove` is false,\
+  \ return. Otherwise call `playerObject_checkDirectionButtons_800FA54`. If the direction is 0, return.\n\
+  \  - Then call `sub_800F964`. If that returns 0, return. Otherwise call `sub_80EC792`, `battle_getCrossNaviTableByte_8010332`,\
+  \ `battle_GetAllianceFactionFromBattleObject_80103A8` (r2 = faction), then forward (r0=dir, r1=crossNaviByte,\
+  \ r2=faction) into `sub_80116AE`.\n  - The AIAttackVars are accessed via `r7` (which is set by caller\
+  \ or implied by register contract); `r7` is not in `in` here so it is established before the call. `r10`\
+  \ = toolkit (BattleStatePtr etc.). `r5` = current BattleObject.\n  - The trailing data `dword_80EC70C\
+  \ = 0x2C241C16` (paired with offsets of \"Doodle\", \"Busy\" sub-states 0x16, 0x18, 0x1c, 0x2c) plus\
+  \ `off_80EC708 -> dword_80EC70C` is dead data following the function; not referenced by this function.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r7,#oAIAttackVars_Unk_01]; tst r0,r0; bne loc_80EC68E` — guards re-entry; on first
+    entry seeds Unk_10 from Unk_12 and stamps Unk_01=4. - `ldrh r0,[r7,#oAIAttackVars_Unk_10]; sub r0,#1;
+    strh r0,[r7,#oAIAttackVars_Unk_10]; bge loc_80EC6D6` — timer countdown with branch-on-non-negative.
+    - `ldrb r0,[r7,#oAIAttackVars_Unk_0d]; cmp r0,#0; beq loc_80EC6A2; sub r0,#1; strb r0,[r7,...]; bne
+    loc_80EC6C6` — retry counter. - `mov r1,#0x2c; bl GetBattleNaviStatsByte_AllianceFromBattleObject;
+    cmp r0,#0x18; beq loc_80EC6D0` — skips the reset path when "ProcessingBug"/Transformation navi stat
+    equals 0x18. - `bl GetAIData_Unk_44_Flag; ldr r1,dword_80ECA20 (=0x10000); tst r0,r1; bne loc_80EC6D0`
+    — checks bit 0x10000 of `AIData->Unk_44`. - `ldr r0,[r5,#oBattleObject_AIDataPtr]; ldrb r1,[r0,#oAIData_ActorType];
+    cmp r1,#2; bne loc_80EC6D0; ldrh r0,[r0,#oAIData_JoypadHeld]; mov r1,#2; tst r0,r1; beq loc_80EC6D0`
+    — checks ActorType == ACTOR_TYPE_PLAYER and JoypadHeld & JOYPAD_B. - `mov r0,#4; str r0,[r7,#oAIAttackVars_Unk_30];
+    mov r0,#0; strh r0,[r7,#oAIAttackVars_Unk_00]` — reset path at loc_80EC6C6. - `bl object_canMove;
+    beq locret_80EC706; bl playerObject_checkDirectionButtons_800FA54; cmp r0,#0; beq locret_80EC706;
+    mov r6,r0; bl sub_800F964; cmp r0,#0; beq locret_80EC706; bl sub_80EC792; bl battle_getCrossNaviTableByte_8010332;
+    mov r4,r0; bl battle_GetAllianceFactionFromBattleObject_80103A8; mov r2,r0; mov r0,r6; mov r1,r4;
+    bl sub_80116AE` — happy path: gates by canMove + cross-table byte + faction, then forwards (dir, crossNaviByte,
+    faction) to sub_80116AE.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EC67E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080ec67e '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of the Unk_0d retry counter and what conditions (other than Transformation and AI busy-flag)
+  clear it. The literal `4` written to Unk_30 hints at a "next phase = 4" jump table transition, but whether
+  that drives a state-machine in sub_80EC792 or elsewhere is not visible from this function alone.
+- Why the `dword_80EC70C = 0x2C241C16` table sits after this function with `off_80EC708 -> dword_80EC70C`
+  — looks like a jump-table consumed by a sibling function rather than this one.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EC67E -> battle_aiAttackVarsTryResetAndProcessAction_80EC67E
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

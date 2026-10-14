@@ -1,0 +1,67 @@
+name: battle_calcDistPanelBetween_8031852
+address: '0x08031852'
+kind: function
+previous_names:
+- sub_8031852
+status: probable
+summary: Computes a one-dimensional panel-column distance between a battle object and its target reference
+  point (used by AI ranged targeting)
+interface: '(r0 = AIData scratch, r5 = actor BattleObject) -> r0 = panel-column distance from target ;
+  side effects: clobbers r1,r2,r3; preserves r5'
+details: "Pushes lr; calls battle_calcRelPosToTarget_803172E which writes a scratch buffer\n  (r0 = AIData\
+  \ scratch, layout shown at 0x020057d4: +0/+4 are current/next target-relative\n  X, +2/+6 are current/next\
+  \ target-relative Y, +8/+A is an axis selector / unknown counter,\n  +0xC points to the other actor\
+  \ — value 0x08057993 seen across captures). Saves r0, then\n  fetches table header (r1 = +0 signed count,\
+  \ r2 = +1, r3 = +2). Adds r0+r1, shifts left 1\n  (×2), pops scratch into r1, loads its +4 (current\
+  \ target-relative X), arithmetic-shifts\n  right by r3 (axis selector 0 or 1), subtracts the shifted\
+  \ X from (r0+r1)<<1, then\n  arithmetic-shifts the difference right by 1 and returns r0 = panel-column\
+  \ delta;\n  r1 is also produced as 0x02 >> r3 (a \"panel size\" divisor shifted by the axis selector).\n\
+  \  The captured exits (r0 = 0xffffffe0/0xffffffe3/0xffffffe4) match a signed panel delta of\n  −32/−29/−28\
+  \ columns relative to the doubled reference (two-cell columns). The function\n  returns 0/0x2 divisors\
+  \ depending on whether r3 selects X or Y; this is consistent with\n  reading current vs next X/Y at\
+  \ offset +4 of the scratch.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly at 0x08031852 pushes lr and tails with `pop {pc}`, so it returns to the saved lr.
+    - First bl is `battle_calcRelPosToTarget_803172E`, whose confirmed contract writes the same 0x020057d4
+    scratch layout (X/Y + current/next + actor ptr + axis count) that we then re-read at offset +4 (`ldr
+    r2, [r1,#4]`). - Second bl is `table_GetCurrentEntryHeader_8031760`; it returns r1 (signed count at
+    +0) and r3 (byte at +2). The function then does `add r0, r0, r1` and `lsl r0, r0, #1`, i.e. (count
+    + own_index) * 2 = total doubled column index. - `asr r2, r3` shifts the loaded X by r3 (0 or 1),
+    treating r3 as the X-vs-Y selector; captured scratch +4 is `00 00 2f 01` then `00 00 e0 ff` = 0x012f0000
+    / 0xffffe000, matching 16.16 fixed-point positions at 303.0 / -32.0. - `mov r1, #2` then `lsr r1,
+    r3` produces 0x02 or 0x01, the standard column/row divisor that matches the 2-cell-wide columns used
+    elsewhere in battle_*.c.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031852
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps, story3, story4, story5, story8, story9'
+  reproduce: 'grep -l ''^08031852 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps, story3, story4, story5, story8, story9
+open_questions:
+- Whether r0 on entry to sub_8031852 is actually a pointer to AIData scratch at
+- 0x020057d4 or to a BattleObject-relative buffer; the captured calls always pass
+- 0x020057d4, but no caller symbol was found.
+- 'What r3 (returned as +2 byte from the table header) really selects: confirmed it'
+- ends up used as an ASR shift of X, so it must be 0/1 to mean X vs Y, but its exact
+- semantic name (panel axis flag?) is unknown. Settling this requires looking at how
+- table_GetCurrentEntryHeader_8031760 populates r3 for the callers that flow here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031852 -> battle_calcDistPanelBetween_8031852
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

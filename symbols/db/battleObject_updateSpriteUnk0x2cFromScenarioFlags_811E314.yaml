@@ -1,0 +1,63 @@
+name: battleObject_updateSpriteUnk0x2cFromScenarioFlags_811E314
+address: '0x0811E314'
+kind: function
+previous_names:
+- sub_811E314
+status: probable
+summary: Builds a per-battle-object sprite-Unk0x2c bitmask by clearing scenario-effect bits, then stores
+  it on the object's sprite
+interface: '(r5 = object pointer in r5 per caller convention) -> r0 = updated Unk0x2c value, r5 preserved
+  ; side effects: writes to r5''s ObjectSprite Unk_2c; clobbers r0,r2,r3,r4,r6,r7'
+details: "Loads the constant mask 0x0FFFFFFF into r7 (note: the source literal `0xFFFFFFF` has 7 hex digits\
+  \ -> 0x0FFFFFFF, see dword_811E358). For each of effect indices 0,1,2,3 it calls `battle_checkScenarioEffectActive_8142190`\
+  \ with that index, then computes `1 << (27,20,13,6)` shifted right by r0 (the boolean return) so the\
+  \ bit is 0 when the effect is active. Each computed word is AND-cleared out of r7 with `bic r7, r2`.\
+  \ The resulting 28-bit value (bits 27,20,13,6 conditionally cleared) is stored into the object's sprite\
+  \ field via `sprite_setUnk0x2c(r5, r0)`. The caller at 0x0811e2b4 passes r5 holding a battle/object\
+  \ pointer and r10 a related object; this routine uses only r5, suggesting r5 is the target object whose\
+  \ sprite Unk0x2c is being configured, likely to suppress certain sprite effects (mushroom / invisibility\
+  \ / flashing / dust-style animations) tied to active scenario effects.\n  Quirks: the constant stored\
+  \ as `0xFFFFFFF` is only 7 hex digits (high nibble 0), so r7 starts as 0x0FFFFFFF; only the low 28 bits\
+  \ matter for the four AND-clears (bits 27,20,13,6). The function is `void`-like from the caller's perspective\
+  \ (callee-saved r5 is preserved, and the returned r0 is purely the value handed to `sprite_setUnk0x2c`).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r7, dword_811E358 // =0xfffffff` (`dword_811E358` literal in source) seeds an all-ones
+    low-28-bit mask. - Four sequential `bl battle_checkScenarioEffectActive_8142190` calls with r0=0..3
+    (`mov r0, #0/1/2/3`, then `bl`). - Each branch builds `mov r2,#1; lsl r2,r2,#0x1b/#0x14/#0xd/#6` then
+    `lsr r2,r0` — `1<<N` masked down to 0 if the boolean returns 1, producing a per-index "clear-if-active"
+    mask. - `bic r7, r2` accumulates cleared bits across the four indices. - `mov r0,r7` followed by `bl
+    sprite_setUnk0x2c` is the documented "stores a 32-bit value into field 0x2c" path. - Caller sub_811E2B4
+    lists r5 in its in contract, confirming object-in-r5 convention here too. - captured-call snapshots
+    (snap_beastsp_0180000_*) all show r0=0x000000dc, r1=0x24, r2=0, r3=0x02011880 at entry — consistent
+    with this being called from one battle-object update routine for Beast SP effects.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E314
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e314 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which scenario effects indices 0..3 correspond to (no symbols for `battle_checkScenarioEffectActive_8142190`'s
+  table).
+- Whether the high nibble of dword_811E358 is truly 0 or was clipped in transcription (would matter for
+  any future higher-bit clears).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E314 -> battleObject_updateSpriteUnk0x2cFromScenarioFlags_811E314
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

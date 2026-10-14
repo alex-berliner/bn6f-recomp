@@ -1,0 +1,57 @@
+name: battleObject_dispatchCurPhaseByJumpTable_80D4570
+address: '0x080D4570'
+kind: function
+previous_names:
+- sub_80D4570
+status: probable
+summary: Trampoline that jumps through a 2-entry table using the BattleObject's CurPhase to select sub_80D458C
+  or sub_80D45AE, then returns
+interface: (r5 = BattleObjectPtr) -> r0 = ... ; no fixed return contract, side effect is jumping to one
+  of two phase handlers based on CurPhase
+details: "- Saves lr via `push {lr}` so the indirect jump can later restore PC via `pop {pc}`, making\
+  \ this a single-level trampoline rather than a real BL/return pair.\n  - Loads the address of `off_80D4584`\
+  \ into r1, then reads the object's `CurPhase` (offset 0xa per BattleObject.inc) via `ldrb r0, [r5,#oBattleObject_CurPhase]`.\n\
+  \  - Indexes `[r1, r0]` to fetch a function pointer (so the table has exactly one entry per CurPhase\
+  \ value, with only values 0 and 1 actually populated).\n  - Performs an interworking switch via `mov\
+  \ lr, pc; bx r1` so the caller of sub_80D458C/sub_80D45AE sees the original `push {lr}`'d lr and returns\
+  \ correctly.\n  - The two targets are stored as `sub_80D458C+1` and `sub_80D45AE+1` (Thumb bit set),\
+  \ confirming both are Thumb and the table lives at ROM address 0x080d4584.\n  - The \".byte 0, 0\" after\
+  \ `pop {pc}` plus the explicit `off_80D4580` word are alignment/reloc fixups for the in-function table.\n\
+  \  - r5 in / r5 out is a contract artifact: this function is a tail-call dispatcher and does not itself\
+  \ touch r5.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at sub_80D4570/0x080d4574 establishes the trampoline frame. - `ldrb
+    r0, [r5,#oBattleObject_CurPhase]` is the only data load and uses BattleObject offset 0xa. - `ldr r1,
+    off_80D4580` then `ldr r1, [r1,r0]` is a 2-entry 32-bit pointer table indexed by CurPhase. - `off_80D4584`
+    contains `.word sub_80D458C+1` and `.word sub_80D45AE+1`, giving exactly two CurPhase cases (0 and
+    1). - `mov lr, pc; bx r1` performs the interworking tail call back to the saved lr.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080D4570
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080d4570 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What semantic CurPhase 0 vs 1 corresponds to (only one BattleObject byte field, so the two handlers
+  are likely "phase A / phase B" sub-states of the same CurState/CurAction).
+- Whether sub_80D458C/sub_80D45AE themselves recurse through this trampoline or share further state.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D4570 -> battleObject_dispatchCurPhaseByJumpTable_80D4570
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

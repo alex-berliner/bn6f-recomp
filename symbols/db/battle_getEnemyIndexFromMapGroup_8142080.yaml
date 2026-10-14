@@ -1,0 +1,64 @@
+name: battle_getEnemyIndexFromMapGroup_8142080
+address: '0x08142080'
+kind: function
+previous_names:
+- sub_8142080
+status: probable
+summary: Looks up an index in a small 3-entry table (byte_81420A8) by matching against the current MapGroup,
+  returning the table index or 0xff.
+interface: (r10 = ToolkitPtr, lr = return) -> r0 = index (0..n) or 0xff if no match/empty entry
+details: "Reads the global Toolkit via r10 (constant address loaded off-stack via `mov r7, r10; ldr r7,[r7,#oToolkit_GameStatePtr]`),\n\
+  \  pulls the current 8-bit MapGroup at oGameState_MapGroup (halfword load used as the value into r7).\n\
+  \  Walks the small u16 table at byte_81420A8 (which encodes as three halfwords 0x0091, 0x0191, 0x0291\
+  \ before a terminator),\n  stepping by 2 each iteration (`add r6, #2`) until it hits either a zero terminator\
+  \ (returns 0xff) or a halfword equal to MapGroup\n  (returns r6>>1 as the slot index). The fact that\
+  \ the matching halfwords are all 0x91XX (0x0091, 0x0191, 0x0291) and the high\n  byte is 0x91 suggests\
+  \ these are not raw MapGroups but derived map-ids whose low byte is the table index and high byte a\
+  \ tag\n  (0x91 = enemy/related). The captured entry r2 = 0x91 across multiple live snapshots matches\
+  \ the table's high byte exactly,\n  consistent with callers doing further work on the returned slot\
+  \ (often followed by the index being passed to other functions\n  that size things off Toolkit context).\
+  \ r4 holds the table base; r6 the byte offset (0,2,4,6); r7 the MapGroup; r0 the return.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r7, r10; ldr r7,[r7,#oToolkit_GameStatePtr]` proves the input is Toolkit and the dereferenced
+    struct is GameState. - `ldrh r7,[r7,#oGameState_MapGroup]` reads the 8/16-bit MapGroup field; matches
+    GameState.inc offset 0x4. - `ldr r4, off_81420A4 // =byte_81420A8` and the literal `.byte 0x91,0x0,
+    0x91,0x1, 0x91,0x2, 0x0,0x0` show a 3-slot table whose payload is `{0x0091, 0x0191, 0x0291}` followed
+    by a terminator; the high byte 0x91 matches multiple captured r2 values across live snapshots. - `tst
+    r0,r0; beq loc_81420A0` plus `add r6,#2` is the canonical "walk u16 table until 0 terminator" pattern.
+    - `lsr r0, r6, #1` converts the byte offset into a slot index; `mov r0, #0xff` is the not-found sentinel.
+    - Caller ring (sub_8089EBC, sub_8141F7C, sub_8142050, sub_81420B0, sub_81420F0, sub_8142102, all touching
+    r10/Toolkit GameState context) is consistent with a battle subsystem routine resolving a MapGroup-specific
+    index for enemy data.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142080
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142080 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'What 0x91 actually encodes: the assembled table values 0x0091/0x0191/0x0291 don''t match the captured
+  MapGroup input bytes'
+- (0x07, 0x08, 0x0c...), so either MapGroup is post-processed or the table is a static lookup keyed off
+  something other than the
+- raw current MapGroup. Decompiling sub_81420B0/sub_81420F0 (which use the returned index) would settle
+  this.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142080 -> battle_getEnemyIndexFromMapGroup_8142080
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

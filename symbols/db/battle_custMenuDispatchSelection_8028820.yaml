@@ -1,0 +1,58 @@
+name: battle_custMenuDispatchSelection_8028820
+address: '0x08028820'
+kind: function
+previous_names:
+- sub_8028820
+status: probable
+summary: 'Custom-menu chip-select dispatcher: routes per selected-slot index to a small handler that packs
+  (row,column) pair-coords into FIFO records.'
+interface: (r5 = active-chip-array base, r6 = out-pair-table base; saves r4-r6,lr) -> flags ; side effects
+  writes records into the FIFO at dword_3002180 via fifo_pushRecord16_8009FF8
+details: "Reads Param4 (byte at [r5,#7]) of the active chip slot; looks it up via getLocOfActiveChips_8027E1C,\n\
+  \  then dispatches on slot index through jt_802886C (10 entries, mostly sub_8028894 / sub_8028938 fallbacks).\n\
+  \  Computes a base pair coord (r4) by subtracting 3 from current Y/X, bit 3 of [r5,#0x40] selects an\n\
+  \  offset table (0xb764 or 0xb764 + 0x10), and pushes 3 pairs (r6, r6+0x10, r6+0x20) into the FIFO\n\
+  \  with the encoded (row,column) pair. Loop runs while r6 >= 0, walking pointer by -4 each iteration.\n\
+  \  Captured entry r2=0xffff / r3=0x02001cb4 come from the caller's packet; r0..r3 are not interpreted\n\
+  \  meaningfully here. Four of the ten cases (5,6,3,4 in jt) reuse sub_8028894 / sub_8028938, so the\n\
+  \  handler is mostly about the two distinct cases (default and offset-with-load).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm03_0.s:5042 `ldrb r0, [r5,#7]` followed by `bl getLocOfActiveChips_8027E1C` and another
+    `ldrb r0, [r0]` -> dispatch uses active-chip Param4 - jump table `jt_802886C` at 0x0802886C with 10
+    entries mostly pointing to two helpers - constant `dword_8028864 = 0xB764` then `add r1, r1, r5` with
+    `lsl r5, r5, #4` selects one of two 16-byte tables; r5 was bit 3 of `[r5,#0x40]` - loop `loc_8028854`
+    does `ldr r0,[r5,r6]; add r0,r0,r4; bl fifo_pushRecord16_8009FF8; sub r6,#4; bpl` -> pushes 3 records
+    (12 bytes) per chip - caller is custMenuUpdateWaitSelectionState_8026CCC, only called from one custom-menu
+    code path'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08028820
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08028820 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What each individual sub-handler in jt_802886C encodes (X vs Y direction, plus whether the offset table
+  0xB764 stores "is this an ally vs enemy" panel pair). Disassembling sub_8028894 / sub_8028904 / sub_8028968
+  would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8028820 -> battle_custMenuDispatchSelection_8028820
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

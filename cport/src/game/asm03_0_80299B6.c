@@ -602,13 +602,13 @@ Next battle_setUnk20349A5Flag_802A210(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802A220 ── */
-/* sub_802A220(r2, r5, r10, lr):
+/* ── battleObject_computePuppeteerSwitchElement_802A220 ── */
+/* battleObject_computePuppeteerSwitchElement_802A220(r2, r5, r10, lr):
  * Return a battle-related selection value (often used as the "selected panel index").
  * r4 starts at 0xFF; many early-returns keep r4 unchanged.
  * Reads toolkit battle state byte 0xD and queries stats byte 0x29, plus battle flags,
  * battle mode, and a panel state struct at dword_20349A0. */
-Next sub_802A220(void) {
+Next battleObject_computePuppeteerSwitchElement_802A220(void) {
     u32 saved_r10 = R10;
     u32 saved_r5 = R5;
     u32 saved_lr = LR;

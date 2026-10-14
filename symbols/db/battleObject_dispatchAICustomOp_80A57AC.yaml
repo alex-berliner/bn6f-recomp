@@ -1,0 +1,58 @@
+name: battleObject_dispatchAICustomOp_80A57AC
+address: '0x080A57AC'
+kind: function
+previous_names:
+- sub_80A57AC
+status: probable
+summary: jump-table dispatcher that calls an AIData B-button custom-op handler based on `[r5+8]`
+interface: (none meaningful — callee uses r5/r10 from caller) -> flags; tails via `pop {pc}`
+details: "1. `push {lr}` and loads `unk_2011A90` into r6 (declared but unused in this stub).\n  2. Loads\
+  \ pointer `off_80A57C0` (a 3-entry table of Thumb routine+1 addresses) and indexes it\n     with the\
+  \ byte at `[r5+8]` (r5 is the caller's AIData pointer).\n  3. Sets lr=pc and `bx r0`, dispatching to\
+  \ one of three handlers:\n     `sub_80A57D0`, `sub_80A5828`, or `sub_80A5888`.\n  4. Returns to caller\
+  \ with `pop {pc}` (i.e., the dispatched handler returns directly via the\n     saved lr; the dispatcher\
+  \ itself never tail-merges, but the contract reflects that the\n     popped PC is from the dispatch\
+  \ target, so r2/r3/r4/r5/r8/r9/r12 are caller-saved).\n  5. r0..r3 on entry in the snapshots are fixed\
+  \ across calls (`0x080a57ad`, `0x18`, `0x0c`,\n     `0x02001f68`) and exit r0 is a constant per capture\
+  \ (`0x2f34` or `0x2f48`), suggesting\n     the dispatched handlers read r0 as an AIData field offset\
+  \ and return a packed value.\n  6. The 3-entry table plus the `+0x8` index strongly implies the dispatcher\
+  \ selects an\n     \"AIData custom op\" by some B-button / BeastOut sub-mode field on the AIData struct.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_80A57BC ; ldrb r1, [r5,#8] ; ldr r0, [r0,r1]` indexes the 3-slot table with
+    AIData offset 8. - The 3 slots in `off_80A57C0` are `sub_80A57D0+1, sub_80A5828+1, sub_80A5888+1`,
+    confirming the dispatcher pattern. - `push {lr}` paired with `pop {pc}` and `mov lr, pc ; bx r0` is
+    the canonical Thumb "dispatch then return" pattern. - r5 in `in=[''r4'',''r5'',''r7'',''r10'',''lr'']`
+    matches the AIData pointer convention used elsewhere in bn6f (r5 = AIData). - The fixed exit r0 values
+    (0x2f34 / 0x2f48) flip between capture pairs (0/1 vs 10/11/12/13), consistent with an AIData state-dependent
+    lookup.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A57AC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a57ac '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Which AIData field corresponds to offset 8 — AIData struct layout puts `AIIndex` at 0x1 and `Unk_02..Unk_07`
+  near 0x2..0x7; nothing obvious is named at 0x8. The struct has `Unk_08` at 0x8, so this is likely a
+  per-AIData "B-button custom op selector".
+- The semantic role of the three targets (sub_80A57D0/828/888) is not yet known.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A57AC -> battleObject_dispatchAICustomOp_80A57AC
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

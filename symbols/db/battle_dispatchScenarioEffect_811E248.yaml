@@ -1,0 +1,58 @@
+name: battle_dispatchScenarioEffect_811E248
+address: '0x0811E248'
+kind: function
+previous_names:
+- sub_811E248
+status: probable
+summary: Tail-calls a scenario-effect step handler chosen by scenario-substate byte at r5+8
+interface: (r5 = scenario-effect state) -> r0 = 0x5e0 ; r5 preserved
+details: "Loads `eScenarioEffectState2000780` into r6 (held across the tail call into lr/lr's\n  bx is\
+  \ not stored) and reads r5 byte at offset +8 as a 0..2 substate index. A two-entry\n  jump table at\
+  \ `off_811E25C` (entries `sub_811E26C`, `sub_811E2B4`, `sub_811E30C`) is\n  loaded via `ldr r0,[off_811E258,r1]`\
+  \ and indexed by that substate. The selected Thumb\n  function is invoked via `mov lr,pc; bx r0`, after\
+  \ which the saved PC (`push {lr}` /\n  `pop {pc}`) is returned to the caller — a classic \"dispatcher\
+  \ thunk\" that doesn't\n  allocate its own stack frame. The callee's r0 exit value of 0x5e0 in every\
+  \ captured\n  call is the scenario-effect step's return code, which the dispatcher forwards back to\n\
+  \  its caller (`0x0804683c`) unchanged.\n  Behaviorally this is a substate-based dispatcher for an ongoing\
+  \ scripted \"scenario\n  effect\" (likely a battle intro / beast-sp / post-battle cinematic state machine,\
+  \ given\n  the captured snapshots from `snap_beastsp_*`); the r5 pointer is the per-effect state\n \
+  \ block at `0x02000780`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` pair at 0x811e248 and 0x811e252 is a Tail-call-thunk idiom with
+    no local frame - `ldrb r1,[r5,#8]` selects the substate byte; r5 is in the contract''s `in` set so
+    it is the effect state ptr - `ldr r0,[r0,r1]` with `off_811E258` → `off_811E25C` indexing selects
+    one of three Thumb handlers (sub_811E26C/2B4/30C) - `mov lr,pc; bx r0` performs the Thumb-to-Thumb
+    tail call (handlers also stored as `+1` to set Thumb bit) - `eScenarioEffectState2000780` is loaded
+    but r6 isn''t used before the tail call; likely a held callee-saved for handlers that follow - All
+    6 captured entry snapshots have lr=0x0804683c, indicating a single caller loop, and a constant exit
+    r0=0x5e0'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E248
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e248 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of `0x5e0` (a step index, a tick counter, or a wait frame count) and what each of
+  the three jumped-to handlers does — those would be settled by lifting sub_811E26C, sub_811E2B4, sub_811E30C
+  and observing their callers.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E248 -> battle_dispatchScenarioEffect_811E248
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

@@ -1,0 +1,61 @@
+name: battleObject_tickSpriteAnim_801BC24
+address: '0x0801BC24'
+kind: function
+previous_names:
+- sub_801BC24
+status: probable
+summary: Advance a battle object's sprite animation (load+set on change, update on no-change) unless paused/invisible/sprite-frozen
+  or in a non-time-stopped state when the object isn't flagged to update during time-stop.
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: may load sprite animation data,
+  set sprite animation index, run sprite_update, write CurAnimCopy'
+details: "- Pushes only lr, so this is a leaf-style tick.\n  - Calls battle_isPaused; if battle is paused\
+  \ (r0 != 0 / Z clear -> bne locret), bails out without touching the sprite.\n  - Loads the object's\
+  \ header Flags byte at oObjectHeader_Flags.\n  - If bit 0x01 (OBJECT_FLAG_ACTIVE) is clear, or bit 0x08\
+  \ (OBJECT_FLAG_STOP_SPRITE_UPDATE) is set, returns without anim work.\n  - If bit 0x10 (OBJECT_FLAG_UPDATE_DURING_TIMESTOP)\
+  \ is clear, calls battle_isTimeStop; if a time-stop is active (NZ), returns. If the bit is set OR no\
+  \ time-stop is active, falls through to the sprite tick.\n  - Compares CurAnim vs CurAnimCopy on the\
+  \ battle object (offsets 0x10/0x11).\n  - If they differ: calls sprite_setAnimation(CurAnim), then sprite_loadAnimationData(),\
+  \ then writes CurAnim back into CurAnimCopy.\n  - If they match: just calls sprite_update() to advance\
+  \ frames.\n  - Tail-pops {pc}, so no caller-visible return value; the contract's out registers are just\
+  \ trash from the callees.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isPaused` then `bne locret_801BC62` short-circuits the whole routine when paused.
+    - `ldrb r0, [r5,#oObjectHeader_Flags]; tst r0, #1; beq locret` enforces ACTIVE; `tst r0, #8; bne locret`
+    enforces !STOP_SPRITE_UPDATE. - `ldrb r0, [r5,#oObjectHeader_Flags]; tst r0, #0x10; bne loc_801BC48`
+    skips the time-stop check when the bit is set, and the explicit `bl battle_isTimeStop; bne locret`
+    blocks normal-update-during-timestop objects. - `ldrb r0, [r5,#oBattleObject_CurAnim]; ldrb r1, [r5,#oBattleObject_CurAnimCopy];
+    cmp r0, r1; beq loc_801BC5E` is the change-detect on the 0x10/0x11 pair. - `bl sprite_setAnimation`
+    / `bl sprite_loadAnimationData` / `strb r0, [r5,#oBattleObject_CurAnimCopy]` is the load path; `bl
+    sprite_update` is the no-change tick. - `pop {pc}` / `locret_801BC62: pop {pc}` confirms no return
+    value.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801BC24
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0801bc24 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact meaning of the OBJECT_FLAG_UPDATE_DURING_TIMESTOP branch ordering could be inverted (i.e.
+  it might allow updates during timestop when set); the bne to the load path suggests it short-circuits
+  the time-stop test entirely, which is what the description above says. A trace on a timestop battle
+  would confirm whether objects with the 0x10 bit really do animate while timestop is on.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801BC24 -> battleObject_tickSpriteAnim_801BC24
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

@@ -1,0 +1,55 @@
+name: owMap_getHotspotBoundaryForMapGroup_80A5724
+address: '0x080A5724'
+kind: function
+previous_names:
+- sub_80A5724
+status: probable
+summary: Returns a hotspot boundary byte pair for a given map group's hotspot region during overworld
+  camera hotspot tests.
+interface: (r6 = ptr to map group hotspot context, byte at r6+5 = region index) -> r0 = byte from dword_80A573C[region],
+  r1 = byte from dword_80A5740[region]
+details: "Pure lookup helper used by the rectangular-hotspot test in sub_80A5690.\n  Reads an index byte\
+  \ at r6+5, then uses it to index two compressed 4-byte\n  tables (dword_80A573C = 0x180C200C, dword_80A5740\
+  \ = 0x0C200C20). Each table\n  packs 4 one-byte values; the helper returns the nth entry of each as\
+  \ a\n  parallel (lo, hi or min, max) pair. Callers combine the returned pair with\n  other context (r5/r10\
+  \ per sub_80A5690) to decide whether the field camera\n  lies inside the map group's current hotspot\
+  \ box. No memory writes; callee-saves\n  only r4, lr. The byte at r6+5 being the index matches the camera/hotspot\n\
+  \  per-map-group context the caller iterates; the r6 base is treated as already\n  pointing at the matching\
+  \ row, so this is just a per-region fetcher.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r3, [r6,#5]` reads an index byte at offset 5 of the r6-pointed struct. - `ldrb r0,
+    [r2,r3]` and `ldrb r1, [r2,r3]` index two .word-aligned tables by that byte. - Tables at dword_80A573C
+    (0x180C200C) and dword_80A5740 (0x0C200C20) each encode four 1-byte entries. - Single confirmed caller
+    is sub_80A5690, which its summary says tests the field camera against rectangular hotspots for the
+    map group; the parallel (r0,r1) pair fit a min/max or (offset,size) box boundary. - No callees; `pop
+    {r4,pc}` confirms leaf with no memory writes.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5724
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story5, story6'
+  reproduce: 'grep -l ''^080a5724 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story5, story6
+open_questions:
+- What r6 actually points to (some camera/hotspot context struct for the current map group) and whether
+  the two bytes form (minX, maxX), (minY, maxY) or some other pairing would be settled by confirming r6's
+  struct layout and the caller's use of r0/r1 after return.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5724 -> owMap_getHotspotBoundaryForMapGroup_80A5724
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

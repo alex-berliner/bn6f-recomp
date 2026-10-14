@@ -1,0 +1,70 @@
+name: battleObject_registerCustomArm_801DB84
+address: '0x0801DB84'
+kind: function
+previous_names:
+- sub_801DB84
+status: probable
+summary: Claims a free slot in dword_20352E0's 6-slot custom-arm table for this battle object's NameID
+  and stores its mirrored arm attachment offset, then links the battle object into it.
+interface: '(r5 = battleObject) -> r0 = 1 ; side effects: writes to the 6-slot table at 0x020352E0 (per-entry
+  8 bytes: status, x, y, ptr)'
+details: "Entry: r5 is the caller's battle object; r10 is the toolkit (per project convention).\n  - Reads\
+  \ the object's Alliance (oBattleObject_Alliance, offset 0x16) and XORs it with the current\n    battle-side\
+  \ byte via battle_networkInvert to derive the desired arm-side value used as the\n    status byte.\n\
+  \  - First pass (r3 = 6): walks the 6-slot table (dword_20352E0) 8 bytes at a time; if a slot is\n \
+  \   occupied (status byte non-zero) and its linked-object pointer ([r4+4]) matches r5, returns 1\n \
+  \   (already registered, no change).\n  - Second pass (r3 = 6): looks for the first free slot (status\
+  \ byte == 0). If none is free,\n    returns 1 with the table unchanged (slot exhaustion falls through\
+  \ to mov r0,#1).\n  - On a free slot, writes:\n      status byte  = the alliance-flipped value (strb\
+  \ r0, [r4,#3])\n      x            = getBattleArmPositionMaybe_8018810(r0=NameID, r1=3, r2=Alliance,\
+  \ r3=DirectionFlip)\n      y            = -(returned y) - 8\n      ptr          = r5 (the battle object\
+  \ itself)\n      status       = 1\n  - getBattleArmPositionMaybe_8018810 returns a mirrored (x,y) pair;\
+  \ the negation+sub 8 produces a\n    hand-side Y offset that flips with the object's DirectionFlip.\n\
+  \  - Always returns 1 in r0.\n  Callers: playerObject_init_80172F0 and sub_8016F56 (object init paths)\
+  \ use it to register the\n  player/navi's per-Navi custom arm attachment. Network-invert of Alliance\
+  \ makes the slot's\n  side-encoding agree with the network's perspective rather than the local side.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_Alliance]` (Alliance at 0x16) and `bl battle_networkInvert`
+    compute the side byte (r0 used later as the per-slot side tag, strb to [r4,#3]). - `off_801DC5C =
+    dword_20352E0` is a 6-entry table; loops `mov r3,#6` walking 8 bytes at a time confirm the entry stride
+    and slot count. - First pass checks `[r4]!=0` then `[r4+4]==r5`: this is the "already linked" early-out,
+    so each battle object owns at most one slot keyed by its own pointer. - Second pass re-walks and finds
+    the first `[r4]==0` slot to claim; on no free slot the code drops into `mov r0,#1; b locret_801DBD2`
+    (no slot ever marked when full). - `ldrh r0, [r5,#oBattleObject_NameID]` + `getBattleArmPositionMaybe_8018810`
+    produces the arm-slot''s (x,y) mirrored offset; the `(NameID, 3, Alliance, DirectionFlip)` argument
+    pattern is the one this callee documents. - `strb r0,[r4,#1]; neg r1,r1; sub r1,#8; strb r1,[r4,#2];
+    str r5,[r4,#4]; mov r0,#1; strb r0,[r4]`'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801DB84
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801db84 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What 0x020352E0 is officially called (it lives next to other battle state buffers; likely a
+- per-battle custom-arm slot table).  Settled by checking which routine consumes [slot+1] and
+- '[slot+2] as screen offsets.'
+- The "no free slot" path silently returns 1; whether callers retry, drop the arm, or rely on
+- the first-pass early-out is not visible from this function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801DB84 -> battleObject_registerCustomArm_801DB84
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

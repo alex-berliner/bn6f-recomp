@@ -1,0 +1,59 @@
+name: battleObject_clearBeastOutSubmenuFlag_8117FF8
+address: '0x08117FF8'
+kind: function
+previous_names:
+- sub_8117FF8
+status: probable
+summary: After setting a BattleObject's beast-out phase/sprite, clears the Submenu's unk_0D byte when
+  the phase is zero (i.e. when not actually beast-out)
+interface: '(r5 = ptr to some BattleObject context) -> r0 = ptr to sSubmenu ; side effect: may clear sSubmenu.unk_0D'
+details: "1. Tail-calls sub_81182A4 (battleObject_setBeastOutPhaseAndSprite_81182A4) which reads/writes\
+  \ r5 and updates the beast-out phase + sprite on the object.\n  2. Loads r5's byte at +0xa, which in\
+  \ the BattleObject struct is `CurPhase`.\n  3. If CurPhase != 0, falls through to `locret_811800A` (returns\
+  \ immediately via pop {pc}).\n  4. If CurPhase == 0, loads the address of the global sSubmenu (off_8118310\
+  \ = 0x0209a30), writes 0 to sSubmenu.unk_0D (offset 0xd), then returns.\n  5. r0 ends up holding the\
+  \ Submenu pointer (0x02009a30) on the CurPhase==0 path, which matches the captured exit r0=0x02009a30.\n\
+  \  6. The condition is gated on CurPhase being exactly zero; the written byte at sSubmenu+0xd is presumably\
+  \ some \"beast-out submenu active\" flag that needs clearing when no beast-out phase is currently set\
+  \ on the object in r5.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battleObject_setBeastOutPhaseAndSprite_81182A4` is the first instruction at 0x08117ff9,
+    setting beast-out phase on r5. - `ldrb r0, [r5,#0xa]` reads BattleObject.CurPhase (struct offset 0xa).
+    - `cmp r0, #0 / bne locret_811800A` branches away when CurPhase != 0, so the Submenu write only happens
+    when CurPhase == 0. - `ldr r0, off_8118310 // =sSubmenu` loads the global Submenu base at 0x02009a30
+    (matches captured exit r0). - `strb r1, [r0,#0xd]` writes 0 to sSubmenu.unk_0D (0x02009a30 + 0xd =
+    0x02009a3d). - Captured calls all show entry r5 (lr=0x08117fd0 is the caller landing in r5 context)
+    and exit r0=0x02009a30 with -ZC- flags (latched from the ldr). - Submenu.inc declares `u0 Size` at
+    0x50 with `struct_org 0x80`, but only an `unk_0D`-ish byte is touched here; a wider struct definition
+    is consistent with that offset being inside the Submenu block.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08117FF8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08117ff8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of sSubmenu.unk_0D (no field name exists yet) — likely a "beast-out submenu in use"
+  or "selected transform navi" flag, but only field-write semantics are visible here.
+- Whether r5 is the active/owning BattleObject vs. some context struct — the contract only states r5 in/out,
+  and callers weren't enumerated in the dump.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8117FF8 -> battleObject_clearBeastOutSubmenuFlag_8117FF8
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

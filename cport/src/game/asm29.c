@@ -1169,10 +1169,10 @@ Next sub_80A55CC(void) {
 /* ── sub_80A5690 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r4; } call_sub_80A5724_result;
-/* register form: generated wrapper: sub_80A5724 has no typed C interface yet */
+/* register form: generated wrapper: owMap_getHotspotBoundaryForMapGroup_80A5724 has no typed C interface yet */
 static inline call_sub_80A5724_result call_sub_80A5724(u32 r6) {
     R6 = r6;
-    GUEST_CALL(sub_80A5724);
+    GUEST_CALL(owMap_getHotspotBoundaryForMapGroup_80A5724);
     return (call_sub_80A5724_result){ R0, R1, R4 };
 }
 
@@ -1180,7 +1180,7 @@ static inline call_sub_80A5724_result call_sub_80A5724(u32 r6) {
  * falls within any rectangular region associated with the current map group.
  * Region tables are indexed by a per-map-group selector. For each region
  * entry, the center (x-8, y+8) is scaled to 16.16 fixed-point, the axis
- * distances to the camera are computed, and sub_80A5724 provides a per-axis
+ * distances to the camera are computed, and owMap_getHotspotBoundaryForMapGroup_80A5724 provides a per-axis
  * radius threshold (also scaled to 16.16). The camera is "inside" that
  * region if both distances are at most the corresponding thresholds.
  *
@@ -1222,7 +1222,7 @@ static struct sub_80A5690_result test_camera_in_map_regions(u32 camera, u32 para
         s32 dx = (boxX >= camX) ? boxX - camX : camX - boxX;
         s32 dy = (boxY >= camY) ? boxY - camY : camY - boxY;
 
-        /* register form: sub_80A5724 reads its distance parameters from
+        /* register form: owMap_getHotspotBoundaryForMapGroup_80A5724 reads its distance parameters from
          * the guest stack at [SP] and [SP+4]; C has no equivalent way to
          * place arguments below the frame pointer for a stack-padded callee. */
         u32 savedSP = SP;
@@ -1256,12 +1256,12 @@ Next sub_80A5690(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A5724 ── */
-/* sub_80A5724: look up two bytes from ROM tables indexed by a one-byte selector at r6+5.
+/* ── owMap_getHotspotBoundaryForMapGroup_80A5724 ── */
+/* owMap_getHotspotBoundaryForMapGroup_80A5724: look up two bytes from ROM tables indexed by a one-byte selector at r6+5.
  *   inputs:  r6 = pointer to some object/struct whose byte at offset 5 is a selector
  *   outputs: r0 = table_A[selector], r1 = table_B[selector]
  *   preserved: r4 */
-Next sub_80A5724(void) {
+Next owMap_getHotspotBoundaryForMapGroup_80A5724(void) {
     u32 selector = LD8(R6 + 5);
 
     /* dword_80A573C packs four selector bytes (0x18, 0x0C, 0x20, 0x0C) into a u32;

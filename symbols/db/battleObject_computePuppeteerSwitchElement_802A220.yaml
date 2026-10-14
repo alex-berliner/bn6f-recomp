@@ -1,0 +1,84 @@
+name: battleObject_computePuppeteerSwitchElement_802A220
+address: '0x0802A220'
+kind: function
+previous_names:
+- sub_802A220
+status: probable
+summary: Decides whether the puppeteer (L+R swap mechanic) should swap to a new element for the player's
+  MegaMan this frame, returning that element code or 0xFF if no swap.
+interface: (r2 -> used as save 0xb selection; r5 = ?, r10 = toolkit) -> r0 = element code (0..0xB) if
+  a swap is due, else 0xFF
+details: "Initializes r4 = 0xFF (the \"no change\" sentinel).\n  Tests event flag EVENT_163; if set, returns\
+  \ 0xFF (line 0x802A22A: movflag EVENT_163 / bl TestEventFlagFromImmediate / bne loc_802A2A2).\n  Reads\
+  \ GetBattleEffects() and masks with 0x200000; if that bit is set, returns 0xFF (line `tst r0, r1` with\
+  \ r1 = dword_802A2A8).\n  Calls GetBattleMode(); only modes 0, 0xA, and 0xB fall through (line `cmp\
+  \ r0, #0/0xa/0xb` + `beq loc_802A248`); otherwise returns 0xFF.\n  Pulls BattleStatePtr via [r10, #oToolkit_BattleStatePtr]\
+  \ and reads BattleState+0xD (the live battle slot/turn byte, possibly the player slot counter), then\
+  \ calls GetBattleNaviStatsByte(slot, 0x29) (line `mov r1, #0x29`). The retrieved Mood (NaviStats+0xE\
+  \ according to struct) byte is range-checked 1..0xB; if outside that window, returns 0xFF (line `cmp\
+  \ r0, #1 / blt loc_802A25C / cmp r0, #0xb / ble loc_802A2A2`).\n  Loads r7 = dword_20349A0 (a per-battle\
+  \ puppeteer/swap state block) and reads byte at offset 0x5 (battleType-like field); if 0xFF, returns\
+  \ 0xFF.\n  Calls sub_8120B54 (chip-ID -> element override code 6..10); if that returns 0xFF, returns\
+  \ 0xFF. Saves the result in r6.\n  Compares r6 against r5+0x3a (AIData Unk_3a, the AI/owner \"current\
+  \ element\" field) — if equal, returns 0xFF (line `ldrh r1, [r5, #0x3a] / cmp r0, r1 / beq loc_802A2A2`).\n\
+  \  Reads a u16 bitmask at r7+0xE (the \"element availability\" flags); if bit r6 is already set, returns\
+  \ 0xFF (line `ldrh r1, [r7, #0xe] / mov r2, #1 / lsl r2, r0 / tst r1, r2 / bne loc_802A2A2`).\n  Reads\
+  \ GetBattleEffects() again; if bit 0x8 (L-trigger effect) is set, also re-checks byte_20349A5: only\
+  \ allow swap when it's <2; otherwise no swap (lines `tst r0, r1 / bne loc_802A292`).\n  In both surviving\
+  \ branches the function hard-codes `mov r0, #1 / cmp r0, #0 / beq loc_802A2A2` (which always takes the\
+  \ branch since r0=1≠0) — this looks like redundant/dead-byte artifact, but the real effect is to fall\
+  \ through to the `mov r4, r6 / mov r0, r4` return path, so r0 returns the candidate element code.\n\
+  \  Called from chatbox_stateMaybeFinishText_8026E4C and custMenuUpdateWaitSelectionState_8026CCC plus\
+  \ their sibling sub_8026D06 / sub_8026F1A, all of which are custom-screen / escape-attempt helpers —\
+  \ consistent with this being a per-frame \"should we change the player's chip element right now\" hook.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- 0x0802A22A: `movflag EVENT_163 / bl TestEventFlagFromImmediate / bne loc_802A2A2` gates everything
+    on a story flag. - `dword_802A2A8 = 0x200000` in the data pool; the `tst r0, r1` masks GetBattleEffects
+    with that bit. - `GetBattleMode()` mode whitelist: `cmp r0, #0 / beq loc_802A248`, `cmp r0, #0xa /
+    beq loc_802A248`, `cmp r0, #0xb / bne loc_802A2A2` — only modes 0, 0xA, 0xB survive. - `[r10, #oToolkit_BattleStatePtr]`
+    then `[r0, #0xd]` is the slot index passed as r0 to `GetBattleNaviStatsByte(r0=#0x29=r1)` — matches
+    the documented NaviStats+0x29 NaviIndex walk. - r7 := off_802A2AC -> dword_20349A0 (the live "element
+    swap" state block); `ldrb r0, [r7,#5]` and `ldrh r1, [r7,#0xe]` are both reads from that block. -
+    The candidate value flows r6 -> r4 -> return r0 (`mov r4, r6 / mov r0, r4` at 0x0802A2A0). - sub_8120B54
+    is the chip->element-style code helper, matching the r6 candidate being element-coded 6..10. - r5+0x3a
+    is matched against r6, suggesting this is compared against the object''s "current element" stored
+    on the AI/owner record (AIData.Unk_3a field per AIData struct).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802A220
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802a220 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact meaning of the EVENT_163 story flag and the 0x200000 battle-effect bit; they look like "pre-battle
+  / setup" / "lock element" gates.
+- 'The `mov r0, #1 / cmp r0, #0 / beq loc_802A2A2` sequence looks like dead/optimised-out code — it always
+  takes the branch (1 ≠ 0), but the desired path then executes `mov r4, r6 / mov r0, r4`. The intent is
+  unclear; possibly an un-removed conditional store.'
+- Naming "computePuppeteerSwitchElement" is plausible because the L+R swap, the chip-style override (sub_8120B54),
+  and the BattleState slot read all cohere with the Style Change / Puppeteer systems, but I have no string
+  in the ROM that confirms the "Puppeteer" wording — keep the `_ADDRESS` suffix per the rules.
+- The exact dword_20349A0 layout (offset 5 = battle-type byte?; offset 0xE = element-availability bitmask)
+  is not in the provided structs, so it is inferred from how it's used here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802A220 -> battleObject_computePuppeteerSwitchElement_802A220
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

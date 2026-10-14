@@ -1,0 +1,65 @@
+name: battleObject_beastSp_update_811E2B4
+address: '0x0811E2B4'
+kind: function
+previous_names:
+- sub_811E2B4
+status: probable
+summary: Updates the Beast Out / Cross Fusion player's battle object sprite each frame, including a flip-state
+  bit, optional sprite/animation reload and cutscene-driven coordinate offset.
+interface: '(r5 = ptr to BattleObject, r6 = ptr to related object / extra struct) -> void ; side effects:
+  mutates object header flags and animation index, calls sprite_setCoordinates / sub_811E314 / sprite_update,
+  pushes two args for cutscene_checkOriginalCutsceneScriptPos_8036F70'
+details: "1. Reads the object's header byte 0 (Flags) into r4, then uses r6->Unk_0d to decide whether\
+  \ bit 0x02 (OBJECT_FLAG_VISIBLE?) is cleared or set on r5, writing the new value back. (bic/orr at 0x811E2C2-0x811E2C6)\n\
+  \  2. If header byte 4 (Index) is nonzero, calls sub_81421D0 to produce a candidate animation index,\
+  \ increments it and stores it at r5+5 (CurAnim) when it differs, then calls sprite_setAnimation(r5+5)\
+  \ and sprite_loadAnimationData() to refresh the sprite frames.\n  3. Pushes a 2-word cutscene coord\
+  \ pair (r0=0xDC, r1=0x24) and the CutsceneScript pointer (dword_8089128), then calls cutscene_checkOriginalCutsceneScriptPos_8036F70\
+  \ to test whether the original cutscene is parked at this op.\n  4. If the check is non-zero (cutscene\
+  \ IS at this op), subtracts 0x14 from r0 and adds 8 to r1, shifting the sprite coord; otherwise leaves\
+  \ the pushed values intact. Then calls sprite_setCoordinates(r0,r1) to write the X/Y of the selected\
+  \ sub-sprite (header byte 2 high nibble).\n  5. Calls sub_811E314 (likely an object-state helper) and\
+  \ then sprite_update, which advances the sprite animation and OAM entries for the current slot.\n  6.\
+  \ Returns via `pop {pc}` (tail call equivalent of `bx lr`) since the function saved only lr on entry.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- The header bit toggle is observable at `bic r4, r1` / `orr r4, r1` followed by `strb r4,
+    [r5]` after a test on `r6,#0xd`. - The "candidate CurAnim" path is at 0x811E2CC-0x811E2DE: `bl sub_81421D0;
+    add r0,#1; cmp r0, r1; beq ...; strb r0, [r5,#5]; bl sprite_setAnimation; bl sprite_loadAnimationData`.
+    - The cutscene-coord block is `push {r0,r1}; ... ldr r0, off_811E308; bl cutscene_checkOriginalCutsceneScriptPos_8036F70;
+    pop {r0,r1}; beq loc_811E2F8; sub r0,#0x14; add r1,#8` then `bl sprite_setCoordinates`. - Caller is
+    sub_811E26C and that function is the one that pushes r0=0x04 / r1=0xB0 (Param1, Param2 style) into
+    the r0/r1 captured-call entries. - tail return `pop {pc}` with the only saved register being `lr`
+    (`push {lr}` at 0x811E2B4). - Captured calls in snap_beastsp_0180000 always exit with r0=0x5E0 (the
+    cutscene''s op0 result + the 0x14 subtraction), matching the branch path; Z flag set on exit is consistent
+    with the final `bl sprite_update` returning equality or zero.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E2B4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e2b4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of r6->Unk_0d (whether it gates the OBJECT_FLAG_VISIBLE bit, OBJECT_FLAG_PAUSE_UPDATE
+  or something else) and the relationship between sub_81421D0's return and the object's animation set
+  is not provable from this function alone; cross-referencing sub_81421D0 plus the parent object header
+  at 0x811E26C would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E2B4 -> battleObject_beastSp_update_811E2B4
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

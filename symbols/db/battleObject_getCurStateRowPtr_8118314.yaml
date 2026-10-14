@@ -1,0 +1,57 @@
+name: battleObject_getCurStateRowPtr_8118314
+address: '0x08118314'
+kind: function
+previous_names:
+- sub_8118314
+status: probable
+summary: Returns a pointer to one of two rows of the BattleObject CurState/CurAction byte-pair (16-byte
+  aligned)
+interface: '(r5 = BattleObject ptr) -> r0 = pointer to either BaseRow+0x8 or BaseRow+0x18 ; side effects:
+  none (nz/c/v flags clobbered)'
+details: "`ldrb r0, [r5,#2]` reads BattleObject.CurAction. `lsr r0, r0, #4` then `lsl r0, r0, #4` masks\n\
+  \  off the low nibble, keeping only the high nibble (effectively `CurAction & 0xF0`). That value is\n\
+  \  added to r5 (the BattleObject base) to form the returned pointer. Given the struct layout\n  (`CurState`\
+  \ at +0x8, `CurAction` at +0x9 inside the union), this is selecting one of two 16-byte\n  halves of\
+  \ the state/action word. Captured callers pass exit r0 of 0x02008470, 0x020084c8, 0x02008520,\n  0x02008578\
+  \ - 0x58 bytes apart, consistent with stepping by 16-byte (0x10) state rows of an object\n  buffer in\
+  \ EWRAM.\n  Tail `mov pc, lr` plus the two `.byte 0, 0` after the function are alignment padding to\
+  \ the next\n  thumb label (likely a constant pool entry), not executed code.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#2]` maps to BattleObject offset 0x2 (Unk_02 in header; here effectively CurAction
+    within the CurState/CurAction union at +0x8 treated as the second byte from a caller-known base).
+    - Mask `& 0xF0` is achieved by `lsr #4` then `lsl #4`. - `add r0, r0, r5` then `mov pc, lr` returns
+    base+row. - Exit r0 values across snapshot calls differ by exactly 0x58 (or 0x10 within the row stride
+    when re-entered with r0 already pointing inside the row). - `.byte 0,0` after `thumb_func_end` is
+    plain padding; no code paths reach it.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118314
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118314 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact struct field at r5+2 being interpreted (the assembly literal `ldrb r0, [r5,#2]` accesses byte
+  2, but the BattleObject union starts at +0x8 with CurState byte 0 and CurAction byte 1; the most plausible
+  resolution is that callers seed r5 differently than the object base - e.g., r5 = base+6 - so what we
+  see as +2 is actually the CurAction byte). Without disassembly of callers 0x08117FC4 / 0x081182A4 this
+  is not definitive.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118314 -> battleObject_getCurStateRowPtr_8118314
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

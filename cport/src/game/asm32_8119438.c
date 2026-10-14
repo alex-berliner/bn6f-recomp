@@ -268,7 +268,7 @@ static void sync_battle_state_regs(void) {
     u32 obj = R5;                    /* r5 = battle object pointer (preserved by push/pop) */
     u32 save_r4 = R4, save_r6 = R6;  /* r4-r7 saved/restored by push/pop originally */
 
-    GUEST_CALL(sub_8119880);         /* gate check: Z=1 means "backup stale" */
+    GUEST_CALL(battleObject_checkPwrAtkTargetSwitch_8119880);         /* gate check: Z=1 means "backup stale" */
 
     if (ZERO_FLAG()) {
         /* Gate-fail: compare primary fields vs their backups. */
@@ -498,7 +498,7 @@ Next sprite_setPositionForIdRange3_8119854(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8119880 ── */
+/* ── battleObject_checkPwrAtkTargetSwitch_8119880 ── */
 /* register form: calls submenu_isOpen_81355D8 outside this file, which has no typed C interface yet */
 static bool submenu_is_open_sub_8119880(void) {
     GUEST_CALL(submenu_isOpen_81355D8);
@@ -540,8 +540,8 @@ static u32 check_submenu_diff(u32 r5, u32 r6_in, bool incoming_z, u32 *out_r6) {
     return field_e - field_f;
 }
 
-/* sub_8119880(r5 = context ptr, r6 = submenu ptr in/out, incoming nz) -> r6, nz */
-Next sub_8119880(void) {
+/* battleObject_checkPwrAtkTargetSwitch_8119880(r5 = context ptr, r6 = submenu ptr in/out, incoming nz) -> r6, nz */
+Next battleObject_checkPwrAtkTargetSwitch_8119880(void) {
     u32 out_r6;
     u32 result = check_submenu_diff(R5, R6, ZERO_FLAG(), &out_r6);
     R6 = out_r6;

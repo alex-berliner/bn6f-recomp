@@ -1,0 +1,69 @@
+name: submenu_updateChipPalette_8118234
+address: '0x08118234'
+kind: function
+previous_names:
+- sub_8118234
+status: probable
+summary: Updates a chip-related object's palette and palette bank for the submenu, decrementing a timer
+  and advancing a chip-index sequence every tick.
+interface: (r0 = unused, r1 = unused, r5 = battle object ptr) -> r0 = non-zero (typically 1, sometimes
+  5) ; side effects on r5's flags byte, Unk_0c/0xd/0xe, plus GBA palette hardware via sprite_setPalette/sprite_setSubEntryPaletteBank
+details: "Reads sSubmenu.unk_02 and sSubmenu.unk_20 (offsets 0x02 and 0x20 from the SubMenu EWRAM struct\n\
+  \  at 0x02009A30). When both equal expected values (0x04 and the +2'd unk_20 == r5[4]), it forces\n\
+  \  r4 = 0 (likely the \"not chip-selected\" palette), r6 = 9 (sub-entry palette bank),\n  r7 = 1 (skip\
+  \ the tick-advance block).\n  Otherwise, r4 = 1 and r6 = 0xA (default palette bank).\n  Always clears\
+  \ bit 0x40 of r5's ObjectHeader.Flags byte (`bic r0, #0x40; strb r0,[r5]`) — likely a\n  \"do not draw\
+  \ / palette dirty\" flag.\n  When r7 (the \"tick\" flag) is non-zero, indexes into the inline 8-byte\
+  \ table `byte_811829C`\n  using `[r5,#0xc] * 4` as the base, then steps through 4 entries:\n  - byte\
+  \ 0 -> loaded into r6 (palette bank override)\n  - byte 1 -> loaded into r4 (palette index)\n  - byte\
+  \ 2 -> loaded into r2, then decremented into r5[0xd] (per-frame timer)\n  - if the timer underflows,\
+  \ bytes 3 and 4 are written to r5[0xc] and r5[0xd] (advance to the\n    next animation phase / chip\
+  \ selection slot).\n  Then computes the final palette values as `r0 = r6 + (r5[0xe] >> 1)` (sub-entry\
+  \ palette bank\n    shift) and `r0 = r4 + r5[0xe]` (palette index), calling sprite_setSubEntryPaletteBank_800304A\n\
+  \    and sprite_setPalette respectively with `r5` as the object.\n  r5[0xe] is therefore some \"phase\
+  \ offset\" added on top of the base palette values, and\n  r5[0xc..0xd] form a 2-byte (cur/timer) animation\
+  \ state, suggesting this is animating chip\n  highlight colours during the subchip/custom-screen preview.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r2, off_8118310 // =sSubmenu` and `ldrb r0,[r2,#0x2]` / `ldrh r0,[r2,#0x20]` show sSubmenu
+    (EWRAM 0x02009A30) is consulted for mode. - `bic r0, r1; strb r0,[r5]` with r1=0x40 always clears
+    bit 0x40 of r5[0] (ObjectHeader.Flags). - `ldrb r1,[r5,#0xc]; lsl r1,r1,#2` indexes `byte_811829C`
+    in 4-byte records, then the four `ldrb` reads at +0/+1/+2/+3 confirm the per-tick palette-bank/palette-index/timer/next-state
+    fields. - The two callees (`sprite_setPalette`, `sprite_setSubEntryPaletteBank_800304A`) take r5 as
+    the object and r0 as the index/bank. - `add r0,r0,r1` where r1 is `[r5,#0xe]` (added twice: once for
+    bank with `lsr #1`, once for index) shows r5[0xe] is an offset into the palette slots. - Captured
+    calls show r5 (pointed at by sp/r10 via toolkit) is the battle object, return is 1 or 5, matching
+    the sprite-update return contract.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118234
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118234 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact semantics of sSubmenu.unk_02 == 4 and unk_20 comparison (probably "scroll/animation finished"
+  guard that suppresses the timer tick).
+- Whether r5 is a chip-select preview object or a folder-browse object — the offsets (0xc/0xd/0xe) live
+  outside the documented ObjectHeader/BattleObject regions visible here, so they likely sit in the per-type
+  ExtraVars area or a sibling struct.
+- What r5[0xe]'s `>>1` vs full-add split actually means in palette-bank layout (likely base bank vs per-chip
+  sub-bank).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118234 -> submenu_updateChipPalette_8118234
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

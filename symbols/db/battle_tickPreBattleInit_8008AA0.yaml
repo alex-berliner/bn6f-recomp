@@ -1,0 +1,66 @@
+name: battle_tickPreBattleInit_8008AA0
+address: '0x08008AA0'
+kind: function
+previous_names:
+- sub_8008AA0
+status: probable
+summary: Battle-mode pre-fight tick that dispatches the pre-battle init phase once, picks and plays a
+  battle/pre-battle song, decrements a per-tick counter, and hands off to the next state when the linked-partner
+  sync is ready.
+interface: (r5 = BattleModePreBState, r10 = Toolkit) -> ; side effects writes to eBattleModePreBState
+  (offset 3 as phase, 8 as timer), plays music via PlayMusic, dispatches effects
+details: "Skips if eBattleModePreBState.phase (r5,#3) is non-zero (already initialised).\n  One-shot init:\
+  \ call sub_800A84E to read a return code (held in r6), then dispatch a 0x4C43\n  flag pattern (dispatch_801DACC)\
+  \ and clear those same bits (flags_clearBits_eStruct2035280_801BED6).\n  Copies battle state field 0x0d\
+  \ to field 0x10 (battle_getStateByte0d_800A7E2), runs the\n  player HP regen tick, marks phase = 4,\
+  \ reads GetBattleEffects and selects a song/music-id:\n  default r2=0x19 (SONG_WINNER_1) / r4=0x41,\
+  \ otherwise if bit 2 set r2=SONG_WINNER_1, r4=0x66;\n  if sub_800A84E returned 1, overrides to SONG_ACDC_TOWN.\
+  \ PlayMusic is then called and the\n  chosen u16 r4 stored into r5+8 (music/state counter).\n  Dispatches\
+  \ a kind=0x14 effect via sub_801E792 (battle_dispatchKindEffect_801E792).\n  Every tick: decrements\
+  \ r5+8 (u16); if comm_checkCrossNetBattleReady_801E754 returns 0\n  and r5+8 (signed halfword) is <=\
+  \ 0, advances phase to 0x0C (next phase in jumptable).\ndetails: |\n  Pushes only {r4,r6,lr}; saves\
+  \ r5 via the caller's convention, restores with pop {r4,r6,pc}.\n  The function never returns r0..r3\
+  \ for the caller (only callee-saved r4/r6/clobber survive\n  the contract).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#3]; tst r0,r0; bne loc_8008AF4` — phase byte at r5+3 used as one-shot gate.
+    - `bl sub_800A84E; mov r6,r0` then `cmp r6,#1; bne loc_8008AE6; mov r2,#SONG_ACDC_TOWN` — sub_800A84E''s
+    return drives an ACDC-town song override. - `bl dispatch_801DACC` with `ldr r0, dword_8008D54 // =0x4c43`
+    followed by `bl flags_clearBits_eStruct2035280_801BED6` with the same mask — sets then clears 0x4C43
+    on eStruct2035280. - `bl battle_getStateByte0d_800A7E2; bl battle_playerHPRegenTick_8014040; ldr r0,[r0,#oToolkit_BattleStatePtr];
+    ldrb r1,[r0,#oBattleState_Unk_0d]; strb r1,[r0,#oBattleState_Unk_10]` — copies battle state byte 0xd
+    to 0x10 and runs HP regen. - `bl GetBattleEffects; ... tst r0,r1(=2); bne loc_8008AE0; mov r2,#SONG_WINNER_1;
+    mov r4,#0x66` — effect bit 2 swaps the music-id to SONG_WINNER_1 with r4=0x66. - `mov r0,r2; bl PlayMusic`
+    and `strh r4,[r5,#8]` — chosen music-id stored as u16 at r5+8.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08008AA0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08008aa0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What sub_800A84E's return value of 1 actually represents (e.g. some battle-type flag
+- re-using ACDC town music); and whether the r5+8 u16 timer double-acts as a "music id"
+- reused value (the strh uses the same slot for both song-id lookup and timer — likely
+- the r4 assignment is for a different field than the song id played; only r4 is stored,
+- while r2 is the actual song id passed to PlayMusic). Settling it would require seeing
+- the consumer of r5+8.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8008AA0 -> battle_tickPreBattleInit_8008AA0
+  where: bn6f 438cfa55
+  tool: tools/rename_symbol.py

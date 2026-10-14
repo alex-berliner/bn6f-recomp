@@ -574,14 +574,14 @@ Next scrollStrip_update_8026BF4(void) {
 /* ── custMenuUpdateWaitSelectionState_8026CCC ── */
 /* custMenuUpdateWaitSelectionState_8026CCC — per-frame update of the S20364C0 custom-menu object (self in R5).
  *
- * Asks sub_802A220 for the menu's current result:
+ * Asks battleObject_computePuppeteerSwitchElement_802A220 for the menu's current result:
  *   - anything but 0xFF: latch it into the object at +0x38, switch the object
  *     to its 0x40 handler (which routes through custMenuMainMaybe_8026A88 and
  *     triggers sub_8027548), clear the frame counter at +0x40, and return.
  *   - 0xFF (nothing chosen yet): run the menu's update handlers with the
  *     current joypad state and tick the frame counter at +0x40. */
 Next custMenuUpdateWaitSelectionState_8026CCC(void) {
-    GUEST_CALL(sub_802A220);
+    GUEST_CALL(battleObject_computePuppeteerSwitchElement_802A220);
     u32 result = R0;
 
     if (result != 0xFF) {
@@ -602,7 +602,7 @@ Next custMenuUpdateWaitSelectionState_8026CCC(void) {
         R7 = LD32(R10 + 4);   /* oToolkit_JoypadPtr */
 
         GUEST_CALL(custMenuSomeHandler_8028B74); /* (self, joypad) */
-        GUEST_CALL(sub_8028820);
+        GUEST_CALL(battle_custMenuDispatchSelection_8028820);
         GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);                 /* (self) */
         GUEST_CALL(sub_802899C);
         GUEST_CALL(battle_endingBgUpdate_8029D34);
@@ -622,7 +622,7 @@ Next custMenuUpdateWaitSelectionState_8026CCC(void) {
 /* ── chatbox_stateMaybeFinishText_8026E4C ── */
 /* chatbox_stateMaybeFinishText_8026E4C (r5 = chatbox state struct, S20364C0):
  * Advance the chatbox one step. If flag 0x80 of eFlags2009F38 is set, ask
- * sub_802A220 whether the text is still busy: while it reports 0xFF, just
+ * battleObject_computePuppeteerSwitchElement_802A220 whether the text is still busy: while it reports 0xFF, just
  * run the periodic update. Otherwise (flag clear, or text finished) play
  * sound effect 0x9E, set the state byte at +1 to 4, clear the timer
  * halfword at +2, and run the periodic update. */
@@ -631,7 +631,7 @@ Next chatbox_stateMaybeFinishText_8026E4C(void) {
     GUEST_CALL(chatbox_mask_eFlags2009F38);
 
     if (R0 != 0) {
-        GUEST_CALL(sub_802A220);
+        GUEST_CALL(battleObject_computePuppeteerSwitchElement_802A220);
         if (R0 == 0xFF) {
             GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
             RETURN_TO_CALLER();
